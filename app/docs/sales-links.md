@@ -313,11 +313,17 @@ of sale. See [Invoicing](invoicing.md).
 
 ## Purchase confirmation and collection
 
-The existing `welcome-sign-in` email also serves as the purchase confirmation;
-its timing and number of messages do not change. With a purchase block, its
-subject is "Purchase confirmation <order number> — <workspace name>" in English
-or the equivalent in Polish. Without a purchase block, the account-ready subject
-is unchanged. It lists the order number, then a table of purchased item names (a line above
+The `welcome-sign-in` outbox kind also carries the purchase confirmation; its
+timing and number of messages do not change. With a purchase block it renders
+its own template instead of the account-ready welcome: the subject is
+"Purchase confirmation — <workspace name> (#<reference>)" in English or the
+equivalent in Polish, where the reference is the first eight characters of the
+order id, upper-cased. The body opens with the heading "Thank you for your
+purchase" and one sentence that the payment for order #<reference> on the
+workspace was received, followed by the next step for each product type in the
+order (a course or files in the account, an active membership, an e-mail when a
+parcel is on its way, or, for a physical order without delivery, collection in
+person with the QR code). It then shows the full order id on the order-number line, a full-width table of purchased item names (a line above
 one unit is named "<units> × <name>"),
 gross amounts formatted in the order currency, and VAT rates (5, 8 or 23 percent,
 or a localized exemption label). The amounts use the same discount allocation
@@ -325,13 +331,21 @@ as invoice positions and sum to the paid total. VAT treatment uses explicit
 line rates or exemptions. A line without a rate takes the first line's explicit
 treatment when present, otherwise the tenant default, matching invoice positions.
 An unresolved rate shows a dash in the VAT cell and no VAT parentheses
-in the text version. A final bold total row shows the paid amount. The text
+in the text version. A final bold total row, with a top border, shows the paid amount; amounts are
+right-aligned under the header "Amount (gross)". The text
 version lists each item with its amount and resolved VAT, followed by the total.
 Legacy outbox rows with string lines or without currency and total retain the
-item-name list. Both versions add the localized sentence: "This purchase
-confirmation is not an invoice. If you need an invoice, contact us."
-The purchase block is followed by the plain localized verification label
-"Order verification code for the seller" above the QR image. The image has the
+item-name list. Personalisations and the delivery block follow (a parcel-locker
+name that repeats the locker code is printed once; the country is printed by
+name). Then come the sign-in action, the sentence that the link is valid for one
+hour and a permanent link to the workspace sign-in page. Both versions then say
+"This confirmation is not an invoice." and, when the workspace has a contact,
+"If you need one, contact the shop." with a link: the account page with its
+support form opened (`/account?support=open`) when the workspace has a support
+e-mail, otherwise the workspace support page; without either, no contact is
+promised. The localized instruction "QR code for the seller: show it if the
+seller asks you to confirm the order." stands above the QR image; the text
+version says where to find the code instead. The image has the
 localized alt text "Order QR code", is unlinked and still encodes the staff
 verification URL, `https://<workspace host>/panel/orders/verify/<token>`, for scanning. Neither
 email version displays that URL. Social links remain after the verification block.

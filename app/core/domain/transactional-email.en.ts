@@ -10,16 +10,32 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     },
   },
   purchase: {
+    heading: 'Thank you for your purchase',
+    paymentReceived: (orderReference, tenantName) => `We have received your payment for order ${orderReference} on ${tenantName}.`,
+    collectInPerson: 'You will collect your order in person — show the QR code from this e-mail when you collect it.',
+    nextSteps: {
+      course: 'Your course is ready in your account.',
+      digital_download: 'Your files are ready to download in your account.',
+      membership: 'Your membership is active.',
+      physical: 'We will e-mail you again when the parcel is on its way.',
+      unknown: 'Your purchase is available in your account.',
+    },
     orderNumber: 'Order number',
     lines: 'Purchased items',
     item: 'Item',
-    amount: 'Amount',
+    amount: 'Amount (gross)',
     vat: 'VAT',
     exempt: 'exempt',
     total: 'Total',
-    notInvoice: 'This purchase confirmation is not an invoice. If you need an invoice, contact us.',
-    subject: (orderNumber, tenantName) => `Purchase confirmation ${orderNumber} — ${tenantName}`,
-    verification: 'Order verification code for the seller',
+    notInvoice: 'This confirmation is not an invoice.',
+    invoiceContact: (contact) => `If you need one, ${contact}.`,
+    contactLabel: 'contact the shop',
+    signInValidity: 'The sign-in link is valid for one hour.',
+    signInLater: (signInPage) => `Later, you can sign in at any time on the ${signInPage}.`,
+    signInPageLabel: 'sign-in page',
+    subject: (orderReference, tenantName) => `Purchase confirmation — ${tenantName} (${orderReference})`,
+    verification: 'QR code for the seller: show it if the seller asks you to confirm the order.',
+    verificationText: 'If the seller asks you to confirm the order, show the QR code from the HTML version of this e-mail.',
     qrAlt: 'Order QR code',
     delivery: 'Delivery',
     pickupPoint: 'Parcel locker',
@@ -31,11 +47,11 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     carrier: 'Carrier',
     trackingNumber: 'Tracking number',
     trackLabel: 'Track the parcel',
-    carriers: { inpost: 'InPost', other: 'Other carrier' },
-    render: ({ header, tenantName, tenantNameHtml, orderNumber, orderNumberHtml, items, delivery, tracking, socialLinks }) => ({
-      subject: `Your order ${orderNumber} has been shipped — ${tenantName}`,
-      html: `${header}<p>Hello!</p><p>Your order ${orderNumberHtml} from ${tenantNameHtml} has been shipped.</p>${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
-      text: `Hello!\n\nYour order ${orderNumber} from ${tenantName} has been shipped.${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
+    carriers: { inpost: 'InPost' },
+    render: ({ header, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, track, items, delivery, tracking, socialLinks }) => ({
+      subject: `Order shipped — ${tenantName} (${orderReference})`,
+      html: `${header}<p>Hello!</p><p>Your order ${orderReferenceHtml} from ${tenantNameHtml} has been shipped.</p>${track.html}${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
+      text: `Hello!\n\nYour order ${orderReference} from ${tenantName} has been shipped.${track.text}${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
     }),
   },
   welcomeSignIn: {
@@ -71,15 +87,15 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   threadReply: {
     actionLabel: 'Open the discussion',
     render: ({ tenantName, tenantNameHtml, lessonName, lessonNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `New reply in the "${lessonName}" discussion`,
-      html: `<p>Hello!</p><p>${authorHtml} replied in the "${lessonNameHtml}" discussion on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
-      text: `Hello!\n\n${authorDisplay} replied in the "${lessonName}" discussion on ${tenantName}:\n\n${snippetText}\n\nOpen the discussion: ${url}${footer.text}`,
+      subject: `New reply in the “${lessonName}” discussion — ${tenantName}`,
+      html: `<p>Hello!</p><p>${authorHtml} replied in the “${lessonNameHtml}” discussion on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${authorDisplay} replied in the “${lessonName}” discussion on ${tenantName}:\n\n${snippetText}\n\nOpen the discussion: ${url}${footer.text}`,
     }),
   },
   lessonQuestion: {
     actionLabel: 'Open the question',
     render: ({ tenantName, tenantNameHtml, lessonName, lessonNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `New question under “${lessonName}”`,
+      subject: `New question under “${lessonName}” — ${tenantName}`,
       html: `<p>Hello!</p><p>${authorHtml} asked a question under “${lessonNameHtml}” on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Hello!\n\n${authorDisplay} asked a question under “${lessonName}” on ${tenantName}:\n\n${snippetText}\n\nOpen the question: ${url}${footer.text}`,
     }),
@@ -87,7 +103,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   spacePost: {
     actionLabel: 'Open the space',
     render: ({ tenantName, tenantNameHtml, spaceName, spaceNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `New post in “${spaceName}”`,
+      subject: `New post in “${spaceName}” — ${tenantName}`,
       html: `<p>Hello!</p><p>${authorHtml} posted in “${spaceNameHtml}” on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Hello!\n\n${authorDisplay} posted in “${spaceName}” on ${tenantName}:\n\n${snippetText}\n\nOpen the space: ${url}${footer.text}`,
     }),
@@ -95,7 +111,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   spaceEvent: {
     actionLabel: 'Open the event',
     render: ({ tenantName, tenantNameHtml, spaceName, spaceNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `New event in “${spaceName}”`,
+      subject: `New event in “${spaceName}” — ${tenantName}`,
       html: `<p>Hello!</p><p>${authorHtml} scheduled an event in “${spaceNameHtml}” on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Hello!\n\n${authorDisplay} scheduled an event in “${spaceName}” on ${tenantName}:\n\n${snippetText}\n\nOpen the event: ${url}${footer.text}`,
     }),
@@ -103,7 +119,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   directMessage: {
     actionLabel: 'Open the conversation',
     render: ({ tenantName, tenantNameHtml, senderDisplay, senderHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `New message from ${senderDisplay}`,
+      subject: `New message from ${senderDisplay} — ${tenantName}`,
       html: `<p>Hello!</p><p>${senderHtml} sent you a message on ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Hello!\n\n${senderDisplay} sent you a message on ${tenantName}:\n\n${snippetText}\n\nOpen the conversation: ${url}${footer.text}`,
     }),
@@ -118,11 +134,25 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   },
   subscriptionPaymentFailed: {
     billingPortalLabel: 'Update billing details',
-    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, socialLinks }) => ({
-      subject: `Payment failed for ${productTitle}`,
-      html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitleHtml} on ${tenantNameHtml}.</p><p>Your access ends on ${accessEndsAtHtml}.</p>${portal}${socialLinks.html}`,
-      text: `Hello!\n\nWe could not collect payment for ${productTitle} on ${tenantName}.\n\nYour access ends on ${accessEndsAtText}.${billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${billingPortalUrl}`}${socialLinks.text}`,
-    }),
+    contactLabel: 'Contact support',
+    workspaceLabel: (tenantName) => `Open ${tenantName}`,
+    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, workspaceUrl, workspaceLink, socialLinks }) => {
+      const settle = `To keep your access, contact ${tenantName} to settle the payment.`;
+      const settleHtml = `To keep your access, contact ${tenantNameHtml} to settle the payment.`;
+      const fallbackLink = contactLink ?? workspaceLink;
+      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${fallbackLink === null ? '' : `<p>${fallbackLink}</p>`}`;
+      const fallbackText = contactUrl !== null
+        ? `\n\nContact support: ${contactUrl}`
+        : workspaceUrl === null ? '' : `\n\nOpen ${tenantName}: ${workspaceUrl}`;
+      const actionText = billingPortalUrl !== null
+        ? `\n\nUpdate billing details: ${billingPortalUrl}`
+        : `\n\n${settle}${fallbackText}`;
+      return {
+        subject: `Payment failed for ${productTitle} — ${tenantName}`,
+        html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitleHtml} on ${tenantNameHtml}.</p><p>Unless the payment goes through, your access ends on ${accessEndsAtHtml}.</p>${actionHtml}${socialLinks.html}`,
+        text: `Hello!\n\nWe could not collect payment for ${productTitle} on ${tenantName}.\n\nUnless the payment goes through, your access ends on ${accessEndsAtText}.${actionText}${socialLinks.text}`,
+      };
+    },
   },
   subscriptionEnded: {
     offerLabel: 'View the offer',
@@ -176,7 +206,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Visit the shop',
-    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, orderReferenceHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
       const timing = [
         'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it appears as a separate credit after about 5–10 business days.',
         'BLIK: the refund takes about 120 minutes.',
@@ -190,9 +220,9 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
         ? '<p>You were not charged, so there is nothing to refund.</p>'
         : `<p>A full refund of ${refund.amountHtml} to the payment method you used has been started automatically. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
       return {
-        subject: `Order ${orderId} cancelled: sold out, ${refund === null ? 'nothing charged' : 'full refund on its way'}`,
-        html: `${header}<p>Hello!</p><p>Your payment for order ${orderIdHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
-        text: `Hello!\n\nYour payment for order ${orderId} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+        subject: `Order cancelled, ${refund === null ? 'nothing charged' : 'full refund on its way'} — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Hello!</p><p>Your payment for order ${orderReferenceHtml} on ${tenantNameHtml} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.</p><p>Order number: ${orderIdHtml}<br>Sold out: ${productTitlesHtml}</p>${refundHtml}<p>We are sorry for the trouble.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nYour payment for order ${orderReference} on ${tenantName} arrived after the goods had sold out, so the whole order was cancelled and nothing will be sent.\n\nOrder number: ${orderId}\nSold out: ${productTitles}\n\n${refundText}\n\nWe are sorry for the trouble.\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
       };
     },
   },

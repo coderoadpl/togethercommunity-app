@@ -147,6 +147,19 @@ const CartCancelled = ({ onRetry }: { onRetry: () => void }) => {
   );
 };
 
+const cartLineAreas = (stepper: boolean, note: boolean) => {
+  if (stepper) {
+    return {
+      xs: '"cover info info" "controls controls amount" "note note remove"',
+      sm: '"cover info info amount" "cover controls remove amount" "cover note note amount"',
+    };
+  }
+  return {
+    xs: note ? '"cover info info" "cover note note" "remove remove amount"' : '"cover info info" "remove remove amount"',
+    sm: '"cover info info amount" "cover remove remove amount" "cover note note amount"',
+  };
+};
+
 const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
   item: Extract<CartItem, { kind: 'ready' }>;
   disabled: boolean;
@@ -157,15 +170,13 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
   const { language } = useLanguage();
   const { product, quantity, max } = item;
   const note = cartLineNote(item, t);
+  const stepper = max > 1;
   return (
     <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid={`cart-line-${item.productId}`}>
       <Box sx={{
         display: 'grid',
-        gridTemplateColumns: '4.5rem minmax(0, 1fr) auto',
-        gridTemplateAreas: {
-          xs: '"cover info info" "controls controls amount" "note note note"',
-          sm: '"cover info amount" "cover controls amount" "cover note amount"',
-        },
+        gridTemplateColumns: { xs: '4.5rem minmax(0, 1fr) auto', sm: '4.5rem auto minmax(0, 1fr) auto' },
+        gridTemplateAreas: cartLineAreas(stepper, note !== null),
         gridTemplateRows: { sm: 'auto auto 1fr' },
         columnGap: '0.75rem',
         rowGap: '0.35rem',
@@ -179,31 +190,37 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
             {t.checkout.cartUnitPrice({ price: formatPrice(item.unitCents, item.currency, language) })}
           </Typography>
         </Stack>
-        <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ gridArea: 'controls', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
-          {max > 1 ? (
-            <>
-              <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
-                disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)}>
-                <StepIcon path={minusPath} />
-              </IconButton>
-              <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
-                {quantity}
-              </Typography>
-              <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
-                disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
-                <StepIcon path={plusPath} />
-              </IconButton>
-            </>
-          ) : null}
-          <Button type="button" variant="text" size="small" disabled={disabled}
-            aria-label={t.checkout.cartRemove({ title: product.title })} onClick={onRemove}>
-            {t.checkout.cartRemoveLine}
-          </Button>
-        </Stack>
+        {stepper ? (
+          <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ gridArea: 'controls', alignItems: 'center' }}>
+            <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
+              disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)} sx={{ ml: '-0.75rem' }}>
+              <StepIcon path={minusPath} />
+            </IconButton>
+            <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
+              {quantity}
+            </Typography>
+            <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
+              disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
+              <StepIcon path={plusPath} />
+            </IconButton>
+          </Stack>
+        ) : null}
+        <Button type="button" variant="text" size="small" disabled={disabled}
+          aria-label={t.checkout.cartRemove({ title: product.title })} onClick={onRemove}
+          sx={{
+            gridArea: 'remove',
+            alignSelf: 'center',
+            justifySelf: stepper ? { xs: 'end', sm: 'start' } : 'start',
+            justifyContent: stepper ? { xs: 'flex-end', sm: 'flex-start' } : 'flex-start',
+            px: 0,
+            minWidth: '2.75rem',
+          }}>
+          {t.checkout.cartRemoveLine}
+        </Button>
         {note === null ? null : (
-          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note' }}>{note}</FinePrint>
+          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note', alignSelf: { xs: stepper ? 'center' : 'start', sm: 'start' } }}>{note}</FinePrint>
         )}
-        <Box sx={{ gridArea: 'amount', alignSelf: 'start', justifySelf: 'end', display: 'flex', alignItems: 'center', minHeight: { xs: '2.75rem', sm: 'auto' } }}>
+        <Box sx={{ gridArea: 'amount', alignSelf: { xs: stepper ? 'start' : 'center', sm: 'start' }, justifySelf: 'end', display: 'flex', alignItems: 'center', minHeight: { xs: '2.75rem', sm: 'auto' } }}>
           <DataValue data-testid={`cart-line-total-${item.productId}`}>
             {formatPrice(item.unitCents * quantity, item.currency, language)}
           </DataValue>

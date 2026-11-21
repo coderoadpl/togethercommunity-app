@@ -134,6 +134,12 @@ const line = (productId: string) => within(screen.getByTestId(`cart-line-${produ
 const summaryAmount = (row: 'products' | 'discount' | 'delivery' | 'total') => within(screen.getByTestId(`cart-summary-${row}`)).getByRole('definition');
 const summaryRows = () => within(screen.getByTestId('cart-summary')).getAllByRole('term').map((term) => `${term.textContent ?? ''} ${term.nextElementSibling?.textContent ?? ''}`);
 
+const phoneStyle = (element: Element | null, property: string) => [...document.querySelectorAll('style')]
+  .flatMap((style) => [...(style.sheet?.cssRules ?? [])])
+  .flatMap((rule) => rule instanceof CSSMediaRule && rule.media.mediaText.replace(/\s/gu, '') === '(min-width:0px)' ? [...rule.cssRules] : [])
+  .flatMap((rule) => rule instanceof CSSStyleRule && element?.matches(rule.selectorText) === true ? [rule.style.getPropertyValue(property)] : [])
+  .find((value) => value !== '');
+
 const SingleProductCheckout = () => <CheckoutPage productRef={useParams({ strict: false }).productRef ?? ''} />;
 
 const renderCheckoutRoutes = (path: string) => {
@@ -318,6 +324,29 @@ describe('hosted cart checkout', () => {
     expect(line(poster).getByText(exact(note))).toBeInTheDocument();
     expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(pln(3500)));
     expect(line(poster).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) })).toBeEnabled();
+  });
+
+  it('lays a phone line with a stepper out in three rows, Remove on the note row and the minus glyph on the left edge', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    const remove = line(poster).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) });
+    const decrease = line(poster).getByRole('button', { name: en.checkout.cartDecrease({ title: 'Poster' }) });
+    const grid = remove.parentElement;
+    expect(phoneStyle(grid, 'grid-template-areas')).toBe('"cover info info" "controls controls amount" "note note remove"');
+    expect(decrease.parentElement?.parentElement).toBe(grid);
+    expect(decrease).toHaveStyle({ marginLeft: '-0.75rem' });
+    expect(remove).toHaveStyle({ gridArea: 'remove' });
+  });
+
+  it('keeps Remove beside the amount on a phone line without a stepper and puts its stock note beside the cover', async () => {
+    serve({ overrides: { [poster]: lowStock(1) } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1~${ebook}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(phoneStyle(line(poster).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) }).parentElement, 'grid-template-areas'))
+      .toBe('"cover info info" "cover note note" "remove remove amount"');
+    expect(phoneStyle(line(ebook).getByRole('button', { name: en.checkout.cartRemove({ title: 'E-book' }) }).parentElement, 'grid-template-areas'))
+      .toBe('"cover info info" "remove remove amount"');
   });
 
   it('keeps the order limit note while the stock is not the cap', async () => {

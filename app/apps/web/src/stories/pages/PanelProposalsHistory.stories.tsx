@@ -10,7 +10,7 @@ const fixture = {
   route: '/panel/proposals#history',
   calls: {
     ...recorded.calls,
-    [fixtureKey('getChangeProposalSummary', [])]: { ok: true, value: { pending: 0, pendingGroups: 0 } },
+    [fixtureKey('getChangeProposalSummary', [])]: { ok: true, value: { pending: 0, pendingGroups: 0, hasProposals: true } },
     [fixtureKey('listChangeProposals', [{ status: 'decided', limit: 50 }])]: { ok: true, value: { proposals: historyChangeProposals, nextCursor: null, hasMore: false } },
     ...Object.fromEntries(historyChangeProposals.map((proposal) => [
       fixtureKey('getChangeProposal', [{ id: proposal.id }]),

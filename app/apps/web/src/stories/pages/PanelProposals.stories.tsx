@@ -10,7 +10,7 @@ const fixture = {
   route: '/panel/proposals',
   calls: {
     ...recorded.calls,
-    [fixtureKey('getChangeProposalSummary', [])]: { ok: true, value: { pending: 7, pendingGroups: 1 } },
+    [fixtureKey('getChangeProposalSummary', [])]: { ok: true, value: { pending: 7, pendingGroups: 1, hasProposals: true } },
     [fixtureKey('listChangeProposals', [{ status: 'pending', limit: 100 }])]: { ok: true, value: { proposals: pendingChangeProposals, nextCursor: null, hasMore: false } },
     [fixtureKey('getChangeProposalGroup', [{ id: CHANGE_PROPOSAL_GROUP_ID }])]: { ok: true, value: { group: changeProposalGroup } },
     [fixtureKey('getProductStock', [STOCK_PRODUCT_ID])]: {

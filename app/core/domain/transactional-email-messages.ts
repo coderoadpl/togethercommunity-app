@@ -28,7 +28,7 @@ export interface TransactionalEmailMessages {
   };
   purchase: {
     heading: string;
-    paymentReceived: string;
+    paymentReceived: (tenantName: string) => string;
     nextSteps: Record<WelcomeSignInProductType, string>;
     orderNumber: string;
     lines: string;

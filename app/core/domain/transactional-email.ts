@@ -299,23 +299,25 @@ const purchaseConfirmation = (
   const delivery = purchaseDelivery(language, purchase.delivery, labels);
   const personalizations = purchasePersonalizations(purchase.personalizations, labels);
   const productTypes = [...new Set(purchase.productTypes ?? [input.productType])];
-  const intro = [labels.paymentReceived, ...productTypes.map((type) => labels.nextSteps[type])].join(' ');
+  const nextSteps = productTypes.map((type) => labels.nextSteps[type]);
+  const intro = [labels.paymentReceived(input.tenantName), ...nextSteps].join(' ');
+  const introHtml = [labels.paymentReceived(escapeHtml(input.tenantName)), ...nextSteps].join(' ');
   const signInLaterHtml = purchase.signInPageUrl === undefined
     ? ''
     : ` ${labels.signInLater(link(purchase.signInPageUrl, labels.signInPageLabel))}`;
   const signInLaterText = purchase.signInPageUrl === undefined
     ? ''
-    : `\n${labels.signInLater(labels.signInPageLabel)} ${purchase.signInPageUrl}`;
+    : `\n${labels.signInLater(`${labels.signInPageLabel} (${purchase.signInPageUrl})`)}`;
   const contactUrl = purchase.contactUrl ?? null;
   const invoiceHtml = contactUrl === null
     ? escapeHtml(labels.notInvoice)
     : `${escapeHtml(labels.notInvoice)} ${labels.invoiceContact(link(contactUrl, labels.contactLabel))}`;
   const invoiceText = contactUrl === null
     ? labels.notInvoice
-    : `${labels.notInvoice} ${labels.invoiceContact(labels.contactLabel)} ${contactUrl}`;
+    : `${labels.notInvoice} ${labels.invoiceContact(`${labels.contactLabel} (${contactUrl})`)}`;
   return emailMessageSchema.parse({
     subject: labels.subject(shortOrderReference(purchase.orderNumber), input.tenantName),
-    html: `${input.header}<h1>${escapeHtml(labels.heading)}</h1><p>${escapeHtml(intro)}</p><p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p><strong>${escapeHtml(labels.lines)}</strong></p>${items.html}${personalizations.html}${delivery.html}<p><strong>${input.actionLink}</strong></p><p>${escapeHtml(labels.signInValidity)}${signInLaterHtml}</p><p>${invoiceHtml}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${input.socialLinks.html}`,
+    html: `${input.header}<h1>${escapeHtml(labels.heading)}</h1><p>${introHtml}</p><p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p><strong>${escapeHtml(labels.lines)}</strong></p>${items.html}${personalizations.html}${delivery.html}<p><strong>${input.actionLink}</strong></p><p>${escapeHtml(labels.signInValidity)}${signInLaterHtml}</p><p>${invoiceHtml}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${input.socialLinks.html}`,
     text: `${labels.heading}\n\n${intro}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${input.actionLabel}: ${input.actionUrl}\n${labels.signInValidity}${signInLaterText}\n\n${invoiceText}\n\n${labels.verificationText}${input.socialLinks.text}`,
   });
 };

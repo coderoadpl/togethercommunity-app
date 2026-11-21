@@ -1954,6 +1954,7 @@ describe('fulfillStripeWebhook', () => {
         payload: expect.objectContaining({
           kind: 'subscription-payment-failed',
           accessEndsAt: '1998-08-17T10:00:00.000Z',
+          contactUrl: null,
         }),
       },
     ]);
@@ -3137,6 +3138,9 @@ it('fulfills a bundle as one payment with immutable VAT lines and no physical gr
       lines: h.lines.map(({ name, grossCents, vatRate }) => ({ name, grossCents, vatRate })),
       currency: 'PLN',
       totalCents: 12400,
+      productTypes: ['digital_download', 'course', 'physical'],
+      signInPageUrl: 'https://alpha.example.com/login',
+      contactUrl: null,
     },
   });
   expect([...h.grants.values()].map((grant) => grant.productId).sort()).toEqual(['product-1', 'product-2']);

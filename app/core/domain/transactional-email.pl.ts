@@ -11,7 +11,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   },
   purchase: {
     heading: 'Dziękujemy za zakup',
-    paymentReceived: 'Otrzymaliśmy Twoją płatność.',
+    paymentReceived: (tenantName) => `Otrzymaliśmy Twoją płatność za zamówienie na platformie ${tenantName}.`,
     nextSteps: {
       course: 'Kurs czeka na Ciebie na Twoim koncie.',
       digital_download: 'Pliki są gotowe do pobrania na Twoim koncie.',

@@ -11,7 +11,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
   },
   purchase: {
     heading: 'Thank you for your purchase',
-    paymentReceived: 'We have received your payment.',
+    paymentReceived: (tenantName) => `We have received your payment for your order on ${tenantName}.`,
     nextSteps: {
       course: 'Your course is ready in your account.',
       digital_download: 'Your files are ready to download in your account.',

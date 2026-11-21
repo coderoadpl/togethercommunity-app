@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Notification } from '#core/domain/index.js';
 
 import { en } from './i18n/en.js';
-import { notificationSnippet, notificationTarget, notificationTitle } from './notification-links.js';
+import { notificationSnippet, notificationSnippetParts, notificationTarget, notificationTitle } from './notification-links.js';
 
 const notification = (input: {
   kind: Notification['kind'];
@@ -225,5 +225,13 @@ describe('change proposal notifications', () => {
     expect(notificationTitle(en, proposal(''))).toBe(en.notifications.changeProposal({ key: 'Catalogue agent' }));
     expect(notificationSnippet(en, proposal(''))).toBe('');
     expect(notificationSnippet(en, proposal('<b>Launch</b>'))).toBe(en.notifications.changeProposalGroup({ title: '<b>Launch</b>' }));
+  });
+
+  it('splits the group title out of its sentence so the bell can isolate it', () => {
+    const title = 'Spring\u201D \u202Elaunch';
+    const parts = notificationSnippetParts(en, proposal(title));
+    expect(parts.isolated).toBe(title);
+    expect(`${parts.before}${parts.isolated}${parts.after}`).toBe(en.notifications.changeProposalGroup({ title }));
+    expect(notificationSnippetParts(en, proposal(''))).toEqual({ before: '', isolated: '', after: '' });
   });
 });

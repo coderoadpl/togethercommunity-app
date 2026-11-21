@@ -78,11 +78,28 @@ export const notificationSnippet = (t: Messages, notification: Notification): st
     : translateDeletedContent(snippet, t);
 };
 
-export const notificationTitle = (t: Messages, notification: Notification): string =>
-  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
-
 /** A placeholder no message bundle and no user-supplied name can contain. */
 const SUBJECT_SLOT = '\u0000';
+
+interface IsolatedLine {
+  before: string;
+  isolated: string;
+  after: string;
+}
+
+export const notificationSnippetParts = (t: Messages, notification: Notification): IsolatedLine => {
+  const { snippet } = notification.payload;
+  if (notification.kind !== 'change-proposal' || snippet.length === 0) {
+    return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  }
+  const sentence = t.notifications.changeProposalGroup({ title: SUBJECT_SLOT });
+  const slot = sentence.indexOf(SUBJECT_SLOT);
+  if (slot === -1) return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  return { before: sentence.slice(0, slot), isolated: snippet, after: sentence.slice(slot + 1) };
+};
+
+export const notificationTitle = (t: Messages, notification: Notification): string =>
+  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
 
 export const notificationTitleParts = (
   t: Messages,

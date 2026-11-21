@@ -285,6 +285,17 @@ describe('change proposal reads', () => {
       .toEqual(['p-other', 'p-own-1', 'p-own-2', 'p-own-old']);
   });
 
+  it('lists a pending row past its expiry under decided and not under pending', async () => {
+    await bulkInsert(1, { status: 'rejected', decidedByUserId: OWNER, decidedAt: CREATED });
+
+    const listed = async (status: 'pending' | 'decided') =>
+      (await repo().list(TENANT, { limit: 10, now: NOW, status })).proposals;
+    expect((await listed('pending')).map(({ id }) => id).toSorted()).toEqual(['p-other', 'p-own-1', 'p-own-2']);
+    const decided = await listed('decided');
+    expect(decided.map(({ status }) => status).toSorted()).toEqual(['pending', 'rejected']);
+    expect(decided.find(({ status }) => status === 'pending')).toMatchObject({ id: 'p-own-old', expiresAt: changeProposalExpiresAt('2025-11-01T00:00:00.000Z') });
+  });
+
   it('reads, lists and locks a row whose operation this release does not know', async () => {
     await database.db.insert(changeProposals).values({
       id: 'p-later', tenantId: TENANT, groupId: null, groupPosition: null, operation: 'image.attach-cover',

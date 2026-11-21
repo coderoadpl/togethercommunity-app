@@ -20,6 +20,7 @@ import type {
   QuarantinedImageRelease,
   QuarantinedImageReleaseEnd,
   QuarantinedImageRepository,
+  QuarantinedImageUploadRecord,
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
@@ -255,16 +256,16 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         .where(sweepable(createdBefore, now)).orderBy(asc(changeProposalImages.tenantId)).limit(limit)).map((row) => row.tenantId),
     recordUpload: (tenantId, upload, countedAfter) => {
       const parsed = quarantinedImageUploadSchema.parse(upload);
-      return db.transaction(async (tx) => {
+      return db.transaction(async (tx): Promise<QuarantinedImageUploadRecord> => {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`change-proposal-image-uploads:${tenantId}:${parsed.apiKeyId}`}, 0))`);
         const [usage] = await tx.select({ uploads: count() }).from(changeProposalImageUploads).where(and(
           eq(changeProposalImageUploads.tenantId, tenantId),
           eq(changeProposalImageUploads.apiKeyId, parsed.apiKeyId),
           gt(changeProposalImageUploads.createdAt, countedAfter),
         ));
-        if ((usage?.uploads ?? 0) >= QUARANTINED_IMAGE_LIMITS.uploadsPerKey) return { kind: 'cap_exceeded', cap: 'key_image_uploads' } as const;
+        if ((usage?.uploads ?? 0) >= QUARANTINED_IMAGE_LIMITS.uploadsPerKey) return { kind: 'cap_exceeded', cap: 'key_image_uploads' };
         await tx.insert(changeProposalImageUploads).values({ tenantId, ...parsed });
-        return { kind: 'recorded' } as const;
+        return { kind: 'recorded' };
       });
     },
     listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>

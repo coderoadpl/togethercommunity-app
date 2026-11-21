@@ -268,7 +268,9 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     },
   });
   const couponValidation = useMutation({ ...actions.validateCartCouponForCheckout });
-  const appliedCoupon = testEnabled ? undefined : couponValidation.data;
+  const couponValidatedFor = couponValidation.variables === undefined ? null : formatCartLinesParam(couponValidation.variables.lines);
+  const cartCoupon = couponValidatedFor === cartKey ? couponValidation.data : undefined;
+  const appliedCoupon = testEnabled ? undefined : cartCoupon;
   const [autoValidatedFor, setAutoValidatedFor] = useState<string | null>(null);
   const autoValidationKey = `${email}|${cartKey}`;
   const autoValidationDue = initialCouponCode !== '' && couponCode === initialCouponCode && allReady && currency !== null &&
@@ -424,7 +426,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             couponValidation.reset();
           }}
           onApply={() => couponValidation.mutate({ lines: cartLines, ...(email === '' ? {} : { email }), couponCode })}
-          validation={couponValidation}
+          validation={{ isPending: couponValidation.isPending, data: cartCoupon, error: couponValidation.error }}
           currency={currency}
           language={language}
           recurring={false}

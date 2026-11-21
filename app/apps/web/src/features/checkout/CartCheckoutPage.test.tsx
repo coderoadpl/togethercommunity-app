@@ -371,6 +371,33 @@ describe('hosted cart checkout', () => {
     expect(screen.queryByText(en.errors.messageSoldOut)).not.toBeInTheDocument();
   });
 
+  it('drops a hand-typed discount once a stock reload changes the lines it was checked for', async () => {
+    const overrides: Record<string, Record<string, unknown>> = { [poster]: lowStock(3) };
+    serve({
+      overrides,
+      onSession: () => { overrides[poster] = lowStock(1); },
+      sessionRefusal: { status: 409, error: { code: 'sold_out', message: '"Poster" is sold out', details: { productId: poster } } },
+    });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
+    await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
+    await userEvent.type(screen.getByTestId('checkout-coupon-input'), 'CART');
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
+    expect(await screen.findByTestId('cart-summary-discount')).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(10549) })));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+
+    expect(await screen.findByText(en.checkout.cartStockRefusal({ title: 'Poster' }))).toBeInTheDocument();
+    await waitFor(() => expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(pln(3500))));
+    expect(screen.queryByTestId('cart-summary-discount')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('checkout-coupon-breakdown')).not.toBeInTheDocument();
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(6000)));
+    expect(summaryAmount('total')).toHaveTextContent(exact(pln(7999)));
+    expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(7999) })));
+  });
+
   it.each([
     ['no lines parameter', HOSTED_CART_PATH],
     ['an empty lines parameter', `${HOSTED_CART_PATH}?lines=`],

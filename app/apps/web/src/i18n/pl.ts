@@ -686,7 +686,7 @@ export const pl: Messages = {
     lockerChange: 'Zmień',
     lockerChangeLabel: 'Zmień paczkomat',
     lockerKnowCode: 'Znam kod paczkomatu',
-    lockerPickerPrompt: 'Dotknij punkt, potem żółty przycisk „Wybierz”.',
+    lockerPickerPrompt: 'Naciśnij punkt, potem żółty przycisk „Wybierz”.',
     lockerPickerBack: 'Wróć',
     lockerChosenAnnouncement: ({ code, address }) => (address === null ? `Wybrano paczkomat ${code}.` : `Wybrano paczkomat ${code}: ${address}.`),
     lockerMapLoading: 'Wczytywanie mapy…',

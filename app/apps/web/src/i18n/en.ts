@@ -853,7 +853,7 @@ export const en: Messages = {
     safetyWarningsHint: 'Markdown, up to 5000 characters.',
     instructionsUrl: 'Instructions URL (optional, https)',
     incomplete: 'Fill in the manufacturer name, address, e-mail and model identifier, or clear every field to remove the safety information.',
-    responsiblePersonIncomplete: 'Fill in the responsible person’s name, postal address and e-mail, or turn off the outside-the-EU switch.',
+    responsiblePersonIncomplete: 'Fill in or correct the responsible person’s name, postal address and e-mail, or turn off the outside-the-EU switch.',
     offerHeading: 'Product safety information',
     offerHeadingFor: ({ title }) => `Product safety information: ${title}`,
     manufacturer: 'Manufacturer',

@@ -38,7 +38,18 @@ export const complianceDraftFrom = (compliance: ProductCompliance | null | undef
   instructionsUrl: compliance?.instructionsUrl ?? '',
 });
 
-export const complianceFromDraft = (draft: ComplianceDraft): { ok: true; value: ProductCompliance | null } | { ok: false } => {
+type ComplianceTextField = Exclude<keyof ComplianceDraft, 'manufacturerOutsideEu'>;
+
+export type ComplianceFailure = readonly ComplianceTextField[];
+
+const EMPTY_DRAFT = complianceDraftFrom(null);
+
+const isComplianceTextField = (key: PropertyKey | undefined): key is ComplianceTextField =>
+  typeof key === 'string' && key !== 'manufacturerOutsideEu' && Object.hasOwn(EMPTY_DRAFT, key);
+
+const isResponsiblePersonField = (key: ComplianceTextField): boolean => key.startsWith('responsiblePerson');
+
+export const complianceFromDraft = (draft: ComplianceDraft): { ok: true; value: ProductCompliance | null } | { ok: false; failing: ComplianceFailure } => {
   const { manufacturerOutsideEu, ...texts } = draft;
   if (!manufacturerOutsideEu && Object.values(texts).every((value) => value.trim() === '')) return { ok: true, value: null };
   const parsed = productComplianceSchema.safeParse({
@@ -56,22 +67,23 @@ export const complianceFromDraft = (draft: ComplianceDraft): { ok: true; value: 
     safetyWarnings: draft.safetyWarnings,
     instructionsUrl: draft.instructionsUrl.trim() === '' ? null : draft.instructionsUrl,
   });
-  return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
+  if (parsed.success) return { ok: true, value: parsed.data };
+  return { ok: false, failing: [...new Set(parsed.error.issues.map((issue) => issue.path[0]).filter(isComplianceTextField))] };
 };
 
 export const ProductComplianceFields = ({
   value,
-  invalid,
+  failing,
   onChange,
 }: {
   value: ComplianceDraft;
-  invalid: boolean;
+  failing: ComplianceFailure;
   onChange: (value: ComplianceDraft) => void;
 }) => {
   const t = useTranslations();
-  const responsiblePersonMissing = value.manufacturerOutsideEu
-    && [value.responsiblePersonName, value.responsiblePersonAddress, value.responsiblePersonEmail].some((text) => text.trim() === '');
-  const field = (key: Exclude<keyof ComplianceDraft, 'manufacturerOutsideEu'>, label: string, extra: { type?: string; helperText?: string; multiline?: boolean; maxLength: number }) => (
+  const responsiblePersonFails = failing.some(isResponsiblePersonField);
+  const otherFieldFails = failing.some((key) => !isResponsiblePersonField(key));
+  const field = (key: ComplianceTextField, label: string, extra: { type?: string; helperText?: string; multiline?: boolean; maxLength: number }) => (
     <TextField
       id={`product-compliance-${key}`}
       label={label}
@@ -79,6 +91,7 @@ export const ProductComplianceFields = ({
       type={extra.type ?? 'text'}
       {...(extra.multiline === true ? { multiline: true, minRows: 3 } : {})}
       helperText={extra.helperText}
+      error={isResponsiblePersonField(key) && failing.includes(key)}
       onChange={(event) => onChange({ ...value, [key]: event.target.value })}
       slotProps={{ htmlInput: { maxLength: extra.maxLength } }}
     />
@@ -114,11 +127,12 @@ export const ProductComplianceFields = ({
           {field('batchIdentifier', t.productSafety.batchIdentifier, { maxLength: 100 })}
           {field('safetyWarnings', t.productSafety.safetyWarnings, { multiline: true, helperText: t.productSafety.safetyWarningsHint, maxLength: PRODUCT_SAFETY_WARNINGS_MAX_LENGTH })}
           {field('instructionsUrl', t.productSafety.instructionsUrl, { type: 'url', maxLength: 2000 })}
-          {invalid ? (
-            <Typography color="error" variant="body2" role="alert">
-              {responsiblePersonMissing ? t.productSafety.responsiblePersonIncomplete : t.productSafety.incomplete}
-            </Typography>
-          ) : null}
+          {failing.length === 0 ? null : (
+            <Stack useFlexGap spacing="0.25rem" role="alert">
+              {otherFieldFails ? <Typography color="error" variant="body2">{t.productSafety.incomplete}</Typography> : null}
+              {responsiblePersonFails ? <Typography color="error" variant="body2">{t.productSafety.responsiblePersonIncomplete}</Typography> : null}
+            </Stack>
+          )}
         </Stack>
       </AccordionDetails>
     </Accordion>

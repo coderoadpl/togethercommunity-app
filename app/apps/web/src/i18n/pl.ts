@@ -860,7 +860,7 @@ export const pl: Messages = {
     safetyWarningsHint: 'Markdown, do 5000 znaków.',
     instructionsUrl: 'Adres instrukcji (opcjonalnie, https)',
     incomplete: 'Uzupełnij nazwę i adres producenta, e-mail oraz oznaczenie modelu albo wyczyść wszystkie pola, aby usunąć informacje o bezpieczeństwie.',
-    responsiblePersonIncomplete: 'Uzupełnij nazwę, adres pocztowy i e-mail osoby odpowiedzialnej albo wyłącz przełącznik producenta spoza UE.',
+    responsiblePersonIncomplete: 'Uzupełnij lub popraw nazwę, adres pocztowy i e-mail osoby odpowiedzialnej albo wyłącz przełącznik producenta spoza UE.',
     offerHeading: 'Informacje o bezpieczeństwie produktu',
     offerHeadingFor: ({ title }) => `Informacje o bezpieczeństwie produktu: ${title}`,
     manufacturer: 'Producent',

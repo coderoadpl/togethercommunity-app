@@ -868,6 +868,68 @@ describe('ProductsPanel', () => {
     })]);
   });
 
+  describe('product safety validation by failing field', () => {
+    const lamp = (compliance: Product['compliance']): Product => ({
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'imported-lamp', title: 'Imported lamp', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', published: false, accessItems: [],
+      compliance, legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    });
+    const manufacturer = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: false, modelIdentifier: 'LAMP-2', safetyWarnings: '',
+    };
+    const renderLamp = async (compliance: Product['compliance']) => {
+      const product = lamp(compliance);
+      await renderProductsPanel([], '/panel/products/draft-1', [product]);
+      const bodies: unknown[] = [];
+      server.use(http.post('/api/products/update', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { product } });
+      }));
+      return bodies;
+    };
+    const responsiblePersonFields = () => [
+      screen.getByLabelText(en.productSafety.responsiblePersonName),
+      screen.getByLabelText(en.productSafety.responsiblePersonAddress),
+      screen.getByLabelText(en.productSafety.responsiblePersonEmail),
+    ];
+
+    it('asks to correct the responsible person, not the manufacturer, when only its e-mail is malformed, and marks only that field', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp(manufacturer);
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      const [name, address, email] = responsiblePersonFields();
+      for (const [field, text] of [[name, 'Example EU Representative'], [address, 'Example Street 1, 00-001 Warsaw, Poland'], [email, 'eu-rep@example']] as const) {
+        if (field === undefined) throw new Error('expected the responsible person fields');
+        await user.click(field);
+        await user.paste(text);
+      }
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+      expect(alert).not.toHaveTextContent(en.productSafety.incomplete);
+      expect(en.productSafety.responsiblePersonIncomplete).toMatch(/^Fill in or correct /u);
+      expect(email).toHaveAttribute('aria-invalid', 'true');
+      expect(name).toHaveAttribute('aria-invalid', 'false');
+      expect(address).toHaveAttribute('aria-invalid', 'false');
+      for (const field of responsiblePersonFields()) expect(field).not.toBeRequired();
+      expect(bodies).toEqual([]);
+    });
+
+    it('shows both messages and marks the empty responsible person fields when the manufacturer and the responsible person both fail', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp({ ...manufacturer, modelIdentifier: '' });
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(en.productSafety.incomplete);
+      expect(alert).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+      for (const field of responsiblePersonFields()) expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByLabelText(en.productSafety.modelIdentifier)).toHaveAttribute('aria-invalid', 'false');
+      expect(bodies).toEqual([]);
+    });
+  });
+
   it('saves the InPost parcel size of a shipped physical product', async () => {
     const physical: Product = {
       id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'printed-stand', title: 'Printed stand', description: '', coverUrl: null,

@@ -11584,7 +11584,8 @@ describe('direct public sales-link checkout', () => {
     const html = await response.text();
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('<html lang="pl">');
-    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.checkoutUnavailable}</p>`);
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.unavailable}</p>`);
+    expect(html).toMatch(new RegExp(`<a href="https?://acme\\.localhost[^"]*/">${directSalesLinkCopyPl.homeLink}</a>`));
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');
     expect(h.create).not.toHaveBeenCalled();
@@ -11598,7 +11599,8 @@ describe('direct public sales-link checkout', () => {
     expect(response.headers.get('content-type')).toContain('text/html');
     const html = await response.text();
     expect(html).toContain('<html lang="pl">');
-    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.legalUrlsMissing}</p>`);
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.unavailable}</p>`);
+    expect(html).not.toMatch(/regulamin|terms/i);
     expect(h.create).not.toHaveBeenCalled();
   });
 

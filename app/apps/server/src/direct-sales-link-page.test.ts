@@ -10,6 +10,20 @@ const page = {
   heading: 'Offer "<name>', description: 'A <bundle>', tenantName: 'Acme',
   faviconUrl: 'https://example.test/favicon.png', canonicalUrl: 'https://example.test/offer/bundle',
   language: 'en' as const, mode: 'live' as const, endpoint: '/api/public/sales-links/bundle/checkout', crawler: false, nonce: 'safe-nonce',
+  homeUrl: 'https://example.test/',
+};
+
+const fakeDocument = (dataset: Record<string, string | undefined>, status = { textContent: '' }) => {
+  const main = { dataset };
+  const actions = { hidden: true };
+  let retryListener: (() => void) | undefined;
+  const retry = { addEventListener: (_type: string, listener: () => void) => { retryListener = listener; } };
+  const document = {
+    querySelector: (selector: string) => selector === 'main' ? main
+      : selector === '[role="status"]' ? status
+        : selector === '[data-error-actions]' ? actions : retry,
+  };
+  return { document, main, status, actions, clickRetry: () => retryListener?.() };
 };
 
 describe('direct sales-link page', () => {
@@ -66,16 +80,12 @@ describe('direct sales-link page', () => {
     const html = renderDirectSalesLinkPage(page);
     const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
     if (script === undefined) throw new Error('Missing checkout script');
-    const status = { textContent: directSalesLinkCopyEn.redirecting };
+    const fake = fakeDocument({ endpoint: page.endpoint, redirecting: directSalesLinkCopyEn.redirecting, temporaryProblem: directSalesLinkCopyEn.temporaryProblem });
+    const status = fake.status;
     const replace = vi.fn();
     const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
-    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
-      { querySelector: (selector: string) => selector === 'main'
-        ? { dataset: { endpoint: page.endpoint, checkoutUnavailable: directSalesLinkCopyEn.checkoutUnavailable } }
-        : status },
-      fetch,
-      { replace },
-    );
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(fake.document, fetch, { replace });
+    expect(fake.actions.hidden).toBe(true);
     expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"attribution":{}}',
     });
@@ -94,12 +104,7 @@ describe('direct sales-link page', () => {
     if (script === undefined) throw new Error('Missing checkout script');
     const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
     const replace = vi.fn();
-    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
-      { querySelector: (selector: string) => selector === 'main'
-        ? { dataset: { endpoint: page.endpoint, returnUrl } } : { textContent: '' } },
-      fetch,
-      { replace },
-    );
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(fakeDocument({ endpoint: page.endpoint, returnUrl }).document, fetch, { replace });
     expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ attribution: {}, returnUrl }),
     });
@@ -114,36 +119,52 @@ describe('direct sales-link page', () => {
     expect(html).not.toContain('<div class="spinner"');
   });
 
-  it.each(['checkoutUnavailable', 'legalUrlsMissing'] as const)('renders the Polish %s error without checkout actions', (error) => {
-    const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error });
+  it.each(['unavailable', 'soldOut'] as const)('renders the Polish %s state with a way to the workspace home and no checkout actions', (error) => {
+    const html = renderDirectSalesLinkPage({ ...page, language: 'pl', error, total: { cents: 9900, currency: 'PLN' } });
     expect(html).toContain('<html lang="pl">');
     expect(directSalesLinkCopyPl[error]).not.toBe(directSalesLinkCopyEn[error]);
     expect(html).toContain(`<p role="status">${directSalesLinkCopyPl[error]}</p>`);
+    expect(html).toContain(`<div class="actions"><a href="https://example.test/">${directSalesLinkCopyPl.homeLink}</a></div>`);
+    expect(html).not.toContain('class="total"');
+    expect(html).not.toContain('class="offer"');
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');
   });
 
+  it('names the offer and its total under the workspace name, and hides the total behind an applied coupon', () => {
+    const html = renderDirectSalesLinkPage({ ...page, total: { cents: 12_450, currency: 'PLN' } });
+    expect(html).toContain('<h1>Acme</h1>\n\n<p class="offer">Offer &quot;&lt;name&gt;</p>\n<p class="total">PLN\u00a0124.50</p>');
+    expect(html).toContain(`<div class="actions" data-error-actions hidden><button type="button" data-retry>${directSalesLinkCopyEn.tryAgain}</button><a href="https://example.test/">${directSalesLinkCopyEn.homeLink}</a></div>`);
+    const coupon = { couponId: 'coupon', code: 'SAVE', currency: 'PLN', discountCents: 1000, finalCents: 11_450, lowestPriceLast30DaysCents: 12_450, originalCents: 12_450 };
+    expect(renderDirectSalesLinkPage({ ...page, total: { cents: 12_450, currency: 'PLN' }, coupon })).not.toContain('class="total"');
+  });
+
   it.each(['validation', 'malformed', 'network'] as const)('renders a %s failure using fallback copy without exposing server or network messages', async (failure) => {
     const html = renderDirectSalesLinkPage({ ...page, language: 'pl' });
-    expect(html).toContain(`data-checkout-unavailable="${directSalesLinkCopyPl.checkoutUnavailable}"`);
+    expect(html).toContain(`data-temporary-problem="${directSalesLinkCopyPl.temporaryProblem}"`);
     const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
     if (script === undefined) throw new Error('Missing checkout script');
-    const status = { textContent: '' };
+    const fake = fakeDocument({ endpoint: page.endpoint, redirecting: directSalesLinkCopyPl.redirecting, temporaryProblem: directSalesLinkCopyPl.temporaryProblem });
     const replace = vi.fn();
+    let attempts = 0;
     const fetch = vi.fn(async () => {
+      attempts += 1;
+      if (attempts > 1) return { ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) };
       if (failure === 'network') throw new Error('Network failure');
       return { ok: false, json: async () => failure === 'malformed' ? null : { ok: false, error: { message: 'Stripe is not configured for this tenant' } } };
     });
-    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
-      { querySelector: (selector: string) => selector === 'main'
-        ? { dataset: { endpoint: page.endpoint, checkoutUnavailable: directSalesLinkCopyPl.checkoutUnavailable } }
-        : status },
-      fetch,
-      { replace },
-    );
-    expect(status.textContent).toBe(directSalesLinkCopyPl.checkoutUnavailable);
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(fake.document, fetch, { replace });
+    expect(fake.status.textContent).toBe(directSalesLinkCopyPl.temporaryProblem);
+    expect(fake.actions.hidden).toBe(false);
+    expect(fake.main.dataset['state']).toBe('error');
     expect(fetch).toHaveBeenCalledOnce();
     expect(replace).not.toHaveBeenCalled();
+
+    fake.clickRetry();
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment'));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fake.actions.hidden).toBe(true);
+    expect(fake.status.textContent).toBe(directSalesLinkCopyPl.redirecting);
   });
 
   it('escapes public metadata and localizes the redirect and form', () => {
@@ -208,7 +229,7 @@ it('passes attribution in the script POST and every noscript hidden field', asyn
   if (script === undefined) throw new Error('Missing checkout script');
   const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
   await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
-    { querySelector: () => ({ dataset: { endpoint: page.endpoint, attribution: JSON.stringify(attribution) } }) },
+    fakeDocument({ endpoint: page.endpoint, attribution: JSON.stringify(attribution) }).document,
     fetch, { replace: vi.fn() },
   );
   expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {
@@ -228,7 +249,7 @@ it('escapes a coupon in the page and noscript form and submits it in JSON', asyn
   const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, data: { url: 'https://example.test/payment' } }) }));
   const replace = vi.fn();
   await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(
-    { querySelector: () => ({ dataset: { endpoint: page.endpoint, couponCode } }) },
+    fakeDocument({ endpoint: page.endpoint, couponCode }).document,
     fetch, { replace },
   );
   expect(fetch).toHaveBeenCalledExactlyOnceWith(page.endpoint, {

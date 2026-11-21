@@ -48,7 +48,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ? requestedReturnUrl : undefined;
     const page = {
       attribution: attributionFromSearchParams(new URLSearchParams(new URL(c.req.url).search)),
-      heading: offer.ok ? offer.value.salesLink.heading : directSalesLinkCopy(settings?.defaultLanguage ?? 'en').checkoutUnavailable,
+      heading: offer.ok ? offer.value.salesLink.heading : directSalesLinkCopy(settings?.defaultLanguage ?? 'en').offerUnavailableTitle,
       description: offer.ok ? offer.value.salesLink.description : '',
       tenantName: tenant.name,
       branding: settings === null ? undefined : resolveCheckoutBranding(settings, baseUrl),
@@ -59,9 +59,11 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ...(returnUrl === undefined ? {} : { returnUrl }),
       crawler,
       nonce: c.get('secureHeadersNonce') ?? '',
+      homeUrl: `${baseUrl}/`,
+      total: offer.ok ? { cents: offer.value.totalCents, currency: offer.value.currency } : undefined,
     };
     const headers = { 'cache-control': 'no-store', vary: 'User-Agent' };
-    if (!offer.ok) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+    if (!offer.ok) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'unavailable' }), {
       status: HTTP_STATUS_BY_ERROR_CODE[offer.error.code], headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
     });
     const products = await deps.products.findByIds(tenant.id, offer.value.lines.map((line) => line.productId));
@@ -71,7 +73,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       return;
     }
     const variantChoice = offer.value.lines.some((line) => line.variants.length >= 2);
-    if (!crawler && offer.value.soldOut && !(variantChoice && !missingLegal)) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'checkoutUnavailable' }), {
+    if (!crawler && offer.value.soldOut && !(variantChoice && !missingLegal)) return new Response(renderDirectSalesLinkPage({ ...page, mode: 'live', error: 'soldOut' }), {
       status: HTTP_STATUS_BY_ERROR_CODE.sold_out, headers: { ...headers, 'content-type': 'text/html; charset=UTF-8' },
     });
     const code = c.req.query('code');
@@ -89,6 +91,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       query.set('checkout', 'together');
       return c.redirect(`/offer/${encodeURIComponent(slug)}?${query}`, 302);
     }
+    if (missingLegal) deps.logger.warn(`[direct-checkout] Sales link unavailable until terms and privacy URLs are configured tenant=${tenant.id} slug=${slug}`);
     c.set('signupRedirectOrigin', 'https://checkout.stripe.com');
     return c.html(renderDirectSalesLinkPage({
       ...page,
@@ -96,7 +99,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       ...(!crawler && couponCode !== undefined && !couponTooLong ? { couponCode } : {}),
       ...(couponDecision?.kind === 'applied' ? { coupon: couponDecision.breakdown }
         : previewAllowed && (couponDecision?.kind === 'invalid' || couponTooLong) ? { coupon: null } : {}),
-      ...(missingLegal ? { error: 'legalUrlsMissing' as const } : {}),
+      ...(missingLegal ? { error: 'unavailable' as const } : {}),
     }), missingLegal ? 503 : 200, headers);
   });
 

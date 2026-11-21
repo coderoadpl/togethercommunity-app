@@ -70,7 +70,7 @@ describe('shop management client with a propose-mode key', () => {
 
   it('says that an image a propose-mode key uploaded is quarantined until an approved proposal attaches it', async () => {
     const digest = 'a'.repeat(64);
-    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input));
       if (url.hostname === 'storage.example.test') return new Response(null);
       if (url.pathname === SHOP_CATALOG_ROUTES.updateProduct.path) {

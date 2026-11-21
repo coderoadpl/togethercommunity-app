@@ -52,6 +52,8 @@ const purchasePersonalizationSchema = z.object({
   condition: z.string().nullable(),
 });
 
+export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
+
 export const purchaseEmailDetailsSchema = z.object({
   orderNumber: z.string().min(1),
   verificationUrl: z.string().url(),
@@ -61,6 +63,9 @@ export const purchaseEmailDetailsSchema = z.object({
   totalCents: z.number().int().nonnegative().optional(),
   delivery: purchaseDeliverySchema.optional(),
   personalizations: z.array(purchasePersonalizationSchema).optional(),
+  productTypes: z.array(welcomeSignInProductTypeSchema).min(1).optional(),
+  signInPageUrl: z.string().url().optional(),
+  contactUrl: z.string().url().nullable().optional(),
 }).refine((purchase) => (purchase.currency === undefined) === (purchase.totalCents === undefined), {
   message: 'Currency and total must both be present or both be absent',
 });
@@ -75,8 +80,6 @@ export const orderShippedEmailDetailsSchema = z.object({
 });
 
 export type OrderShippedEmailDetails = z.output<typeof orderShippedEmailDetailsSchema>;
-
-export const welcomeSignInProductTypeSchema = z.union([productTypeSchema, z.literal('unknown')]);
 
 const escapeHtmlCharacter = (character: string): string => {
   switch (character) {
@@ -108,6 +111,13 @@ const localizedDate = (language: TransactionalLanguage, isoDateTime: string): st
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 
+const shortOrderReference = (orderId: string): string => `#${orderId.slice(0, 8).toUpperCase()}`;
+
+const countryName = (language: TransactionalLanguage, code: string): string => {
+  if (!/^[A-Z]{2}$/.test(code)) return code;
+  return new Intl.DisplayNames([language === 'pl' ? 'pl-PL' : 'en-GB'], { type: 'region' }).of(code) ?? code;
+};
+
 const transactionalMessages: Record<TransactionalLanguage, TransactionalEmailMessages> = {
   pl: transactionalEmailMessagesPl,
   en: transactionalEmailMessagesEn,
@@ -133,6 +143,15 @@ export interface EmailBranding {
   accentColor: string | null;
   socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
+
+export const emailContactUrl = (
+  settings: { supportEmail?: string | null | undefined; supportUrl?: string | null | undefined } | null,
+  baseUrl: string,
+): string | null => {
+  if (settings === null) return null;
+  if (settings.supportEmail !== null && settings.supportEmail !== undefined) return new URL('/account?support=open', baseUrl).toString();
+  return settings.supportUrl ?? null;
+};
 
 export const emailBrandingFrom = (
   settings: {
@@ -193,13 +212,17 @@ const purchaseItems = (
     vat: line.vatRate === null ? null : line.vatRate === 'exempt' ? labels.exempt : `${String(line.vatRate)}\u00a0%`,
   }));
   const total = formatter.format(purchase.totalCents / 100);
+  const cell = 'padding:8px;text-align:left';
+  const amountCell = 'padding:8px;text-align:right;white-space:nowrap';
+  const totalCell = 'border-top:1px solid #d4d4d8';
   return {
-    html: `<table><thead><tr><th>${escapeHtml(labels.item)}</th><th>${escapeHtml(labels.amount)}</th><th>${escapeHtml(labels.vat)}</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.name)}</td><td>${escapeHtml(line.amount)}</td><td>${escapeHtml(line.vat ?? '—')}</td></tr>`).join('')}<tr><td><strong>${escapeHtml(labels.total)}</strong></td><td><strong>${escapeHtml(total)}</strong></td><td></td></tr></tbody></table>`,
+    html: `<table style="width:100%;border-collapse:collapse"><thead><tr><th style="${cell}">${escapeHtml(labels.item)}</th><th style="${amountCell}">${escapeHtml(labels.amount)}</th><th style="${amountCell}">${escapeHtml(labels.vat)}</th></tr></thead><tbody>${lines.map((line) => `<tr><td style="${cell}">${escapeHtml(line.name)}</td><td style="${amountCell}">${escapeHtml(line.amount)}</td><td style="${amountCell}">${escapeHtml(line.vat ?? '—')}</td></tr>`).join('')}<tr><td style="${cell};${totalCell}"><strong>${escapeHtml(labels.total)}</strong></td><td style="${amountCell};${totalCell}"><strong>${escapeHtml(total)}</strong></td><td style="${amountCell};${totalCell}"></td></tr></tbody></table>`,
     text: `${lines.map((line) => `- ${line.name} — ${line.amount}${line.vat === null ? '' : ` (${line.vat})`}`).join('\n')}\n${labels.total}: ${total}`,
   };
 };
 
 const purchaseDelivery = (
+  language: string,
   delivery: z.output<typeof purchaseDeliverySchema> | undefined,
   labels: TransactionalEmailMessages['purchase'],
 ): { html: string; text: string } => {
@@ -207,11 +230,13 @@ const purchaseDelivery = (
   const point = delivery.pickupPoint;
   const address = delivery.address;
   const present = (value: string | null): value is string => value !== null && value !== '';
+  const repeatsCode = (name: string | null, code: string) =>
+    name !== null && name.toUpperCase().includes(code.toUpperCase());
   const destination = point !== null
-    ? [`${labels.pickupPoint}: ${point.code}`, ...[point.name, point.address].filter(present)]
+    ? [`${labels.pickupPoint}: ${point.code}`, ...[repeatsCode(point.name, point.code) ? null : point.name, point.address].filter(present)]
     : address === null
       ? []
-      : [address.name, address.line1, address.line2, `${address.postalCode} ${address.city}`.trim(), address.country].filter(present);
+      : [address.name, address.line1, address.line2, `${address.postalCode} ${address.city}`.trim(), countryName(languageOrDefault(language), address.country)].filter(present);
   return {
     html: `<p><strong>${escapeHtml(labels.delivery)}</strong>: ${escapeHtml(delivery.method)}${destination.map((value) => `<br>${escapeHtml(value)}`).join('')}</p>`,
     text: `\n\n${labels.delivery}: ${delivery.method}${destination.map((value) => `\n${value}`).join('')}`,
@@ -241,25 +266,61 @@ export const welcomeSignIn = (
   const purchase = input.purchase;
   const actionLabel = messages.welcomeSignIn.actionLabels[productType];
   const actionLink = link(input.actionUrl, actionLabel);
-  const rendered = messages.welcomeSignIn.render({
+  if (purchase !== undefined) {
+    return purchaseConfirmation(language, { ...input, purchase, productType, actionLabel, actionLink, header, socialLinks });
+  }
+  return emailMessageSchema.parse(messages.welcomeSignIn.render({
     tenantName: input.tenantName,
     tenantNameHtml: tenantName,
     actionUrl: input.actionUrl,
     actionLink,
     actionLabel,
     header,
-    socialLinks: purchase === undefined ? socialLinks : { html: '', text: '' },
-  });
-  if (purchase === undefined) return emailMessageSchema.parse(rendered);
-  const labels = messages.purchase;
+    socialLinks,
+  }));
+};
+
+const purchaseConfirmation = (
+  language: string,
+  input: {
+    tenantName: string;
+    actionUrl: string;
+    actionLabel: string;
+    actionLink: string;
+    productType: WelcomeSignInProductType;
+    purchase: z.output<typeof purchaseEmailDetailsSchema>;
+    header: string;
+    socialLinks: { html: string; text: string };
+  },
+): EmailMessage => {
+  const labels = messagesFor(language).purchase;
+  const { purchase } = input;
   const items = purchaseItems(language, purchase, labels);
-  const delivery = purchaseDelivery(purchase.delivery, labels);
+  const delivery = purchaseDelivery(language, purchase.delivery, labels);
   const personalizations = purchasePersonalizations(purchase.personalizations, labels);
+  const productTypes = [...new Set(purchase.productTypes ?? [input.productType])];
+  const nextSteps = productTypes.map((type) =>
+    type === 'physical' && purchase.delivery === undefined ? labels.collectInPerson : labels.nextSteps[type]);
+  const orderReference = shortOrderReference(purchase.orderNumber);
+  const intro = [labels.paymentReceived(orderReference, input.tenantName), ...nextSteps].join(' ');
+  const introHtml = [labels.paymentReceived(escapeHtml(orderReference), escapeHtml(input.tenantName)), ...nextSteps].join(' ');
+  const signInLaterHtml = purchase.signInPageUrl === undefined
+    ? ''
+    : ` ${labels.signInLater(link(purchase.signInPageUrl, labels.signInPageLabel))}`;
+  const signInLaterText = purchase.signInPageUrl === undefined
+    ? ''
+    : `\n${labels.signInLater(`${labels.signInPageLabel} (${purchase.signInPageUrl})`)}`;
+  const contactUrl = purchase.contactUrl ?? null;
+  const invoiceHtml = contactUrl === null
+    ? escapeHtml(labels.notInvoice)
+    : `${escapeHtml(labels.notInvoice)} ${labels.invoiceContact(link(contactUrl, labels.contactLabel))}`;
+  const invoiceText = contactUrl === null
+    ? labels.notInvoice
+    : `${labels.notInvoice} ${labels.invoiceContact(`${labels.contactLabel} (${contactUrl})`)}`;
   return emailMessageSchema.parse({
-    ...rendered,
-    subject: labels.subject(purchase.orderNumber, input.tenantName),
-    html: `${rendered.html}<p><strong>${escapeHtml(labels.orderNumber)}: ${escapeHtml(purchase.orderNumber)}</strong></p><p>${escapeHtml(labels.lines)}</p>${items.html}${personalizations.html}${delivery.html}<p>${escapeHtml(labels.notInvoice)}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${socialLinks.html}`,
-    text: `${rendered.text}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${labels.notInvoice}\n\n${labels.verification}${socialLinks.text}`,
+    subject: labels.subject(orderReference, input.tenantName),
+    html: `${input.header}<h1>${escapeHtml(labels.heading)}</h1><p>${introHtml}</p><p><strong>${escapeHtml(labels.orderNumber)}:</strong> ${escapeHtml(purchase.orderNumber)}</p><p><strong>${escapeHtml(labels.lines)}</strong></p>${items.html}${personalizations.html}${delivery.html}<p><strong>${input.actionLink}</strong></p><p>${escapeHtml(labels.signInValidity)}${signInLaterHtml}</p><p>${invoiceHtml}</p><p>${escapeHtml(labels.verification)}</p><img src="${escapeHtml(purchase.qrImageUrl)}" alt="${escapeHtml(labels.qrAlt)}" width="256" height="256" />${input.socialLinks.html}`,
+    text: `${labels.heading}\n\n${intro}\n\n${labels.orderNumber}: ${purchase.orderNumber}\n${labels.lines}:\n${items.text}${personalizations.text}${delivery.text}\n\n${input.actionLabel}: ${input.actionUrl}\n${labels.signInValidity}${signInLaterText}\n\n${invoiceText}\n\n${labels.verificationText}${input.socialLinks.text}`,
   });
 };
 
@@ -270,21 +331,29 @@ export const orderShipped = (
   const messages = messagesFor(language);
   const labels = messages.orderShipped;
   const { shipment } = input;
-  const carrier = labels.carriers[shipment.carrier];
-  const trackingLink = shipment.trackingUrl === null ? null : link(shipment.trackingUrl, labels.trackLabel);
+  const orderReference = shortOrderReference(shipment.orderNumber);
+  const carrierLines = shipment.carrier === 'other' ? [] : [[labels.carrier, labels.carriers[shipment.carrier]] as const];
+  const trackingLines = [
+    [messages.purchase.orderNumber, shipment.orderNumber] as const,
+    ...carrierLines,
+    [labels.trackingNumber, shipment.trackingNumber] as const,
+  ];
   return emailMessageSchema.parse(labels.render({
     tenantName: input.tenantName,
     tenantNameHtml: escapeHtml(input.tenantName),
-    orderNumber: shipment.orderNumber,
-    orderNumberHtml: escapeHtml(shipment.orderNumber),
+    orderReference,
+    orderReferenceHtml: escapeHtml(orderReference),
+    track: shipment.trackingUrl === null
+      ? { html: '', text: '' }
+      : { html: `<p><strong>${link(shipment.trackingUrl, labels.trackLabel)}</strong></p>`, text: `\n\n${labels.trackLabel}: ${shipment.trackingUrl}` },
     items: {
       html: `<p>${escapeHtml(labels.items)}</p><ul>${shipment.items.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`,
       text: `\n\n${labels.items}:\n${shipment.items.map((name) => `- ${name}`).join('\n')}`,
     },
-    delivery: purchaseDelivery(shipment.delivery, messages.purchase),
+    delivery: purchaseDelivery(language, shipment.delivery, messages.purchase),
     tracking: {
-      html: `<p><strong>${escapeHtml(labels.carrier)}</strong>: ${escapeHtml(carrier)}<br>${escapeHtml(labels.trackingNumber)}: ${escapeHtml(shipment.trackingNumber)}${trackingLink === null ? '' : `<br>${trackingLink}`}</p>`,
-      text: `\n\n${labels.carrier}: ${carrier}\n${labels.trackingNumber}: ${shipment.trackingNumber}${shipment.trackingUrl === null ? '' : `\n${labels.trackLabel}: ${shipment.trackingUrl}`}`,
+      html: `<p>${trackingLines.map(([label, value]) => `${escapeHtml(label)}: ${escapeHtml(value)}`).join('<br>')}</p>`,
+      text: `\n\n${trackingLines.map(([label, value]) => `${label}: ${value}`).join('\n')}`,
     },
     header: brandHeader(input.branding),
     socialLinks: brandSocialLinks(input.branding),
@@ -472,6 +541,8 @@ export const subscriptionPaymentFailed = (
     productTitle: string;
     accessEndsAt: string;
     billingPortalUrl: string | null;
+    contactUrl?: string | null;
+    workspaceUrl?: string | null;
     branding?: EmailBranding;
   },
 ): EmailMessage => {
@@ -497,6 +568,14 @@ export const subscriptionPaymentFailed = (
     accessEndsAtHtml: accessEndsAt,
     billingPortalUrl: input.billingPortalUrl,
     portal,
+    contactUrl: input.contactUrl ?? null,
+    contactLink: input.contactUrl === undefined || input.contactUrl === null
+      ? null
+      : link(input.contactUrl, messages.subscriptionPaymentFailed.contactLabel),
+    workspaceUrl: input.workspaceUrl ?? null,
+    workspaceLink: input.workspaceUrl === undefined || input.workspaceUrl === null
+      ? null
+      : link(input.workspaceUrl, messages.subscriptionPaymentFailed.workspaceLabel(input.tenantName)),
     header,
     socialLinks,
   }));
@@ -678,6 +757,8 @@ export const orderSoldOutRefundEmail = (
     tenantNameHtml: escapeHtml(input.tenantName),
     orderId: input.orderId,
     orderIdHtml: escapeHtml(input.orderId),
+    orderReference: shortOrderReference(input.orderId),
+    orderReferenceHtml: escapeHtml(shortOrderReference(input.orderId)),
     productTitles,
     productTitlesHtml: escapeHtml(productTitles),
     refund: input.amountCents > 0 ? { amount, amountHtml: escapeHtml(amount) } : null,

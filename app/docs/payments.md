@@ -2,7 +2,7 @@
 
 ## Purchase confirmation and purchased files
 
-The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending`, `paid` or `cancelled` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. An order cancelled because its goods sold out before the payment arrived returns `cancelled` with `charged` (`false` when the order was paid with zero) and without analytics or `metaCapi`, and the page shows a sold-out message with the automatic refund, or that nothing was charged, instead of the confirmation (see [the shop guide](shop.md)). Polling stops after payment confirmation, a cancellation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending`, `paid` or `cancelled` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. An order cancelled because its goods sold out before the payment arrived returns `cancelled` with `charged` (`false` when the order was paid with zero) and without analytics or `metaCapi`, and the page shows a sold-out message with the automatic refund, or that nothing was charged, instead of the confirmation (see [the shop guide](shop.md)). Polling stops after payment confirmation, a cancellation or the timeout. While it waits, the page claims no payment yet. After the timeout it shows its own timed-out card with a "Check again" action that restarts polling for another three minutes, and a contact link when the workspace has a support address; a status request that fails twice in a row shows an inline error with the same action instead of the waiting card, polling stops there, and after the three-minute window that card also shows the contact link when the workspace has a support address. The card's title and body sit in a polite live region so screen readers announce each state. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the order confirmation immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
 
 ## Checkout analytics
 
@@ -587,6 +587,24 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 `does not have the required permissions` is classified as `missing`. Other
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
+
+## Order and subscription e-mail subjects
+
+Order e-mails to buyers lead with the outcome and the workspace and carry a short
+order reference, the first eight characters of the order id upper-cased with a
+`#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
+<workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
+<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+body keeps the full order id on the order-number line so the seller can match
+it. The payment-failed, direct-message and community notification subjects end
+with " — <workspace>".
+
+When a subscription payment fails, the e-mail says the access ends on the period
+end unless the payment goes through. It links the workspace billing portal when
+one is configured. Otherwise it asks the member to contact the workspace to
+settle the payment and links, in this order, the account page with its support
+form open (`/account?support=open`) when the workspace has a support e-mail, the
+workspace support page, or the workspace home page; it never promises a retry.
 
 ## Adopting existing Stripe subscriptions
 

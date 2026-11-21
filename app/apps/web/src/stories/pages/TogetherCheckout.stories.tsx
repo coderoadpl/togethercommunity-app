@@ -311,6 +311,8 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
   },
   'picker-failed': async (canvasElement) => {
     await failLockerMap(canvasElement);
+    await expect(page(canvasElement).getByTestId('checkout-locker-map-failed-reason')).toBeVisible();
+    await expect(page(canvasElement).queryByTestId('checkout-locker-dialog-know-code')).toBeNull();
     await settled();
   },
   picker: async (canvasElement) => {
@@ -334,7 +336,12 @@ const lockerStory = (step: LockerStep, options: { viewport?: StoryViewport; loca
     fixture: options.cart === undefined ? lockerMapFixture : cartLockerMapFixture,
   },
   beforeEach: step === 'picker-loading' ? stubLoadingGeowidget : stubGeowidget,
-  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
+  play: async ({ canvasElement }) => {
+    await lockerSteps[step](canvasElement);
+    if (options.cart !== undefined) {
+      await expect(within(canvasElement).getByTestId('checkout-delivery-option-locker').nextElementSibling).toBe(within(canvasElement).getByTestId('checkout-locker-picker'));
+    }
+  },
 });
 
 const meta = {
@@ -452,6 +459,15 @@ export const SalesLinkDetailsOpen: Story = {
     await openSafetyDetails(canvasElement);
   },
 };
+const salesLinkOffer = (colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile'): Story => ({
+  parameters: { fixture: bundleFixture, colorScheme },
+  globals: { viewport: { value: viewport } },
+  play: async ({ canvasElement }) => openSummaryDetails(canvasElement),
+});
+export const SalesLinkOfferLightDesktop: Story = salesLinkOffer('light', 'desktop');
+export const SalesLinkOfferLightMobile: Story = salesLinkOffer('light', 'mobile');
+export const SalesLinkOfferDarkDesktop: Story = salesLinkOffer('dark', 'desktop');
+export const SalesLinkOfferDarkMobile: Story = salesLinkOffer('dark', 'mobile');
 export const SalesLinkCourierDetailsOpen: Story = {
   parameters: { fixture: bundleFixture },
   play: async ({ canvasElement }) => {

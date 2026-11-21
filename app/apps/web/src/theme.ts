@@ -2904,7 +2904,19 @@ export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8re
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
 
-export const OfferCellValue = styled(Typography)({ whiteSpace: 'nowrap' });
+export const OfferLineGross = styled(Typography)<AsElement>({ flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' });
+
+export const OfferTaxList = styled('dl')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  columnGap: '0.75rem',
+  rowGap: '0.125rem',
+  margin: '0.25rem 0 0',
+  '& > div': { display: 'flex', columnGap: '0.25rem' },
+  '& dt, & dd': { margin: 0, ...theme.typography.caption, color: theme.palette.text.secondary },
+  '& dt::after': { content: '":"' },
+  '& dd': { fontVariantNumeric: 'tabular-nums' },
+}));
 
 export const CheckoutTitle = styled(CardTitle)({ wordSpacing: '0.12em' });
 
@@ -3045,7 +3057,7 @@ export const CheckoutSafetyWarnings = styled(Box, {
   ...theme.typography.body2,
   overflowWrap: 'anywhere',
   '& p, & ul, & ol': { margin: 0 },
-  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: clamped ? 0 : '0.5em' },
   ...(clamped ? { maxHeight: `calc(3em * ${String(theme.typography.body2.lineHeight ?? 1.5)})`, overflow: 'hidden' } : {}),
 }));
 
@@ -3056,14 +3068,17 @@ export const CheckoutSafetyProduct = styled('div')({
   minWidth: 0,
 });
 
+const checkoutSafetyThumbnailColumn = { flexShrink: 0, width: '2.5rem' } as const;
+
 export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
-  flexShrink: 0,
-  width: '2.5rem',
+  ...checkoutSafetyThumbnailColumn,
   height: '2.5rem',
   objectFit: 'cover',
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.action.hover,
 }));
+
+export const CheckoutSafetyThumbnailSlot = styled('span')(checkoutSafetyThumbnailColumn);
 
 export const CheckoutSafetyPart = styled('span', {
   shouldForwardProp: (prop) => prop !== 'emphasised',
@@ -3073,16 +3088,6 @@ export const CheckoutSafetyPart = styled('span', {
   overflowWrap: 'anywhere',
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
 }));
-
-export const CheckoutSafetyLastPart = styled('span')({
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'baseline',
-  columnGap: '0.5rem',
-  maxWidth: '100%',
-  '& > span': { minWidth: 0 },
-  '& > button': { flexShrink: 0 },
-});
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

@@ -452,6 +452,15 @@ export const SalesLinkDetailsOpen: Story = {
     await openSafetyDetails(canvasElement);
   },
 };
+const salesLinkOffer = (colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile'): Story => ({
+  parameters: { fixture: bundleFixture, colorScheme },
+  globals: { viewport: { value: viewport } },
+  play: async ({ canvasElement }) => openSummaryDetails(canvasElement),
+});
+export const SalesLinkOfferLightDesktop: Story = salesLinkOffer('light', 'desktop');
+export const SalesLinkOfferLightMobile: Story = salesLinkOffer('light', 'mobile');
+export const SalesLinkOfferDarkDesktop: Story = salesLinkOffer('dark', 'desktop');
+export const SalesLinkOfferDarkMobile: Story = salesLinkOffer('dark', 'mobile');
 export const SalesLinkCourierDetailsOpen: Story = {
   parameters: { fixture: bundleFixture },
   play: async ({ canvasElement }) => {

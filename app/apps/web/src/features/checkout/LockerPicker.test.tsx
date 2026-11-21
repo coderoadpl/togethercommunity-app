@@ -67,7 +67,7 @@ const renderCheckout = async (options: { from?: string } = {}) => {
 const chooseButton = () => screen.getByRole('button', { name: en.shipping.lockerChoose });
 const changeButton = () => screen.getByRole('button', { name: en.shipping.lockerChangeLabel });
 const picker = () => screen.findByRole('dialog', { name: en.shipping.lockerChoose });
-const confirmButton = () => screen.getByRole('button', { name: en.shipping.lockerConfirm });
+const announcement = () => screen.getByTestId('checkout-locker-announcement');
 const widget = () => {
   const element = document.querySelector('inpost-geowidget');
   if (element === null) throw new Error('Missing parcel locker map');
@@ -76,12 +76,14 @@ const widget = () => {
 const pickOnMap = (point: typeof shop) => {
   act(() => { document.dispatchEvent(new CustomEvent(widget().getAttribute('onpoint') ?? '', { detail: point })); });
 };
+const mapReady = (api: unknown) => {
+  act(() => { widget().dispatchEvent(new CustomEvent('inpost.geowidget.init', { bubbles: true, detail: { api } })); });
+};
 const pickerClosed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-const confirmShop = async () => {
+const chooseShop = async () => {
   await userEvent.click(chooseButton());
   await picker();
   pickOnMap(shop);
-  await userEvent.click(confirmButton());
   await pickerClosed();
 };
 const entryIndex = (router: { history: { location: { state: { __TSR_index: number } } } }) => router.history.location.state.__TSR_index;
@@ -117,26 +119,30 @@ describe('parcel locker picker', () => {
     expect(document.getElementById('inpost-geowidget-style')).toHaveAttribute('href', 'https://geowidget.inpost.pl/inpost-geowidget.css');
   });
 
-  it('moves focus to the picker heading, keeps the confirm button disabled with its reason until a point is picked, then commits only on confirm', async () => {
-    const bodies: unknown[] = [];
-    serve({ onSession: (body) => bodies.push(body) });
+  it('moves focus to the picker heading, tells the buyer to use the map card\'s own Select button and offers no second button of its own', async () => {
+    serve();
     await renderCheckout();
     await userEvent.click(chooseButton());
     const dialog = await picker();
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: en.shipping.lockerChoose })).toHaveFocus());
+    expect(dialog).toHaveAccessibleDescription(en.shipping.lockerPickerPrompt);
     const status = within(dialog).getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
     expect(status).toHaveTextContent(en.shipping.lockerPickerPrompt);
-    expect(confirmButton()).toBeDisabled();
-    expect(confirmButton()).toHaveAccessibleDescription(en.shipping.lockerPickerPrompt);
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close]);
+    expect(screen.queryByTestId('checkout-locker-confirm')).not.toBeInTheDocument();
+  });
+
+  it('commits the point the map reports at once, closes the picker, returns focus to Change and announces the chosen locker', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body) });
+    const { router } = await renderCheckout();
+    const formIndex = entryIndex(router);
+    await userEvent.click(chooseButton());
+    await picker();
+    expect(announcement()).toBeEmptyDOMElement();
 
     pickOnMap(shop);
-    expect(status).toHaveTextContent('KRA010 · Next to the shop');
-    expect(status).toHaveTextContent('Main Street 1, 30-001 Cracow');
-    expect(confirmButton()).toBeEnabled();
-    expect(screen.queryByTestId('checkout-pickup-point-selected')).not.toBeInTheDocument();
-
-    await userEvent.click(confirmButton());
     await pickerClosed();
     const chosen = screen.getByTestId('checkout-pickup-point-selected');
     expect(chosen).toHaveTextContent(en.shipping.lockerSelected);
@@ -144,7 +150,12 @@ describe('parcel locker picker', () => {
     expect(chosen).toHaveTextContent('Main Street 1, 30-001 Cracow');
     await waitFor(() => expect(changeButton()).toHaveFocus());
     expect(changeButton()).toHaveAccessibleDescription(/KRA010 · Next to the shop/u);
+    expect(announcement()).toHaveAttribute('role', 'status');
+    expect(announcement()).toHaveAttribute('aria-live', 'polite');
+    await waitFor(() => expect(announcement()).toHaveTextContent(en.shipping.lockerChosenAnnouncement({ code: 'KRA010', address: 'Main Street 1, 30-001 Cracow' })));
     expect(document.querySelector('inpost-geowidget')).toBeNull();
+    await waitFor(() => expect(entryIndex(router)).toBe(formIndex));
+    expect(router.state.location.pathname).toBe(formPath);
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
@@ -152,16 +163,16 @@ describe('parcel locker picker', () => {
     expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, 30-001 Cracow' } } });
   });
 
-  it('confirms the last point picked when the buyer picks several', async () => {
+  it('keeps the first point when another one arrives while the picker is closing', async () => {
     serve();
     await renderCheckout();
     await userEvent.click(chooseButton());
     await picker();
+    const eventName = widget().getAttribute('onpoint') ?? '';
     pickOnMap(shop);
-    pickOnMap(station);
-    await userEvent.click(confirmButton());
+    act(() => { document.dispatchEvent(new CustomEvent(eventName, { detail: station })); });
     await pickerClosed();
-    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('WAW01M · Train station');
+    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
   });
 
   it.each([
@@ -169,28 +180,28 @@ describe('parcel locker picker', () => {
     { way: 'Escape', close: async () => { await userEvent.keyboard('{Escape}'); } },
     { way: 'Escape inside the map', close: async () => { act(() => { widget().dispatchEvent(new Event('inpost.geowidget.escape', { bubbles: true })); }); } },
     { way: 'the back gesture', close: async () => { act(() => { window.history.back(); }); } },
-  ])('closes on $way without committing the new point and returns focus to Change', async ({ close }) => {
+  ])('closes on $way, keeps the previous choice and returns focus to Change', async ({ close }) => {
     serve();
     const { router } = await renderCheckout();
     const formIndex = entryIndex(router);
-    await confirmShop();
+    await chooseShop();
     await userEvent.click(changeButton());
     const dialog = await picker();
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: en.shipping.lockerChoose })).toHaveFocus());
     expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerPrompt);
-    pickOnMap(station);
     await close();
     await pickerClosed();
     expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
     await waitFor(() => expect(changeButton()).toHaveFocus());
+    expect(announcement()).toBeEmptyDOMElement();
     await waitFor(() => expect(entryIndex(router)).toBe(formIndex));
     expect(router.state.location.pathname).toBe(formPath);
     expect(screen.getByRole('radio', { name: lockerOption })).toBeChecked();
   });
 
-  it('adds one history entry for the open picker and removes it on close, so history stays clean', async () => {
+  it('adds one history entry for the open picker and removes it on close and on a commit, without leaving the page', async () => {
     serve();
-    const { router } = await renderCheckout();
+    const { router, assign, reload } = await renderCheckout();
     const formIndex = entryIndex(router);
     await userEvent.click(chooseButton());
     await picker();
@@ -203,17 +214,66 @@ describe('parcel locker picker', () => {
 
     await userEvent.click(chooseButton());
     await picker();
+    await waitFor(() => expect(entryIndex(router)).toBe(formIndex + 1));
     pickOnMap(shop);
-    await userEvent.click(confirmButton());
     await pickerClosed();
     await waitFor(() => expect(entryIndex(router)).toBe(formIndex));
     expect(window.history.length).toBe(lengthWhileOpen);
+    expect(router.state.location.pathname).toBe(formPath);
+    expect(assign).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010');
+  });
+
+  it('shows the chosen locker on the map when the picker reopens, and asks the map for nothing on a first choice', async () => {
+    serve();
+    await renderCheckout();
+    await userEvent.click(chooseButton());
+    await picker();
+    const first = vi.fn();
+    mapReady({ showPoint: first });
+    await act(async () => { await Promise.resolve(); });
+    expect(first).not.toHaveBeenCalled();
+    pickOnMap(shop);
+    await pickerClosed();
+
+    await userEvent.click(changeButton());
+    await picker();
+    const showPoint = vi.fn();
+    mapReady({ showPoint });
+    await waitFor(() => expect(showPoint).toHaveBeenCalledExactlyOnceWith('KRA010'));
+  });
+
+  it.each([
+    { api: 'no handle', handle: undefined },
+    { api: 'a handle without showPoint', handle: {} },
+    { api: 'a showPoint that throws', handle: { showPoint: () => { throw new Error('destroyed connection'); } } },
+    { api: 'a showPoint that rejects', handle: { showPoint: () => Promise.reject(new Error('destroyed connection')) } },
+  ])('keeps the picker working when the map offers $api', async ({ handle }) => {
+    serve();
+    await renderCheckout();
+    await chooseShop();
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent) => { errors.push(event.error); };
+    window.addEventListener('error', onError);
+    try {
+      await userEvent.click(changeButton());
+      await picker();
+      mapReady(handle);
+      await act(async () => { await Promise.resolve(); });
+      expect(errors).toEqual([]);
+      pickOnMap(station);
+      await pickerClosed();
+      expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('WAW01M · Train station');
+    } finally {
+      window.removeEventListener('error', onError);
+    }
   });
 
   it('closes only the picker on the back gesture after the map loaded, and still leaves the checkout by a document navigation on the next back', async () => {
     serve();
     const { router, assign, reload } = await renderCheckout({ from: '/my' });
-    await confirmShop();
+    await chooseShop();
     await userEvent.click(changeButton());
     await picker();
     act(() => { window.history.back(); });
@@ -259,7 +319,7 @@ describe('parcel locker picker', () => {
     const dialog = await picker();
     act(() => { document.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error')); });
     expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
-    expect(confirmButton()).toBeDisabled();
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close, en.shipping.lockerTypeCode]);
     expect(document.querySelector('inpost-geowidget')).toBeNull();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
 
@@ -309,10 +369,10 @@ describe('parcel locker picker', () => {
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
   });
 
-  it('shows the confirmed code in the typed field, and a typed edit replaces the confirmed locker', async () => {
+  it('shows the chosen code in the typed field, and a typed edit replaces the chosen locker', async () => {
     serve();
     await renderCheckout();
-    await confirmShop();
+    await chooseShop();
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerKnowCode }));
     const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
     expect(code).toHaveValue('KRA010');

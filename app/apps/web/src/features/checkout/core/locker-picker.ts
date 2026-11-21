@@ -1,36 +1,32 @@
-import type { PickedPickupPoint } from './events.js';
 import type { GeowidgetAccess } from './checkout-state.js';
 
 export type LockerPickerState = {
   mapFailed: boolean;
-  picker: { status: 'closed' } | { status: 'open'; candidate: PickedPickupPoint | null; map: 'shown' | 'failed' };
+  picker: { status: 'closed' } | { status: 'open'; map: 'shown' | 'failed' };
 };
 
 export type LockerPickerEvent =
   | { type: 'opened' }
-  | { type: 'pointPicked'; point: PickedPickupPoint }
+  | { type: 'pointPicked' }
   | { type: 'mapFailed' }
-  | { type: 'confirmed' }
   | { type: 'cancelled' };
 
 export const closedLockerPicker: LockerPickerState = { mapFailed: false, picker: { status: 'closed' } };
 
+export const acceptsPoint = (state: LockerPickerState): boolean => state.picker.status === 'open' && state.picker.map === 'shown';
+
 export const reduceLockerPicker = (state: LockerPickerState, event: LockerPickerEvent): LockerPickerState => {
   switch (event.type) {
     case 'opened':
-      return state.picker.status === 'open' || state.mapFailed ? state : { ...state, picker: { status: 'open', candidate: null, map: 'shown' } };
+      return state.picker.status === 'open' || state.mapFailed ? state : { ...state, picker: { status: 'open', map: 'shown' } };
     case 'pointPicked':
-      return state.picker.status === 'open' && state.picker.map === 'shown' ? { ...state, picker: { ...state.picker, candidate: event.point } } : state;
+      return acceptsPoint(state) ? { ...state, picker: { status: 'closed' } } : state;
     case 'mapFailed':
-      return state.picker.status === 'open' ? { mapFailed: true, picker: { status: 'open', candidate: null, map: 'failed' } } : { ...state, mapFailed: true };
-    case 'confirmed':
+      return state.picker.status === 'open' ? { mapFailed: true, picker: { status: 'open', map: 'failed' } } : { ...state, mapFailed: true };
     case 'cancelled':
       return state.picker.status === 'closed' ? state : { ...state, picker: { status: 'closed' } };
   }
 };
-
-export const confirmablePoint = (state: LockerPickerState): PickedPickupPoint | null =>
-  state.picker.status === 'open' && state.picker.map === 'shown' ? state.picker.candidate : null;
 
 export type LockerEntry =
   | { kind: 'map'; token: string }

@@ -127,12 +127,10 @@ const pickOnMap = async () => {
   act(() => {
     document.dispatchEvent(new CustomEvent(widget.getAttribute('onpoint') ?? '', { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
   });
-  await waitFor(() => expect(screen.getByRole('button', { name: en.shipping.lockerConfirm })).toBeEnabled());
 };
 const pickLockerOnMap = async () => {
   await openLockerPicker();
   await pickOnMap();
-  await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerConfirm }));
   await pickerClosed();
   await screen.findByTestId('checkout-pickup-point-selected');
 };
@@ -208,7 +206,7 @@ const enterCases: EnterCase[] = [
     },
   },
   {
-    control: '"Change" button', state: 'locker confirmed, pay enabled', setup: { map: true }, outcome: 'does not submit',
+    control: '"Change" button', state: 'locker chosen, pay enabled', setup: { map: true }, outcome: 'does not submit',
     arrange: async () => {
       await pickLockerOnMap();
       expect(pay()).toBeEnabled();
@@ -217,7 +215,7 @@ const enterCases: EnterCase[] = [
     after: async () => { await pickerDialog(); },
   },
   {
-    control: 'an input of the map inside the picker', state: 'locker confirmed, pay enabled', setup: { map: true }, outcome: 'does not submit',
+    control: 'an input of the map inside the picker', state: 'locker chosen, pay enabled', setup: { map: true }, outcome: 'does not submit',
     arrange: async () => {
       await pickLockerOnMap();
       expect(pay()).toBeEnabled();
@@ -231,7 +229,7 @@ const enterCases: EnterCase[] = [
     after: async () => { await pickerDialog(); },
   },
   {
-    control: 'picker heading', state: 'locker confirmed, pay enabled', setup: { map: true }, outcome: 'does not submit',
+    control: 'picker heading', state: 'locker chosen, pay enabled', setup: { map: true }, outcome: 'does not submit',
     arrange: async () => {
       await pickLockerOnMap();
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChangeLabel }));
@@ -240,7 +238,7 @@ const enterCases: EnterCase[] = [
     after: async () => { await pickerDialog(); },
   },
   {
-    control: 'picker close button', state: 'locker confirmed, pay enabled', setup: { map: true }, outcome: 'does not submit',
+    control: 'picker close button', state: 'locker chosen, pay enabled', setup: { map: true }, outcome: 'does not submit',
     arrange: async () => {
       await pickLockerOnMap();
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChangeLabel }));
@@ -250,29 +248,6 @@ const enterCases: EnterCase[] = [
       await pickerClosed();
       expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010');
     },
-  },
-  {
-    control: '"Confirm this parcel locker" button', state: 'point picked, pay disabled behind the picker', setup: { map: true }, outcome: 'does not submit',
-    arrange: async () => {
-      await openLockerPicker();
-      await pickOnMap();
-      return screen.getByRole('button', { name: en.shipping.lockerConfirm });
-    },
-    after: async () => {
-      await pickerClosed();
-      expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010');
-    },
-  },
-  {
-    control: '"Confirm this parcel locker" button', state: 'point picked over a confirmed locker, pay enabled behind the picker', setup: { map: true }, outcome: 'does not submit',
-    arrange: async () => {
-      await pickLockerOnMap();
-      await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChangeLabel }));
-      await pickerDialog();
-      await pickOnMap();
-      return screen.getByRole('button', { name: en.shipping.lockerConfirm });
-    },
-    after: async () => { await pickerClosed(); },
   },
   ...invoiceFields.map((label): EnterCase => ({
     control: `invoice field "${label}"`, state: 'invoice filled, pay enabled', outcome: 'submits',
@@ -491,7 +466,7 @@ describe('Enter and Escape on the checkout page', () => {
     expect(calls.sessions[0]).toMatchObject({ billing: { companyName: 'Buyer Ltd', city: 'Warsaw' } });
   });
 
-  it('closes the locker picker on Escape from inside it without committing, leaves the open rows open and returns focus to Change', async () => {
+  it('closes the locker picker on Escape from inside it, keeps the chosen locker, leaves the open rows open and returns focus to Change', async () => {
     const calls = serve({ map: true });
     renderCheckout();
     await pickLockerOnMap();
@@ -499,10 +474,7 @@ describe('Enter and Escape on the checkout page', () => {
     const change = screen.getByRole('button', { name: en.shipping.lockerChangeLabel });
     await userEvent.click(change);
     const dialog = await pickerDialog();
-    act(() => {
-      document.dispatchEvent(new CustomEvent(document.querySelector('inpost-geowidget')?.getAttribute('onpoint') ?? '', { detail: { name: 'WAW01M' } }));
-    });
-    within(dialog).getByRole('button', { name: en.shipping.lockerConfirm }).focus();
+    within(dialog).getByRole('button', { name: en.common.close }).focus();
     await userEvent.keyboard('{Escape}');
     await pickerClosed();
     expect(discount).toHaveAttribute('aria-expanded', 'true');

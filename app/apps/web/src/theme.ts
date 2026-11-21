@@ -2839,12 +2839,10 @@ export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
 
 export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
 
-export const CheckoutLockerPickerBar = styled(Stack, {
-  shouldForwardProp: (prop) => prop !== 'edge',
-})<{ edge: 'top' | 'bottom' }>(({ edge, theme }) => ({
+export const CheckoutLockerPickerBar = styled(Stack)(({ theme }) => ({
   flex: 'none',
   backgroundColor: theme.palette.background.paper,
-  [edge === 'top' ? 'borderBottom' : 'borderTop']: `1px solid ${theme.palette.divider}`,
+  borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
 export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>({ outline: 'none' });

@@ -461,7 +461,7 @@ describe('hosted cart checkout', () => {
       }
     });
 
-    it('confirms a locker in the same full-screen picker and sends its name and address', async () => {
+    it('chooses a locker in the same full-screen picker and sends its name and address', async () => {
       const bodies: unknown[] = [];
       serve({ token: 'public-map-token', onSession: (body) => bodies.push(body) });
       renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
@@ -474,7 +474,6 @@ describe('hosted cart checkout', () => {
       act(() => {
         document.dispatchEvent(new CustomEvent(widget?.getAttribute('onpoint') ?? '', { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
       });
-      await userEvent.click(within(dialog).getByRole('button', { name: en.shipping.lockerConfirm }));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
       await userEvent.click(screen.getByTestId('checkout-pay-cta'));

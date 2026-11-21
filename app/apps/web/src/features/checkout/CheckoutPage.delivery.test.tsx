@@ -112,7 +112,7 @@ describe('checkout delivery step', () => {
     expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint');
   });
 
-  it('loads the parcel locker map in the picker on demand and fills the code from the confirmed point', async () => {
+  it('loads the parcel locker map in the picker on demand and fills the code from the point chosen on the map', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
@@ -128,7 +128,6 @@ describe('checkout delivery step', () => {
     expect(document.getElementById('inpost-geowidget-style')).toHaveAttribute('href', 'https://geowidget.inpost.pl/inpost-geowidget.css');
 
     act(() => { document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } })); });
-    await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerConfirm }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     const chosen = screen.getByTestId('checkout-pickup-point-selected');
     expect(chosen).toHaveTextContent('KRA010 · Next to the shop');

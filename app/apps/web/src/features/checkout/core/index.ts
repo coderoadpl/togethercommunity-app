@@ -9,8 +9,8 @@ export {
   type GeowidgetAccess,
 } from './checkout-state.js';
 export {
+  acceptsPoint,
   closedLockerPicker,
-  confirmablePoint,
   lockerEntry,
   reduceLockerPicker,
   type LockerEntry,

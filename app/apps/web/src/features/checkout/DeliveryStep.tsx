@@ -19,11 +19,12 @@ import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
+import type { PickedPickupPoint } from './core/events.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
 import {
+  acceptsPoint,
   closedLockerPicker,
-  confirmablePoint,
   lockerEntry,
   pickedPickupPoint,
   reduceLockerPicker,
@@ -54,7 +55,11 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const pickerHistory = useHistoryEntry(() => sendPicker({ type: 'cancelled' }));
   const opener = useRef<HTMLButtonElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
+  const committed = useRef<string | null>(null);
+  const [announcedCode, setAnnouncedCode] = useState<string | null>(null);
   const openPicker = () => {
+    committed.current = null;
+    setAnnouncedCode(null);
     pickerHistory.enter();
     sendPicker({ type: 'opened' });
   };
@@ -62,14 +67,19 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     pickerHistory.leave();
     sendPicker({ type: 'cancelled' });
   };
-  const confirmPicker = () => {
-    const point = confirmablePoint(picker);
-    if (point === null) return;
+  const commitPoint = (point: PickedPickupPoint) => {
+    if (!acceptsPoint(picker)) return;
+    committed.current = point.code;
     dispatch({ type: 'pickupPointSelected', point });
     pickerHistory.leave();
-    sendPicker({ type: 'confirmed' });
+    sendPicker({ type: 'pointPicked' });
   };
-  const returnFocus = () => (opener.current ?? codeInput.current)?.focus();
+  const pickerExited = () => {
+    (opener.current ?? codeInput.current)?.focus();
+    setAnnouncedCode(committed.current);
+    committed.current = null;
+  };
+  const announcement = picked !== null && picked.code === announcedCode ? t.shipping.lockerChosenAnnouncement(picked) : '';
   const codeReason = entry.kind === 'map' ? null : {
     no_map: null,
     withheld_for_staff: { text: t.shipping.lockerMapStaffHint, testId: 'checkout-locker-map-staff-hint' },
@@ -125,6 +135,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
             {t.shipping.lockerKnowCode}
           </CheckoutInlineToggle>
           {codeShown ? codeField : null}
+          <VisuallyHidden role="status" aria-live="polite" data-testid="checkout-locker-announcement">{announcement}</VisuallyHidden>
         </Stack>
       ) : (
         <Stack useFlexGap spacing="0.75rem">
@@ -141,13 +152,12 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       open={picker.picker.status === 'open'}
       token={geowidget.token}
       language={language}
-      candidate={confirmablePoint(picker)}
+      shownCode={picked?.code ?? null}
       mapFailed={picker.picker.status === 'open' && picker.picker.map === 'failed'}
-      onPoint={(point) => sendPicker({ type: 'pointPicked', point })}
+      onPoint={commitPoint}
       onMapFailed={() => sendPicker({ type: 'mapFailed' })}
-      onConfirm={confirmPicker}
       onCancel={cancelPicker}
-      onExited={returnFocus}
+      onExited={pickerExited}
     />
   ) : null;
   return (

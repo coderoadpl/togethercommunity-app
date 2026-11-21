@@ -461,6 +461,33 @@ describe('hosted cart checkout', () => {
       }
     });
 
+    it('places the locker block right after the locker option, before the next option, also once a locker is chosen', async () => {
+      serve({ token: 'public-map-token' });
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+      const option = screen.getByTestId('checkout-delivery-option-locker');
+      const block = screen.getByTestId('checkout-locker-picker');
+      expect(option.nextElementSibling).toBe(block);
+      expect(block.nextElementSibling).toBe(screen.getByTestId('checkout-delivery-option-courier'));
+      expect(within(block).getByRole('button', { name: en.shipping.lockerChoose })).toBeVisible();
+      expect(within(block).getByRole('button', { name: en.shipping.lockerKnowCode })).toBeVisible();
+
+      await userEvent.click(within(block).getByRole('button', { name: en.shipping.lockerChoose }));
+      const dialog = await screen.findByRole('dialog', { name: en.shipping.lockerChoose });
+      const widget = dialog.querySelector('inpost-geowidget');
+      act(() => {
+        document.dispatchEvent(new CustomEvent(widget?.getAttribute('onpoint') ?? '', { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
+      });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const chosen = screen.getByTestId('checkout-locker-picker');
+      expect(option.nextElementSibling).toBe(chosen);
+      expect(within(chosen).getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
+      expect(within(chosen).getByRole('button', { name: en.shipping.lockerKnowCode })).toBeVisible();
+
+      await userEvent.click(screen.getByRole('radio', { name: exact(`Courier — ${pln(1999)}`) }));
+      expect(screen.queryByTestId('checkout-locker-picker')).not.toBeInTheDocument();
+    });
+
     it('chooses a locker in the same full-screen picker and sends its name and address', async () => {
       const bodies: unknown[] = [];
       serve({ token: 'public-map-token', onSession: (body) => bodies.push(body) });

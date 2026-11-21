@@ -311,6 +311,8 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
   },
   'picker-failed': async (canvasElement) => {
     await failLockerMap(canvasElement);
+    await expect(page(canvasElement).getByTestId('checkout-locker-map-failed-reason')).toBeVisible();
+    await expect(page(canvasElement).queryByTestId('checkout-locker-dialog-know-code')).toBeNull();
     await settled();
   },
   picker: async (canvasElement) => {
@@ -334,7 +336,12 @@ const lockerStory = (step: LockerStep, options: { viewport?: StoryViewport; loca
     fixture: options.cart === undefined ? lockerMapFixture : cartLockerMapFixture,
   },
   beforeEach: step === 'picker-loading' ? stubLoadingGeowidget : stubGeowidget,
-  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
+  play: async ({ canvasElement }) => {
+    await lockerSteps[step](canvasElement);
+    if (options.cart !== undefined) {
+      await expect(within(canvasElement).getByTestId('checkout-delivery-option-locker').nextElementSibling).toBe(within(canvasElement).getByTestId('checkout-locker-picker'));
+    }
+  },
 });
 
 const meta = {

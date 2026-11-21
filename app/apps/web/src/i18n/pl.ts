@@ -3131,6 +3131,7 @@ export const pl: Messages = {
     couponForever: 'Rabat na całość subskrypcji',
     couponUnavailable: 'Tego kodu rabatowego nie można użyć.',
     couponEmailRequired: 'Podaj e-mail, aby sprawdzić ten kod rabatowy.',
+    couponEmailRequiredFullPrice: 'Podaj e-mail, aby zastosować ten kod. Bez niego zapłacisz pełną cenę.',
     marketingConsentsLabel: 'Opcjonalne zgody marketingowe',
     marketingConsentDocument: 'Przeczytaj powiązany dokument',
     marketingConsentDoiHint: 'Po zakupie wyślemy osobną wiadomość z prośbą o potwierdzenie tej zgody.',

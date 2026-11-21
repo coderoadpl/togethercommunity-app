@@ -62,12 +62,13 @@ export const FieldDiffList = ({ items }: { items: readonly { key: string; conten
 );
 
 export const FieldDiffImage = ({ url, failedNote }: { url: string; failedNote?: ReactNode }) => {
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl === url;
   return (
     <Stack useFlexGap spacing="0.35rem">
       {failed ? null : (
         <Box sx={{ maxWidth: '12rem' }}>
-          <CoverImageElement frame="card" src={url} alt="" onError={() => setFailed(true)} />
+          <CoverImageElement frame="card" src={url} alt="" onError={() => setFailedUrl(url)} />
         </Box>
       )}
       <BreakAnywhereText component="p" variant="caption">

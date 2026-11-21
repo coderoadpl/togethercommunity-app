@@ -15,9 +15,10 @@ import {
 
 import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
 
+import { CheckIcon, ChevronDownIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
+import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
@@ -111,13 +112,13 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     </FormControl>
   );
   const lockerChoice = picked === null ? (
-    <Button ref={opener} variant="outlined" size="large" fullWidth disabled={disabled} onClick={openPicker} data-testid="checkout-locker-choose" sx={{ minHeight: '2.75rem' }}>
+    <Button ref={opener} variant="contained" size="large" fullWidth disabled={disabled} onClick={openPicker} startIcon={<MapPinIcon />} data-testid="checkout-locker-choose" sx={{ minHeight: '2.75rem' }}>
       {t.shipping.lockerChoose}
     </Button>
   ) : (
     <CheckoutLockerChosen>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
-        <FinePrint variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t.shipping.lockerSelected}</FinePrint>
+        <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
         <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
       </Box>
@@ -137,12 +138,13 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     </CheckoutLockerChosen>
   );
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
+    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: entry.kind === 'map' && !codeShown ? 0 : '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
           <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
             {t.shipping.lockerKnowCode}
+            <ChevronDownIcon />
           </CheckoutInlineToggle>
           <Box id={`${lockerId}-code`} hidden={!codeShown} sx={{ alignSelf: 'stretch' }}>{codeShown ? codeField : null}</Box>
           <VisuallyHidden role="status" aria-live="polite" data-testid="checkout-locker-announcement">{announcement}</VisuallyHidden>

@@ -513,6 +513,19 @@ describe('parcel locker picker', () => {
     await waitFor(() => expect(changeButton()).toHaveFocus());
   });
 
+  it('gives Choose a map pin and the filled look, the chosen locker a check, and "I know the code" a chevron', async () => {
+    serve();
+    await renderCheckout();
+    expect(chooseButton()).toHaveClass('MuiButton-contained');
+    expect(chooseButton().querySelector('.MuiButton-startIcon svg[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: en.shipping.lockerKnowCode }).querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    await chooseShop();
+    const caption = within(screen.getByTestId('checkout-pickup-point-selected')).getByText(en.shipping.lockerSelected);
+    expect(caption.firstElementChild?.tagName.toLowerCase()).toBe('svg');
+    expect(caption.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('closes the typed-code field when the buyer then chooses a locker on the map', async () => {
     serve();
     await renderCheckout();

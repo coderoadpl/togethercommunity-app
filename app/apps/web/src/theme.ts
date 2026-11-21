@@ -2837,6 +2837,14 @@ export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
 }));
 
+export const CheckoutLockerChosenCaption = styled(Typography)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  fontSize: '0.75rem',
+  '& svg': { width: '1rem', height: '1rem', color: theme.palette.success.main },
+}));
+
 export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
 
 export const CheckoutLockerDialog = styled(Dialog)({

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
-import { stripeTermsUrlMissing } from '#core/domain/index.js';
+import { CART_LINES_PARAM, HOSTED_CART_PATH, stripeTermsUrlMissing } from '#core/domain/index.js';
 
 import checkout from '../fixtures/checkout.json';
 import account from '../fixtures/account.json';
@@ -64,7 +64,19 @@ const fixtureFor = (scenario: string, product: Record<string, unknown>, payment:
 });
 
 const deliveryFixture = fixtureFor('together-checkout-delivery', stand, { shippingRates });
-const lockerMapFixture = fixtureFor('together-checkout-locker-map', stand, { shippingRates, inpostGeowidgetToken: 'story-geowidget-token', inpostGeowidgetWithheld: false, canTest: false, testEnabled: false });
+const lockerMapPayment = { shippingRates, inpostGeowidgetToken: 'story-geowidget-token', inpostGeowidgetWithheld: false, canTest: false, testEnabled: false };
+const lockerMapFixture = fixtureFor('together-checkout-locker-map', stand, lockerMapPayment);
+const cartStandId = '5f0c2a1e-7d3b-4c8a-9e61-2b4d8f0a6c13';
+const cartLockerMapFixture = {
+  ...checkout,
+  scenario: 'together-cart-checkout-locker-map',
+  route: `${HOSTED_CART_PATH}?${CART_LINES_PARAM}=${cartStandId}.1`,
+  calls: {
+    ...checkout.calls,
+    [`publicOffer:["${cartStandId}"]`]: { ok: true, value: { ...recordedOffer, tenant, products: [{ ...recordedOffer.products[0], ...stand, id: cartStandId, slug: 'printed-desk-stand' }] } },
+    'publicPaymentConfig:[]': { ok: true, value: { ...recordedPaymentConfig, simulatedPaymentsEnabled: false, stripeConfigured: true, ...lockerMapPayment } },
+  },
+};
 const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, variants: standVariants }, { shippingRates });
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
@@ -177,18 +189,24 @@ const twoManufacturersFixture = bundleFixtureWith('together-checkout-two-manufac
 
 const STUB_MAP_TAG = 'inpost-geowidget';
 const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
+const STUB_MAP_LOADING = 'data-stub-map-loading';
 class StubGeowidget extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'display:grid;place-items:center;height:100%;border-radius:8px;color:inherit;font:inherit;' +
+    if (this.ownerDocument.documentElement.hasAttribute(STUB_MAP_LOADING)) {
+      this.style.cssText = 'display:none;';
+      return;
+    }
+    const paper = getComputedStyle(this.closest('.MuiPaper-root') ?? document.body).backgroundColor;
+    this.style.cssText = 'display:grid;place-items:center;height:100%;color:inherit;font:inherit;' +
       'background:repeating-linear-gradient(0deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),' +
-      'repeating-linear-gradient(90deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),color-mix(in srgb,currentColor 4%,transparent);';
+      `repeating-linear-gradient(90deg,color-mix(in srgb,currentColor 8%,transparent) 0 1px,transparent 1px 32px),color-mix(in srgb,currentColor 4%,${paper});`;
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.textContent = stubPoint.name;
     pin.dataset['testid'] = 'stub-geowidget-pin';
     pin.style.cssText = 'white-space:nowrap;padding:0.4rem 0.75rem;border-radius:999px;border:1px solid currentColor;background:Canvas;color:inherit;font:inherit;cursor:pointer;';
     pin.addEventListener('click', () => {
-      document.dispatchEvent(new CustomEvent(this.getAttribute('onpoint') ?? '', { detail: stubPoint }));
+      this.dispatchEvent(new CustomEvent(this.getAttribute('onpoint') ?? '', { bubbles: true, detail: stubPoint }));
     });
     this.replaceChildren(pin);
   }
@@ -200,6 +218,14 @@ const stubGeowidget = () => {
   placeholders[1]?.setAttribute('id', 'inpost-geowidget-style');
   document.head.append(...placeholders);
   return () => { for (const element of placeholders) element.remove(); };
+};
+const stubLoadingGeowidget = () => {
+  document.documentElement.setAttribute(STUB_MAP_LOADING, '');
+  const cleanup = stubGeowidget();
+  return () => {
+    document.documentElement.removeAttribute(STUB_MAP_LOADING);
+    cleanup();
+  };
 };
 
 const chooseRate = async (canvasElement: HTMLElement, name: RegExp) => {
@@ -223,13 +249,27 @@ const openSafetyDetails = async (canvasElement: HTMLElement) => {
   const safety = within(await within(canvasElement).findByTestId('product-safety-info'));
   for (const toggle of safety.getAllByRole('button', { name: /Details/u })) await userEvent.click(toggle);
 };
-const chooseLockerOnMap = async (canvasElement: HTMLElement, pick: boolean) => {
+const page = (canvasElement: HTMLElement) => within(canvasElement.ownerDocument.body);
+const openLockerPickerWithoutMap = async (canvasElement: HTMLElement) => {
   await chooseRate(canvasElement, /parcel locker/u);
-  const pin = await within(canvasElement).findByTestId('stub-geowidget-pin');
-  if (pick) {
-    await userEvent.click(pin);
-    await within(canvasElement).findByTestId('checkout-pickup-point-selected');
-  }
+  await userEvent.click(await within(canvasElement).findByTestId('checkout-locker-choose'));
+  await page(canvasElement).findByTestId('checkout-locker-map-area');
+};
+const openLockerPicker = async (canvasElement: HTMLElement) => {
+  await openLockerPickerWithoutMap(canvasElement);
+  await page(canvasElement).findByTestId('stub-geowidget-pin');
+};
+const failLockerMap = async (canvasElement: HTMLElement) => {
+  await openLockerPicker(canvasElement);
+  canvasElement.ownerDocument.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error'));
+  await page(canvasElement).findByTestId('checkout-locker-map-retry');
+};
+const pickOnStubMap = async (canvasElement: HTMLElement) => {
+  await openLockerPicker(canvasElement);
+  await userEvent.click(await page(canvasElement).findByTestId('stub-geowidget-pin'));
+  const change = await within(canvasElement).findByTestId('checkout-locker-change');
+  await waitFor(() => expect(page(canvasElement).queryByTestId('checkout-locker-dialog')).toBeNull());
+  return change;
 };
 const settled = async () => {
   const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
@@ -239,11 +279,62 @@ const openSummaryDetails = async (canvasElement: HTMLElement) => {
   await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Details and VAT' }));
 };
 const mobile375 = { parameters: { viewport: { defaultViewport: 'mobile-375' } }, globals: { viewport: { value: 'mobile-375' } } };
-const lockerMap = (scheme: { colorScheme?: 'dark' }, viewport: typeof mobile375 | null, pick: boolean): Story => ({
-  ...(viewport === null ? {} : { globals: viewport.globals }),
-  parameters: { ...viewport?.parameters, ...scheme, fixture: lockerMapFixture },
-  beforeEach: stubGeowidget,
-  play: async ({ canvasElement }) => chooseLockerOnMap(canvasElement, pick),
+const phone360 = {
+  parameters: { viewport: { defaultViewport: 'mobile-360', options: { 'mobile-360': { name: 'Mobile 360×640', styles: { width: '360px', height: '640px' }, type: 'mobile' } } } },
+  globals: { viewport: { value: 'mobile-360' } },
+};
+type LockerStep = 'option' | 'chosen' | 'map-failed' | 'code-open' | 'picker' | 'picker-loading' | 'picker-failed' | 'picked';
+const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<void>> = {
+  option: async (canvasElement) => {
+    await chooseRate(canvasElement, /parcel locker/u);
+    await within(canvasElement).findByTestId('checkout-locker-choose');
+  },
+  chosen: async (canvasElement) => {
+    await pickOnStubMap(canvasElement);
+    await settled();
+  },
+  'map-failed': async (canvasElement) => {
+    await failLockerMap(canvasElement);
+    await userEvent.click(await page(canvasElement).findByTestId('checkout-locker-type-code'));
+    await within(canvasElement).findByTestId('checkout-locker-map-failed');
+    await settled();
+  },
+  'code-open': async (canvasElement) => {
+    await chooseRate(canvasElement, /parcel locker/u);
+    await userEvent.click(await within(canvasElement).findByTestId('checkout-locker-know-code'));
+    await expect(await within(canvasElement).findByTestId('checkout-pickup-point')).toBeVisible();
+    await settled();
+  },
+  'picker-loading': async (canvasElement) => {
+    await openLockerPickerWithoutMap(canvasElement);
+    await settled();
+  },
+  'picker-failed': async (canvasElement) => {
+    await failLockerMap(canvasElement);
+    await settled();
+  },
+  picker: async (canvasElement) => {
+    await openLockerPicker(canvasElement);
+    await settled();
+  },
+  picked: async (canvasElement) => {
+    const change = await pickOnStubMap(canvasElement);
+    await waitFor(() => expect(change).toHaveFocus());
+    await waitFor(() => expect(within(canvasElement).getByTestId('checkout-locker-announcement')).toHaveTextContent(stubPoint.name));
+    await settled();
+  },
+};
+type StoryViewport = { parameters: { viewport: { defaultViewport: string } }; globals: { viewport: { value: string } } };
+const lockerStory = (step: LockerStep, options: { viewport?: StoryViewport; locale?: 'pl'; colorScheme?: 'dark'; cart?: true } = {}): Story => ({
+  ...(options.viewport === undefined ? {} : { globals: options.viewport.globals }),
+  parameters: {
+    ...options.viewport?.parameters,
+    ...(options.locale === undefined ? {} : { locale: options.locale }),
+    ...(options.colorScheme === undefined ? {} : { colorScheme: options.colorScheme }),
+    fixture: options.cart === undefined ? lockerMapFixture : cartLockerMapFixture,
+  },
+  beforeEach: step === 'picker-loading' ? stubLoadingGeowidget : stubGeowidget,
+  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
 });
 
 const meta = {
@@ -376,14 +467,42 @@ export const CouponCourier: Story = {
     await openSummaryDetails(canvasElement);
   },
 };
-export const LockerMap: Story = lockerMap({}, null, false);
-export const LockerMapMobile: Story = lockerMap({}, mobile375, false);
-export const LockerMapDark: Story = lockerMap({ colorScheme: 'dark' }, null, false);
-export const LockerMapMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, false);
-export const LockerPicked: Story = lockerMap({}, null, true);
-export const LockerPickedMobile: Story = lockerMap({}, mobile375, true);
-export const LockerPickedDark: Story = lockerMap({ colorScheme: 'dark' }, null, true);
-export const LockerPickedMobileDark: Story = lockerMap({ colorScheme: 'dark' }, mobile375, true);
+export const LockerOption: Story = lockerStory('option');
+export const LockerOptionMobile: Story = lockerStory('option', { viewport: mobile375 });
+export const LockerOptionChosen: Story = lockerStory('chosen');
+export const LockerOptionChosenMobile: Story = lockerStory('chosen', { viewport: mobile375 });
+export const LockerOptionMapFailed: Story = lockerStory('map-failed');
+export const LockerOptionMapFailedMobile: Story = lockerStory('map-failed', { viewport: mobile375 });
+export const LockerOptionCodeOpen: Story = lockerStory('code-open');
+export const LockerOptionCodeOpenMobile: Story = lockerStory('code-open', { viewport: mobile375 });
+export const LockerPicker: Story = lockerStory('picker');
+export const LockerPickerMobile: Story = lockerStory('picker', { viewport: mobile375 });
+export const LockerPickerPolish: Story = lockerStory('picker', { locale: 'pl' });
+export const LockerPickerMobilePolish: Story = lockerStory('picker', { viewport: mobile375, locale: 'pl' });
+export const LockerPickerDark: Story = lockerStory('picker', { colorScheme: 'dark' });
+export const LockerPickerMobileDark: Story = lockerStory('picker', { viewport: mobile375, colorScheme: 'dark' });
+export const LockerPickerPicked: Story = lockerStory('picked');
+export const LockerPickerPickedMobile: Story = lockerStory('picked', { viewport: mobile375 });
+export const LockerPickerPickedPolish: Story = lockerStory('picked', { locale: 'pl' });
+export const LockerPickerPickedMobilePolish: Story = lockerStory('picked', { viewport: mobile375, locale: 'pl' });
+export const LockerPickerPickedDark: Story = lockerStory('picked', { colorScheme: 'dark' });
+export const LockerPickerPickedMobileDark: Story = lockerStory('picked', { viewport: mobile375, colorScheme: 'dark' });
+export const LockerPickerLoadingPhone: Story = lockerStory('picker-loading', { viewport: phone360 });
+export const LockerPickerLoadingPhonePolish: Story = lockerStory('picker-loading', { viewport: phone360, locale: 'pl' });
+export const LockerPickerLoadingPhoneDark: Story = lockerStory('picker-loading', { viewport: phone360, colorScheme: 'dark' });
+export const LockerPickerLoadingPhonePolishDark: Story = lockerStory('picker-loading', { viewport: phone360, locale: 'pl', colorScheme: 'dark' });
+export const LockerPickerFailedPhone: Story = lockerStory('picker-failed', { viewport: phone360 });
+export const LockerPickerFailedPhonePolish: Story = lockerStory('picker-failed', { viewport: phone360, locale: 'pl' });
+export const LockerPickerFailedPhoneDark: Story = lockerStory('picker-failed', { viewport: phone360, colorScheme: 'dark' });
+export const LockerPickerFailedPhonePolishDark: Story = lockerStory('picker-failed', { viewport: phone360, locale: 'pl', colorScheme: 'dark' });
+export const CartLockerOption: Story = lockerStory('option', { cart: true });
+export const CartLockerOptionMobile: Story = lockerStory('option', { viewport: mobile375, cart: true });
+export const CartLockerOptionChosen: Story = lockerStory('chosen', { cart: true });
+export const CartLockerOptionChosenMobile: Story = lockerStory('chosen', { viewport: mobile375, cart: true });
+export const CartLockerOptionMapFailed: Story = lockerStory('map-failed', { cart: true });
+export const CartLockerOptionMapFailedMobile: Story = lockerStory('map-failed', { viewport: mobile375, cart: true });
+export const CartLockerOptionCodeOpen: Story = lockerStory('code-open', { cart: true });
+export const CartLockerOptionCodeOpenMobile: Story = lockerStory('code-open', { viewport: mobile375, cart: true });
 export const TwoManufacturers: Story = { parameters: { fixture: twoManufacturersFixture } };
 export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mobile375.parameters, fixture: twoManufacturersFixture } };
 export const TwoManufacturersDetailsOpen: Story = {

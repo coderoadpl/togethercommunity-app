@@ -11,3 +11,10 @@ export type CheckoutEvent =
   | { type: 'shippingRateSelected'; rateId: string }
   | { type: 'pickupPointCodeChanged'; code: string }
   | { type: 'pickupPointSelected'; point: PickedPickupPoint };
+
+export type LockerPickerEvent =
+  | { type: 'pickerOpened' }
+  | { type: 'pointSelected' }
+  | { type: 'mapFailed' }
+  | { type: 'mapRetryRequested' }
+  | { type: 'pickerCancelled' };

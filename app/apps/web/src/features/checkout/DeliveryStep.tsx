@@ -19,7 +19,6 @@ import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
-import type { PickedPickupPoint } from './core/events.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
 import {
@@ -31,6 +30,7 @@ import {
   type CheckoutEvent,
   type CheckoutState,
   type GeowidgetAccess,
+  type PickedPickupPoint,
 } from './index.web.js';
 
 export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, layout = 'list' }: {

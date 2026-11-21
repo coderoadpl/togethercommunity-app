@@ -3,8 +3,8 @@ import { Box, Button, CircularProgress, Dialog, IconButton, Typography, useMedia
 
 import { useTranslations } from '../../i18n/index.js';
 import { AccountGlyph, CheckoutLockerMapArea, CheckoutLockerMapCover, CheckoutLockerPickerBar, CheckoutLockerPickerHeading } from '../../theme.js';
-import type { PickedPickupPoint } from './core/events.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
+import type { PickedPickupPoint } from './index.web.js';
 
 const CloseGlyph = () => (
   <AccountGlyph aria-hidden="true" focusable="false" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

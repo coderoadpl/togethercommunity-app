@@ -1,8 +1,7 @@
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { Box } from '@mui/material';
 
-import { parseGeowidgetPoint } from './index.web.js';
-import type { PickedPickupPoint } from './core/events.js';
+import { parseGeowidgetPoint, type PickedPickupPoint } from './index.web.js';
 import { useFullNavigationExit } from './use-full-navigation-exit.js';
 
 const GEOWIDGET_ORIGIN = 'https://geowidget.inpost.pl';

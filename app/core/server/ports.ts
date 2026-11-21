@@ -3135,7 +3135,6 @@ export interface ChangeProposalPeopleReader {
   read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
 }
 
-/** `raise` makes a read notification unread again; `signal` only points at the notification the owner already has. */
 export type ChangeProposalOwnerNotice = 'raise' | 'signal';
 
 export interface ChangeProposalOwnerNotifier {

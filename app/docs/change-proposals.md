@@ -356,54 +356,107 @@ column and the existing unique index carries the de-duplication.
 The workspace owner reviews and decides every proposal on one page,
 `/panel/proposals`, reached from **Proposals** in the Offer group of the panel
 navigation and from the bell notification of kind `change-proposal`. The
-navigation entry is shown only to the owner, and only while the
-[summary](#routes) counts pending proposals or while the page is open; its badge
-shows the number of pending changes. An admin who opens the address sees an
-"owner only" page, and the panel never sends them the owner routes.
+navigation entry is always shown to the owner, in the same place, whether or
+not anything is pending, while the [summary](#routes) loads and when it fails,
+so the navigation never shifts; its badge shows the number of pending changes
+and appears only when something is pending. An admin never sees the entry; one
+who opens the address sees an "owner only" page, and the panel never sends them
+the owner routes. When the notification stream delivers a `notification` frame
+of kind `change-proposal`, the panel refreshes the pending summary and the
+proposal lists.
+
+The page follows the server's gate. An owner whose e-mail is not verified sees
+"verify your e-mail to decide" with a link to the account page, and an owner
+viewing the community as a member sees "leave the member view"; neither gets a
+Retry that cannot succeed, and the summary is not requested for either.
 
 **Waiting for you** lists the pending proposals oldest first: one card per
 group and one card per single proposal. A card names the change in plain words
 ("New product", "Stock: add or remove pieces", "Shop settings"), the live label
 of what it touches, the proposing key, when it was proposed and when it
-expires, and a warning line when the key is revoked, purged or expired or when
-the account that issued it is no longer a verified owner. A group title is the
-key's text: it is shown as plain text under a line that attributes it to the
-key, never as the card heading.
+expires, and a warning line when the key is revoked, purged or expired, when
+the account that issued it is no longer a verified owner, or when that account
+is no longer on the team. A price target says which price it is, from the
+structured price facts ("Studio Club: 49,00 zł per month"), on the card, in the
+confirmation and in history. A target that no longer exists says so; "not
+created yet" is kept for a target that is still to be created or is a
+reference inside a group. A group title is the key's text: it is shown under a
+line that attributes it to the key and never appears in a sentence the
+application speaks in its own voice (the headings, the confirmation, the
+settled notice, history), which use the count and fixed wording instead.
+Every piece of text written by a key or a person that the page shows (the group
+title, the key name, product titles and references inside sentences, a stock
+reason, a decision comment, field values) sits in its own `<bdi>` element, so
+quotes or right-to-left control characters in it cannot reorder the sentence
+around it.
 
-Every changed field is one row with a readable label and the value now and
-after approval, stacked under the label on narrow screens; the rows share the
-component of the course version preview. Money is formatted with its currency,
-booleans as words, lists as lists, long text is collapsed behind "Show more"
-and an empty value says so. A new record shows only the "after" value, a
-deleted one only the current value. A stock adjustment shows the delta
-("+50 pieces"), its reason and the balance on hand now as context, never a
-final balance. An image address is shown as an image only when it is a
-same-origin public asset path (`/api/public/assets/…`); any other address is
-text. Inside a group, a `$proposal:` reference is shown as "the product from
+Every changed field of an existing record is one row with a readable label and
+the value now and after approval, stacked under the label on narrow screens;
+the rows share the component of the course version preview. A new record (a new
+product, sales link or price) is one framed definition list under a single
+caption, "Will be created with:", with label and value side by side on wide
+screens and stacked on narrow ones; a deleted record shows only the current
+value. Money is formatted with its currency, booleans as words, lists as
+lists, and every enumerated value (product type, visibility, sales channel,
+delivery method, parcel size, price kind and interval, VAT rate and mode,
+exemption basis, invoicing provider, KSeF submission mode, invoicing scope,
+default language) by the label the products, prices and settings screens use;
+an unknown value falls back to its raw text. Long text is collapsed behind
+"Show more", except when the collapsed beginnings of the two sides are the
+same, where it starts expanded so the difference is visible. An empty value
+says so. A stock adjustment shows the delta ("+50 pieces"), its reason (a
+return is named as such) and the balance on hand now as context, never a final
+balance. An image address is shown as an image only when it is a same-origin
+public asset path (`/api/public/assets/…`); any other address is text, and an
+image that fails to load is replaced by its address and a "could not be shown"
+note. Inside a group, a `$proposal:` reference is shown as "the product from
 step 1" with that step's title. A field the page does not know is shown with
 its raw name and its value as text, and a proposal of an operation the page
 does not know is shown but cannot be approved from the page.
 
 A single proposal has **Approve** and **Reject**; a group has **Approve all N
-changes** and **Reject group**. The group card reads the group itself
-(`GET /api/change-proposals/groups/:id`) and its approval sends exactly the
-item ids it shows; when the server answers that the items changed, the card
-reloads the group and says so, and nothing is applied. Approve asks for one
-confirmation; reject opens a dialog with an optional note that is shown to the
-proposer. While a request runs the buttons are disabled, and a busy answer
-(`503`) tells the owner to try again in a moment without changing anything.
-After a decision a toast reports the outcome and the lists refresh; a `stale`
-or `failed` approval stays on the page as an explained notice until it is
-dismissed, and the proposal moves to **History**.
+changes** ("Approve the change" for a group of one) and **Reject group**.
+Approve asks for one confirmation that repeats what will happen, built from
+the same data as the card: the target and the essence ("Creator Workbook
+(print): 50 pieces will be added to stock.", "The product “Field Guide (print)”
+will be published.", "3 fields of “Field Guide (print)” will change."),
+followed by "Nothing else changes."; a group's confirmation reads "All 5
+changes will be applied together, or none.". Reject opens a dialog with an
+optional comment that is shown to the proposer.
 
-**History** pages through the other proposals (50 per page) with their status,
-who decided and when, the decision note and, on expand, the same field rows and
-the event timeline. Nothing on the page updates live data optimistically: every
-change on screen comes from a server answer.
+The group card reads the group itself (`GET /api/change-proposals/groups/:id`).
+When the approve dialog opens, the card saves the ordered item ids rendered at
+that moment (by position, whatever order the server served them in) and the
+approval sends exactly that saved list. While the group is refetching, the
+confirm button is disabled. Whenever a refetch (window focus, a list refresh, a
+realtime notification) changes the id list compared with what the owner last
+acknowledged, the dialog closes, the card says "this group changed, review it
+again", and approving needs a fresh click; when the server answers that the
+items changed, the card does the same and nothing is applied. A single
+proposal needs no such step: its effect is fixed when it is proposed, so a
+refetch cannot change what the owner approves.
+
+While a request runs the buttons are disabled, and a busy answer (`503`) tells
+the owner to try again in a moment without changing anything. After a decision
+a toast reports the outcome and the lists refresh; a `stale` or `failed`
+approval stays on the page as an explained notice until it is dismissed, and
+the proposal moves to **History**. "Show more proposals" appends the next page
+to the same list (settled notices and open dialogs stay) and moves focus to the
+first new card.
+
+**History** asks the server for the `decided` proposals, 50 per page, with
+their status, who decided and when (or "a former team member"), the decision
+comment and, on expand, the same field rows and the event timeline; an empty
+page shows the empty state, and "Show details" sits on the title row. Nothing
+on the page updates live data optimistically: every change on screen comes
+from a server answer. Headings inside cards follow the page outline without
+skipped levels, and the application sets `<html lang>` to the active language.
 
 The page is in Storybook as `Pages/PanelProposals` (a group of five items, a
 stock delta and a settings change) and `Pages/PanelProposalsHistory`, and its
-field rows as `Panel/ProposalChanges`. These stories have no committed golden.
+field rows as `Panel/ProposalChanges`. Storybook serves a small cover image at
+the same-origin asset path the fixtures use. These stories have no committed
+golden.
 
 ## Approval
 

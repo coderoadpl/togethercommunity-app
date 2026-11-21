@@ -2592,6 +2592,8 @@ export const pl: Messages = {
     copyLinkFailed: 'Nie udało się skopiować linku.',
     spaceNotFoundTitle: 'Nie znaleziono przestrzeni',
     spaceNotFoundBody: 'Tej przestrzeni nie ma albo nie masz do niej dostępu.',
+    threadNotFoundTitle: 'Nie znaleziono wątku',
+    threadNotFoundBody: 'Tego wątku nie ma albo został usunięty.',
     backToSpaces: 'Wróć do listy przestrzeni',
     backToFeed: 'Wróć do przestrzeni',
     pinnedHeading: 'Przypięte',

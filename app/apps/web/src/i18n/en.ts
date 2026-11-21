@@ -2571,6 +2571,8 @@ export const en: Messages = {
     copyLinkFailed: 'Could not copy the link.',
     spaceNotFoundTitle: 'Space not found',
     spaceNotFoundBody: 'This space does not exist or you do not have access to it.',
+    threadNotFoundTitle: 'Thread not found',
+    threadNotFoundBody: 'This thread does not exist or was removed.',
     backToSpaces: 'Back to spaces',
     backToFeed: 'Back to the space',
     pinnedHeading: 'Pinned',

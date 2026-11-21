@@ -76,6 +76,7 @@ import {
   spaceEventsQuery,
   upcomingEventsQuery,
   discussionQuery,
+  discussionThreadQuery,
   devMagicLinkQuery,
   createProductMutation,
   createProductPriceMutation,
@@ -317,6 +318,7 @@ import {
 } from '#core/client/index.js';
 import type {
   DiscussionGetInput,
+  DiscussionThreadGetInput,
   OrdersExportQueryInput,
   OrdersListQueryInput,
   CouponStatsExportQueryInput,
@@ -533,6 +535,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   studentCourseInvalidates,
   studentProgressInvalidates,
   discussion: (input: DiscussionGetInput) => discussionQuery(apiClient, input),
+  discussionThread: (input: DiscussionThreadGetInput) => discussionThreadQuery(apiClient, input),
   createPost: createPostMutation(apiClient),
   updatePost: updatePostMutation(apiClient),
   deletePost: deletePostMutation(apiClient),

@@ -2304,6 +2304,8 @@ export interface Messages {
     copyLinkFailed: string;
     spaceNotFoundTitle: string;
     spaceNotFoundBody: string;
+    threadNotFoundTitle: string;
+    threadNotFoundBody: string;
     backToSpaces: string;
     backToFeed: string;
     pinnedHeading: string;

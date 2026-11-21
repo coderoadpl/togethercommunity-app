@@ -1248,6 +1248,19 @@ describe('community use-cases', () => {
     });
   });
 
+  it('never returns a thread to a member or staff of another workspace', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Workspace secret' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Secret reply' }, d);
+    for (const outsider of [ctx({ tenantId: 't2' }), ctx({ tenantId: 't2', staffRole: 'owner', memberId: null })]) {
+      const thread = await getThread(outsider, { ...input, postId: root.value.id }, d);
+      expect(thread.ok).toBe(false);
+      expect(JSON.stringify(thread)).not.toContain('Secret');
+    }
+  });
+
   it('returns a soft-deleted root as a tombstone rather than not found', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const input = { contextKind: 'lesson', contextId: 'l1' } as const;

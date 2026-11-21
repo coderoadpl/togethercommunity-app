@@ -8,7 +8,7 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -197,18 +197,21 @@ const okDiscussion = (
     }),
   );
 
+const okThreads = (
+  roots: DiscussionPost[],
+  viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
+) =>
+  http.get('/api/discussion/threads/:postId', ({ params }) => {
+    const root = roots.find((candidate) => candidate.id === params.postId);
+    return root === undefined
+      ? HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 })
+      : HttpResponse.json({ ok: true, data: { discussion: { threads: [root], nextCursor: null, viewerSubscriptions } } });
+  });
+
 const okThread = (
   root: DiscussionPost,
   viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
-) =>
-  http.get('/api/discussion/threads/:postId', ({ params }) =>
-    params.postId === root.id
-      ? HttpResponse.json({
-          ok: true,
-          data: { discussion: { threads: [root], nextCursor: null, viewerSubscriptions } },
-        })
-      : HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 }),
-  );
+) => okThreads([root], viewerSubscriptions);
 
 const stubNarrowViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -738,7 +741,7 @@ describe('community pages', () => {
     expect(notFound).toHaveTextContent(en.community.threadNotFoundBody);
     expect(screen.queryByText(en.discussion.deletedPost)).toBeNull();
     expect(screen.queryByTestId('discussion-error')).toBeNull();
-    expect(within(notFound).getByRole('button', { name: en.community.backToFeed })).toBeInTheDocument();
+    expect(within(notFound).getByRole('link', { name: en.community.backToFeed })).toHaveAttribute('href', '/community/s1');
   });
 
   it('keeps the deleted-post text for a thread whose root was deleted', async () => {
@@ -757,6 +760,38 @@ describe('community pages', () => {
 
     expect(await screen.findByTestId('deleted-post-p1')).toHaveTextContent(en.discussion.deletedPost);
     expect(screen.getByTestId('post-body-p2')).toHaveTextContent('Still here');
+    expect(screen.queryByTestId('thread-not-found')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: en.community.threadTitle })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[deleted-post]');
+  });
+
+  it('shows the next thread when the page switches to another thread in the same mounted tree', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okThreads([
+        { ...feedItem({ id: 'p1', body: 'First thread' }), replies: [] },
+        { ...feedItem({ id: 'p2', body: 'Second thread' }), replies: [] },
+      ]),
+    );
+    const Switcher = () => {
+      const [postId, setPostId] = useState('p1');
+      return (
+        <>
+          <button type="button" onClick={() => setPostId('p2')}>next thread</button>
+          <SpaceThreadPage spaceId="s1" postId={postId} />
+        </>
+      );
+    };
+
+    const user = userEvent.setup();
+    await renderPage(() => <Switcher />, '/community/s1/posts/p1');
+    expect(await screen.findByTestId('post-body-p1')).toHaveTextContent('First thread');
+    await user.click(screen.getByRole('button', { name: 'next thread' }));
+
+    expect(await screen.findByTestId('post-body-p2')).toHaveTextContent('Second thread');
+    expect(screen.getByRole('heading', { level: 1, name: 'Second thread' })).toBeInTheDocument();
     expect(screen.queryByTestId('thread-not-found')).toBeNull();
   });
 

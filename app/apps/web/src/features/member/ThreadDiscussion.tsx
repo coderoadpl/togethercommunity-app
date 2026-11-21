@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { POST_BODY_MAX_LENGTH, type DiscussionPost, type PostBodyFormat, type PostContextKind, type ThreadSubscriptionState } from '#core/domain/index.js';
@@ -79,6 +80,7 @@ interface ThreadFocus {
   rootPostId: string;
   onExit: () => void;
   exitLabel: ReactNode;
+  exitHref?: string;
 }
 
 interface Viewer {
@@ -614,10 +616,14 @@ export const ThreadDiscussion = ({
             kind: 'not-found',
             title: t.community.threadNotFoundTitle,
             body: t.community.threadNotFoundBody,
-            action: (
+            action: focus.exitHref === undefined ? (
               <Button variant="text" onClick={focus.onExit}>
                 {focus.exitLabel}
               </Button>
+            ) : (
+              <MuiLink component={Link} to={focus.exitHref}>
+                {focus.exitLabel}
+              </MuiLink>
             ),
           }}
         />

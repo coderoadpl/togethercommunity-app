@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -167,6 +168,48 @@ describe('EventPage', () => {
     expect(await screen.findByTestId('event-discussion')).toHaveTextContent(
       'Event thread: Live Q&A',
     );
+  });
+
+  it('keeps each event on its own discussion when the page moves between events in the same mounted tree', async () => {
+    const secondRoot: DiscussionPost = { ...rootPost(), id: 'root-2', rootPostId: 'root-2', body: 'Event thread: Workshop', bodyHtml: 'Event thread: Workshop', bodyPlainText: 'Event thread: Workshop' };
+    const events: Record<string, PublicSpaceEvent> = {
+      e1: event(),
+      e2: event({ id: 'e2', title: 'Workshop', discussionRootPostId: 'root-2' }),
+    };
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces(),
+      http.get('/api/events/:eventId', ({ params }) =>
+        HttpResponse.json({ ok: true, data: { event: events[String(params.eventId)] } })),
+      http.get('/api/discussion/threads/:postId', ({ params }) => {
+        const root = [rootPost(), secondRoot].find((candidate) => candidate.id === params.postId);
+        return HttpResponse.json({ ok: true, data: { discussion: { threads: root === undefined ? [] : [root], nextCursor: null, viewerSubscriptions: {} } } });
+      }),
+    );
+    const Switcher = () => {
+      const [eventId, setEventId] = useState('e1');
+      return (
+        <>
+          <button type="button" onClick={() => setEventId(eventId === 'e1' ? 'e2' : 'e1')}>other event</button>
+          <EventPage spaceId="s1" eventId={eventId} />
+        </>
+      );
+    };
+    const router = createRouter({
+      routeTree: createRootRoute({ component: Switcher }),
+      history: createMemoryHistory({ initialEntries: ['/community/s1/events/e1'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByTestId('event-discussion')).toHaveTextContent('Event thread: Live Q&A'));
+    await user.click(screen.getByRole('button', { name: 'other event' }));
+    await waitFor(() => expect(screen.getByTestId('event-discussion')).toHaveTextContent('Event thread: Workshop'));
+    await user.click(screen.getByRole('button', { name: 'other event' }));
+    await waitFor(() => expect(screen.getByTestId('event-discussion')).toHaveTextContent('Event thread: Live Q&A'));
+    expect(screen.queryByTestId('thread-not-found')).toBeNull();
   });
 
   it('answers an RSVP and moves the counts before the server replies', async () => {

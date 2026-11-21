@@ -130,6 +130,12 @@ propose-mode key the catalogue, `shop settings set` and
 exit `0` when the server answers `202`, and `shop proposals list|show|withdraw`
 reach that key's own proposals; the receipt of an applied proposal shows the
 resource it created or changed, to name in a follow-up proposal.
+With such a key `shop cover upload <productId> <file>` uploads the cover into
+the key's private quarantine and proposes attaching it, printing the receipt
+and the address the image takes once approved; `shop branding upload <kind>
+<file>` prints that address and the `shop settings set` command that proposes
+it, or proposes the settings change itself with `--attach`. Both accept
+`--group <id>`, and the image stays private until the owner approves.
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,

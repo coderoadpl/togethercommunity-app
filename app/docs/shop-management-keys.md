@@ -31,7 +31,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
-| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
+| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects, product cover and branding images included | Available |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -180,6 +180,18 @@ in its last column) shows each key's mode. Revoking or purging a propose-mode
 key withdraws its pending, unexpired proposals, those in its open
 [groups](change-proposals.md#groups) included, and deletes its empty groups,
 in the same transaction.
+
+A propose-mode key uploads a product cover or a branding image through the same
+image routes as a direct-mode key, but the image stays private: completion
+answers `{ "url": "/api/public/assets/<kind>/<sha256>.<ext>", "quarantined": true }`,
+the address the image takes once approved, and nothing is public until the
+owner approves a proposal that sets that address (`product.update` or
+`product.create` with `coverUrl`, `settings.update` with `logoUrl`,
+`logoDarkUrl`, `faviconUrl` or `ogImageUrl`). The upload start answers
+`servePath: null` and `quarantined: true`. A key holds at most 100 such images
+and 50 MiB of them at a time (`409` beyond); see
+[Images](change-proposals.md#images) for the checks, the owner preview,
+publication and cleanup.
 
 A propose-mode key can also put proposals that depend on each other in a
 group the owner approves as one unit: it creates the group
@@ -465,7 +477,10 @@ These routes reuse the session image-asset and sales-link schemas and use-cases.
 Cover upload and completion require `shop:catalog:write`. Completion checks the
 candidate workspace, size and image signature before publishing it; it returns a
 public asset URL without changing any product. Attach it with product update.
-The public asset URL retains its existing redirect to signed storage.
+The public asset URL retains its existing redirect to signed storage. For a
+propose-mode key completion publishes nothing: it keeps the image private and
+answers `quarantined: true` with the address an approval publishes it at
+([Images](change-proposals.md#images)).
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
@@ -486,12 +501,17 @@ checks apply as on session routes. Write scope does not grant read access.
 The typed client exposes `uploadProductCover`, `listSalesLinks`, `getSalesLink`,
 `createSalesLink`, `updateSalesLink` and `deleteSalesLink`. The cover helper runs
 upload → signed storage PUT → completion; only the two API requests carry the
-shop key, never the storage PUT. `shop cover upload` first reads the product's
+shop key, never the storage PUT. With a propose-mode key the completed result
+also carries `quarantined: true`. `shop cover upload` first reads the product's
 prices to check that the product exists in the key's workspace, so its key needs
 `shop:catalog:read` as well as `shop:catalog:write`; an unknown product fails
-with `not_found` (exit code 5) before anything is uploaded. The CLI adds the
-product update after successful completion, and never updates the product when
-upload or completion fails.
+with `not_found` (exit code 5) before anything is uploaded. A `$proposal:`
+reference to a product an earlier item of the same group creates skips that
+check. The CLI adds the product update after successful completion, and never
+updates the product when upload or completion fails. With a propose-mode key
+that update is a proposal: the command prints the receipt and the image address,
+which stays private until the owner approves, and `--group <id>` adds the
+proposal to a group.
 
 ```bash
 pnpm --silent run cli --tenant acme shop cover upload <product-id> ./cover.png
@@ -719,7 +739,9 @@ the returned headers and send `{"key":"<candidate-key>"}` to `complete`, which
 checks the workspace, size and image signature and answers the published
 `url`. Set that URL as `logoUrl`, `logoDarkUrl`, `faviconUrl` or `ogImageUrl`
 with a settings write. A candidate key of another workspace answers
-`404 not_found`.
+`404 not_found`. For a propose-mode key `complete` publishes nothing and adds
+`quarantined: true`; the settings write with that URL is a proposal, and the
+image becomes public when the owner approves it.
 
 ```bash
 curl -s -H "$KEY" "$SHOP/settings"
@@ -732,14 +754,20 @@ curl -s -H "$KEY" -H "$JSON" -d '{"supportUrl":null}' "$SHOP/settings"
 `shop settings set` reads the JSON object from `--json-file <path>`, or from
 stdin with `--json-file -`, and checks it against the allow-list before the
 request. `shop branding upload <kind> <file>` runs upload, the signed `PUT`
-and complete, and prints the published URL; the file extension selects the
-content type.
+and complete, and prints the URL; the file extension selects the content type.
+With a propose-mode key the URL is the address the image takes once approved,
+and the command also prints the `shop settings set` command that proposes it.
+`--attach` sets the image as the settings field of its kind (`logoUrl`,
+`logoDarkUrl`, `faviconUrl` or `ogImageUrl`) in the same command: live with a
+direct-mode key, as a proposal with a propose-mode key (`--group <id>` adds it
+to a group).
 
 ```bash
 pnpm --silent run cli --tenant acme shop settings show
 pnpm --silent run cli --tenant acme shop settings set --json-file shop-settings.json
 echo '{"privacyUrl":"https://brand.example.test/privacy"}' | pnpm --silent run cli --tenant acme shop settings set --json-file -
 pnpm --silent run cli --tenant acme shop branding upload logo ./logo.png
+pnpm --silent run cli --tenant acme shop branding upload logo ./logo.png --attach
 ```
 
 The typed client exposes `getSettings`, `updateSettings` and
@@ -1057,7 +1085,11 @@ curl -s -H "$KEY" -H "$JSON" -d '{"key":"<candidate-key>"}' "$SHOP/image-assets/
 curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>","coverUrl":"/api/public/assets/product-cover/<file>"}' "$SHOP/products/update"
 ```
 
-Completion answers `{ "url": "/api/public/assets/product-cover/<file>" }`.
+Completion answers `{ "url": "/api/public/assets/product-cover/<file>" }`. A
+propose-mode key gets `"servePath": null` from the upload start and
+`{ "url": "/api/public/assets/product-cover/<sha256>.png", "quarantined": true }`
+from completion; the product update with that address then answers `202` with
+a receipt, and the image becomes public only when the owner approves.
 Asset URLs are relative to the workspace origin; prefix them with
 `https://<workspace-host>` before using them on another site. The public URL
 redirects to a short-lived signed storage URL, so do not cache the redirect

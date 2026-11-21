@@ -22,7 +22,7 @@ exactly the effect the owner saw, or applies nothing.
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
 | Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
 | Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
-| Images (product covers, branding): quarantine, address checks, publication on approval and cleanup ([Images](#images)) | Available in the use-cases; the image routes still refuse a propose-mode key |
+| Images (product covers, branding): private upload, address checks, owner preview, publication on approval and cleanup ([Images](#images)) | Available |
 
 ## What a proposal is
 
@@ -124,7 +124,8 @@ behaviour. On a propose-mode key:
   `product:publish`;
 - `shop:settings:write` grants only `proposal:submit:settings` and
   `proposal:asset:upload`, never `tenant:settings:write`; the settings update
-  becomes a proposal and the branding image routes refuse the key;
+  becomes a proposal and the branding image routes upload into the key's
+  private quarantine ([Images](#images));
 - `shop:fulfilment:write` and `shop:integrations:write` cannot be granted:
   creation answers `400`;
 - every propose-mode key holds `proposal:own:manage`, which reaches only the
@@ -187,7 +188,7 @@ shop route. A direct-mode key is unaffected on every route.
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
 | `proposal` | the fourteen write routes above | `202` with a receipt; the live handler never runs |
-| `refuse`, reason `not-in-release` | branding and product cover images | `403 forbidden` |
+| `direct` | branding and product cover image upload and completion | the handler runs and keeps the image private until approval ([Images](#images)) |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
@@ -442,7 +443,9 @@ return is named as such) and the balance on hand now as context, never a final
 balance. An image address is shown as an image only when it is a same-origin
 public asset path (`/api/public/assets/…`); any other address is text, and an
 image that fails to load is replaced by its address and a "could not be shown"
-note. Inside a group, a `$proposal:` reference is shown as "the product from
+note. The image a pending proposal proposes under its digest is the exception:
+it is loaded only through the owner preview, and an SVG is offered as a
+download instead (see [Images](#images)). Inside a group, a `$proposal:` reference is shown as "the product from
 step 1" with that step's title. A field the page does not know is shown with
 its raw name and its value as text, and a proposal of an operation the page
 does not know is shown but cannot be approved from the page.
@@ -498,9 +501,11 @@ skipped levels, and the application sets `<html lang>` to the active language.
 
 The page is in Storybook as `Pages/PanelProposals` (a group of five items, a
 stock delta and a settings change) and `Pages/PanelProposalsHistory`, and its
-field rows as `Panel/ProposalChanges`. Storybook serves a small cover image at
-the same-origin asset path the fixtures use. These stories have no committed
-golden.
+field rows as `Panel/ProposalChanges`, including a proposed image and a
+proposed SVG awaiting approval. Storybook serves a small cover image at the
+same-origin asset path the fixtures use; it has no owner preview route, so the
+proposed raster image story ends in its failed state. These stories have no
+committed golden.
 
 ## Approval
 
@@ -937,14 +942,25 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 A propose-mode key can propose a new product cover and new branding images
 (logo, dark logo, favicon, share image). Nothing it uploads is publicly
 reachable until the owner approves the proposal that attaches it. The
-use-cases are in `core/server/usecases/change-proposal-images.ts`; the image
-routes still refuse a propose-mode key (see [Not yet available](#not-yet-available)).
+use-cases are in `core/server/usecases/change-proposal-images.ts`; the routes
+are the shop image routes a direct-mode key uses, which are of route class
+`direct` and branch on the key's mode.
 
-**Upload.** Starting an upload needs `proposal:asset:upload` with the
+| Who | Sees |
+|---|---|
+| The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
+| The owner | the proposed image through the owner preview while the proposal is pending, then the public image once approved |
+| Everyone else | nothing until approval: the public address has no object behind it |
+
+**Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
+`shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
+(scope `shop:settings:write`) need `proposal:asset:upload` with the
 submission capability of the family: `proposal:submit:catalog` for a product
-cover, `proposal:submit:settings` for a branding image. It presigns a `PUT` to
+cover, `proposal:submit:settings` for a branding image. They presign a `PUT` to
 the private candidate prefix `image-asset-candidates/`, exactly like the live
-upload. Completing it runs the live content checks (size and format; an upload
+upload, and answer `servePath: null` with `quarantined: true`, because the
+address depends on the bytes. Completing it (the matching `.../complete`
+route) runs the live content checks (size and format; an upload
 that fails them is deleted and answers the same validation error), then copies
 the bytes to a private, content-addressed key of the key,
 `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, deletes the
@@ -974,13 +990,31 @@ holding the row, that each attached image is still quarantined for the key; one
 released meanwhile is refused with the same `400`. An owner session and a
 direct-mode key set any address the live validator accepts, exactly as before.
 
-**Owner preview.** `getChangeProposalImage` reads, for the verified owner in
-their own session with `proposal:read`, the quarantined bytes of an image that
-a pending proposal attaches, by proposal id and digest. It answers the bytes,
-the content type and the disposition: inline for a raster image, always an
-attachment for SVG, as the public asset route does. A key, an admin, a decided
-proposal or an image the proposal does not attach get `404` or `403`; no key
-can read quarantined bytes.
+**Owner preview.** `GET /api/change-proposals/:id/assets/:digest`
+(`getChangeProposalImage`) serves, to the verified owner in their own session
+with `proposal:read`, the quarantined bytes of an image that the pending
+proposal `:id` attaches. The server reads the bytes, checks their hash again
+and answers them with the image's content type, `x-content-type-options: nosniff` and `cache-control: private,
+no-store`; the disposition is `inline` for a raster image and always
+`attachment` for SVG, as the public asset route does. A key, an admin, an
+unverified or impersonating owner, another workspace, a decided or expired
+proposal, an image the proposal does not attach and an image no longer
+quarantined get `401`, `403` or `404`; no key can read quarantined bytes.
+
+The [owner panel](#owner-panel) loads a pending proposal's proposed
+content-addressed image only from this route: a raster image is shown with a
+loading and a failed state, its format, a fingerprint (the first twelve
+characters of the digest), the address it will have and a note that only the
+owner sees it until approval. A proposed SVG is never rendered: the panel
+shows a labelled download link through the same route, the same facts and the
+reason. For a decided proposal the panel keeps the rule for every image
+address: it shows an image only for a same-origin public asset path.
+
+**CLI.** `shop cover upload <productId> <file>` with a propose-mode key
+uploads into the quarantine and proposes the `product.update`;
+`shop branding upload <kind> <file>` prints the address and the
+`shop settings set` command that proposes it, or proposes it itself with
+`--attach`. Both accept `--group <id>` ([CLI](cli.md)).
 
 **Publication on approval.** Approval, single or of a group, takes each
 attached image's row with a share lock inside the approval transaction, reads
@@ -1011,7 +1045,10 @@ is released only after that approval ends. The sweep
 (`sweepQuarantinedImages`) removes every image older than 7 days that no
 pending, unexpired proposal of its key attaches, and every image of a revoked
 or deleted key, 50 workspaces and 200 images per workspace at a time; it also
-catches what a failed release left behind. The
+catches what a failed release left behind. It runs on the existing minute tick
+(the `/api/internal/dispatch-email` cron route and the Node ticker), at most
+once every 50 seconds per server process, and a failing sweep is logged and
+never stops the tick. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
@@ -1036,10 +1073,8 @@ where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{
 
 ## Not yet available
 
-- **Image routes.** The product cover and branding image routes refuse a
-  propose-mode key, no route serves the owner preview, and the minute tick
-  does not run the sweep yet; the use-cases they will call are described under
-  [Images](#images).
+- **Other files.** Download files of digital products and images other than
+  product covers and branding (course covers, avatars) cannot be proposed.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

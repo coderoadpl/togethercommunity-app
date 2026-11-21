@@ -540,9 +540,21 @@ scopes on every shop key.
   without one: the ten catalogue write routes, the three sales-link write
   routes and the settings update store a
   [change proposal](change-proposals.md) instead of running their handler,
-  every other write route (images, fulfilment, integrations) answers `403`,
-  and a test drives a propose-mode key
-  over every registered shop route and asserts that no live row changed. A
+  the four product cover and branding image routes (class `direct`) upload
+  into the key's private quarantine, every other write route (fulfilment,
+  integrations) answers `403`, and a test drives a propose-mode key over every
+  registered shop route and asserts that no live row changed and no object
+  appeared under the public image prefix. A quarantined image is stored under
+  `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
+  private prefix the public asset route never serves; its address names its
+  SHA-256, so the bytes the owner previews are the bytes an approval publishes,
+  and approval checks the hash again before it writes the public copy. The owner
+  reads it only through `GET /api/change-proposals/:id/assets/:digest`
+  (verified owner session, `proposal:read`, an image the pending proposal
+  attaches), with `nosniff`, `private, no-store` and SVG always as an
+  attachment; the owner panel never renders a proposed SVG. No key can read
+  quarantined bytes. Each key holds at most 100 quarantined images and 50 MiB,
+  and decisions, revocation and a sweep on the minute tick remove them. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before

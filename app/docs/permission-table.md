@@ -26,11 +26,11 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
-`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings`, each with `proposal:asset:upload`, instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`) that only the owner can approve. The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
+`shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings`, each with `proposal:asset:upload`, instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`) that only the owner can approve. On the four `/api/m2m/shop/image-assets` routes it reaches the handler, which calls the upload use-cases of `change-proposal-images.ts` with `proposal:asset:upload` and keeps the image private until an approval. The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key. The four upload use-cases of `change-proposal-images.ts` authorize `proposal:asset:upload` with the submission capability of their family, `proposal:submit:catalog` for a product cover and `proposal:submit:settings` for a branding image; the table lists the first. They write only a private quarantined copy, which an owner approval publishes. `change-proposal-images.ts#getChangeProposalImage` needs `proposal:read` and applies the same owner-session guard.
 
-Closed capability count: 144. Route rows: 536. Exported `Ctx` use-case rows: 406.
+Closed capability count: 144. Route rows: 537. Exported `Ctx` use-case rows: 406.
 
 ## Human-readable diff
 
@@ -303,6 +303,7 @@ no changes
 | `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/change-proposals/:id/assets/:digest` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals/groups/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/groups/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/groups/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
@@ -996,12 +997,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1293` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1295` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1317` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1331` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1861` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1861` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1304` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1306` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1328` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1342` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1872` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1872` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

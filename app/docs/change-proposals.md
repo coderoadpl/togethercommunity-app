@@ -461,7 +461,12 @@ hand, with the low-stock alert level at 5."). "Nothing else changes." follows
 only a sentence that names every changed field of the proposal; when the
 sentence leaves fields unnamed, the confirmation says how many other fields
 change instead ("2 other fields will change too."). A group's confirmation
-reads "All 5 changes will be applied together, or none.". Reject opens a
+reads "All 5 changes will be applied together, or none.". When the proposal,
+or any item of the group, carries a proposed image under its digest (the
+images the card loads through the owner preview), the confirmation adds one
+more sentence, counted per distinct image: approving makes the proposed image
+public at the address shown, and if it no longer exists nothing is changed (for
+a group: none of the changes is applied). Reject opens a
 dialog with an optional comment that is shown to the proposer.
 
 The group card reads the group itself (`GET /api/change-proposals/groups/:id`).
@@ -500,8 +505,11 @@ and the notices as they were.
 their status, who decided and when (or "a former team member"), the decision
 comment and, on expand, the same field rows and the event timeline; a `stale`
 proposal that attaches an image reads its events too and, when the note code
-is `image_unavailable`, shows the image line above in the row and in the
-timeline instead of "the shop changed"; an empty
+is `image_unavailable`, shows the image line above in the row, labels its
+status "Not applied: image no longer available" instead of "the shop changed",
+and its timeline entry "Not applied: the proposed image was no longer
+available" without repeating the line or showing the note code; the other
+items of its group keep the generic label; an empty
 page shows the empty state, and "Show details" sits on the title row. Nothing
 on the page updates live data optimistically: every change on screen comes
 from a server answer. Headings inside cards follow the page outline without
@@ -509,10 +517,12 @@ skipped levels, and the application sets `<html lang>` to the active language.
 
 The page is in Storybook as `Pages/PanelProposals` (a group of five items, a
 stock delta and a settings change) and `Pages/PanelProposalsHistory`, and its
-field rows as `Panel/ProposalChanges`, including a proposed image and a
-proposed SVG awaiting approval. Storybook serves a small cover image at the
-same-origin asset path the fixtures use; it has no owner preview route, so the
-proposed raster image story ends in its failed state. These stories have no
+field rows as `Panel/ProposalChanges`, including a proposed image (loaded and
+failed, in English and Polish) and a proposed SVG awaiting approval. Storybook
+serves a small cover image at the same-origin asset path the fixtures use; it
+has no owner preview route, so its fixture API answers the owner preview
+address of two known story digests itself, with a small inline image for the
+loaded story and an unreadable one for the failed story. These stories have no
 committed golden.
 
 ## Approval
@@ -1052,9 +1062,15 @@ content-addressed image only from this route: a raster image is shown with a
 loading and a failed state, its format, a fingerprint (the first twelve
 characters of the digest), the address it will have and a note that only the
 owners of the workspace can see it and that it becomes public at this address
-when the proposal is approved. A proposed SVG is never rendered: the panel
-shows a labelled download link through the same route, the same facts and the
-reason. For a decided proposal the panel keeps the rule for every image
+when the proposal is approved. The address is shortened in the middle of the
+digest (the fingerprint, an ellipsis, the last four characters, then the
+extension), with the full address as its title and for assistive technology.
+When the preview cannot be loaded, a warning takes the place of the picture:
+the image could not be loaded; if it no longer exists, approving changes
+nothing and the image has to be uploaded and proposed again; otherwise try
+again in a moment. The private note is not shown then. A proposed SVG is never
+rendered: the panel shows a labelled download link through the same route, the
+same facts and the reason. For a decided proposal the panel keeps the rule for every image
 address: it shows an image only for a same-origin public asset path.
 
 **CLI.** `shop cover upload <productId> <file>` with a propose-mode key

@@ -11,6 +11,8 @@ import {
 import {
   ORGANIZATION_PRINCIPALS,
   SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE,
+  entitlementKeyCapabilities,
+  entitlementKeyScopeSchema,
   shopManagementCapabilities,
   shopManagementScopeSchema,
   type Capability,
@@ -27,7 +29,9 @@ export const SHOP_MANAGEMENT_KEY_PRINCIPAL = 'shop-management-key (scope interse
 
 export const SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL = 'shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)';
 
-type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
+export const ENTITLEMENT_KEY_PRINCIPAL = 'entitlement-key (scope intersect issuing owner)';
+
+type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL | typeof ENTITLEMENT_KEY_PRINCIPAL;
 
 export interface PermissionRow {
   subject: string;
@@ -77,6 +81,7 @@ const platformOwner = ['platform-owner'] as const;
 const shopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
 const directShopManagementKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL] as const;
 const proposeShopManagementKey = [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL] as const;
+const entitlementKey = [ENTITLEMENT_KEY_PRINCIPAL] as const;
 
 const principalsForCapability = (capability: Capability): readonly Principal[] =>
   PRINCIPALS.filter((principal) => ROLE_CAPABILITIES[principal].includes(capability));
@@ -91,6 +96,10 @@ const shopManagementKeyHolds = (capability: Capability, mode: ShopManagementKeyM
   shopManagementCapabilities(grantableShopManagementScopes(mode), mode).includes(capability)
   && ROLE_CAPABILITIES.owner.includes(capability);
 
+const entitlementKeyHolds = (capability: Capability): boolean =>
+  entitlementKeyCapabilities(entitlementKeyScopeSchema.options).includes(capability)
+  && ROLE_CAPABILITIES.owner.includes(capability);
+
 const effectiveAfter = (
   before: readonly InventoryPrincipal[],
   capability: Capability,
@@ -99,6 +108,7 @@ const effectiveAfter = (
     ...principalsForCapability(capability),
     ...(shopManagementKeyHolds(capability, 'direct') ? directShopManagementKey : []),
     ...(shopManagementKeyHolds(capability, 'propose') ? proposeShopManagementKey : []),
+    ...(entitlementKeyHolds(capability) ? entitlementKey : []),
   ];
   return before.filter((principal) => holders.includes(principal));
 };
@@ -363,6 +373,7 @@ const beforeForRoute = (
       if (path === '/api/m2m/shop/proposals' || path.startsWith('/api/m2m/shop/proposals/')) return proposeShopManagementKey;
       return method === 'GET' ? shopManagementKey : directShopManagementKey;
     }
+    if (selfAuthenticatingEntry.mechanism === 'Entitlement key') return entitlementKey;
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
@@ -397,6 +408,7 @@ const beforeForRoute = (
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/api-keys/shop-management' || path.startsWith('/api/api-keys/shop-management/')) return owner;
+  if (path === '/api/api-keys/entitlement' || path.startsWith('/api/api-keys/entitlement/')) return owner;
   if (path === '/api/change-proposals' || path.startsWith('/api/change-proposals/')) return owner;
   if (path === '/api/posts/:postId/permanent') return staff;
   if (path === '/api/posts/pin') return staff;
@@ -684,6 +696,8 @@ const beforeForUseCase = (
   if (file === 'shop-integrations.ts') return name === 'getShopIntegrationSecrets' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'shop-management-keys.ts') return owner;
+  if (file === 'entitlement-keys.ts') return owner;
+  if (file === 'entitlement-check.ts') return entitlementKey;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;
@@ -726,7 +740,7 @@ const useCaseRows = (): PermissionRow[] =>
     }
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
-    const reachable = directory || before === reportApiKey || before === operatorSecret || before === proposeShopManagementKey ? before : before === allHumans
+    const reachable = directory || before === reportApiKey || before === operatorSecret || before === proposeShopManagementKey || before === entitlementKey ? before : before === allHumans
       ? allHumans
       : before === platformOwner
         ? platformOwner
@@ -855,6 +869,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list\'s members come from direct grants only.',
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
+    '',
+    `\`${ENTITLEMENT_KEY_PRINCIPAL}\` is the principal of \`POST /api/m2m/entitlements/check\`. It is a separate key kind (\`core/domain/entitlement-key.ts\`, table \`entitlement_keys\`) whose scopes grant only \`entitlement:check\` and \`entitlement:member:read\`, intersected with the issuing owner's capabilities and re-read on every request; the use-case also refuses any caller that is not an entitlement key. Entitlement keys are created, listed and revoked only by a verified owner in their own session with a direct workspace grant, and the issuer must still hold a direct owner grant when the key is used.`,
     '',
     `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\` instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve. The \`/api/m2m/shop/proposals\` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.`,
     '',

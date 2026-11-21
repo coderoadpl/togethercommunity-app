@@ -142,6 +142,7 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  EntitlementKey,
   ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
@@ -924,6 +925,44 @@ export interface ShopManagementKeyRepository {
     event: (apiKeyId: string) => ShopManagementKeyEvent,
     withdrawal: ChangeProposalWithdrawal,
   ): Promise<number>;
+}
+
+export interface EntitlementKeyRepository {
+  listByTenant(tenantId: string): Promise<EntitlementKey[]>;
+  create(tenantId: string, key: EntitlementKey, event: ShopManagementKeyEvent): Promise<void>;
+  findByHash(tenantId: string, keyHash: string): Promise<EntitlementKey | null>;
+  revoke(tenantId: string, id: string, revokedAt: string, event: ShopManagementKeyEvent): Promise<EntitlementKey | null>;
+}
+
+export interface EntitlementSubjectReader {
+  findAccountByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
+  findMemberByUser(tenantId: string, userId: string): Promise<Member | null>;
+  findMemberById(tenantId: string, memberId: string): Promise<Member | null>;
+  hasSignedIn(tenantId: string, memberId: string): Promise<boolean>;
+  findMembersByEmail(tenantId: string, email: string): Promise<Member[]>;
+  listPaidCheckoutOrders(tenantId: string, memberId: string): Promise<{
+    kind: 'one_time' | 'recurring';
+    productIds: string[];
+    providerSubscriptionId: string | null;
+  }[]>;
+  listActiveGrants(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
+  listSubscriptions(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
+}
+
+export interface EntitlementKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+    weight: number;
+  }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    weight: number;
+  }): Promise<void>;
 }
 
 export interface ShopManagementKeyRateLimitRepository {

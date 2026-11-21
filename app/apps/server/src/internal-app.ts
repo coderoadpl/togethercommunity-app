@@ -497,6 +497,7 @@ import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
 import { registerChangeProposalRoutes } from './change-proposal-routes.js';
+import { registerEntitlementCheckRoute, registerEntitlementKeyRoutes } from './entitlement-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1343,6 +1344,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
+  registerEntitlementCheckRoute(app, deps);
   registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
@@ -2425,6 +2427,8 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       deps,
     ));
   });
+
+  registerEntitlementKeyRoutes(app, deps);
 
   app.get(API_PATHS.apiKeyImportAudit, async (c) => {
     const parsed = apiKeyImportAuditQuerySchema.safeParse({

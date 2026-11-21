@@ -620,14 +620,14 @@ scopes on every shop key.
   time bounds of dry runs and approvals, that bounds the cost of the
   replaying dry runs.
 - **Off switch.** The server variable `SHOP_MANAGEMENT_KEYS` set to `disabled`
-  answers every request under `/api/m2m/shop` with `404` before any session,
+  answers every request under `/api/m2m/shop` and `/api/m2m/entitlements` with `404` before any session,
   cookie or key is read, records only the switch state on the span, performs
   no key lookup and refuses key creation; existing keys stay listable,
   revocable and purgeable. An unknown value stops the server from booting.
 - **Purge.** `POST /api/api-keys/shop-management/purge` is the owner's kill
-  switch for one workspace: it deletes every shop key of the workspace, revoked
-  or not, with its rate-limit buckets, in one transaction. The legacy keys are
-  untouched.
+  switch for one workspace: it deletes every shop key and every entitlement key
+  of the workspace, revoked or not, with their rate-limit buckets, in one
+  transaction. The legacy keys are untouched.
 - **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
@@ -731,6 +731,99 @@ Whoever holds a key can change that workspace's shop within its scopes and,
 with `shop:integrations:write`, its payment configuration, until the key
 expires or is revoked; the owner accepted this risk. See
 [Shop management keys](shop-management-keys.md) for the procedure.
+
+### Entitlement keys
+
+Another application of the workspace owner may ask whether a person currently
+has access to the workspace's products ([integration guide](entitlement-check.md)).
+It uses an entitlement key: a separate key kind in its own table,
+`entitlement_keys`, next to shop management keys and the legacy keys, and it
+reaches exactly one route, `POST /api/m2m/entitlements/check`.
+
+- **Separate kind.** The stored hash is taken over the secret in its own hash
+  domain, and every other machine route looks keys up in its own table, so an
+  entitlement key is unknown on every other route and a shop or legacy key is
+  unknown on the check route. A release without entitlement keys never reads
+  their table, so after a rollback each such key fails closed by itself and the
+  shop key list and authentication are unchanged (no closed scope list of an
+  older release meets a new value).
+- **Binding and revalidation.** A key belongs to one workspace. Only a verified
+  owner in their own session with a direct workspace grant (no member view, no
+  key, no organization-derived role) creates, lists or revokes keys. Every
+  check re-reads the key and the issuer: unrevoked, unexpired, issuer verified
+  and still a direct owner. A missing key answers `401 Missing API key`; every
+  other failure answers the same `401 Invalid API key`.
+- **Scopes.** `entitlements:check` (required; grants only `entitlement:check`)
+  and `entitlements:members:read` (optional; grants `entitlement:member:read`),
+  intersected with the owner's capabilities. The use-case also refuses any
+  caller that is not an entitlement key, so an owner session or a shop key
+  cannot reach it. A key may carry a product allow-list of at most 50 products
+  of its workspace; a request naming another product is `403` without a partial
+  answer. Expiry is mandatory and at most 90 days.
+- **Read-only, no session, no CORS.** The route refuses a `Cookie` or an
+  `Authorization` header with `401`, is classified `api-key` in the request
+  origin policy and sends no CORS headers. It writes nothing but its history
+  row and its rate-limit bucket.
+- **Matching.** An e-mail address is looked up as an account first: the
+  account must have a verified e-mail address, and the member is the
+  workspace's member row of that account (unique per workspace and account),
+  never a row matched by its stored e-mail. Deleted and erased members never
+  match. A member id is accepted only from a key holding
+  `entitlements:members:read`, the scope that hands member ids out; imported
+  member ids can be chosen by the importer, so they are not treated as secret.
+  Either way the member must also have at least one `sign-in` event in
+  `member_events` of the answering workspace. The account's verified flag
+  alone is not proof: an import by any workspace owner sets it for an address
+  without an account. A sign-in to this workspace (magic link, password,
+  passkey or Google) is made by the person. A buyer created by a payment
+  therefore matches only after their first sign-in, normally through the
+  link in the purchase e-mail.
+- **Purchase-email mode (opt-in).** A key created with `match:
+  "purchase-email"` (explicit, immutable, listed, and recorded on every
+  history row of the key) also matches an unverified address, but only for
+  access this workspace's payment flow created for it. The member must be the
+  workspace's only member with that checkout-normalized address. The access
+  must be an active grant from a payment, backed by a paid, live, not
+  cancelled one-time Stripe checkout order, or by an `active` or `past_due`
+  subscription that a paid Stripe checkout order opened (matched by its
+  subscription id). The grant's own source is not trusted alone, because
+  renewing a grant keeps its first source. Owner grants, enrollments, imports,
+  staff-adopted subscriptions, registrations without a payment, sold-out
+  cancellations, refunds and lapsed subscriptions never match. The answer says
+  `identity: "purchase-email"`, and verifying the address is the other
+  application's duty. A key in this mode runs the verified and the
+  purchase lookups for every e-mail subject, so its query sequence does not
+  depend on who exists.
+- **Indistinguishability.** Without `entitlements:members:read` an unknown
+  person, an unverified address, a deleted or erased member and a known person
+  without access give the same entry (`access: false`, `source`,
+  `subscription` and `member` null) or the same empty list, and run the same
+  sequence of queries against ids no row carries. Staff roles are ignored: the
+  answer comes from live grants only, so it never reveals who is staff.
+- **Answer.** Per product: `access`, `source`, the subscription status, period
+  end and cancel flag, and the check time. Never a name, an address, an order,
+  an amount, a coupon or a provider id.
+- **Rate limits.** Per key, weighted by the number of people in the request
+  (at most 25): 300 a minute and 20,000 a day, in
+  `entitlement_key_rate_limit_buckets`, with `Retry-After`. The key is
+  authenticated before the body is read; an unreadable body costs one unit.
+- **History without the identifier.** Each check that passed authentication
+  and the rate limit writes one `request` row to `shop_management_key_events`
+  (route, method, key id, issuer, and the key's match mode as the resource) before it reads anything, and answers `503`
+  if the row cannot be written. The row holds no identifier and no count. A
+  salted hash was rejected: with the salt in the same database, a hash of an
+  e-mail address is a stable pseudonym that anyone with database access can
+  confirm by guessing, and the history needs only which key was used and when.
+- **Identifiers kept out of errors and logs.** E-mail addresses travel only in
+  the `POST` body, never in a URL. Every query of the check runs behind an
+  adapter boundary that replaces a database error, whose message carries the
+  bound parameters, with `Entitlement check database query failed` and the
+  SQLSTATE. Validation errors carry field paths and messages, not values.
+  Telemetry records the route, the status and the key attribution only.
+
+Whoever holds an entitlement key learns, within its products, whether a person
+of their choice is a customer with access, at the rate limit, until the key
+expires or is revoked.
 
 ## Public newsletter signup
 

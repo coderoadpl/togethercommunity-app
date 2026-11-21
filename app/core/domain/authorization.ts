@@ -143,6 +143,8 @@ export const CAPABILITIES = [
   'organization:api-key:read',
   'organization:api-key:write',
   'organization:audit:read',
+  'entitlement:check',
+  'entitlement:member:read',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -307,6 +309,12 @@ const ownerDelegatedProposalCapabilities = [
   'proposal:own:manage',
 ] as const satisfies readonly Capability[];
 
+// Only an entitlement key exercises these; the owner holds them so the key's owner intersection keeps them.
+const ownerDelegatedEntitlementCapabilities = [
+  'entitlement:check',
+  'entitlement:member:read',
+] as const satisfies readonly Capability[];
+
 const organizationAdminCapabilities = [
   'organization:read',
   'organization:member:read',
@@ -329,7 +337,7 @@ const organizationOwnerOnlyCapabilities = [
 export const ORGANIZATION_PRINCIPALS = ['organization-owner', 'organization-admin'] as const satisfies readonly Principal[];
 
 export const ROLE_CAPABILITIES: CapabilityMatrix = {
-  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities, ...ownerDelegatedProposalCapabilities],
+  owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities, ...ownerDelegatedProposalCapabilities, ...ownerDelegatedEntitlementCapabilities],
   admin: sharedStaffCapabilities,
   member: memberSelfCapabilities,
   authenticated: [

@@ -26,11 +26,13 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
+`entitlement-key (scope intersect issuing owner)` is the principal of `POST /api/m2m/entitlements/check`. It is a separate key kind (`core/domain/entitlement-key.ts`, table `entitlement_keys`) whose scopes grant only `entitlement:check` and `entitlement:member:read`, intersected with the issuing owner's capabilities and re-read on every request; the use-case also refuses any caller that is not an entitlement key. Entitlement keys are created, listed and revoked only by a verified owner in their own session with a direct workspace grant, and the issuer must still hold a direct owner grant when the key is used.
+
 `shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings` instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`) that only the owner can approve. The `/api/m2m/shop/proposals` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 144. Route rows: 535. Exported `Ctx` use-case rows: 400.
+Closed capability count: 146. Route rows: 539. Exported `Ctx` use-case rows: 404.
 
 ## Human-readable diff
 
@@ -191,6 +193,7 @@ no changes
 | `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `GET /api/reports/activity-summary` | report:read | report-api-key | report-api-key | yes | Tenant API key |
 | `GET /api/reports/member-activity` | report:read | report-api-key | report-api-key | yes | Tenant API key |
+| `POST /api/m2m/entitlements/check` | entitlement:check | entitlement-key (scope intersect issuing owner) | entitlement-key (scope intersect issuing owner) | yes | Entitlement key |
 | `GET /api/m2m/shop/products` | product:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products/update` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
@@ -420,6 +423,9 @@ no changes
 | `DELETE /api/api-keys/shop-management/:id` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/api-keys/shop-management/purge` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/api-keys/shop-management/events` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/api-keys/entitlement` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/api-keys/entitlement` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
+| `DELETE /api/api-keys/entitlement/:id` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/api-keys/:id/import-audit` | api-key:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/tenant-secrets` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/tenant-secrets` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -667,6 +673,10 @@ no changes
 | `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
+| `entitlement-check.ts#checkEntitlements` | entitlement:check | entitlement-key (scope intersect issuing owner) | entitlement-key (scope intersect issuing owner) | yes | core/server/usecases/entitlement-check.ts authorization call |
+| `entitlement-keys.ts#createEntitlementKey` | api-key:write | owner | owner | yes | core/server/usecases/entitlement-keys.ts authorization call |
+| `entitlement-keys.ts#listEntitlementKeys` | api-key:write | owner | owner | yes | core/server/usecases/entitlement-keys.ts authorization call |
+| `entitlement-keys.ts#revokeEntitlementKey` | api-key:write | owner | owner | yes | core/server/usecases/entitlement-keys.ts authorization call |
 | `entitlements.ts#resolveMemberEntitlements` | member:product:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
 | `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts authorization call |
@@ -987,14 +997,16 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
+| api-key | `apps/server/src/entitlement-routes.ts:4` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/entitlement-routes.ts:55` | `const key = headers.get(API_KEY_HEADER);` |
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1293` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1295` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1317` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1331` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1861` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1861` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1294` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1296` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1318` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1332` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1005,7 +1017,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:679` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:114` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:119` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -1018,15 +1030,16 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/community.ts:179` | `if (tenantId !== null && identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:193` | `if (ctx.identity.staffRole !== null) return false;` |
 | staff-role | `core/server/usecases/community.ts:395` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
-| member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
-| member-scope | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
-| member-scope | `core/server/usecases/entitlements.ts:132` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:181` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
-| member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| staff-role | `core/server/usecases/entitlement-key-auth.ts:77` | `if (grant?.staffRole !== 'owner' \|\| grant.source !== 'direct' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
+| member-scope | `core/server/usecases/entitlements.ts:62` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:63` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
+| staff-role | `core/server/usecases/entitlements.ts:69` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
+| member-scope | `core/server/usecases/entitlements.ts:69` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
+| member-scope | `core/server/usecases/entitlements.ts:133` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:182` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:199` | `} else if (ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:233` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
+| member-scope | `core/server/usecases/entitlements.ts:259` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/image-assets.ts:277` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:288` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:372` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |

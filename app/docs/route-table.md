@@ -158,6 +158,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/import/progress` | self-authenticating | mutating | m2m import progress |
 | `GET /api/reports/activity-summary` | self-authenticating | read | activity summary |
 | `GET /api/reports/member-activity` | self-authenticating | read | member activity |
+| `POST /api/m2m/entitlements/check` | self-authenticating | mutating | m2m entitlement check |
 | `GET /api/m2m/shop/products` | self-authenticating | read | api m2m shop products |
 | `POST /api/m2m/shop/products` | self-authenticating | mutating | api m2m shop products |
 | `POST /api/m2m/shop/products/update` | self-authenticating | mutating | api m2m shop products update |
@@ -387,6 +388,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/api-keys/shop-management/:id` | authenticated | mutating | api keys shop management revoke |
 | `POST /api/api-keys/shop-management/purge` | authenticated | mutating | api keys shop management purge |
 | `GET /api/api-keys/shop-management/events` | authenticated | read | api keys shop management events |
+| `GET /api/api-keys/entitlement` | authenticated | read | api keys entitlement |
+| `POST /api/api-keys/entitlement` | authenticated | mutating | api keys entitlement create |
+| `DELETE /api/api-keys/entitlement/:id` | authenticated | mutating | api keys entitlement revoke |
 | `GET /api/api-keys/:id/import-audit` | authenticated | read | api key import audit |
 | `GET /api/tenant-secrets` | authenticated | read | tenant secrets |
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |

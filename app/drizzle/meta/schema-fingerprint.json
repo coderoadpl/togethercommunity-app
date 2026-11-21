@@ -1,6 +1,6 @@
 {
-  "hash": "97d2d06f33d54139be5963f37d653652e39e2054b6ee08bdd375c4d8364607ab",
-  "shortId": "97d2d06f33d5",
+  "hash": "c442aff5815016b3a14e7dd0ceccc6518830d78a72b764d3ec44e282551cfc1d",
+  "shortId": "c442aff58150",
   "schema": {
     "constraints": [
       {
@@ -84,6 +84,11 @@
         "table": "shop_management_keys"
       },
       {
+        "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes ? 'entitlements:check'::text) AND (scopes <@ '[\"entitlements:check\", \"entitlements:members:read\"]'::jsonb)))",
+        "name": "entitlement_keys_scopes_check",
+        "table": "entitlement_keys"
+      },
+      {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
         "name": "marketing_contacts_tags_check",
         "table": "marketing_contacts"
@@ -107,6 +112,11 @@
         "definition": "CHECK (((mode <> 'propose'::text) OR (NOT (scopes ?| ARRAY['shop:fulfilment:write'::text, 'shop:integrations:write'::text]))))",
         "name": "shop_management_keys_propose_scopes_check",
         "table": "shop_management_keys"
+      },
+      {
+        "definition": "CHECK (((product_ids IS NULL) OR ((jsonb_typeof(product_ids) = 'array'::text) AND ((jsonb_array_length(product_ids) >= 1) AND (jsonb_array_length(product_ids) <= 50)))))",
+        "name": "entitlement_keys_product_ids_check",
+        "table": "entitlement_keys"
       },
       {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
@@ -299,6 +309,11 @@
         "table": "product_stock"
       },
       {
+        "definition": "CHECK ((match = ANY (ARRAY['verified'::text, 'purchase-email'::text])))",
+        "name": "entitlement_keys_match_check",
+        "table": "entitlement_keys"
+      },
+      {
         "definition": "CHECK ((max_workspaces >= 0))",
         "name": "organizations_max_workspaces_check",
         "table": "organizations"
@@ -352,6 +367,11 @@
         "definition": "CHECK ((pending_bytes >= 0))",
         "name": "telemetry_pending_bytes_nonnegative",
         "table": "telemetry_accounting"
+      },
+      {
+        "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
+        "name": "entitlement_key_rate_limit_buckets_period_check",
+        "table": "entitlement_key_rate_limit_buckets"
       },
       {
         "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
@@ -547,6 +567,11 @@
         "definition": "CHECK (singleton)",
         "name": "order_feed_epoch_singleton_check",
         "table": "order_feed_epoch"
+      },
+      {
+        "definition": "FOREIGN KEY (api_key_id) REFERENCES entitlement_keys(id) ON DELETE CASCADE",
+        "name": "entitlement_key_rate_limit_buckets_api_key_id_fkey",
+        "table": "entitlement_key_rate_limit_buckets"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
@@ -972,6 +997,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "email_outbox_tenant_id_tenants_id_fk",
         "table": "email_outbox"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "entitlement_keys_tenant_id_fkey",
+        "table": "entitlement_keys"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1705,6 +1735,11 @@
       },
       {
         "definition": "PRIMARY KEY (api_key_id, period)",
+        "name": "entitlement_key_rate_limit_buckets_api_key_id_period_pk",
+        "table": "entitlement_key_rate_limit_buckets"
+      },
+      {
+        "definition": "PRIMARY KEY (api_key_id, period)",
         "name": "shop_management_key_rate_limit_buckets_api_key_id_period_pk",
         "table": "shop_management_key_rate_limit_buckets"
       },
@@ -1837,6 +1872,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "email_outbox_pkey",
         "table": "email_outbox"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "entitlement_keys_pkey",
+        "table": "entitlement_keys"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2788,6 +2828,11 @@
         "table": "email_outbox"
       },
       {
+        "definition": "CREATE INDEX entitlement_keys_tenant_id_idx ON entitlement_keys USING btree (tenant_id)",
+        "name": "entitlement_keys_tenant_id_idx",
+        "table": "entitlement_keys"
+      },
+      {
         "definition": "CREATE INDEX entity_versions_tenant_entity_created_idx ON entity_versions USING btree (tenant_id, entity_kind, entity_id, created_at DESC)",
         "name": "entity_versions_tenant_entity_created_idx",
         "table": "entity_versions"
@@ -3316,6 +3361,11 @@
         "definition": "CREATE UNIQUE INDEX email_outbox_ses_message_id_uidx ON email_outbox USING btree (ses_message_id) WHERE (ses_message_id IS NOT NULL)",
         "name": "email_outbox_ses_message_id_uidx",
         "table": "email_outbox"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX entitlement_keys_key_hash_uidx ON entitlement_keys USING btree (key_hash)",
+        "name": "entitlement_keys_key_hash_uidx",
+        "table": "entitlement_keys"
       },
       {
         "definition": "CREATE UNIQUE INDEX entity_versions_lesson_edition_uidx ON entity_versions USING btree (tenant_id, entity_id, edition_number) WHERE ((entity_kind = 'course_lesson'::text) AND (edition_number IS NOT NULL))",
@@ -7483,6 +7533,99 @@
       {
         "columns": [
           {
+            "default": "'verified'::text",
+            "generated": "",
+            "identity": "",
+            "name": "match",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "issued_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_ids",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "entitlement_keys"
+      },
+      {
+        "columns": [
+          {
             "default": "'{}'::jsonb",
             "generated": "",
             "identity": "",
@@ -11375,6 +11518,43 @@
           }
         ],
         "name": "api_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "period",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "window_started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "entitlement_key_rate_limit_buckets"
       },
       {
         "columns": [

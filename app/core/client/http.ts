@@ -1,4 +1,12 @@
 import type { Language, OrderChangeFeed } from '#core/domain/index.js';
+import {
+  apiKeysEntitlementCreateOutputSchema,
+  apiKeysEntitlementListOutputSchema,
+  apiKeysEntitlementRevokeOutputSchema,
+  entitlementContracts,
+  type ApiKeysEntitlementCreateInput,
+} from '#core/contract/index.js';
+import type { EntitlementCheckInput } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import { SALES_LINK_VARIANT_PARAM, type AddTenantAdminInput, type RemoveTenantAdminInput } from '#core/domain/index.js';
@@ -2663,6 +2671,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listEntitlementKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysEntitlement.method,
+      API_ROUTES.apiKeysEntitlement.path,
+      apiKeysEntitlementListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createEntitlementKey: (input: ApiKeysEntitlementCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysEntitlementCreate.method,
+      API_ROUTES.apiKeysEntitlementCreate.path,
+      apiKeysEntitlementCreateOutputSchema,
+      input,
+      signal,
+    ),
+  revokeEntitlementKey: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysEntitlementRevoke.method,
+      API_ROUTES.apiKeysEntitlementRevoke.path.replace(':id', encodeURIComponent(input.id)),
+      apiKeysEntitlementRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
   purgeShopManagementKeys: (signal?: AbortSignal) =>
     request(
       options,
@@ -3192,6 +3227,38 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     ...shopProposalMethods(options),
   };
 };
+
+export interface EntitlementClientOptions {
+  baseUrl: string;
+  apiKey: string;
+  tenant?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export const createEntitlementClient = (entitlementOptions: EntitlementClientOptions) => {
+  const options: ApiClientOptions = {
+    baseUrl: entitlementOptions.baseUrl,
+    ...(entitlementOptions.fetchImpl === undefined ? {} : { fetchImpl: entitlementOptions.fetchImpl }),
+    refuseRedirects: { label: 'Entitlement check' },
+    headers: () => ({
+      [API_KEY_HEADER]: entitlementOptions.apiKey,
+      ...(entitlementOptions.tenant === undefined ? {} : { [TENANT_HEADER]: entitlementOptions.tenant }),
+    }),
+  };
+  return {
+    check: (input: EntitlementCheckInput, signal?: AbortSignal) =>
+      request(
+        options,
+        API_ROUTES.m2mEntitlementCheck.method,
+        API_ROUTES.m2mEntitlementCheck.path,
+        entitlementContracts.checkEntitlements.output,
+        input,
+        signal,
+      ),
+  };
+};
+
+export type EntitlementClient = ReturnType<typeof createEntitlementClient>;
 
 export const isProposedChange = (value: { outcome: string }): value is ChangeProposalProposedOutput =>
   value.outcome === 'proposed';

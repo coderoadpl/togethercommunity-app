@@ -93,6 +93,8 @@ import { createActivityReportRepository } from '#adapters/db/activity-reports.js
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
 import { createShopManagementKeyEventRepository } from '#adapters/db/shop-management-key-events.js';
+import { createEntitlementKeyRateLimitRepository, createEntitlementKeyRepository } from '#adapters/db/entitlement-keys.js';
+import { createEntitlementSubjectReader } from '#adapters/db/entitlement-subjects.js';
 import { createShopManagementKeyRateLimitRepository, createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import {
   createImpersonationSessionRepository,
@@ -298,6 +300,9 @@ import type {
   ImportAuditEventRepository,
   ShopManagementKeyEventRepository,
   ShopManagementKeyRateLimitRepository,
+  EntitlementKeyRateLimitRepository,
+  EntitlementKeyRepository,
+  EntitlementSubjectReader,
   ShopManagementKeyRepository,
   ImportRedirectRepository,
   ImportContentRepository,
@@ -571,6 +576,9 @@ export interface AppDeps {
   shopManagementKeyEvents: ShopManagementKeyEventRepository;
   shopManagementKeys: ShopManagementKeyRepository;
   shopManagementKeyRateLimits: ShopManagementKeyRateLimitRepository;
+  entitlementKeys: EntitlementKeyRepository;
+  entitlementKeyRateLimits: EntitlementKeyRateLimitRepository;
+  entitlementSubjects: EntitlementSubjectReader;
   changeProposals: ChangeProposalRepository;
   changeProposalEvents: ChangeProposalEventRepository;
   changeProposalGroups: ChangeProposalGroupRepository;
@@ -1640,6 +1648,9 @@ export const createDeps = (
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
+    entitlementKeys: createEntitlementKeyRepository(db),
+    entitlementKeyRateLimits: createEntitlementKeyRateLimitRepository(db),
+    entitlementSubjects: createEntitlementSubjectReader(db),
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),
     changeProposalGroups: createChangeProposalGroupRepository(db, options.changeProposalBounds),

@@ -49,6 +49,7 @@ import type {
   StorageCorsProbeResult,
   TenantDomainEventKind,
   TenantApiKeyScope,
+  EntitlementKeyScope,
   ShopManagementScope,
 } from '#core/domain/index.js';
 
@@ -1165,6 +1166,52 @@ export const shopManagementKeyEvents = pgTable(
       'shop_management_key_events_shape_check',
       sql`(${table.kind} = 'request' AND ${table.method} IS NOT NULL AND ${table.route} IS NOT NULL) OR (${table.kind} <> 'request' AND ${table.method} IS NULL AND ${table.route} IS NULL AND ${table.resourceId} IS NULL)`,
     ),
+  ],
+);
+
+export const entitlementKeys = pgTable(
+  'entitlement_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    scopes: jsonb('scopes').$type<EntitlementKeyScope[]>().notNull(),
+    productIds: jsonb('product_ids').$type<string[]>(),
+    match: text('match', { enum: ['verified', 'purchase-email'] }).notNull().default('verified'),
+    issuedByUserId: text('issued_by_user_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (table) => [
+    index('entitlement_keys_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('entitlement_keys_key_hash_uidx').on(table.keyHash),
+    check(
+      'entitlement_keys_scopes_check',
+      sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} ? 'entitlements:check' AND ${table.scopes} <@ '["entitlements:check", "entitlements:members:read"]'::jsonb`,
+    ),
+    check(
+      'entitlement_keys_product_ids_check',
+      sql`${table.productIds} IS NULL OR (jsonb_typeof(${table.productIds}) = 'array' AND jsonb_array_length(${table.productIds}) BETWEEN 1 AND 50)`,
+    ),
+    check('entitlement_keys_match_check', sql`${table.match} IN ('verified', 'purchase-email')`),
+  ],
+);
+
+export const entitlementKeyRateLimitBuckets = pgTable(
+  'entitlement_key_rate_limit_buckets',
+  {
+    apiKeyId: text('api_key_id').notNull().references(() => entitlementKeys.id, { onDelete: 'cascade' }),
+    period: text('period', { enum: ['minute', 'day'] }).notNull(),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.apiKeyId, table.period] }),
+    check('entitlement_key_rate_limit_buckets_period_check', sql`${table.period} IN ('minute', 'day')`),
   ],
 );
 

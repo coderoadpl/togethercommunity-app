@@ -13,7 +13,4 @@ export {
   closedLockerPicker,
   lockerEntry,
   reduceLockerPicker,
-  type LockerEntry,
-  type LockerPickerEvent,
-  type LockerPickerState,
 } from './locker-picker.js';

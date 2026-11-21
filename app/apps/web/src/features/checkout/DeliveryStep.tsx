@@ -52,7 +52,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const [picker, sendPicker] = useReducer(reduceLockerPicker, closedLockerPicker);
   const [codeShown, setCodeShown] = useState(() => state.pickupPointCode !== '' && picked === null);
   const entry = lockerEntry(geowidget, picker);
-  const pickerHistory = useHistoryEntry(() => sendPicker({ type: 'cancelled' }));
+  const pickerHistory = useHistoryEntry(() => sendPicker({ type: 'pickerCancelled' }));
   const opener = useRef<HTMLButtonElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
   const committed = useRef<string | null>(null);
@@ -61,18 +61,18 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     committed.current = null;
     setAnnouncedCode(null);
     pickerHistory.enter();
-    sendPicker({ type: 'opened' });
+    sendPicker({ type: 'pickerOpened' });
   };
   const cancelPicker = () => {
     pickerHistory.leave();
-    sendPicker({ type: 'cancelled' });
+    sendPicker({ type: 'pickerCancelled' });
   };
   const commitPoint = (point: PickedPickupPoint) => {
     if (!acceptsPoint(picker)) return;
     committed.current = point.code;
     dispatch({ type: 'pickupPointSelected', point });
     pickerHistory.leave();
-    sendPicker({ type: 'pointPicked' });
+    sendPicker({ type: 'pointSelected' });
   };
   const pickerExited = () => {
     (opener.current ?? codeInput.current)?.focus();

@@ -11,8 +11,5 @@ export {
   closedLockerPicker,
   lockerEntry,
   reduceLockerPicker,
-  type LockerEntry,
-  type LockerPickerEvent,
-  type LockerPickerState,
 } from './core/index.js';
 export type { CheckoutEvent } from './core/events.js';

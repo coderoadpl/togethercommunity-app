@@ -332,7 +332,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
       lines: [
         { label: t.checkout.breakdownProducts, amount: money(appliedCoupon?.breakdown.originalCents ?? subtotalCents), testId: 'cart-summary-products' },
         ...(appliedCoupon === undefined ? [] : [{ label: t.checkout.breakdownDiscount, amount: `−${money(appliedCoupon.breakdown.discountCents)}`, testId: 'cart-summary-discount' }]),
-        ...(delivery.status === 'ready' ? [{ label: t.checkout.breakdownDelivery, amount: money(deliveryCents), testId: 'cart-summary-delivery' }] : []),
+        ...(delivery.status === 'not_required' ? [] : [{
+          label: t.checkout.breakdownDelivery,
+          amount: delivery.status === 'ready' ? money(deliveryCents) : t.checkout.cartDeliveryNotChosen,
+          testId: 'cart-summary-delivery',
+        }]),
       ],
       total: { label: t.checkout.breakdownTotal, amount: money(payableCents), testId: 'cart-summary-total' },
     };

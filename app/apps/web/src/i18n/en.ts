@@ -3190,6 +3190,7 @@ export const en: Messages = {
     cartStockLowered: ({ count }) => format('Only {count} left. Quantity lowered to {count}.', { count }),
     cartLineSoldOut: 'Sold out. Remove it to continue.',
     cartPayBlockedLines: 'Remove the products marked above to continue.',
+    cartDeliveryNotChosen: 'Not chosen yet',
     cartStockRefusal: ({ title }) => format('Not enough of “{title}” is left for this order. The cart now shows the current stock.', { title }),
   },
   directory: {

@@ -2874,6 +2874,7 @@ export interface Messages {
     cartStockLowered: (params: { count: number }) => string;
     cartLineSoldOut: string;
     cartPayBlockedLines: string;
+    cartDeliveryNotChosen: string;
     cartStockRefusal: (params: { title: string }) => string;
   };
   directory: {

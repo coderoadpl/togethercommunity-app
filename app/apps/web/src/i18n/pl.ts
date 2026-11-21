@@ -3214,6 +3214,7 @@ export const pl: Messages = {
     cartStockLowered: ({ count }) => format('Zostało tylko {count} szt. Zmniejszyliśmy ilość do {count}.', { count }),
     cartLineSoldOut: 'Wyprzedane. Usuń ten produkt, aby kontynuować.',
     cartPayBlockedLines: 'Usuń produkty oznaczone powyżej, aby kontynuować.',
+    cartDeliveryNotChosen: 'Jeszcze nie wybrano',
     cartStockRefusal: ({ title }) => format('Produktu „{title}” nie ma już w takiej ilości. Koszyk pokazuje teraz aktualny stan.', { title }),
   },
   directory: {

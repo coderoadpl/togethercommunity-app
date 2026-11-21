@@ -262,6 +262,7 @@ describe('hosted cart checkout', () => {
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(summaryRows()).toEqual([
       `${en.checkout.breakdownProducts} ${pln(9500)}`,
+      `${en.checkout.breakdownDelivery} ${en.checkout.cartDeliveryNotChosen}`,
       `${en.checkout.breakdownTotal} ${pln(9500)}`,
     ]);
     expect(screen.getByTestId('cart-summary').nextElementSibling).toBe(screen.getByTestId('checkout-pay-cta'));
@@ -272,6 +273,16 @@ describe('hosted cart checkout', () => {
       `${en.checkout.breakdownTotal} ${pln(11499)}`,
     ]);
     expect(summaryAmount('total')).toHaveTextContent(exact(pln(11499)));
+  });
+
+  it('shows no delivery row for a cart that ships nothing', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(summaryRows()).toEqual([
+      `${en.checkout.breakdownProducts} ${pln(2500)}`,
+      `${en.checkout.breakdownTotal} ${pln(2500)}`,
+    ]);
   });
 
   it('caps a stepper at the pieces left, says the quantity was lowered, and drops that once the buyer changes it', async () => {

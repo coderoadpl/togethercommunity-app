@@ -88,7 +88,7 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{
 
 export const isSameOriginPublicAssetPath = (value: string): boolean => PUBLIC_ASSET_PATH.test(value);
 
-export const IMAGE_FINGERPRINT_LENGTH = 12;
+const IMAGE_FINGERPRINT_LENGTH = 12;
 
 const DIGEST_TAIL_LENGTH = 4;
 

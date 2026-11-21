@@ -316,6 +316,11 @@ describe('the image addresses a propose-mode key may propose', () => {
     for (const coverUrl of [othersCover, neighbourCover, logo]) {
       expect(await h.propose('product.update', { id: 'product-mug', coverUrl })).toMatchObject({ ok: false, error: { code: 'validation' } });
     }
+    for (const coverUrl of [othersCover, 'https://cdn.example.test/new-cover.png']) {
+      expect(await h.propose('product.create', { title: 'Poster', slug: 'poster', type: 'physical', priceCents: 3900, coverUrl })).toMatchObject({
+        ok: false, error: { code: 'validation', message: 'Invalid product payload', details: { fieldErrors: { coverUrl: [expect.any(String)] } } },
+      });
+    }
     expect(await h.propose('settings.update', { faviconUrl: ownCover })).toMatchObject({
       ok: false, error: { code: 'validation', message: 'Invalid shop settings', details: { fieldErrors: { faviconUrl: [expect.any(String)] } } },
     });
@@ -721,6 +726,36 @@ describe('the owner preview of a proposed image', () => {
     const id = await h.proposed('settings.update', { logoUrl: logo });
     expect(await getChangeProposalImage(ownerSession, { id, digest: sha256HexOfBytes(SVG) }, h.deps))
       .toMatchObject({ ok: true, value: { contentType: 'image/svg+xml', disposition: 'attachment' } });
+  });
+
+  it('serves the published copy of an address an earlier approval published and a live field shows, and nothing once no field shows it', async () => {
+    const h = harness();
+    const bytes = PNG(1);
+    const cover = await h.upload(bytes);
+    const first = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    expect(await approveChangeProposal(ownerSession, { id: first }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.store.imageRows).toEqual([]);
+    const again = await h.proposed('product.update', { id: 'product-live', coverUrl: cover });
+
+    expect(await getChangeProposalImage(ownerSession, { id: again, digest: sha256HexOfBytes(bytes) }, h.deps)).toEqual({
+      ok: true,
+      value: { bytes, contentType: 'image/png', disposition: 'inline', fileName: `${sha256HexOfBytes(bytes)}.png` },
+    });
+    expect(await getChangeProposalImage({ identity: identity({ emailVerified: false }) }, { id: again, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false });
+
+    const [published] = h.publicKeys();
+    if (published === undefined) throw new Error('missing published image');
+    h.objects.objects.set(published, { bytes: PNG(9), contentType: 'image/png' });
+    expect(await getChangeProposalImage(ownerSession, { id: again, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const mug = h.state.products.find((candidate) => candidate.id === 'product-mug');
+    if (mug === undefined) throw new Error('missing product');
+    mug.coverUrl = null;
+    h.objects.objects.set(published, { bytes, contentType: 'image/png' });
+    expect(await getChangeProposalImage(ownerSession, { id: again, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it.each([

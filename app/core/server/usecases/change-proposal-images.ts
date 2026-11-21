@@ -486,12 +486,25 @@ export interface ChangeProposalImagePreview {
 
 export interface ChangeProposalImagePreviewDeps {
   changeProposals: Pick<ChangeProposalRepository, 'findById'>;
-  quarantinedImages: Pick<QuarantinedImageRepository, 'find'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'find' | 'inLiveUse'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   contentHash: ContentHash;
   clock: Clock;
 }
+
+/** An attached address with no quarantined row is accepted only while a live field shows it, so its published copy is what approval keeps. */
+const previewObjectKey = async (
+  tenantId: string,
+  proposal: ChangeProposal,
+  image: ProposalImageReference,
+  deps: ChangeProposalImagePreviewDeps,
+): Promise<string | null> => {
+  if (await deps.quarantinedImages.find(tenantId, proposal.proposedByKeyId, image) !== null) {
+    return proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image);
+  }
+  return await deps.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image)) ? proposalImagePublishedKey(tenantId, image) : null;
+};
 
 export const getChangeProposalImage = async (
   ctx: Ctx,
@@ -507,11 +520,13 @@ export const getChangeProposalImage = async (
   const proposal = await deps.changeProposals.findById(tenantId, parsed.data.id);
   if (proposal === null || changeProposalDisplayStatus(proposal, deps.clock.nowIso()) !== 'pending') return err(missing);
   const image = changeProposalImageReferences(proposal.operation, proposal.input).find((candidate) => candidate.digest === parsed.data.digest);
-  if (image === undefined || await deps.quarantinedImages.find(tenantId, proposal.proposedByKeyId, image) === null) return err(missing);
+  if (image === undefined) return err(missing);
+  const objectKey = await previewObjectKey(tenantId, proposal, image, deps);
+  if (objectKey === null) return err(missing);
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const read = await deps.storage.getObject({
-    url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
+    url: deps.storage.objectUrl(configuration.value, objectKey).toString(),
     ...credentialsOf(configuration.value),
   }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
   if (!read.ok) return read.error.code === 'not_found' ? err(missing) : read;

@@ -8,7 +8,7 @@ import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createTenantSecretRepository } from '#adapters/db/repositories.js';
-import { changeProposalImages, products, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
+import { changeProposalImages, members, products, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   API_PATHS,
@@ -303,6 +303,14 @@ describe('attaching a quarantined image', () => {
       expect(response.status, label).toBe(400);
       expect(JSON.stringify(await response.json()), label).toContain('Must be empty, unchanged, an existing product-cover image of this workspace, or an image this key uploaded for approval');
     }
+    for (const [coverUrl, label] of [
+      ['https://images.example.test/new-cover.png', 'a foreign address'],
+      [othersCover, 'another key\'s image'],
+    ] as const) {
+      const response = await keyed(key.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Refused handbook', type: 'physical', priceCents: 1000, coverUrl });
+      expect(response.status, `product.create with ${label}`).toBe(400);
+      expect(JSON.stringify(await response.json()), label).toContain('"coverUrl":["Must be empty, unchanged, an existing product-cover image of this workspace, or an image this key uploaded for approval"]');
+    }
     const settings = await keyed(key.secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { faviconUrl: logo });
     expect(settings.status).toBe(400);
     const proposal = await propose(key.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, coverUrl: own });
@@ -331,6 +339,18 @@ describe('the owner preview of a proposed image', () => {
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(new Uint8Array(Buffer.concat([PNG, Buffer.from([3])])));
 
     expect((await sessionRequest(adminToken, 'GET', path)).status).toBe(403);
+    const unverified = await signUp('proposal-image-unverified@example.test', 'Unverified Owner');
+    await database.db.insert(tenantAdmins).values({ id: 'grant-acme-unverified', tenantId: 'acme', userId: unverified.id, role: 'owner' });
+    await database.db.execute(`update "user" set email_verified = false where id = '${unverified.id}'`);
+    expect([401, 403]).toContain((await sessionRequest(unverified.token, 'GET', path)).status);
+    await database.db.insert(members).values({ id: 'member-acme-preview', tenantId: 'acme', userId: 'member-user', email: 'member@example.test', createdAt: now });
+    const started = await sessionRequest(ownerToken, 'POST', API_PATHS.impersonationStart, { memberId: 'member-acme-preview', reason: 'checking the member view' });
+    expect(started.status).toBe(200);
+    const memberView = /^([^;]+)/.exec(started.headers.get('set-cookie') ?? '')?.[1];
+    if (memberView === undefined) throw new Error('missing member view cookie');
+    const asMember = await app.request(`${baseUrl}${path}`, { headers: { host: acmeHost, authorization: `Bearer ${ownerToken}`, cookie: memberView } });
+    expect([401, 403]).toContain(asMember.status);
+    await app.request(`${baseUrl}${API_PATHS.impersonationStop}`, { method: 'POST', headers: { host: acmeHost, authorization: `Bearer ${ownerToken}`, cookie: memberView } });
     for (const secret of [key.secret, (await createShopKey(['shop:catalog:read'], 'direct')).secret]) {
       expect([401, 403]).toContain((await keyed(secret, 'GET', path)).status);
     }
@@ -340,6 +360,32 @@ describe('the owner preview of a proposed image', () => {
     expect((await sessionRequest(ownerToken, 'GET', previewPath(proposal.id, 'not-a-digest'))).status).toBe(400);
 
     expect((await sessionRequest(ownerToken, 'POST', API_PATHS.changeProposalReject.replace(':id', proposal.id), {})).status).toBe(200);
+    expect((await sessionRequest(ownerToken, 'GET', path)).status).toBe(404);
+  });
+
+  it('serves the published copy for a pending proposal that reuses an address an earlier approval published', async () => {
+    const key = await createShopKey(PROPOSE_SCOPES, 'propose');
+    const bytes = Buffer.concat([PNG, Buffer.from([8])]);
+    const url = await quarantinedUrl(key.secret, 'cover', coverFile(bytes));
+    const first = await propose(key.secret, SHOP_CATALOG_ROUTES.updateProduct.path, { id: productId, coverUrl: url });
+    const approved = await sessionRequest(ownerToken, 'POST', API_PATHS.changeProposalApprove.replace(':id', first.id), {});
+    expect(envelope(changeProposalApproveOutputSchema).parse(await approved.json()).data.proposal.status).toBe('applied');
+    expect(await imageRows(key.apiKey.id)).toHaveLength(0);
+
+    const again = await propose(key.secret, SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Second handbook', type: 'physical', priceCents: 1000, coverUrl: url });
+    const path = previewPath(again.id, digestOf(url));
+    const served = await sessionRequest(ownerToken, 'GET', path);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/png');
+    expect(served.headers.get('content-disposition')).toBe(`inline; filename="${digestOf(url)}.png"`);
+    expect(served.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(served.headers.get('cache-control')).toBe('private, no-store');
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(new Uint8Array(bytes));
+    expect((await sessionRequest(adminToken, 'GET', path)).status).toBe(403);
+    expect([401, 403]).toContain((await keyed(key.secret, 'GET', path)).status);
+
+    const settled = await sessionRequest(ownerToken, 'POST', API_PATHS.changeProposalApprove.replace(':id', again.id), {});
+    expect(envelope(changeProposalApproveOutputSchema).parse(await settled.json()).data.proposal.status).toBe('applied');
     expect((await sessionRequest(ownerToken, 'GET', path)).status).toBe(404);
   });
 

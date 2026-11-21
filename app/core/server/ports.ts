@@ -3132,7 +3132,7 @@ interface ChangeProposalPerson {
 }
 
 export interface ChangeProposalPeopleReader {
-  /** Every existing account among `userIds`, read in a fixed number of queries whatever their count. */
+  /** Every account among `userIds` that holds a staff grant in the workspace, read in a fixed number of queries whatever their count. */
   read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
 }
 

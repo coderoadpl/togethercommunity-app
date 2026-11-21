@@ -954,7 +954,10 @@ describe('the owner notification of a submitted proposal', () => {
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
       { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
     ]);
-    expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
+    expect(h.notifications.rows[0]?.payload).toMatchObject({
+      contextKind: 'tenant', contextId: null, authorDisplay: null, snippet: '', domain: null,
+      changeProposal: { keyName: 'Catalogue agent', groupId: null, groupTitle: null },
+    });
     const rowIds = h.notifications.rows.map((row) => row.id);
     expect(h.notifications.published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : event.kind)).toEqual([
       [OWNER, rowIds[0], 'change-proposal'],

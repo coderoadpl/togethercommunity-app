@@ -1003,15 +1003,16 @@ describe('the owner notification of a group', () => {
     const h = harness();
     const { groupId } = await launchChain(h);
 
-    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, payload }) => ({ recipientUserId, kind, sourceKey, contextId: payload.contextId, snippet: payload.snippet }))).toEqual([
-      { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
-      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
+    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, payload }) => ({ recipientUserId, kind, sourceKey, changeProposal: payload.changeProposal }))).toEqual([
+      { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
+      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
     ]);
     const rowIds = new Map(h.notifications.rows.map((row) => [row.recipientUserId, row.id]));
     expect(h.notifications.published).toHaveLength(10);
     expect(h.notifications.published.every((event) => event.kind === 'notification'
       && event.notificationKind === 'change-proposal' && event.notificationId === rowIds.get(event.recipientUserId))).toBe(true);
 
+    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === null && row.payload.snippet === '' && row.payload.contextId === null)).toBe(true);
     for (const row of h.notifications.rows) row.readAt = NOW;
     await h.add(groupId, 'stock.adjust', { productId: 'product-live', delta: 1, reason: 'Count' });
     expect(h.notifications.rows.every((row) => row.readAt === NOW)).toBe(true);
@@ -1020,7 +1021,7 @@ describe('the owner notification of a group', () => {
       .toEqual([[ISSUER, rowIds.get(ISSUER)], [OWNER, rowIds.get(OWNER)]]);
 
     expect((await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Big mug' } }, h.deps)).ok).toBe(true);
-    expect(h.notifications.rows.map((row) => [row.readAt, row.payload.contextId])).toEqual([[null, null], [null, null]]);
+    expect(h.notifications.rows.map((row) => [row.readAt, row.payload.changeProposal?.groupId])).toEqual([[null, null], [null, null]]);
     expect(h.notifications.published).toHaveLength(14);
   });
 
@@ -1028,7 +1029,7 @@ describe('the owner notification of a group', () => {
     const h = harness();
     await h.add(await h.group(), 'product.update', { id: 'product-mug', title: 'Big mug' });
     expect((await submitChangeProposal(keyCtx(OTHER_KEY_ID), { operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, h.deps)).ok).toBe(true);
-    expect(h.notifications.rows.map((row) => [row.recipientUserId, row.sourceKey, row.payload.authorDisplay])).toEqual([
+    expect(h.notifications.rows.map((row) => [row.recipientUserId, row.sourceKey, row.payload.changeProposal?.keyName])).toEqual([
       [ISSUER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
       [OWNER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
       [ISSUER, `change-proposal:${OTHER_KEY_ID}`, 'Second agent'],

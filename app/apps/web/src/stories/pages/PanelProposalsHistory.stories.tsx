@@ -11,7 +11,7 @@ const fixture = {
   calls: {
     ...recorded.calls,
     [fixtureKey('getChangeProposalSummary', [])]: { ok: true, value: { pending: 0, pendingGroups: 0 } },
-    [fixtureKey('listChangeProposals', [{ limit: 50 }])]: { ok: true, value: { proposals: historyChangeProposals, nextCursor: null, hasMore: false } },
+    [fixtureKey('listChangeProposals', [{ status: 'decided', limit: 50 }])]: { ok: true, value: { proposals: historyChangeProposals, nextCursor: null, hasMore: false } },
     ...Object.fromEntries(historyChangeProposals.map((proposal) => [
       fixtureKey('getChangeProposal', [{ id: proposal.id }]),
       { ok: true, value: { proposal: historyDetail(proposal) } },

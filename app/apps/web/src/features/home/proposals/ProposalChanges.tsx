@@ -1,84 +1,97 @@
 import { useId, useState } from 'react';
-import { Button, Stack, Typography } from '@mui/material';
+import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 
-import type { ChangeProposalOwnerView } from '#core/domain/index.js';
+import { stockAdjustmentEventType, type ChangeProposalOwnerView, type ChangeProposalTargetKind } from '#core/domain/index.js';
 
-import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatFileSize, formatPrice } from '../../../lib/format.js';
 import { FinePrint, PreLineText } from '../../../theme.js';
 import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffText } from '../FieldDiff.js';
 import {
+  proposalCreatesRecord,
   proposalRemovesRecord,
   proposalRows,
   stockAdjustmentReason,
+  type DisplayRow,
   type DisplayValue,
   type GroupItemReference,
   type GroupReferences,
 } from './proposal-display.js';
-
-type Translations = Messages['changeProposals'];
+import { enumValueLabel, fieldLabel, Isolated, priceTerms } from './proposal-text.js';
 
 const COLLAPSED_LENGTH = 280;
 
-const isKnownField = (fields: Translations['fields'], field: string): field is keyof Translations['fields'] =>
-  Object.hasOwn(fields, field);
-
-const fieldLabel = (t: Translations, field: string): string =>
-  isKnownField(t.fields, field) ? t.fields[field] : field;
-
-export const referenceText = (t: Translations, reference: GroupItemReference): string => {
+export const ReferenceText = ({ reference }: { reference: GroupItemReference }) => {
+  const t = useTranslations().changeProposals;
   const thing = t.referenceKind[reference.thing];
   return reference.label === null
-    ? t.reference({ thing, position: reference.position })
-    : t.referenceWithLabel({ thing, position: reference.position, label: reference.label });
+    ? <>{t.reference({ thing, position: reference.position })}</>
+    : <Isolated sentence={(label) => t.referenceWithLabel({ thing, position: reference.position, label })} value={reference.label} />;
 };
 
 const amountText = (amountCents: number, currency: string | null, language: string): string =>
   currency === null ? (amountCents / 100).toFixed(2) : formatPrice(amountCents, currency, language);
 
-const valueText = (value: DisplayValue, t: Translations, language: string): string => {
+const ValueText = ({ value }: { value: DisplayValue }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const proposals = t.changeProposals;
   switch (value.kind) {
     case 'empty':
-      return t.emptyValue;
+      return <>{proposals.emptyValue}</>;
     case 'text':
-      return value.text;
+      return <bdi>{value.text}</bdi>;
     case 'boolean':
-      return value.value ? t.yes : t.no;
+      return <>{value.value ? proposals.yes : proposals.no}</>;
     case 'number':
-      return String(value.value);
+      return <>{String(value.value)}</>;
     case 'money':
-      return amountText(value.amountCents, value.currency, language);
-    case 'price': {
-      const price = formatPrice(value.amountCents, value.currency, language);
-      const terms = value.interval === null
-        ? t.priceOneTime({ price })
-        : t.priceRecurring({ price, interval: t.priceInterval[value.interval] });
-      return value.active === false ? t.priceInactive({ price: terms }) : terms;
-    }
+      return <>{amountText(value.amountCents, value.currency, language)}</>;
+    case 'enum':
+      return <>{enumValueLabel(t, value.field, value.value)}</>;
+    case 'price':
+      return <>{priceTerms(proposals, value, language)}</>;
     case 'date':
-      return formatDateTime(value.iso, language);
+      return <>{formatDateTime(value.iso, language)}</>;
     case 'image':
-      return value.path;
+      return <bdi>{value.path}</bdi>;
     case 'reference':
-      return referenceText(t, value);
+      return <ReferenceText reference={value} />;
     case 'file':
-      return value.sizeBytes === null ? value.fileName : `${value.fileName} · ${formatFileSize(value.sizeBytes, language)}`;
+      return value.sizeBytes === null
+        ? <bdi>{value.fileName}</bdi>
+        : <><bdi>{value.fileName}</bdi>{` · ${formatFileSize(value.sizeBytes, language)}`}</>;
     case 'list':
-      return value.items.map((item) => valueText(item, t, language)).join(', ');
+      return <>{value.items.map((item, index) => <span key={index}>{index === 0 ? null : ', '}<ValueText value={item} /></span>)}</>;
     case 'record':
-      return value.entries.map((entry) => `${fieldLabel(t, entry.field)}: ${valueText(entry.value, t, language)}`).join('; ');
+      return <RecordText entries={value.entries} />;
   }
 };
 
-const LongText = ({ text }: { text: string }) => {
+const RecordText = ({ entries }: { entries: Extract<DisplayValue, { kind: 'record' }>['entries'] }) => {
   const t = useTranslations().changeProposals;
-  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      {entries.map((entry, index) => (
+        <span key={entry.field}>
+          {index === 0 ? null : '; '}
+          {`${fieldLabel(t, entry.field)}: `}
+          <ValueText value={entry.value} />
+        </span>
+      ))}
+    </>
+  );
+};
+
+const LongText = ({ text, initiallyExpanded }: { text: string; initiallyExpanded: boolean }) => {
+  const t = useTranslations().changeProposals;
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const id = useId();
   const collapsible = text.length > COLLAPSED_LENGTH;
   return (
     <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
       <PreLineText id={id} variant="body2">
-        {collapsible && !expanded ? `${text.slice(0, COLLAPSED_LENGTH)}…` : text}
+        <bdi>{collapsible && !expanded ? `${text.slice(0, COLLAPSED_LENGTH)}…` : text}</bdi>
       </PreLineText>
       {collapsible ? (
         <Button size="small" variant="text" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}>
@@ -89,95 +102,158 @@ const LongText = ({ text }: { text: string }) => {
   );
 };
 
-const ProposalValue = ({ value }: { value: DisplayValue }) => {
+const ProposalValue = ({ value, initiallyExpanded = false }: { value: DisplayValue; initiallyExpanded?: boolean }) => {
   const t = useTranslations().changeProposals;
-  const { language } = useLanguage();
   switch (value.kind) {
     case 'empty':
       return <FieldDiffEmpty>{t.emptyValue}</FieldDiffEmpty>;
     case 'text':
-      return value.long ? <LongText text={value.text} /> : <FieldDiffText breakAnywhere={value.breakAnywhere}>{value.text}</FieldDiffText>;
+      return value.long
+        ? <LongText text={value.text} initiallyExpanded={initiallyExpanded} />
+        : <FieldDiffText breakAnywhere={value.breakAnywhere}><bdi>{value.text}</bdi></FieldDiffText>;
     case 'image':
-      return <FieldDiffImage url={value.path} />;
+      return <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} />;
     case 'list':
-      return (
-        <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: valueText(item, t, language) }))} />
-      );
+      return <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: <ValueText value={item} /> }))} />;
     case 'record':
       return (
         <FieldDiffList
           items={value.entries.map((entry) => ({
             key: entry.field,
-            content: `${fieldLabel(t, entry.field)}: ${valueText(entry.value, t, language)}`,
+            content: <>{`${fieldLabel(t, entry.field)}: `}<ValueText value={entry.value} /></>,
           }))}
         />
       );
     case 'boolean':
     case 'number':
     case 'money':
+    case 'enum':
     case 'price':
     case 'date':
     case 'reference':
     case 'file':
-      return <FieldDiffText breakAnywhere>{valueText(value, t, language)}</FieldDiffText>;
+      return <FieldDiffText breakAnywhere><ValueText value={value} /></FieldDiffText>;
   }
 };
 
+const sameCollapsedStart = (row: Extract<DisplayRow, { kind: 'change' }>): boolean =>
+  row.before?.kind === 'text' && row.after?.kind === 'text' && (row.before.long || row.after.long)
+  && row.before.text.slice(0, COLLAPSED_LENGTH) === row.after.text.slice(0, COLLAPSED_LENGTH);
+
 export type StockNow = { tracked: false } | { tracked: true; onHand: number };
+
+type HeadingLevel = 'h3' | 'h4';
+
+const StockDeltaRow = ({
+  row,
+  proposal,
+  stockNow,
+  labelComponent,
+}: {
+  row: Extract<DisplayRow, { kind: 'delta' }>;
+  proposal: Pick<ChangeProposalOwnerView, 'input'>;
+  stockNow: StockNow | undefined;
+  labelComponent: HeadingLevel;
+}) => {
+  const t = useTranslations().changeProposals;
+  const reason = stockAdjustmentReason(proposal);
+  const returned = reason !== null && stockAdjustmentEventType(row.delta, reason) === 'returned';
+  return (
+    <FieldDiffRow
+      label={t.stockDeltaLabel}
+      labelComponent={labelComponent}
+      changed
+      data-testid="proposal-stock-delta"
+      columns={[{
+        label: t.columnAfter,
+        value: (
+          <Stack useFlexGap spacing="0.25rem">
+            <Typography variant="body1" component="p">{t.stockDelta({ delta: row.delta })}</Typography>
+            {reason === null ? null : (
+              <FieldDiffText breakAnywhere>
+                {returned ? t.stockReason({ reason: t.stockReasonReturned }) : <Isolated sentence={(slot) => t.stockReason({ reason: slot })} value={reason} />}
+              </FieldDiffText>
+            )}
+            {stockNow === undefined ? null : (
+              <FinePrint component="p">
+                {stockNow.tracked ? t.stockOnHandNow({ count: stockNow.onHand }) : t.stockNotTrackedNow}
+              </FinePrint>
+            )}
+            <FinePrint component="p">{t.stockDeltaRule}</FinePrint>
+          </Stack>
+        ),
+      }]}
+    />
+  );
+};
+
+const NewRecord = ({ rows, targetKind }: { rows: readonly DisplayRow[]; targetKind: ChangeProposalTargetKind | undefined }) => {
+  const t = useTranslations().changeProposals;
+  return (
+    <Paper variant="outlined" sx={{ p: '1rem' }} data-testid="proposal-new-record">
+      <FinePrint component="p">{t.newRecordCaption}</FinePrint>
+      <Box
+        component="dl"
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(8rem, 13rem) minmax(0, 1fr)' },
+          columnGap: '1rem',
+          rowGap: { xs: '0.15rem', sm: '0.6rem' },
+          m: 0,
+          mt: '0.75rem',
+        }}
+      >
+        {rows.map((row) => row.kind === 'change' && row.after !== null ? (
+          <Box key={row.field} sx={{ display: 'contents' }} data-testid={`proposal-field-${row.field}`}>
+            <Typography component="dt" variant="body2" color="text.secondary" sx={{ pt: { xs: '0.5rem', sm: 0 } }}>
+              {fieldLabel(t, row.field, targetKind)}
+            </Typography>
+            <Box component="dd" sx={{ m: 0, minWidth: 0 }}>
+              <ProposalValue value={row.after} />
+            </Box>
+          </Box>
+        ) : null)}
+      </Box>
+    </Paper>
+  );
+};
 
 export const ProposalFieldRows = ({
   proposal,
+  targetKind,
   references,
   stockNow,
-  labelComponent = 'h4',
+  labelComponent = 'h3',
 }: {
   proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'>;
+  targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
-  labelComponent?: 'h3' | 'h4';
+  labelComponent?: HeadingLevel;
 }) => {
   const t = useTranslations().changeProposals;
   const rows = proposalRows(proposal, references);
   const removal = proposalRemovesRecord(proposal);
   if (rows.length === 0) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
+  if (proposalCreatesRecord(proposal)) return <NewRecord rows={rows} targetKind={targetKind} />;
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
       {rows.map((row) => {
         if (row.kind === 'delta') {
-          const reason = stockAdjustmentReason(proposal);
-          return (
-            <FieldDiffRow
-              key={row.field}
-              label={t.stockDeltaLabel}
-              labelComponent={labelComponent}
-              changed
-              data-testid="proposal-stock-delta"
-              columns={[{
-                label: t.columnAfter,
-                value: (
-                  <Stack useFlexGap spacing="0.25rem">
-                    <Typography variant="body1" component="p">{t.stockDelta({ delta: row.delta })}</Typography>
-                    {reason === null ? null : <FieldDiffText breakAnywhere>{t.stockReason({ reason })}</FieldDiffText>}
-                    {stockNow === undefined ? null : (
-                      <FinePrint component="p">
-                        {stockNow.tracked ? t.stockOnHandNow({ count: stockNow.onHand }) : t.stockNotTrackedNow}
-                      </FinePrint>
-                    )}
-                    <FinePrint component="p">{t.stockDeltaRule}</FinePrint>
-                  </Stack>
-                ),
-              }]}
-            />
-          );
+          return <StockDeltaRow key={row.field} row={row} proposal={proposal} stockNow={stockNow} labelComponent={labelComponent} />;
         }
+        const expanded = sameCollapsedStart(row);
         const columns = [
-          ...(row.before === null ? [] : [{ label: removal ? t.columnRemoved : t.columnNow, value: <ProposalValue value={row.before} /> }]),
-          ...(row.after === null ? [] : [{ label: t.columnAfter, value: <ProposalValue value={row.after} /> }]),
+          ...(row.before === null ? [] : [{
+            label: removal ? t.columnRemoved : t.columnNow,
+            value: <ProposalValue value={row.before} initiallyExpanded={expanded} />,
+          }]),
+          ...(row.after === null ? [] : [{ label: t.columnAfter, value: <ProposalValue value={row.after} initiallyExpanded={expanded} /> }]),
         ];
         return (
           <FieldDiffRow
             key={row.field}
-            label={fieldLabel(t, row.field)}
+            label={fieldLabel(t, row.field, targetKind)}
             labelComponent={labelComponent}
             changed={row.before !== null && row.after !== null}
             data-testid={`proposal-field-${row.field}`}

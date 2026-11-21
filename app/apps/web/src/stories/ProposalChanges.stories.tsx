@@ -51,6 +51,15 @@ const image: Proposal = {
 const reference: Proposal = { input: {}, effect: { productIds: { before: null, after: ['$proposal:proposal-field-guide-product'] } } };
 const unknown: Proposal = { input: {}, effect: { giftWrapping: { before: null, after: 'Recycled paper, red ribbon' } } };
 const stockDelta: Proposal = { input: { productId: 'product-studio-workbook-print', delta: -3, reason: 'Damaged copies' }, effect: { onHand: { delta: -3 } } };
+const [newProduct] = changeProposalGroupItems;
+const settingsChoices: Proposal = {
+  input: {},
+  effect: {
+    invoicingProvider: { before: 'ifirma', after: 'ksef' },
+    ksefSubmissionMode: { before: 'automatic', after: 'manual' },
+    invoiceVatRatePercent: { before: 8, after: 23 },
+  },
+};
 
 const meta = { title: 'Panel/ProposalChanges', decorators: [withAccountPreview], parameters: { locale: 'en', colorScheme: 'light', layout: 'fullscreen' }, render: () => <Rows proposal={text} /> } satisfies Meta;
 export default meta;
@@ -64,5 +73,8 @@ export const ImageValue: Story = { render: () => <Rows proposal={image} /> };
 export const ReferenceValue: Story = { render: () => <Rows proposal={reference} inGroup /> };
 export const UnknownField: Story = { render: () => <Rows proposal={unknown} /> };
 export const StockDelta: Story = { render: () => <Rows proposal={stockDelta} stockNow={{ tracked: true, onHand: 12 }} /> };
+export const NewRecord: Story = { render: () => (newProduct === undefined ? <></> : <Rows proposal={newProduct} />) };
+export const NewRecordPolishMobile: Story = { ...NewRecord, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const EnumeratedValues: Story = { render: () => <Rows proposal={settingsChoices} /> };
 export const TextPolishMobile: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const TextDark: Story = { parameters: { colorScheme: 'dark' } };

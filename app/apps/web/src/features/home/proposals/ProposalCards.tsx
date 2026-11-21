@@ -8,7 +8,6 @@ import {
   CHANGE_PROPOSAL_LIMITS,
   knownChangeProposalOperation,
   type ChangeProposalGroupOwnerView,
-  type ChangeProposalKeyState,
   type ChangeProposalOwnerView,
 } from '#core/domain/index.js';
 
@@ -19,13 +18,16 @@ import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { FinePrint, WrapAnywhereText } from '../../../theme.js';
-import { ProposalFieldRows, referenceText, type StockNow } from './ProposalChanges.js';
+import { ApprovalSummary } from './ProposalApproval.js';
+import { ProposalFieldRows, ReferenceText, type StockNow } from './ProposalChanges.js';
 import {
   groupReferences,
   proposalTarget,
   stockAdjustmentProductId,
   type GroupReferences,
+  type TargetFacts,
 } from './proposal-display.js';
+import { Isolated, operationTitle, targetPriceTerms } from './proposal-text.js';
 
 type Translations = Messages['changeProposals'];
 
@@ -50,11 +52,6 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-export const operationTitle = (t: Translations, operation: string): string => {
-  const known = knownChangeProposalOperation(operation);
-  return known === null ? t.unknownOperation : t.operation[known];
-};
-
 export const outcomeExplanation = (t: Translations, status: string, reason: string | null): string | null => {
   if (status === 'stale') return t.outcomeStale;
   if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
@@ -68,42 +65,67 @@ const isSettledStatus = (status: string): status is SettledStatus =>
 const titleNamesTarget = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean =>
   proposal.operation === 'settings.update';
 
+type TargetLineFacts = TargetFacts & Pick<ChangeProposalOwnerView, 'operation' | 'targetPrice'>;
+
+const TargetText = ({ proposal, references }: { proposal: TargetLineFacts; references: GroupReferences | undefined }) => {
+  const t = useTranslations().changeProposals;
+  const { language } = useLanguage();
+  const kind = t.targetKind[proposal.target.kind];
+  if (proposal.target.kind === 'settings') return <>{kind}</>;
+  const target = proposalTarget(proposal, references);
+  switch (target.kind) {
+    case 'reference':
+      return <>{`${kind}: `}<ReferenceText reference={target.reference} /></>;
+    case 'label': {
+      const price = proposal.targetPrice;
+      if (price === null) return <>{`${kind}: `}<bdi>{target.label}</bdi></>;
+      const terms = targetPriceTerms(t, price, language);
+      return <Isolated sentence={(product) => t.targetWithPrice({ product, price: terms })} value={target.label} />;
+    }
+    case 'pending':
+      return target.label === null ? <>{`${kind}: ${t.targetPending}`}</> : <>{`${kind}: `}<bdi>{target.label}</bdi></>;
+    case 'gone':
+      return <>{`${kind}: ${t.targetGone}`}</>;
+  }
+};
+
 export const TargetLine = ({
   proposal,
   references,
   inline = false,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'target' | 'targetLabel' | 'input'>;
+  proposal: TargetLineFacts;
   references?: GroupReferences;
   inline?: boolean;
-}) => {
-  const t = useTranslations().changeProposals;
-  if (titleNamesTarget(proposal)) return null;
-  const target = proposalTarget(proposal, references);
-  const kind = t.targetKind[proposal.target.kind];
-  const text = proposal.target.kind === 'settings'
-    ? kind
-    : target.kind === 'reference'
-    ? `${kind}: ${referenceText(t, target.reference)}`
-    : target.kind === 'label'
-      ? `${kind}: ${target.label}`
-      : `${kind}: ${target.label ?? t.targetPending}`;
-  return <WrapAnywhereText variant="body2" color="text.secondary" component={inline ? 'span' : 'p'}>{text}</WrapAnywhereText>;
-};
+}) => titleNamesTarget(proposal) ? null : (
+  <WrapAnywhereText variant="body2" color="text.secondary" component={inline ? 'span' : 'p'} data-testid="proposal-target">
+    <TargetText proposal={proposal} references={references} />
+  </WrapAnywhereText>
+);
 
-const ProposerWarnings = ({ keyState, issuerIsVerifiedOwner }: { keyState: ChangeProposalKeyState; issuerIsVerifiedOwner: boolean }) => {
+type Proposer = Pick<ChangeProposalOwnerView['proposedBy'], 'keyState' | 'issuerIsVerifiedOwner' | 'issuerIsFormerTeamMember'>;
+
+const ProposerWarnings = ({ proposer }: { proposer: Proposer }) => {
   const t = useTranslations().changeProposals;
+  const issuerWarning = proposer.issuerIsFormerTeamMember
+    ? t.warningIssuerFormerTeamMember
+    : proposer.issuerIsVerifiedOwner ? null : t.warningIssuerNotOwner;
   const warnings = [
-    keyState === 'revoked' ? t.warningKeyRevoked : null,
-    keyState === 'purged' ? t.warningKeyPurged : null,
-    keyState === 'expired' ? t.warningKeyExpired : null,
-    issuerIsVerifiedOwner ? null : t.warningIssuerNotOwner,
+    proposer.keyState === 'revoked' ? t.warningKeyRevoked : null,
+    proposer.keyState === 'purged' ? t.warningKeyPurged : null,
+    proposer.keyState === 'expired' ? t.warningKeyExpired : null,
+    issuerWarning,
   ].filter((warning): warning is string => warning !== null);
   return warnings.length === 0 ? null : (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-warnings">
       {warnings.map((warning) => <Alert key={warning} severity="warning">{warning}</Alert>)}
     </Stack>
   );
+};
+
+export const ProposedBy = ({ keyName }: { keyName: string }) => {
+  const t = useTranslations().changeProposals;
+  return <Isolated sentence={(key) => t.proposedBy({ key })} value={keyName} />;
 };
 
 const ProposalMeta = ({
@@ -119,11 +141,25 @@ const ProposalMeta = ({
   const { language } = useLanguage();
   return (
     <Stack useFlexGap spacing="0.15rem">
-      {keyName === null ? null : <WrapAnywhereText variant="body2" component="p">{t.proposedBy({ key: keyName })}</WrapAnywhereText>}
+      {keyName === null ? null : <WrapAnywhereText variant="body2" component="p"><ProposedBy keyName={keyName} /></WrapAnywhereText>}
       <FinePrint component="p">
         {t.proposedAt({ date: formatDateTime(createdAt, language) })}
         {expiresAt === null ? null : ` · ${t.expiresAt({ date: formatDateTime(expiresAt, language) })}`}
       </FinePrint>
+    </Stack>
+  );
+};
+
+export const GroupTitle = ({ title, keyLabel, compact = false }: { title: string; keyLabel: string; compact?: boolean }) => {
+  const t = useTranslations().changeProposals;
+  return (
+    <Stack useFlexGap spacing="0.15rem">
+      <FinePrint component="p">
+        <Isolated sentence={(key) => t.groupTitleAttribution({ key })} value={keyLabel} />
+      </FinePrint>
+      <WrapAnywhereText variant={compact ? 'body2' : 'body1'} component="p" data-testid="proposal-group-title">
+        <bdi>{title}</bdi>
+      </WrapAnywhereText>
     </Stack>
   );
 };
@@ -141,10 +177,10 @@ export const ProposalBody = ({
   live,
   labelComponent,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'input' | 'effect'>;
+  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'input' | 'effect' | 'target'>;
   references?: GroupReferences;
   live: boolean;
-  labelComponent?: 'h3' | 'h4';
+  labelComponent: 'h3' | 'h4';
 }) => {
   const t = useTranslations().changeProposals;
   const stockNow = useStockNow(proposal, live);
@@ -159,9 +195,10 @@ export const ProposalBody = ({
       )}
       <ProposalFieldRows
         proposal={proposal}
+        targetKind={proposal.target.kind}
         {...(references === undefined ? {} : { references })}
         stockNow={stockNow}
-        {...(labelComponent === undefined ? {} : { labelComponent })}
+        labelComponent={labelComponent}
       />
     </Stack>
   );
@@ -188,6 +225,7 @@ const DecisionDialogs = ({
   onClose,
   approveTitle,
   approveBody,
+  approveDisabled = false,
   rejectTitle,
   pending,
   onApprove,
@@ -196,7 +234,8 @@ const DecisionDialogs = ({
   dialog: 'approve' | 'reject' | null;
   onClose: () => void;
   approveTitle: string;
-  approveBody: string;
+  approveBody: ReactNode;
+  approveDisabled?: boolean;
   rejectTitle: string;
   pending: boolean;
   onApprove: () => void;
@@ -209,11 +248,12 @@ const DecisionDialogs = ({
       <ConfirmDialog
         open={dialog === 'approve'}
         title={approveTitle}
-        body={<Typography variant="body2">{approveBody}</Typography>}
+        body={approveBody}
         confirmLabel={t.changeProposals.approveConfirm}
         cancelLabel={t.common.cancel}
         confirmColor="primary"
         pending={pending}
+        confirmDisabled={approveDisabled}
         onConfirm={onApprove}
         onClose={onClose}
         confirmTestId="proposal-approve-confirm"
@@ -359,14 +399,14 @@ export const SingleProposalCard = ({
       )}
     >
       <ProposalMeta keyName={proposal.proposedBy.keyName} createdAt={proposal.createdAt} expiresAt={proposal.expiresAt} />
-      <ProposerWarnings keyState={proposal.proposedBy.keyState} issuerIsVerifiedOwner={proposal.proposedBy.issuerIsVerifiedOwner} />
+      <ProposerWarnings proposer={proposal.proposedBy} />
       {busy ? <CardNotice testId="proposal-busy">{t.changeProposals.busy}</CardNotice> : null}
-      <ProposalBody proposal={proposal} live />
+      <ProposalBody proposal={proposal} live labelComponent="h3" />
       <DecisionDialogs
         dialog={dialog}
         onClose={() => setDialog(null)}
         approveTitle={t.changeProposals.approveTitle}
-        approveBody={t.changeProposals.approveBody({ what: title })}
+        approveBody={<ApprovalSummary proposal={proposal} />}
         rejectTitle={t.changeProposals.rejectTitle}
         pending={pending}
         onApprove={() => approve.mutate({ id: proposal.id })}
@@ -395,6 +435,8 @@ const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerVi
   );
 };
 
+const ID_SEPARATOR = '\n';
+
 export const GroupProposalCard = ({
   groupId,
   itemCount,
@@ -405,10 +447,29 @@ export const GroupProposalCard = ({
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const [changed, setChanged] = useState(false);
+  const [observedIds, setObservedIds] = useState<string | null>(null);
+  const [shownIds, setShownIds] = useState<readonly string[]>([]);
   const groupView = group.data?.group;
   const items = groupView === undefined ? [] : orderedItems(groupView);
+  const itemIds = items.map((item) => item.id);
+  const currentIds = itemIds.join(ID_SEPARATOR);
   const count = groupView === undefined ? itemCount : items.length;
   const heading = t.changeProposals.groupHeading({ count });
+
+  if (groupView !== undefined && observedIds !== currentIds) {
+    setObservedIds(currentIds);
+    if (observedIds !== null) {
+      setChanged(true);
+      setDialog(null);
+    }
+  }
+
+  const acknowledge = (next: 'approve' | 'reject') => {
+    setBusy(false);
+    setChanged(false);
+    setShownIds(itemIds);
+    setDialog(next);
+  };
 
   const groupFailed = async (error: unknown): Promise<void> => {
     setDialog(null);
@@ -435,7 +496,7 @@ export const GroupProposalCard = ({
       const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
       const explanation = outcomeExplanation(t.changeProposals, status, reason);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: decided.title, status, reason });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason });
     },
     onError: groupFailed,
   });
@@ -464,8 +525,8 @@ export const GroupProposalCard = ({
           rejectLabel={t.changeProposals.rejectGroup}
           approvable={approvable}
           pending={pending || group.isFetching}
-          onApprove={() => { setBusy(false); setChanged(false); setDialog('approve'); }}
-          onReject={() => { setBusy(false); setChanged(false); setDialog('reject'); }}
+          onApprove={() => acknowledge('approve')}
+          onReject={() => acknowledge('reject')}
           testIdPrefix="proposal-group"
         />
       )}
@@ -476,12 +537,9 @@ export const GroupProposalCard = ({
         <StatusView state={{ kind: 'error', message: localizePanelError(group.error, t), retry: { label: t.common.retry, onRetry: () => void group.refetch() } }} />
       ) : (
         <>
-          <Stack useFlexGap spacing="0.15rem">
-            <FinePrint component="p">{t.changeProposals.groupTitleAttribution({ key: group.data.group.proposedBy.keyName ?? group.data.group.proposedBy.keyId })}</FinePrint>
-            <WrapAnywhereText variant="body1" component="p" data-testid="proposal-group-title">{group.data.group.title}</WrapAnywhereText>
-          </Stack>
+          <GroupTitle title={group.data.group.title} keyLabel={group.data.group.proposedBy.keyName ?? group.data.group.proposedBy.keyId} />
           <ProposalMeta keyName={group.data.group.proposedBy.keyName} createdAt={group.data.group.createdAt} expiresAt={group.data.group.expiresAt} />
-          <ProposerWarnings keyState={group.data.group.proposedBy.keyState} issuerIsVerifiedOwner={group.data.group.proposedBy.issuerIsVerifiedOwner} />
+          <ProposerWarnings proposer={group.data.group.proposedBy} />
           {changed ? <CardNotice testId="proposal-group-changed">{t.changeProposals.groupChanged}</CardNotice> : null}
           {busy ? <CardNotice testId="proposal-busy">{t.changeProposals.busy}</CardNotice> : null}
           {open ? <Typography variant="body2">{t.changeProposals.groupAllOrNothing}</Typography> : (
@@ -497,11 +555,12 @@ export const GroupProposalCard = ({
       <DecisionDialogs
         dialog={dialog}
         onClose={() => setDialog(null)}
-        approveTitle={t.changeProposals.approveGroupTitle}
-        approveBody={t.changeProposals.approveGroupBody({ count, title: groupView?.title ?? '' })}
+        approveTitle={t.changeProposals.approveGroupTitle({ count: shownIds.length })}
+        approveBody={<Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>}
+        approveDisabled={group.isFetching || changed}
         rejectTitle={t.changeProposals.rejectGroupTitle}
         pending={pending}
-        onApprove={() => approve.mutate({ id: groupId, itemIds: items.map((item) => item.id) })}
+        onApprove={() => approve.mutate({ id: groupId, itemIds: [...shownIds] })}
         onReject={(note) => reject.mutate({ id: groupId, ...(note === '' ? {} : { note }) })}
       />
     </SectionCard>

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
 import { BreakAnywhereText, CoverImageElement, Eyebrow, FinePrint, VersionDiffRow } from '../../theme.js';
@@ -61,13 +61,19 @@ export const FieldDiffList = ({ items }: { items: readonly { key: string; conten
   </Stack>
 );
 
-export const FieldDiffImage = ({ url }: { url: string }) => (
-  <Stack useFlexGap spacing="0.35rem">
-    <Box sx={{ maxWidth: '12rem' }}>
-      <CoverImageElement frame="card" src={url} alt="" />
-    </Box>
-    <BreakAnywhereText component="p" variant="caption">
-      {url}
-    </BreakAnywhereText>
-  </Stack>
-);
+export const FieldDiffImage = ({ url, failedNote }: { url: string; failedNote?: ReactNode }) => {
+  const [failed, setFailed] = useState(false);
+  return (
+    <Stack useFlexGap spacing="0.35rem">
+      {failed ? null : (
+        <Box sx={{ maxWidth: '12rem' }}>
+          <CoverImageElement frame="card" src={url} alt="" onError={() => setFailed(true)} />
+        </Box>
+      )}
+      <BreakAnywhereText component="p" variant="caption">
+        {url}
+      </BreakAnywhereText>
+      {failed && failedNote !== undefined ? <FinePrint component="p">{failedNote}</FinePrint> : null}
+    </Stack>
+  );
+};

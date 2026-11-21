@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type SyntheticEvent } from 'react';
 import { Alert, AlertTitle, Box, Button, Chip, Stack, Tab, Tabs, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { CHANGE_PROPOSAL_WITHDRAWAL_NOTES, type ChangeProposalEventView, type ChangeProposalOwnerView } from '#core/domain/index.js';
 
@@ -14,14 +14,16 @@ import { EntryDate, FinePrint, WrapAnywhereText } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 import {
   GroupProposalCard,
-  operationTitle,
+  GroupTitle,
   outcomeExplanation,
   ProposalBody,
+  ProposedBy,
   SingleProposalCard,
   TargetLine,
   type SettledOutcome,
 } from './ProposalCards.js';
 import { groupReferences } from './proposal-display.js';
+import { Isolated, operationTitle } from './proposal-text.js';
 
 type ProposalTab = 'pending' | 'history';
 
@@ -31,15 +33,15 @@ const PENDING_PAGE_SIZE = 100;
 const HISTORY_PAGE_SIZE = 50;
 
 type PendingCard =
-  | { kind: 'single'; createdAt: string; proposal: ChangeProposalOwnerView }
-  | { kind: 'group'; createdAt: string; groupId: string; itemCount: number };
+  | { kind: 'single'; key: string; createdAt: string; proposal: ChangeProposalOwnerView }
+  | { kind: 'group'; key: string; createdAt: string; groupId: string; itemCount: number };
 
 const pendingCards = (proposals: readonly ChangeProposalOwnerView[]): PendingCard[] => {
   const groups = new Map<string, { createdAt: string; itemCount: number }>();
   const singles: PendingCard[] = [];
   for (const proposal of proposals) {
     if (proposal.groupId === null) {
-      singles.push({ kind: 'single', createdAt: proposal.createdAt, proposal });
+      singles.push({ kind: 'single', key: proposal.id, createdAt: proposal.createdAt, proposal });
       continue;
     }
     const known = groups.get(proposal.groupId);
@@ -48,7 +50,7 @@ const pendingCards = (proposals: readonly ChangeProposalOwnerView[]): PendingCar
       itemCount: (known?.itemCount ?? 0) + 1,
     });
   }
-  const grouped: PendingCard[] = [...groups].map(([groupId, group]) => ({ kind: 'group', groupId, ...group }));
+  const grouped: PendingCard[] = [...groups].map(([groupId, group]) => ({ kind: 'group', key: `group:${groupId}`, groupId, ...group }));
   return [...singles, ...grouped].toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
 };
 
@@ -73,25 +75,50 @@ const SettledNotice = ({ outcome, onDismiss }: { outcome: SettledOutcome; onDism
   );
 };
 
-const PendingList = ({
-  proposals,
-  onLoadMore,
-  loadingMore,
-}: {
-  proposals: readonly ChangeProposalOwnerView[];
-  onLoadMore: (() => void) | null;
-  loadingMore: boolean;
-}) => {
-  const t = useTranslations().changeProposals;
+const PendingTab = () => {
+  const t = useTranslations();
+  const pages = useInfiniteQuery(actions.changeProposalPages({ status: 'pending', limit: PENDING_PAGE_SIZE }));
   const [settled, setSettled] = useState<SettledOutcome[]>([]);
+  const [focusAfterMore, setFocusAfterMore] = useState<{ known: ReadonlySet<string>; pageCount: number } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const cards = pendingCards(proposals);
+  const pageCount = pages.data?.pages.length ?? 0;
+  const cards = pendingCards(pages.data?.pages.flatMap((page) => page.proposals) ?? []);
+  const cardKeys = cards.map((card) => card.key).join('\n');
+  const moreFailed = pages.isFetchNextPageError;
+
+  useEffect(() => {
+    if (focusAfterMore === null) return;
+    if (moreFailed) {
+      setFocusAfterMore(null);
+      return;
+    }
+    if (pageCount <= focusAfterMore.pageCount) return;
+    setFocusAfterMore(null);
+    const first = cardKeys.split('\n').find((key) => !focusAfterMore.known.has(key));
+    const cardElements = listRef.current?.querySelectorAll<HTMLElement>('[data-card-key]') ?? [];
+    [...cardElements].find((element) => element.dataset['cardKey'] === first)?.focus();
+  }, [cardKeys, focusAfterMore, moreFailed, pageCount]);
+
+  if (pages.isPending) return <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
+  if (pages.isError) {
+    return (
+      <StatusView
+        state={{ kind: 'error', message: localizePanelError(pages.error, t), retry: { label: t.common.retry, onRetry: () => void pages.refetch() } }}
+      />
+    );
+  }
+
   const callbacks = {
     onSettled: (outcome: SettledOutcome) => setSettled((current) => [outcome, ...current.filter((entry) => entry.key !== outcome.key)]),
     onDecided: () => listRef.current?.focus(),
   };
+  const loadMore = () => {
+    setFocusAfterMore({ known: new Set(cards.map((card) => card.key)), pageCount });
+    void pages.fetchNextPage();
+  };
+
   return (
-    <Stack ref={listRef} tabIndex={-1} useFlexGap spacing="1.25rem" data-testid="proposals-pending" aria-label={t.tabPending}>
+    <Stack ref={listRef} tabIndex={-1} useFlexGap spacing="1.25rem" data-testid="proposals-pending" aria-label={t.changeProposals.tabPending}>
       {settled.map((outcome) => (
         <SettledNotice
           key={outcome.key}
@@ -102,49 +129,25 @@ const PendingList = ({
           }}
         />
       ))}
-      {cards.length === 0 && !loadingMore ? (
+      {cards.length === 0 ? (
         <StatusView
           data-testid="proposals-pending-empty"
-          state={{ kind: 'empty', title: t.pendingEmptyTitle, body: t.pendingEmptyBody }}
+          state={{ kind: 'empty', title: t.changeProposals.pendingEmptyTitle, body: t.changeProposals.pendingEmptyBody }}
         />
       ) : null}
-      {cards.map((card) => card.kind === 'single' ? (
-        <SingleProposalCard key={card.proposal.id} proposal={card.proposal} {...callbacks} />
-      ) : (
-        <GroupProposalCard key={card.groupId} groupId={card.groupId} itemCount={card.itemCount} {...callbacks} />
+      {cards.map((card) => (
+        <Box key={card.key} data-card-key={card.key} tabIndex={-1}>
+          {card.kind === 'single'
+            ? <SingleProposalCard proposal={card.proposal} {...callbacks} />
+            : <GroupProposalCard groupId={card.groupId} itemCount={card.itemCount} {...callbacks} />}
+        </Box>
       ))}
-      {loadingMore ? <StatusView state={{ kind: 'loading', label: t.loading }} /> : null}
-      {onLoadMore === null ? null : (
-        <Button variant="outlined" onClick={onLoadMore} data-testid="proposals-load-more">{t.loadMore}</Button>
-      )}
+      {pages.isFetchingNextPage ? <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} /> : null}
+      {pages.hasNextPage && !pages.isFetchingNextPage ? (
+        <Button variant="outlined" onClick={loadMore} data-testid="proposals-load-more">{t.changeProposals.loadMore}</Button>
+      ) : null}
     </Stack>
   );
-};
-
-const PendingPage = ({ cursor, earlier }: { cursor: string | undefined; earlier: readonly ChangeProposalOwnerView[] }) => {
-  const t = useTranslations();
-  const page = useQuery(actions.changeProposals({
-    status: 'pending',
-    limit: PENDING_PAGE_SIZE,
-    ...(cursor === undefined ? {} : { cursor }),
-  }));
-  const [more, setMore] = useState(false);
-  if (page.isPending) {
-    return earlier.length === 0
-      ? <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />
-      : <PendingList proposals={earlier} onLoadMore={null} loadingMore />;
-  }
-  if (page.isError) {
-    return (
-      <StatusView
-        state={{ kind: 'error', message: localizePanelError(page.error, t), retry: { label: t.common.retry, onRetry: () => void page.refetch() } }}
-      />
-    );
-  }
-  const proposals = [...earlier, ...page.data.proposals];
-  const next = page.data.nextCursor;
-  if (more && next !== null) return <PendingPage cursor={next} earlier={proposals} />;
-  return <PendingList proposals={proposals} onLoadMore={next === null ? null : () => setMore(true)} loadingMore={false} />;
 };
 
 const eventNote = (t: Translations, event: ChangeProposalEventView): string | null => {
@@ -170,7 +173,7 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
   }
   return (
     <Stack useFlexGap spacing="1rem">
-      <ProposalBody proposal={detail.data.proposal} {...(references === undefined ? {} : { references })} live={false} labelComponent="h4" />
+      <ProposalBody proposal={detail.data.proposal} {...(references === undefined ? {} : { references })} live={false} labelComponent="h3" />
       <Stack useFlexGap spacing="0.35rem">
         <Typography variant="h3" component="h3">{t.changeProposals.timelineHeading}</Typography>
         <Stack component="ol" useFlexGap spacing="0.25rem" sx={{ m: 0, pl: '1.1rem' }} data-testid="proposal-timeline">
@@ -180,7 +183,7 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
               <Typography key={event.sequence} component="li" variant="body2">
                 <EntryDate component="time" dateTime={event.at}>{formatDateTime(event.at, language)}</EntryDate>
                 {` · ${t.changeProposals.event[event.kind]}`}
-                {note === null ? null : ` · ${note}`}
+                {note === null ? null : <>{' · '}<bdi>{note}</bdi></>}
               </Typography>
             );
           })}
@@ -190,48 +193,59 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
   );
 };
 
+const decidedLine = (t: Translations, proposal: ChangeProposalOwnerView, language: string): string | null => {
+  if (proposal.decidedAt === null) return null;
+  const date = formatDateTime(proposal.decidedAt, language);
+  if (proposal.decidedByEmail !== null) return t.decidedBy({ who: proposal.decidedByEmail, date });
+  return proposal.decidedByIsFormerTeamMember ? t.decidedByFormerTeamMember({ date }) : t.decidedByUnknown({ date });
+};
+
 const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView; siblings: readonly ChangeProposalOwnerView[] }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage);
-  const decided = proposal.decidedAt === null
-    ? null
-    : proposal.decidedByEmail === null
-      ? t.decidedByUnknown({ date: formatDateTime(proposal.decidedAt, language) })
-      : t.decidedBy({ who: proposal.decidedByEmail, date: formatDateTime(proposal.decidedAt, language) });
+  const decided = decidedLine(t, proposal, language);
+  const keyName = proposal.proposedBy.keyName;
   return (
     <PanelListRow
       data-testid={`proposal-history-${proposal.id}`}
       title={operationTitle(t, proposal.operation)}
-      badges={<Chip size="small" variant="outlined" label={t.status[proposal.status]} data-testid="proposal-history-status" />}
-      actions={(
-        <Button
-          variant="text"
-          aria-expanded={expanded}
-          aria-controls={detailsId}
-          onClick={() => setExpanded(!expanded)}
-          data-testid="proposal-history-toggle"
-        >
-          {expanded ? t.hideDetails : t.showDetails}
-        </Button>
+      badges={(
+        <>
+          <Chip size="small" variant="outlined" label={t.status[proposal.status]} data-testid="proposal-history-status" />
+          <Button
+            size="small"
+            variant="text"
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            onClick={() => setExpanded(!expanded)}
+            data-testid="proposal-history-toggle"
+            sx={{ ml: 'auto' }}
+          >
+            {expanded ? t.hideDetails : t.showDetails}
+          </Button>
+        </>
       )}
       meta={(
         <>
           <TargetLine proposal={proposal} />
-          {proposal.groupId === null || proposal.groupTitle === null ? null : (
-            <WrapAnywhereText variant="body2" component="p">
-              {t.partOfGroup({ title: proposal.groupTitle, position: proposal.groupPosition ?? 1 })}
-            </WrapAnywhereText>
+          {proposal.groupId === null ? null : (
+            <WrapAnywhereText variant="body2" component="p">{t.partOfGroup({ position: proposal.groupPosition ?? 1 })}</WrapAnywhereText>
+          )}
+          {proposal.groupTitle === null ? null : (
+            <GroupTitle title={proposal.groupTitle} keyLabel={keyName ?? proposal.proposedBy.keyId} compact />
           )}
           <FinePrint component="p">
-            {t.proposedBy({ key: proposal.proposedBy.keyName })}
-            {` · ${t.proposedAt({ date: formatDateTime(proposal.createdAt, language) })}`}
+            {keyName === null ? null : <><ProposedBy keyName={keyName} />{' · '}</>}
+            {t.proposedAt({ date: formatDateTime(proposal.createdAt, language) })}
           </FinePrint>
           {decided === null ? null : <FinePrint component="p">{decided}</FinePrint>}
           {proposal.decisionNote === null ? null : (
-            <WrapAnywhereText variant="body2" component="p">{t.decisionNote({ note: proposal.decisionNote })}</WrapAnywhereText>
+            <WrapAnywhereText variant="body2" component="p">
+              <Isolated sentence={(note) => t.decisionNote({ note })} value={proposal.decisionNote} />
+            </WrapAnywhereText>
           )}
           {explanation === null ? null : <Typography variant="body2" component="p">{explanation}</Typography>}
         </>
@@ -250,7 +264,7 @@ const HistoryTab = () => {
   const t = useTranslations();
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [previousCursors, setPreviousCursors] = useState<(string | undefined)[]>([]);
-  const page = useQuery(actions.changeProposals({ limit: HISTORY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }));
+  const page = useQuery(actions.changeProposals({ status: 'decided', limit: HISTORY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }));
   if (page.isPending) return <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
   if (page.isError) {
     return (
@@ -259,49 +273,49 @@ const HistoryTab = () => {
       />
     );
   }
-  const decided = page.data.proposals.filter((proposal) => proposal.status !== 'pending');
-  const next = page.data.nextCursor;
-  if (decided.length === 0 && next === null && previousCursors.length === 0) {
-    return (
-      <StatusView
-        data-testid="proposals-history-empty"
-        state={{ kind: 'empty', title: t.changeProposals.historyEmptyTitle, body: t.changeProposals.historyEmptyBody }}
-      />
-    );
-  }
+  const { proposals } = page.data;
+  const next = page.data.hasMore ? page.data.nextCursor : null;
+  const paging = previousCursors.length > 0 || next !== null;
   return (
     <Stack useFlexGap spacing="0.75rem" data-testid="proposals-history">
-      {decided.map((proposal) => (
-        <HistoryRow key={proposal.id} proposal={proposal} siblings={page.data.proposals} />
+      {proposals.length === 0 ? (
+        <StatusView
+          data-testid="proposals-history-empty"
+          state={{ kind: 'empty', title: t.changeProposals.historyEmptyTitle, body: t.changeProposals.historyEmptyBody }}
+        />
+      ) : proposals.map((proposal) => (
+        <HistoryRow key={proposal.id} proposal={proposal} siblings={proposals} />
       ))}
-      <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'flex-end' }}>
-        <Button
-          disabled={previousCursors.length === 0}
-          onClick={() => {
-            setCursor(previousCursors.at(-1));
-            setPreviousCursors(previousCursors.slice(0, -1));
-          }}
-        >
-          {t.pagination.previousPage}
-        </Button>
-        <Button
-          data-testid="proposals-history-next"
-          disabled={next === null}
-          onClick={() => {
-            if (next === null) return;
-            setPreviousCursors((history) => [...history, cursor]);
-            setCursor(next);
-          }}
-        >
-          {t.pagination.nextPage}
-        </Button>
-      </Stack>
+      {paging ? (
+        <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'flex-end' }}>
+          <Button
+            disabled={previousCursors.length === 0}
+            onClick={() => {
+              setCursor(previousCursors.at(-1));
+              setPreviousCursors(previousCursors.slice(0, -1));
+            }}
+          >
+            {t.pagination.previousPage}
+          </Button>
+          <Button
+            data-testid="proposals-history-next"
+            disabled={next === null}
+            onClick={() => {
+              if (next === null) return;
+              setPreviousCursors((history) => [...history, cursor]);
+              setCursor(next);
+            }}
+          >
+            {t.pagination.nextPage}
+          </Button>
+        </Stack>
+      ) : null}
     </Stack>
   );
 };
 
 export const ProposalsPanel = () => {
-  const { tenant } = usePanelContext();
+  const { tenant, emailVerified, impersonating = false } = usePanelContext();
   const t = useTranslations();
   const navigate = useNavigate();
   const hash = useRouterState({ select: (state) => state.location.hash });
@@ -313,6 +327,29 @@ export const ProposalsPanel = () => {
         title={t.changeProposals.heading}
         data-testid="proposals-owner-only"
         state={{ kind: 'not-found', title: t.changeProposals.ownerOnlyTitle, body: t.changeProposals.ownerOnlyBody }}
+      />
+    );
+  }
+  if (impersonating) {
+    return (
+      <PanelPage
+        title={t.changeProposals.heading}
+        data-testid="proposals-impersonating"
+        state={{ kind: 'empty', title: t.changeProposals.impersonatingTitle, body: t.changeProposals.impersonatingBody }}
+      />
+    );
+  }
+  if (!emailVerified) {
+    return (
+      <PanelPage
+        title={t.changeProposals.heading}
+        data-testid="proposals-unverified"
+        state={{
+          kind: 'empty',
+          title: t.changeProposals.unverifiedTitle,
+          body: t.changeProposals.unverifiedBody,
+          action: <Button variant="outlined" component={Link} to="/account">{t.panel.myAccount}</Button>,
+        }}
       />
     );
   }
@@ -329,7 +366,7 @@ export const ProposalsPanel = () => {
       </Tabs>
       {tab === 'pending' ? (
         <Box id="proposals-panel-pending" role="tabpanel" aria-labelledby="proposals-tab-pending">
-          <PendingPage cursor={undefined} earlier={[]} />
+          <PendingTab />
         </Box>
       ) : (
         <Box id="proposals-panel-history" role="tabpanel" aria-labelledby="proposals-tab-history">

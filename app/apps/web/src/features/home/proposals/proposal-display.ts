@@ -15,7 +15,15 @@ export type DisplayValue =
   | { kind: 'boolean'; value: boolean }
   | { kind: 'number'; value: number }
   | { kind: 'money'; amountCents: number; currency: string | null }
-  | { kind: 'price'; amountCents: number; currency: string; interval: PriceInterval | null; active: boolean | null }
+  | { kind: 'enum'; field: string; value: string | number }
+  | {
+    kind: 'price';
+    amountCents: number;
+    currency: string;
+    interval: PriceInterval | null;
+    intervalCount: number;
+    active: boolean | null;
+  }
   | { kind: 'date'; iso: string }
   | { kind: 'image'; path: string }
   | { kind: 'reference'; thing: ChangeProposalReferenceKind | 'item'; position: number; label: string | null }
@@ -28,7 +36,7 @@ interface DisplayEntry {
   value: DisplayValue;
 }
 
-type PriceInterval = 'day' | 'week' | 'month' | 'year';
+export type PriceInterval = 'day' | 'week' | 'month' | 'year';
 
 export type DisplayRow =
   | { kind: 'change'; field: string; before: DisplayValue | null; after: DisplayValue | null }
@@ -53,6 +61,12 @@ const HIDDEN_FIELDS = new Set(['exists', 'revision']);
 const MONEY_FIELDS = new Set(['priceCents', 'amountCents']);
 
 const IMAGE_FIELDS = new Set(['coverUrl', 'logoUrl', 'logoDarkUrl', 'faviconUrl', 'ogImageUrl']);
+
+const ENUM_FIELDS = new Set([
+  'type', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'kind', 'interval', 'vatRate',
+  'invoiceVatMode', 'invoiceVatRatePercent', 'invoiceExemptionBasisKind', 'invoicingProvider', 'ksefSubmissionMode',
+  'autoIssueInvoiceScope', 'defaultLanguage',
+]);
 
 const FIELD_ORDER = [
   'title', 'name', 'heading', 'type', 'description', 'slug', 'priceCents', 'amountCents', 'currency', 'kind', 'interval',
@@ -84,7 +98,9 @@ interface ValueContext {
   currency: string | null;
 }
 
-const priceOf = (record: { [key: string]: JsonValue }): DisplayValue | null => {
+export type PriceDisplay = Extract<DisplayValue, { kind: 'price' }>;
+
+export const priceOf = (record: { [key: string]: JsonValue }): PriceDisplay | null => {
   const amountCents = numberField(record, 'amountCents');
   const currency = stringField(record, 'currency');
   if (amountCents === null || currency === null) return null;
@@ -94,6 +110,7 @@ const priceOf = (record: { [key: string]: JsonValue }): DisplayValue | null => {
     amountCents,
     currency,
     interval: record['kind'] === 'recurring' ? intervalOf(record['interval']) : null,
+    intervalCount: numberField(record, 'intervalCount') ?? 1,
     active: typeof active === 'boolean' ? active : null,
   };
 };
@@ -114,6 +131,7 @@ const stringValue = (field: string, value: string, context: ValueContext): Displ
   const reference = referenceOf(value, context.references);
   if (reference !== null) return reference;
   if (IMAGE_FIELDS.has(field) && isSameOriginPublicAssetPath(value)) return { kind: 'image', path: value };
+  if (ENUM_FIELDS.has(field)) return { kind: 'enum', field, value };
   if (ISO_DATE_TIME.test(value) && !Number.isNaN(Date.parse(value))) return { kind: 'date', iso: value };
   const breakAnywhere = !/\s/.test(value);
   return { kind: 'text', text: value, long: value.length > LONG_TEXT_LENGTH || value.includes('\n'), breakAnywhere };
@@ -123,7 +141,8 @@ const displayValue = (field: string, value: JsonValue | undefined, context: Valu
   if (value === undefined || value === null) return { kind: 'empty' };
   if (typeof value === 'string') return stringValue(field, value, context);
   if (typeof value === 'number') {
-    return MONEY_FIELDS.has(field) ? { kind: 'money', amountCents: value, currency: context.currency } : { kind: 'number', value };
+    if (MONEY_FIELDS.has(field)) return { kind: 'money', amountCents: value, currency: context.currency };
+    return ENUM_FIELDS.has(field) ? { kind: 'enum', field, value } : { kind: 'number', value };
   }
   if (typeof value === 'boolean') return { kind: 'boolean', value };
   if (Array.isArray(value)) {
@@ -166,6 +185,9 @@ const existenceChange = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): 'cr
 export const proposalRemovesRecord = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): boolean =>
   existenceChange(proposal) === 'removed';
 
+export const proposalCreatesRecord = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): boolean =>
+  existenceChange(proposal) === 'created';
+
 export const proposalRows = (
   proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'>,
   references: GroupReferences = NO_REFERENCES,
@@ -202,18 +224,21 @@ export const groupReferences = (
 export type TargetDisplay =
   | { kind: 'reference'; reference: GroupItemReference }
   | { kind: 'label'; label: string }
-  | { kind: 'pending'; label: string | null };
+  | { kind: 'pending'; label: string | null }
+  | { kind: 'gone' };
 
-export const proposalTarget = (
-  proposal: Pick<ChangeProposalOwnerView, 'target' | 'targetLabel' | 'input'>,
-  references: GroupReferences = NO_REFERENCES,
-): TargetDisplay => {
+export type TargetFacts = Pick<ChangeProposalOwnerView, 'target' | 'targetLabel' | 'input' | 'appliedResourceId'>;
+
+export const proposalTarget = (proposal: TargetFacts, references: GroupReferences = NO_REFERENCES): TargetDisplay => {
   const { id } = proposal.target;
-  if (id !== null && isChangeProposalReference(id)) {
-    const reference = references.get(id.slice(REFERENCE_PREFIX_LENGTH));
-    if (reference !== undefined) return { kind: 'reference', reference };
+  const reference = id !== null && isChangeProposalReference(id);
+  if (reference) {
+    const item = references.get(id.slice(REFERENCE_PREFIX_LENGTH));
+    if (item !== undefined) return { kind: 'reference', reference: item };
   }
   if (proposal.targetLabel !== null) return { kind: 'label', label: proposal.targetLabel };
+  const created = id === null && proposal.appliedResourceId !== null;
+  if ((id !== null && !reference) || created) return { kind: 'gone' };
   return { kind: 'pending', label: itemLabel({ input: proposal.input, targetLabel: null }) };
 };
 

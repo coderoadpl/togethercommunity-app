@@ -15,7 +15,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(536);
+    expect(inventory.routes).toHaveLength(537);
     expect(inventory.useCases).toHaveLength(406);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
@@ -284,6 +284,7 @@ describe('permission inventory', () => {
       ['GET /api/change-proposals/:id', 'proposal:read'],
       ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
+      ['GET /api/change-proposals/:id/assets/:digest', 'proposal:read'],
       ['GET /api/change-proposals/groups/:id', 'proposal:read'],
       ['POST /api/change-proposals/groups/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/groups/:id/approve', 'proposal:decide'],

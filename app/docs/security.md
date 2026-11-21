@@ -249,9 +249,9 @@ of that change: each document keeps its base value, `'self' https:` on
 `'self' https://*.sentry.io` on `/offer/*` server responses. On a
 server-rendered `/offer/*` form document the map may therefore fail to reach
 InPost's API; the buyer then enters the locker code in the typed input, which
-the delivery step always shows. The page injects the map script and stylesheet only
+the delivery step always offers. The page injects the map script and stylesheet only
 when the workspace has a Geowidget token, the buyer has chosen a parcel locker
-option, the checkout runs in live mode and the viewer holds no staff session
+option and opened the parcel locker picker, the checkout runs in live mode and the viewer holds no staff session
 (owner or admin) for the workspace (owner decision 2026-11-05), so the map code
 never runs next to a staff session or a Stripe test-mode purchase. Success,
 sign-in, member and Studio documents never list that origin. Once the map

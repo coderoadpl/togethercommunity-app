@@ -845,6 +845,17 @@ export interface Messages {
     deliveryEstimate: (params: { min: number; max: number }) => string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
+    lockerChoose: string;
+    lockerChange: string;
+    lockerChangeLabel: string;
+    lockerKnowCode: string;
+    lockerPickerPrompt: string;
+    lockerPickerBack: string;
+    lockerChosenAnnouncement: (point: { code: string; address: string | null }) => string;
+    lockerMapLoading: string;
+    lockerMapFailed: string;
+    lockerPickerMapFailed: string;
+    lockerTypeCode: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
     lockerMapStaffHint: string;
@@ -992,6 +1003,11 @@ export interface Messages {
     model: string;
     batch: string;
     instructions: string;
+    details: string;
+    detailsFor: (params: { name: string }) => string;
+    appliesTo: (params: { count: number }) => string;
+    showMore: string;
+    showLess: string;
   };
   personalization: {
     forLine: (params: { name: string }) => string;
@@ -2942,6 +2958,7 @@ export interface Messages {
     testModeUnavailable: string;
     loading: string;
     checkoutEyebrow: string;
+    orderEyebrow: string;
     eyebrow: (params: { tenant: string }) => string;
     unavailableTitle: string;
     unavailableBody: string;
@@ -2967,6 +2984,12 @@ export interface Messages {
     couponOriginal: (params: { price: string }) => string;
     couponDiscount: (params: { price: string }) => string;
     couponFinal: (params: { price: string }) => string;
+    couponAfterDiscount: (params: { price: string }) => string;
+    couponEmpty: string;
+    couponAppliedRow: (params: { code: string }) => string;
+    couponAppliedLine: (params: { code: string }) => string;
+    couponRemove: string;
+    couponRemoveLabel: (params: { code: string }) => string;
     omnibusLowest: (params: { price: string }) => string;
     couponFirstInvoice: string;
     couponForever: string;
@@ -2982,6 +3005,7 @@ export interface Messages {
     submitIdle: (params: { price: string }) => string;
     submitPending: string;
     freeIdle: (params: { price: string }) => string;
+    freeOrderIdle: string;
     freePending: string;
     payIdle: (params: { price: string }) => string;
     payPending: string;
@@ -3007,6 +3031,8 @@ export interface Messages {
     cancelledBody: string;
     retry: string;
     paymentUnavailable: string;
+    termsOnPageFallbackEmail: string;
+    termsOnPageFallbackTerms: string;
     soldOut: string;
     cartTitle: string;
     cartInvalidTitle: string;
@@ -3027,6 +3053,26 @@ export interface Messages {
     cartProductMissing: string;
     cartCurrencyMismatch: string;
     cartPay: string;
+    stepsLabel: string;
+    stepDelivery: string;
+    stepOrder: string;
+    stepDetailsAndPayment: string;
+    itemCount: (params: { count: number }) => string;
+    summaryDetails: string;
+    summaryDetailsShort: string;
+    breakdownProducts: string;
+    breakdownDiscount: string;
+    breakdownDelivery: string;
+    breakdownTotal: string;
+    goToPayment: (params: { price: string }) => string;
+    nextStep: (params: { email: boolean; address: boolean; terms: boolean }) => string;
+    emailHint: string;
+    couponEmailHint: string;
+    payBlockedDelivery: string;
+    payBlockedLocker: string;
+    payBlockedPersonalizationText: string;
+    payBlockedPersonalizationCondition: string;
+    payBlockedCoupon: string;
   };
   directory: {
     activeConsent: string;

@@ -75,6 +75,7 @@ import {
   forbidden,
   impersonationCookieName,
   integrationUnavailable,
+  stripeTermsUrlMissing,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   notFound,
@@ -10961,7 +10962,7 @@ describe('cart checkout over the public checkout routes', () => {
   const foreignLamp = '00000000-0000-4000-8000-0000000000b1';
   const unknownProduct = '00000000-0000-4000-8000-0000000000c1';
   const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
-  const cartApp = (options: { couponPercent?: number; deliveryCents?: number; returnOrigins?: string[]; linkOnlyProductId?: string; missingProductId?: string } = {}) => {
+  const cartApp = (options: { couponPercent?: number; deliveryCents?: number; returnOrigins?: string[]; linkOnlyProductId?: string; missingProductId?: string; legalUrls?: boolean } = {}) => {
     const catalogue: Product[] = [
       { ...product({ id: poster, tenantId: acme.id, title: 'Poster', published: true }), type: 'physical', vatRate: 8 },
       { ...product({ id: mug, tenantId: acme.id, title: 'Mug', published: true }), type: 'physical', vatRate: 23 },
@@ -10979,7 +10980,8 @@ describe('cart checkout over the public checkout routes', () => {
       .map((item): ProductPrice => ({ id: `price-${item.title.toLowerCase()}`, productId: item.id, tenantId: item.tenantId, amountCents: amounts[item.id] ?? 0, currency: item.currency, kind: 'one_time', interval: null, active: true, createdAt: now }));
     const settings = base.tenants.findSettings;
     base.tenants.findSettings = async (tenantId) => {
-      const stored = await settings(tenantId);
+      const found = await settings(tenantId);
+      const stored = found === null || options.legalUrls !== true ? found : { ...found, termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy' };
       const withOrigins = stored === null || options.returnOrigins === undefined ? stored : { ...stored, checkoutReturnOrigins: options.returnOrigins };
       return withOrigins === null || options.deliveryCents === undefined ? withOrigins : { ...withOrigins, shippingRates: [
         { id: 'courier', label: 'Courier', amountCents: options.deliveryCents, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: true },
@@ -11014,6 +11016,16 @@ describe('cart checkout over the public checkout routes', () => {
   const cartLines = [{ productId: poster, quantity: 2 }, { productId: mug, quantity: 1 }];
   const sessionBody = { lines: cartLines, email: 'buyer@example.test', termsAccepted: true, couponCode: 'CART' };
   const couponBody = { lines: cartLines, email: 'buyer@example.test', couponCode: 'CART' };
+
+  it('keeps the terms on the cart page when the workspace has legal URLs', async () => {
+    const h = cartApp({ legalUrls: true });
+    const refused = await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test' });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Accepting the terms and privacy policy is required' } });
+    expect(h.createCheckoutSession).not.toHaveBeenCalled();
+    expect((await h.post(API_PATHS.checkoutSession, { lines: cartLines, email: 'buyer@example.test', termsAccepted: true })).status).toBe(200);
+    expect(h.createCheckoutSession.mock.calls[0]?.[0]).not.toHaveProperty('stripeTerms');
+  });
 
   it('starts one payment for the cart lines at their quantities and holds stock per line quantity', async () => {
     const h = cartApp();
@@ -12027,6 +12039,163 @@ describe('direct public sales-link checkout', () => {
     expect(createMember).not.toHaveBeenCalled();
     expect(h.orders).toHaveLength(0);
     expect(h.grants).toHaveLength(0);
+  });
+});
+
+describe('workspace checkout terms collected by Stripe', () => {
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json' };
+  const stripeTerms = {
+    termsUrl: 'https://acme.example/terms', privacyUrl: 'https://acme.example/privacy',
+    termsAcceptanceMessage: 'I accept the [Terms](https://acme.example/terms) and the [Privacy policy](https://acme.example/privacy).',
+  };
+  const billing = { nip: '5260250274', companyName: 'Buyer Company', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+  const start = (h: Awaited<ReturnType<typeof directSalesLinkApp>>, body: Record<string, unknown>, extra: Record<string, string> = {}) =>
+    h.app.request(API_PATHS.checkoutSession, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify(body) });
+
+  it.each([
+    ['sales link', { productId: 'print', salesLinkSlug: 'bundle' }],
+    ['single product', { productId: 'digital' }],
+  ])('starts the %s checkout without page terms or an email and lets Stripe collect both', async (_case, selection) => {
+    const h = await directSalesLinkApp();
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const response = await start(h, { ...selection, billing, marketingConsentDefinitionIds: ['marketing'] });
+    expect(response.status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'live', stripeTerms, checkoutConsentCaptureId: expect.any(String) }));
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('customerEmail');
+    expect(capture).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+      id: h.create.mock.calls[0]?.[0].checkoutConsentCaptureId,
+      capture: expect.objectContaining({ termsAccepted: false, selectedDefinitionIds: ['marketing'], billing }),
+    }));
+  });
+
+  it('passes Stripe terms and captures legal URLs for a staff test-mode sales-link checkout', async () => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'staff-user', email: 'staff@example.test', name: 'Staff', emailVerified: true, image: null });
+    h.base.tenantAccess.findStaffGrant = async () => ({ tenant: acme, staffRole: 'admin', source: 'direct' });
+    h.base.secretCrypto.encrypt = (plaintext) => ({ ciphertext: plaintext, iv: 'iv', authTag: 'tag' });
+    h.base.secretCrypto.decrypt = (stored) => ok(stored.ciphertext);
+    h.base.tenantSecrets.findByKey = async (tenantId, key) => ({ id: key, tenantId, key, ciphertext: key.startsWith('stripe.test') ? 'rk_test_slot' : 'rk_live_slot', iv: 'iv', authTag: 'tag', maskedPreview: 'masked', updatedAt: h.base.clock.nowIso() });
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const enabled = await h.app.request(API_PATHS.stripeTestSession, { method: 'POST',
+      headers: { ...headers, cookie: 'session=staff' }, body: '{"enabled":true}' });
+    expect(enabled.status).toBe(200);
+    const cookie = enabled.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const response = await start(h, { productId: 'print', salesLinkSlug: 'bundle' }, { cookie });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      mode: 'test', salesLinkId: 'bundle-link', customerEmail: 'staff@example.test', stripeTerms,
+      checkoutConsentCaptureId: expect.any(String),
+    }));
+    expect(capture).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+      id: h.create.mock.calls[0]?.[0].checkoutConsentCaptureId,
+      capture: expect.objectContaining({ termsAccepted: false, termsUrl: stripeTerms.termsUrl, privacyUrl: stripeTerms.privacyUrl }),
+    }));
+    expect(h.orders).toMatchObject([{ mode: 'test', status: 'pending', salesLinkId: 'bundle-link' }]);
+  });
+
+  it('writes the terms text in the checkout language', async () => {
+    const h = await directSalesLinkApp();
+    expect((await start(h, { productId: 'print', salesLinkSlug: 'bundle', language: 'pl' })).status).toBe(200);
+    expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ stripeTerms: { ...stripeTerms,
+      termsAcceptanceMessage: directSalesLinkCopyPl.termsAcceptanceMessage({ termsUrl: stripeTerms.termsUrl, privacyUrl: stripeTerms.privacyUrl }) } }));
+  });
+
+  it.each([
+    ['sales link', { productId: 'print', salesLinkSlug: 'bundle' }],
+    ['single product', { productId: 'digital' }],
+  ])('passes the signed-in buyer email to Stripe on the %s checkout', async (_case, selection) => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'buyer-user', email: 'member@example.test', name: 'Member', emailVerified: true, image: null });
+    expect((await start(h, selection, { cookie: 'session=buyer' })).status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ stripeTerms, customerEmail: 'member@example.test' }));
+  });
+
+  it('keeps an email the buyer typed over the signed-in one', async () => {
+    const h = await directSalesLinkApp();
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'buyer-user', email: 'member@example.test', name: 'Member', emailVerified: true, image: null });
+    expect((await start(h, { productId: 'digital', email: 'gift@example.test' }, { cookie: 'session=buyer' })).status).toBe(200);
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ customerEmail: 'gift@example.test' }));
+  });
+
+  it.each([
+    ['sales link', { productId: 'print', salesLinkSlug: 'bundle' }],
+    ['single product', { productId: 'digital' }],
+  ])('answers a Stripe account without a Dashboard terms URL on the %s checkout so the page can collect the terms, releasing the stock hold', async (_case, selection) => {
+    const h = await directSalesLinkApp();
+    const stock = createStockRepositoryFake();
+    stock.track(acme.id, selection.productId, 1);
+    h.base.stock = stock.repository;
+    const warn = vi.spyOn(h.base.logger, 'warn');
+    h.create.mockResolvedValueOnce(err(stripeTermsUrlMissing()));
+    const refused = await start(h, selection);
+    expect(refused.status).toBe(412);
+    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'integration_not_configured', details: { paymentRefusal: 'stripe_terms_url_missing' } } });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ stripeTerms }));
+    expect(stock.levels.get(acme.id, selection.productId)).toMatchObject({ onHand: 1, reserved: 0 });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Stripe refused to collect the terms without a Dashboard terms URL; the page collects them instead tenant=${acme.id}`));
+    const unaccepted = await start(h, { ...selection, termsOnPage: true, email: 'buyer@example.test' });
+    expect(unaccepted.status).toBe(400);
+    expect(await unaccepted.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Accepting the terms and privacy policy is required' } });
+    expect(h.create).toHaveBeenCalledTimes(1);
+    const capture = vi.spyOn(h.base.checkoutConsentCaptures, 'create');
+    const retried = await start(h, { ...selection, termsOnPage: true, termsAccepted: true, email: 'buyer@example.test' });
+    expect(retried.status).toBe(200);
+    expect(h.create).toHaveBeenCalledTimes(2);
+    expect(h.create.mock.calls[1]?.[0]).not.toHaveProperty('stripeTerms');
+    expect(h.create.mock.calls[1]?.[0]).toMatchObject({ customerEmail: 'buyer@example.test', checkoutConsentCaptureId: expect.any(String) });
+    expect(capture).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+      id: h.create.mock.calls[1]?.[0].checkoutConsentCaptureId,
+      capture: expect.objectContaining({ termsAccepted: true }),
+    }));
+    expect(stock.levels.get(acme.id, selection.productId)).toMatchObject({ onHand: 1, reserved: 1 });
+  });
+
+  it('refuses the page-terms flag on a cart checkout', async () => {
+    const h = await directSalesLinkApp();
+    const refused = await start(h, { lines: [{ productId: 'digital', quantity: 1 }], email: 'buyer@example.test', termsAccepted: true, termsOnPage: true });
+    expect(refused.status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['script', 'application/json', JSON.stringify({ attribution: { utmSource: 'newsletter' } })],
+    ['form', 'application/x-www-form-urlencoded', 'utm_source=newsletter'],
+  ])('sends a %s direct handoff refused for a missing Dashboard terms URL to the workspace checkout page in page-terms mode', async (_case, contentType, body) => {
+    const h = await directSalesLinkApp();
+    const warn = vi.spyOn(h.base.logger, 'warn');
+    h.create.mockResolvedValueOnce(err(stripeTermsUrlMissing()));
+    const response = await h.app.request('/api/public/sales-links/bundle/checkout', {
+      method: 'POST', headers: { host: 'acme.localhost', 'content-type': contentType }, body,
+    });
+    const target = contentType === 'application/json'
+      ? z.object({ data: z.object({ url: z.string() }) }).parse(await response.json()).data.url : response.headers.get('location') ?? '';
+    expect(response.status).toBe(contentType === 'application/json' ? 200 : 303);
+    const url = new URL(target);
+    expect(url.pathname).toBe('/offer/bundle');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ utm_source: 'newsletter', checkout: 'together', terms: 'page' });
+    expect(h.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ directCheckout: expect.objectContaining({ termsUrl: stripeTerms.termsUrl }) }));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`[direct-checkout] Stripe refused to collect the terms without a Dashboard terms URL; sending the buyer to the workspace checkout page tenant=${acme.id}`));
+  });
+
+  it('keeps the terms on the page for a workspace with only one legal URL', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, termsUrl: 'https://acme.example/terms', privacyUrl: null });
+    const refused = await start(h, { productId: 'digital' });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Accepting the terms and privacy policy is required' } });
+    expect(h.create).not.toHaveBeenCalled();
+    expect((await start(h, { productId: 'digital', termsAccepted: true })).status).toBe(200);
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('stripeTerms');
+  });
+
+  it('keeps a workspace without legal URLs on its terms-free checkout', async () => {
+    const h = await directSalesLinkApp();
+    h.base.tenants.findSettings = async () => ({ ...h.settings, termsUrl: null, privacyUrl: null });
+    h.base.authPort.getAuthenticatedUser = async () => ({ sessionId: 'session-1', userId: 'buyer-user', email: 'member@example.test', name: 'Member', emailVerified: true, image: null });
+    expect((await start(h, { productId: 'digital' }, { cookie: 'session=buyer' })).status).toBe(200);
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('stripeTerms');
+    expect(h.create.mock.calls[0]?.[0]).not.toHaveProperty('customerEmail');
   });
 });
 

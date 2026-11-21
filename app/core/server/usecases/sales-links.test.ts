@@ -95,6 +95,14 @@ it('carries the product safety information of each line with the warnings render
   expect(result.value.lines.map((line) => line.compliance)).toEqual([{ ...compliance, safetyWarningsHtml: '<p>Keep <strong>dry</strong>.</p>\n' }, null]);
 });
 
+it('carries the cover of each line so the offer can show the product picture beside its safety information', async () => {
+  findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, coverUrl: 'https://cdn.example.com/print.jpg' } : product));
+  const result = await getPublicSalesLink('workspace', link.slug, deps);
+  if (!result.ok) throw new Error('offer failed');
+  expect(result.value.lines.map((line) => line.coverUrl)).toEqual(['https://cdn.example.com/print.jpg', null]);
+  expect(salesLinkOfferSchema.parse(result.value).lines.map((line) => line.coverUrl)).toEqual(['https://cdn.example.com/print.jpg', null]);
+});
+
 it('carries the personalisation setting of each offer line and parses through the offer schema', async () => {
   const personalization = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null };
   findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, personalization } : product));

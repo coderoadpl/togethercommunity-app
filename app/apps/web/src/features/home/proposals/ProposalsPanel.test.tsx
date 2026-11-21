@@ -529,6 +529,65 @@ describe('ProposalsPanel', () => {
     expect(screen.queryByTestId('proposals-load-more')).toBeNull();
   });
 
+  it('keeps the list when the next page fails and retries only that page', async () => {
+    usePending([]);
+    let failNext = true;
+    server.use(http.get('/api/change-proposals', ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      if (cursor === null) return HttpResponse.json({ ok: true, data: { proposals: [stockAdjustmentProposal], nextCursor: stockAdjustmentProposal.id, hasMore: true } });
+      if (failNext) return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 });
+      return HttpResponse.json({ ok: true, data: { proposals: [settingsProposal], nextCursor: null, hasMore: false } });
+    }));
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('proposals-load-more'));
+    const failure = await screen.findByTestId('proposals-load-more-error');
+    expect(failure).toHaveTextContent(t.loadMoreFailed);
+    expect(screen.getByTestId(`proposal-card-${stockAdjustmentProposal.id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-load-more')).toBeNull();
+
+    failNext = false;
+    await userEvent.click(within(failure).getByRole('button', { name: en.common.retry }));
+    const added = await screen.findByTestId(`proposal-card-${settingsProposal.id}`);
+    expect(screen.getByTestId(`proposal-card-${stockAdjustmentProposal.id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-load-more-error')).toBeNull();
+    await waitFor(() => expect(added.parentElement).toHaveFocus());
+  });
+
+  it('keeps the cards, an open dialog and the settled notices when a background refetch fails', async () => {
+    usePending([stockAdjustmentProposal, settingsProposal]);
+    server.use(http.post('/api/change-proposals/:id/approve', () => HttpResponse.json({
+      ok: true,
+      data: { proposal: settledView(stockAdjustmentProposal, { status: 'stale' }) },
+    })));
+
+    const { queryClient } = renderPanel();
+
+    const stock = await screen.findByTestId(`proposal-card-${stockAdjustmentProposal.id}`);
+    await userEvent.click(within(stock).getByTestId('proposal-approve'));
+    await userEvent.click(await screen.findByTestId('proposal-approve-confirm'));
+    expect(await screen.findByTestId(`proposal-outcome-${stockAdjustmentProposal.id}`)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('proposal-approve-dialog')).toBeNull());
+
+    let failedReads = 0;
+    server.use(http.get('/api/change-proposals', () => {
+      failedReads += 1;
+      return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 });
+    }));
+    const settings = screen.getByTestId(`proposal-card-${settingsProposal.id}`);
+    await userEvent.click(within(settings).getByTestId('proposal-reject'));
+    expect(await screen.findByTestId('proposal-reject-dialog')).toBeInTheDocument();
+    await queryClient.invalidateQueries(actions.changeProposalsInvalidates());
+
+    await waitFor(() => expect(failedReads).toBeGreaterThan(0));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(screen.getByTestId(`proposal-card-${settingsProposal.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId('proposal-reject-dialog')).toBeInTheDocument();
+    expect(screen.getByTestId(`proposal-outcome-${stockAdjustmentProposal.id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-load-more-error')).toBeNull();
+  });
+
   it.each([
     [{ emailVerified: false }, t.unverifiedTitle],
     [{ impersonating: true }, t.impersonatingTitle],

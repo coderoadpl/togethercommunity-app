@@ -447,7 +447,10 @@ a toast reports the outcome and the lists refresh; a `stale` or `failed`
 approval stays on the page as an explained notice until it is dismissed, and
 the proposal moves to **History**. "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
-first new card.
+first new card. The full-page error appears only when nothing has loaded yet: a
+next page that fails keeps the list and shows an inline error with a Retry of
+that page, and a background refresh that fails keeps the list, the open dialog
+and the notices as they were.
 
 **History** asks the server for the `decided` proposals, 50 per page, with
 their status, who decided and when (or "a former team member"), the decision

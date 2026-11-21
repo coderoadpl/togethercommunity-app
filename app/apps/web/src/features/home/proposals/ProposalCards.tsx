@@ -531,10 +531,10 @@ export const GroupProposalCard = ({
         />
       )}
     >
-      {group.isPending ? (
-        <StatusView state={{ kind: 'loading', label: t.changeProposals.groupLoading }} />
-      ) : group.isError ? (
-        <StatusView state={{ kind: 'error', message: localizePanelError(group.error, t), retry: { label: t.common.retry, onRetry: () => void group.refetch() } }} />
+      {group.data === undefined ? (
+        group.isError
+          ? <StatusView state={{ kind: 'error', message: localizePanelError(group.error, t), retry: { label: t.common.retry, onRetry: () => void group.refetch() } }} />
+          : <StatusView state={{ kind: 'loading', label: t.changeProposals.groupLoading }} />
       ) : (
         <>
           <GroupTitle title={group.data.group.title} keyLabel={group.data.group.proposedBy.keyName ?? group.data.group.proposedBy.keyId} />

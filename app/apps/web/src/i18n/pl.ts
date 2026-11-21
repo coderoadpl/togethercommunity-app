@@ -602,6 +602,7 @@ export const pl: Messages = {
     historyEmptyTitle: 'Nie ma jeszcze rozpatrzonych propozycji',
     historyEmptyBody: 'Tu pojawią się zatwierdzone, odrzucone i zamknięte propozycje.',
     loadMore: 'Pokaż więcej propozycji',
+    loadMoreFailed: 'Nie udało się wczytać kolejnych propozycji.',
     navBadge: ({ count }) => format(plural(count, '{count} propozycja czeka na Twoją decyzję', '{count} propozycje czekają na Twoją decyzję', '{count} propozycji czeka na Twoją decyzję'), { count }),
     operation: {
       'product.create': 'Nowy produkt',

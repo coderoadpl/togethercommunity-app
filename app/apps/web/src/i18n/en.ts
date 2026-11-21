@@ -595,6 +595,7 @@ export const en: Messages = {
     historyEmptyTitle: 'No decided proposals yet',
     historyEmptyBody: 'Approved, rejected and closed proposals appear here.',
     loadMore: 'Show more proposals',
+    loadMoreFailed: 'The next proposals could not be loaded.',
     navBadge: ({ count }) => format('{count} waiting for your decision', { count }),
     operation: {
       'product.create': 'New product',

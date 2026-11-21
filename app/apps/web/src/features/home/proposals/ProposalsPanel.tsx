@@ -84,7 +84,7 @@ const PendingTab = () => {
   const pageCount = pages.data?.pages.length ?? 0;
   const cards = pendingCards(pages.data?.pages.flatMap((page) => page.proposals) ?? []);
   const cardKeys = cards.map((card) => card.key).join('\n');
-  const moreFailed = pages.isFetchNextPageError;
+  const moreFailed = pages.isFetchNextPageError && !pages.isFetchingNextPage;
 
   useEffect(() => {
     if (focusAfterMore === null) return;
@@ -99,13 +99,10 @@ const PendingTab = () => {
     [...cardElements].find((element) => element.dataset['cardKey'] === first)?.focus();
   }, [cardKeys, focusAfterMore, moreFailed, pageCount]);
 
-  if (pages.isPending) return <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
-  if (pages.isError) {
-    return (
-      <StatusView
-        state={{ kind: 'error', message: localizePanelError(pages.error, t), retry: { label: t.common.retry, onRetry: () => void pages.refetch() } }}
-      />
-    );
+  if (pages.data === undefined) {
+    return pages.isError
+      ? <StatusView state={{ kind: 'error', message: localizePanelError(pages.error, t), retry: { label: t.common.retry, onRetry: () => void pages.refetch() } }} />
+      : <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
   }
 
   const callbacks = {
@@ -143,7 +140,16 @@ const PendingTab = () => {
         </Box>
       ))}
       {pages.isFetchingNextPage ? <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} /> : null}
-      {pages.hasNextPage && !pages.isFetchingNextPage ? (
+      {moreFailed ? (
+        <Alert
+          severity="error"
+          data-testid="proposals-load-more-error"
+          action={<Button color="inherit" size="small" onClick={loadMore}>{t.common.retry}</Button>}
+        >
+          {t.changeProposals.loadMoreFailed}
+        </Alert>
+      ) : null}
+      {pages.hasNextPage && !pages.isFetchingNextPage && !moreFailed ? (
         <Button variant="outlined" onClick={loadMore} data-testid="proposals-load-more">{t.changeProposals.loadMore}</Button>
       ) : null}
     </Stack>
@@ -265,13 +271,10 @@ const HistoryTab = () => {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [previousCursors, setPreviousCursors] = useState<(string | undefined)[]>([]);
   const page = useQuery(actions.changeProposals({ status: 'decided', limit: HISTORY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }));
-  if (page.isPending) return <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
-  if (page.isError) {
-    return (
-      <StatusView
-        state={{ kind: 'error', message: localizePanelError(page.error, t), retry: { label: t.common.retry, onRetry: () => void page.refetch() } }}
-      />
-    );
+  if (page.data === undefined) {
+    return page.isError
+      ? <StatusView state={{ kind: 'error', message: localizePanelError(page.error, t), retry: { label: t.common.retry, onRetry: () => void page.refetch() } }} />
+      : <StatusView state={{ kind: 'loading', label: t.changeProposals.loading }} />;
   }
   const { proposals } = page.data;
   const next = page.data.hasMore ? page.data.nextCursor : null;

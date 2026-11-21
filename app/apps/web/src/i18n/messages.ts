@@ -601,6 +601,7 @@ export interface Messages {
     historyEmptyTitle: string;
     historyEmptyBody: string;
     loadMore: string;
+    loadMoreFailed: string;
     navBadge: (params: { count: number }) => string;
     operation: Record<ChangeProposalOperation, string>;
     unknownOperation: string;

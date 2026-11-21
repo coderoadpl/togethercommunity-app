@@ -526,7 +526,11 @@ describe('hosted cart checkout', () => {
     await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByTestId('checkout-coupon-input'), 'CART');
     await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
-    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponAfterDiscount({ price: pln(8550) })));
+    const panel = within(await screen.findByTestId('checkout-coupon-breakdown'));
+    expect(panel.getByText(exact(en.checkout.couponDiscount({ price: pln(950) })))).toBeInTheDocument();
+    expect(panel.getByText(exact(en.checkout.omnibusLowest({ price: pln(9500) })))).toBeInTheDocument();
+    expect(panel.queryByText(en.checkout.couponOriginal({ price: pln(9500) }))).not.toBeInTheDocument();
+    expect(panel.queryByTestId('checkout-coupon-final')).not.toBeInTheDocument();
     expect(coupons).toEqual([{ lines: [{ productId: poster, quantity: 2 }, { productId: ebook, quantity: 1 }], email: 'buyer@example.org', couponCode: 'CART' }]);
 
     await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));

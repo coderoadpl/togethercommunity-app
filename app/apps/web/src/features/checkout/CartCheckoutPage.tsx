@@ -437,6 +437,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           currency={currency}
           language={language}
           recurring={false}
+          breakdown="discount"
         />}
         {consentRequired ? <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} /> : null}
         <MarketingConsentFields

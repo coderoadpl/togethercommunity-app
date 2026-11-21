@@ -8,7 +8,7 @@ export type PageState =
   | { kind: 'loading'; label: ReactNode }
   | { kind: 'error'; message: ReactNode; retry: { label: ReactNode; onRetry: () => void } }
   | { kind: 'empty'; icon?: ReactNode; title: ReactNode; body?: ReactNode; action?: ReactNode }
-  | { kind: 'not-found'; icon?: ReactNode; title: ReactNode; body?: ReactNode; action?: ReactNode };
+  | { kind: 'not-found'; icon?: ReactNode; title: ReactNode; heading?: 'h1' | 'h2'; body?: ReactNode; action?: ReactNode };
 
 interface StatusViewProps {
   state: PageState;
@@ -83,7 +83,7 @@ export const StatusView = ({ state, surface = true, 'data-testid': testId }: Sta
           {...(!surface ? { 'data-testid': testId, 'data-state': state.kind } : {})}
         >
           {state.icon}
-          <CardTitle variant="h2">{state.title}</CardTitle>
+          <CardTitle variant={state.heading ?? 'h2'}>{state.title}</CardTitle>
           {state.body !== undefined && (
             <Typography variant="body1" component="div">
               {state.body}

@@ -65,6 +65,14 @@ describe('StatusView', () => {
     expect(screen.getByText('Nothing here')).toBeInTheDocument();
   });
 
+  it('renders a not-found title as the page heading inside an existing surface', () => {
+    render(
+      <StatusView state={{ kind: 'not-found', title: 'Nothing here', heading: 'h1' }} surface={false} data-testid="nf" />,
+    );
+    expect(screen.getByRole('heading', { level: 1, name: 'Nothing here' })).toBeInTheDocument();
+    expect(screen.getByTestId('nf')).not.toHaveClass('MuiPaper-root');
+  });
+
   it('can render an empty state inside an existing surface', () => {
     render(
       <StatusView

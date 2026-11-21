@@ -364,10 +364,19 @@ describe('hosted cart checkout', () => {
     const requests: string[] = [];
     serve({ requests });
     renderCart(path);
-    expect(await screen.findByRole('heading', { name: en.checkout.cartInvalidTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: en.checkout.cartInvalidTitle })).toBeInTheDocument();
     expect(screen.getByText(en.checkout.cartInvalidBody)).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.cartInvalidBody).closest('.MuiPaper-elevation1')).toBeNull();
     await act(() => new Promise((resolve) => { setTimeout(resolve, 50); }));
     expect(requests.filter((request) => request !== 'GET /api/public/offer')).toEqual([]);
+  });
+
+  it('shows the empty cart as the page heading on the card, with no card inside it', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1`);
+    await userEvent.click(await screen.findByRole('button', { name: en.checkout.cartRemove({ title: 'E-book' }) }));
+    expect(screen.getByRole('heading', { level: 1, name: en.checkout.cartEmptyTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.checkout.cartEmptyBody).closest('.MuiPaper-elevation1')).toBeNull();
   });
 
   it('asks to remove a product that is no longer available before paying', async () => {

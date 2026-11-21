@@ -115,9 +115,10 @@ const CartNotice = ({ title, body }: { title: string; body: string }) => {
   const t = useTranslations();
   return (
     <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.checkoutEyebrow}>
-      <StatusView state={{
+      <StatusView surface={false} state={{
         kind: 'not-found',
         title,
+        heading: 'h1',
         body,
         action: <Button component={Link} to="/login" variant="contained">{t.checkout.goToLogin}</Button>,
       }} />

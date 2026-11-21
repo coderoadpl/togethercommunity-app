@@ -560,7 +560,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       required={required}
       onChange={(value) => {
         setEmail(value);
-        if (emailMattersForCoupon && !(rememberedCode && couponValidation.data !== undefined)) discardCouponResult();
+        const keptResult = rememberedCode && couponValidation.data !== undefined && (emailPlacement !== 'coupon' || completeEmail(value));
+        if (emailMattersForCoupon && !keptResult) discardCouponResult();
       }}
     />
   );

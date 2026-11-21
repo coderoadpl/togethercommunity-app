@@ -598,15 +598,20 @@ scopes on every shop key.
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
   today. A retention purge of settled proposals is a follow-up. The owner
-  panel's pending count (`GET /api/change-proposals/summary`) is owner-only
-  like the list and returns only two numbers. A submitted proposal raises an
-  in-app notification for the workspace owners (direct and organisation-derived,
-  the same effective grant as the owner session), at most one unread per owner
-  and key (the notification's unique source key makes it atomic) and one per
-  group; it names only the key and the group title, carries no effect, and
-  is written after the proposal committed, in its own transaction bounded to
-  500 ms per lock wait and statement, so a held or failing notification is
-  logged and never fails, changes or holds up the submission. Each re-armed
+  panel's summary (`GET /api/change-proposals/summary`) is owner-only like the
+  list and returns `{ pending, pendingGroups, hasProposals }`: the pending and
+  pending-group counts and whether the workspace holds any proposal at all,
+  whatever its status. A submitted proposal raises an in-app notification for
+  the workspace owners (direct and organisation-derived, the same effective
+  grant as the owner session), at most one unread per owner and key (the
+  notification's unique source key, which is per key, makes it atomic); a group
+  raises it once, with its first item; its later items signal the owner's open
+  panel and never make a read notification unread again. It names only the key and the group title, carries no
+  effect, and is written after the proposal committed, in its own transaction
+  with a 500 ms bound on every lock wait and statement, and the submission
+  stops waiting for it after 500 ms in any case, so a held or failing
+  notification is logged and never fails, changes or holds up the submission
+  beyond that bound. Each re-armed
   notification gets a new id, so a late "mark read" of an earlier one cannot
   clear it. The owner view shows an account's e-mail only while that account
   holds a staff grant in the workspace; a former team member or a deleted

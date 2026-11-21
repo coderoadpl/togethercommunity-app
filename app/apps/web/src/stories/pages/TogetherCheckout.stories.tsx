@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import { stripeTermsUrlMissing } from '#core/domain/index.js';
 
@@ -233,7 +233,9 @@ const openLockerPicker = async (canvasElement: HTMLElement) => {
 const pickOnStubMap = async (canvasElement: HTMLElement) => {
   await openLockerPicker(canvasElement);
   await userEvent.click(await page(canvasElement).findByTestId('stub-geowidget-pin'));
-  await expect(await page(canvasElement).findByTestId('checkout-locker-confirm')).toBeEnabled();
+  const change = await within(canvasElement).findByTestId('checkout-locker-change');
+  await waitFor(() => expect(page(canvasElement).queryByTestId('checkout-locker-dialog')).toBeNull());
+  return change;
 };
 const settled = async () => {
   const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
@@ -251,8 +253,6 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
   },
   chosen: async (canvasElement) => {
     await pickOnStubMap(canvasElement);
-    await userEvent.click(page(canvasElement).getByTestId('checkout-locker-confirm'));
-    await within(canvasElement).findByTestId('checkout-locker-change');
     await settled();
   },
   'map-failed': async (canvasElement) => {
@@ -267,7 +267,9 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
     await settled();
   },
   picked: async (canvasElement) => {
-    await pickOnStubMap(canvasElement);
+    const change = await pickOnStubMap(canvasElement);
+    await waitFor(() => expect(change).toHaveFocus());
+    await waitFor(() => expect(within(canvasElement).getByTestId('checkout-locker-announcement')).toHaveTextContent(stubPoint.name));
     await settled();
   },
 };

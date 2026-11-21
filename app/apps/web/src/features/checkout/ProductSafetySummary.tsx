@@ -1,7 +1,7 @@
 import { Box, Link, Stack, Typography } from '@mui/material';
 import { useId, useState, type ReactNode } from 'react';
 
-import type { PublicProductCompliance } from '#core/domain/index.js';
+import { shownResponsiblePerson, type PublicProductCompliance, type ResponsiblePerson } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { closesOnEscape } from '../../components/ui/CheckoutStepParts.js';
@@ -16,6 +16,7 @@ type SafetyGroup = {
   manufacturerName: string;
   manufacturerAddress: string;
   manufacturerEmail: string;
+  responsiblePerson: ResponsiblePerson | null;
   entries: SafetyEntry[];
 };
 
@@ -25,9 +26,13 @@ const groupSafetyEntries = (entries: readonly SafetyEntry[]): SafetyGroup[] => {
   const groups = new Map<string, SafetyGroup>();
   for (const entry of entries) {
     const { manufacturerName, manufacturerAddress, manufacturerEmail } = entry.compliance;
-    const key = JSON.stringify([manufacturerName.trim(), manufacturerAddress.trim(), manufacturerEmail.trim().toLowerCase()]);
+    const responsiblePerson = shownResponsiblePerson(entry.compliance);
+    const key = JSON.stringify([
+      manufacturerName.trim(), manufacturerAddress.trim(), manufacturerEmail.trim().toLowerCase(),
+      responsiblePerson === null ? null : [responsiblePerson.name.trim(), responsiblePerson.address.trim(), responsiblePerson.email.trim().toLowerCase()],
+    ]);
     const group = groups.get(key);
-    if (group === undefined) groups.set(key, { key, manufacturerName, manufacturerAddress, manufacturerEmail, entries: [entry] });
+    if (group === undefined) groups.set(key, { key, manufacturerName, manufacturerAddress, manufacturerEmail, responsiblePerson, entries: [entry] });
     else group.entries.push(entry);
   }
   return [...groups.values()];
@@ -115,6 +120,13 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
         <CheckoutSafetyPart><Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link></CheckoutSafetyPart>
         {countProducts ? <CheckoutSafetyPart>{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart> : null}
       </Typography>
+      {group.responsiblePerson === null ? null : (
+        <Typography variant="body2" color="text.secondary" sx={{ pt: '0.25rem' }} data-testid="product-safety-responsible-person">
+          <CheckoutSafetyPart>{t.productSafety.responsiblePerson}: {group.responsiblePerson.name}</CheckoutSafetyPart>
+          <CheckoutSafetyPart>{group.responsiblePerson.address}</CheckoutSafetyPart>
+          <CheckoutSafetyPart><Link href={`mailto:${group.responsiblePerson.email}`} color="inherit">{group.responsiblePerson.email}</Link></CheckoutSafetyPart>
+        </Typography>
+      )}
       <Stack useFlexGap spacing="0.5rem" sx={{ pt: '0.375rem' }}>
         {group.entries.map((entry) => <ProductIdentity key={entry.productId} entry={entry} titled={titled} pictured={pictured} />)}
       </Stack>

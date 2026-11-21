@@ -87,6 +87,18 @@ const safetyLongWarningFixture = safetyFixture('together-checkout-safety-long-wa
   compliance: { ...compliance, safetyWarnings: longWarning.join('\n\n'), safetyWarningsHtml: longWarning.map((paragraph) => `<p>${paragraph}</p>`).join('') },
 });
 const safetyNoCoverFixture = safetyFixture('together-checkout-safety-no-cover', { coverUrl: null });
+const safetyOutsideEuFixture = safetyFixture('together-checkout-safety-outside-eu', {
+  compliance: {
+    ...compliance,
+    manufacturerName: 'Example Lamp Works',
+    manufacturerAddress: '1 Example Road, 0150 Example City, Norway',
+    manufacturerEmail: 'safety@lamps.togethercommunity.app',
+    manufacturerOutsideEu: true,
+    responsiblePersonName: 'Studio Workshop EU Representative',
+    responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw',
+    responsiblePersonEmail: 'eu-rep@studio.togethercommunity.app',
+  },
+});
 const personalisationFixture = (scenario: string, condition: string | null) => fixtureFor(scenario, { ...stand, personalization: { ...engraving, condition } }, { shippingRates });
 
 const termsRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"rateId":"courier"}}]';
@@ -416,6 +428,14 @@ export const SafetyLongWarningExpanded: Story = {
 };
 export const SafetyNoCover: Story = { parameters: { fixture: safetyNoCoverFixture } };
 export const SafetyNoCoverMobile: Story = withMobile(SafetyNoCover);
+export const SafetyOutsideEu: Story = {
+  parameters: {
+    fixture: safetyOutsideEuFixture,
+    docs: { description: { story: 'A manufacturer outside the EU: the responsible person in the EU sits right under the manufacturer, visible without a click.' } },
+  },
+};
+export const SafetyOutsideEuDark: Story = { ...SafetyOutsideEu, parameters: { ...SafetyOutsideEu.parameters, colorScheme: 'dark' } };
+export const SafetyOutsideEuMobile: Story = withMobile(SafetyOutsideEu);
 export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => openSafetyDetails(canvasElement) };
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {

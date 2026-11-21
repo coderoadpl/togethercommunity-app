@@ -1,7 +1,7 @@
 import { Accordion, AccordionDetails, AccordionSummary, Box, Chip, Link, Stack, Typography } from '@mui/material';
 import { useId, type ReactNode } from 'react';
 
-import { attributionFromSearchParams, attributionToSearchParams, type PublicProductCompliance, type PublicProductVariant } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, shownResponsiblePerson, type PublicProductCompliance, type PublicProductVariant } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -16,12 +16,20 @@ const Detail = ({ label, children }: { label: string; children: ReactNode }) => 
 
 const SafetyDetails = ({ compliance }: { compliance: PublicProductCompliance }) => {
   const t = useTranslations();
+  const responsiblePerson = shownResponsiblePerson(compliance);
   return (
     <Stack useFlexGap spacing="0.5rem">
       <Detail label={t.productSafety.manufacturer}>{compliance.manufacturerName}, {compliance.manufacturerAddress}</Detail>
       <Detail label={t.productSafety.contact}>
         <Link href={`mailto:${compliance.manufacturerEmail}`}>{compliance.manufacturerEmail}</Link>
       </Detail>
+      {responsiblePerson === null ? null : (
+        <Box data-testid="product-safety-responsible-person">
+          <Detail label={t.productSafety.responsiblePerson}>
+            {responsiblePerson.name}, {responsiblePerson.address}, <Link href={`mailto:${responsiblePerson.email}`}>{responsiblePerson.email}</Link>
+          </Detail>
+        </Box>
+      )}
       <Detail label={t.productSafety.model}>{compliance.modelIdentifier}</Detail>
       {compliance.batchIdentifier == null ? null : <Detail label={t.productSafety.batch}>{compliance.batchIdentifier}</Detail>}
       {compliance.safetyWarningsHtml.trim() === '' ? null : <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />}

@@ -33,7 +33,11 @@ const products = {
     id: poster, type: 'physical', deliveryMethod: 'shipping', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
     priceCents: 3500, currency: 'PLN', prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3500, currency: 'PLN' }],
     marketingConsents: [{ definitionId: 'news', label: 'Send me news', doubleOptIn: false, documentUrl: null }],
-    compliance: { manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null },
+    compliance: {
+      manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', manufacturerOutsideEu: true,
+      responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 2, Warsaw', responsiblePersonEmail: 'eu-rep@example.org',
+      modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null,
+    },
   },
   [ebook]: {
     id: ebook, type: 'digital_download', deliveryMethod: 'pickup', slug: 'ebook', title: 'E-book', description: '', coverUrl: null,
@@ -161,6 +165,8 @@ describe('hosted cart checkout', () => {
     expect(line(ebook).getByTestId(`cart-quantity-${ebook}`)).toHaveTextContent('1');
     expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(9500) })));
     expect(screen.getByText(en.productSafety.offerHeadingFor({ title: 'Poster' }))).toBeInTheDocument();
+    expect(screen.getByTestId('product-safety-responsible-person')).toHaveTextContent('Example EU Representative, Example Street 2, Warsaw');
+    expect(within(screen.getByTestId('product-safety-responsible-person')).getByRole('link', { name: 'eu-rep@example.org' })).toHaveAttribute('href', 'mailto:eu-rep@example.org');
     expect(screen.getAllByText('Send me news')).toHaveLength(1);
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');

@@ -1661,6 +1661,7 @@ export interface StorageReferenceRepository {
 
 export interface StorageProvider {
   list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
+/** `getObject` and `head` answer `not_found` only when the storage says the object does not exist; any other failure is another code. */
   getObject(input: {
     url: string;
     accessKeyId: string;
@@ -1686,12 +1687,14 @@ export interface StorageProvider {
   ): Promise<StorageCorsProbeResult[]>;
   presignPut(input: {
     url: string;
+  /** With `contentLength`, the signature covers it, so the storage refuses a body of any other size. */
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
   presignGet(input: {
+    contentLength?: number;
     url: string;
     accessKeyId: string;
     secretAccessKey: string;

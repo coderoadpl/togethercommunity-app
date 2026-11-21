@@ -363,7 +363,9 @@ and appears only when something is pending. An admin never sees the entry; one
 who opens the address sees an "owner only" page, and the panel never sends them
 the owner routes. When the notification stream delivers a `notification` frame
 of kind `change-proposal`, the panel refreshes the pending summary and the
-proposal lists.
+proposal lists. When the stream is unavailable and the bell falls back to
+polling, the summary is polled at the same 30-second interval, and a change in
+its counts refreshes the proposal lists.
 
 The page follows the server's gate. An owner whose e-mail is not verified sees
 "verify your e-mail to decide" with a link to the account page, and an owner

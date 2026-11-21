@@ -36,6 +36,7 @@ import { LogoImage } from '../../components/ui/LogoImage.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { EmailLanguageSwitcher } from '../../EmailLanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
+import { useChangeProposalSummary } from '../../notifications-data.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
 import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
@@ -358,7 +359,7 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const { tenant, emailVerified, impersonating = false } = usePanelContext();
   const owner = tenant.staffRole === 'owner';
   const decidingOwner = owner && emailVerified && !impersonating;
-  const proposalSummary = useQuery({ ...actions.changeProposalSummary, enabled: decidingOwner });
+  const proposalSummary = useChangeProposalSummary(decidingOwner);
   const pendingProposals = decidingOwner ? proposalSummary.data?.pending ?? 0 : 0;
   const counts: Partial<Record<PanelSection, NavCount>> = {
     ...(openReportCount === undefined ? {} : { reports: { value: openReportCount, testId: 'reports-open-count' } }),

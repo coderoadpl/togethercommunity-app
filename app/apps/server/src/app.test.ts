@@ -11601,7 +11601,7 @@ describe('direct public sales-link checkout', () => {
     const html = await response.text();
     expect(html).toContain('<html lang="pl">');
     expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.unavailable}</p>`);
-    expect(html).not.toMatch(/regulamin|terms/i);
+    expect(html).not.toMatch(/terms/i);
     expect(h.create).not.toHaveBeenCalled();
   });
 

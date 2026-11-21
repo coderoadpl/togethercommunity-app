@@ -414,12 +414,15 @@ describe('parcel locker picker', () => {
     await renderCheckout();
     const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle).not.toHaveAttribute('aria-controls');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(panel).not.toBeVisible();
     expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
-    expect(toggle).toHaveAttribute('aria-controls', code.closest('.MuiFormControl-root')?.id);
+    expect(panel).toBeVisible();
+    expect(panel).toContainElement(code);
     expect(code).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
     await userEvent.type(code, 'waw01m');
     expect(chooseButton()).toBeVisible();

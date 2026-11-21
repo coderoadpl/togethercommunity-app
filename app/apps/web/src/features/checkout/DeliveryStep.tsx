@@ -86,7 +86,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     map_failed: { text: t.shipping.lockerMapFailed, testId: 'checkout-locker-map-failed' },
   }[entry.reason];
   const codeField = (
-    <FormControl fullWidth error={codeInvalid} id={`${lockerId}-code`}>
+    <FormControl fullWidth error={codeInvalid}>
       <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
       <OutlinedInput
         id="checkout-pickup-point"
@@ -131,10 +131,10 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
-          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={codeShown ? `${lockerId}-code` : undefined} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
+          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
             {t.shipping.lockerKnowCode}
           </CheckoutInlineToggle>
-          {codeShown ? codeField : null}
+          <Box id={`${lockerId}-code`} hidden={!codeShown} sx={{ alignSelf: 'stretch' }}>{codeShown ? codeField : null}</Box>
           <VisuallyHidden role="status" aria-live="polite" data-testid="checkout-locker-announcement">{announcement}</VisuallyHidden>
         </Stack>
       ) : (

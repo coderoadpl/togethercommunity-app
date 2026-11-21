@@ -87,14 +87,14 @@ link checkout and the hosted cart page through `DeliveryStep`:
   map fills all the remaining space down to the bottom edge, without a
   scrolling container around it and without a footer.
 - One tap chooses the locker. InPost's map reports a point only when the buyer
-  taps the map's own yellow **Wybierz** / **Select** button in the point's card
-  or details panel; tapping a marker, a list item or **Zobacz szczegóły** only
-  shows the point. The picker therefore commits the reported point at once,
+  taps the map's own yellow select button in the point's card or details
+  panel; tapping a marker, a list item or the map's details link only shows
+  the point. The picker therefore commits the reported point at once,
   closes, returns focus to **Change** and announces the chosen locker in a
   polite live region on the page ("Parcel locker WAW01M chosen: Example
   Street 5, 00-001 Warsaw."). There is no second confirm button: it would mean
-  the same as the map's **Select**, and the map shows no feedback after
-  **Select**, so our page closing is the feedback.
+  the same as the map's own select button, and the map shows no feedback
+  after it, so our page closing is the feedback.
 - Reopening the picker with a locker already chosen asks the map to show that
   locker (`showPoint` on the handle from `inpost.geowidget.init`). The call is
   guarded: a missing handle, a missing method, a thrown error or a rejected
@@ -117,7 +117,7 @@ link checkout and the hosted cart page through `DeliveryStep`:
   policy kept from an in-app navigation), the picker says so and offers
   **Type the code**, and the option then shows the code input with the reason.
   A token InPost rejects (for example one issued for another domain) loads the
-  map with InPost's own red "Brak dostępu" banner, a watermark and no points;
+  map with InPost's own red access-denied banner, a watermark and no points;
   the page cannot detect that inside the cross-origin frame, so the buyer
   closes the picker and uses **I know the code**.
 

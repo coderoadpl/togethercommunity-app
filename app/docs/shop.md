@@ -820,10 +820,21 @@ physical goods:
 | `manufacturerName` | 1–200 characters |
 | `manufacturerAddress` | 1–300 characters, postal address |
 | `manufacturerEmail` | contact e-mail |
+| `manufacturerOutsideEu` | `true` when the manufacturer is not established in the EU, `false` by default |
+| `responsiblePersonName` | 1–200 characters, the responsible person in the EU |
+| `responsiblePersonAddress` | 1–300 characters, its postal address |
+| `responsiblePersonEmail` | its contact e-mail |
 | `modelIdentifier` | 1–100 characters, model or type |
 | `batchIdentifier` | optional, 1–100 characters |
 | `safetyWarnings` | 0–5000 characters of Markdown, empty by default |
 | `instructionsUrl` | optional HTTPS URL |
+
+When `manufacturerOutsideEu` is `true`, the three responsible-person fields are
+required, and each missing one fails validation with
+`<field> is required when the manufacturer is outside the EU`. When it is
+`false` they are optional, but given together or not at all, and the offer
+does not show them. Safety information stored before these fields existed
+reads as a manufacturer in the EU without a responsible person.
 
 The field is accepted on every product type through the API, the CLI and the
 import API; Studio shows the expandable **Product safety (GPSR)** section in the
@@ -853,27 +864,30 @@ The Together checkout page shows a compact **Product safety information**
 section above the pay button, for every product type with `compliance`. Without
 a click it shows, per manufacturer, the name, the postal address, the contact
 e-mail and, when the offer sells more than one product, `applies to N products`
-(a); then, for each product of that manufacturer, a 40 px picture from the
-product cover with the product title as its alternative text when the product
-has a cover, the product title when the offer sells more than one product, the
-model identifier (c), and the safety warnings as plain text when the workspace
-entered any (d). A warning longer than 280 characters shows its first three
+(a); for a manufacturer outside the EU, a **Responsible person in the EU** line
+right under it with that person's name, postal address and e-mail (b); then,
+for each product of that manufacturer, a 40 px picture from the product cover
+with the product title as its alternative text when the product has a cover,
+the product title when the offer sells more than one product, the model
+identifier (c), and the safety warnings as plain text when the workspace
+entered any (d), so the section covers (a) to (d) without a click. A warning
+longer than 280 characters shows its first three
 lines with **Show more**, which extends the same text; while it is collapsed
 the paragraphs of the warning sit without a gap, so the third line is never cut.
 Screen readers read the whole warning either way. Products without warnings show
 no warning line. When at least one product of a manufacturer has a picture, the
 rows without one keep an empty 40 px slot hidden from assistive technology, so
 the texts of one manufacturer start at the same edge.
-Products whose manufacturer name, address and e-mail are identical share one
-manufacturer line.
+Products whose manufacturer name, address and e-mail and whose responsible
+person are identical share one manufacturer line.
 
 **Details**, after a manufacturer's product rows and directly above its panel,
 holds only what goes beyond that minimum: per product the batch and the
 instructions link, with the product's title only when more than one product of
 that manufacturer has them. A manufacturer whose products have neither shows no
-**Details**. The product data has no separate responsible-person field, so the
-page shows no line of its own for (b). The cart checkout keeps one section per
-product, expanded for physical products.
+**Details**. The cart checkout keeps one section per product, expanded for
+physical products, with the responsible person under the manufacturer when it
+applies.
 A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,
@@ -883,7 +897,10 @@ confirmation e-mail does not include it.
 
 Product snapshots carry the descriptive fields, so the field was added in
 product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7
-snapshots read unchanged because the field is optional.
+snapshots read unchanged because the field is optional. The responsible-person
+fields were added in version 11 (`core/domain/snapshots/product/v11.ts`); older
+snapshots read with `manufacturerOutsideEu: false` and no responsible person.
+The `compliance` column is JSON, so no migration was needed.
 
 ## Product variants
 
@@ -1183,7 +1200,10 @@ an empty string clears it. `--pickup-point` needs
 cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
 For an order with a line above one unit, `orders list` shows its product lines
-as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
+as `2 × Title; Title`; other orders keep the product title. For a manufacturer
+outside the EU, `--compliance` adds `"manufacturerOutsideEu":true` with
+`responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail`. `--compliance null` removes the safety information and
 `--clear-variant` removes the variant group and label. `product create|update
 --sales-channel sales_links_only` limits a product to sales links (see
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));

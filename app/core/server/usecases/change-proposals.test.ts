@@ -53,6 +53,7 @@ import {
   type ChangeProposalKeyDeps,
   type ChangeProposalOwnerReadDeps,
   type ChangeProposalSubmitDeps,
+  type ChangeProposalSummaryDeps,
 } from './change-proposals.js';
 import { deleteProductDraft } from './product-drafts.js';
 import { createProduct, publishProduct } from './products.js';
@@ -191,7 +192,7 @@ interface Harness {
   storageCalls: string[];
   submitDeps: ChangeProposalSubmitDeps;
   keyDeps: ChangeProposalKeyDeps;
-  ownerDeps: ChangeProposalOwnerReadDeps & { changeProposalPeople: FakeChangeProposalPeople };
+  ownerDeps: ChangeProposalOwnerReadDeps & ChangeProposalSummaryDeps & { changeProposalPeople: FakeChangeProposalPeople };
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
   notifications: FakeUnreadNotifications;

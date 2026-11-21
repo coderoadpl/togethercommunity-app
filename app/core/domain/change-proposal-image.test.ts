@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { sha256HexOfBytes } from './change-proposal-group-digest.js';
 import {
   changeProposalImageChanges,
+  changeProposalImageMissingNote,
   changeProposalImageReferences,
+  changeProposalUnproposableImageChanges,
+  isChangeProposalImageMissingNote,
   parseProposalImagePath,
   parseUploadedImagePath,
   proposalImagePublicPath,
@@ -58,6 +61,30 @@ describe('the image fields of a proposal', () => {
       faviconUrl: { before: '/b', after: null },
       name: { before: 'A', after: 'B' },
     })).toEqual([{ field: 'logoUrl', kind: 'logo', value: '/a' }]);
+  });
+
+  it('lists a nested checkout image set to an address other than the live one, never a cleared, kept or other field', () => {
+    const live = { displayName: 'Acme', logoUrl: 'https://cdn.example.test/logo.png', iconUrl: null };
+    expect(changeProposalUnproposableImageChanges('settings.update', {
+      checkoutAppearance: { before: live, after: { ...live, logoUrl: 'https://cdn.example.test/new.png', iconUrl: 'https://cdn.example.test/icon.png' } },
+    })).toEqual([{ field: 'checkoutAppearance', name: 'logoUrl' }, { field: 'checkoutAppearance', name: 'iconUrl' }]);
+    expect(changeProposalUnproposableImageChanges('settings.update', { checkoutAppearance: { before: null, after: { iconUrl: 'https://cdn.example.test/icon.png' } } }))
+      .toEqual([{ field: 'checkoutAppearance', name: 'iconUrl' }]);
+    for (const after of [{ ...live, logoUrl: null }, { ...live, displayName: 'Renamed' }, null, { ...live, logoUrl: '' }]) {
+      expect(changeProposalUnproposableImageChanges('settings.update', { checkoutAppearance: { before: live, after } })).toEqual([]);
+    }
+    expect(changeProposalUnproposableImageChanges('product.update', { checkoutAppearance: { before: null, after: { logoUrl: '/x' } } })).toEqual([]);
+  });
+});
+
+describe('the stale note of a missing image', () => {
+  it('starts with a stable code the panel recognises, and nothing else carries it', () => {
+    const note = changeProposalImageMissingNote({ kind: 'logo', digest: DIGEST, extension: 'png' });
+    expect(note).toBe(`image_unavailable: The proposed image /api/public/assets/logo/${DIGEST}.png is no longer available, so the proposal cannot be applied; nothing was changed`);
+    expect(isChangeProposalImageMissingNote(note)).toBe(true);
+    for (const other of [null, 'key_revoked', 'Item 1 of the group did not apply', 'image_unavailable']) {
+      expect(isChangeProposalImageMissingNote(other)).toBe(false);
+    }
   });
 });
 

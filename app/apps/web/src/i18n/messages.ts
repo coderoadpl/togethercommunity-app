@@ -700,6 +700,7 @@ export interface Messages {
     outcomeRejected: string;
     outcomeGroupRejected: string;
     outcomeStale: string;
+    outcomeImageUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
     outcomeFailedUnknown: string;
     outcomeExpired: string;

@@ -484,7 +484,12 @@ While a request runs the buttons are disabled, and a busy answer (`503`) tells
 the owner to try again in a moment without changing anything. After a decision
 a toast reports the outcome and the lists refresh; a `stale` or `failed`
 approval stays on the page as an explained notice until it is dismissed, and
-the proposal moves to **History**. "Show more proposals" appends the next page
+the proposal moves to **History**. A `stale` approval is explained as "the
+shop changed; the proposer can send it again", except when an item that
+attaches an image ended stale because the image is no longer available: the
+panel then reads that item's events and, finding the note code
+`image_unavailable`, says that the proposed image is no longer available,
+nothing was changed, and it has to be uploaded and proposed again. "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
 first new card. The full-page error appears only when nothing has loaded yet: a
 next page that fails keeps the list and shows an inline error with a Retry of
@@ -493,7 +498,10 @@ and the notices as they were.
 
 **History** asks the server for the `decided` proposals, 50 per page, with
 their status, who decided and when (or "a former team member"), the decision
-comment and, on expand, the same field rows and the event timeline; an empty
+comment and, on expand, the same field rows and the event timeline; a `stale`
+proposal that attaches an image reads its events too and, when the note code
+is `image_unavailable`, shows the image line above in the row and in the
+timeline instead of "the shop changed"; an empty
 page shows the empty state, and "Show details" sits on the title row. Nothing
 on the page updates live data optimistically: every change on screen comes
 from a server answer. Headings inside cards follow the page outline without
@@ -555,7 +563,9 @@ classification is `describesTheRequest` in `core/domain/errors.ts`; a new error
 code cannot be added without classifying it.
 
 The decision time recorded on the proposal and its event is the time read
-after the target lock, not the time the request arrived.
+after the target lock, not the time the request arrived. An approval that ends
+`stale` because an attached image is no longer available is decided before any
+target lock: its decision time is the time read when that was found.
 
 The status change and its event (`applied`, `stale` or `apply_failed`) commit
 in the same transaction as the live change, so the owner sees exactly one of
@@ -570,13 +580,16 @@ approve after a reject or a withdrawal, finds no pending row and answers
 | Outcome | Live state | What the proposer should do |
 |---|---|---|
 | `applied` | changed exactly as the effect showed | nothing; `appliedResourceId` on the receipt names the created or changed resource, to use in a follow-up proposal |
-| `stale` | unchanged | read the current state and propose the change again; the old proposal stays settled |
+| `stale` | unchanged | read the current state and propose the change again, uploading again an attached image that is no longer available; the old proposal stays settled |
 | `failed` | unchanged | read `failureCode` on the receipt, fix the cause (for example a stock level that would go below zero), then propose again |
 
 **Stale** means the live state moved after the proposal was made: another
 writer (the owner in the panel, a direct-mode key, a checkout) changed a field
 the proposal changes, or running the command now would give a different
-effect than the one the owner approved. Approval never applies a change the
+effect than the one the owner approved. It also means an image the proposal
+attaches is no longer available (see [Images](#images)), even when the live
+state is unchanged; the key then has to upload the image again before it
+proposes again. Approval never applies a change the
 owner did not see; the proposer has to propose again from the current state.
 
 **Stock delta rule.** A stock adjustment is approved as a delta. Its approval
@@ -605,7 +618,7 @@ key's scopes, and no key can approve anything.
 | `withdrawn` | the key withdrew it, or its key was revoked (note `key_revoked`) or purged (note `key_purged`) |
 | `expired` | derived: still `pending` 30 days after creation; it can no longer be decided |
 | `applied` | the owner approved it and the change was applied as shown |
-| `stale` | the owner approved it, the live state had changed, nothing was applied |
+| `stale` | the owner approved it, the live state had changed or an attached image was no longer available, nothing was applied |
 | `failed` | the owner approved it, the live use-case refused it, nothing was applied |
 
 Every transition appends an event (`proposed`, `applied`, `stale`,
@@ -1025,7 +1038,8 @@ The [owner panel](#owner-panel) loads a pending proposal's proposed
 content-addressed image only from this route: a raster image is shown with a
 loading and a failed state, its format, a fingerprint (the first twelve
 characters of the digest), the address it will have and a note that only the
-owner sees it until approval. A proposed SVG is never rendered: the panel
+owners of the workspace can see it and that it becomes public at this address
+when the proposal is approved. A proposed SVG is never rendered: the panel
 shows a labelled download link through the same route, the same facts and the
 reason. For a decided proposal the panel keeps the rule for every image
 address: it shows an image only for a same-origin public asset path.
@@ -1041,7 +1055,9 @@ attached image's unreleased row with a share lock inside the approval
 transaction, reads its quarantined bytes and checks that they still hash to the
 digest in the address. A missing row, an object the storage reports missing or
 bytes that no longer match make the proposal (or the whole group) `stale` with
-the note "The proposed image … is no longer available", and nothing is
+the note "image_unavailable: The proposed image … is no longer available …"
+on the `stale` event of the item that attaches it (its group siblings carry the
+usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
 public already and needs nothing.

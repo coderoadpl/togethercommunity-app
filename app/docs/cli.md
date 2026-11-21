@@ -144,7 +144,7 @@ before/after effect, approve it or reject it. `proposals approve` prints the
 outcome first: `applied` exits `0` and names the resource by the operation
 (`applied: price <id>` for a new price, `applied: sales link <id>`,
 `applied: settings`); `stale` (the live state changed since the
-proposal was made) and `failed` (the live use-case refused the stored change,
+proposal was made, or an image it attaches is no longer available) and `failed` (the live use-case refused the stored change,
 with its error code and message) apply nothing and exit `6`, the conflict exit
 code, as does approving a proposal that is no longer pending.
 Proposals that depend on each other go into a

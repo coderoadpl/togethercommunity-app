@@ -10,7 +10,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { ChangeProposalGroupOwnerView, ChangeProposalOwnerView } from '#core/domain/index.js';
+import { changeProposalImageMissingNote, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
@@ -327,6 +327,99 @@ describe('ProposalsPanel', () => {
     expect(link).toHaveAttribute('href', `/api/change-proposals/proposal-quarantined-svg/assets/${digest}`);
     expect(link).toHaveAttribute('download', `${digest}.svg`);
     expect(within(preview).getByTestId('proposed-image-facts')).toHaveTextContent(t.proposedImageFacts({ format: 'SVG', fingerprint: digest.slice(0, 12) }));
+  });
+
+  it('loads a proposed address that an earlier approval already published through the owner preview too', async () => {
+    const digest = 'e'.repeat(64);
+    const published = `/api/public/assets/product-cover/${digest}.png`;
+    usePending([{
+      ...stockAdjustmentProposal,
+      id: 'proposal-reused-cover',
+      operation: 'product.update',
+      target: { kind: 'product', id: 'product-field-guide' },
+      targetLabel: 'Field Guide (print)',
+      input: { id: 'product-field-guide', coverUrl: published },
+      effect: { coverUrl: { before: null, after: published } },
+    }]);
+
+    const { container } = renderPanel();
+
+    const row = await screen.findByTestId('proposal-field-coverUrl');
+    const preview = within(row).getByTestId('proposed-image');
+    expect([...container.querySelectorAll('img')].map((image) => image.getAttribute('src')))
+      .toEqual([`/api/change-proposals/proposal-reused-cover/assets/${digest}`]);
+    fireEvent.load(within(preview).getByRole('img', { name: t.proposedImageAlt }));
+    expect(preview).toHaveAttribute('data-state', 'loaded');
+    expect(within(preview).queryByRole('alert')).toBeNull();
+    expect(within(preview).getByText(t.proposedImagePrivate)).toBeInTheDocument();
+  });
+
+  it('says the proposed image is gone, not that the shop changed, when an approval ends stale for a missing image', async () => {
+    const digest = 'f'.repeat(64);
+    const proposed = `/api/public/assets/logo/${digest}.png`;
+    const pending = { ...settingsProposal, id: 'proposal-gone-logo', input: { logoUrl: proposed }, effect: { logoUrl: { before: null, after: proposed } } };
+    const decided = settledView(pending, { status: 'stale' });
+    usePending([pending]);
+    server.use(
+      http.post('/api/change-proposals/:id/approve', () => HttpResponse.json({ ok: true, data: { proposal: decided } })),
+      http.get('/api/change-proposals/:id', () => HttpResponse.json({
+        ok: true,
+        data: {
+          proposal: {
+            ...decided,
+            events: [
+              { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: '2026-11-19T12:00:00.000Z' },
+              { sequence: 2, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note: changeProposalImageMissingNote({ kind: 'logo', digest, extension: 'png' }), at: '2026-11-20T12:00:00.000Z' },
+            ],
+          },
+        },
+      })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('proposal-approve'));
+    await userEvent.click(await screen.findByTestId('proposal-approve-confirm'));
+    const outcome = await screen.findByTestId('proposal-outcome-proposal-gone-logo');
+    expect(outcome).toHaveTextContent(t.outcomeImageUnavailable);
+    expect(outcome).not.toHaveTextContent(t.outcomeStale);
+  });
+
+  it('explains a stale proposal of a missing image in the history row and its timeline, and any other stale proposal as before', async () => {
+    const digest = 'a'.repeat(64);
+    const proposed = `/api/public/assets/logo/${digest}.png`;
+    const gone = settledView({ ...settingsProposal, id: 'proposal-history-gone', input: { logoUrl: proposed }, effect: { logoUrl: { before: null, after: proposed } } }, { status: 'stale' });
+    const moved = settledView({ ...settingsProposal, id: 'proposal-history-moved' }, { status: 'stale' });
+    const detailsRead: string[] = [];
+    usePending([]);
+    server.use(
+      http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
+        ok: true,
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [gone, moved] : [], nextCursor: null, hasMore: false },
+      })),
+      http.get('/api/change-proposals/:id', ({ params }) => {
+        detailsRead.push(String(params['id']));
+        const proposal = params['id'] === gone.id ? gone : moved;
+        const note = params['id'] === gone.id ? changeProposalImageMissingNote({ kind: 'logo', digest, extension: 'png' }) : null;
+        return HttpResponse.json({
+          ok: true,
+          data: { proposal: { ...proposal, events: [{ sequence: 1, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note, at: '2026-11-20T12:00:00.000Z' }] } },
+        });
+      }),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('tab', { name: t.tabHistory }));
+    const goneRow = await screen.findByTestId(`proposal-history-${gone.id}`);
+    expect(await within(goneRow).findByText(t.outcomeImageUnavailable)).toBeInTheDocument();
+    expect(goneRow).not.toHaveTextContent(t.outcomeStale);
+    const movedRow = screen.getByTestId(`proposal-history-${moved.id}`);
+    expect(movedRow).toHaveTextContent(t.outcomeStale);
+    expect(detailsRead).toEqual([gone.id]);
+
+    await userEvent.click(within(goneRow).getByTestId('proposal-history-toggle'));
+    expect(await within(goneRow).findByTestId('proposal-timeline')).toHaveTextContent(t.outcomeImageUnavailable);
   });
 
   it('lists decided proposals in the history tab with their status and note', async () => {

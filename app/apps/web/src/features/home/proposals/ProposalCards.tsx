@@ -6,7 +6,10 @@ import { z } from 'zod';
 import { ApiError } from '#core/client/index.js';
 import {
   CHANGE_PROPOSAL_LIMITS,
+  changeProposalImageReferences,
+  isChangeProposalImageMissingNote,
   knownChangeProposalOperation,
+  type ChangeProposalEventView,
   type ChangeProposalGroupOwnerView,
   type ChangeProposalOwnerView,
 } from '#core/domain/index.js';
@@ -38,6 +41,7 @@ export interface SettledOutcome {
   title: string;
   status: SettledStatus;
   reason: string | null;
+  imageUnavailable: boolean;
 }
 
 export interface DecisionCallbacks {
@@ -52,12 +56,18 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null): string | null => {
-  if (status === 'stale') return t.outcomeStale;
+export const outcomeExplanation = (t: Translations, status: string, reason: string | null, imageUnavailable = false): string | null => {
+  if (status === 'stale') return imageUnavailable ? t.outcomeImageUnavailable : t.outcomeStale;
   if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
   if (status === 'expired') return t.outcomeExpired;
   return null;
 };
+
+export const staleForMissingImage = (events: readonly ChangeProposalEventView[]): boolean =>
+  events.some((event) => event.kind === 'stale' && isChangeProposalImageMissingNote(event.note));
+
+export const mayBeStaleForMissingImage = (proposal: Pick<ChangeProposalOwnerView, 'status' | 'operation' | 'input'>): boolean =>
+  proposal.status === 'stale' && changeProposalImageReferences(proposal.operation, proposal.input).length > 0;
 
 const isSettledStatus = (status: string): status is SettledStatus =>
   status === 'stale' || status === 'failed' || status === 'expired';
@@ -302,7 +312,15 @@ const useDecisionFeedback = () => {
     }
     toast.error(localizePanelError(error, t));
   };
-  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed };
+  const imageUnavailable = async (decided: readonly ChangeProposalOwnerView[]): Promise<boolean> => {
+    try {
+      const details = await Promise.all(decided.filter(mayBeStaleForMissingImage).map((item) => queryClient.fetchQuery(actions.changeProposal(item.id))));
+      return details.some((detail) => staleForMissingImage(detail.proposal.events));
+    } catch {
+      return false;
+    }
+  };
+  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable };
 };
 
 const DecisionActions = ({
@@ -341,7 +359,7 @@ export const SingleProposalCard = ({
   onSettled,
   onDecided,
 }: { proposal: ChangeProposalOwnerView } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable } = useDecisionFeedback();
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const title = operationTitle(t.changeProposals, proposal.operation);
   const known = knownChangeProposalOperation(proposal.operation) !== null;
@@ -357,9 +375,10 @@ export const SingleProposalCard = ({
         return;
       }
       if (isSettledStatus(decided.status)) {
-        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage);
+        const missingImage = await imageUnavailable([decided]);
+        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missingImage);
         if (explanation !== null) toast.info(explanation);
-        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage });
+        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, imageUnavailable: missingImage });
       }
     },
     onError: async (error) => {
@@ -446,7 +465,7 @@ export const GroupProposalCard = ({
   onSettled,
   onDecided,
 }: { groupId: string; itemCount: number } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable } = useDecisionFeedback();
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const [changed, setChanged] = useState<GroupChange | null>(null);
@@ -498,9 +517,10 @@ export const GroupProposalCard = ({
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
       const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
-      const explanation = outcomeExplanation(t.changeProposals, status, reason);
+      const missingImage = status === 'stale' && await imageUnavailable(decided.items);
+      const explanation = outcomeExplanation(t.changeProposals, status, reason, missingImage);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, imageUnavailable: missingImage });
     },
     onError: groupFailed,
   });

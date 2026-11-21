@@ -36,7 +36,7 @@ interface DisplayEntry {
   value: DisplayValue;
 }
 
-export type PriceInterval = 'day' | 'week' | 'month' | 'year';
+type PriceInterval = 'day' | 'week' | 'month' | 'year';
 
 export type DisplayRow =
   | { kind: 'change'; field: string; before: DisplayValue | null; after: DisplayValue | null }

@@ -25,6 +25,7 @@ const ensureGeowidgetAssets = (): HTMLScriptElement => {
   script.id = GEOWIDGET_SCRIPT_ID;
   script.src = `${GEOWIDGET_ORIGIN}/inpost-geowidget.js`;
   script.defer = true;
+  script.addEventListener('error', () => script.remove(), { once: true });
   document.head.append(script);
   return script;
 };
@@ -73,17 +74,14 @@ export const InpostGeowidget = ({ token, language, shownCode, onPoint, onEscape,
     };
     const onEscapeEvent = () => escaped();
     const onInitEvent = (event: Event) => mapReady(event);
-    const onScriptError = () => {
-      script.remove();
-      failed();
-    };
+    const onScriptError = () => failed();
     document.addEventListener(GEOWIDGET_POINT_EVENT, onPointEvent);
-    widget.addEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent);
+    document.addEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent, true);
     widget.addEventListener(GEOWIDGET_INIT_EVENT, onInitEvent);
     script.addEventListener('error', onScriptError);
     return () => {
       document.removeEventListener(GEOWIDGET_POINT_EVENT, onPointEvent);
-      widget.removeEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent);
+      document.removeEventListener(GEOWIDGET_ESCAPE_EVENT, onEscapeEvent, true);
       widget.removeEventListener(GEOWIDGET_INIT_EVENT, onInitEvent);
       script.removeEventListener('error', onScriptError);
       host.replaceChildren();

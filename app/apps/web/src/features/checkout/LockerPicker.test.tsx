@@ -179,6 +179,8 @@ describe('parcel locker picker', () => {
     { way: 'the close button', close: async () => { await userEvent.click(screen.getByRole('button', { name: en.common.close })); } },
     { way: 'Escape', close: async () => { await userEvent.keyboard('{Escape}'); } },
     { way: 'Escape inside the map', close: async () => { act(() => { widget().dispatchEvent(new Event('inpost.geowidget.escape', { bubbles: true })); }); } },
+    { way: 'Escape the map reports without bubbling', close: async () => { act(() => { widget().dispatchEvent(new Event('inpost.geowidget.escape')); }); } },
+    { way: 'Escape the map reports on the document', close: async () => { act(() => { document.dispatchEvent(new Event('inpost.geowidget.escape')); }); } },
     { way: 'the back gesture', close: async () => { act(() => { window.history.back(); }); } },
   ])('closes on $way, keeps the previous choice and returns focus to Change', async ({ close }) => {
     serve();
@@ -288,6 +290,65 @@ describe('parcel locker picker', () => {
     expect(screen.queryByText('Member view')).not.toBeInTheDocument();
   });
 
+  it('keeps one navigation guard however often the picker is opened after the map loaded', async () => {
+    serve();
+    const { router } = await renderCheckout();
+    const guards = new Set<unknown>();
+    const block = router.history.block;
+    vi.spyOn(router.history, 'block').mockImplementation((blocker) => {
+      const unblock = block(blocker);
+      guards.add(blocker);
+      return () => {
+        guards.delete(blocker);
+        unblock();
+      };
+    });
+    await chooseShop();
+    for (let round = 0; round < 3; round += 1) {
+      await userEvent.click(changeButton());
+      await picker();
+      await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+      await pickerClosed();
+    }
+    expect(guards.size).toBe(1);
+  });
+
+  it('tries the map script again when it failed to load while the picker was closed', async () => {
+    serve();
+    await renderCheckout();
+    await userEvent.click(chooseButton());
+    await picker();
+    const first = document.getElementById('inpost-geowidget-script');
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    await pickerClosed();
+    act(() => { first?.dispatchEvent(new Event('error')); });
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+
+    await userEvent.click(chooseButton());
+    const dialog = await picker();
+    const retried = document.getElementById('inpost-geowidget-script');
+    expect(retried).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
+    expect(retried).not.toBe(first);
+    act(() => { retried?.dispatchEvent(new Event('error')); });
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
+  });
+
+  it('keeps focus inside the picker and hides the checkout behind it from assistive technology', async () => {
+    serve();
+    await renderCheckout();
+    await userEvent.click(chooseButton());
+    const dialog = await picker();
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: en.shipping.lockerChoose })).toHaveFocus());
+    for (let step = 0; step < 4; step += 1) {
+      await userEvent.tab();
+      expect(dialog).toContainElement(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    }
+    expect(screen.getByTestId('checkout-delivery').closest('[aria-hidden="true"]')).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    await pickerClosed();
+    expect(screen.getByTestId('checkout-delivery').closest('[aria-hidden="true"]')).toBeNull();
+  });
+
   it('locks the page scroll while the picker is open and releases it on close', async () => {
     serve();
     await renderCheckout();
@@ -353,6 +414,7 @@ describe('parcel locker picker', () => {
     await renderCheckout();
     const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
     expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');

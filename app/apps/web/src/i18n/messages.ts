@@ -647,7 +647,17 @@ export interface Messages {
     deliveryEstimate: (params: { min: number; max: number }) => string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
-    lockerCodeMapHint: string;
+    lockerChoose: string;
+    lockerChange: string;
+    lockerChangeLabel: string;
+    lockerKnowCode: string;
+    lockerPickerPrompt: string;
+    lockerPickerBack: string;
+    lockerChosenAnnouncement: (point: { code: string; address: string | null }) => string;
+    lockerMapLoading: string;
+    lockerMapFailed: string;
+    lockerPickerMapFailed: string;
+    lockerTypeCode: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
     lockerMapStaffHint: string;

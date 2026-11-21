@@ -112,10 +112,12 @@ describe('checkout delivery step', () => {
     expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint');
   });
 
-  it('loads the parcel locker map on demand and fills the code from the chosen point', async () => {
+  it('loads the parcel locker map in the picker on demand and fills the code from the point chosen on the map', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
-    await userEvent.click(await screen.findByRole('radio', { name: new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u') }));
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     const host = await screen.findByTestId('checkout-inpost-geowidget');
     const widget = host.querySelector('inpost-geowidget');
     expect(widget).toHaveAttribute('token', 'public-map-token');
@@ -125,27 +127,28 @@ describe('checkout delivery step', () => {
     expect(document.getElementById('inpost-geowidget-script')).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
     expect(document.getElementById('inpost-geowidget-style')).toHaveAttribute('href', 'https://geowidget.inpost.pl/inpost-geowidget.css');
 
-    document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
-    expect(await screen.findByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop · Main Street 1, 30-001 Cracow');
+    act(() => { document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } })); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const chosen = screen.getByTestId('checkout-pickup-point-selected');
+    expect(chosen).toHaveTextContent('KRA010 · Next to the shop');
+    expect(chosen).toHaveTextContent('Main Street 1, 30-001 Cracow');
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerKnowCode }));
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
   });
 
-  it('announces the picked locker right under the locker option, above the map, with the code field below the map', async () => {
+  it('places the locker choice right under the locker option, with the typed code behind "I know the code" below it', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
-    const host = await screen.findByTestId('checkout-inpost-geowidget');
     const option = screen.getByTestId('checkout-delivery-option-locker');
-    const status = within(screen.getByTestId('checkout-locker-picker')).getByRole('status');
-    expect(status).toBeEmptyDOMElement();
-    expect(status).toHaveStyle({ marginBottom: '0px' });
-    expect(option.nextElementSibling).toBe(screen.getByTestId('checkout-locker-picker'));
-    expect(following(status, host)).toBe(true);
-    expect(following(host, screen.getByLabelText(en.shipping.lockerCodeLabel))).toBe(true);
-
-    const eventName = host.querySelector('inpost-geowidget')?.getAttribute('onpoint') ?? '';
-    document.dispatchEvent(new CustomEvent(eventName, { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
-    expect(await within(status).findByTestId('checkout-pickup-point-selected')).toHaveTextContent(`${en.shipping.lockerSelected}: KRA010`);
+    const picker = screen.getByTestId('checkout-locker-picker');
+    expect(option.nextElementSibling).toBe(picker);
+    const choose = within(picker).getByRole('button', { name: en.shipping.lockerChoose });
+    const knowCode = within(picker).getByRole('button', { name: en.shipping.lockerKnowCode });
+    expect(following(choose, knowCode)).toBe(true);
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    await userEvent.click(knowCode);
+    expect(following(knowCode, within(picker).getByLabelText(en.shipping.lockerCodeLabel))).toBe(true);
   });
 
   it('aligns the locker code hint with the field edge', async () => {
@@ -155,13 +158,15 @@ describe('checkout delivery step', () => {
     expect(screen.getByText(en.shipping.lockerCodeHint)).toHaveStyle({ marginLeft: '0px', marginRight: '0px' });
   });
 
-  it('loads the parcel locker map for a buyer only after the locker option is chosen', async () => {
+  it('loads the parcel locker map for a buyer only after the locker option is chosen and the picker is opened', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByLabelText(exact(`Courier — ${pln(1999)}`)));
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
     await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     expect(await screen.findByTestId('checkout-inpost-geowidget')).toBeInTheDocument();
     expect(document.getElementById('inpost-geowidget-script')).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
     expect(screen.queryByTestId('checkout-locker-map-staff-hint')).not.toBeInTheDocument();
@@ -202,12 +207,12 @@ describe('checkout delivery step', () => {
     expect(document.getElementById('inpost-geowidget-style')).toBeNull();
   });
 
-  it('names the map in the locker code hint only when the map is shown', async () => {
+  it('gives the typed locker code the same hint when the map is offered', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
-    expect(await screen.findByTestId('checkout-inpost-geowidget')).toBeInTheDocument();
-    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAccessibleDescription(en.shipping.lockerCodeMapHint);
+    await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerKnowCode }));
+    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
   });
 
   it.each([
@@ -262,7 +267,10 @@ describe('checkout delivery step', () => {
     try {
       renderWithProviders(<RouterProvider router={router} />);
       await userEvent.click(await screen.findByRole('radio', { name: new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u') }));
+      await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
       await screen.findByTestId('checkout-inpost-geowidget');
+      await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
       expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
       act(() => { void router.navigate({ to: '/login' }); });

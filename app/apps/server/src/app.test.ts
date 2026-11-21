@@ -662,6 +662,7 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,

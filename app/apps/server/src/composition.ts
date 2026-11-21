@@ -35,7 +35,7 @@ import { createShipxHttpClient } from '#adapters/shipx/http.js';
 import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, sweepQuarantinedImages, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -688,6 +688,7 @@ export interface AppDeps {
   checkoutSnapshots?: CheckoutSnapshotRepository;
   stock: StockRepository;
   releaseExpiredStockReservations(): Promise<Result<{ released: number }, AppError>>;
+  sweepQuarantinedImages(): Promise<Result<{ tenants: number; removed: number }, AppError>>;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -966,6 +967,22 @@ export const selectDeploymentIdentity = (
   commit: env.APP_COMMIT_SHA ?? null,
   databaseFingerprint: databaseHostFingerprint(env.DATABASE_URL),
 });
+
+const QUARANTINED_IMAGE_SWEEP_INTERVAL_MS = 50_000;
+
+/** The Node ticker fires every second; the sweep needs at most one run per minute tick. */
+const throttledSweep = <T extends { tenants: number; removed: number }>(
+  clock: Clock,
+  sweep: () => Promise<Result<T, AppError>>,
+): () => Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+  let lastRunAt = Number.NEGATIVE_INFINITY;
+  return async () => {
+    const now = Date.parse(clock.nowIso());
+    if (now - lastRunAt < QUARANTINED_IMAGE_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0 });
+    lastRunAt = now;
+    return sweep();
+  };
+};
 
 /**
  * Composition root — the ONLY place where env decides which adapters run.
@@ -1424,6 +1441,7 @@ export const createDeps = (
     corsOrigin: env.APP_BASE_URL,
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
+  const quarantinedImages = createQuarantinedImageRepository(db, options.changeProposalBounds);
   const tenantDomainDeps = {
     tenantDomains,
     domainEvents: tenantDomainEvents,
@@ -1666,7 +1684,7 @@ export const createDeps = (
       (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
       options.changeProposalBounds,
     ),
-    quarantinedImages: createQuarantinedImageRepository(db, options.changeProposalBounds),
+    quarantinedImages,
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1782,6 +1800,7 @@ export const createDeps = (
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     stock,
     releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
+    sweepQuarantinedImages: throttledSweep(clock, () => sweepQuarantinedImages({ quarantinedImages, storage, secretResolver, logger, clock })),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

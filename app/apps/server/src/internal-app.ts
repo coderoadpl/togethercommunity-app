@@ -821,6 +821,15 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
+const sweepQuarantinedProposalImages = async (deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'logger'>): Promise<void> => {
+  try {
+    const swept = await deps.sweepQuarantinedImages();
+    if (!swept.ok) deps.logger.error(`[change-proposal] quarantined image sweep failed: ${swept.error.message}`);
+  } catch (error) {
+    deps.logger.error(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}`);
+  }
+};
+
 const dispatchDueOrderRefunds = async (
   deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
   tickStartedAt: number,
@@ -849,6 +858,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
+    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('manual');
     await dispatchDueOrderRefunds(deps, tickStartedAt);
     return respond(emails);
@@ -861,6 +871,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
+    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('cron');
     await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');

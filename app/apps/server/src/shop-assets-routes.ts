@@ -5,7 +5,9 @@ import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js
 import { err, internal, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   beginProductCoverUpload,
+  beginProposedProductCoverUpload,
   completeProductCoverUpload,
+  completeProposedProductCoverUpload,
   createSalesLink,
   deleteSalesLink,
   getSalesLink,
@@ -16,8 +18,8 @@ import {
 import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { readJson } from './read-json.js';
-import { respond } from './respond.js';
-import type { ShopMachineRoute } from './shop-machine-auth.js';
+import { respond, retryAfterHeaders } from './respond.js';
+import { imageUploadAnswer, isProposeModeKey, PROPOSED_IMAGE_UPLOAD, type ShopMachineRoute } from './shop-machine-auth.js';
 
 type SalesLinkCreateInput = z.output<typeof shopAssetsContracts.createSalesLink.input>;
 type SalesLinkUpdateInput = z.output<typeof shopAssetsContracts.updateSalesLink.input>;
@@ -37,31 +39,27 @@ const salesLinkDeleteInput = (c: Context<AppVars>): { id: string } => ({ id: c.r
 export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
   {
     ...SHOP_ASSETS_ROUTES.productCoverUpload,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
-    handler: async (c, { ctx }) => {
+    proposeMode: PROPOSED_IMAGE_UPLOAD,
+    handler: async (c, request) => {
       const parsed = shopAssetsContracts.productCoverUpload.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
-      const result = await beginProductCoverUpload(ctx, parsed.data, deps);
-      return respond(result.ok
-        ? ok({
-            key: result.value.key,
-            servePath: result.value.servePath,
-            upload: {
-              url: result.value.uploadUrl,
-              headers: { 'content-type': parsed.data.contentType },
-              expiresAt: result.value.expiresAt,
-            },
-          })
-        : result);
+      const quarantined = isProposeModeKey(request);
+      const result = quarantined
+        ? await beginProposedProductCoverUpload(request.ctx, parsed.data, deps)
+        : await beginProductCoverUpload(request.ctx, parsed.data, deps);
+      return respond(result.ok ? ok(imageUploadAnswer(result.value, parsed.data.contentType, quarantined)) : result);
     },
   },
   {
     ...SHOP_ASSETS_ROUTES.productCoverComplete,
-    proposeMode: { kind: 'refuse', reason: 'not-in-release' },
-    handler: async (c, { ctx }) => {
+    proposeMode: PROPOSED_IMAGE_UPLOAD,
+    handler: async (c, request) => {
       const parsed = shopAssetsContracts.productCoverComplete.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
-      return respond(await completeProductCoverUpload(ctx, parsed.data, deps));
+      const result = isProposeModeKey(request)
+        ? await completeProposedProductCoverUpload(request.ctx, parsed.data, deps)
+        : await completeProductCoverUpload(request.ctx, parsed.data, deps);
+      return respond(result, result.ok ? {} : { headers: retryAfterHeaders(result.error) });
     },
   },
   {

@@ -72,6 +72,11 @@ const productionTickers: BackgroundTicker[] = [
         deps.releaseExpiredStockReservations().catch((error: unknown) => {
           process.stderr.write(`[stock] expired reservation sweep failed: ${safeErrorMessage(error)}\n`);
         }),
+        deps.sweepQuarantinedImages().then((result) => {
+          if (!result.ok) process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeLogMessage(result.error.message)}\n`);
+        }, (error: unknown) => {
+          process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}\n`);
+        }),
         deps.dispatchEmails('cron').then((result) => {
           if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${safeLogMessage(result.error.message)}\n`);
         }, (error: unknown) => {

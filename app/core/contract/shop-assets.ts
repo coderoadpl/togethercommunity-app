@@ -1,10 +1,10 @@
 import { strictInput, strictSalesLinkInputSchema, strictSalesLinkUpdateInputSchema, type ShopManagementScope } from '#core/domain/index.js';
 
 import {
-  imageAssetCompleteOutputSchema,
   imageAssetCompleteRequestSchema,
-  imageAssetUploadOutputSchema,
   imageAssetUploadRequestSchema,
+  shopImageAssetCompleteOutputSchema,
+  shopImageAssetUploadOutputSchema,
 } from './routes.js';
 import { salesLinkContracts } from './sales-links.js';
 
@@ -22,8 +22,8 @@ export const SHOP_ASSETS_ROUTES = {
 } as const;
 
 export const shopAssetsContracts = {
-  productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
-  productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
+  productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: shopImageAssetUploadOutputSchema },
+  productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: shopImageAssetCompleteOutputSchema },
   listSalesLinks: salesLinkContracts.listSalesLinks,
   createSalesLink: { ...salesLinkContracts.createSalesLink, input: strictSalesLinkInputSchema },
   getSalesLink: salesLinkContracts.getSalesLink,

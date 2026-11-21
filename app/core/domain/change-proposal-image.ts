@@ -159,5 +159,5 @@ export const changeProposalImageInputSchema = z.object({
 
 export type ChangeProposalImageInput = z.input<typeof changeProposalImageInputSchema>;
 
-export const changeProposalImageMissingNote =(reference: ProposalImageReference): string =>
+export const changeProposalImageMissingNote = (reference: ProposalImageReference): string =>
   `The proposed image ${proposalImagePublicPath(reference)} is no longer available, so the proposal cannot be applied; nothing was changed`;

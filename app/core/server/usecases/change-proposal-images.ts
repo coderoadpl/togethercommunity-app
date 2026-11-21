@@ -311,7 +311,8 @@ export const prepareApprovalImages = async (
 /**
  * Copies the verified bytes to their public, content-addressed key. This runs inside the approval transaction once the
  * outcome is applied and before COMMIT, so committed live state never points at an object that does not exist; every
- * key it wrote to is returned, a failed write included, for `withdrawPublishedImages` when the approval does not commit.
+ * image it writes, a failed write included, is added to `published` for `withdrawPublishedImages` when the approval does
+ * not commit.
  */
 export const publishApprovalImages = async (
   tenantId: string,

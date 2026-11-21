@@ -156,8 +156,10 @@ A key is created in one of two modes, fixed for its lifetime:
   its field-level effect, and answered `202` with a receipt; the owner then
   approves or rejects it in their own session. An approval applies the change
   only when the live state still gives exactly the effect the owner saw.
-  Every other write route (images, order fulfilment, integrations) answers
-  `403`. Reads behave as on a direct key.
+  The four product cover and branding image upload and completion routes run
+  for it too, but keep the image in a private quarantine until an approval
+  publishes it (below). Every other write route (order fulfilment,
+  integrations) answers `403`. Reads behave as on a direct key.
 
 ```bash
 pnpm --silent run cli api-key shop-management create Catalogue agent \
@@ -187,7 +189,9 @@ answers `{ "url": "/api/public/assets/<kind>/<sha256>.<ext>", "quarantined": tru
 the address the image takes once approved, and nothing is public until the
 owner approves a proposal that sets that address (`product.update` or
 `product.create` with `coverUrl`, `settings.update` with `logoUrl`,
-`logoDarkUrl`, `faviconUrl` or `ogImageUrl`). The upload start answers
+`logoDarkUrl`, `faviconUrl` or `ogImageUrl`); the approval writes the public
+copy just before it commits. A new `checkoutAppearance.logoUrl` or `iconUrl`
+cannot be proposed yet and is refused with `400`. The upload start answers
 `servePath: null` and `quarantined: true`; its presigned `PUT` accepts only a
 body of the declared `sizeBytes`. A key holds at most 100 such images and
 50 MiB of them at a time, and starts at most 60 uploads in 15 minutes (`409`

@@ -523,7 +523,9 @@ transaction:
 1. lock the proposal row while it is `pending` and unexpired, then read the
    clock again: a proposal that expired while the approval waited for the lock
    is not applied; its expiry is recorded and the answer is `409` with status
-   `expired`;
+   `expired`. Each image the proposal attaches is then taken and verified (see
+   [Images](#images)): one that is no longer available makes the proposal
+   `stale` without running anything;
 2. validate the stored command again, strictly: an operation this release does
    not know, or an input with a key the current validator does not know at any
    depth (a field retired since the proposal, a settings field outside the
@@ -956,7 +958,8 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 
 A propose-mode key can propose a new product cover and new branding images
 (logo, dark logo, favicon, share image). Nothing it uploads is publicly
-reachable until the owner approves the proposal that attaches it. The
+reachable until an owner approval of a proposal that attaches it writes the
+public copy, which happens just before that approval commits. The
 use-cases are in `core/server/usecases/change-proposal-images.ts`; the routes
 are the shop image routes a direct-mode key uses, which are of route class
 `direct` and branch on the key's mode.
@@ -964,8 +967,8 @@ are the shop image routes a direct-mode key uses, which are of route class
 | Who | Sees |
 |---|---|
 | The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
-| The owner | the proposed image through the owner preview while the proposal is pending, then the public image once approved |
-| Everyone else | nothing until approval: the public address has no object behind it |
+| The owners | the proposed image through the owner preview while the proposal is pending (the quarantined copy, or the published copy when the address is one a live field already shows), then the public image once approved |
+| Everyone else | for a new image, nothing until an approval writes its public copy just before it commits; from that write the address answers with the bytes, and if that approval then does not end `applied`, until its withdrawal or the minute sweep deletes the copy again (below). An address a live field already shows is public already |
 
 **Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
 `shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
@@ -1008,29 +1011,39 @@ completion or a release of it is in progress or recorded for the sweep.
 **Attaching.** The key then proposes `product.update` with `coverUrl`,
 `product.create` with `coverUrl`, or `settings.update` with `logoUrl`,
 `logoDarkUrl`, `faviconUrl` or `ogImageUrl` set to that address, alone or in a
-[group](#groups). Every image address a propose-mode key changes must be one of
-its own quarantined images of the kind the field expects, or an address a live
-product cover or branding field of the workspace already shows; clearing a
-field or leaving it unchanged is always allowed. Anything else, a foreign URL,
-another key's or another workspace's quarantined image, an image of another
-kind, is refused at submit with `400` and the validation message of the live
-route, naming the field. The stored effect shows the future public address as
+[group](#groups). Every address a propose-mode key sets in one of these five
+image fields must be one of its own quarantined images of the kind the field
+expects, or a same-origin path `/api/public/assets/<kind>/<file>` of that kind,
+where `<file>` is a UUID or a SHA-256 digest with an extension the kind
+accepts, that a live product cover or branding field of the workspace already
+shows; clearing a field or leaving it unchanged is always allowed. Anything
+else, a foreign URL, another key's or another workspace's quarantined image, an
+image of another kind, is refused at submit with `400` and the validation
+message of the live route, naming the field. The two checkout appearance
+images, `checkoutAppearance.logoUrl` and `checkoutAppearance.iconUrl`, cannot
+be proposed yet: a new address in either is refused at submit with `400` (see
+[Not yet available](#not-yet-available)). The stored effect shows the future public address as
 the "after" value. The proposal is stored in the transaction that checks again,
 holding the row, that each attached image is still quarantined for the key; one
-released meanwhile is refused with the same `400`. A released row counts as
+released meanwhile is refused with `400` and the live route's message, with a
+form error naming no field: "An image this key uploaded for approval is no
+longer available; upload it again". A released row counts as
 gone everywhere: for the submit check, the approval and the limits. An owner session and a
 direct-mode key set any address the live validator accepts, exactly as before.
 
 **Owner preview.** `GET /api/change-proposals/:id/assets/:digest`
 (`getChangeProposalImage`) serves, to the verified owner in their own session
 with `proposal:read`, the quarantined bytes of an image that the pending
-proposal `:id` attaches. The server reads the bytes, checks their hash again
+proposal `:id` attaches. When the key holds no quarantined copy of it but a
+live field of the workspace shows its address (an earlier approval published
+it, and approval accepts it as it is), the route serves the published copy
+under `image-assets/` with the same checks instead. The server reads the bytes, checks their hash again
 and answers them with the image's content type, `x-content-type-options: nosniff` and `cache-control: private,
 no-store`; the disposition is `inline` for a raster image and always
 `attachment` for SVG, as the public asset route does. A key, an admin, an
 unverified or impersonating owner, another workspace, a decided or expired
-proposal, an image the proposal does not attach, an image no longer
-quarantined and one whose object the storage reports missing or whose bytes no
+proposal, an image the proposal does not attach, an image neither quarantined
+nor shown by a live field and one whose object the storage reports missing or whose bytes no
 longer hash to the digest get `401`, `403` or `404`; a failed storage request
 is answered with its storage error. No key can read quarantined bytes.
 
@@ -1081,18 +1094,25 @@ request answers its error); the workspace's approval lock it holds keeps the
 object there until the commit. Publishing before the commit means committed
 live state never points at an object that does not exist, also after a crash.
 
-When the approval does not end `applied` (a write fails, a lock wait, the
-status change or the commit fails), each record of the attempt is removed
-under the workspace's approval lock, so no concurrent approval can publish the
-same address in between: an object the attempt wrote is deleted first, except
-when a live field shows the address or an applied proposal carries it in its
-input. A record that cannot be removed then (the lock wait runs out, the
-storage configuration cannot be read, the delete fails, or the process died)
-stays, and the minute sweep removes every record older than 10 minutes under
-the same lock, deleting its object with the same exceptions, 50 workspaces and
-20 records per workspace at a time. Every public object written by an approval
-that did not end applied is therefore removed without anyone's help, unless a
-live field shows its address or an applied proposal carries it.
+When the approval does not end `applied` (it ends `stale`, `failed` or
+expired, a write fails, a lock wait runs out, or the status change or the
+commit fails), it withdraws its attempt right after the transaction: each
+record is removed in a short transaction of its own under the workspace's
+approval lock, so no concurrent approval can publish the same address in
+between. An object the attempt tried to write is deleted first, except when a
+live field shows the address or an applied proposal carries it in its input; a
+record whose object the attempt never tried to write is only dropped. Once the
+withdrawal succeeds, the attempt has left neither a record nor a public copy
+behind. A record it cannot remove (the lock wait runs out, the storage
+configuration cannot be read, the delete fails, or the process died first)
+stays, and the minute sweep retries it: it removes every record older than 10
+minutes under the same lock, always deleting its object with the same
+exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
+and 20 records per workspace per run, and leaves a record it again cannot
+remove for the next run. Every public object written by an approval that did
+not end applied is therefore removed without anyone's help once the storage
+answers, unless a live field shows its address or an applied proposal carries
+it.
 
 **Cleanup.** After a decision commits, the quarantined images of the decided
 proposals are released: under the workspace's proposal lock, their rows are

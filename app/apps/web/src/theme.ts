@@ -3045,7 +3045,7 @@ export const CheckoutSafetyWarnings = styled(Box, {
   ...theme.typography.body2,
   overflowWrap: 'anywhere',
   '& p, & ul, & ol': { margin: 0 },
-  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: '0.5em' },
+  '& :is(p, ul, ol) + :is(p, ul, ol)': { marginTop: clamped ? 0 : '0.5em' },
   ...(clamped ? { maxHeight: `calc(3em * ${String(theme.typography.body2.lineHeight ?? 1.5)})`, overflow: 'hidden' } : {}),
 }));
 
@@ -3056,14 +3056,17 @@ export const CheckoutSafetyProduct = styled('div')({
   minWidth: 0,
 });
 
+const checkoutSafetyThumbnailColumn = { flexShrink: 0, width: '2.5rem' } as const;
+
 export const CheckoutSafetyThumbnail = styled('img')(({ theme }) => ({
-  flexShrink: 0,
-  width: '2.5rem',
+  ...checkoutSafetyThumbnailColumn,
   height: '2.5rem',
   objectFit: 'cover',
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.action.hover,
 }));
+
+export const CheckoutSafetyThumbnailSlot = styled('span')(checkoutSafetyThumbnailColumn);
 
 export const CheckoutSafetyPart = styled('span', {
   shouldForwardProp: (prop) => prop !== 'emphasised',
@@ -3074,15 +3077,20 @@ export const CheckoutSafetyPart = styled('span', {
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
 }));
 
-export const CheckoutSafetyLastPart = styled('span')({
+export const ProductSafetyOutsideEuGroup = styled('div')(({ theme }) => ({
   display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'baseline',
-  columnGap: '0.5rem',
-  maxWidth: '100%',
-  '& > span': { minWidth: 0 },
-  '& > button': { flexShrink: 0 },
-});
+  flexDirection: 'column',
+  gap: '1rem',
+  paddingLeft: '1rem',
+  borderLeft: `2px solid ${theme.palette.divider}`,
+}));
+
+export const CheckoutSafetyPartyName = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'emphasised',
+})<{ emphasised?: boolean }>(({ emphasised = false, theme }) => ({
+  color: theme.palette.text.primary,
+  ...(emphasised ? { fontWeight: 500 } : {}),
+}));
 
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',

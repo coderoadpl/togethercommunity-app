@@ -87,8 +87,12 @@ it('exposes only public sales-link fields', async () => {
   expect(result.ok && result.value.salesLink).toEqual({ slug: link.slug, heading: link.heading, description: link.description, validFrom: null, validTo: null });
 });
 
-it('carries the product safety information of each line with the warnings rendered', async () => {
-  const compliance = { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1, Warsaw', manufacturerEmail: 'safety@example.com', modelIdentifier: 'PRINT-1', safetyWarnings: 'Keep **dry**.' };
+it('carries the product safety information of each line with the responsible person and the warnings rendered', async () => {
+  const compliance = {
+    manufacturerName: 'Example Workshop', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com', manufacturerOutsideEu: true,
+    responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, Warsaw', responsiblePersonEmail: 'eu-rep@example.com',
+    modelIdentifier: 'PRINT-1', safetyWarnings: 'Keep **dry**.',
+  };
   findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, compliance } : product));
   const result = await getPublicSalesLink('workspace', link.slug, deps);
   if (!result.ok) throw new Error('offer failed');

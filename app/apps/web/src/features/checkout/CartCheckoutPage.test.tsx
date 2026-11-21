@@ -33,7 +33,11 @@ const products = {
     id: poster, type: 'physical', deliveryMethod: 'shipping', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
     priceCents: 3500, currency: 'PLN', prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3500, currency: 'PLN' }],
     marketingConsents: [{ definitionId: 'news', label: 'Send me news', doubleOptIn: false, documentUrl: null }],
-    compliance: { manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null },
+    compliance: {
+      manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', manufacturerOutsideEu: true,
+      responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 2, Warsaw', responsiblePersonEmail: 'eu-rep@example.org',
+      modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null,
+    },
   },
   [ebook]: {
     id: ebook, type: 'digital_download', deliveryMethod: 'pickup', slug: 'ebook', title: 'E-book', description: '', coverUrl: null,
@@ -161,6 +165,8 @@ describe('hosted cart checkout', () => {
     expect(line(ebook).getByTestId(`cart-quantity-${ebook}`)).toHaveTextContent('1');
     expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(9500) })));
     expect(screen.getByText(en.productSafety.offerHeadingFor({ title: 'Poster' }))).toBeInTheDocument();
+    expect(screen.getByTestId('product-safety-responsible-person')).toHaveTextContent('Example EU Representative, Example Street 2, Warsaw');
+    expect(within(screen.getByTestId('product-safety-responsible-person')).getByRole('link', { name: 'eu-rep@example.org' })).toHaveAttribute('href', 'mailto:eu-rep@example.org');
     expect(screen.getAllByText('Send me news')).toHaveLength(1);
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
@@ -188,6 +194,27 @@ describe('hosted cart checkout', () => {
       billing: { nip: null, companyName: 'Buyer Ltd', address: 'Main Street 2', postalCode: '00-001', city: 'Warsaw', country: 'PL' },
       shipping: { rateId: 'courier' },
     });
+  });
+
+  it('shows the responsible person in the shape of the manufacturer, each e-mail row closer to its party than to the other party', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    const person = await screen.findByTestId('product-safety-responsible-person');
+    const manufacturer = screen.getByTestId('product-safety-manufacturer');
+    for (const [party, label, nameAndAddress, email] of [
+      [manufacturer, en.productSafety.manufacturer, 'Print House, Main Street 1', 'safety@example.org'],
+      [person, en.productSafety.responsiblePerson, 'Example EU Representative, Example Street 2, Warsaw', 'eu-rep@example.org'],
+    ] as const) {
+      const [identity, contact, ...rest] = [...party.children];
+      expect(rest).toEqual([]);
+      expect(identity).toHaveTextContent(exact(`${label}: ${nameAndAddress}`));
+      expect(contact).toHaveTextContent(exact(`${en.productSafety.contact}: ${email}`));
+      expect(within(party).getByRole('link', { name: email })).toHaveAttribute('href', `mailto:${email}`);
+      expect(party).toHaveStyle({ gap: '0.125rem' });
+    }
+    expect(manufacturer.parentElement).toBe(person.parentElement);
+    expect(manufacturer.nextElementSibling).toBe(person);
+    expect(person.parentElement).toHaveStyle({ gap: '0.5rem' });
   });
 
   it('keeps each stepper within the line limits and posts the changed quantities', async () => {
@@ -459,6 +486,33 @@ describe('hosted cart checkout', () => {
         history.destroy();
         vi.restoreAllMocks();
       }
+    });
+
+    it('places the locker block right after the locker option, before the next option, also once a locker is chosen', async () => {
+      serve({ token: 'public-map-token' });
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+      const option = screen.getByTestId('checkout-delivery-option-locker');
+      const block = screen.getByTestId('checkout-locker-picker');
+      expect(option.nextElementSibling).toBe(block);
+      expect(block.nextElementSibling).toBe(screen.getByTestId('checkout-delivery-option-courier'));
+      expect(within(block).getByRole('button', { name: en.shipping.lockerChoose })).toBeVisible();
+      expect(within(block).getByRole('button', { name: en.shipping.lockerKnowCode })).toBeVisible();
+
+      await userEvent.click(within(block).getByRole('button', { name: en.shipping.lockerChoose }));
+      const dialog = await screen.findByRole('dialog', { name: en.shipping.lockerChoose });
+      const widget = dialog.querySelector('inpost-geowidget');
+      act(() => {
+        document.dispatchEvent(new CustomEvent(widget?.getAttribute('onpoint') ?? '', { detail: { name: 'KRA010', location_description: 'Next to the shop', address: { line1: 'Main Street 1', line2: '30-001 Cracow' } } }));
+      });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const chosen = screen.getByTestId('checkout-locker-picker');
+      expect(option.nextElementSibling).toBe(chosen);
+      expect(within(chosen).getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
+      expect(within(chosen).getByRole('button', { name: en.shipping.lockerKnowCode })).toBeVisible();
+
+      await userEvent.click(screen.getByRole('radio', { name: exact(`Courier — ${pln(1999)}`) }));
+      expect(screen.queryByTestId('checkout-locker-picker')).not.toBeInTheDocument();
     });
 
     it('chooses a locker in the same full-screen picker and sends its name and address', async () => {

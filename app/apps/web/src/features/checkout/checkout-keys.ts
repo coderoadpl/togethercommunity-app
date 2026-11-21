@@ -7,12 +7,24 @@ export const rowAction = (action: 'apply' | 'pick') => ({ 'data-checkout-row-act
 const ROW_ACTION_SELECTOR = '[data-checkout-row-action]';
 const CHOICE_INPUT_TYPES = new Set(['checkbox', 'radio']);
 
+const ownOpenHeader = (box: Element): HTMLButtonElement | undefined =>
+  [...box.querySelectorAll('button[aria-expanded="true"]')]
+    .find((button): button is HTMLButtonElement => button instanceof HTMLButtonElement && button.closest(CLOSES_ON_ESCAPE_SELECTOR) === box);
+
+const openHeaderAround = (target: Element): HTMLButtonElement | undefined => {
+  for (let box = target.closest(CLOSES_ON_ESCAPE_SELECTOR); box !== null; box = box.parentElement?.closest(CLOSES_ON_ESCAPE_SELECTOR) ?? null) {
+    const header = ownOpenHeader(box);
+    if (header !== undefined) return header;
+  }
+  return undefined;
+};
+
 export const checkoutFormKeyDown = (payDisabled: boolean) => (event: KeyboardEvent<HTMLFormElement>) => {
   const { target } = event;
   if (!(target instanceof Element)) return;
   if (event.key === 'Escape') {
-    const header = target.closest(CLOSES_ON_ESCAPE_SELECTOR)?.querySelector('button[aria-expanded="true"]');
-    if (!(header instanceof HTMLButtonElement)) return;
+    const header = openHeaderAround(target);
+    if (header === undefined) return;
     event.preventDefault();
     header.click();
     header.focus();

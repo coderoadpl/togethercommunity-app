@@ -67,16 +67,17 @@ const deliveryFixture = fixtureFor('together-checkout-delivery', stand, { shippi
 const lockerMapPayment = { shippingRates, inpostGeowidgetToken: 'story-geowidget-token', inpostGeowidgetWithheld: false, canTest: false, testEnabled: false };
 const lockerMapFixture = fixtureFor('together-checkout-locker-map', stand, lockerMapPayment);
 const cartStandId = '5f0c2a1e-7d3b-4c8a-9e61-2b4d8f0a6c13';
-const cartLockerMapFixture = {
+const cartFixtureFor = (scenario: string, product: Record<string, unknown>, payment: Record<string, unknown>) => ({
   ...checkout,
-  scenario: 'together-cart-checkout-locker-map',
+  scenario,
   route: `${HOSTED_CART_PATH}?${CART_LINES_PARAM}=${cartStandId}.1`,
   calls: {
     ...checkout.calls,
-    [`publicOffer:["${cartStandId}"]`]: { ok: true, value: { ...recordedOffer, tenant, products: [{ ...recordedOffer.products[0], ...stand, id: cartStandId, slug: 'printed-desk-stand' }] } },
-    'publicPaymentConfig:[]': { ok: true, value: { ...recordedPaymentConfig, simulatedPaymentsEnabled: false, stripeConfigured: true, ...lockerMapPayment } },
+    [`publicOffer:["${cartStandId}"]`]: { ok: true, value: { ...recordedOffer, tenant, products: [{ ...recordedOffer.products[0], ...product, id: cartStandId, slug: 'printed-desk-stand' }] } },
+    'publicPaymentConfig:[]': { ok: true, value: { ...recordedPaymentConfig, simulatedPaymentsEnabled: false, stripeConfigured: true, ...payment } },
   },
-};
+});
+const cartLockerMapFixture = cartFixtureFor('together-cart-checkout-locker-map', stand, lockerMapPayment);
 const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, variants: standVariants }, { shippingRates });
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
@@ -87,6 +88,18 @@ const safetyLongWarningFixture = safetyFixture('together-checkout-safety-long-wa
   compliance: { ...compliance, safetyWarnings: longWarning.join('\n\n'), safetyWarningsHtml: longWarning.map((paragraph) => `<p>${paragraph}</p>`).join('') },
 });
 const safetyNoCoverFixture = safetyFixture('together-checkout-safety-no-cover', { coverUrl: null });
+const outsideEuCompliance = {
+  ...compliance,
+  manufacturerName: 'Example Lamp Works',
+  manufacturerAddress: '1 Example Road, Toronto ON M5V 2T6, Canada',
+  manufacturerEmail: 'safety@lamps.togethercommunity.app',
+  manufacturerOutsideEu: true,
+  responsiblePersonName: 'Studio Workshop EU Representative',
+  responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw, Poland',
+  responsiblePersonEmail: 'eu-rep@studio.togethercommunity.app',
+};
+const safetyOutsideEuFixture = safetyFixture('together-checkout-safety-outside-eu', { compliance: outsideEuCompliance });
+const cartSafetyOutsideEuFixture = cartFixtureFor('together-cart-checkout-safety-outside-eu', { ...stand, coverUrl: standCover, compliance: outsideEuCompliance }, { shippingRates });
 const personalisationFixture = (scenario: string, condition: string | null) => fixtureFor(scenario, { ...stand, personalization: { ...engraving, condition } }, { shippingRates });
 
 const termsRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"rateId":"courier"}}]';
@@ -186,6 +199,8 @@ const bundleFixtureWith = (scenario: string, lines: readonly unknown[]) => ({
 const bundleFixture = bundleFixtureWith('together-checkout-sales-link', bundleLines);
 const twoManufacturersFixture = bundleFixtureWith('together-checkout-two-manufacturers', bundleLines.map((line) =>
   line.productId === 'product-studio-workbook' ? { ...line, compliance: otherManufacturer } : line));
+const twoManufacturersOneOutsideEuFixture = bundleFixtureWith('together-checkout-two-manufacturers-one-outside-eu', bundleLines.map((line) =>
+  line.productId === 'product-studio-workbook' ? { ...line, compliance: otherManufacturer } : line.productId === 'product-studio-stand-oak' ? { ...line, compliance: outsideEuCompliance } : line));
 
 const STUB_MAP_TAG = 'inpost-geowidget';
 const stubPoint = { name: 'WAW01M', location_description: 'Next to the pharmacy entrance', address: { line1: 'Example Street 5', line2: '00-001 Warsaw' } };
@@ -311,6 +326,8 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
   },
   'picker-failed': async (canvasElement) => {
     await failLockerMap(canvasElement);
+    await expect(page(canvasElement).getByTestId('checkout-locker-map-failed-reason')).toBeVisible();
+    await expect(page(canvasElement).queryByTestId('checkout-locker-dialog-know-code')).toBeNull();
     await settled();
   },
   picker: async (canvasElement) => {
@@ -334,7 +351,12 @@ const lockerStory = (step: LockerStep, options: { viewport?: StoryViewport; loca
     fixture: options.cart === undefined ? lockerMapFixture : cartLockerMapFixture,
   },
   beforeEach: step === 'picker-loading' ? stubLoadingGeowidget : stubGeowidget,
-  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
+  play: async ({ canvasElement }) => {
+    await lockerSteps[step](canvasElement);
+    if (options.cart !== undefined) {
+      await expect(within(canvasElement).getByTestId('checkout-delivery-option-locker').nextElementSibling).toBe(within(canvasElement).getByTestId('checkout-locker-picker'));
+    }
+  },
 });
 
 const meta = {
@@ -409,6 +431,22 @@ export const SafetyLongWarningExpanded: Story = {
 };
 export const SafetyNoCover: Story = { parameters: { fixture: safetyNoCoverFixture } };
 export const SafetyNoCoverMobile: Story = withMobile(SafetyNoCover);
+export const SafetyOutsideEu: Story = {
+  parameters: {
+    fixture: safetyOutsideEuFixture,
+    docs: { description: { story: 'A manufacturer outside the EU: the responsible person in the EU sits right under the manufacturer, visible without a click.' } },
+  },
+};
+export const SafetyOutsideEuDark: Story = { ...SafetyOutsideEu, parameters: { ...SafetyOutsideEu.parameters, colorScheme: 'dark' } };
+export const SafetyOutsideEuMobile: Story = withMobile(SafetyOutsideEu);
+export const CartSafetyOutsideEu: Story = {
+  parameters: {
+    fixture: cartSafetyOutsideEuFixture,
+    docs: { description: { story: 'The cart checkout with a physical product whose manufacturer is outside the EU: each party has its name and address row with its contact row right under it.' } },
+  },
+};
+export const CartSafetyOutsideEuDark: Story = { ...CartSafetyOutsideEu, parameters: { ...CartSafetyOutsideEu.parameters, colorScheme: 'dark' } };
+export const CartSafetyOutsideEuMobile: Story = withMobile(CartSafetyOutsideEu);
 export const SafetyDetailsOpen: Story = { play: async ({ canvasElement }) => openSafetyDetails(canvasElement) };
 export const Variants: Story = { parameters: { fixture: variantsFixture } };
 export const ValidationError: Story = {
@@ -505,6 +543,14 @@ export const CartLockerOptionCodeOpen: Story = lockerStory('code-open', { cart: 
 export const CartLockerOptionCodeOpenMobile: Story = lockerStory('code-open', { viewport: mobile375, cart: true });
 export const TwoManufacturers: Story = { parameters: { fixture: twoManufacturersFixture } };
 export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mobile375.parameters, fixture: twoManufacturersFixture } };
+export const TwoManufacturersOneOutsideEu: Story = {
+  parameters: {
+    fixture: twoManufacturersOneOutsideEuFixture,
+    docs: { description: { story: 'Two manufacturers, one outside the EU: both manufacturers carry their label once the block shows a responsible person.' } },
+  },
+};
+export const TwoManufacturersOneOutsideEuDark: Story = { ...TwoManufacturersOneOutsideEu, parameters: { ...TwoManufacturersOneOutsideEu.parameters, colorScheme: 'dark' } };
+export const TwoManufacturersOneOutsideEuMobile: Story = withMobile(TwoManufacturersOneOutsideEu);
 export const TwoManufacturersDetailsOpen: Story = {
   parameters: { fixture: twoManufacturersFixture },
   play: async ({ canvasElement }) => openSafetyDetails(canvasElement),

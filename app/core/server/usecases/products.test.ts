@@ -259,6 +259,27 @@ describe('products use-cases', () => {
       .toMatchObject({ ok: true, value: { compliance: null, variantGroup: null, variantLabel: null } });
   });
 
+  it('stores the responsible person of a manufacturer outside the EU and names the missing field', async () => {
+    const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical' }]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const compliance = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: true, modelIdentifier: 'LAMP-2',
+    };
+    const responsiblePerson = { responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, Warsaw', responsiblePersonEmail: 'eu-rep@example.com' };
+    const missing = await createProduct(ctx, { title: 'Lamp', type: 'physical', priceCents: 4900, compliance }, deps(repo));
+    expect(missing).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid product' } });
+    expect(missing.ok ? null : missing.error.details).toMatchObject({
+      fieldErrors: { compliance: expect.arrayContaining(['Responsible person name is required when the manufacturer is outside the EU']) },
+    });
+    expect(await createProduct(ctx, { title: 'Lamp', type: 'physical', priceCents: 4900, compliance: { ...compliance, ...responsiblePerson } }, deps(repo)))
+      .toMatchObject({ ok: true, value: { compliance: { ...compliance, ...responsiblePerson } } });
+    expect(await updateProduct(ctx, { id: 'p1', compliance: { ...compliance, ...responsiblePerson } }, deps(repo, ['version-1'])))
+      .toMatchObject({ ok: true, value: { compliance: { ...compliance, ...responsiblePerson } } });
+    expect(await updateProduct(ctx, { id: 'p1', compliance: { ...compliance, responsiblePersonName: 'Example EU Representative' } }, deps(repo, ['version-2'])))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('rejects invalid product safety information and variant groups', async () => {
     const { repo } = fakeRepo();
     const ctx = { identity: identity('t-acme', 'owner') };

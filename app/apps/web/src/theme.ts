@@ -3214,6 +3214,8 @@ export const LedgerTitle = styled(Typography, {
 
 export const FinePrint = styled(Typography)<AsElement & { dateTime?: string }>({ fontSize: '0.75rem' });
 
+export const CartStockNote = styled(FinePrint)(({ theme }) => ({ fontWeight: 600, color: theme.palette.text.primary }));
+
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
   whiteSpace: 'nowrap',

@@ -40,7 +40,7 @@ import { Cover } from '../../components/ui/Cover.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
+import { CardTitle, CartStockNote, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
 import { CheckoutPage } from './CheckoutPage.js';
 import { checkoutRefusal, checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
@@ -168,9 +168,10 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const { product, quantity, max } = item;
+  const { product, quantity, max, stockCapped } = item;
   const note = cartLineNote(item, t);
   const stepper = max > 1;
+  const Note = stockCapped ? CartStockNote : FinePrint;
   return (
     <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid={`cart-line-${item.productId}`}>
       <Box sx={{
@@ -192,14 +193,14 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
         </Stack>
         {stepper ? (
           <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ gridArea: 'controls', alignItems: 'center' }}>
-            <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
+            <IconButton size="small" color="inherit" aria-label={t.checkout.cartDecrease({ title: product.title })}
               disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)} sx={{ ml: '-0.75rem' }}>
               <StepIcon path={minusPath} />
             </IconButton>
             <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
               {quantity}
             </Typography>
-            <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
+            <IconButton size="small" color="inherit" aria-label={t.checkout.cartIncrease({ title: product.title })}
               disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
               <StepIcon path={plusPath} />
             </IconButton>
@@ -218,7 +219,7 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
           {t.checkout.cartRemoveLine}
         </Button>
         {note === null ? null : (
-          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note', alignSelf: { xs: stepper ? 'center' : 'start', sm: 'start' } }}>{note}</FinePrint>
+          <Note component="p" variant="caption" sx={{ gridArea: 'note', alignSelf: { xs: stepper ? 'center' : 'start', sm: 'start' } }}>{note}</Note>
         )}
         <Box sx={{ gridArea: 'amount', alignSelf: { xs: stepper ? 'start' : 'center', sm: 'start' }, justifySelf: 'end', display: 'flex', alignItems: 'center', minHeight: { xs: '2.75rem', sm: 'auto' } }}>
           <DataValue data-testid={`cart-line-total-${item.productId}`}>

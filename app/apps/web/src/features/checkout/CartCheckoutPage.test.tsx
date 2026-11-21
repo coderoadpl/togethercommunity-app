@@ -349,6 +349,15 @@ describe('hosted cart checkout', () => {
       .toBe('"cover info info" "remove remove amount"');
   });
 
+  it('sets the stock note apart from the order-limit note and draws live stepper icons in the text colour', async () => {
+    serve({ overrides: { [poster]: lowStock(2) } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(line(poster).getByText(exact(en.checkout.cartStockLimit({ count: 2 })))).toHaveStyle({ fontWeight: '600' });
+    expect(line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).toHaveClass('MuiIconButton-colorInherit');
+    expect(line(poster).getByRole('button', { name: en.checkout.cartDecrease({ title: 'Poster' }) })).toHaveClass('MuiIconButton-colorInherit');
+  });
+
   it('keeps the order limit note while the stock is not the cap', async () => {
     serve({ overrides: { [poster]: { ...lowStock(12), maxQuantity: 10 } } });
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);

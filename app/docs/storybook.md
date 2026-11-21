@@ -56,7 +56,9 @@ are retired. Storybook has no separate committed PNG baseline. The
 [page capture path](visual-regression.md#storybook) compares recorded page stories
 with the application goldens. `pnpm run storybook:build` verifies that the catalogue
 compiles; `pnpm run visual` builds and captures the catalogue without a database and
-`pnpm run visual:update` remains the only baseline-authoring command.
+`pnpm run visual:update` remains the baseline-authoring command; baselines may
+also come from the pull request's own CI capture under the conditions in
+[Baseline ownership](visual-regression.md#baselines-from-the-ci-capture).
 
 ## Merge gate
 

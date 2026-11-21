@@ -139,8 +139,10 @@ controls. The default `pnpm run visual` always captures the full catalogue.
    renderer and the server iframe pattern. Use the golden filename without
    `.png` as the story ID and add the screen to `storybook-page-screens.ts`.
 4. Build Storybook and inspect the story. Author a new golden on macOS with
-   `pnpm run visual:update`, then run the serial static gate and visual gate.
-   Review every new image and its diff in the pull request.
+   `pnpm run visual:update`, or take it from the CI capture under the conditions
+   in [Baseline ownership](#baselines-from-the-ci-capture), then run the serial
+   static gate and visual gate. Review every new image and its diff in the pull
+   request.
 
 ## Add a component screen
 
@@ -148,8 +150,10 @@ controls. The default `pnpm run visual` always captures the full catalogue.
    readiness condition can wait for. No fixture, route or seed data is involved.
 2. Add the screen and its story ID to `scripts/storybook-component-screens.ts`,
    choosing one viewport per screen.
-3. Author the golden with `pnpm run visual:update` on macOS and review the image
-   in the pull request, exactly as for page screens.
+3. Author the golden with `pnpm run visual:update` on macOS, or take it from
+   the CI capture under the conditions in
+   [Baseline ownership](#baselines-from-the-ci-capture), and review the image in
+   the pull request, exactly as for page screens.
 
 Story files have the bounded lint exceptions described in [Storybook](storybook.md).
 Fixture clients, decorators and composition infrastructure still obey layering
@@ -212,7 +216,7 @@ macOS goldens. CI runs the subset in the `auth` leg and uploads its captures.
 
 ## Baseline ownership
 
-`pnpm run visual:update` is the only baseline-authoring command. It builds and
+`pnpm run visual:update` is the baseline-authoring command. It builds and
 captures Storybook, then writes only PNGs whose bytes changed, after all captures
 pass their rendering checks. It rejects non-macOS hosts. A contributor or
 maintainer must review every changed baseline as an intentional product change;
@@ -220,6 +224,37 @@ never regenerate goldens to hide a regression. Re-run verification after changin
 the implementation. A pull request must list each changed image and its cause,
 with golden/story/diff evidence. For the Storybook migration the target is no
 baseline changes.
+
+### Baselines from the CI capture
+
+A contributor without a macOS host may take baselines from the pull request's
+own CI `visual` job instead, which runs the same capture on the pinned macOS
+runner and browser. All of these conditions hold, or the baselines are not
+accepted:
+
+1. The PNGs are copied byte for byte from the `out/visual/current` directory of
+   the `visual` artifact of a run on the pull request's own head commit. Nothing
+   else produces them: no local capture, no editing, no artifact of another
+   branch or pull request.
+2. That run failed only because baselines differed or were missing. A run with a
+   failed rendering check (a missing fixture call, a page error, a query still
+   fetching) is not a source of baselines; fix the cause first.
+3. The commit that adds the PNGs changes nothing that affects rendering, and
+   the `visual` job passes on the head that carries them. A later commit that
+   changes what a captured screen renders needs a new capture from a run on that
+   later head.
+4. The pull request description lists every added or changed image with its
+   cause, names the run the captures came from, and states for changed images
+   where they differ from the previous baseline. An unexplained difference is a
+   regression to fix, not a baseline to accept.
+5. The catalogue stays within the capacity of the Before/After gallery
+   (`maxRows` in `.github/workflows/visual-golden-gallery.yml`); raising that
+   capacity is a separate change.
+
+A new screen has no baseline for the first run to compare with, and the capture
+refuses a mapped screen without its PNG. Commit a provisional PNG of the right
+viewport under the new name, let the `visual` job fail on it, and replace it
+from that run's artifact under the conditions above.
 
 Pull requests to `staging` that change committed PNGs also receive a sticky
 Before/After gallery from `.github/workflows/visual-golden-gallery.yml`. Its

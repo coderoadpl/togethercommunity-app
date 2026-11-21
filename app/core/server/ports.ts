@@ -618,7 +618,6 @@ export interface DmReportRepository {
   ): Promise<DmReport | null>;
 }
 
-
 export interface NotificationRepository {
   insert(tenantId: string, notification: Notification): Promise<Notification>;
   insertMany(tenantId: string, notifications: Notification[]): Promise<Notification[]>;

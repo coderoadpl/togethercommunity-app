@@ -35,8 +35,9 @@ import {
 } from '#core/server/index.js';
 import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
 
+import { lockWorkspaceProposals } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
-import { createQuarantinedImageLocks, createQuarantinedImageRepository } from './change-proposal-images.js';
+import { createQuarantinedImageLocks, createQuarantinedImageRepository, quarantinedImagesPresent } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
@@ -289,9 +290,35 @@ describe('the quarantined image repository', () => {
   it('keeps an image a proposal stored meanwhile references, because the release queues behind the insert', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     await repository.insert(TENANT, image(1), stored);
-    await pendingProposal('p-new', { coverUrl: pathOf(image(1)) });
-    expect(await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW)).toEqual({ kind: 'written', value: [] });
-    expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    let releaseInsert: () => void = () => undefined;
+    const insertMayCommit = new Promise<void>((resolve) => { releaseInsert = resolve; });
+    let checked: () => void = () => undefined;
+    const imageChecked = new Promise<void>((resolve) => { checked = resolve; });
+    try {
+      const insert = database.db.transaction(async (tx) => {
+        expect(await lockWorkspaceProposals(tx, TENANT, { lockWaitMs: 10_000 })).toBe(true);
+        expect(await quarantinedImagesPresent(tx, TENANT, KEY_ID, [image(1)])).toBe(true);
+        checked();
+        await insertMayCommit;
+        await tx.insert(changeProposals).values({
+          id: 'p-new', tenantId: TENANT, operation: 'product.update', input: { id: 'mug', coverUrl: pathOf(image(1)) }, effect: {},
+          targetKind: 'product', targetId: 'mug', status: 'pending', proposedByKeyId: KEY_ID, proposedByKeyName: 'Agent',
+          proposedByIssuerUserId: ISSUER, createdAt: NOW, expiresAt: '2026-03-31T10:00:00.000Z',
+        });
+      });
+      await imageChecked;
+      const release = repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+      await untilWaiting(observer, 'The release');
+      releaseInsert();
+      await insert;
+      expect(await release).toEqual({ kind: 'written', value: [] });
+      expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
+    } finally {
+      releaseInsert();
+      await observer.end();
+    }
   });
 
   it('lists quarantined objects the database records in the storage reference inventory', async () => {

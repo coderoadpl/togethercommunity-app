@@ -1560,7 +1560,9 @@ still `paid` or already `refunded`, without the purchase analytics payload and
 without the Meta conversion consent payload; `charged` is `false` for an order
 paid with zero. The hosted success page (`status=success`) then stops polling
 and shows the sold-out message without the sign-in button, saying that the
-refund was started, or that nothing was charged when `charged` is `false`; it
+refund was started, or that nothing was charged when `charged` is `false`, with
+a "Back to shop" link to the workspace home (a full document navigation) and,
+when the workspace has a support address, a "Contact the seller" link; it
 sends no purchase event. The
 document keeps its script policy: the analytics libraries may still load as on
 any success return, and the full-navigation exit rule is unchanged.

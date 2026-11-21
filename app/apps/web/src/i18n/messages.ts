@@ -2814,6 +2814,14 @@ export interface Messages {
     successPendingTitle: string;
     successPendingBody: string;
     successPendingTimeout: string;
+    successPendingEyebrow: string;
+    successConfirmedEyebrow: string;
+    successTimedOutTitle: string;
+    successPendingContact: string;
+    checkAgain: string;
+    contactSeller: string;
+    statusErrorTitle: string;
+    statusErrorBody: string;
     successPaidEyebrow: string;
     subscriptionSuccessEyebrow: string;
     successTitle: string;
@@ -2824,6 +2832,8 @@ export interface Messages {
     soldOutRefundEyebrow: string;
     soldOutRefundTitle: string;
     soldOutRefundBody: string;
+    soldOutRefundStarted: string;
+    soldOutRefundTiming: string;
     soldOutNothingChargedBody: string;
     backToShop: string;
     cancelledEyebrow: string;

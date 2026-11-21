@@ -132,7 +132,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const signedInEmail = me.data !== undefined && me.data.impersonation === null ? me.data.email : null;
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
   const hasSessionId = sessionId !== null && sessionId !== '';
-  const [statusDeadline] = useState(() => Date.now() + 180_000);
+  const [statusDeadline, setStatusDeadline] = useState(() => Date.now() + 180_000);
   const [statusTimedOut, setStatusTimedOut] = useState(false);
   const paymentStatus = useQuery({
     ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
@@ -144,8 +144,15 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
   const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
-  const soldOutBody = paymentStatus.data?.charged === false ? t.checkout.soldOutNothingChargedBody : t.checkout.soldOutRefundBody;
   const paymentSettled = paymentPaid || soldOutRefund;
+  const statusRequestFailed = hasSessionId && paymentStatus.isError && !paymentSettled;
+  const workspaceOffer = useQuery({ ...actions.publicOffer, enabled: checkoutStatus === 'success' });
+  const supportUrl = workspaceOffer.data?.tenant.support.url ?? null;
+  const checkAgain = () => {
+    setStatusTimedOut(false);
+    setStatusDeadline(Date.now() + 180_000);
+    void paymentStatus.refetch();
+  };
 
   useEffect(() => {
     if (checkoutStatus !== 'success' || paymentSettled) return;
@@ -365,7 +372,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
-    const title = soldOutRefund ? t.checkout.soldOutRefundTitle : paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const waiting = !paymentSettled && !testPurchase;
+    const failed = waiting && statusRequestFailed;
+    const timedOut = waiting && !failed && statusTimedOut;
+    const title = soldOutRefund
+      ? t.checkout.soldOutRefundTitle
+      : paymentPaid
+        ? t.checkout.successTitle
+        : failed ? t.checkout.statusErrorTitle : timedOut ? t.checkout.successTimedOutTitle : t.checkout.successPendingTitle;
     const paidStatus = paymentStatus.data?.status === 'paid' ? paymentStatus.data : undefined;
     const shopLink = paidStatus?.returnUrl === undefined || paidStatus.checkoutRef === undefined ? null : checkoutReturnLink(paidStatus.returnUrl, {
       checkoutRef: paidStatus.checkoutRef, status: 'paid', clientReference: paidStatus.clientReference,
@@ -373,8 +387,25 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     const eyebrow = soldOutRefund
       ? t.checkout.soldOutRefundEyebrow
       : paymentPaid
-        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
-        : t.checkout.successEyebrow;
+        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : hasSessionId ? t.checkout.successPaidEyebrow : t.checkout.successConfirmedEyebrow
+        : t.checkout.successPendingEyebrow;
+    const body = testPurchase
+      ? [t.checkout.testPurchaseBody]
+      : soldOutRefund
+        ? paymentStatus.data?.charged === false
+          ? [t.checkout.soldOutNothingChargedBody]
+          : [t.checkout.soldOutRefundBody, t.checkout.soldOutRefundStarted, t.checkout.soldOutRefundTiming]
+        : paymentPaid
+          ? [subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody]
+          : failed
+            ? [t.checkout.statusErrorBody]
+            : timedOut
+              ? [t.checkout.successPendingTimeout, ...(supportUrl === null ? [] : [t.checkout.successPendingContact])]
+              : [t.checkout.successPendingBody];
+    const offersRecheck = failed || timedOut;
+    const contactLink = supportUrl !== null && (soldOutRefund || timedOut)
+      ? <Button href={supportUrl} target="_blank" rel="noopener noreferrer" variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+      : null;
     return (
       <FocusCard {...frame} eyebrow={eyebrow}>
         <Stack useFlexGap spacing="1rem">
@@ -386,14 +417,21 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           /> : null}
           {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
-          <CardTitle variant="h1">{title}</CardTitle>
-          <Typography variant="body1">
-            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? soldOutBody : paymentPaid
-              ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
-              : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
-          </Typography>
-          {paymentSettled ? null : <LinearProgress aria-label={title} />}
+          <Stack useFlexGap spacing="1rem" role="status" aria-live="polite" aria-atomic="true" data-testid="checkout-return-status">
+            <CardTitle variant="h1">{title}</CardTitle>
+            {failed ? (
+              <Alert severity="error">{body[0]}</Alert>
+            ) : body.map((line) => <Typography key={line} variant="body1">{line}</Typography>)}
+          </Stack>
+          {paymentSettled || offersRecheck ? null : <LinearProgress aria-label={title} />}
+          {offersRecheck ? (
+            <Button variant="contained" fullWidth onClick={checkAgain} disabled={paymentStatus.isFetching}>
+              {t.checkout.checkAgain}
+            </Button>
+          ) : null}
           {shopLink === null ? null : <Button href={shopLink} variant="contained" fullWidth>{t.checkout.backToShop}</Button>}
+          {soldOutRefund ? <Button href="/" variant="contained" fullWidth>{t.checkout.backToShop}</Button> : null}
+          {contactLink}
           {soldOutRefund ? null : (
             <Button component={Link} to="/login" variant={shopLink !== null ? 'outlined' : paymentPaid ? 'contained' : 'text'} fullWidth>
               {t.checkout.goToLogin}

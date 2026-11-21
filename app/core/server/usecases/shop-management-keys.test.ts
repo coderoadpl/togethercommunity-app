@@ -11,7 +11,9 @@ import type {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { ShopManagementKeyRepository } from '../ports.js';
+import type { QuarantinedImageRelease, ShopManagementKeyRepository } from '../ports.js';
+import { createObjectStorageFake, fakeStorageSecrets } from '../testing/object-storage-fake.js';
+import type { ChangeProposalImageReleaseDeps } from './change-proposal-images.js';
 import {
   createShopManagementKey,
   listShopManagementKeyEvents,
@@ -82,14 +84,25 @@ const harness = (rows: ShopManagementKey[] = [], shopManagementKeysSwitch: ShopM
       return purged.length;
     },
   };
-  const deps: ShopManagementKeyDeps = {
+  const releases: Array<{ tenantId: string; selection: QuarantinedImageRelease }> = [];
+  const deps: ShopManagementKeyDeps & ChangeProposalImageReleaseDeps = {
+    quarantinedImages: {
+      release: async (tenantId, selection) => {
+        releases.push({ tenantId, selection });
+        return { kind: 'written', value: [] };
+      },
+      finishRelease: async () => 'removed',
+    },
+    storage: createObjectStorageFake().storage,
+    secretResolver: fakeStorageSecrets,
+    logger: { error: () => undefined },
     shopManagementKeys,
     apiKeyCrypto: { generateSecret: () => 'super-secret-value', hash: (value) => `hash:${value}` },
     ids: { nextId: () => `key-${String((seq += 1))}` },
     clock: { nowIso: () => NOW },
     shopManagementKeysSwitch,
   };
-  return { rows: store, events, withdrawals, deps };
+  return { rows: store, events, withdrawals, releases, deps };
 };
 
 const shopInput: CreateShopManagementKeyInput = {
@@ -233,6 +246,13 @@ describe('revokeShopManagementKey', () => {
     expect(h.withdrawals).toEqual([{ proposalId: 'proposal-of-shop-key', id: 'key-2', actorUserId: 'u1', at: NOW }]);
   });
 
+  it('releases every quarantined image of a revoked propose-mode key after the revocation, and none for a direct-mode key', async () => {
+    const h = harness([shopRow({ mode: 'propose', scopes: ['shop:catalog:read', 'shop:catalog:write'] }), shopRow({ id: 'direct-key' })]);
+    expect(await revokeShopManagementKey(ctx('owner'), { id: 'shop-key' }, h.deps)).toMatchObject({ ok: true });
+    expect(await revokeShopManagementKey(ctx('owner'), { id: 'direct-key' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.releases).toEqual([{ tenantId: 't1', selection: { kind: 'key', apiKeyId: 'shop-key' } }]);
+  });
+
   it('keeps listing and revocation working while the switch is disabled', async () => {
     const h = harness([shopRow()], 'disabled');
     expect(await listShopManagementKeys(ctx('owner'), h.deps)).toMatchObject({ ok: true, value: [{ id: 'shop-key' }] });
@@ -279,6 +299,13 @@ describe('purgeShopManagementKeys', () => {
     const h = harness();
     expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toEqual({ ok: true, value: { purged: 0 } });
     expect(h.events).toEqual([]);
+    expect(h.releases).toEqual([]);
+  });
+
+  it('sweeps the quarantined images of the purged keys after the purge', async () => {
+    const h = harness(workspaceRows());
+    expect(await purgeShopManagementKeys(ctx('owner'), h.deps)).toMatchObject({ ok: true });
+    expect(h.releases).toEqual([{ tenantId: 't1', selection: { kind: 'sweep', createdBefore: '2026-05-25T00:00:00.000Z', limit: 200 } }]);
   });
 
   it.each(denyingContexts)('refuses the purge to %s', async (_label, denied) => {

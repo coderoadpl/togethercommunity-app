@@ -1101,6 +1101,15 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
+export const shopImageAssetUploadOutputSchema = imageAssetUploadOutputSchema.extend({
+  servePath: z.string().startsWith('/').nullable(),
+  quarantined: z.literal(true).optional(),
+});
+
+export const shopImageAssetCompleteOutputSchema = imageAssetCompleteOutputSchema.extend({
+  quarantined: z.literal(true).optional(),
+});
+
 export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
 export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
 export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
@@ -1345,6 +1354,11 @@ export type NotificationsListInput = z.input<typeof notificationsListInputSchema
 export const notificationsListOutputSchema = z.object({
   notifications: z.array(notificationSchema),
   nextCursor: z.string().nullable(),
+});
+
+export const notificationStreamFrameSchema = z.object({
+  id: z.string(),
+  kind: z.string().min(1).optional(),
 });
 
 export const notificationReadInputSchema = notificationMarkReadInputSchema;
@@ -2232,9 +2246,11 @@ export const API_ROUTES = {
   apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
   changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposalSummary: { method: 'GET', path: '/api/change-proposals/summary' },
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
+  changeProposalImage: { method: 'GET', path: '/api/change-proposals/:id/assets/:digest' },
   changeProposalGroup: { method: 'GET', path: '/api/change-proposals/groups/:id' },
   changeProposalGroupApprove: { method: 'POST', path: '/api/change-proposals/groups/:id/approve' },
   changeProposalGroupReject: { method: 'POST', path: '/api/change-proposals/groups/:id/reject' },
@@ -2647,9 +2663,11 @@ export const API_PATHS = {
   apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
   changeProposals: API_ROUTES.changeProposals.path,
+  changeProposalSummary: API_ROUTES.changeProposalSummary.path,
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,
+  changeProposalImage: API_ROUTES.changeProposalImage.path,
   changeProposalGroup: API_ROUTES.changeProposalGroup.path,
   changeProposalGroupApprove: API_ROUTES.changeProposalGroupApprove.path,
   changeProposalGroupReject: API_ROUTES.changeProposalGroupReject.path,

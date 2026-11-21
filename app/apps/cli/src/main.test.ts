@@ -2591,9 +2591,10 @@ describe('InPost ShipX CLI', () => {
 
 const ownerProposal = {
   id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  targetLabel: 'Handbook',
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' }, onHand: { delta: 5 } }, status: 'pending',
-  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
-  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true },
+  createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', decidedByUserId: null, decidedByEmail: null, decidedAt: null,
   decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
 };
 
@@ -2613,6 +2614,18 @@ describe('owner change proposal commands', () => {
     expect(logSpy).toHaveBeenCalledWith(
       '1998-08-01T00:00:00.000Z\tpending\tproduct.update\tproduct:product-1\tCatalogue agent\tgroup Spring launch #2 (group-1)\t(proposal-1)',
     );
+  });
+  it('lists the decided proposals, the filter the history page uses', async () => {
+    h.listChangeProposals.mockReset().mockResolvedValue(ok({ proposals: [], nextCursor: null }));
+    await run('proposals', 'list', '--status', 'decided');
+    expect(h.listChangeProposals).toHaveBeenCalledWith({ status: 'decided' });
+    expect(logSpy).toHaveBeenCalledWith('no change proposals');
+  });
+  it('names the decided filter in the list help', async () => {
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await run('proposals', 'list', '--help');
+    expect(output).toHaveBeenCalledWith(expect.stringMatching(/expired,\s+or\s+decided\s+\(every\s+proposal\s+no\s+longer\s+waiting\)/));
+    output.mockRestore();
   });
   it('refuses an unknown status before calling the API', async () => {
     h.listChangeProposals.mockReset();
@@ -2678,7 +2691,7 @@ const groupItem = (position: number, fields: Record<string, unknown> = {}) => ({
 
 const ownerGroup = (status: string, items: ReturnType<typeof groupItem>[]) => ({
   id: 'group-1', title: 'Spring launch', status,
-  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  proposedBy: { keyId: 'shop-key', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, keyState: 'active' },
   createdAt: '1998-08-01T00:00:00.000Z', expiresAt: '1998-08-31T00:00:00.000Z', items,
 });
 

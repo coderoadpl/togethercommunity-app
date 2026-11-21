@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  appError,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
   changeProposalExpiresAt,
@@ -26,8 +27,13 @@ import type { Ctx } from '../context.js';
 import type { ChangeProposalGroupRepository, ChangeProposalTransaction, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
+  createUnreadNotificationsFake,
   emptyCatalogState,
+  failingSalesLinkSaves,
+  fakeContentHash,
   type FakeChangeProposalStore,
   type FakeChangeProposalTransaction,
 } from '../testing/change-proposal-fakes.js';
@@ -150,6 +156,11 @@ const harness = (keys: ShopManagementKey[] = [
   const store: FakeChangeProposalStore = createChangeProposalStoreFake(keys);
   const transaction: FakeChangeProposalTransaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const deletes: string[] = [];
+  const accounts = [
+    { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
+    { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+  ];
+  const notificationFakes = createUnreadNotificationsFake(accounts);
   let sequence = 0;
   const clock = { now: NOW };
   const deps = {
@@ -158,7 +169,12 @@ const harness = (keys: ShopManagementKey[] = [
     changeProposalGroups: store.groups,
     changeProposalEvents: store.events,
     shopManagementKeys: { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) },
+    ...notificationFakes,
+    ...changeProposalOwnerViewFakes(state, accounts),
     storage: recordingStorage(deletes),
+    quarantinedImages: createQuarantinedImagesFake(state, store).repository,
+    secretResolver: storageSecrets,
+    contentHash: fakeContentHash,
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },
     clock: { nowIso: () => clock.now },
@@ -179,7 +195,7 @@ const harness = (keys: ShopManagementKey[] = [
     approveChangeProposalGroup(ctx, { id: groupId, itemIds }, deps);
   const events = (id: string): string[] => store.eventRows.filter((event) => event.proposalId === id)
     .map(({ sequence: position, kind }) => `${String(position)}:${kind}`);
-  return { state, store, transaction, deps, deletes, clock, group, join, add, lastItemId, items, approve, events };
+  return { state, store, transaction, deps, deletes, clock, group, join, add, lastItemId, items, approve, events, notifications: notificationFakes };
 };
 
 type Harness = ReturnType<typeof harness>;
@@ -435,6 +451,55 @@ describe('group approval is all or nothing', () => {
 
     expect(h.state).toEqual(live);
     expect(h.items(groupId).map((item) => item.status)).toEqual(['pending', 'pending', 'pending', 'pending', 'pending']);
+  });
+
+  it.each([
+    appError('unavailable', 'The database is busy'),
+    appError('internal', 'Lost the connection'),
+    appError('forbidden', 'Not allowed for this session'),
+  ])('rolls the whole group back and keeps every item pending when its sales link item returns $code', async (error) => {
+    const h = harness();
+    const { groupId, linked } = await launchChain(h);
+    const live = structuredClone(h.state);
+    const eventsBefore = h.store.eventRows.length;
+
+    const approved = await approveChangeProposalGroup(
+      ownerSession,
+      { id: groupId, itemIds: h.items(groupId).map((item) => item.id) },
+      { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, error) },
+    );
+
+    expect(approved).toEqual({ ok: false, error });
+    expect(h.state).toEqual(live);
+    expect(h.items(groupId).map((item) => [item.status, item.failureCode])).toEqual(Array.from({ length: 5 }, () => ['pending', null]));
+    expect(h.store.eventRows).toHaveLength(eventsBefore);
+    expect(h.events(linked)).toEqual(['1:proposed']);
+    expect(unwrap(await h.approve(groupId)).status).toBe('applied');
+  });
+
+  it('records a refusal of the sales link item as the group failure', async () => {
+    const h = harness();
+    const { groupId, linked } = await launchChain(h);
+
+    const approved = unwrap(await approveChangeProposalGroup(
+      ownerSession,
+      { id: groupId, itemIds: h.items(groupId).map((item) => item.id) },
+      { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, appError('conflict', 'The slug is taken')) },
+    ));
+
+    expect(approved.status).toBe('failed');
+    expect(approved.items.find((item) => item.id === linked)).toMatchObject({ status: 'failed', failureCode: 'conflict', failureMessage: 'The slug is taken' });
+  });
+
+  it('answers the transient error of an earlier item at submit instead of the earlier-item conflict', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+    const proposalsBefore = h.store.proposals.length;
+    const failingDeps = { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, appError('unavailable', 'The database is busy')) };
+
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId, operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, failingDeps))
+      .toEqual({ ok: false, error: appError('unavailable', 'The database is busy') });
+    expect(h.store.proposals).toHaveLength(proposalsBefore);
   });
 
   it('answers busy and keeps the group pending when the transaction is busy', async () => {
@@ -935,5 +1000,45 @@ describe('sales links created earlier in the same group', () => {
     const approved = unwrap(await h.approve(groupId));
     expect(approved.status).toBe('applied');
     expect(h.state.prices.find((candidate) => candidate.id === approved.items[0]?.appliedResourceId)).toMatchObject({ amountCents: 2500, active: false });
+  });
+});
+
+describe('the owner notification of a group', () => {
+  it('raises one notification for the group when its first item joins and signals every owner for every item', async () => {
+    const h = harness();
+    const { groupId } = await launchChain(h);
+
+    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, payload }) => ({ recipientUserId, kind, sourceKey, changeProposal: payload.changeProposal }))).toEqual([
+      { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
+      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
+    ]);
+    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === null && row.payload.snippet === '' && row.payload.contextId === null)).toBe(true);
+    const rowIds = new Map(h.notifications.rows.map((row) => [row.recipientUserId, row.id]));
+    expect(h.notifications.published).toHaveLength(10);
+    expect(h.notifications.published.every((event) => event.kind === 'notification'
+      && event.notificationKind === 'change-proposal' && event.notificationId === rowIds.get(event.recipientUserId))).toBe(true);
+
+    for (const row of h.notifications.rows) row.readAt = NOW;
+    await h.add(groupId, 'stock.adjust', { productId: 'product-live', delta: 1, reason: 'Count' });
+    expect(h.notifications.rows.every((row) => row.readAt === NOW)).toBe(true);
+    expect(h.notifications.published).toHaveLength(12);
+    expect(h.notifications.published.slice(-2).map((event) => [event.recipientUserId, event.kind === 'notification' ? event.notificationId : null]))
+      .toEqual([[ISSUER, rowIds.get(ISSUER)], [OWNER, rowIds.get(OWNER)]]);
+
+    expect((await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Big mug' } }, h.deps)).ok).toBe(true);
+    expect(h.notifications.rows.map((row) => [row.readAt, row.payload.changeProposal?.groupId])).toEqual([[null, null], [null, null]]);
+    expect(h.notifications.published).toHaveLength(14);
+  });
+
+  it('keeps one notification per key, so a second key adds its own', async () => {
+    const h = harness();
+    await h.add(await h.group(), 'product.update', { id: 'product-mug', title: 'Big mug' });
+    expect((await submitChangeProposal(keyCtx(OTHER_KEY_ID), { operation: 'stock.adjust', input: { productId: 'product-live', delta: 1, reason: 'Count' } }, h.deps)).ok).toBe(true);
+    expect(h.notifications.rows.map((row) => [row.recipientUserId, row.sourceKey, row.payload.changeProposal?.keyName])).toEqual([
+      [ISSUER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
+      [OWNER, `change-proposal:${KEY_ID}`, 'Catalogue agent'],
+      [ISSUER, `change-proposal:${OTHER_KEY_ID}`, 'Second agent'],
+      [OWNER, `change-proposal:${OTHER_KEY_ID}`, 'Second agent'],
+    ]);
   });
 });

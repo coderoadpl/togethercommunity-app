@@ -42,6 +42,7 @@ import {
   changeProposalGroupOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
+  changeProposalSummaryOutputSchema,
   changeProposalsListOutputSchema,
   PROPOSAL_GROUP_HEADER,
   proposableOutputSchema,
@@ -111,6 +112,8 @@ import {
   healthReadyOutputSchema,
   imageAssetCompleteOutputSchema,
   imageAssetUploadOutputSchema,
+  shopImageAssetCompleteOutputSchema,
+  shopImageAssetUploadOutputSchema,
   impersonationStartOutputSchema,
   impersonationStopOutputSchema,
   tenantAuditEventsOutputSchema,
@@ -437,6 +440,9 @@ export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 /** Same-origin SSE endpoint for the browser EventSource wrapper. */
 export const NOTIFICATIONS_STREAM_PATH = API_ROUTES.notificationsStream.path;
 
+export const changeProposalImagePath = (proposalId: string, digest: string): string =>
+  API_ROUTES.changeProposalImage.path.replace(':id', encodeURIComponent(proposalId)).replace(':digest', encodeURIComponent(digest));
+
 export interface ApiClientOptions {
   /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;
@@ -570,10 +576,15 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   return ok(data.data);
 };
 
-const uploadImageAsset = (
+const SESSION_IMAGE_ASSET_SCHEMAS = { begin: imageAssetUploadOutputSchema, complete: imageAssetCompleteOutputSchema };
+
+const SHOP_IMAGE_ASSET_SCHEMAS = { begin: shopImageAssetUploadOutputSchema, complete: shopImageAssetCompleteOutputSchema };
+
+const uploadImageAsset = <Begin extends z.ZodType<{ key: string; upload: { url: string; headers: Record<string, string> } }, z.ZodTypeDef, unknown>, Complete extends z.ZodTypeAny>(
   options: ApiClientOptions,
   begin: { method: 'POST'; path: string },
   complete: { method: 'POST'; path: string },
+  schemas: { begin: Begin; complete: Complete },
   input: ImageAssetFileUpload,
   signal?: AbortSignal,
 ) =>
@@ -584,7 +595,7 @@ const uploadImageAsset = (
       options,
       begin.method,
       begin.path,
-      imageAssetUploadOutputSchema,
+      schemas.begin,
       {
         kind: input.kind,
         fileName: input.fileName,
@@ -598,7 +609,7 @@ const uploadImageAsset = (
       options,
       complete.method,
       complete.path,
-      imageAssetCompleteOutputSchema,
+      schemas.complete,
       { key: started.key },
       signal,
     ),
@@ -1270,7 +1281,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     ),
   uploadAvatar: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-    uploadImageAsset(options, API_ROUTES.avatarUpload, API_ROUTES.avatarComplete, input, signal),
+    uploadImageAsset(options, API_ROUTES.avatarUpload, API_ROUTES.avatarComplete, SESSION_IMAGE_ASSET_SCHEMAS, input, signal),
   removeAvatar: (signal?: AbortSignal) =>
     request(
       options,
@@ -2050,11 +2061,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
     );
   },
   uploadCourseCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-    uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, input, signal),
+    uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, SESSION_IMAGE_ASSET_SCHEMAS, input, signal),
   uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-    uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, input, signal),
+    uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, SESSION_IMAGE_ASSET_SCHEMAS, input, signal),
   uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-    uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, input, signal),
+    uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, SESSION_IMAGE_ASSET_SCHEMAS, input, signal),
   deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
     request(
       options,
@@ -2681,6 +2692,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  getChangeProposalSummary: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalSummary.method,
+      API_ROUTES.changeProposalSummary.path,
+      changeProposalSummaryOutputSchema,
+      undefined,
+      signal,
+    ),
   getChangeProposal: (input: { id: string }, signal?: AbortSignal) =>
     request(
       options,
@@ -3281,7 +3301,7 @@ const shopSettingsMethods = (options: ApiClientOptions) => {
     updateSettings: (input: ShopSettingsPatch, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
       request(options, routes.updateSettings.method, routes.updateSettings.path, proposable.updateSettings, input, signal, proposalHeaders(proposal)),
     uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-      uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, input, signal),
+      uploadImageAsset(options, routes.brandingAssetUpload, routes.brandingAssetComplete, SHOP_IMAGE_ASSET_SCHEMAS, input, signal),
   };
 };
 
@@ -3293,7 +3313,7 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
   const linkPath = (path: string, id: string): string => path.replace(':id', encodeURIComponent(id));
   return {
     uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
-      uploadImageAsset(options, routes.productCoverUpload, routes.productCoverComplete, input, signal),
+      uploadImageAsset(options, routes.productCoverUpload, routes.productCoverComplete, SHOP_IMAGE_ASSET_SCHEMAS, input, signal),
     listSalesLinks: (signal?: AbortSignal) =>
       request(options, routes.listSalesLinks.method, routes.listSalesLinks.path, contracts.listSalesLinks.output, undefined, signal),
     getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>

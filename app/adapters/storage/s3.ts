@@ -9,6 +9,7 @@ import {
   integrationAuth,
   integrationNotConfigured,
   integrationUnavailable,
+  notFound,
   ok,
   storageConfigurationSchema,
   storageListInputSchema,
@@ -60,6 +61,7 @@ type StorageRequest = {
   secretAccessKey: string;
   region?: string;
   expiresInSeconds: number;
+  contentLength?: number;
 };
 
 interface StorageResponse {
@@ -419,13 +421,16 @@ const presign = (
   if (match === null && input.region === undefined) {
     return err(validation(`Cannot presign "${input.url}": not a virtual-hosted S3 URL`));
   }
+  if (input.contentLength !== undefined && (!Number.isSafeInteger(input.contentLength) || input.contentLength < 0)) {
+    return err(validation(`Cannot presign "${input.url}": invalid content length`));
+  }
   return ok(
     signObjectUrl(method, url, {
       accessKeyId: input.accessKeyId,
       secretAccessKey: input.secretAccessKey,
       region: input.region ?? match?.groups?.['region'] ?? 'us-east-1',
       expiresInSeconds: input.expiresInSeconds,
-    }, now),
+    }, now, input.contentLength === undefined ? {} : { 'content-length': String(input.contentLength) }),
   );
 };
 
@@ -439,6 +444,7 @@ const signObjectUrl = (
     expiresInSeconds: number;
   },
   now: () => Date,
+  extraSignedHeaders: Readonly<Record<string, string>> = {},
 ): string => {
   const url = target;
   const region = input.region;
@@ -447,15 +453,17 @@ const signObjectUrl = (
   const dateStamp = amzDate.slice(0, 8);
   const scope = `${dateStamp}/${region}/s3/aws4_request`;
 
+  const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  const headers = Object.entries({ ...extraSignedHeaders, host: url.host }).sort(([a], [b]) => byCodePoint(a, b));
+  const signedHeaders = headers.map(([name]) => name).join(';');
   const query: [string, string][] = [
     ...url.searchParams.entries(),
     ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
     ['X-Amz-Credential', `${input.accessKeyId}/${scope}`],
     ['X-Amz-Date', amzDate],
     ['X-Amz-Expires', String(input.expiresInSeconds)],
-    ['X-Amz-SignedHeaders', 'host'],
+    ['X-Amz-SignedHeaders', signedHeaders],
   ];
-  const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
   const canonicalQuery = query
     .map(([key, value]): [string, string] => [rfc3986(key), rfc3986(value)])
     .sort(([aKey, aValue], [bKey, bValue]) =>
@@ -469,9 +477,9 @@ const signObjectUrl = (
     method,
     canonicalUri,
     canonicalQuery,
-    `host:${url.host}`,
+    ...headers.map(([name, value]) => `${name}:${value}`),
     '',
-    'host',
+    signedHeaders,
     'UNSIGNED-PAYLOAD',
   ].join('\n');
   const stringToSign = [
@@ -680,6 +688,7 @@ export const createS3StorageProvider = (
       if (!signed.ok) return signed;
       const response = await sendObjectRequest(signed.value, 'HEAD');
       if (!response.ok) return response;
+      if (response.value.status === 404) return err(notFound('No storage object at this key'));
       if (!response.value.ok) {
         return err(integrationUnavailable(`S3 rejected the object metadata request with status ${String(response.value.status)}`));
       }
@@ -720,6 +729,10 @@ export const createS3StorageProvider = (
           method: 'GET', dispatcher, redirect: 'error', signal: AbortSignal.timeout(30_000),
           headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
         });
+        if (response.status === 404) {
+          await discardStorageResponseBody(response);
+          return err(notFound('No storage object at this key'));
+        }
         const length = response.headers.get('content-length');
         const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
         const contentRange = response.headers.get('content-range');

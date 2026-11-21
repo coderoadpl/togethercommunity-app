@@ -15,8 +15,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(535);
-    expect(inventory.useCases).toHaveLength(400);
+    expect(inventory.routes).toHaveLength(537);
+    expect(inventory.useCases).toHaveLength(406);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -280,9 +280,11 @@ describe('permission inventory', () => {
     }
     for (const [subject, capability] of [
       ['GET /api/change-proposals', 'proposal:read'],
+      ['GET /api/change-proposals/summary', 'proposal:read'],
       ['GET /api/change-proposals/:id', 'proposal:read'],
       ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
+      ['GET /api/change-proposals/:id/assets/:digest', 'proposal:read'],
       ['GET /api/change-proposals/groups/:id', 'proposal:read'],
       ['POST /api/change-proposals/groups/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/groups/:id/approve', 'proposal:decide'],
@@ -299,6 +301,7 @@ describe('permission inventory', () => {
       ['getOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
       ['withdrawOwnChangeProposal', 'proposal:own:manage', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
       ['listChangeProposals', 'proposal:read', ['owner']],
+      ['getChangeProposalSummary', 'proposal:read', ['owner']],
       ['getChangeProposal', 'proposal:read', ['owner']],
       ['rejectChangeProposal', 'proposal:decide', ['owner']],
       ['approveChangeProposal', 'proposal:decide', ['owner']],
@@ -315,6 +318,17 @@ describe('permission inventory', () => {
       ['getChangeProposalGroup', 'proposal:read', ['owner']],
       ['rejectChangeProposalGroup', 'proposal:decide', ['owner']],
       ['approveChangeProposalGroup', 'proposal:decide', ['owner']],
+    ]);
+  });
+
+  it('gives the proposal image uploads to the propose-mode key and the image preview to the owner', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposal-images.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposal-images.ts#', ''), capability, after])).toEqual([
+      ['beginProposedProductCoverUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['beginProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['completeProposedProductCoverUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['completeProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getChangeProposalImage', 'proposal:read', ['owner']],
     ]);
   });
 

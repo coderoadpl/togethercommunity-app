@@ -106,6 +106,7 @@ export const notificationKindSchema = z.enum([
   'space-event',
   'tenant-domain-verified',
   'tenant-domain-error',
+  'change-proposal',
 ]);
 
 /** Notification contexts outgrew post contexts: posts stay lesson|space. */
@@ -116,8 +117,18 @@ const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm', 'tenant']
  * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
  * name for space contexts and the sender display for direct messages, while
  * `domain` carries tenant contexts, which have no post, author or context row
- * (courseId stays null outside lessons).
+ * (courseId stays null outside lessons). A change proposal carries its own
+ * typed `changeProposal` facts instead; read them with
+ * `changeProposalNotificationFacts`.
  */
+const changeProposalNotificationPayloadSchema = z.object({
+  keyName: z.string().trim().min(1),
+  groupId: z.string().min(1).nullable(),
+  groupTitle: z.string().min(1).nullable(),
+}).strict();
+
+export type ChangeProposalNotificationFacts = z.output<typeof changeProposalNotificationPayloadSchema>;
+
 const notificationPayloadSchema = z.object({
   // Defaults keep rows persisted before these fields existed parseable, and the
   // nullable ids carry the kinds that have no post, author or context of their own.
@@ -132,6 +143,7 @@ const notificationPayloadSchema = z.object({
   authorDisplay: z.string().trim().min(1).nullable().default(null),
   authorAvatarUrl: z.string().nullable().default(null),
   snippet: z.string(),
+  changeProposal: changeProposalNotificationPayloadSchema.optional(),
 });
 
 export const notificationSchema = z.object({
@@ -147,6 +159,16 @@ export const notificationSchema = z.object({
 });
 
 export type Notification = z.output<typeof notificationSchema>;
+
+/** Rows stored before the typed payload existed kept the key name in `authorDisplay` and the group in `contextId` and `snippet`. */
+export const changeProposalNotificationFacts = (notification: Notification): ChangeProposalNotificationFacts | null => {
+  if (notification.kind !== 'change-proposal') return null;
+  if (notification.payload.changeProposal !== undefined) return notification.payload.changeProposal;
+  const keyName = notification.payload.authorDisplay;
+  if (keyName === null) return null;
+  const { contextId, snippet } = notification.payload;
+  return { keyName, groupId: contextId, groupTitle: contextId === null || snippet.length === 0 ? null : snippet };
+};
 
 const notificationCursorSchema = z.string().min(1).superRefine((value, ctx) => {
   const separator = value.indexOf('|');

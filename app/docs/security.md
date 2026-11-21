@@ -524,7 +524,8 @@ scopes on every shop key.
   unit.
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
-  `proposal:submit:settings` in place of the live write capabilities, and
+  `proposal:submit:settings`, each with `proposal:asset:upload` for images
+  that stay private until an approval, in place of the live write capabilities, and
   `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
   it. A write scope requires its read scope (`shop:catalog:write` needs
   `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the
@@ -539,14 +540,37 @@ scopes on every shop key.
   without one: the ten catalogue write routes, the three sales-link write
   routes and the settings update store a
   [change proposal](change-proposals.md) instead of running their handler,
-  every other write route (images, fulfilment, integrations) answers `403`,
-  and a test drives a propose-mode key
-  over every registered shop route and asserts that no live row changed. A
+  the four product cover and branding image routes (class `direct`) upload
+  into the key's private quarantine, every other write route (fulfilment,
+  integrations) answers `403`, and a test drives a propose-mode key over every
+  registered shop route and asserts that no live row changed and no object
+  appeared under the public image prefix. A quarantined image is stored under
+  `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
+  private prefix the public asset route never serves; its address names its
+  SHA-256, so the bytes the owner previews are the bytes an approval publishes,
+  and approval checks the hash again before it writes the public copy. The owner
+  reads it only through `GET /api/change-proposals/:id/assets/:digest`
+  (verified owner session, `proposal:read`, an image the pending proposal
+  attaches), with `nosniff`, `private, no-store` and SVG always as an
+  attachment; the same route serves the already published copy of an attached
+  address that is no longer quarantined but that a live field shows. The owner
+  panel never renders a proposed SVG. No key can read
+  quarantined bytes. A propose-mode key cannot propose a new checkout
+  appearance logo or icon address (`checkoutAppearance.logoUrl`, `iconUrl`):
+  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB,
+  and starts at most 60 uploads in 15 minutes, each presigned for exactly its
+  declared size; decisions, revocation and a sweep on the minute tick remove
+  them, and the sweep also removes the key's upload candidates and the public
+  copies of approvals that did not end applied. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
-  value or the deciding account; after an approval it names only the id of
-  the applied resource, which the key can already read with its read scope.
+  value, a live label, the issuer's state or the deciding account; after an
+  approval it names only the id of the applied resource, which the key can
+  already read with its read scope. The owner view adds a display label read
+  from live state at read time (never used by a decision), the issuing
+  account's e-mail and whether it is still a verified owner of the
+  workspace, and the deciding account's e-mail.
   Only the verified owner in their own session reads, approves and
   rejects proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
   impersonating owner, a direct-mode key, a propose-mode key and a legacy key
@@ -573,13 +597,19 @@ scopes on every shop key.
   the clock again, runs the live use-case as the approving owner inside a
   savepoint, recomputes the effect and commits the change only when it equals
   the stored effect the owner saw; otherwise the savepoint is rolled back and
-  the proposal becomes `stale` (or `failed` with the domain error). A draft
+  the proposal becomes `stale`, or `failed` when the live use-case refuses the
+  command itself. Any other error of the live use-case (an infrastructure,
+  configuration or caller code, see `describesTheRequest` in
+  `core/domain/errors.ts`) rolls the whole transaction back, leaves the
+  proposal or the whole group pending and answers that error. A reject and a
+  withdrawal lock the proposal row before they read the clock, so a proposal
+  that expired during the wait is recorded as expired, never decided. A draft
   deletion's effect lists everything it destroys (every price, every download
   file, the stock), read under the exclusive locks the deletion takes, so a
   file uploaded after the proposal makes it `stale`. Settings writes lock the
-  workspace row `FOR NO KEY UPDATE` and key revocation and purge withdraw the
-  key's proposals before writing their key event, so a settings approval and a
-  revocation cannot deadlock. There is no intermediate state, so a
+  workspace row `FOR NO KEY UPDATE`, which does not conflict with the key-share
+  lock a key event's foreign key takes, so a settings approval and a key
+  revocation share only the proposal row lock and cannot deadlock. There is no intermediate state, so a
   repeated or concurrent approve finds no pending row and gets `409`; an
   infrastructure failure rolls everything back and leaves the proposal
   pending. Non-database effects of an applied change run only after the
@@ -587,7 +617,25 @@ scopes on every shop key.
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
-  today. A retention purge of settled proposals is a follow-up.
+  today. A retention purge of settled proposals is a follow-up. The owner
+  panel's summary (`GET /api/change-proposals/summary`) is owner-only like the
+  list and returns `{ pending, pendingGroups, hasProposals }`: the pending and
+  pending-group counts and whether the workspace holds any proposal at all,
+  whatever its status. A submitted proposal raises an in-app notification for
+  the workspace owners (direct and organisation-derived, the same effective
+  grant as the owner session), at most one unread per owner and key (the
+  notification's unique source key, which is per key, makes it atomic); a group
+  raises it once, with its first item; its later items signal the owner's open
+  panel and never make a read notification unread again. It names only the key and the group title, carries no
+  effect, and is written after the proposal committed, in its own transaction
+  with a 500 ms bound on every lock wait and statement, and the submission
+  stops waiting for it after 500 ms in any case, so a held or failing
+  notification is logged and never fails, changes or holds up the submission
+  beyond that bound. Each re-armed
+  notification gets a new id, so a late "mark read" of an earlier one cannot
+  clear it. The owner view shows an account's e-mail only while that account
+  holds a staff grant in the workspace; a former team member or a deleted
+  account is shown as such, without its address.
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

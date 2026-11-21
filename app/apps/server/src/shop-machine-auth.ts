@@ -59,7 +59,7 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementK
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
+type ShopMachineRefusalReason = 'secret' | 'side-effect';
 
 type ShopMachineProposeMode =
   | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
@@ -153,6 +153,24 @@ const proposalManagementRefusal = (): AppError =>
   forbidden('Only a propose-mode shop management key manages change proposals');
 
 const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'direct';
+
+export const isProposeModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'propose';
+
+export const PROPOSED_IMAGE_UPLOAD = {
+  kind: 'direct',
+  reason: 'a propose-mode key uploads into its private quarantine; an image is published only by the approval of the proposal that attaches it',
+} as const satisfies ShopMachineProposeMode;
+
+export const imageUploadAnswer = (
+  started: { key: string; servePath: string; uploadUrl: string; expiresAt: string },
+  contentType: string,
+  quarantined: boolean,
+) => ({
+  key: started.key,
+  servePath: quarantined ? null : started.servePath,
+  ...(quarantined ? { quarantined: true as const } : {}),
+  upload: { url: started.uploadUrl, headers: { 'content-type': contentType }, expiresAt: started.expiresAt },
+});
 
 const proposalGroupOf = (c: Context<AppVars>): Result<string | null, AppError> => {
   const header = c.req.header(PROPOSAL_GROUP_HEADER);

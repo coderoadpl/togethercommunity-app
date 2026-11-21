@@ -1,11 +1,12 @@
 import { eq, sql } from 'drizzle-orm';
 
-import { storageReferenceInventorySchema } from '#core/domain/index.js';
+import { proposalImageQuarantineKey, storageReferenceInventorySchema } from '#core/domain/index.js';
 import type { StorageReferenceRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {
   campaigns,
+  changeProposalImages,
   emailLayouts,
   courseLessons,
   courseModules,
@@ -61,6 +62,7 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
     const layouts = await tx.select({ bodyHtml: emailLayouts.bodyHtml }).from(emailLayouts).where(eq(emailLayouts.tenantId, tenantId));
     const campaignRows = await tx.select({ bodyHtml: campaigns.bodyHtml, bodySource: campaigns.bodySource })
       .from(campaigns).where(eq(campaigns.tenantId, tenantId));
+    const quarantined = await tx.select().from(changeProposalImages).where(eq(changeProposalImages.tenantId, tenantId));
     return storageReferenceInventorySchema.parse({
       lessonIds: [...new Set([
         ...lessonRows.map((row) => row.id),
@@ -72,6 +74,7 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
       ])],
       attachments,
       downloads,
+      quarantinedImages: quarantined.map((row) => ({ storageKey: proposalImageQuarantineKey(tenantId, row.apiKeyId, row) })),
       currentDocuments: [...lessonRows, ...productRows, ...courseRows, ...moduleRows, ...branding, ...avatars,
         ...postRows, ...messages, ...spaceRows, ...events, ...layouts, ...campaignRows],
       historyDocuments: [...versions.map((row) => row.payload), ...documents],

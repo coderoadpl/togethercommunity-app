@@ -2,9 +2,13 @@ import { and, asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
+  appError,
+  changeProposalExpiresAt,
+  err,
   ok,
   type ChangeProposalOperation,
   type Identity,
@@ -14,6 +18,7 @@ import {
 import {
   approveChangeProposal,
   getChangeProposal,
+  getChangeProposalSummary,
   getOwnChangeProposal,
   listChangeProposals,
   listOwnChangeProposals,
@@ -22,17 +27,21 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalTransaction,
+  type ChangeProposalTransactionScope,
   type Ctx,
   type StorageProvider,
 } from '#core/server/index.js';
 
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
+import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
-import { createChangeProposalEventRepository, createChangeProposalRepository } from './change-proposals.js';
+import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
 import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
+  changeProposalGroups,
   changeProposals,
   entityVersions,
   productDownloadAssets,
@@ -44,7 +53,9 @@ import {
   shopManagementKeyEvents,
   shopManagementKeys,
   stockEvents,
+  tenantAdmins,
   tenants,
+  user,
 } from './schema.js';
 import { createSalesLinkRepository } from './sales-links.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -101,7 +112,15 @@ const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
       createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
     changeProposals: createChangeProposalRepository(db, lockWait),
+    changeProposalGroups: createChangeProposalGroupRepository(db, lockWait),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    changeProposalPeople: createChangeProposalPeopleReader(db),
+    changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, lockWait),
+    realtimeBus: { publish: () => undefined },
+    quarantinedImages: createQuarantinedImageRepository(db, lockWait),
+    secretResolver: createTenantSecretResolver(createTenantSecretRepository(db), secretCrypto),
+    contentHash: createContentHash(),
     storage,
     logger,
     ids: { nextId: () => `approve-${String(++sequence)}` },
@@ -173,7 +192,7 @@ afterAll(async () => { await database?.close(); });
 
 beforeEach(async () => {
   storageDeletes.length = 0;
-  for (const table of [changeProposalEvents, changeProposals, shopManagementKeyEvents, shopManagementKeys, stockEvents, productStock,
+  for (const table of [changeProposalEvents, changeProposals, changeProposalGroups, shopManagementKeyEvents, shopManagementKeys, stockEvents, productStock,
     productDownloadAssets, productPrices, salesLinkEvents, salesLinks, entityVersions, products]) {
     await database.db.delete(table);
   }
@@ -287,6 +306,41 @@ describe('approving a change proposal over the database', () => {
     expect(await eventsOf(id)).toEqual(['1:proposed']);
     expect(await productRow('draft')).toBeDefined();
     expect(storageDeletes).toEqual([]);
+  });
+
+  it.each([
+    appError('unavailable', 'The database is busy'),
+    appError('internal', 'Lost the connection'),
+  ])('rolls a written live change back and keeps the proposal pending when the live use-case answers $code', async (error) => {
+    const id = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
+    const real = deps();
+    const savingThenFailing = (scope: ChangeProposalTransactionScope): ChangeProposalTransactionScope => ({
+      ...scope,
+      repositories: {
+        ...scope.repositories,
+        salesLinks: {
+          ...scope.repositories.salesLinks,
+          save: async (tenantId, link, expectedRevision) => {
+            const saved = await scope.repositories.salesLinks.save(tenantId, link, expectedRevision);
+            return saved.ok ? err(error) : saved;
+          },
+        },
+      },
+      savepoint: (operation) => scope.savepoint((nested) => operation(savingThenFailing(nested))),
+    });
+    const failing: ChangeProposalTransaction = {
+      ...real.changeProposalTransaction,
+      run: (tenantId, operation) => real.changeProposalTransaction.run(tenantId, (scope) => operation(savingThenFailing(scope))),
+    };
+
+    expect(await approveChangeProposal(ownerSession, { id }, { ...real, changeProposalTransaction: failing })).toEqual({ ok: false, error });
+
+    expect(await statusOf(id)).toBe('pending');
+    expect(await eventsOf(id)).toEqual(['1:proposed']);
+    expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Spring sale', revision: 1 });
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row).toMatchObject({ decidedAt: null, decidedByUserId: null, failureCode: null, failureMessage: null });
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied' } });
   });
 
   it('deletes stored files after an applied draft deletion and never after a stale or failed one', async () => {
@@ -411,6 +465,64 @@ describe('approval races with the other terminal transitions', () => {
     expect(await eventsOf(id)).toEqual(['1:proposed', `2:${status === 'rejected' ? 'rejected' : 'withdrawn'}`]);
     expect((await productRow('mug'))?.title).toBe('Title of mug');
     expect(await productVersionAuthors('mug')).toEqual([]);
+  }, 30_000);
+});
+
+describe('single decisions whose proposal expires during the lock wait', () => {
+  const expiry = changeProposalExpiresAt(NOW);
+  const decisions = [
+    ['reject', (id: string, clock: { nowIso: () => string }) => rejectChangeProposal(ownerSession, { id, note: 'Too late' }, { ...deps(), clock }), OWNER, null],
+    ['withdraw', (id: string, clock: { nowIso: () => string }) => withdrawOwnChangeProposal(keyCtx, { id }, { ...deps(), clock }), null, KEY_ID],
+  ] as const;
+
+  it.each(decisions)('records the expiry instead of the %s', async (_label, decide, actorUserId, apiKeyId) => {
+    const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    let current = NOW;
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, id]);
+      const decision = decide(id, { nowIso: () => current });
+      await untilLockWaiters(observer, 1);
+      current = expiry;
+      await blocker.query('commit');
+
+      expect(await decision).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row).toMatchObject({ status: 'pending', decidedAt: null, decidedByUserId: null, decisionNote: null });
+    const events = await createChangeProposalEventRepository(database.db).listByProposal(TENANT, id);
+    expect(events.map(({ kind, at, actorUserId: actor, apiKeyId: keyId }) => ({ kind, at, actor, keyId }))).toEqual([
+      { kind: 'proposed', at: NOW, actor: null, keyId: KEY_ID },
+      { kind: 'expired', at: expiry, actor: actorUserId, keyId: apiKeyId },
+    ]);
+  }, 30_000);
+
+  it.each(decisions)('stamps the %s with the time read after the lock', async (_label, decide) => {
+    const id = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    const later = '2026-03-01T10:00:07.000Z';
+    let current = NOW;
+    const blocker = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select id from change_proposals where tenant_id = $1 and id = $2 for update', [TENANT, id]);
+      const decision = decide(id, { nowIso: () => current });
+      await untilLockWaiters(observer, 1);
+      current = later;
+      await blocker.query('commit');
+
+      expect(await decision).toMatchObject({ ok: true });
+    } finally {
+      await blocker.end();
+      await observer.end();
+    }
+    const [row] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, id));
+    expect(row?.decidedAt).toBe(later);
   }, 30_000);
 });
 
@@ -737,5 +849,97 @@ describe('a proposal whose stored effect is empty', () => {
 
     expect(await createSalesLinkRepository(database.db).findById(TENANT, 'link-spring')).toMatchObject({ heading: 'Owner heading', revision: 1 });
     expect((await database.db.select().from(salesLinkEvents)).length).toBe(events);
+  });
+});
+
+describe('the owner view and summary over the database', () => {
+  beforeAll(async () => {
+    await database.db.insert(user).values([
+      { id: ISSUER, email: 'issuer@example.test', name: 'Issuer', emailVerified: true },
+      { id: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' },
+      { id: 'grant-owner', tenantId: TENANT, userId: OWNER, role: 'owner' },
+    ]);
+  });
+
+  const ownerList = async () => {
+    const listed = await listChangeProposals(ownerSession, {}, deps());
+    if (!listed.ok) throw new Error(listed.error.message);
+    return Object.fromEntries(listed.value.proposals.map((card) => [card.id, card]));
+  };
+
+  it('labels each card from live state, names the deciding account and shows whether the issuer still owns the workspace', async () => {
+    const product = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    const price = await submit('price.deactivate', { id: 'price-live' });
+    const link = await submit('sales-link.update', { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] });
+    const settings = await submit('settings.update', { name: 'Acme shop' });
+    const created = await submit('product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 });
+    const yearly = await submit('price.create', { productId: 'draft', kind: 'recurring', interval: 'year', amountCents: 9900, currency: 'EUR' });
+    expect(await rejectChangeProposal(ownerSession, { id: settings, note: 'Not now' }, deps())).toMatchObject({ ok: true });
+    expect(await approve(created)).toMatchObject({ ok: true, value: { status: 'applied', targetLabel: 'Teapot' } });
+    expect(await approve(yearly)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    await database.db.update(products).set({ title: 'Mug, renamed live' }).where(eq(products.id, 'mug'));
+
+    const cards = await ownerList();
+
+    expect([product, price, link, settings, created, yearly].map((id) => cards[id]?.targetLabel))
+      .toEqual(['Mug, renamed live', 'Title of live', 'Spring', null, 'Teapot', 'Title of draft']);
+    expect([product, price, link, settings, created, yearly].map((id) => cards[id]?.targetPrice)).toEqual([
+      null, { kind: 'one_time', interval: null, intervalCount: 1, amountCents: 1500, currency: 'EUR' }, null, null, null,
+      { kind: 'recurring', interval: 'year', intervalCount: 1, amountCents: 9900, currency: 'EUR' },
+    ]);
+    expect(cards[product]?.proposedBy).toEqual({
+      keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: ISSUER, issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: true,
+      issuerIsFormerTeamMember: false,
+    });
+    expect(cards[settings]).toMatchObject({
+      status: 'rejected', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedByIsFormerTeamMember: false, decisionNote: 'Not now', decidedAt: NOW,
+    });
+    expect(cards[product]).toMatchObject({ decidedByEmail: null, failureCode: null, failureMessage: null });
+
+    await database.db.update(tenantAdmins).set({ role: 'admin' }).where(eq(tenantAdmins.id, 'grant-issuer'));
+    try {
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: 'issuer@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+      await database.db.delete(tenantAdmins).where(eq(tenantAdmins.id, 'grant-issuer'));
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+      await database.db.insert(tenantAdmins).values({ id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' });
+      await database.db.update(user).set({ emailVerified: false }).where(eq(user.id, ISSUER));
+      expect((await ownerList())[product]?.proposedBy).toMatchObject({ issuerIsVerifiedOwner: false });
+    } finally {
+      await database.db.insert(tenantAdmins).values({ id: 'grant-issuer', tenantId: TENANT, userId: ISSUER, role: 'owner' })
+        .onConflictDoUpdate({ target: tenantAdmins.id, set: { role: 'owner' } });
+      await database.db.update(user).set({ emailVerified: true }).where(eq(user.id, ISSUER));
+    }
+
+    await createSalesLinkRepository(database.db).delete(TENANT, 'link-spring', NOW);
+    expect((await ownerList())[link]?.targetLabel).toBeNull();
+  });
+
+  it('approves exactly what was shown, whatever the live label says', async () => {
+    const id = await submit('product.update', { id: 'mug', description: 'Fresh' });
+    await database.db.update(products).set({ title: 'Renamed for the label only' }).where(eq(products.id, 'mug'));
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied', targetLabel: 'Renamed for the label only' } });
+    expect(await productRow('mug')).toMatchObject({ title: 'Renamed for the label only', description: 'Fresh' });
+  });
+
+  it('counts the pending, unexpired proposals and their groups for the summary', async () => {
+    const first = await submit('product.update', { id: 'mug', title: 'Big mug' });
+    await submit('stock.adjust', { productId: 'live', delta: 1, reason: 'Count' });
+    const rejected = await submit('product.update', { id: 'live', title: 'Rejected' });
+    expect(await rejectChangeProposal(ownerSession, { id: rejected }, deps())).toMatchObject({ ok: true });
+    await database.db.insert(changeProposalGroups).values({ id: 'group-summary', tenantId: TENANT, title: 'Summary group', proposedByKeyId: KEY_ID, createdAt: NOW });
+    await database.db.update(changeProposals).set({ groupId: 'group-summary', groupPosition: 1 }).where(eq(changeProposals.id, first));
+    const [template] = await database.db.select().from(changeProposals).where(eq(changeProposals.id, rejected));
+    if (template === undefined) throw new Error('The rejected proposal is missing');
+    await database.db.insert(changeProposals).values({
+      ...template,
+      id: 'expired-proposal', status: 'pending', createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-31T00:00:00.000Z',
+      decidedAt: null, decidedByUserId: null, decisionNote: null,
+    });
+
+    expect(await getChangeProposalSummary(ownerSession, deps())).toEqual({ ok: true, value: { pending: 2, pendingGroups: 1, hasProposals: true } });
+    expect(await getChangeProposalSummary(keyCtx, deps())).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

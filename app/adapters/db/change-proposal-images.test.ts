@@ -1,0 +1,670 @@
+import { and, eq, isNull } from 'drizzle-orm';
+import pg from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createContentHash } from '#adapters/crypto/content-hash.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import {
+  CHANGE_PROPOSAL_IMAGE_FIELDS,
+  changeProposalImageReferences,
+  changeProposalsBusy,
+  err,
+  IMAGE_ASSET_MAX_BYTES,
+  integrationUnavailable,
+  ok,
+  proposalImageKindSchema,
+  type AppError,
+  type Identity,
+  type ProposalImageExtension,
+  type ProposalImageReference,
+  type QuarantinedImageAsset,
+  type Result,
+  type ShopManagementKey,
+} from '#core/domain/index.js';
+import {
+  approveChangeProposal,
+  completeProposedProductCoverUpload,
+  beginProposedProductCoverUpload,
+  shopManagementKeyCapabilities,
+  submitChangeProposal,
+  sweepQuarantinedImages,
+  type ChangeProposalTransaction,
+  type ChangeProposalTransactionScope,
+  type Ctx,
+} from '#core/server/index.js';
+import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
+
+import { lockWorkspaceProposals } from './change-proposal-bounds.js';
+import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageLocks, createQuarantinedImageRepository, quarantinedImagesPresent } from './change-proposal-images.js';
+import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
+import { createChangeProposalTransaction } from './change-proposal-transaction.js';
+import { createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
+import { createTenantSecretRepository } from './repositories.js';
+import {
+  changeProposalEvents,
+  changeProposalImagePublications,
+  changeProposalImages,
+  changeProposalImageUploads,
+  changeProposals,
+  products,
+  shopManagementKeys,
+  tenants,
+} from './schema.js';
+import { createShopManagementKeyRepository } from './shop-management-keys.js';
+import { createStorageReferenceRepository } from './storage-references.js';
+import { createTestDatabase } from './test-database-name.js';
+
+const TENANT = 't-change-proposal-images';
+const NEIGHBOUR = 't-change-proposal-images-neighbour';
+const NOW = '2026-03-01T10:00:00.000Z';
+const OWNER = 'user-owner';
+const ISSUER = 'user-issuer';
+const KEY_ID = 'key-images';
+const OTHER_KEY_ID = 'key-images-second';
+
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+let sequence = 0;
+
+const key = (id: string, tenantId = TENANT): ShopManagementKey => ({
+  id, tenantId, name: `Agent ${id}`, keyHash: `hash-${id}`,
+  scopes: ['shop:catalog:read', 'shop:catalog:write', 'shop:settings:read', 'shop:settings:write'],
+  mode: 'propose', issuedByUserId: ISSUER, createdAt: '2026-02-25T00:00:00.000Z', expiresAt: '2026-03-20T00:00:00.000Z', revokedAt: null,
+});
+
+const identity = (userId: string): Identity => ({
+  userId, email: `${userId}@example.test`, name: userId, emailVerified: true, tenantAccess: 'staff',
+  tenantId: TENANT, tenantSlug: 'images', tenantName: 'Images', staffRole: 'owner', memberId: null, image: null,
+  memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+});
+
+const keyCtx: Ctx = {
+  identity: identity(ISSUER),
+  capabilities: shopManagementKeyCapabilities(key(KEY_ID)),
+  machineActor: { kind: 'shop_management_key', apiKeyId: KEY_ID, mode: 'propose' },
+};
+
+const ownerSession: Ctx = { identity: identity(OWNER) };
+
+const secretCrypto = createSecretCrypto(Buffer.alloc(32, 9).toString('base64'));
+
+const digestOf = (index: number): string => index.toString(16).padStart(64, '0');
+
+const image = (index: number, overrides: Partial<QuarantinedImageAsset> = {}): QuarantinedImageAsset => ({
+  tenantId: TENANT, apiKeyId: KEY_ID, kind: 'product-cover', digest: digestOf(index), extension: 'png', sizeBytes: 10, createdAt: NOW,
+  ...overrides,
+});
+
+const pathOf = (reference: ProposalImageReference): string =>
+  `/api/public/assets/${reference.kind}/${reference.digest}.${reference.extension}`;
+
+const stored = async () => ok(undefined);
+
+const pendingProposal = async (
+  id: string,
+  input: Record<string, unknown>,
+  values: { keyId?: string; expired?: boolean; status?: 'pending' | 'rejected' | 'applied'; operation?: string; tenantId?: string } = {},
+) => {
+  const status = values.status ?? 'pending';
+  await database.db.insert(changeProposals).values({
+    id, tenantId: values.tenantId ?? TENANT, operation: values.operation ?? 'product.update', input: { id: 'mug', ...input }, effect: {},
+    targetKind: 'product', targetId: 'mug',
+    status, proposedByKeyId: values.keyId ?? KEY_ID, proposedByKeyName: 'Agent', proposedByIssuerUserId: ISSUER,
+    createdAt: values.expired === true ? '2026-01-01T10:00:00.000Z' : NOW,
+    expiresAt: values.expired === true ? '2026-01-31T10:00:00.000Z' : '2026-03-31T10:00:00.000Z',
+    ...(status === 'pending' ? {} : { decidedAt: NOW, decidedByUserId: OWNER }),
+  });
+};
+
+const rows = async () => (await database.db.select().from(changeProposalImages).where(isNull(changeProposalImages.releasedAt)))
+  .map((row) => `${row.tenantId}/${row.apiKeyId}/${row.digest.replace(/^0+/u, '')}`).sort();
+
+const releasedRows = async () => (await database.db.select().from(changeProposalImages))
+  .filter((row) => row.releasedAt !== null).map((row) => row.digest.replace(/^0+/u, '')).sort();
+
+const lockWaiters = async (observer: pg.Client): Promise<number> => (await observer.query<{ count: number }>(
+  "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+)).rows[0]?.count ?? 0;
+
+const untilWaiting = async (observer: pg.Client, what: string): Promise<void> => {
+  for (const deadline = Date.now() + 10_000; await lockWaiters(observer) < 1;) {
+    if (Date.now() > deadline) throw new Error(`${what} never waited`);
+  }
+};
+
+beforeAll(async () => {
+  database = await createTestDatabase('together_change_proposal_images', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
+  await database.db.insert(tenants).values([
+    { id: TENANT, slug: 'images', name: 'Images', createdAt: NOW },
+    { id: NEIGHBOUR, slug: 'images-neighbour', name: 'Neighbour', createdAt: NOW },
+  ]);
+  await createTenantSecretRepository(database.db).upsert(TENANT, {
+    id: 'storage-configuration', tenantId: TENANT, key: 's3.configuration', maskedPreview: 'configured', updatedAt: NOW,
+    ...secretCrypto.encrypt(JSON.stringify({
+      provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'assets', accessKeyId: 'a', secretAccessKey: 's',
+    })),
+  });
+});
+
+afterAll(async () => { await database?.close(); });
+
+beforeEach(async () => {
+  for (const table of [changeProposalImages, changeProposalImageUploads, changeProposalImagePublications, changeProposalEvents, changeProposals, shopManagementKeys, products]) {
+    await database.db.delete(table);
+  }
+  for (const created of [key(KEY_ID), key(OTHER_KEY_ID), key('key-neighbour', NEIGHBOUR)]) {
+    await createShopManagementKeyRepository(database.db).create(created.tenantId, created, {
+      id: `key-event-${String(++sequence)}`, tenantId: created.tenantId, apiKeyId: created.id, kind: 'created', actorUserId: ISSUER,
+      method: null, route: null, resourceId: null, at: created.createdAt,
+    });
+  }
+  await database.db.insert(products).values({
+    id: 'mug', tenantId: TENANT, slug: 'mug', title: 'Mug', type: 'physical', description: '', priceCents: 0, currency: 'EUR', createdAt: NOW,
+  });
+  await database.db.update(tenants).set({ logoUrl: null }).where(eq(tenants.id, TENANT));
+});
+
+describe('the quarantined image repository', () => {
+  it('records an image once for its key and workspace', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'stored', asset: image(1) });
+    expect(await repository.insert(TENANT, image(1, { createdAt: '2026-03-02T10:00:00.000Z' }), stored)).toEqual({ kind: 'existing', asset: image(1) });
+    expect(await repository.find(TENANT, KEY_ID, image(1))).toEqual(image(1));
+    expect(await repository.find(TENANT, OTHER_KEY_ID, image(1))).toBeNull();
+    expect(await repository.find(NEIGHBOUR, KEY_ID, image(1))).toBeNull();
+    await expect(repository.insert(NEIGHBOUR, image(2), stored)).rejects.toThrow('another tenant');
+  });
+
+  it('lets only one of two concurrent completions take the last image slot of a key', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values(Array.from({ length: 99 }, (_unused, index) => image(index + 100)));
+    const outcomes = await Promise.all([repository.insert(TENANT, image(1), stored), repository.insert(TENANT, image(2), stored)]);
+    expect(outcomes.map((outcome) => outcome.kind).sort()).toEqual(['cap_exceeded', 'stored']);
+    expect(outcomes.find((outcome) => outcome.kind === 'cap_exceeded')).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_images' });
+    expect((await database.db.select().from(changeProposalImages).where(eq(changeProposalImages.apiKeyId, KEY_ID))).length).toBe(100);
+    expect(await repository.insert(TENANT, image(3, { apiKeyId: OTHER_KEY_ID }), stored)).toMatchObject({ kind: 'stored' });
+  });
+
+  it('lets only one of two concurrent completions take the last bytes of a key', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values(Array.from({ length: 9 }, (_unused, index) => image(index + 100, { sizeBytes: IMAGE_ASSET_MAX_BYTES })));
+    const outcomes = await Promise.all([
+      repository.insert(TENANT, image(1, { sizeBytes: 3 * 1024 * 1024 }), stored),
+      repository.insert(TENANT, image(2, { sizeBytes: 3 * 1024 * 1024 }), stored),
+    ]);
+    expect(outcomes.map((outcome) => outcome.kind === 'cap_exceeded' ? outcome.cap : outcome.kind).sort()).toEqual(['key_quarantined_bytes', 'stored']);
+  });
+
+  it('releases only the images no pending, unexpired proposal of their own key references', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    for (const index of [1, 2, 3, 4]) await repository.insert(TENANT, image(index), stored);
+    await pendingProposal('p-pending', { coverUrl: pathOf(image(1)) });
+    await pendingProposal('p-expired', { coverUrl: pathOf(image(2)) }, { expired: true });
+    await pendingProposal('p-rejected', { coverUrl: pathOf(image(3)) }, { status: 'rejected' });
+    await pendingProposal('p-other-key', { coverUrl: pathOf(image(4)) }, { keyId: OTHER_KEY_ID });
+
+    const released = await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    expect(released.kind === 'written' ? released.value.map((row) => row.digest) : released).toEqual([digestOf(2), digestOf(3), digestOf(4)]);
+    expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
+    expect(await releasedRows()).toEqual(['2', '3', '4']);
+    expect(await repository.find(TENANT, KEY_ID, image(2))).toBeNull();
+    expect(await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [] }, NOW)).toEqual({ kind: 'written', value: [] });
+  });
+
+  it('sweeps images past the age bound and every image of a revoked or deleted key, across workspaces', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1, { createdAt: '2026-02-01T10:00:00.000Z' }), stored);
+    await repository.insert(TENANT, image(2), stored);
+    await repository.insert(TENANT, image(3, { apiKeyId: OTHER_KEY_ID }), stored);
+    await repository.insert(TENANT, image(4, { apiKeyId: 'key-deleted' }), stored);
+    await repository.insert(NEIGHBOUR, image(5, { tenantId: NEIGHBOUR, apiKeyId: 'key-neighbour' }), stored);
+    await repository.insert(TENANT, image(6, { createdAt: '2026-02-01T10:00:00.000Z' }), stored);
+    await pendingProposal('p-attached', { coverUrl: pathOf(image(6)) });
+    await database.db.update(shopManagementKeys).set({ revokedAt: NOW }).where(eq(shopManagementKeys.id, OTHER_KEY_ID));
+    const createdBefore = '2026-02-22T10:00:00.000Z';
+
+    expect(await repository.listTenantIdsToSweep(createdBefore, NOW, 10)).toEqual([TENANT]);
+    const released = await repository.release(TENANT, { kind: 'sweep', createdBefore, limit: 1 }, NOW);
+    expect(released.kind === 'written' ? released.value.map((row) => row.digest) : released).toEqual([digestOf(1)]);
+    const rest = await repository.release(TENANT, { kind: 'sweep', createdBefore, limit: 10 }, NOW);
+    expect(rest.kind === 'written' ? rest.value.map((row) => row.digest).sort() : rest).toEqual([digestOf(1), digestOf(3), digestOf(4)]);
+    expect(await rows()).toEqual([`${NEIGHBOUR}/key-neighbour/5`, `${TENANT}/${KEY_ID}/2`, `${TENANT}/${KEY_ID}/6`]);
+  });
+
+  it('tells whether a live product cover or branding field shows an address', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    expect(await repository.inLiveUse(TENANT, pathOf(image(1)))).toBe(false);
+    await database.db.update(products).set({ coverUrl: pathOf(image(1)) }).where(eq(products.id, 'mug'));
+    await database.db.update(tenants).set({ logoUrl: pathOf(image(2, { kind: 'logo' })) }).where(eq(tenants.id, TENANT));
+    expect(await repository.inLiveUse(TENANT, pathOf(image(1)))).toBe(true);
+    expect(await repository.inLiveUse(TENANT, pathOf(image(2, { kind: 'logo' })))).toBe(true);
+    expect(await repository.inLiveUse(NEIGHBOUR, pathOf(image(1)))).toBe(false);
+  });
+
+  it('refuses to store a proposal whose image is no longer quarantined for its key', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    const proposals = createChangeProposalRepository(database.db);
+    const proposal = (id: string) => ({
+      id, tenantId: TENANT, groupId: null, groupPosition: null, operation: 'product.update', input: { id: 'mug', coverUrl: pathOf(image(1)) },
+      effect: { coverUrl: { before: null, after: pathOf(image(1)) } }, target: { kind: 'product' as const, id: 'mug' }, status: 'pending' as const,
+      proposedByKeyId: KEY_ID, proposedByKeyName: 'Agent', proposedByIssuerUserId: ISSUER, createdAt: NOW, expiresAt: '2026-03-31T10:00:00.000Z',
+      decidedByUserId: null, decidedAt: null, decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
+    });
+    const event = (id: string) => ({ id, actorUserId: null, apiKeyId: KEY_ID, note: null, at: NOW });
+    expect(await proposals.create(TENANT, proposal('p-gone'), event('e-gone'), NOW, [image(2)])).toEqual({ kind: 'image_missing' });
+    expect(await proposals.create(TENANT, { ...proposal('p-other'), proposedByKeyId: OTHER_KEY_ID }, event('e-other'), NOW, [image(1)])).toEqual({ kind: 'image_missing' });
+    expect(await proposals.create(TENANT, proposal('p-kept'), event('e-kept'), NOW, [image(1)])).toMatchObject({ kind: 'created' });
+  });
+
+  it('makes a release wait for an approval holding the image, then sees the approval and releases it', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await pendingProposal('p-approving', { coverUrl: pathOf(image(1)) });
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    let releaseApproval: () => void = () => undefined;
+    const approvalMayCommit = new Promise<void>((resolve) => { releaseApproval = resolve; });
+    let locked: () => void = () => undefined;
+    const imageLocked = new Promise<void>((resolve) => { locked = resolve; });
+    try {
+      const approval = database.db.transaction(async (tx) => {
+        expect(await createQuarantinedImageLocks(tx).lockForPublication(TENANT, KEY_ID, image(1))).toEqual(image(1));
+        locked();
+        await approvalMayCommit;
+        await tx.update(changeProposals).set({ status: 'applied', decidedAt: NOW, decidedByUserId: OWNER }).where(eq(changeProposals.id, 'p-approving'));
+      });
+      await imageLocked;
+      const release = repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [image(1)] }, NOW);
+      await untilWaiting(observer, 'The release');
+      releaseApproval();
+      await approval;
+      expect(await release).toEqual({ kind: 'written', value: [image(1)] });
+    } finally {
+      releaseApproval();
+      await observer.end();
+    }
+  });
+
+  it('keeps an image a proposal stored meanwhile references, because the release queues behind the insert', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    let releaseInsert: () => void = () => undefined;
+    const insertMayCommit = new Promise<void>((resolve) => { releaseInsert = resolve; });
+    let checked: () => void = () => undefined;
+    const imageChecked = new Promise<void>((resolve) => { checked = resolve; });
+    try {
+      const insert = database.db.transaction(async (tx) => {
+        expect(await lockWorkspaceProposals(tx, TENANT, { lockWaitMs: 10_000 })).toBe(true);
+        expect(await quarantinedImagesPresent(tx, TENANT, KEY_ID, [image(1)])).toBe(true);
+        checked();
+        await insertMayCommit;
+        await tx.insert(changeProposals).values({
+          id: 'p-new', tenantId: TENANT, operation: 'product.update', input: { id: 'mug', coverUrl: pathOf(image(1)) }, effect: {},
+          targetKind: 'product', targetId: 'mug', status: 'pending', proposedByKeyId: KEY_ID, proposedByKeyName: 'Agent',
+          proposedByIssuerUserId: ISSUER, createdAt: NOW, expiresAt: '2026-03-31T10:00:00.000Z',
+        });
+      });
+      await imageChecked;
+      const release = repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+      await untilWaiting(observer, 'The release');
+      releaseInsert();
+      await insert;
+      expect(await release).toEqual({ kind: 'written', value: [] });
+      expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
+    } finally {
+      releaseInsert();
+      await observer.end();
+    }
+  });
+
+  it('lists quarantined objects the database records in the storage reference inventory', async () => {
+    await createQuarantinedImageRepository(database.db).insert(TENANT, image(1), stored);
+    const inventory = await createStorageReferenceRepository(database.db).readInventory(TENANT);
+    expect(inventory.quarantinedImages).toEqual([{ storageKey: `image-asset-quarantine/${TENANT}/${KEY_ID}/product-cover/${digestOf(1)}.png` }]);
+    expect((await createStorageReferenceRepository(database.db).readInventory(NEIGHBOUR)).quarantinedImages).toEqual([]);
+  });
+});
+
+const endToEnd = (lockWait: { lockWaitMs?: number } = {}) => {
+  const objects = createObjectStorageFake();
+  const logger = { error: vi.fn<(message: string) => void>() };
+  const secretResolver = createTenantSecretResolver(createTenantSecretRepository(database.db), secretCrypto);
+  const clock = { now: NOW };
+  let ids = 0;
+  const deps = {
+    changeProposalTransaction: createChangeProposalTransaction(database.db, logger, (connection) =>
+      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
+    changeProposals: createChangeProposalRepository(database.db),
+    changeProposalGroups: createChangeProposalGroupRepository(database.db),
+    shopManagementKeys: createShopManagementKeyRepository(database.db),
+    changeProposalTargetLabels: createChangeProposalTargetLabelReader(database.db),
+    changeProposalPeople: createChangeProposalPeopleReader(database.db),
+    changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(database.db),
+    realtimeBus: { publish: () => undefined },
+    quarantinedImages: createQuarantinedImageRepository(database.db, lockWait),
+    storage: objects.storage,
+    secretResolver,
+    contentHash: createContentHash(),
+    logger,
+    ids: { nextId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}` },
+    clock: { nowIso: () => clock.now },
+  };
+  const proposeCover = async (bytes: Uint8Array): Promise<{ id: string; url: string }> => {
+    const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: bytes.byteLength }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+    objects.objects.set(started.value.key, { bytes, contentType: 'image/png' });
+    const completed = await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps);
+    if (!completed.ok) throw new Error(completed.error.message);
+    const submitted = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', coverUrl: completed.value.url } }, deps);
+    if (!submitted.ok) throw new Error(submitted.error.message);
+    return { id: submitted.value.id, url: completed.value.url };
+  };
+  return { objects, logger, clock, deps, proposeCover };
+};
+
+const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 42]);
+
+describe('a proposed product cover end to end on the database', () => {
+  it('quarantines the upload, proposes it, publishes the verified bytes on approval and releases the quarantined copy', async () => {
+    const { objects, logger, deps } = endToEnd();
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 42]);
+    const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: bytes.byteLength }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+    objects.objects.set(started.value.key, { bytes, contentType: 'image/png' });
+    const completed = await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps);
+    if (!completed.ok) throw new Error(completed.error.message);
+    const digest = createContentHash().sha256(bytes);
+    expect(completed.value).toEqual({ url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true });
+    expect(objects.keysUnder('image-assets/')).toEqual([]);
+
+    const submitted = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', coverUrl: completed.value.url } }, deps);
+    if (!submitted.ok) throw new Error(submitted.error.message);
+    expect(objects.keysUnder('image-assets/')).toEqual([]);
+
+    expect(await approveChangeProposal(ownerSession, { id: submitted.value.id }, deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(and(eq(products.tenantId, TENANT), eq(products.id, 'mug')));
+    expect(cover?.coverUrl).toBe(completed.value.url);
+    const published = objects.objects.get(`image-assets/${TENANT}/product-cover/${digest}.png`);
+    expect(published?.bytes).toEqual(bytes);
+    expect(createContentHash().sha256(published?.bytes ?? new Uint8Array())).toBe(digest);
+    expect(objects.keysUnder('image-asset-quarantine/')).toEqual([]);
+    expect(await rows()).toEqual([]);
+    expect(await database.db.select().from(changeProposalImagePublications)).toEqual([]);
+    expect(objects.signedLengths.get(started.value.key)).toBe(bytes.byteLength);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+const publications = async () => (await database.db.select().from(changeProposalImagePublications)).map((row) => row.digest.replace(/^0+/u, ''));
+
+const failingOnce = (transaction: ChangeProposalTransaction): ChangeProposalTransaction & { armed: boolean } => {
+  const wrapped = {
+    armed: true,
+    dryRun: transaction.dryRun,
+    run: <T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>) => transaction.run<T>(tenantId, async (scope) => {
+      const result = await operation(scope);
+      if (!wrapped.armed || !result.ok) return result;
+      wrapped.armed = false;
+      return err(changeProposalsBusy());
+    }),
+  };
+  return wrapped;
+};
+
+describe('public copies of an approval that did not end applied', () => {
+  it('stay recorded when the withdrawal cannot delete them, and the sweep removes them after the bound', async () => {
+    const harness = endToEnd();
+    const { id, url } = await harness.proposeCover(PNG_BYTES);
+    const publicKey = `image-assets/${TENANT}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
+    const transaction = failingOnce(harness.deps.changeProposalTransaction);
+    harness.objects.failDeletes = (objectKey) => objectKey.startsWith('image-assets/');
+
+    expect(await approveChangeProposal(ownerSession, { id }, { ...harness.deps, changeProposalTransaction: transaction }))
+      .toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    expect(await publications()).toHaveLength(1);
+
+    harness.objects.failDeletes = () => false;
+    harness.clock.now = '2026-03-01T10:09:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { tenants: 1 } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
+    expect(await publications()).toEqual([]);
+
+    expect(await approveChangeProposal(ownerSession, { id }, harness.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    expect(await publications()).toEqual([]);
+    const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(eq(products.id, 'mug'));
+    expect(cover?.coverUrl).toBe(url);
+  });
+
+  it('keeps a recorded address that a live field shows or an applied proposal carries, and drops only the record', async () => {
+    const harness = endToEnd();
+    const live = image(1);
+    const applied = image(2);
+    const orphan = image(3);
+    for (const reference of [live, applied, orphan]) {
+      harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${reference.digest}.png`, { bytes: PNG_BYTES, contentType: 'image/png' });
+    }
+    await database.db.update(products).set({ coverUrl: pathOf(live) }).where(eq(products.id, 'mug'));
+    await pendingProposal('p-applied', { coverUrl: pathOf(applied) }, { status: 'applied' });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [live, applied, orphan], NOW);
+
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 3 } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([live, applied].map((reference) => `image-assets/${TENANT}/product-cover/${reference.digest}.png`));
+    expect(await publications()).toEqual([]);
+  });
+
+  it('never removes a record while an approval holds the workspace lock, and removes it once the lock is free', async () => {
+    const harness = endToEnd({ lockWaitMs: 200 });
+    harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${digestOf(1)}.png`, { bytes: PNG_BYTES, contentType: 'image/png' });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-running', [image(1)], NOW);
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    const approval = new pg.Client({ connectionString: database.url });
+    await approval.connect();
+    try {
+      await approval.query('begin');
+      await approval.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-transaction:${TENANT}`]);
+      expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+      expect(harness.objects.keysUnder('image-assets/')).toHaveLength(1);
+      expect(await publications()).toEqual(['1']);
+      await approval.query('commit');
+      expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+      expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
+    } finally {
+      await approval.end();
+    }
+  });
+
+  it('writes nothing when the record of its attempt is gone by the time it holds the lock', async () => {
+    const harness = endToEnd();
+    const { id } = await harness.proposeCover(PNG_BYTES);
+    const transaction: ChangeProposalTransaction = {
+      dryRun: harness.deps.changeProposalTransaction.dryRun,
+      run: async (tenantId, operation) => {
+        await database.db.delete(changeProposalImagePublications);
+        return harness.deps.changeProposalTransaction.run(tenantId, operation);
+      },
+    };
+    expect(await approveChangeProposal(ownerSession, { id }, { ...harness.deps, changeProposalTransaction: transaction }))
+      .toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
+    expect(await approveChangeProposal(ownerSession, { id }, harness.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+  });
+});
+
+describe('uploads a propose-mode key starts', () => {
+  const upload = (index: number, createdAt: string, apiKeyId = KEY_ID) => ({
+    apiKeyId, objectKey: `image-asset-candidates/${TENANT}/product-cover/00000000-0000-4000-8000-${String(index).padStart(12, '0')}.png`, createdAt,
+  });
+
+  it('lets only one of two concurrent begins take the last upload slot of a key, counting only uploads inside the window', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImageUploads).values([
+      ...Array.from({ length: 59 }, (_unused, index) => ({ tenantId: TENANT, ...upload(index + 100, '2026-03-01T09:50:00.000Z') })),
+      { tenantId: TENANT, ...upload(1, '2026-03-01T09:40:00.000Z') },
+    ]);
+    const countedAfter = '2026-03-01T09:45:00.000Z';
+    const outcomes = await Promise.all([
+      repository.recordUpload(TENANT, upload(2, NOW), countedAfter),
+      repository.recordUpload(TENANT, upload(3, NOW), countedAfter),
+    ]);
+    expect(outcomes.map((outcome) => outcome.kind).sort()).toEqual(['cap_exceeded', 'recorded']);
+    expect(outcomes.find((outcome) => outcome.kind === 'cap_exceeded')).toEqual({ kind: 'cap_exceeded', cap: 'key_image_uploads' });
+    expect(await repository.recordUpload(TENANT, upload(4, NOW, OTHER_KEY_ID), countedAfter)).toEqual({ kind: 'recorded' });
+  });
+
+  it('removes the candidate object of every upload past its lifetime and the margin, completed or not, and keeps younger ones', async () => {
+    const harness = endToEnd();
+    await harness.proposeCover(PNG_BYTES);
+    const [recorded] = await database.db.select().from(changeProposalImageUploads);
+    if (recorded === undefined) throw new Error('missing upload record');
+    harness.objects.objects.set(recorded.objectKey, { bytes: PNG_BYTES, contentType: 'image/png' });
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
+    const abandoned = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: 9 }, harness.deps);
+    if (!abandoned.ok) throw new Error(abandoned.error.message);
+    harness.objects.objects.set(abandoned.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+
+    harness.clock.now = '2026-03-01T10:21:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-asset-candidates/')).toEqual([abandoned.value.key]);
+    harness.clock.now = '2026-03-01T10:37:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-asset-candidates/')).toEqual([]);
+    expect(await database.db.select().from(changeProposalImageUploads)).toEqual([]);
+  });
+});
+
+describe('quarantined rows and objects of one key', () => {
+  it('lets a completion revive a released row, so the release finish leaves its object and row', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    expect(await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW)).toEqual({ kind: 'written', value: [image(1)] });
+    expect(await repository.find(TENANT, KEY_ID, image(1))).toBeNull();
+    const revivedAt = '2026-03-01T11:00:00.000Z';
+    expect(await repository.insert(TENANT, image(1, { createdAt: revivedAt }), stored)).toEqual({ kind: 'stored', asset: image(1, { createdAt: revivedAt }) });
+    const removeObject = vi.fn(async () => true);
+    expect(await repository.finishRelease(TENANT, image(1), removeObject)).toBe('revived');
+    expect(removeObject).not.toHaveBeenCalled();
+    expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
+  });
+
+  it('serialises a release finish behind a completion writing the same image', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    let finishWrite: () => void = () => undefined;
+    const writeMayFinish = new Promise<void>((resolve) => { finishWrite = resolve; });
+    let writing: () => void = () => undefined;
+    const writeStarted = new Promise<void>((resolve) => { writing = resolve; });
+    try {
+      const completion = repository.insert(TENANT, image(1), async () => {
+        writing();
+        await writeMayFinish;
+        return ok(undefined);
+      });
+      await writeStarted;
+      const removeObject = vi.fn(async () => true);
+      const finish = repository.finishRelease(TENANT, image(1), removeObject);
+      await untilWaiting(observer, 'The release finish');
+      finishWrite();
+      expect(await completion).toMatchObject({ kind: 'stored' });
+      expect(await finish).toBe('revived');
+      expect(removeObject).not.toHaveBeenCalled();
+    } finally {
+      finishWrite();
+      await observer.end();
+    }
+  });
+
+  it('rolls back the row when its object cannot be written, and keeps a released row released', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    const refused = async () => err(integrationUnavailable('Storage refused the write'));
+    expect(await repository.insert(TENANT, image(1), refused)).toMatchObject({ kind: 'store_failed', error: { code: 'integration_unavailable' } });
+    expect(await rows()).toEqual([]);
+    await repository.insert(TENANT, image(2), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    expect(await repository.insert(TENANT, image(2), refused)).toMatchObject({ kind: 'store_failed' });
+    expect(await releasedRows()).toEqual(['2']);
+  });
+
+  it('hides a released row from the limits, the submit check and the approval lock, and lets the sweep retry its removal', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values(Array.from({ length: 100 }, (_unused, index) => image(index + 100)));
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_images' });
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [image(100)] }, NOW);
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+    await database.db.transaction(async (tx) => {
+      expect(await createQuarantinedImageLocks(tx).lockForPublication(TENANT, KEY_ID, image(100))).toBeNull();
+    });
+    expect(await repository.finishRelease(TENANT, image(100), async () => false)).toBe('failed');
+    const retried = await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, NOW);
+    expect(retried).toEqual({ kind: 'written', value: [image(100)] });
+    expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', NOW, 10)).toEqual([TENANT]);
+    expect(await repository.finishRelease(TENANT, image(100), async () => true)).toBe('removed');
+    expect(await releasedRows()).toEqual([]);
+  });
+});
+
+describe('the sweep selection', () => {
+  const OLD = '2026-02-01T10:00:00.000Z';
+  const createdBefore = '2026-02-22T10:00:00.000Z';
+
+  it('skips more attached old rows than one batch holds and releases the unattached one behind them', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    for (const index of [1, 2, 3, 4]) {
+      await repository.insert(TENANT, image(index, { createdAt: OLD }), stored);
+      await pendingProposal(`p-attached-${String(index)}`, { coverUrl: pathOf(image(index)) });
+    }
+    await repository.insert(TENANT, image(5, { createdAt: '2026-02-02T10:00:00.000Z' }), stored);
+    expect(await repository.release(TENANT, { kind: 'sweep', createdBefore, limit: 3 }, NOW))
+      .toEqual({ kind: 'written', value: [image(5, { createdAt: '2026-02-02T10:00:00.000Z' })] });
+  });
+
+  it('skips more workspaces with only attached old rows than one run lists and finds the sweepable one behind them', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1, { createdAt: OLD }), stored);
+    await pendingProposal('p-attached', { coverUrl: pathOf(image(1)) });
+    await repository.insert(NEIGHBOUR, image(2, { tenantId: NEIGHBOUR, apiKeyId: 'key-neighbour', createdAt: OLD }), stored);
+    expect(await repository.listTenantIdsToSweep(createdBefore, NOW, 1)).toEqual([NEIGHBOUR]);
+  });
+
+  it('agrees with the image references of every image field of every operation', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    const extensions: ProposalImageExtension[] = ['png', 'jpg', 'webp', 'svg', 'ico'];
+    const candidates = proposalImageKindSchema.options.flatMap((kind) => extensions.map((extension, index) =>
+      image(proposalImageKindSchema.options.indexOf(kind) * 10 + index + 1, { kind, extension })));
+    await database.db.insert(changeProposalImages).values(candidates);
+    const operations = [...new Set(CHANGE_PROPOSAL_IMAGE_FIELDS.map(({ operation }) => operation)), 'sales-link.update'];
+    const fields = [...new Set(CHANGE_PROPOSAL_IMAGE_FIELDS.map(({ field }) => field))];
+    let compared = 0;
+    for (const operation of operations) {
+      for (const field of fields) {
+        for (const candidate of candidates) {
+          const values = candidate === candidates[0] ? [pathOf(candidate), `${pathOf(candidate)}?`, pathOf(candidate).toUpperCase()] : [pathOf(candidate)];
+          for (const value of values) {
+            const input = { [field]: value };
+            await pendingProposal('p-walk', input, { operation });
+            const released = await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [candidate] }, NOW);
+            const releasedBySql = released.kind === 'written' && released.value.length === 1;
+            const attachedByCode = changeProposalImageReferences(operation, { id: 'mug', ...input }).length > 0;
+            expect({ operation, field, value, attached: !releasedBySql }).toEqual({ operation, field, value, attached: attachedByCode });
+            await database.db.update(changeProposalImages).set({ releasedAt: null });
+            await database.db.delete(changeProposals);
+            compared += 1;
+          }
+        }
+      }
+    }
+    expect(compared).toBe(operations.length * fields.length * (candidates.length + 2));
+  }, 120_000);
+});

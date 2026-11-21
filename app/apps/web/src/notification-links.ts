@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 
-import type { Notification } from '#core/domain/index.js';
+import { changeProposalNotificationFacts, type Notification } from '#core/domain/index.js';
 
 import { translateDeletedContent } from './i18n/deleted-content.js';
 import type { Messages } from './i18n/index.js';
@@ -12,6 +12,7 @@ export type NotificationTarget =
   | { kind: 'dm-reports' }
   | { kind: 'space-event'; spaceId: string; eventId: string }
   | { kind: 'tenant-domains' }
+  | { kind: 'change-proposals' }
   | { kind: 'none' };
 
 const TENANT_DOMAIN_KINDS: readonly Notification['kind'][] = [
@@ -23,6 +24,7 @@ export const notificationTarget = (notification: Notification): NotificationTarg
   const { contextKind, contextId, rootPostId, courseId, eventId } = notification.payload;
   if (TENANT_DOMAIN_KINDS.includes(notification.kind)) return { kind: 'tenant-domains' };
   if (notification.kind === 'dm-report') return { kind: 'dm-reports' };
+  if (notification.kind === 'change-proposal') return { kind: 'change-proposals' };
   if (contextId === null) return { kind: 'none' };
   if (notification.kind === 'space-event') {
     return eventId === null
@@ -45,7 +47,12 @@ const notificationSubject = (notification: Notification): string =>
     ? notification.payload.domain ?? ''
     : notification.kind === 'space-event'
       ? notification.payload.lessonName
-      : notification.payload.authorDisplay ?? '';
+      : notification.kind === 'change-proposal'
+        ? changeProposalNotificationFacts(notification)?.keyName ?? ''
+        : notification.payload.authorDisplay ?? '';
+
+const changeProposalGroupTitle = (notification: Notification): string =>
+  changeProposalNotificationFacts(notification)?.groupTitle ?? '';
 
 const titleWithSubject = (t: Messages, notification: Notification, subject: string): string => {
   const { lessonName } = notification.payload;
@@ -55,6 +62,8 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
   ? t.notifications.tenantDomainError({ domain: subject })
   : notification.kind === 'dm-report'
   ? t.notifications.dmReport({ reporter: subject })
+  : notification.kind === 'change-proposal'
+  ? t.notifications.changeProposal({ key: subject })
   : notification.kind === 'space-event'
     ? t.notifications.spaceEvent({ space: subject })
     : notification.kind === 'dm-message'
@@ -66,11 +75,37 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
         : t.notifications.threadReply({ author: subject, lesson: lessonName });
 };
 
-export const notificationTitle = (t: Messages, notification: Notification): string =>
-  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
+export const notificationSnippet = (t: Messages, notification: Notification): string => {
+  if (notification.kind === 'change-proposal') {
+    const title = changeProposalGroupTitle(notification);
+    return title.length === 0 ? '' : t.notifications.changeProposalGroup({ title });
+  }
+  const { snippet } = notification.payload;
+  return snippet.length === 0 ? '' : translateDeletedContent(snippet, t);
+};
 
 /** A placeholder no message bundle and no user-supplied name can contain. */
 const SUBJECT_SLOT = '\u0000';
+
+interface IsolatedLine {
+  before: string;
+  isolated: string;
+  after: string;
+}
+
+export const notificationSnippetParts = (t: Messages, notification: Notification): IsolatedLine => {
+  const snippet = changeProposalGroupTitle(notification);
+  if (notification.kind !== 'change-proposal' || snippet.length === 0) {
+    return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  }
+  const sentence = t.notifications.changeProposalGroup({ title: SUBJECT_SLOT });
+  const slot = sentence.indexOf(SUBJECT_SLOT);
+  if (slot === -1) return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  return { before: sentence.slice(0, slot), isolated: snippet, after: sentence.slice(slot + 1) };
+};
+
+export const notificationTitle = (t: Messages, notification: Notification): string =>
+  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
 
 export const notificationTitleParts = (
   t: Messages,
@@ -105,6 +140,8 @@ export const useNotificationNavigation = () => {
       });
     } else if (target.kind === 'dm-reports') {
       void navigate({ to: '/panel/reports' });
+    } else if (target.kind === 'change-proposals') {
+      void navigate({ to: '/panel/proposals' });
     } else if (target.kind === 'tenant-domains') {
       void navigate({ to: '/panel/settings', hash: 'company' });
     } else if (target.kind === 'space-event') {

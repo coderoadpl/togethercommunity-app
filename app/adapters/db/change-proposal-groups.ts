@@ -18,13 +18,19 @@ import type {
   ChangeProposalTransitionGuard,
 } from '#core/server/index.js';
 
-import { busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import {
+  busyAfterRollback,
+  changeProposalBounds,
+  lockWorkspaceProposals,
+  type ChangeProposalBoundOptions,
+  type ChangeProposalBounds,
+} from './change-proposal-bounds.js';
+import { quarantinedImagesPresent } from './change-proposal-images.js';
 import {
   boundedWrite,
   countCapReached,
   insertProposal,
   keyAcceptsProposals,
-  lockWorkspaceProposals,
   parseProposal,
   recordProposalExpiry,
   updateProposalStatus,
@@ -138,7 +144,7 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
     ? []
     : (await db.select().from(changeProposalGroups)
         .where(and(eq(changeProposalGroups.tenantId, tenantId), inArray(changeProposalGroups.id, [...ids])))).map(parseGroup),
-  addItem: async (tenantId, proposal, event, clock) => {
+  addItem: async (tenantId, proposal, event, clock, images = []) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
@@ -148,6 +154,7 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
     return busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalGroupItemAddition> => {
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, clock.nowIso())) return { kind: 'key_inactive' };
+      if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
       const current = await lockGroup(tx, tenantId, groupId, parsed.proposedByKeyId);
       if (current === null) return { kind: 'not_found' };
       const now = clock.nowIso();

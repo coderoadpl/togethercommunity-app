@@ -57,7 +57,7 @@ describe('storage reference inventory', () => {
     expect(JSON.stringify(inventory)).not.toContain('tenant-b');
     expect(await repository.readInventory('tenant-a')).toEqual(inventory);
     expect(await repository.readInventory('missing')).toEqual({
-      lessonIds: [], productIds: [], attachments: [], downloads: [], currentDocuments: [], historyDocuments: [],
+      lessonIds: [], productIds: [], attachments: [], downloads: [], quarantinedImages: [], currentDocuments: [], historyDocuments: [],
     });
   });
 });

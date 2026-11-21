@@ -1,7 +1,13 @@
+import { createHash } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
+import { createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { changeProposalEvents, emailOutbox, entityVersions, productPrices, products, productStock, salesLinks, stockEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createShopManagementClient, isProposedChange, type ShopManagementClient } from '#core/client/index.js';
@@ -18,6 +24,8 @@ import {
   type ChangeProposalProposedOutput,
 } from '#core/contract/index.js';
 import { changeProposalReference, type AppError, type ChangeProposalEffect, type ChangeProposalKeyReceipt, type Result } from '#core/domain/index.js';
+import type { TenantSecretResolver } from '#core/server/index.js';
+import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
 import { buildApp } from '../apps/server/src/app.js';
 import { createDeps } from '../apps/server/src/composition.js';
@@ -33,6 +41,7 @@ const expiresAt = '2026-11-22T00:00:00.000Z';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
 let ownerToken: string;
+let storage: FakeObjectStorage;
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 
@@ -42,7 +51,17 @@ const proposed = <A extends object>(result: Result<ChangeProposalProposedOutput 
   return result.value.proposal;
 };
 
+const STORAGE_ORIGIN = 'https://storage.example.test';
+
+const storageKeyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
+
 const workspaceFetch: typeof fetch = async (input, init) => {
+  const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const body: unknown = init?.body;
+  if (target.startsWith(`${STORAGE_ORIGIN}/`) && init?.method === 'PUT' && body instanceof Uint8Array) {
+    storage.objects.set(storageKeyOf(target), { bytes: new Uint8Array(body), contentType: new Headers(init.headers).get('content-type') ?? '' });
+    return new Response(null, { status: 200 });
+  }
   const headers = new Headers(init?.headers);
   headers.set('host', workspaceHost);
   return app.request(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, { ...init, headers });
@@ -92,12 +111,25 @@ beforeAll(async () => {
     'together_change_proposal_replay_test',
     process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/postgres',
   );
-  const deps = createDeps(envSchema.parse({
+  const env = envSchema.parse({
     NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'change-proposal-replay-test-secret-at-least-32-characters',
-  }), { db: database.db, clock: { nowIso: () => now } });
-  app = buildApp({ ...deps, dispatchEmail: () => undefined });
+  });
+  const deps = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
+  const withFakeStorage = (resolver: TenantSecretResolver): TenantSecretResolver => ({
+    resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key),
+  });
+  storage = createObjectStorageFake();
+  app = buildApp({
+    ...deps,
+    dispatchEmail: () => undefined,
+    storage: storage.storage,
+    secretResolver: withFakeStorage(deps.secretResolver),
+    changeProposalTransaction: createChangeProposalTransaction(database.db, deps.logger, (connection) =>
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto))),
+  });
 
   const signup = await app.request(`${baseUrl}${BETTER_AUTH_SIGN_UP_PATH}`, {
     method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl },
@@ -308,6 +340,71 @@ describe('change proposal group replay', () => {
     expect(staleNotes.toSorted(byProposal)).toEqual(decided.items.map((item) => [item.id, item.id === rename.id ? null : note]).toSorted(byProposal));
     expect((await ownerRequest('POST', API_PATHS.changeProposalGroupApprove.replace(':id', group.id), { itemIds: shown.items.map((item) => item.id) })).status).toBe(409);
     expect(await liveState()).toBe(before);
+  });
+});
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWMwTptJEmIY1ZA2GkrGwzVpAABIfDIQjwcm5wAAAABJRU5ErkJggg==', 'base64');
+
+describe('change proposal image replay', () => {
+  const coverUpload = (bytes: Uint8Array) => ({ kind: 'product-cover' as const, fileName: 'cover.png', contentType: 'image/png' as const, sizeBytes: bytes.byteLength, body: new Uint8Array(bytes) });
+  const publicTarget = async (path: string): Promise<string | null> => {
+    const served = await app.request(`${baseUrl}${path}`, { headers: { host: workspaceHost } });
+    const location = served.headers.get('location');
+    return location === null ? null : storageKeyOf(location);
+  };
+
+  it('a propose-mode key uploads a cover with the typed client; nothing is public until the owner approves, and then the public address serves those very bytes', async () => {
+    const writer = await issueKey('direct', 'Cover writer');
+    const live = await workspaceFetch(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST', headers: { 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Cover atlas', type: 'physical', priceCents: 1000 }),
+    });
+    const productId = envelope(shopCatalogContracts.createProduct.output).parse(await live.json()).data.product.id;
+    const key = await issueKey('propose', 'Cover agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const bytes = Buffer.concat([PNG, Buffer.from([11])]);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+
+    const uploaded = unwrapped(await agent.uploadProductCover(coverUpload(bytes)));
+    expect(uploaded).toEqual({ url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true });
+    expect(storage.keysUnder('image-assets/')).toEqual([]);
+    const before = await liveState();
+    const attach = proposed(await agent.updateProduct({ id: productId, coverUrl: uploaded.url }));
+    expect(await liveState()).toBe(before);
+    expect(await shownEffect(attach.id)).toEqual({ coverUrl: { before: null, after: uploaded.url } });
+    const preview = await ownerRequest('GET', API_PATHS.changeProposalImage.replace(':id', attach.id).replace(':digest', digest));
+    expect(preview.status).toBe(200);
+    expect(new Uint8Array(await preview.arrayBuffer())).toEqual(new Uint8Array(bytes));
+    const target = await publicTarget(uploaded.url);
+    expect(target === null || !storage.objects.has(target)).toBe(true);
+
+    expect((await approve(attach.id)).status).toBe('applied');
+    expect((await database.db.select().from(products)).find((row) => row.id === productId)?.coverUrl).toBe(uploaded.url);
+    const published = await publicTarget(uploaded.url);
+    expect(published).toBe(`image-assets/acme/product-cover/${digest}.png`);
+    expect(storage.objects.get(published ?? '')?.bytes).toEqual(new Uint8Array(bytes));
+    expect(storage.keysUnder(`image-asset-quarantine/acme/${key.apiKey.id}/`)).toEqual([]);
+  });
+
+  it('a rejected cover never becomes public and its quarantined copy is removed', async () => {
+    const writer = await issueKey('direct', 'Rejected cover writer');
+    const live = await workspaceFetch(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST', headers: { 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Rejected cover atlas', type: 'physical', priceCents: 1000 }),
+    });
+    const productId = envelope(shopCatalogContracts.createProduct.output).parse(await live.json()).data.product.id;
+    const key = await issueKey('propose', 'Rejected cover agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const uploaded = unwrapped(await agent.uploadProductCover(coverUpload(Buffer.concat([PNG, Buffer.from([12])]))));
+    const attach = proposed(await agent.updateProduct({ id: productId, coverUrl: uploaded.url }));
+    expect(storage.keysUnder(`image-asset-quarantine/acme/${key.apiKey.id}/`)).toHaveLength(1);
+
+    const rejected = await ownerRequest('POST', API_PATHS.changeProposalReject.replace(':id', attach.id), { note: 'Another cover' });
+    expect(rejected.status).toBe(200);
+    expect(storage.keysUnder(`image-asset-quarantine/acme/${key.apiKey.id}/`)).toEqual([]);
+    const target = await publicTarget(uploaded.url);
+    expect(target === null || !storage.objects.has(target)).toBe(true);
+    expect((await database.db.select().from(products)).find((row) => row.id === productId)?.coverUrl).toBeNull();
   });
 });
 

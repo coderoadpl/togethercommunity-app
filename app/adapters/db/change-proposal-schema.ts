@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { check, foreignKey, index, integer, jsonb, pgTable, text, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import type {
   ChangeProposalEffect,
@@ -7,6 +7,8 @@ import type {
   ChangeProposalInput,
   ChangeProposalStatus,
   ChangeProposalTargetKind,
+  ProposalImageExtension,
+  ProposalImageKind,
 } from '#core/domain/index.js';
 
 import { tenants } from './app-schema.js';
@@ -107,4 +109,53 @@ export const changeProposalEvents = pgTable('change_proposal_events', {
   check('change_proposal_events_note_length_check', sql`char_length(${table.note}) <= 500`),
   check('change_proposal_events_at_check', isoMillisecondTimestamp(table.at)),
   check('change_proposal_events_actor_check', sql`${table.actorUserId} IS NOT NULL OR ${table.apiKeyId} IS NOT NULL`),
+]);
+
+export const changeProposalImages = pgTable('change_proposal_images', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  apiKeyId: text('api_key_id').notNull(),
+  kind: text('kind').$type<ProposalImageKind>().notNull(),
+  digest: text('digest').notNull(),
+  extension: text('extension').$type<ProposalImageExtension>().notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: text('created_at').notNull(),
+  releasedAt: text('released_at'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_images_pkey', columns: [table.tenantId, table.apiKeyId, table.kind, table.digest, table.extension] }),
+  index('change_proposal_images_created_idx').on(table.createdAt),
+  check('change_proposal_images_kind_check', sql`${table.kind} IN ('product-cover', 'logo', 'logo-dark', 'favicon', 'share-image')`),
+  check('change_proposal_images_digest_check', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_images_extension_check', sql`${table.extension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_images_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 5242880`),
+  check('change_proposal_images_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_images_released_at_check', sql`${table.releasedAt} IS NULL OR ${isoMillisecondTimestamp(table.releasedAt)}`),
+]);
+
+export const changeProposalImageUploads = pgTable('change_proposal_image_uploads', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  apiKeyId: text('api_key_id').notNull(),
+  objectKey: text('object_key').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_image_uploads_pkey', columns: [table.tenantId, table.objectKey] }),
+  index('change_proposal_image_uploads_key_idx').on(table.tenantId, table.apiKeyId, table.createdAt),
+  index('change_proposal_image_uploads_created_idx').on(table.createdAt),
+  check('change_proposal_image_uploads_object_key_check', sql`${table.objectKey} LIKE 'image-asset-candidates/%'`),
+  check('change_proposal_image_uploads_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+]);
+
+export const changeProposalImagePublications = pgTable('change_proposal_image_publications', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  attemptId: text('attempt_id').notNull(),
+  kind: text('kind').$type<ProposalImageKind>().notNull(),
+  digest: text('digest').notNull(),
+  extension: text('extension').$type<ProposalImageExtension>().notNull(),
+  startedAt: text('started_at').notNull(),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_image_publications_pkey', columns: [table.tenantId, table.attemptId, table.kind, table.digest, table.extension] }),
+  index('change_proposal_image_publications_started_idx').on(table.startedAt),
+  check('change_proposal_image_publications_kind_check', sql`${table.kind} IN ('product-cover', 'logo', 'logo-dark', 'favicon', 'share-image')`),
+  check('change_proposal_image_publications_digest_check', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_image_publications_extension_check', sql`${table.extension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_image_publications_started_at_check', isoMillisecondTimestamp(table.startedAt)),
 ]);

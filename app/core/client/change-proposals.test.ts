@@ -13,6 +13,7 @@ import {
   changeProposalQuery,
   changeProposalsInvalidates,
   changeProposalsQuery,
+  changeProposalSummaryQuery,
   productPricesQuery,
   productsQuery,
   productStockQuery,
@@ -29,9 +30,12 @@ const receipt = {
 };
 const ownerView = {
   id: 'proposal-1', groupId: null, groupTitle: null, groupPosition: null, operation: 'product.update', target: { kind: 'product', id: 'product-1' },
+  targetLabel: 'Handbook', targetPrice: null,
   input: { id: 'product-1', title: 'Renamed' }, effect: { title: { before: 'Handbook', after: 'Renamed' } }, status: 'pending',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
-  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedAt: null,
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', keyState: 'active', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true,
+    issuerIsFormerTeamMember: false },
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z', decidedByUserId: null, decidedByEmail: null,
+  decidedByIsFormerTeamMember: false, decidedAt: null,
   decisionNote: null, appliedResourceId: null, failureCode: null, failureMessage: null,
 };
 const product = {
@@ -62,6 +66,26 @@ describe('shop management client with a propose-mode key', () => {
     ];
     expect(results).toHaveLength(Object.values(SHOP_CATALOG_ROUTES).filter((route) => route.method !== 'GET').length);
     for (const result of results) expect(result).toEqual({ ok: true, value: { outcome: 'proposed', proposal: receipt } });
+  });
+
+  it('says that an image a propose-mode key uploaded is quarantined until an approved proposal attaches it', async () => {
+    const digest = 'a'.repeat(64);
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'storage.example.test') return new Response(null);
+      if (url.pathname === SHOP_CATALOG_ROUTES.updateProduct.path) {
+        return Response.json({ ok: true, data: { outcome: 'proposed', proposal: receipt } }, { status: 202 });
+      }
+      return Response.json({ ok: true, data: url.pathname.endsWith('/upload')
+        ? { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: null, quarantined: true, upload: { url: 'https://storage.example.test/candidate', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+        : { url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    const uploaded = await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array(4) });
+    expect(uploaded).toEqual({ ok: true, value: { url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true } });
+    if (!uploaded.ok) throw new Error('upload failed');
+    const attached = await client.updateProduct({ id: 'product-1', coverUrl: uploaded.value.url });
+    expect(attached.ok && isProposedChange(attached.value)).toBe(true);
   });
 
   it('returns the receipt of a 202 as a proposed outcome on the sales-link and settings mutations', async () => {
@@ -208,7 +232,7 @@ describe('shop management client with a proposal group', () => {
 
 const ownerGroup = {
   id: 'group-1', title: 'Spring launch', status: 'open',
-  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'active' },
+  proposedBy: { keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', issuerEmail: 'owner@acme.example.test', issuerIsVerifiedOwner: true, issuerIsFormerTeamMember: false, keyState: 'active' },
   createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-12-15T10:00:00.000Z',
   items: [{ ...ownerView, groupId: 'group-1', groupTitle: 'Spring launch', groupPosition: 1, events: [] }],
 };
@@ -254,7 +278,7 @@ describe('owner change proposal client', () => {
       requests.push({ url: String(url), method: init?.method, body: init?.body });
       const path = new URL(String(url)).pathname;
       return Response.json({ ok: true, data: path === '/api/change-proposals'
-        ? { proposals: [ownerView], nextCursor: null }
+        ? { proposals: [ownerView], nextCursor: null, hasMore: false }
         : path.endsWith('/reject') ? { proposal: { ...ownerView, status: 'rejected' } }
           : path.endsWith('/approve') ? { proposal: { ...ownerView, status: 'applied', appliedResourceId: 'product-1' } }
             : { proposal: { ...ownerView, events: [] } } });
@@ -273,9 +297,23 @@ describe('owner change proposal client', () => {
     ]);
   });
 
+  it('asks for the decided proposals by status, keeps that page apart in the cache and reads whether more pages exist', async () => {
+    const requested: string[] = [];
+    const decided = { ...ownerView, status: 'expired' };
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url) => {
+      requested.push(String(url));
+      return Response.json({ ok: true, data: { proposals: [decided], nextCursor: 'proposal-1', hasMore: true } });
+    } });
+    expect(await api.listChangeProposals({ status: 'decided', limit: 50, cursor: 'proposal-0' }))
+      .toEqual({ ok: true, value: { proposals: [decided], nextCursor: 'proposal-1', hasMore: true } });
+    expect(requested).toEqual(['http://localhost:48730/api/change-proposals?status=decided&limit=50&cursor=proposal-0']);
+    expect(changeProposalsQuery(api, { status: 'decided', limit: 50 }).queryKey)
+      .not.toEqual(changeProposalsQuery(api, { limit: 50 }).queryKey);
+  });
+
   it('describes the owner queries and the reject mutation under one invalidation prefix', async () => {
     const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url) => Response.json({ ok: true, data: new URL(String(url)).pathname === '/api/change-proposals'
-      ? { proposals: [], nextCursor: null }
+      ? { proposals: [], nextCursor: null, hasMore: false }
       : { proposal: { ...ownerView, status: 'rejected' } } }) });
     const list = changeProposalsQuery(api, { status: 'pending' });
     const detail = changeProposalQuery(api, 'proposal-1');
@@ -305,5 +343,40 @@ describe('owner change proposal client', () => {
       productPricesQuery(api, 'product-1').queryKey,
       productStockQuery(api, 'product-1').queryKey,
     ]) expect(covered(queryKey), JSON.stringify(queryKey)).toBe(true);
+  });
+});
+
+describe('owner change proposal summary client', () => {
+  it('reads the pending counts and whether the workspace has proposals in one request and refuses an answer with other fields', async () => {
+    const requests: string[] = [];
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url, init) => {
+      requests.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`);
+      return Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, hasProposals: true } });
+    } });
+    expect(await api.getChangeProposalSummary()).toEqual({ ok: true, value: { pending: 3, pendingGroups: 1, hasProposals: true } });
+    expect(requests).toEqual(['GET /api/change-proposals/summary']);
+
+    const leaky = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 3, pendingGroups: 1, hasProposals: true, proposals: [] } }) });
+    expect(await leaky.getChangeProposalSummary()).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+
+  it('refuses a summary without the has-proposals answer or with a non-boolean one', async () => {
+    for (const data of [{ pending: 0, pendingGroups: 0 }, { pending: 0, pendingGroups: 0, hasProposals: 'yes' }]) {
+      const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data }) });
+      expect(await api.getChangeProposalSummary(), JSON.stringify(data)).toMatchObject({ ok: false, error: { code: 'internal' } });
+    }
+  });
+
+  it('keeps the summary under the prefix every decision invalidates', async () => {
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async () => Response.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: false } }) });
+    const summary = changeProposalSummaryQuery(api);
+    const covers = (filters: ReadonlyArray<{ queryKey: readonly unknown[] }>) =>
+      filters.some((filter) => filter.queryKey.every((part, index) => summary.queryKey[index] === part));
+    expect(covers([changeProposalsInvalidates()])).toBe(true);
+    expect(covers(approveChangeProposalInvalidates())).toBe(true);
+    for (const mutation of [approveChangeProposalMutation(api), rejectChangeProposalMutation(api), approveChangeProposalGroupMutation(api), rejectChangeProposalGroupMutation(api)]) {
+      expect(mutation.mutationKey.slice(0, changeProposalsInvalidates().queryKey.length)).toEqual([...changeProposalsInvalidates().queryKey]);
+    }
+    expect(summary.queryKey).not.toEqual(changeProposalsQuery(api).queryKey);
   });
 });

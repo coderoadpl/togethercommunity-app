@@ -40,6 +40,7 @@ const harness = vi.hoisted(() => {
     dispatchAutoInvoices: vi.fn(),
     dispatchOrderRefundJobs: vi.fn(async () => ({ ok: true, value: { processedCount: 0, outcomes: {} } })),
     releaseExpiredStockReservations: vi.fn(),
+    sweepQuarantinedImages: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0 } })),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger', warn: vi.fn() },
   };
@@ -207,6 +208,7 @@ describe('entry.node composition', () => {
       value: { processed: false, processedCount: 0, orderId: null },
     });
     harness.deps.releaseExpiredStockReservations.mockRejectedValueOnce(new Error('stock unavailable'));
+    harness.deps.sweepQuarantinedImages.mockRejectedValueOnce(new Error('images unavailable'));
     harness.deps.dispatchOrderRefundJobs.mockRejectedValueOnce(new Error('refund jobs unavailable'));
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -237,6 +239,8 @@ describe('entry.node composition', () => {
 
     expect(harness.deps.releaseExpiredStockReservations).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
+    expect(harness.deps.sweepQuarantinedImages).toHaveBeenCalledOnce();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] quarantined image sweep failed:'));
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
     expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith('[order-refund] ticker dispatch failed: refund jobs unavailable\n');

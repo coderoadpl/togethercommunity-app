@@ -13,6 +13,8 @@ import {
   approveChangeProposalGroup,
   getChangeProposal,
   getChangeProposalGroup,
+  getChangeProposalImage,
+  getChangeProposalSummary,
   listChangeProposals,
   rejectChangeProposal,
   rejectChangeProposalGroup,
@@ -20,7 +22,10 @@ import {
   type ChangeProposalDecisionDeps,
   type ChangeProposalGroupApprovalDeps,
   type ChangeProposalGroupDecisionDeps,
+  type ChangeProposalImagePreview,
+  type ChangeProposalImagePreviewDeps,
   type ChangeProposalOwnerReadDeps,
+  type ChangeProposalSummaryDeps,
 } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -28,10 +33,19 @@ import { ctxOf } from './ctx-of.js';
 import { readJson } from './read-json.js';
 import { respond, retryAfterHeaders } from './respond.js';
 
+const imagePreviewResponse = (preview: ChangeProposalImagePreview): Response => new Response(Uint8Array.from(preview.bytes), {
+  headers: {
+    'content-type': preview.contentType,
+    'content-disposition': `${preview.disposition}; filename="${preview.fileName}"`,
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'private, no-store',
+  },
+});
+
 export const registerChangeProposalRoutes = (
   app: Hono<AppVars>,
   deps: ChangeProposalOwnerReadDeps & ChangeProposalDecisionDeps & ChangeProposalApprovalDeps
-    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps,
+    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps & ChangeProposalSummaryDeps & ChangeProposalImagePreviewDeps,
 ): void => {
   app.get(API_PATHS.changeProposals, async (c) => {
     const query = changeProposalListQuerySchema.safeParse({
@@ -48,6 +62,8 @@ export const registerChangeProposalRoutes = (
       ...(query.data.limit === undefined ? {} : { limit: query.data.limit }),
     }, deps));
   });
+
+  app.get(API_PATHS.changeProposalSummary, async (c) => respond(await getChangeProposalSummary(ctxOf(c), deps)));
 
   app.get(API_PATHS.changeProposal, async (c) => {
     const result = await getChangeProposal(ctxOf(c), { id: c.req.param('id') ?? '' }, deps);
@@ -69,6 +85,11 @@ export const registerChangeProposalRoutes = (
     if (!body.success) return respond(err(validation('Invalid change proposal approval', body.error.flatten())));
     const result = await approveChangeProposal(ctxOf(c), { id: c.req.param('id') ?? '' }, deps);
     return result.ok ? respond(ok({ proposal: result.value })) : respond(result, { headers: retryAfterHeaders(result.error) });
+  });
+
+  app.get(API_PATHS.changeProposalImage, async (c) => {
+    const result = await getChangeProposalImage(ctxOf(c), { id: c.req.param('id') ?? '', digest: c.req.param('digest') ?? '' }, deps);
+    return result.ok ? imagePreviewResponse(result.value) : respond(result, { headers: retryAfterHeaders(result.error) });
   });
 
   app.get(API_PATHS.changeProposalGroup, async (c) => {

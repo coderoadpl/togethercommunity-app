@@ -1,3 +1,5 @@
+import { createHash, createHmac } from 'node:crypto';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { err, notFound, ok, type StorageConfiguration } from '#core/domain/index.js';
@@ -184,6 +186,30 @@ describe('createS3StorageProvider', () => {
     );
   });
 
+  it('signs the declared content length of a presigned PUT into its canonical request', () => {
+    const signer = createS3StorageProvider(resolver, { now: () => new Date('2013-05-24T00:00:00.000Z') });
+    const signed = signer.presignPut({ ...DOCS_EXAMPLE, contentLength: 1234 });
+    if (!signed.ok) throw new Error(signed.error.message);
+    const query = 'X-Amz-Algorithm=AWS4-HMAC-SHA256'
+      + '&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request'
+      + '&X-Amz-Date=20130524T000000Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=content-length%3Bhost';
+    const canonicalRequest = ['PUT', '/test.txt', query, 'content-length:1234', 'host:examplebucket.s3.amazonaws.com', '', 'content-length;host', 'UNSIGNED-PAYLOAD'].join('\n');
+    const stringToSign = ['AWS4-HMAC-SHA256', '20130524T000000Z', '20130524/us-east-1/s3/aws4_request',
+      createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+    const key = ['20130524', 'us-east-1', 's3', 'aws4_request']
+      .reduce<Buffer | string>((current, part) => createHmac('sha256', current).update(part).digest(), `AWS4${DOCS_EXAMPLE.secretAccessKey}`);
+    const signature = createHmac('sha256', key).update(stringToSign).digest('hex');
+    expect(signed.value).toBe(`https://examplebucket.s3.amazonaws.com/test.txt?${query}&X-Amz-Signature=${signature}`);
+
+    const other = signer.presignPut({ ...DOCS_EXAMPLE, contentLength: 1235 });
+    const unsized = signer.presignPut(DOCS_EXAMPLE);
+    if (!other.ok || !unsized.ok) throw new Error('presign failed');
+    const signatureOf = (url: string) => new URL(url).searchParams.get('X-Amz-Signature');
+    expect(signatureOf(other.value)).not.toBe(signature);
+    expect(new URL(unsized.value).searchParams.get('X-Amz-SignedHeaders')).toBe('host');
+    expect(signer.presignPut({ ...DOCS_EXAMPLE, contentLength: -1 })).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('extracts the region from regional virtual-hosted hosts', () => {
     const signer = createS3StorageProvider(resolver, {
       now: () => new Date('2026-07-20T12:00:00.000Z'),
@@ -322,6 +348,21 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests.at(-1)?.url).toContain('X-Amz-Signature=');
     expect(bucket.requests.at(-1)?.dispatcher).toBeDefined();
     expect(bucket.requests.at(-1)?.redirect).toBe('error');
+  });
+
+  it('tells an object that does not exist apart from a failed request on HEAD and GET', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(resolver, { now: () => new Date('2026-08-03T12:00:00.000Z'), fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true });
+    const input = { url: storage.objectUrl(MINIO_CONFIGURATION, 'attachments/missing.txt').toString(), accessKeyId: 'minio-access', secretAccessKey: 'minio-secret', region: 'us-east-1' };
+    expect(await storage.head(input)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await storage.getObject(input, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const failing = createS3StorageProvider(resolver, {
+      allowPrivateEndpoints: true,
+      fetchStorage: async () => storageResponse(503, '<Error><Code>SlowDown</Code></Error>'),
+    });
+    expect(await failing.head(input)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(await failing.getObject(input, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
   });
 
   it('keeps legacy credentials healthy but requires wizard configuration for the connection test', async () => {

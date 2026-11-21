@@ -32,6 +32,7 @@ const emailPayloadFor = (
       return { kind: 'thread-reply', ...authored, lessonName: context.contextName };
     case 'tenant-domain-verified':
     case 'tenant-domain-error':
+    case 'change-proposal':
       return null;
   }
 };

@@ -93,7 +93,7 @@ it('puts the gross price on the line name row and the tax detail and delivery in
   await userEvent.click(await screen.findByRole('button', { name: en.checkout.summaryDetails }));
   const first = screen.getByTestId('offer-line-product-1');
   expect(within(first).getByRole('heading', { level: 2, name: 'Printed workbook' })).toBeVisible();
-  expect(within(first).getByTestId('offer-line-gross')).toHaveTextContent(formatPrice(4200, 'PLN', 'en'));
+  expect(within(first).getByTestId('offer-line-gross').textContent).toBe(formatPrice(4200, 'PLN', 'en'));
   expect(within(first).getByTestId('offer-line-kind')).toHaveTextContent(`${en.salesLinks.lineTypes.physical} · ${en.salesLinks.lineDelivery.shipping}`);
   const taxes = within(first).getByTestId('offer-line-cells');
   expect(taxes.tagName).toBe('DL');

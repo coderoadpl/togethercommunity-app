@@ -188,7 +188,10 @@ their panels open below the button, so nothing above them moves.
 The shared parts (`CheckoutSteps`, `CheckoutSummaryRow`, `CheckoutDisclosureRow`
 and `CheckoutPayBar` in `apps/web/src/components/ui/CheckoutStepParts.tsx`, and
 `ProductSafetySummary` in `apps/web/src/features/checkout/`) take plain props so
-the cart checkout can adopt them; the cart page keeps its current layout.
+the cart checkout can adopt them; the cart page keeps its current layout, a
+plain list of delivery options with the parcel locker block (**Choose a parcel
+locker** or the chosen locker, and **I know the code**) directly under the
+locker option, before the next option.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document

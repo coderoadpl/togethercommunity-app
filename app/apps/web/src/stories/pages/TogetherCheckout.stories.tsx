@@ -336,7 +336,12 @@ const lockerStory = (step: LockerStep, options: { viewport?: StoryViewport; loca
     fixture: options.cart === undefined ? lockerMapFixture : cartLockerMapFixture,
   },
   beforeEach: step === 'picker-loading' ? stubLoadingGeowidget : stubGeowidget,
-  play: async ({ canvasElement }) => lockerSteps[step](canvasElement),
+  play: async ({ canvasElement }) => {
+    await lockerSteps[step](canvasElement);
+    if (options.cart !== undefined) {
+      await expect(within(canvasElement).getByTestId('checkout-delivery-option-locker').nextElementSibling).toBe(within(canvasElement).getByTestId('checkout-locker-picker'));
+    }
+  },
 });
 
 const meta = {

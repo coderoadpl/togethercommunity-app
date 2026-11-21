@@ -144,7 +144,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     </CheckoutLockerChosen>
   );
   const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
-    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: entry.kind === 'map' && !codeShown ? 0 : '0.5rem' } : { mt: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
+    <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: entry.kind === 'map' && !codeShown ? 0 : '0.5rem' } : { mt: '0.2rem', mb: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
@@ -193,53 +193,54 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
             value={state.shippingRateId ?? ''}
             onChange={(event) => dispatch({ type: 'shippingRateSelected', rateId: event.target.value })}
           >
-            {rates.map((rate) => layout === 'cards' ? (
+            {rates.map((rate) => (
               <Fragment key={rate.id}>
-                <CheckoutDeliveryCard variant="outlined" selected={rate.id === state.shippingRateId} data-testid={`checkout-delivery-option-${rate.id}`}>
-                  <FormControlLabel
-                    value={rate.id}
-                    disabled={disabled}
-                    control={<Radio />}
-                    data-testid={`checkout-delivery-${rate.id}`}
-                    disableTypography
-                    label={(
-                      <CheckoutDeliveryLabel>
-                        <Typography component="span" sx={{ gridArea: 'name', overflowWrap: 'anywhere' }}>{rate.label}</Typography>
-                        {' '}<VisuallyHidden>—</VisuallyHidden>{' '}
-                        <CheckoutDeliveryPrice data-testid={`checkout-delivery-price-${rate.id}`}>{formatPrice(rate.amountCents, currency, language)}</CheckoutDeliveryPrice>
-                        {rate.deliveryEstimateDays === undefined ? null : (
-                          <FinePrint component="span" variant="caption" color="text.secondary" sx={{ gridArea: 'estimate' }}>
-                            <VisuallyHidden>,</VisuallyHidden>{' '}
-                            {t.shipping.deliveryEstimate(rate.deliveryEstimateDays)}
-                          </FinePrint>
-                        )}
-                      </CheckoutDeliveryLabel>
-                    )}
-                  />
-                </CheckoutDeliveryCard>
+                {layout === 'cards' ? (
+                  <CheckoutDeliveryCard variant="outlined" selected={rate.id === state.shippingRateId} data-testid={`checkout-delivery-option-${rate.id}`}>
+                    <FormControlLabel
+                      value={rate.id}
+                      disabled={disabled}
+                      control={<Radio />}
+                      data-testid={`checkout-delivery-${rate.id}`}
+                      disableTypography
+                      label={(
+                        <CheckoutDeliveryLabel>
+                          <Typography component="span" sx={{ gridArea: 'name', overflowWrap: 'anywhere' }}>{rate.label}</Typography>
+                          {' '}<VisuallyHidden>—</VisuallyHidden>{' '}
+                          <CheckoutDeliveryPrice data-testid={`checkout-delivery-price-${rate.id}`}>{formatPrice(rate.amountCents, currency, language)}</CheckoutDeliveryPrice>
+                          {rate.deliveryEstimateDays === undefined ? null : (
+                            <FinePrint component="span" variant="caption" color="text.secondary" sx={{ gridArea: 'estimate' }}>
+                              <VisuallyHidden>,</VisuallyHidden>{' '}
+                              {t.shipping.deliveryEstimate(rate.deliveryEstimateDays)}
+                            </FinePrint>
+                          )}
+                        </CheckoutDeliveryLabel>
+                      )}
+                    />
+                  </CheckoutDeliveryCard>
+                ) : (
+                  <CheckoutPriceOption variant="outlined" selected={rate.id === state.shippingRateId} sx={{ px: '0.75rem', my: '0.3rem' }} data-testid={`checkout-delivery-option-${rate.id}`}>
+                    <FormControlLabel
+                      value={rate.id}
+                      disabled={disabled}
+                      control={<Radio />}
+                      data-testid={`checkout-delivery-${rate.id}`}
+                      label={(
+                        <Stack useFlexGap spacing="0.1rem">
+                          <Typography>{`${rate.label} — ${formatPrice(rate.amountCents, currency, language)}`}</Typography>
+                          {rate.deliveryEstimateDays === undefined ? null : (
+                            <FinePrint component="span" variant="caption">{t.shipping.deliveryEstimate(rate.deliveryEstimateDays)}</FinePrint>
+                          )}
+                        </Stack>
+                      )}
+                    />
+                  </CheckoutPriceOption>
+                )}
                 {rate.id === selected?.id ? lockerPicker : null}
               </Fragment>
-            ) : (
-              <CheckoutPriceOption key={rate.id} variant="outlined" selected={rate.id === state.shippingRateId} sx={{ px: '0.75rem', my: '0.3rem' }}>
-                <FormControlLabel
-                  value={rate.id}
-                  disabled={disabled}
-                  control={<Radio />}
-                  data-testid={`checkout-delivery-${rate.id}`}
-                  label={(
-                    <Stack useFlexGap spacing="0.1rem">
-                      <Typography>{`${rate.label} — ${formatPrice(rate.amountCents, currency, language)}`}</Typography>
-                      {rate.deliveryEstimateDays === undefined ? null : (
-                        <FinePrint component="span" variant="caption">{t.shipping.deliveryEstimate(rate.deliveryEstimateDays)}</FinePrint>
-                      )}
-                    </Stack>
-                  )}
-                />
-              </CheckoutPriceOption>
             ))}
           </RadioGroup>
         )}
-        {layout === 'list' ? lockerPicker : null}
         {layout === 'list' && selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
       </FormControl>
       {lockerDialog}

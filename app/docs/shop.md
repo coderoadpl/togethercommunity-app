@@ -102,20 +102,23 @@ link checkout and the hosted cart page through `DeliveryStep`:
   ignores such calls silently until the token is registered for the exact
   domain.
 - The close button, Escape (also from inside the map, which reports it with the
-  `inpost.geowidget.escape` event) and the phone's back gesture close the picker
-  and keep the previous choice.
+  `inpost.geowidget.escape` event, on the map element or on the document) and
+  the phone's back gesture close the picker and keep the previous choice.
 - Opening the picker adds one browser history entry for the same address, so
   the back gesture closes the picker instead of leaving the checkout; closing
   it in any other way, or choosing a locker, removes that entry again without
   leaving the page.
 - Focus moves to the picker title when it opens, stays inside it, and returns to
-  **Choose a parcel locker** or **Change** when it closes. The guidance line
-  describes the dialog and is a polite live region, so a map failure is read
-  out. Enter inside the picker never submits the checkout.
+  **Choose a parcel locker** or **Change** when it closes (to the code input
+  after a map failure). The guidance line describes the dialog and is a polite
+  live region, so a map failure is read out. Enter inside the picker never
+  submits the checkout.
 - The map element is created only while the picker is open and removed when it
   closes. When the map script fails to load (for example a content security
   policy kept from an in-app navigation), the picker says so and offers
-  **Type the code**, and the option then shows the code input with the reason.
+  **Type the code**, and the option then shows the code input with the reason
+  for the rest of the page's life. A script that fails while the picker is
+  closed is removed, so the next opening loads it again.
   A token InPost rejects (for example one issued for another domain) loads the
   map with InPost's own red access-denied banner, a watermark and no points;
   the page cannot detect that inside the cross-origin frame, so the buyer
@@ -1084,7 +1087,8 @@ the form document by an in-app link, programmatic navigation or browser history
 step becomes a full document navigation (the same guard as the analytics success
 document). The guard stays in place after the buyer closes the picker or
 switches to another delivery option, so the map code never runs in sign-in or
-signed-in views. The history entry the open picker adds keeps the same address,
+signed-in views. The page keeps one such guard however often the picker is
+opened. The history entry the open picker adds keeps the same address,
 so the back gesture that closes the picker is not a navigation away from the
 form document.
 

@@ -557,9 +557,13 @@ Subscription write access cannot be checked without a customer. The coupon is a
 single-use 1% discount and is deleted in cleanup, including after a promotion-code
 failure. If coupon creation fails, Promotion Codes reports `error` with
 reason `coupon-probe-failed` and no detail; Studio translates the reason, and the
-checkout probe still runs. The checkout is a PLN 1.00
+checkout probe still runs. The checkout is a PLN 10.00
 payment session with return URLs on the tenant's canonical origin, a 30-minute
-expiry and immediate expiration in cleanup. No purchase is completed.
+expiry and immediate expiration in cleanup. No purchase is completed. The
+amount is fixed and independent of the workspace's product currencies; Stripe
+refuses a session below its minimum charge (PLN 2.00, or the minimum of the
+account's settlement currency after conversion, such as EUR 0.50), and PLN 10.00
+stays above every published minimum.
 The last check, Charges and Refunds (write), asks Stripe to update the metadata
 of a refund that does not exist (`POST /v1/refunds/re_togetherprobe<24
 alphanumeric characters>` with `togetherProbe=1` and `tenantId`); no refund is

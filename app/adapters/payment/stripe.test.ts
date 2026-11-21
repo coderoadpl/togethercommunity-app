@@ -1255,7 +1255,14 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
         if (request.method === 'GET') return stripeJson({ object: 'list', data: [], has_more: false });
         if (path === '/v1/coupons') return stripeJson({ id: 'coupon_probe', object: 'coupon' });
         if (path === '/v1/promotion_codes') return stripeJson({ id: 'promo_probe', object: 'promotion_code' });
-        if (path === '/v1/checkout/sessions') return stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        if (path === '/v1/checkout/sessions') {
+          const body = new URLSearchParams(await request.clone().text());
+          const belowPlnMinimum = body.get('line_items[0][price_data][currency]') === 'pln'
+            && Number(body.get('line_items[0][price_data][unit_amount]')) < 200;
+          return belowPlnMinimum
+            ? stripeJson({ error: { type: 'invalid_request_error', message: "The Checkout Session's total amount due must add up to at least PLN 2.00" } }, 400)
+            : stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        }
         if (path.startsWith('/v1/refunds/')) return stripeJson({ error: { type: 'invalid_request_error', code: 'resource_missing', message: 'No such refund' } }, 404);
         return stripeJson({ id: 'probe_cleanup' });
       }),
@@ -1340,10 +1347,23 @@ describe('probeStripePermissions with an injected Stripe client', () => {
       'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
       'branding_settings[logo][url]': 'https://acme.example.test/logo.png',
       'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
-      'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '100',
+      'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '1000',
       'line_items[0][price_data][product_data][name]': 'Together permission probe', 'line_items[0][quantity]': '1',
       'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',
     });
+  });
+
+  it('creates the probe checkout at or above the provider minimum charge for PLN', async () => {
+    const h = permissionProbeHarness();
+    const result = await h.run();
+    expect(result).toMatchObject({ ok: true, value: { checks: expect.arrayContaining([
+      { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+    ]) } });
+    const request = h.requests.find((candidate) => new URL(candidate.url).pathname === '/v1/checkout/sessions');
+    if (request === undefined) throw new Error('Checkout probe request missing');
+    const body = new URLSearchParams(await request.text());
+    expect(body.get('line_items[0][price_data][currency]')).toBe('pln');
+    expect(Number(body.get('line_items[0][price_data][unit_amount]'))).toBeGreaterThanOrEqual(200);
   });
 
   it('reports a coupon 403, skips promotion codes and still probes checkout', async () => {

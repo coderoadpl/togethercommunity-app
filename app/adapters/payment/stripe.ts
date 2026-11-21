@@ -466,6 +466,9 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
 
 const PROBE_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+// Several times every published minimum charge, including after conversion to the account's settlement currency.
+const PROBE_CHECKOUT_PRICE = { currency: 'pln', unitAmount: 1000 } as const;
+
 const REFUND_PROBE_CHECK = { resource: 'Charges and Refunds', permission: 'write' } as const;
 
 const refundProbePermissionMissing = (failure: { code?: string | undefined; message?: string | undefined }): boolean =>
@@ -557,7 +560,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           const session = await client.checkout.sessions.create({
             ...checkoutBrandingParams(input.checkoutBranding),
             mode: 'payment',
-            line_items: [{ price_data: { currency: 'pln', unit_amount: 100, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
+            line_items: [{ price_data: { currency: PROBE_CHECKOUT_PRICE.currency, unit_amount: PROBE_CHECKOUT_PRICE.unitAmount, product_data: { name: 'Together permission probe' } }, quantity: 1 }],
             success_url: `${input.origin}/`, cancel_url: `${input.origin}/`,
             expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
             metadata: { togetherProbe: '1', tenantId: input.tenantId },

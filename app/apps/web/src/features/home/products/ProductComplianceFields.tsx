@@ -1,4 +1,4 @@
-import { Accordion, AccordionDetails, AccordionSummary, Stack, TextField, Typography } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
 
 import {
   PRODUCT_SAFETY_WARNINGS_MAX_LENGTH,
@@ -14,6 +14,10 @@ export interface ComplianceDraft {
   manufacturerName: string;
   manufacturerAddress: string;
   manufacturerEmail: string;
+  manufacturerOutsideEu: boolean;
+  responsiblePersonName: string;
+  responsiblePersonAddress: string;
+  responsiblePersonEmail: string;
   modelIdentifier: string;
   batchIdentifier: string;
   safetyWarnings: string;
@@ -24,6 +28,10 @@ export const complianceDraftFrom = (compliance: ProductCompliance | null | undef
   manufacturerName: compliance?.manufacturerName ?? '',
   manufacturerAddress: compliance?.manufacturerAddress ?? '',
   manufacturerEmail: compliance?.manufacturerEmail ?? '',
+  manufacturerOutsideEu: compliance?.manufacturerOutsideEu ?? false,
+  responsiblePersonName: compliance?.responsiblePersonName ?? '',
+  responsiblePersonAddress: compliance?.responsiblePersonAddress ?? '',
+  responsiblePersonEmail: compliance?.responsiblePersonEmail ?? '',
   modelIdentifier: compliance?.modelIdentifier ?? '',
   batchIdentifier: compliance?.batchIdentifier ?? '',
   safetyWarnings: compliance?.safetyWarnings ?? '',
@@ -31,11 +39,18 @@ export const complianceDraftFrom = (compliance: ProductCompliance | null | undef
 });
 
 export const complianceFromDraft = (draft: ComplianceDraft): { ok: true; value: ProductCompliance | null } | { ok: false } => {
-  if (Object.values(draft).every((value) => value.trim() === '')) return { ok: true, value: null };
+  const { manufacturerOutsideEu, ...texts } = draft;
+  if (!manufacturerOutsideEu && Object.values(texts).every((value) => value.trim() === '')) return { ok: true, value: null };
   const parsed = productComplianceSchema.safeParse({
     manufacturerName: draft.manufacturerName,
     manufacturerAddress: draft.manufacturerAddress,
     manufacturerEmail: draft.manufacturerEmail,
+    manufacturerOutsideEu,
+    ...(manufacturerOutsideEu ? {
+      responsiblePersonName: draft.responsiblePersonName.trim() === '' ? null : draft.responsiblePersonName,
+      responsiblePersonAddress: draft.responsiblePersonAddress.trim() === '' ? null : draft.responsiblePersonAddress,
+      responsiblePersonEmail: draft.responsiblePersonEmail.trim() === '' ? null : draft.responsiblePersonEmail,
+    } : {}),
     modelIdentifier: draft.modelIdentifier,
     batchIdentifier: draft.batchIdentifier.trim() === '' ? null : draft.batchIdentifier,
     safetyWarnings: draft.safetyWarnings,
@@ -54,7 +69,9 @@ export const ProductComplianceFields = ({
   onChange: (value: ComplianceDraft) => void;
 }) => {
   const t = useTranslations();
-  const field = (key: keyof ComplianceDraft, label: string, extra: { type?: string; helperText?: string; multiline?: boolean; maxLength: number }) => (
+  const responsiblePersonMissing = value.manufacturerOutsideEu
+    && [value.responsiblePersonName, value.responsiblePersonAddress, value.responsiblePersonEmail].some((text) => text.trim() === '');
+  const field = (key: Exclude<keyof ComplianceDraft, 'manufacturerOutsideEu'>, label: string, extra: { type?: string; helperText?: string; multiline?: boolean; maxLength: number }) => (
     <TextField
       id={`product-compliance-${key}`}
       label={label}
@@ -79,11 +96,29 @@ export const ProductComplianceFields = ({
           {field('manufacturerName', t.productSafety.manufacturerName, { maxLength: 200 })}
           {field('manufacturerAddress', t.productSafety.manufacturerAddress, { maxLength: 300 })}
           {field('manufacturerEmail', t.productSafety.manufacturerEmail, { type: 'email', maxLength: 254 })}
+          <Stack useFlexGap spacing="0.25rem">
+            <FormControlLabel
+              label={t.productSafety.manufacturerOutsideEu}
+              control={<Switch checked={value.manufacturerOutsideEu} onChange={(_event, manufacturerOutsideEu) => onChange({ ...value, manufacturerOutsideEu })} />}
+            />
+            <Typography variant="body2" color="text.secondary">{t.productSafety.manufacturerOutsideEuHint}</Typography>
+          </Stack>
+          {value.manufacturerOutsideEu ? (
+            <>
+              {field('responsiblePersonName', t.productSafety.responsiblePersonName, { maxLength: 200 })}
+              {field('responsiblePersonAddress', t.productSafety.responsiblePersonAddress, { maxLength: 300 })}
+              {field('responsiblePersonEmail', t.productSafety.responsiblePersonEmail, { type: 'email', maxLength: 254 })}
+            </>
+          ) : null}
           {field('modelIdentifier', t.productSafety.modelIdentifier, { maxLength: 100 })}
           {field('batchIdentifier', t.productSafety.batchIdentifier, { maxLength: 100 })}
           {field('safetyWarnings', t.productSafety.safetyWarnings, { multiline: true, helperText: t.productSafety.safetyWarningsHint, maxLength: PRODUCT_SAFETY_WARNINGS_MAX_LENGTH })}
           {field('instructionsUrl', t.productSafety.instructionsUrl, { type: 'url', maxLength: 2000 })}
-          {invalid ? <Typography color="error" variant="body2" role="alert">{t.productSafety.incomplete}</Typography> : null}
+          {invalid ? (
+            <Typography color="error" variant="body2" role="alert">
+              {responsiblePersonMissing ? t.productSafety.responsiblePersonIncomplete : t.productSafety.incomplete}
+            </Typography>
+          ) : null}
         </Stack>
       </AccordionDetails>
     </Accordion>

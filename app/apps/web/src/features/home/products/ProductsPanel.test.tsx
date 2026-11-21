@@ -816,11 +816,55 @@ describe('ProductsPanel', () => {
         manufacturerName: 'Example Workshop',
         manufacturerAddress: 'Example Street 1, Warsaw',
         manufacturerEmail: 'safety@example.com',
+        manufacturerOutsideEu: false,
         modelIdentifier: 'STAND-1',
         batchIdentifier: null,
         safetyWarnings: 'Keep away from open flame.',
         instructionsUrl: null,
       },
+    })]);
+    expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+  });
+
+  it('requires the responsible person when the manufacturer is outside the EU and saves it', async () => {
+    const user = userEvent.setup();
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'imported-lamp', title: 'Imported lamp', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', published: false, accessItems: [],
+      compliance: {
+        manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+        manufacturerOutsideEu: false, modelIdentifier: 'LAMP-2', safetyWarnings: '',
+      },
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { product: physical } });
+    }));
+    const outside = await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu });
+    expect(outside).not.toBeChecked();
+    expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+    await user.click(outside);
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonName));
+    await user.paste('Example EU Representative');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+    expect(bodies).toEqual([]);
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonAddress));
+    await user.paste('Example Street 1, Warsaw');
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonEmail));
+    await user.paste('eu-rep@example.com');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({
+      compliance: expect.objectContaining({
+        manufacturerOutsideEu: true,
+        responsiblePersonName: 'Example EU Representative',
+        responsiblePersonAddress: 'Example Street 1, Warsaw',
+        responsiblePersonEmail: 'eu-rep@example.com',
+      }),
     })]);
   });
 

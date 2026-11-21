@@ -383,7 +383,10 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             }
             return (
               <Alert key={item.productId} severity="error" data-testid={`cart-line-${item.productId}`}
-                action={<Button type="button" color="inherit" size="small" onClick={remove}>{t.checkout.cartRemoveLine}</Button>}>
+                action={<Button type="button" color="inherit" size="small" onClick={remove}
+                  {...(item.kind === 'missing' ? {} : { 'aria-label': t.checkout.cartRemove({ title: item.product.title }) })}>
+                  {t.checkout.cartRemoveLine}
+                </Button>}>
                 {cartLineAlert(item, t)}
               </Alert>
             );

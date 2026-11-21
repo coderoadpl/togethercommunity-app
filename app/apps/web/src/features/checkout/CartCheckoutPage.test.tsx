@@ -341,7 +341,7 @@ describe('hosted cart checkout', () => {
     expect(pay).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(2500) })));
     expect(pay).toHaveAccessibleDescription(en.checkout.cartPayBlockedLines);
 
-    await userEvent.click(within(soldOutLine).getByRole('button', { name: en.checkout.cartRemoveLine }));
+    await userEvent.click(within(soldOutLine).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) }));
     expect(screen.queryByTestId(`cart-line-${poster}`)).not.toBeInTheDocument();
     expect(screen.queryByText(en.checkout.cartPayBlockedLines)).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
@@ -456,6 +456,7 @@ describe('hosted cart checkout', () => {
     renderCart(`${HOSTED_CART_PATH}?lines=${bag}.1~${ebook}.1`);
     expect(await screen.findByText(`Bag: ${en.checkout.cartLineUnavailable}`)).toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    expect(line(bag).getByRole('button', { name: en.checkout.cartRemove({ title: 'Bag' }) })).toBeEnabled();
   });
 
   it('refuses a cart in two currencies as the server does, with no total, payment or coupon check', async () => {

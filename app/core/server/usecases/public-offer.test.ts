@@ -302,6 +302,34 @@ describe('getPublicOffer', () => {
     expect(result.value.products.map((item) => item.personalization)).toEqual([personalization, null]);
   });
 
+  it('leaves the stored responsible person out of a product whose manufacturer is in the EU and keeps it when outside the EU', async () => {
+    const compliance = {
+      manufacturerName: 'Example Workshop',
+      manufacturerAddress: 'Example Street 1, Warsaw',
+      manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: false,
+      responsiblePersonName: 'Example EU Representative',
+      responsiblePersonAddress: 'Example Street 2, Warsaw',
+      responsiblePersonEmail: 'eu-rep@example.com',
+      modelIdentifier: 'STAND-1',
+      safetyWarnings: '',
+    };
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([
+        { ...product('inside', 't-acme', true, 'physical'), compliance },
+        { ...product('outside', 't-acme', true, 'physical'), compliance: { ...compliance, manufacturerOutsideEu: true } },
+      ]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    });
+    if (!result.ok) throw new Error('offer failed');
+    const responsibleKeys = (id: string) => Object.keys(result.value.products.find((item) => item.id === id)?.compliance ?? {}).filter((key) => key.startsWith('responsiblePerson'));
+    expect(responsibleKeys('inside')).toEqual([]);
+    expect(responsibleKeys('outside')).toEqual(['responsiblePersonName', 'responsiblePersonAddress', 'responsiblePersonEmail']);
+  });
+
   it('exposes the product safety information and the published variants of the group', async () => {
     const compliance = {
       manufacturerName: 'Example Workshop',

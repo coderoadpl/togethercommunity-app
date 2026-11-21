@@ -856,7 +856,10 @@ The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
 images are escaped or dropped). Public sales-link offers carry `compliance` and
-the product `coverUrl` on each line the same way.
+the product `coverUrl` on each line the same way. Both leave out
+`responsiblePersonName`, `responsiblePersonAddress` and `responsiblePersonEmail`
+while `manufacturerOutsideEu` is off; the stored values stay visible to staff in
+Studio and the management API.
 
 Regulation (EU) 2023/988 art. 19 says an online offer "shall clearly and
 visibly indicate at least":

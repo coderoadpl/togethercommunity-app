@@ -57,8 +57,9 @@ const storageKeyOf = (url: string): string => decodeURIComponent(new URL(url).pa
 
 const workspaceFetch: typeof fetch = async (input, init) => {
   const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-  if (target.startsWith(`${STORAGE_ORIGIN}/`) && init?.method === 'PUT' && init.body instanceof Uint8Array) {
-    storage.objects.set(storageKeyOf(target), { bytes: init.body.slice(), contentType: new Headers(init.headers).get('content-type') ?? '' });
+  const body: unknown = init?.body;
+  if (target.startsWith(`${STORAGE_ORIGIN}/`) && init?.method === 'PUT' && body instanceof Uint8Array) {
+    storage.objects.set(storageKeyOf(target), { bytes: new Uint8Array(body), contentType: new Headers(init.headers).get('content-type') ?? '' });
     return new Response(null, { status: 200 });
   }
   const headers = new Headers(init?.headers);

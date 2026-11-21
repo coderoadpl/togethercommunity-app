@@ -176,7 +176,7 @@ export const EmptyCartNotice: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: /Together 101 Course/u }));
-    await canvas.findByRole('heading', { level: 1 });
+    await canvas.findByRole('heading', { level: 1, name: 'Your cart is empty' });
   },
 };
 export const EmptyCartNoticeMobile: Story = withMobile(EmptyCartNotice);

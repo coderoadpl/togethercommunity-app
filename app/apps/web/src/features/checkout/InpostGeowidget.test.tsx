@@ -34,7 +34,7 @@ const renderForm = async (input: { mapShown: boolean; forward?: boolean }) => {
     component: function CheckoutForm() {
       const [mapShown, setMapShown] = useState(input.mapShown);
       return <>
-        {mapShown ? <InpostGeowidget token="public-map-token" language="en" dispatch={() => undefined} /> : <p>Courier selected</p>}
+        {mapShown ? <InpostGeowidget token="public-map-token" language="en" shownCode={null} onPoint={() => undefined} onEscape={() => undefined} onFailed={() => undefined} /> : <p>Courier selected</p>}
         <button onClick={() => setMapShown(false)}>Choose courier</button>
         <p>Checkout form</p>
         <Link to="/login">Go to sign-in</Link>

@@ -175,7 +175,6 @@ const nestedAddress = (value: unknown, name: string): string | null => {
   return typeof address === 'string' && address.length > 0 ? address : null;
 };
 
-/** Image addresses nested in an object field that a propose-mode key cannot propose yet: set to a new address rather than cleared or kept. */
 export const changeProposalUnproposableImageChanges = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> =>
   Object.entries(UNPROPOSABLE_IMAGE_FIELDS[operation] ?? {}).flatMap(([field, names]) => {
     const change = effect[field];

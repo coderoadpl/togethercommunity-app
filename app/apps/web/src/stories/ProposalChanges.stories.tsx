@@ -4,6 +4,7 @@ import type { ChangeProposalOwnerView } from '#core/domain/index.js';
 import { ProposalFieldRows, type StockNow } from '../features/home/proposals/ProposalChanges.js';
 import { groupReferences } from '../features/home/proposals/proposal-display.js';
 import { changeProposalGroupItems } from '../test/change-proposal-fixtures.js';
+import { STORY_PROPOSAL_IMAGE_DIGESTS } from './fixture-client.js';
 import { withAccountPreview } from './page-decorators.js';
 
 type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'>;
@@ -49,15 +50,17 @@ const image: Proposal = {
     coverUrl: { before: 'https://images.example.org/old-cover.jpg', after: '/api/public/assets/product-cover/field-guide.webp' },
   },
 };
-const proposedCover: Proposal = {
+const proposedCoverOf = (digest: string): Proposal => ({
   input: {},
   effect: {
     coverUrl: {
       before: '/api/public/assets/product-cover/field-guide.webp',
-      after: '/api/public/assets/product-cover/4f1d0c2b9a8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c.png',
+      after: `/api/public/assets/product-cover/${digest}.png`,
     },
   },
-};
+});
+const proposedCover = proposedCoverOf(STORY_PROPOSAL_IMAGE_DIGESTS.previewable);
+const unreadableCover = proposedCoverOf(STORY_PROPOSAL_IMAGE_DIGESTS.unreadable);
 const proposedSvgLogo: Proposal = {
   input: {},
   effect: { logoUrl: { before: null, after: '/api/public/assets/logo/9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b.svg' } },
@@ -85,6 +88,9 @@ export const BooleanValue: Story = { render: () => <Rows proposal={boolean} /> }
 export const ListValue: Story = { render: () => <Rows proposal={list} /> };
 export const ImageValue: Story = { render: () => <Rows proposal={image} /> };
 export const ProposedImageAwaitingApproval: Story = { render: () => <Rows proposal={proposedCover} pendingProposalId="proposal-field-guide-cover" /> };
+export const ProposedImagePolishMobile: Story = { ...ProposedImageAwaitingApproval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedImageFailed: Story = { render: () => <Rows proposal={unreadableCover} pendingProposalId="proposal-field-guide-cover" /> };
+export const ProposedImageFailedPolishMobile: Story = { ...ProposedImageFailed, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const ProposedSvgAwaitingApproval: Story = { render: () => <Rows proposal={proposedSvgLogo} pendingProposalId="proposal-studio-logo" /> };
 export const ProposedSvgPolishMobile: Story = { ...ProposedSvgAwaitingApproval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const ReferenceValue: Story = { render: () => <Rows proposal={reference} inGroup /> };

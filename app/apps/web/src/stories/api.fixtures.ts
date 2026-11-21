@@ -1,7 +1,10 @@
 import { bindActions } from '../api.js';
-import { fixtureClient, fixtureAuth, fixtureAuthActions } from './fixture-client.js';
+import { fixtureClient, fixtureAuth, fixtureAuthActions, fixtureProposalImagePath } from './fixture-client.js';
+
+const bound = bindActions(fixtureClient, fixtureAuth);
 
 export const actions = {
-  ...bindActions(fixtureClient, fixtureAuth),
+  ...bound,
   ...fixtureAuthActions,
+  changeProposalImagePath: fixtureProposalImagePath(bound.changeProposalImagePath),
 };

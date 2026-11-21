@@ -55,6 +55,24 @@ export const fixtureClient: ApiClient = new Proxy(createApiClient({ baseUrl: '',
   },
 });
 
+const PREVIEWABLE_PROPOSAL_IMAGE = `data:image/svg+xml,${encodeURIComponent([
+  '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">',
+  '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d4e89"/><stop offset="0.55" stop-color="#00b2ca"/><stop offset="1" stop-color="#f7c548"/></linearGradient></defs>',
+  '<rect width="320" height="180" fill="url(#g)"/><rect x="40" y="60" width="150" height="14" rx="3" fill="#ffffff"/><rect x="40" y="86" width="100" height="10" rx="3" fill="#ffffff" opacity="0.7"/>',
+  '<circle cx="250" cy="120" r="24" fill="#ffffff" opacity="0.85"/></svg>',
+].join(''))}`;
+
+export const STORY_PROPOSAL_IMAGE_DIGESTS = {
+  previewable: '4f1d0c2b9a8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c',
+  unreadable: '0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c',
+} as const;
+
+export const fixtureProposalImagePath = (realPath: (proposalId: string, digest: string) => string) => (proposalId: string, digest: string): string => {
+  if (digest === STORY_PROPOSAL_IMAGE_DIGESTS.previewable) return PREVIEWABLE_PROPOSAL_IMAGE;
+  if (digest === STORY_PROPOSAL_IMAGE_DIGESTS.unreadable) return 'data:image/png;base64,';
+  return realPath(proposalId, digest);
+};
+
 const unavailableAuthPreview = () => Promise.resolve({ ok: false, error: { code: 'internal', message: 'This operation is available in the focused account previews.' } } as const);
 export const fixtureAuth = {
   signUp: unavailableAuthPreview,

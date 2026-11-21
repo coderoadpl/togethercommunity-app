@@ -196,7 +196,7 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
             {stockCapped ? t.checkout.cartStockLimit({ count: max }) : t.checkout.cartQuantityLimit({ max })}
           </FinePrint>
         ) : null}
-        <Box sx={{ gridArea: 'amount', alignSelf: { xs: 'center', sm: 'start' }, justifySelf: 'end' }}>
+        <Box sx={{ gridArea: 'amount', alignSelf: 'start', justifySelf: 'end', display: 'flex', alignItems: 'center', minHeight: { xs: '2.75rem', sm: 'auto' } }}>
           <DataValue data-testid={`cart-line-total-${item.productId}`}>
             {formatPrice(item.unitCents * quantity, item.currency, language)}
           </DataValue>

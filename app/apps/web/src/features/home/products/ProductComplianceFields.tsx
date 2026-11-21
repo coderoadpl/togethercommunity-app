@@ -9,6 +9,7 @@ import {
 
 import { ChevronDownIcon } from '../../../components/ui/account-icons.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { ProductSafetyOutsideEuGroup } from '../../../theme.js';
 
 export interface ComplianceDraft {
   manufacturerName: string;
@@ -109,20 +110,22 @@ export const ProductComplianceFields = ({
           {field('manufacturerName', t.productSafety.manufacturerName, { maxLength: 200 })}
           {field('manufacturerAddress', t.productSafety.manufacturerAddress, { maxLength: 300 })}
           {field('manufacturerEmail', t.productSafety.manufacturerEmail, { type: 'email', maxLength: 254 })}
-          <Stack useFlexGap spacing="0.25rem">
-            <FormControlLabel
-              label={t.productSafety.manufacturerOutsideEu}
-              control={<Switch checked={value.manufacturerOutsideEu} onChange={(_event, manufacturerOutsideEu) => onChange({ ...value, manufacturerOutsideEu })} />}
-            />
-            <Typography variant="body2" color="text.secondary">{t.productSafety.manufacturerOutsideEuHint}</Typography>
-          </Stack>
-          {value.manufacturerOutsideEu ? (
-            <>
-              {field('responsiblePersonName', t.productSafety.responsiblePersonName, { helperText: t.productSafety.responsiblePersonNameHint, maxLength: 200 })}
-              {field('responsiblePersonAddress', t.productSafety.responsiblePersonAddress, { helperText: t.productSafety.responsiblePersonAddressHint, maxLength: 300 })}
-              {field('responsiblePersonEmail', t.productSafety.responsiblePersonEmail, { type: 'email', maxLength: 254 })}
-            </>
-          ) : null}
+          <ProductSafetyOutsideEuGroup data-testid="product-compliance-outside-eu">
+            <Stack useFlexGap spacing="0.25rem">
+              <FormControlLabel
+                label={t.productSafety.manufacturerOutsideEu}
+                control={<Switch checked={value.manufacturerOutsideEu} onChange={(_event, manufacturerOutsideEu) => onChange({ ...value, manufacturerOutsideEu })} />}
+              />
+              <Typography variant="body2" color="text.secondary">{t.productSafety.manufacturerOutsideEuHint}</Typography>
+            </Stack>
+            {value.manufacturerOutsideEu ? (
+              <>
+                {field('responsiblePersonName', t.productSafety.responsiblePersonName, { helperText: t.productSafety.responsiblePersonNameHint, maxLength: 200 })}
+                {field('responsiblePersonAddress', t.productSafety.responsiblePersonAddress, { helperText: t.productSafety.responsiblePersonAddressHint, maxLength: 300 })}
+                {field('responsiblePersonEmail', t.productSafety.responsiblePersonEmail, { type: 'email', maxLength: 254 })}
+              </>
+            ) : null}
+          </ProductSafetyOutsideEuGroup>
           {field('modelIdentifier', t.productSafety.modelIdentifier, { maxLength: 100 })}
           {field('batchIdentifier', t.productSafety.batchIdentifier, { maxLength: 100 })}
           {field('safetyWarnings', t.productSafety.safetyWarnings, { multiline: true, helperText: t.productSafety.safetyWarningsHint, maxLength: PRODUCT_SAFETY_WARNINGS_MAX_LENGTH })}

@@ -894,6 +894,20 @@ describe('ProductsPanel', () => {
       screen.getByLabelText(en.productSafety.responsiblePersonEmail),
     ];
 
+    it('keeps the switch, its hint and the responsible person fields in one ruled group that ends before the model identifier', async () => {
+      const user = userEvent.setup();
+      await renderLamp(manufacturer);
+      const outside = await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu });
+      const group = screen.getByTestId('product-compliance-outside-eu');
+      expect(group).toContainElement(outside);
+      expect(within(group).getByText(en.productSafety.manufacturerOutsideEuHint)).toBeVisible();
+      await user.click(outside);
+      for (const field of responsiblePersonFields()) expect(group).toContainElement(field);
+      expect(group).not.toContainElement(screen.getByLabelText(en.productSafety.modelIdentifier));
+      expect(group).not.toContainElement(screen.getByLabelText(en.productSafety.manufacturerEmail));
+      expect(group).toHaveStyle({ paddingLeft: '1rem', borderLeftStyle: 'solid' });
+    });
+
     it('says under the responsible person fields who it usually is and that the address includes the country', async () => {
       const user = userEvent.setup();
       await renderLamp(manufacturer);

@@ -304,7 +304,10 @@ describe('ProposalsPanel', () => {
     expect(preview).toHaveAttribute('data-state', 'failed');
     expect(within(preview).getByRole('alert')).toHaveTextContent(t.proposedImageFailed);
     expect(within(preview).queryByRole('img')).toBeNull();
+    expect(within(preview).queryByText(t.proposedImagePrivate)).toBeNull();
     expect(within(preview).getByText(proposed)).toBeInTheDocument();
+    expect(within(preview).getByTestId('proposed-image-address')).toHaveAttribute('title', proposed);
+    expect(within(preview).getByTestId('proposed-image-address-short')).toHaveTextContent(`/api/public/assets/logo/${digest.slice(0, 12)}…${digest.slice(-4)}.png`);
   });
 
   it('never renders a proposed SVG inline: it offers a download through the owner preview and says why', async () => {
@@ -388,19 +391,31 @@ describe('ProposalsPanel', () => {
   it('explains a stale proposal of a missing image in the history row and its timeline, and any other stale proposal as before', async () => {
     const digest = 'a'.repeat(64);
     const proposed = `/api/public/assets/logo/${digest}.png`;
+    const siblingCover = `/api/public/assets/product-cover/${'b'.repeat(64)}.png`;
     const gone = settledView({ ...settingsProposal, id: 'proposal-history-gone', input: { logoUrl: proposed }, effect: { logoUrl: { before: null, after: proposed } } }, { status: 'stale' });
     const moved = settledView({ ...settingsProposal, id: 'proposal-history-moved' }, { status: 'stale' });
+    const sibling = settledView({
+      ...stockAdjustmentProposal,
+      id: 'proposal-history-sibling',
+      groupId: 'group-history',
+      groupPosition: 2,
+      operation: 'product.update',
+      input: { id: 'product-field-guide', coverUrl: siblingCover },
+      effect: { coverUrl: { before: null, after: siblingCover } },
+    }, { status: 'stale' });
     const detailsRead: string[] = [];
     usePending([]);
     server.use(
       http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
         ok: true,
-        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [gone, moved] : [], nextCursor: null, hasMore: false },
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [gone, moved, sibling] : [], nextCursor: null, hasMore: false },
       })),
       http.get('/api/change-proposals/:id', ({ params }) => {
         detailsRead.push(String(params['id']));
-        const proposal = params['id'] === gone.id ? gone : moved;
-        const note = params['id'] === gone.id ? changeProposalImageMissingNote({ kind: 'logo', digest, extension: 'png' }) : null;
+        const proposal = [gone, sibling].find((entry) => entry.id === params['id']) ?? moved;
+        const note = params['id'] === gone.id
+          ? changeProposalImageMissingNote({ kind: 'logo', digest, extension: 'png' })
+          : params['id'] === sibling.id ? 'Not applied because item 1 of the group did not apply' : null;
         return HttpResponse.json({
           ok: true,
           data: { proposal: { ...proposal, events: [{ sequence: 1, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note, at: '2026-11-20T12:00:00.000Z' }] } },
@@ -414,12 +429,22 @@ describe('ProposalsPanel', () => {
     const goneRow = await screen.findByTestId(`proposal-history-${gone.id}`);
     expect(await within(goneRow).findByText(t.outcomeImageUnavailable)).toBeInTheDocument();
     expect(goneRow).not.toHaveTextContent(t.outcomeStale);
+    expect(within(goneRow).getByTestId('proposal-history-status')).toHaveTextContent(t.statusStaleImageUnavailable);
     const movedRow = screen.getByTestId(`proposal-history-${moved.id}`);
     expect(movedRow).toHaveTextContent(t.outcomeStale);
-    expect(detailsRead).toEqual([gone.id]);
+    expect(within(movedRow).getByTestId('proposal-history-status')).toHaveTextContent(t.status.stale);
+    const siblingRow = screen.getByTestId(`proposal-history-${sibling.id}`);
+    await waitFor(() => expect(detailsRead).toContain(sibling.id));
+    expect(within(siblingRow).getByTestId('proposal-history-status')).toHaveTextContent(t.status.stale);
+    expect(siblingRow).toHaveTextContent(t.outcomeStale);
+    expect(detailsRead.toSorted()).toEqual([gone.id, sibling.id].toSorted());
 
     await userEvent.click(within(goneRow).getByTestId('proposal-history-toggle'));
-    expect(await within(goneRow).findByTestId('proposal-timeline')).toHaveTextContent(t.outcomeImageUnavailable);
+    const timeline = await within(goneRow).findByTestId('proposal-timeline');
+    expect(timeline).toHaveTextContent(t.eventStaleImageUnavailable);
+    expect(timeline).not.toHaveTextContent(t.event.stale);
+    expect(timeline).not.toHaveTextContent(t.outcomeImageUnavailable);
+    expect(timeline).not.toHaveTextContent('image_unavailable');
   });
 
   it('lists decided proposals in the history tab with their status and note', async () => {

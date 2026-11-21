@@ -647,7 +647,7 @@ export const en: Messages = {
     imageNotShown: 'This image could not be shown.',
     proposedImageAlt: 'Proposed image',
     proposedImageLoading: 'Loading the proposed image…',
-    proposedImageFailed: 'The proposed image could not be loaded. If it is gone, approving changes nothing and the proposal is marked not applied.',
+    proposedImageFailed: 'The proposed image could not be loaded. If it no longer exists, approving changes nothing and the image has to be uploaded and proposed again. Otherwise, try again in a moment.',
     proposedImageFacts: ({ format, fingerprint }) => `${format} file · fingerprint ${fingerprint}`,
     proposedImagePrivate: 'Only the owners of this workspace can see this image. It becomes public at this address when the proposal is approved.',
     proposedImageSvgReason: 'SVG files can contain scripts, so this one is not shown here.',
@@ -721,6 +721,16 @@ export const en: Messages = {
     approveGroupTitle: ({ count }) => plural(count, 'Approve this change?', 'Approve the whole group?'),
     approveGroupBody: ({ count }) =>
       format(plural(count, 'The change will be applied.', 'All {count} changes will be applied together, or none.'), { count }),
+    approveImagesPublic: ({ count }) => format(plural(
+      count,
+      'Approving makes the proposed image public at the address shown. If it no longer exists, nothing is changed.',
+      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, nothing is changed.',
+    ), { count }),
+    approveGroupImagesPublic: ({ count }) => format(plural(
+      count,
+      'Approving makes the proposed image public at the address shown. If it no longer exists, none of the changes is applied.',
+      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, none of the changes is applied.',
+    ), { count }),
     approveConfirm: 'Approve',
     rejectTitle: 'Reject this change?',
     rejectGroupTitle: 'Reject the whole group?',
@@ -769,6 +779,8 @@ export const en: Messages = {
     },
     eventNoteKeyRevoked: 'The key that proposed this was revoked.',
     eventNoteKeyPurged: 'The key that proposed this was deleted.',
+    statusStaleImageUnavailable: 'Not applied: image no longer available',
+    eventStaleImageUnavailable: 'Not applied: the proposed image was no longer available',
     fields: {
       type: 'Product type',
       slug: 'Web address',

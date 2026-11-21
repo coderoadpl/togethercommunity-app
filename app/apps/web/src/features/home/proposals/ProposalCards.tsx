@@ -21,7 +21,7 @@ import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { FinePrint, WrapAnywhereText } from '../../../theme.js';
-import { ApprovalSummary } from './ProposalApproval.js';
+import { ApprovalImagesNote, ApprovalSummary } from './ProposalApproval.js';
 import { ProposalFieldRows, ReferenceText, type StockNow } from './ProposalChanges.js';
 import {
   groupReferences,
@@ -584,7 +584,12 @@ export const GroupProposalCard = ({
         dialog={dialog}
         onClose={() => setDialog(null)}
         approveTitle={t.changeProposals.approveGroupTitle({ count: shownIds.length })}
-        approveBody={<Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>}
+        approveBody={(
+          <>
+            <Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>
+            <ApprovalImagesNote proposals={items.filter((item) => shownIds.includes(item.id))} group />
+          </>
+        )}
         approveDisabled={group.isFetching || changed !== null}
         rejectTitle={t.changeProposals.rejectGroupTitle}
         pending={pending}

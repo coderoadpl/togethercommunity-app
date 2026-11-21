@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { Box, Link, Stack } from '@mui/material';
+import { Fragment, useState } from 'react';
+import { Alert, Box, Link, Stack } from '@mui/material';
 
 import type { ProposalImageExtension } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useTranslations } from '../../../i18n/index.js';
-import { BreakAnywhereText, CoverImageElement, FinePrint } from '../../../theme.js';
-import type { ImageAwaitingApproval } from './proposal-display.js';
+import { BreakAnywhereText, CoverImageElement, FinePrint, UnbrokenSegment, VisuallyHidden } from '../../../theme.js';
+import { imageFingerprint, shortProposedImagePath, type ImageAwaitingApproval } from './proposal-display.js';
 
 type LoadState = 'loading' | 'loaded' | 'failed';
 
@@ -18,15 +18,32 @@ const FORMAT_NAMES: Record<ProposalImageExtension, string> = {
   ico: 'ICO',
 };
 
-const ImageFacts = ({ image, path }: { image: ImageAwaitingApproval; path: string }) => {
+const ProposedAddress = ({ path }: { path: string }) => {
+  const segments = shortProposedImagePath(path).split('/');
+  return (
+    <BreakAnywhereText component="p" variant="caption" title={path} data-testid="proposed-image-address">
+      <span aria-hidden data-testid="proposed-image-address-short">
+        {segments.map((segment, index) => (
+          <Fragment key={index}>
+            {index === 0 ? null : <>/<wbr /></>}
+            <UnbrokenSegment>{segment}</UnbrokenSegment>
+          </Fragment>
+        ))}
+      </span>
+      <VisuallyHidden>{path}</VisuallyHidden>
+    </BreakAnywhereText>
+  );
+};
+
+const ImageFacts = ({ image, path, privateNote }: { image: ImageAwaitingApproval; path: string; privateNote: boolean }) => {
   const t = useTranslations().changeProposals;
   return (
     <>
       <FinePrint component="p" data-testid="proposed-image-facts">
-        {t.proposedImageFacts({ format: FORMAT_NAMES[image.extension], fingerprint: image.digest.slice(0, 12) })}
+        {t.proposedImageFacts({ format: FORMAT_NAMES[image.extension], fingerprint: imageFingerprint(image.digest) })}
       </FinePrint>
-      <BreakAnywhereText component="p" variant="caption">{path}</BreakAnywhereText>
-      <FinePrint component="p">{t.proposedImagePrivate}</FinePrint>
+      <ProposedAddress path={path} />
+      {privateNote ? <FinePrint component="p">{t.proposedImagePrivate}</FinePrint> : null}
     </>
   );
 };
@@ -36,7 +53,9 @@ const RasterPreview = ({ image, path, source }: { image: ImageAwaitingApproval; 
   const [load, setLoad] = useState<LoadState>('loading');
   return (
     <Stack useFlexGap spacing="0.35rem" data-testid="proposed-image" data-state={load}>
-      {load === 'failed' ? null : (
+      {load === 'failed' ? (
+        <Alert severity="warning" data-testid="proposed-image-failed">{t.proposedImageFailed}</Alert>
+      ) : (
         <Box sx={{ maxWidth: '12rem' }}>
           <CoverImageElement
             frame="card"
@@ -48,8 +67,7 @@ const RasterPreview = ({ image, path, source }: { image: ImageAwaitingApproval; 
         </Box>
       )}
       {load === 'loading' ? <FinePrint component="p" role="status">{t.proposedImageLoading}</FinePrint> : null}
-      {load === 'failed' ? <FinePrint component="p" role="alert">{t.proposedImageFailed}</FinePrint> : null}
-      <ImageFacts image={image} path={path} />
+      <ImageFacts image={image} path={path} privateNote={load !== 'failed'} />
     </Stack>
   );
 };
@@ -62,7 +80,7 @@ const VectorDownload = ({ image, path, source }: { image: ImageAwaitingApproval;
       <Link href={source} download={`${image.digest}.svg`} rel="noreferrer" variant="body2">
         {t.proposedImageSvgDownload}
       </Link>
-      <ImageFacts image={image} path={path} />
+      <ImageFacts image={image} path={path} privateNote />
     </Stack>
   );
 };

@@ -3,13 +3,37 @@ import { describe, expect, it } from 'vitest';
 import { changeProposalGroupItems } from '../../../test/change-proposal-fixtures.js';
 import {
   groupReferences,
+  imageFingerprint,
   isSameOriginPublicAssetPath,
   proposalRows,
   proposalTarget,
+  proposedImagePaths,
+  shortProposedImagePath,
   stockAdjustmentProductId,
 } from './proposal-display.js';
 
 describe('proposal display', () => {
+  it('shortens only a content-addressed image address, keeping the fingerprint, the last four digest characters and the extension', () => {
+    const digest = '88daee5b37693c1f5e354e2b46fbba036fa4a67a3150a00082a6176c047c271c';
+    const proposed = `/api/public/assets/product-cover/${digest}.png`;
+    expect(shortProposedImagePath(proposed)).toBe('/api/public/assets/product-cover/88daee5b3769…271c.png');
+    expect(shortProposedImagePath(proposed)).toContain(imageFingerprint(digest));
+    expect(imageFingerprint(digest)).toBe('88daee5b3769');
+    expect(shortProposedImagePath('/api/public/assets/product-cover/field-guide.webp')).toBe('/api/public/assets/product-cover/field-guide.webp');
+    expect(shortProposedImagePath('https://images.example.org/a.webp')).toBe('https://images.example.org/a.webp');
+  });
+
+  it('lists each distinct proposed image address of pending proposals once', () => {
+    const first = `/api/public/assets/product-cover/${'a'.repeat(64)}.png`;
+    const second = `/api/public/assets/logo/${'b'.repeat(64)}.webp`;
+    expect(proposedImagePaths([
+      { id: 'proposal-1', input: { coverUrl: first }, effect: { coverUrl: { before: null, after: first } } },
+      { id: 'proposal-2', input: { logoUrl: second }, effect: { logoUrl: { before: null, after: second }, shopName: { before: 'Old', after: 'Acme' } } },
+      { id: 'proposal-3', input: { coverUrl: first }, effect: { coverUrl: { before: '/api/public/assets/product-cover/field-guide.webp', after: first } } },
+      { id: 'proposal-4', input: {}, effect: { coverUrl: { before: null, after: '/api/public/assets/product-cover/field-guide.webp' } } },
+    ])).toEqual([first, second]);
+  });
+
   it('shows an image only for a same-origin public asset path', () => {
     expect(isSameOriginPublicAssetPath('/api/public/assets/product-cover/a.webp')).toBe(true);
     expect(isSameOriginPublicAssetPath('https://images.example.org/a.webp')).toBe(false);

@@ -163,10 +163,12 @@ const PendingTab = () => {
   );
 };
 
+const eventLabel = (t: Translations, event: ChangeProposalEventView): string =>
+  event.kind === 'stale' && isChangeProposalImageMissingNote(event.note) ? t.eventStaleImageUnavailable : t.event[event.kind];
+
 const eventNote = (t: Translations, event: ChangeProposalEventView): string | null => {
   if (event.note === null) return null;
   if (event.kind === 'rejected') return t.decisionNote({ note: event.note });
-  if (event.kind === 'stale' && isChangeProposalImageMissingNote(event.note)) return t.outcomeImageUnavailable;
   if (event.note === CHANGE_PROPOSAL_WITHDRAWAL_NOTES.keyRevoked) return t.eventNoteKeyRevoked;
   if (event.note === CHANGE_PROPOSAL_WITHDRAWAL_NOTES.keyPurged) return t.eventNoteKeyPurged;
   return null;
@@ -196,7 +198,7 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
             return (
               <Typography key={event.sequence} component="li" variant="body2">
                 <EntryDate component="time" dateTime={event.at}>{formatDateTime(event.at, language)}</EntryDate>
-                {` · ${t.changeProposals.event[event.kind]}`}
+                {` · ${eventLabel(t.changeProposals, event)}`}
                 {note === null ? null : <>{' · '}<bdi>{note}</bdi></>}
               </Typography>
             );
@@ -231,7 +233,12 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
       title={operationTitle(t, proposal.operation)}
       badges={(
         <>
-          <Chip size="small" variant="outlined" label={t.status[proposal.status]} data-testid="proposal-history-status" />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={imageUnavailable ? t.statusStaleImageUnavailable : t.status[proposal.status]}
+            data-testid="proposal-history-status"
+          />
           <Button
             size="small"
             variant="text"

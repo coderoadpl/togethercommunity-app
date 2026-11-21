@@ -686,6 +686,8 @@ export interface Messages {
     approveOtherFields: (params: { count: number }) => string;
     approveGroupTitle: (params: { count: number }) => string;
     approveGroupBody: (params: { count: number }) => string;
+    approveImagesPublic: (params: { count: number }) => string;
+    approveGroupImagesPublic: (params: { count: number }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;
@@ -718,6 +720,8 @@ export interface Messages {
     event: Record<ChangeProposalEventKind, string>;
     eventNoteKeyRevoked: string;
     eventNoteKeyPurged: string;
+    statusStaleImageUnavailable: string;
+    eventStaleImageUnavailable: string;
     fields: {
       type: string;
       slug: string;

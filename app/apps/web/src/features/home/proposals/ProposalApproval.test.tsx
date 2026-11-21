@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -6,13 +7,13 @@ import { changeProposalOperationSchema, type ChangeProposalOperation } from '#co
 import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { formatPrice } from '../../../lib/format.js';
-import { ApprovalSummary, type ApprovalFacts } from './ProposalApproval.js';
+import { ApprovalImagesNote, ApprovalSummary, type ApprovalFacts } from './ProposalApproval.js';
 
 const t = en.changeProposals;
 
 const normalized = (text: string): string => text.replace(/\s+/gu, ' ');
 
-const product = { target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
+const product = { id: 'proposal-mug', target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
 
 const samples: Record<ChangeProposalOperation, ApprovalFacts> = {
   'product.create': {
@@ -143,5 +144,59 @@ describe('the approval confirmation', () => {
     expect(summaryOf(samples['price.create'])).toBe(normalized(
       `${t.approvePriceCreate({ target: 'Mug', price: t.priceOneTime({ price: formatPrice(2500, 'EUR', 'en') }) })} ${t.approveNothingElse}`,
     ));
+  });
+});
+
+const coverPath = (seed: string, extension = 'png'): string => `/api/public/assets/product-cover/${seed.repeat(64)}.${extension}`;
+
+const coverChange = (id: string, after: string, before: string | null = null): ApprovalFacts => ({
+  ...samples['product.update'],
+  id,
+  input: { id: 'product-mug', coverUrl: after },
+  effect: { coverUrl: { before, after } },
+});
+
+const dialogText = (element: ReactElement): string => {
+  const { container, unmount } = render(<div>{element}</div>);
+  const text = normalized(container.textContent ?? '');
+  unmount();
+  return text;
+};
+
+describe('the approval confirmation of a proposed image', () => {
+  it('adds that approving makes the proposed image public, after the sentence that names every effect row', () => {
+    const proposal = coverChange('proposal-cover', coverPath('a'));
+    expect(summaryOf(proposal)).toBe(`${t.approveFieldsChange({ target: 'Mug', count: 1 })} ${t.approveNothingElse}`);
+    render(<ApprovalSummary proposal={proposal} />);
+    expect(screen.getByTestId('proposal-approve-images')).toHaveTextContent(t.approveImagesPublic({ count: 1 }));
+    expect(t.approveImagesPublic({ count: 1 })).toContain('public at the address shown');
+    expect(t.approveImagesPublic({ count: 1 })).toContain('If it no longer exists, nothing is changed.');
+  });
+
+  it('says nothing about publication when no proposed image awaits approval', () => {
+    render(<ApprovalSummary proposal={coverChange('proposal-public-cover', '/api/public/assets/product-cover/field-guide.webp')} />);
+    render(<ApprovalSummary proposal={samples['product.update']} />);
+    expect(screen.queryByTestId('proposal-approve-images')).toBeNull();
+  });
+
+  it('counts each distinct proposed image once across a group and says none of the changes applies when one is gone', () => {
+    const items = [
+      coverChange('proposal-first', coverPath('a')),
+      coverChange('proposal-second', coverPath('b')),
+      coverChange('proposal-third', coverPath('a')),
+      samples['product.publish'],
+    ];
+    expect(dialogText(<ApprovalImagesNote proposals={items} group />)).toBe(t.approveGroupImagesPublic({ count: 2 }));
+    expect(t.approveGroupImagesPublic({ count: 2 })).toContain('If one of them no longer exists, none of the changes is applied.');
+    expect(dialogText(<ApprovalImagesNote proposals={[samples['product.publish']]} group />)).toBe('');
+  });
+
+  it('words the publication sentence with the Polish plural forms', () => {
+    const polish = pl.changeProposals;
+    expect(polish.approveImagesPublic({ count: 1 })).toMatch(/^Po zatwierdzeniu proponowany obrazek stanie /u);
+    expect(polish.approveGroupImagesPublic({ count: 3 })).toContain('3 proponowane obrazki stan');
+    expect(polish.approveGroupImagesPublic({ count: 5 })).toContain('5 proponowanych obrazk');
+    expect(polish.approveGroupImagesPublic({ count: 22 })).toContain('22 proponowane obrazki');
+    expect(polish.approveGroupImagesPublic({ count: 12 })).toContain('12 proponowanych obrazk');
   });
 });

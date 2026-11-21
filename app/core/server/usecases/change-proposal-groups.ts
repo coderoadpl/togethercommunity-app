@@ -280,9 +280,13 @@ export const submitGroupedChangeProposal = async (
   const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, deps.clock);
   switch (added.kind) {
     case 'created':
-      if (added.proposal.groupPosition === 1) {
-        await notifyOwnersOfProposal(deps, { tenantId, keyId, keyName: proposingKeyRow.name, group: { id: groupId, title: current.group.title } });
-      }
+      await notifyOwnersOfProposal(deps, {
+        tenantId,
+        keyId,
+        keyName: proposingKeyRow.name,
+        group: { id: groupId, title: current.group.title },
+        notice: added.proposal.groupPosition === 1 ? 'raise' : 'signal',
+      });
       return ok(keyReceipt({ group: current.group, items: [...earlier, added.proposal] }, now));
     case 'cap_exceeded':
       return err(changeProposalCapExceeded(added.cap));

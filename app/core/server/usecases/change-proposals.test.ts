@@ -920,7 +920,13 @@ describe('the owner notification of a submitted proposal', () => {
       { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
     ]);
     expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
-    expect(h.notifications.published).toHaveLength(2);
+    const rowIds = h.notifications.rows.map((row) => row.id);
+    expect(h.notifications.published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : event.kind)).toEqual([
+      [OWNER, rowIds[0], 'change-proposal'],
+      ['user-second-owner', rowIds[1], 'change-proposal'],
+      [OWNER, rowIds[0], 'change-proposal'],
+      ['user-second-owner', rowIds[1], 'change-proposal'],
+    ]);
 
     const unread = h.notifications.rows[0];
     if (unread === undefined) throw new Error('notification missing');
@@ -932,7 +938,8 @@ describe('the owner notification of a submitted proposal', () => {
     expect(h.notifications.rows).toHaveLength(2);
     expect(h.notifications.rows[0]).toMatchObject({ readAt: null, createdAt: '2026-03-01T11:00:00.000Z' });
     expect(h.notifications.rows[0]?.id).not.toBe(first.id);
-    expect(h.notifications.published.map((event) => event.recipientUserId)).toEqual([OWNER, 'user-second-owner', OWNER]);
+    expect(h.notifications.published.map((event) => event.recipientUserId)).toEqual([OWNER, 'user-second-owner', OWNER, 'user-second-owner', OWNER, 'user-second-owner']);
+    expect(h.notifications.published.at(-2)).toMatchObject({ notificationId: h.notifications.rows[0]?.id, createdAt: '2026-03-01T11:00:00.000Z' });
   });
 
   it('tells nobody about a refused submission', async () => {
@@ -944,7 +951,7 @@ describe('the owner notification of a submitted proposal', () => {
   it('stores the proposal and logs when the notification cannot be written', async () => {
     const h = harness([shopKey()], twoOwners);
     const logger = { error: vi.fn<(message: string) => void>() };
-    const failing = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { raiseForOwners: () => Promise.reject(new Error('lock timeout')) } };
+    const failing = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: () => Promise.reject(new Error('lock timeout')) } };
 
     const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Logged' } }, failing);
 
@@ -956,13 +963,29 @@ describe('the owner notification of a submitted proposal', () => {
   it('stores the proposal, publishes nothing and logs when the notification runs out of time', async () => {
     const h = harness([shopKey()], twoOwners);
     const logger = { error: vi.fn<(message: string) => void>() };
-    const timedOut = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { raiseForOwners: async () => ({ kind: 'busy' as const }) } };
+    const timedOut = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: async () => ({ kind: 'busy' as const }) } };
 
     const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Timed out' } }, timedOut);
 
     expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
     expect(h.notifications.published).toEqual([]);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification timed out tenant=tenant-acme'));
+  });
+
+  it('answers the stored proposal once the notification passes its deadline, and logs a failure that comes later', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    let failLate: (cause: Error) => void = () => undefined;
+    const held = new Promise<never>((_resolve, reject) => { failLate = reject; });
+    const slow = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 5, raiseForOwners: () => held } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Held' } }, slow);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.notifications.published).toEqual([]);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification passed its 5 ms deadline tenant=tenant-acme'));
+    failLate(new Error('connection lost'));
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('owner notification failed tenant=tenant-acme')));
   });
 });
 

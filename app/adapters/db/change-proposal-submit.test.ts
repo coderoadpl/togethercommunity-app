@@ -1,5 +1,6 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
@@ -248,7 +249,7 @@ describe('the owner notification of a submitted proposal over the database', () 
     ]);
   });
 
-  it('raises one unread notification per owner and key, re-raises it once read, and publishes only what it wrote', async () => {
+  it('raises one unread notification per owner and key, re-raises it once read, and signals every owner for every proposal', async () => {
     await database.db.delete(notifications);
     published.length = 0;
     await propose('First rename');
@@ -260,7 +261,13 @@ describe('the owner notification of a submitted proposal over the database', () 
       [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
     ]);
     expect(unread[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '' });
-    expect(published.map((event) => event.kind === 'notification' ? event.notificationKind : null)).toEqual(['change-proposal', 'change-proposal']);
+    const unreadIds = new Map(unread.map((row) => [row.recipientUserId, row.id]));
+    expect(published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : null)).toEqual([
+      [OWNER, unreadIds.get(OWNER), 'change-proposal'],
+      [OTHER_OWNER, unreadIds.get(OTHER_OWNER), 'change-proposal'],
+      [OWNER, unreadIds.get(OWNER), 'change-proposal'],
+      [OTHER_OWNER, unreadIds.get(OTHER_OWNER), 'change-proposal'],
+    ]);
 
     await database.db.update(notifications).set({ readAt: NOW }).where(eq(notifications.recipientUserId, OWNER));
     await propose('Third rename');
@@ -271,8 +278,11 @@ describe('the owner notification of a submitted proposal over the database', () 
     const rearmed = after.find((row) => row.recipientUserId === OWNER);
     expect(rearmed?.id).not.toBe(unread.find((row) => row.recipientUserId === OWNER)?.id);
     expect(after.find((row) => row.recipientUserId === OTHER_OWNER)?.id).toBe(unread.find((row) => row.recipientUserId === OTHER_OWNER)?.id);
-    expect(published).toHaveLength(3);
-    expect(published.at(-1)).toMatchObject({ kind: 'notification', recipientUserId: OWNER, notificationId: rearmed?.id, notificationKind: 'change-proposal' });
+    expect(published).toHaveLength(6);
+    expect(published.slice(-2)).toEqual([
+      expect.objectContaining({ kind: 'notification', recipientUserId: OWNER, notificationId: rearmed?.id, notificationKind: 'change-proposal' }),
+      expect.objectContaining({ kind: 'notification', recipientUserId: OTHER_OWNER, notificationId: unreadIds.get(OTHER_OWNER), notificationKind: 'change-proposal' }),
+    ]);
   });
 
   it('never lets a late mark-read of an earlier occurrence clear the re-armed one', async () => {
@@ -291,6 +301,11 @@ describe('the owner notification of a submitted proposal over the database', () 
     expect(current?.id).not.toBe(earlier.id);
   });
 
+  const waitersInThisDatabase = async (): Promise<number> => {
+    const counted = await database.db.execute(sql`select count(*)::int as waiting from pg_locks where not granted and database = (select oid from pg_database where datname = current_database())`);
+    return z.object({ waiting: z.number() }).parse(counted.rows[0]).waiting;
+  };
+
   it('answers the receipt within the notification bound while another transaction holds the notification row', async () => {
     await database.db.delete(notifications);
     await propose('Before the lock');
@@ -304,12 +319,14 @@ describe('the owner notification of a submitted proposal over the database', () 
         const submitted = await submitChangeProposal(
           keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'While locked' } }, deps(database.db, logger, { notificationMs: 300 }),
         );
-        return { result: submitted, elapsedMs: performance.now() - started };
+        const elapsed = performance.now() - started;
+        await vi.waitFor(async () => expect(await waitersInThisDatabase()).toBe(0), { timeout: 5_000, interval: 50 });
+        return { result: submitted, elapsedMs: elapsed };
       });
 
       expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
-      expect(elapsedMs).toBeLessThan(2_000);
-      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification timed out'));
+      expect(elapsedMs).toBeLessThan(1_000);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/\[change-proposal\] owner notification (timed out|passed its 300 ms deadline)/u));
       if (!result.ok) return;
       expect(await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id))).toHaveLength(1);
       expect((await ownerNotifications()).find((row) => row.recipientUserId === OWNER)?.readAt).toBe(NOW);
@@ -326,7 +343,7 @@ describe('the owner notification of a submitted proposal over the database', () 
 
   it('never fails the submission when the notification cannot be written, and logs it', async () => {
     const logger = { error: vi.fn<(message: string) => void>() };
-    const failing = { ...deps(database.db, logger), changeProposalOwnerNotifier: { raiseForOwners: () => Promise.reject(new Error('notifications table locked')) } };
+    const failing = { ...deps(database.db, logger), changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: () => Promise.reject(new Error('notifications table locked')) } };
     const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Logged rename' } }, failing);
 
     expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });

@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { notificationSchema, type Notification, type StaffRole } from '#core/domain/index.js';
-import type { ChangeProposalOwnerNotifier, ChangeProposalPeopleReader, ChangeProposalWrite } from '#core/server/index.js';
+import type { ChangeProposalOwnerNotice, ChangeProposalOwnerNotifier, ChangeProposalPeopleReader, ChangeProposalWrite } from '#core/server/index.js';
 
 import { boundLockWait, boundStatementTime, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
@@ -57,36 +57,47 @@ const effectiveOwners = async (executor: Db, tenantId: string): Promise<string[]
   ) === 'owner');
 };
 
-const raiseUnread = async (executor: Db, tenantId: string, notification: Notification): Promise<Notification | null> => {
-  if (notification.sourceKey === null) throw new Error('An unread notification is raised only under a source key');
-  const [row] = await executor
-    .insert(notifications)
-    .values({ ...notification, tenantId })
-    .onConflictDoUpdate({
-      target: [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey],
-      targetWhere: sql`${notifications.sourceKey} is not null`,
-      set: {
-        id: notification.id,
-        kind: notification.kind,
-        payload: notification.payload,
-        readAt: null,
-        createdAt: notification.createdAt,
-      },
-      setWhere: sql`${notifications.readAt} is not null`,
-    })
-    .returning();
-  return row === undefined ? null : notificationSchema.parse(row);
+const SOURCE_KEY_TARGET = [notifications.tenantId, notifications.recipientUserId, notifications.sourceKey];
+
+const insertOrRaise = (executor: Db, tenantId: string, notification: Notification, notice: ChangeProposalOwnerNotice) => {
+  const insert = executor.insert(notifications).values({ ...notification, tenantId });
+  const sourceKeyIndex = sql`${notifications.sourceKey} is not null`;
+  return notice === 'signal'
+    ? insert.onConflictDoNothing({ target: SOURCE_KEY_TARGET, where: sourceKeyIndex }).returning()
+    : insert.onConflictDoUpdate({
+        target: SOURCE_KEY_TARGET,
+        targetWhere: sourceKeyIndex,
+        set: { id: notification.id, kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt },
+        setWhere: sql`${notifications.readAt} is not null`,
+      }).returning();
+};
+
+const ownerNotice = async (executor: Db, tenantId: string, notification: Notification, notice: ChangeProposalOwnerNotice): Promise<Notification | null> => {
+  const { sourceKey } = notification;
+  if (sourceKey === null) throw new Error('An owner notification is raised only under a source key');
+  const [written] = await insertOrRaise(executor, tenantId, notification, notice);
+  if (written !== undefined) return notificationSchema.parse(written);
+  const [kept] = await executor
+    .select()
+    .from(notifications)
+    .where(and(
+      eq(notifications.tenantId, tenantId),
+      eq(notifications.recipientUserId, notification.recipientUserId),
+      eq(notifications.sourceKey, sourceKey),
+    ));
+  return kept === undefined ? null : notificationSchema.parse(kept);
 };
 
 export const createChangeProposalOwnerNotifier = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalOwnerNotifier => {
   const bounds = changeProposalBounds(options);
   return {
-    raiseForOwners: (tenantId, build) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<Notification[]>> => {
+    deadlineMs: bounds.notificationMs,
+    raiseForOwners: (tenantId, build, notice) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<Notification[]>> => {
       await boundLockWait(tx, { lockWaitMs: bounds.notificationMs });
       await boundStatementTime(tx, bounds.notificationMs);
       const raised: Notification[] = [];
       for (const owner of await effectiveOwners(tx, tenantId)) {
-        const notification = await raiseUnread(tx, tenantId, build(owner));
+        const notification = await ownerNotice(tx, tenantId, build(owner), notice);
         if (notification !== null) raised.push(notification);
       }
       return { kind: 'written', value: raised };

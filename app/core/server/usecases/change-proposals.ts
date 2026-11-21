@@ -179,7 +179,7 @@ export const submitChangeProposal = async (
   if (created.kind === 'cap_exceeded') return err(changeProposalCapExceeded(created.cap));
   if (created.kind === 'key_inactive') return err(forbidden('This shop management key can no longer propose changes'));
   if (created.kind === 'busy') return err(changeProposalsBusy());
-  await notifyOwnersOfProposal(deps, { tenantId, keyId, keyName: proposingKeyRow.name, group: null });
+  await notifyOwnersOfProposal(deps, { tenantId, keyId, keyName: proposingKeyRow.name, group: null, notice: 'raise' });
   return ok(toChangeProposalKeyReceipt(created.proposal, now));
 };
 

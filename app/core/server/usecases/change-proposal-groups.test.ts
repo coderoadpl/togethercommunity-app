@@ -999,7 +999,7 @@ describe('sales links created earlier in the same group', () => {
 });
 
 describe('the owner notification of a group', () => {
-  it('raises one notification for the group when its first item joins, none for later items or while it is unread', async () => {
+  it('raises one notification for the group when its first item joins and signals every owner for every item', async () => {
     const h = harness();
     const { groupId } = await launchChain(h);
 
@@ -1007,15 +1007,21 @@ describe('the owner notification of a group', () => {
       { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, contextId: groupId, snippet: 'Spring launch' },
     ]);
-    expect(h.notifications.published).toHaveLength(2);
+    const rowIds = new Map(h.notifications.rows.map((row) => [row.recipientUserId, row.id]));
+    expect(h.notifications.published).toHaveLength(10);
+    expect(h.notifications.published.every((event) => event.kind === 'notification'
+      && event.notificationKind === 'change-proposal' && event.notificationId === rowIds.get(event.recipientUserId))).toBe(true);
 
     for (const row of h.notifications.rows) row.readAt = NOW;
     await h.add(groupId, 'stock.adjust', { productId: 'product-live', delta: 1, reason: 'Count' });
     expect(h.notifications.rows.every((row) => row.readAt === NOW)).toBe(true);
+    expect(h.notifications.published).toHaveLength(12);
+    expect(h.notifications.published.slice(-2).map((event) => [event.recipientUserId, event.kind === 'notification' ? event.notificationId : null]))
+      .toEqual([[ISSUER, rowIds.get(ISSUER)], [OWNER, rowIds.get(OWNER)]]);
 
     expect((await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Big mug' } }, h.deps)).ok).toBe(true);
     expect(h.notifications.rows.map((row) => [row.readAt, row.payload.contextId])).toEqual([[null, null], [null, null]]);
-    expect(h.notifications.published).toHaveLength(4);
+    expect(h.notifications.published).toHaveLength(14);
   });
 
   it('keeps one notification per key, so a second key adds its own', async () => {

@@ -79,14 +79,14 @@ describe('the change proposal owner notifier', () => {
 
   it('rings the direct owners of a workspace and no admin', async () => {
     let sequence = 0;
-    const raised = await createChangeProposalOwnerNotifier(db).raiseForOwners(DIRECT, (userId) => notification(DIRECT, userId, `direct-${String(++sequence)}`));
+    const raised = await createChangeProposalOwnerNotifier(db).raiseForOwners(DIRECT, (userId) => notification(DIRECT, userId, `direct-${String(++sequence)}`), 'raise');
     expect(raised).toMatchObject({ kind: 'written', value: [{ recipientUserId: 'direct-owner' }] });
     expect(await recipients(DIRECT)).toEqual(['direct-owner']);
   });
 
   it('rings the owners an active organisation derives for a managed workspace, a higher derived role over a direct admin row included', async () => {
     let sequence = 0;
-    const raised = await createChangeProposalOwnerNotifier(db).raiseForOwners(MANAGED, (userId) => notification(MANAGED, userId, `managed-${String(++sequence)}`));
+    const raised = await createChangeProposalOwnerNotifier(db).raiseForOwners(MANAGED, (userId) => notification(MANAGED, userId, `managed-${String(++sequence)}`), 'raise');
     expect(raised.kind === 'written' ? raised.value.map((row) => row.recipientUserId) : raised.kind).toEqual(['org-owner', 'org-owner-direct-admin']);
     expect(await recipients(MANAGED)).toEqual(['org-owner', 'org-owner-direct-admin']);
   });
@@ -95,11 +95,40 @@ describe('the change proposal owner notifier', () => {
     await db.delete(schema.notifications).where(eq(schema.notifications.tenantId, MANAGED));
     await db.update(schema.organizations).set({ status: 'suspended' }).where(eq(schema.organizations.id, ORGANIZATION));
     try {
-      expect(await createChangeProposalOwnerNotifier(db).raiseForOwners(MANAGED, (userId) => notification(MANAGED, userId, `suspended-${userId}`)))
+      expect(await createChangeProposalOwnerNotifier(db).raiseForOwners(MANAGED, (userId) => notification(MANAGED, userId, `suspended-${userId}`), 'raise'))
         .toEqual({ kind: 'written', value: [] });
     } finally {
       await db.update(schema.organizations).set({ status: 'active' }).where(eq(schema.organizations.id, ORGANIZATION));
     }
+  });
+});
+
+describe('the owner notice modes', () => {
+  const notice = async (id: string, mode: 'raise' | 'signal') => {
+    const answered = await createChangeProposalOwnerNotifier(db).raiseForOwners(DIRECT, (userId) => notification(DIRECT, userId, id), mode);
+    if (answered.kind !== 'written') throw new Error('the notifier ran out of time');
+    return answered.value.map(({ id: answeredId, readAt }) => ({ id: answeredId, read: readAt !== null }));
+  };
+  const stored = async () =>
+    (await db.select().from(schema.notifications).where(eq(schema.notifications.tenantId, DIRECT))).map(({ id, readAt }) => ({ id, read: readAt !== null }));
+
+  it('answers the notification an owner already has instead of writing a second one, and makes a read one unread only on raise', async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.tenantId, DIRECT));
+    expect(await notice('mode-1', 'signal')).toEqual([{ id: 'mode-1', read: false }]);
+    expect(await notice('mode-2', 'raise')).toEqual([{ id: 'mode-1', read: false }]);
+    expect(await notice('mode-3', 'signal')).toEqual([{ id: 'mode-1', read: false }]);
+    expect(await stored()).toEqual([{ id: 'mode-1', read: false }]);
+
+    await db.update(schema.notifications).set({ readAt: NOW }).where(eq(schema.notifications.tenantId, DIRECT));
+    expect(await notice('mode-4', 'signal')).toEqual([{ id: 'mode-1', read: true }]);
+    expect(await stored()).toEqual([{ id: 'mode-1', read: true }]);
+    expect(await notice('mode-5', 'raise')).toEqual([{ id: 'mode-5', read: false }]);
+    expect(await stored()).toEqual([{ id: 'mode-5', read: false }]);
+  });
+
+  it('carries its bound as the deadline the submission waits for it', () => {
+    expect(createChangeProposalOwnerNotifier(db, { notificationMs: 250 }).deadlineMs).toBe(250);
+    expect(createChangeProposalOwnerNotifier(db).deadlineMs).toBe(500);
   });
 });
 
@@ -114,6 +143,37 @@ describe('the change proposal people reader', () => {
       { userId: 'org-owner-direct-admin', email: 'org-owner-direct-admin@example.test', emailVerified: true, staffRole: 'owner' },
       { userId: 'outsider', email: 'outsider@example.test', emailVerified: true, staffRole: null },
     ]);
+  });
+});
+
+describe('a person whose grant is in another workspace', () => {
+  it('has no grant and no e-mail on the owner view of this workspace', async () => {
+    const people = await createChangeProposalPeopleReader(db).read(MANAGED, ['direct-owner', 'direct-admin']);
+    expect(people.map(({ userId, staffRole }) => ({ userId, staffRole })).toSorted((left, right) => left.userId.localeCompare(right.userId))).toEqual([
+      { userId: 'direct-admin', staffRole: null },
+      { userId: 'direct-owner', staffRole: null },
+    ]);
+
+    await db.insert(schema.changeProposals).values({
+      id: 'proposal-foreign-grant', tenantId: MANAGED, operation: 'product.update', input: { id: 'product-gone', title: 'Renamed' }, effect: {},
+      targetKind: 'product', targetId: 'product-gone', status: 'rejected', proposedByKeyId: 'key-people', proposedByKeyName: 'Catalogue agent',
+      proposedByIssuerUserId: 'direct-owner', createdAt: NOW, expiresAt: '2026-03-31T10:00:00.000Z', decidedByUserId: 'direct-admin', decidedAt: NOW,
+    });
+    const listed = await listChangeProposals(owner(MANAGED, 'org-owner'), { limit: 10 }, {
+      changeProposals: createChangeProposalRepository(db),
+      changeProposalGroups: createChangeProposalGroupRepository(db),
+      shopManagementKeys: createShopManagementKeyRepository(db),
+      changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+      changeProposalPeople: createChangeProposalPeopleReader(db),
+      clock: { nowIso: () => NOW },
+    });
+
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value.proposals.find(({ id }) => id === 'proposal-foreign-grant')).toMatchObject({
+      proposedBy: { issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true },
+      decidedByEmail: null,
+      decidedByIsFormerTeamMember: true,
+    });
   });
 });
 

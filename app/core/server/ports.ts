@@ -3135,14 +3135,23 @@ export interface ChangeProposalPeopleReader {
   read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
 }
 
+/** `raise` makes a read notification unread again; `signal` only points at the notification the owner already has. */
+export type ChangeProposalOwnerNotice = 'raise' | 'signal';
+
 export interface ChangeProposalOwnerNotifier {
+  /** How long a submission waits for `raiseForOwners` in all, the wait for a connection included. */
+  readonly deadlineMs: number;
   /**
    * In one short transaction of its own, bounded in lock wait and statement time: finds every effective owner of the
-   * workspace (direct or organisation-derived) and, per owner, inserts `build(owner)` or makes the read notification with
-   * the same source key unread again under the new id, kind, payload and time; an unread one is left alone. Answers the
-   * notifications it wrote, or busy, having written nothing, when a bound ran out.
+   * workspace (direct or organisation-derived) and answers, per owner, the notification under the source key of
+   * `build(owner)`: inserted when the owner has none; with `raise`, a read one is made unread again under the new id,
+   * kind, payload and time; any other is answered as it is. Busy, having written nothing, when a bound ran out.
    */
-  raiseForOwners(tenantId: string, build: (recipientUserId: string) => Notification): Promise<ChangeProposalWrite<Notification[]>>;
+  raiseForOwners(
+    tenantId: string,
+    build: (recipientUserId: string) => Notification,
+    notice: ChangeProposalOwnerNotice,
+  ): Promise<ChangeProposalWrite<Notification[]>>;
 }
 
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';

@@ -36,6 +36,7 @@ import type {
   ChangeProposalGroupRepository,
   ChangeProposalGroupWithItems,
   ChangeProposalListQuery,
+  ChangeProposalOwnerNotice,
   ChangeProposalOwnerNotifier,
   ChangeProposalPage,
   ChangeProposalPeopleReader,
@@ -559,6 +560,8 @@ export const changeProposalOwnerViewFakes = (
   changeProposalPeople: createChangeProposalPeopleFake(accounts),
 });
 
+const FAKE_NOTIFICATION_DEADLINE_MS = 1_000;
+
 export interface FakeUnreadNotifications {
   changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
   realtimeBus: { publish(event: RealtimeEvent): void };
@@ -569,14 +572,14 @@ export interface FakeUnreadNotifications {
 export const createUnreadNotificationsFake = (accounts: readonly FakeProposalAccount[] = []): FakeUnreadNotifications => {
   const rows: Notification[] = [];
   const published: RealtimeEvent[] = [];
-  const raiseUnread = (tenantId: string, notification: Notification): Notification | null => {
+  const ownerNotice = (tenantId: string, notification: Notification, notice: ChangeProposalOwnerNotice): Notification => {
     const existing = rows.find((row) => row.tenantId === tenantId && row.recipientUserId === notification.recipientUserId
       && row.sourceKey === notification.sourceKey);
     if (existing === undefined) {
       rows.push({ ...notification, tenantId });
       return { ...notification, tenantId };
     }
-    if (existing.readAt === null) return null;
+    if (existing.readAt === null || notice === 'signal') return { ...existing };
     Object.assign(existing, { id: notification.id, kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt });
     return { ...existing };
   };
@@ -585,11 +588,12 @@ export const createUnreadNotificationsFake = (accounts: readonly FakeProposalAcc
     published,
     realtimeBus: { publish: (event) => { published.push(event); } },
     changeProposalOwnerNotifier: {
-      raiseForOwners: async (tenantId, build) => ({
+      deadlineMs: FAKE_NOTIFICATION_DEADLINE_MS,
+      raiseForOwners: async (tenantId, build, notice) => ({
         kind: 'written',
         value: accounts
           .filter((account) => fakeStaffRole(account, tenantId) === 'owner')
-          .flatMap((account) => raiseUnread(tenantId, build(account.userId)) ?? []),
+          .map((account) => ownerNotice(tenantId, build(account.userId), notice)),
       }),
     },
   };

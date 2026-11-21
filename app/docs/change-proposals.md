@@ -333,22 +333,34 @@ proposal while it is unread adds nothing; once the owner read it, the next
 proposal makes it unread again with the new time and a new notification id.
 The new id makes every occurrence its own: a late "mark read" of the earlier
 occurrence (from another tab or device) finds no row and cannot clear the new
-one. The realtime event names the new id and the kind, and the notification
-stream's `notification` frame carries both, live and on a `Last-Event-ID`
-replay (`{"id":"…","kind":"change-proposal"}`), so the page can refresh its
-pending count on that kind alone. A group raises it when
-its first item is stored, never for later items.
+one. A group makes a read notification unread again only when its first item
+is stored, never for later items.
+
+Every stored proposal, every group item included, sends each owner a realtime
+event of kind `change-proposal`, also when nothing was written because the
+owner's notification for that key is still unread (or, for a later group item,
+already read): the event then names that existing notification, which stays as
+it is. So an open panel refreshes its badge, its list and a group card for
+every new proposal without a second unread notification. The notification
+stream's `notification` frame carries the id and the kind, live and on a
+`Last-Event-ID` replay (`{"id":"…","kind":"change-proposal"}`), so the page
+can refresh its pending count on that kind alone.
 
 It is written right after the proposal committed, not in the proposal
 transaction, in one short transaction of its own that looks up the owners and
-writes their notifications. That transaction keeps a transaction-local
-`lock_timeout` and `statement_timeout` of 500 ms (the `notificationMs` bound,
-injectable like the other proposal bounds): its statements take milliseconds,
-and the key's `202` waits for it, so a notification row held by another
-transaction delays the answer by at most that bound. A bound that runs out
-rolls the notification back and is logged; a failure to write it is logged
-too. Neither ever fails or changes the submission, which always answers its
-committed receipt. No migration is needed: the kind lives in the existing text
+writes or reads their notifications. That transaction keeps a
+transaction-local `lock_timeout` and `statement_timeout` of 500 ms (the
+`notificationMs` bound, injectable like the other proposal bounds) on each of
+its statements. The key's `202` waits for the notification at most that bound
+in all, the wait for a database connection included: past it, the submission
+logs that the notification passed its deadline and answers without publishing
+anything. The notification transaction is not cancelled then; its own bounds
+end it soon after, and it may still commit, in which case the owner sees the
+notification on the next bell refresh rather than live. A bound that runs out
+inside the transaction rolls the notification back and is logged; a failure to
+write it is logged too, also when it comes after the deadline. None of these
+ever fails or changes the submission, which always answers its committed
+receipt. No migration is needed: the kind lives in the existing text
 column and the existing unique index carries the de-duplication.
 
 ## Owner panel
@@ -627,9 +639,9 @@ database detects inside the transaction is answered the same way, busy, like a
 lock wait that ran out.
 
 The owner notification that follows a stored proposal has its own, shorter
-bound (500 ms for each lock wait and statement, see
-[Owner view](#owner-view)); running out of it never answers busy, because the
-proposal is already stored.
+bound (500 ms for each lock wait and statement, and 500 ms in all for the
+submission's wait, see [Owner view](#owner-view)); running out of it never
+answers busy, because the proposal is already stored.
 
 **Statement time.** A dry run and an approval also bound the time of each
 statement with a transaction-local `statement_timeout`: 2 seconds in a dry run

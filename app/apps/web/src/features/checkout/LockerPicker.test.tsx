@@ -434,6 +434,19 @@ describe('parcel locker picker', () => {
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
   });
 
+  it('closes the typed-code field when the buyer then chooses a locker on the map', async () => {
+    serve();
+    await renderCheckout();
+    const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
+    await userEvent.click(toggle);
+    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toBeVisible();
+
+    await chooseShop();
+    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
+    expect(screen.getByRole('button', { name: en.shipping.lockerKnowCode })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+  });
+
   it('shows the chosen code in the typed field, and a typed edit replaces the chosen locker', async () => {
     serve();
     await renderCheckout();

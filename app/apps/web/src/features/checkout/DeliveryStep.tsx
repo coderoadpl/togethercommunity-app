@@ -71,6 +71,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     if (!acceptsPoint(picker)) return;
     committed.current = point.code;
     dispatch({ type: 'pickupPointSelected', point });
+    setCodeShown(false);
     pickerHistory.leave();
     sendPicker({ type: 'pointSelected' });
   };

@@ -68,6 +68,8 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'PublicRateLimitRepository.purgeExpired': 'A platform worker removes expired rate-limit windows across all tenants.',
   'SchedulerRunRepository.failStale': 'A platform worker closes stale runs across all tenants.',
   'QuarantinedImageRepository.listTenantIdsToSweep': 'The scheduled sweep discovers workspaces holding images to remove before releasing them in tenant-scoped transactions.',
+  'QuarantinedImageRepository.listTenantIdsWithUploadsBefore': 'The scheduled sweep discovers workspaces holding expired image upload records before removing them with tenant-scoped calls.',
+  'QuarantinedImageRepository.listTenantIdsWithPublicationsBefore': 'The scheduled sweep discovers workspaces holding unfinished image publication records before removing them in tenant-scoped transactions.',
   'StockRepository.releaseExpired': 'The minute tick releases expired checkout reservations across all tenants; each release runs in its own tenant-scoped transaction.',
   'SchedulerRunRepository.finalize': 'A scheduler run is a platform aggregate containing per-tenant results.',
   'SchedulerRunRepository.getWithTenants': 'Operator diagnostics read a platform run and all of its tenant results.',

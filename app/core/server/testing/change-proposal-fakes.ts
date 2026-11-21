@@ -8,6 +8,7 @@ import {
   changeProposalGroupOpen,
   changeProposalImageReferences,
   err,
+  sameProposalImage,
   QUARANTINED_IMAGE_LIMITS,
   sha256HexOfBytes,
   notFound,
@@ -25,8 +26,10 @@ import {
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
+  type ProposalImagePublication,
   type ProposalImageReference,
   type QuarantinedImageAsset,
+  type QuarantinedImageUpload,
   type SalesLink,
   type ShopManagementKey,
   type StaffRole,
@@ -184,9 +187,21 @@ const imageInLiveUse = (state: FakeCatalogState, tenantId: string, path: string)
 const sameImageRow = (row: QuarantinedImageAsset, tenantId: string, apiKeyId: string, image: ProposalImageReference): boolean =>
   row.tenantId === tenantId && row.apiKeyId === apiKeyId && row.kind === image.kind && row.digest === image.digest && row.extension === image.extension;
 
+const samePublication = (row: FakeImagePublication, tenantId: string, attemptId: string, image: ProposalImageReference): boolean =>
+  row.tenantId === tenantId && row.attemptId === attemptId && sameProposalImage(row.image, image);
+
+const removeWhere = <T>(rows: T[], matches: (row: T) => boolean): void => {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (row !== undefined && matches(row)) rows.splice(index, 1);
+  }
+};
+
+type FakeTransactionStore = Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows' | 'proposals' | 'imagePublications'>;
+
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows'>,
+  store: FakeTransactionStore,
   locks: ChangeProposalTarget[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
@@ -295,9 +310,23 @@ const catalogRepositoriesOver = (
         const row = store.imageRows.find((candidate) => sameImageRow(candidate, tenantId, apiKeyId, image));
         return row === undefined ? null : { ...row };
       },
+      inAppliedProposal: async (tenantId, path) =>
+        store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied' && JSON.stringify(proposal.input).includes(path)),
+      claimPublications: async (tenantId, attemptId, images) =>
+        images.every((image) => store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))),
+      settlePublications: async (tenantId, attemptId) => {
+        removeWhere(store.imagePublications, (row) => row.tenantId === tenantId && row.attemptId === attemptId);
+      },
+      deletePublication: async (tenantId, attemptId, image) => {
+        removeWhere(store.imagePublications, (row) => samePublication(row, tenantId, attemptId, image));
+      },
     },
   };
 };
+
+type FakeImagePublication = ProposalImagePublication & { tenantId: string };
+
+type FakeImageUpload = QuarantinedImageUpload & { tenantId: string };
 
 export interface FakeChangeProposalStore {
   repository: ChangeProposalRepository;
@@ -308,6 +337,9 @@ export interface FakeChangeProposalStore {
   groupRows: ChangeProposalGroup[];
   keys: ShopManagementKey[];
   imageRows: QuarantinedImageAsset[];
+  releasedImageRows: QuarantinedImageAsset[];
+  imageUploads: FakeImageUpload[];
+  imagePublications: FakeImagePublication[];
   seed(proposal: ChangeProposal): void;
 }
 
@@ -526,7 +558,11 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     listByProposal: async (tenantId, proposalId) =>
       eventRows.filter((event) => event.tenantId === tenantId && event.proposalId === proposalId).sort((left, right) => left.sequence - right.sequence),
   };
-  return { repository, events, groups, proposals, eventRows, groupRows, keys, imageRows, seed: (proposal) => { proposals.push({ ...proposal }); } };
+  return {
+    repository, events, groups, proposals, eventRows, groupRows, keys, imageRows,
+    releasedImageRows: [], imageUploads: [], imagePublications: [],
+    seed: (proposal) => { proposals.push({ ...proposal }); },
+  };
 };
 
 export const fakeContentHash = {
@@ -540,10 +576,11 @@ export interface FakeQuarantinedImages {
 
 export const createQuarantinedImagesFake = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'imageRows' | 'proposals' | 'keys'>,
-  limits: { assetsPerKey: number; bytesPerKey: number } = QUARANTINED_IMAGE_LIMITS,
+  store: Pick<FakeChangeProposalStore, 'imageRows' | 'releasedImageRows' | 'imageUploads' | 'imagePublications' | 'proposals' | 'keys'>,
+  limits: { assetsPerKey: number; bytesPerKey: number; uploadsPerKey?: number } = QUARANTINED_IMAGE_LIMITS,
 ): FakeQuarantinedImages => {
   const rows = store.imageRows;
+  const released = store.releasedImageRows;
   const releases: QuarantinedImageRelease[] = [];
   const keyActive = (row: QuarantinedImageAsset): boolean =>
     store.keys.some((key) => key.tenantId === row.tenantId && key.id === row.apiKeyId && key.revokedAt === null);
@@ -551,17 +588,34 @@ export const createQuarantinedImagesFake = (
   const referenced = (row: QuarantinedImageAsset, now: string): boolean => store.proposals.some((proposal) =>
     proposal.tenantId === row.tenantId && proposal.proposedByKeyId === row.apiKeyId && proposal.status === 'pending' && proposal.expiresAt > now
     && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => sameImageRow(row, row.tenantId, row.apiKeyId, image)));
+  const ofKey = (selection: Extract<QuarantinedImageRelease, { kind: 'key' }>, tenantId: string) => (row: QuarantinedImageAsset): boolean =>
+    row.tenantId === tenantId && row.apiKeyId === selection.apiKeyId
+    && (selection.images === undefined || selection.images.some((image) => sameImageRow(row, tenantId, selection.apiKeyId, image)));
+  const byAge = (left: QuarantinedImageAsset, right: QuarantinedImageAsset): number =>
+    left.createdAt.localeCompare(right.createdAt) || left.apiKeyId.localeCompare(right.apiKeyId) || left.digest.localeCompare(right.digest);
   const repository: QuarantinedImageRepository = {
     inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
-    insert: async (tenantId, asset) => {
+    insert: async (tenantId, asset, storeObject) => {
       const existing = rows.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
-      if (existing !== undefined) return { kind: 'existing', asset: { ...existing } };
-      const ofKey = rows.filter((row) => row.tenantId === tenantId && row.apiKeyId === asset.apiKeyId);
-      if (ofKey.length >= limits.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
-      if (ofKey.reduce((total, row) => total + row.sizeBytes, 0) + asset.sizeBytes > limits.bytesPerKey) {
+      if (existing !== undefined) {
+        const stored = await storeObject();
+        return stored.ok ? { kind: 'existing', asset: { ...existing } } : { kind: 'store_failed', error: stored.error };
+      }
+      const keyRows = rows.filter((row) => row.tenantId === tenantId && row.apiKeyId === asset.apiKeyId);
+      if (keyRows.length >= limits.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
+      if (keyRows.reduce((total, row) => total + row.sizeBytes, 0) + asset.sizeBytes > limits.bytesPerKey) {
         return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
       }
-      rows.push({ ...asset });
+      const revived = released.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
+      if (revived !== undefined) released.splice(released.indexOf(revived), 1);
+      const row = { ...asset };
+      rows.push(row);
+      const stored = await storeObject();
+      if (!stored.ok) {
+        rows.splice(rows.indexOf(row), 1);
+        if (revived !== undefined) released.push(revived);
+        return { kind: 'store_failed', error: stored.error };
+      }
       return { kind: 'stored', asset: { ...asset } };
     },
     find: async (tenantId, apiKeyId, image) => {
@@ -570,17 +624,62 @@ export const createQuarantinedImagesFake = (
     },
     release: async (tenantId, selection, now) => {
       releases.push(selection);
-      const selected = rows.filter((row) => row.tenantId === tenantId && (selection.kind === 'sweep'
-        ? sweepable(row, selection.createdBefore)
-        : row.apiKeyId === selection.apiKeyId && (selection.images === undefined
-          || selection.images.some((image) => sameImageRow(row, tenantId, selection.apiKeyId, image)))));
-      const candidates = selection.kind === 'sweep' ? selected.slice(0, selection.limit) : selected;
-      const released = candidates.filter((row) => !referenced(row, now));
-      for (const row of released) rows.splice(rows.indexOf(row), 1);
-      return { kind: 'written', value: released.map((row) => ({ ...row })) };
+      const earlier = released.filter(selection.kind === 'sweep' ? (row) => row.tenantId === tenantId : ofKey(selection, tenantId));
+      const fresh = rows.filter(selection.kind === 'sweep'
+        ? (row) => row.tenantId === tenantId && sweepable(row, selection.createdBefore) && !referenced(row, now)
+        : ofKey(selection, tenantId));
+      const candidates = [...earlier, ...fresh].sort(byAge);
+      const selected = selection.kind === 'sweep' ? candidates.slice(0, selection.limit) : candidates;
+      const answered: QuarantinedImageAsset[] = [];
+      for (const row of selected) {
+        if (earlier.includes(row)) answered.push({ ...row });
+        else if (!referenced(row, now)) {
+          rows.splice(rows.indexOf(row), 1);
+          released.push(row);
+          answered.push({ ...row });
+        }
+      }
+      return { kind: 'written', value: answered };
     },
-    listTenantIdsToSweep: async (createdBefore, limit) =>
-      [...new Set(rows.filter((row) => sweepable(row, createdBefore)).map((row) => row.tenantId))].sort().slice(0, limit),
+    finishRelease: async (tenantId, asset, removeObject) => {
+      const row = released.find((candidate) => sameImageRow(candidate, tenantId, asset.apiKeyId, asset));
+      if (row === undefined) return rows.some((candidate) => sameImageRow(candidate, tenantId, asset.apiKeyId, asset)) ? 'revived' : 'gone';
+      if (!await removeObject()) return 'failed';
+      released.splice(released.indexOf(row), 1);
+      return 'removed';
+    },
+    listTenantIdsToSweep: async (createdBefore, now, limit) => [...new Set([
+      ...released.map((row) => row.tenantId),
+      ...rows.filter((row) => sweepable(row, createdBefore) && !referenced(row, now)).map((row) => row.tenantId),
+    ])].sort().slice(0, limit),
+    recordUpload: async (tenantId, upload, countedAfter) => {
+      const recent = store.imageUploads.filter((row) => row.tenantId === tenantId && row.apiKeyId === upload.apiKeyId && row.createdAt > countedAfter);
+      if (recent.length >= (limits.uploadsPerKey ?? QUARANTINED_IMAGE_LIMITS.uploadsPerKey)) return { kind: 'cap_exceeded', cap: 'key_image_uploads' };
+      store.imageUploads.push({ tenantId, ...upload });
+      return { kind: 'recorded' };
+    },
+    listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
+      [...new Set(store.imageUploads.filter((row) => row.createdAt < createdBefore).map((row) => row.tenantId))].sort().slice(0, limit),
+    listUploadsBefore: async (tenantId, createdBefore, limit) => store.imageUploads
+      .filter((row) => row.tenantId === tenantId && row.createdAt < createdBefore)
+      .slice(0, limit)
+      .map(({ apiKeyId, objectKey, createdAt }) => ({ apiKeyId, objectKey, createdAt })),
+    deleteUpload: async (tenantId, objectKey) => {
+      removeWhere(store.imageUploads, (row) => row.tenantId === tenantId && row.objectKey === objectKey);
+    },
+    recordPublications: async (tenantId, attemptId, images, startedAt) => {
+      for (const image of images) {
+        if (!store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))) {
+          store.imagePublications.push({ tenantId, attemptId, image: { ...image }, startedAt });
+        }
+      }
+    },
+    listTenantIdsWithPublicationsBefore: async (startedBefore, limit) =>
+      [...new Set(store.imagePublications.filter((row) => row.startedAt < startedBefore).map((row) => row.tenantId))].sort().slice(0, limit),
+    listPublicationsBefore: async (tenantId, startedBefore, limit) => store.imagePublications
+      .filter((row) => row.tenantId === tenantId && row.startedAt < startedBefore)
+      .slice(0, limit)
+      .map(({ attemptId, image, startedAt }) => ({ attemptId, image: { ...image }, startedAt })),
   };
   return { repository, releases };
 };
@@ -707,7 +806,7 @@ const noSecrets: TenantSecretResolver = { resolve: async (_tenantId, key) => err
 
 export const createChangeProposalTransactionFake = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows'>,
+  store: FakeTransactionStore,
   secretResolver: TenantSecretResolver = noSecrets,
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];
@@ -740,8 +839,14 @@ export const createChangeProposalTransactionFake = (
       calls.push('run');
       const effects: Array<() => Promise<void>> = [];
       const working = structuredClone(state);
-      const result = await operation(scopeOver(working, effects));
+      const publications = [...store.imagePublications];
+      const rollBackPublications = () => { store.imagePublications.splice(0, store.imagePublications.length, ...publications); };
+      const result = await operation(scopeOver(working, effects)).catch((cause: unknown) => {
+        rollBackPublications();
+        throw cause;
+      });
       if (!result.ok) {
+        rollBackPublications();
         dropped(effects.length);
         return result;
       }

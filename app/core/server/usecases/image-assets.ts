@@ -3,6 +3,7 @@ import {
   IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   IMAGE_ASSET_EXTENSION_BY_CONTENT_TYPE,
   IMAGE_ASSET_MAX_BYTES,
+  IMAGE_ASSET_UPLOAD_TTL_SECONDS,
   err,
   imageAssetKindSchema,
   imageAssetContentTypesFor,
@@ -38,7 +39,6 @@ const brandingAssetGrant: ShopManagementKeySettingsGrant = {
   fields: ['logoUrl', 'logoDarkUrl', 'faviconUrl', 'ogImageUrl'],
 };
 
-const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
 
 const imageAssetFilePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|svg|ico)$/;
@@ -117,11 +117,17 @@ export interface ImageAssetUploadStart {
   expiresAt: string;
 }
 
+interface CandidateUploadOptions {
+  signContentLength?: boolean;
+  reserve?: (tenantId: string, key: string) => Promise<Result<void, AppError>>;
+}
+
 export const beginCandidateUpload = async (
   tenantId: string,
   allowedKinds: readonly ImageAssetKind[],
   input: ImageAssetUploadInput,
   deps: ImageAssetDeps,
+  options: CandidateUploadOptions = {},
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   const parsed = imageAssetUploadInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid image asset', parsed.error.flatten()));
@@ -134,12 +140,17 @@ export const beginCandidateUpload = async (
   const extension = IMAGE_ASSET_EXTENSION_BY_CONTENT_TYPE[parsed.data.contentType];
   const file = `${deps.ids.nextId()}.${extension}`;
   const key = `image-asset-candidates/${tenantId}/${parsed.data.kind}/${file}`;
+  if (options.reserve !== undefined) {
+    const reserved = await options.reserve(tenantId, key);
+    if (!reserved.ok) return reserved;
+  }
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, key).toString(),
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
     expiresInSeconds: IMAGE_ASSET_UPLOAD_TTL_SECONDS,
+    ...(options.signContentLength === true ? { contentLength: parsed.data.sizeBytes } : {}),
   });
   if (!signed.ok) return signed;
   const createdAt = deps.clock.nowIso();

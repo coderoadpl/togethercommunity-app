@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { changeProposalIdentifierSchema, type ChangeProposalEffect, type ChangeProposalInput } from './change-proposal.js';
 import { appError, validation, type AppError } from './errors.js';
-import { IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION, IMAGE_ASSET_MAX_BYTES, imageAssetContentTypesFor } from './image-asset.js';
+import { IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION, IMAGE_ASSET_MAX_BYTES, IMAGE_ASSET_UPLOAD_TTL_SECONDS, imageAssetContentTypesFor } from './image-asset.js';
 
 export const proposalImageKindSchema = z.enum(['product-cover', 'logo', 'logo-dark', 'favicon', 'share-image']);
 
@@ -24,6 +24,11 @@ export const QUARANTINED_IMAGE_LIMITS = {
   unattachedMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
   sweepTenantsPerRun: 50,
   sweepAssetsPerTenant: 200,
+  uploadsPerKey: 60,
+  uploadSweepAfterMs: (IMAGE_ASSET_UPLOAD_TTL_SECONDS + 5 * 60) * 1000,
+  sweepUploadsPerTenant: 200,
+  publicationSweepAfterMs: 10 * 60 * 1000,
+  sweepPublicationsPerTenant: 20,
 } as const;
 
 export const PROPOSAL_IMAGE_QUARANTINE_PREFIX = 'image-asset-quarantine';
@@ -46,6 +51,22 @@ export const quarantinedImageAssetSchema = z.object({
 
 export type QuarantinedImageAsset = z.output<typeof quarantinedImageAssetSchema>;
 
+export const quarantinedImageUploadSchema = z.object({
+  apiKeyId: z.string().min(1),
+  objectKey: z.string().startsWith('image-asset-candidates/'),
+  createdAt: z.string().datetime({ precision: 3 }),
+}).strict();
+
+export type QuarantinedImageUpload = z.output<typeof quarantinedImageUploadSchema>;
+
+export const proposalImagePublicationSchema = z.object({
+  attemptId: z.string().min(1),
+  image: z.object({ kind: proposalImageKindSchema, digest: proposalImageDigestSchema, extension: proposalImageExtensionSchema }).strict(),
+  startedAt: z.string().datetime({ precision: 3 }),
+}).strict();
+
+export type ProposalImagePublication = z.output<typeof proposalImagePublicationSchema>;
+
 export const proposalImageExtensionFor = (file: string): ProposalImageExtension | null => {
   const parsed = proposalImageExtensionSchema.safeParse(file.split('.').at(-1));
   return parsed.success ? parsed.data : null;
@@ -56,6 +77,9 @@ export const proposalImageContentType = (extension: ProposalImageExtension): str
 
 const proposalImageKindAccepts = (kind: ProposalImageKind, extension: ProposalImageExtension): boolean =>
   imageAssetContentTypesFor(kind).includes(proposalImageContentType(extension));
+
+export const proposalImageExtensionsFor = (kind: ProposalImageKind): ProposalImageExtension[] =>
+  proposalImageExtensionSchema.options.filter((extension) => proposalImageKindAccepts(kind, extension));
 
 export const proposalImagePublicPath = (reference: ProposalImageReference): string =>
   `/api/public/assets/${reference.kind}/${reference.digest}.${reference.extension}`;
@@ -114,6 +138,10 @@ export interface ChangeProposalImageField {
 const changeProposalImageFields = (operation: string): ChangeProposalImageField[] =>
   Object.entries(IMAGE_FIELDS_BY_OPERATION[operation] ?? {}).map(([field, kind]) => ({ field, kind }));
 
+/** Every operation and input field that can attach an image, the same fields `changeProposalImageReferences` reads. */
+export const CHANGE_PROPOSAL_IMAGE_FIELDS: ReadonlyArray<ChangeProposalImageField & { operation: string }> =
+  Object.keys(IMAGE_FIELDS_BY_OPERATION).flatMap((operation) => changeProposalImageFields(operation).map((field) => ({ operation, ...field })));
+
 export const changeProposalImageReferences = (operation: string, input: ChangeProposalInput): ProposalImageReference[] => {
   const references: ProposalImageReference[] = [];
   for (const { field, kind } of changeProposalImageFields(operation)) {
@@ -136,11 +164,12 @@ export const changeProposalImageChanges = (
     return [{ ...field, value: change.after }];
   });
 
-export type ChangeProposalImageCap = 'key_quarantined_images' | 'key_quarantined_bytes';
+export type ChangeProposalImageCap = 'key_quarantined_images' | 'key_quarantined_bytes' | 'key_image_uploads';
 
 const imageCapMessages: Record<ChangeProposalImageCap, string> = {
   key_quarantined_images: `This key already holds ${String(QUARANTINED_IMAGE_LIMITS.assetsPerKey)} uploaded images awaiting approval`,
   key_quarantined_bytes: `This key already holds ${String(QUARANTINED_IMAGE_LIMITS.bytesPerKey)} bytes of uploaded images awaiting approval`,
+  key_image_uploads: `This key already started ${String(QUARANTINED_IMAGE_LIMITS.uploadsPerKey)} image uploads for approval in the last ${String(IMAGE_ASSET_UPLOAD_TTL_SECONDS / 60)} minutes`,
 };
 
 export const changeProposalImageCapExceeded = (cap: ChangeProposalImageCap): AppError =>

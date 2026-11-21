@@ -68,6 +68,7 @@ import type {
   ChangeProposalTransition,
   Clock,
   IdGenerator,
+  QuarantinedImageRepository,
   ShopManagementKeyRepository,
 } from '../ports.js';
 import { applyLockedProposal, changeProposalGroupReferences, previewChangeProposal } from './change-proposal-apply.js';
@@ -76,6 +77,7 @@ import {
   checkProposedImages,
   prepareApprovalImages,
   publishApprovalImages,
+  recordApprovalPublications,
   releaseImagesOfProposals,
   withdrawPublishedImages,
   type ChangeProposalImagePublishDeps,
@@ -120,6 +122,7 @@ export interface ChangeProposalGroupDecisionDeps extends ChangeProposalGroupOwne
 export interface ChangeProposalGroupApprovalDeps
   extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps, ChangeProposalImageReleaseDeps, ChangeProposalImagePublishDeps {
   changeProposalTransaction: ChangeProposalTransaction;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'recordExpiry'>;
   changeProposalEvents: ChangeProposalEventRepository;
 }
@@ -480,7 +483,9 @@ export const approveChangeProposalGroup = async (
   }
   if (shownItemsDiffer(found.items, itemIds)) return err(itemsChangedSinceShown(found.items));
 
-  const published: ProposalImageReference[] = [];
+  const publication = await recordApprovalPublications(tenantId, found.items, deps);
+  if (!publication.ok) return publication;
+  const written: ProposalImageReference[] = [];
   const approve = () => deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<GroupApprovalDecision, AppError>> => {
     const groups = scope.repositories.changeProposalGroups;
     const locked = await groups.lock(tenantId, id);
@@ -519,8 +524,8 @@ export const approveChangeProposalGroup = async (
       return ok({ kind: 'expired', at: stop.outcome.at });
     }
     if (applied.ok && images.kind === 'ready') {
-      const publication = await publishApprovalImages(tenantId, images, deps, published);
-      if (!publication.ok) return publication;
+      const published = await publishApprovalImages(tenantId, images, publication.value, scope, deps, written);
+      if (!published.ok) return published;
     }
     const transitions: ChangeProposalGroupItemTransition[] = [];
     let at = afterLock;
@@ -549,11 +554,11 @@ export const approveChangeProposalGroup = async (
     return ok({ kind: 'decided', items: moved, at });
   });
   const decided = await approve().catch(async (cause: unknown) => {
-    await withdrawPublishedImages(tenantId, published, deps);
+    await withdrawPublishedImages(tenantId, publication.value, written, deps);
     throw cause;
   });
   if (!decided.ok || decided.value.kind !== 'decided' || decided.value.items.some((item) => item.status !== 'applied')) {
-    await withdrawPublishedImages(tenantId, published, deps);
+    await withdrawPublishedImages(tenantId, publication.value, written, deps);
   }
   if (!decided.ok) return decided;
   await releaseImagesOfProposals(tenantId, found.items, deps);

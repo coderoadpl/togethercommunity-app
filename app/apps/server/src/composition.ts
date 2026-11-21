@@ -1442,6 +1442,12 @@ export const createDeps = (
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
   const quarantinedImages = createQuarantinedImageRepository(db, options.changeProposalBounds);
+  const changeProposalTransaction = createChangeProposalTransaction(
+    db,
+    logger,
+    (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+    options.changeProposalBounds,
+  );
   const tenantDomainDeps = {
     tenantDomains,
     domainEvents: tenantDomainEvents,
@@ -1678,12 +1684,7 @@ export const createDeps = (
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, options.changeProposalBounds),
     changeProposalPeople: createChangeProposalPeopleReader(db),
-    changeProposalTransaction: createChangeProposalTransaction(
-      db,
-      logger,
-      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
-      options.changeProposalBounds,
-    ),
+    changeProposalTransaction,
     quarantinedImages,
     importContent: createImportContentRepository(db),
     importUsersReader,
@@ -1800,7 +1801,7 @@ export const createDeps = (
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     stock,
     releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
-    sweepQuarantinedImages: throttledSweep(clock, () => sweepQuarantinedImages({ quarantinedImages, storage, secretResolver, logger, clock })),
+    sweepQuarantinedImages: throttledSweep(clock, () => sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock })),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

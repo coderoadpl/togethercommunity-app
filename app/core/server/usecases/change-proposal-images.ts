@@ -1,6 +1,7 @@
 import {
   BRANDING_PROPOSAL_IMAGE_KINDS,
   changeProposalDisplayStatus,
+  changeProposalsBusy,
   changeProposalImageChanges,
   changeProposalImageInputSchema,
   changeProposalImageReferences,
@@ -31,6 +32,7 @@ import {
   type QuarantinedImageAsset,
   type Result,
   type StorageConfiguration,
+  IMAGE_ASSET_UPLOAD_TTL_SECONDS,
   validation,
 } from '#core/domain/index.js';
 
@@ -44,6 +46,7 @@ import type {
   ChangeProposalTransactionScope,
   Clock,
   ContentHash,
+  IdGenerator,
   QuarantinedImageRelease,
   QuarantinedImageRepository,
   StorageProvider,
@@ -66,7 +69,7 @@ const credentialsOf = (configuration: StorageConfiguration) => ({
 });
 
 export interface ChangeProposalImageReleaseDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   logger: { error(message: string): void };
@@ -77,27 +80,36 @@ const logImageFailure = (deps: { logger: { error(message: string): void } }, ten
   deps.logger.error(`[change-proposal] ${what} tenant=${tenantId}: ${cause instanceof Error ? serializeErrorChain(cause) : String(cause)}`);
 };
 
-const deleteQuarantinedObjects = async (
+const finishReleases = async (
   tenantId: string,
   assets: readonly QuarantinedImageAsset[],
-  deps: Omit<ChangeProposalImageReleaseDeps, 'quarantinedImages' | 'clock'>,
-): Promise<void> => {
-  if (assets.length === 0) return;
+  deps: ChangeProposalImageReleaseDeps,
+): Promise<number> => {
+  if (assets.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove released quarantined images', configuration.error.message);
-    return;
+    return 0;
   }
+  let removed = 0;
   for (const asset of assets) {
-    const removed = await deps.storage.delete({
-      url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, asset.apiKeyId, asset)).toString(),
-      ...credentialsOf(configuration.value),
+    const finished = await deps.quarantinedImages.finishRelease(tenantId, asset, async () => {
+      const deleted = await deps.storage.delete({
+        url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, asset.apiKeyId, asset)).toString(),
+        ...credentialsOf(configuration.value),
+      });
+      if (!deleted.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
+      return deleted.ok;
     });
-    if (!removed.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', removed.error.message);
+    if (finished === 'removed') removed += 1;
   }
+  return removed;
 };
 
-/** Never fails the decision that committed before it: what a failed release leaves behind, the sweep removes. */
+/**
+ * Never fails the decision that committed before it: rows are marked released in one transaction and each object is
+ * removed afterwards with its row; what a failed or busy step leaves released, the sweep finishes.
+ */
 export const releaseQuarantinedImages = async (
   tenantId: string,
   selection: QuarantinedImageRelease,
@@ -109,8 +121,7 @@ export const releaseQuarantinedImages = async (
       logImageFailure(deps, tenantId, 'quarantined image release was busy', 'left for the scheduled sweep');
       return 0;
     }
-    await deleteQuarantinedObjects(tenantId, released.value, deps);
-    return released.value.length;
+    return await finishReleases(tenantId, released.value, deps);
   } catch (cause) {
     logImageFailure(deps, tenantId, 'quarantined image release failed', cause);
     return 0;
@@ -135,33 +146,50 @@ export const releaseImagesOfProposals = async (
   }
 };
 
+export interface ProposedImageUploadDeps extends ImageAssetDeps {
+  quarantinedImages: Pick<QuarantinedImageRepository, 'recordUpload'>;
+}
+
+/** The presigned write is signed for the declared size, and recorded first so the sweep removes whatever it leaves behind. */
 const beginProposedImageUpload = async (
   key: Result<ProposingKey, AppError>,
   family: ProposedImageFamily,
   input: ImageAssetUploadInput,
-  deps: ImageAssetDeps,
+  deps: ProposedImageUploadDeps,
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   if (!key.ok) return key;
-  return beginCandidateUpload(key.value.tenantId, KINDS_BY_FAMILY[family], input, deps);
+  const { keyId } = key.value;
+  return beginCandidateUpload(key.value.tenantId, KINDS_BY_FAMILY[family], input, deps, {
+    signContentLength: true,
+    reserve: async (tenantId, objectKey) => {
+      const createdAt = deps.clock.nowIso();
+      const countedAfter = new Date(Date.parse(createdAt) - IMAGE_ASSET_UPLOAD_TTL_SECONDS * 1000).toISOString();
+      const recorded = await deps.quarantinedImages.recordUpload(tenantId, { apiKeyId: keyId, objectKey, createdAt }, countedAfter);
+      return recorded.kind === 'recorded' ? ok(undefined) : err(changeProposalImageCapExceeded(recorded.cap));
+    },
+  });
 };
 
-export const beginProposedProductCoverUpload = (ctx: Ctx, input: ImageAssetUploadInput, deps: ImageAssetDeps) => beginProposedImageUpload(
+export const beginProposedProductCoverUpload = (ctx: Ctx, input: ImageAssetUploadInput, deps: ProposedImageUploadDeps) => beginProposedImageUpload(
   proposingKey(ctx, bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:catalog'))),
   'catalog',
   input,
   deps,
 );
 
-export const beginProposedBrandingAssetUpload = (ctx: Ctx, input: ImageAssetUploadInput, deps: ImageAssetDeps) => beginProposedImageUpload(
+export const beginProposedBrandingAssetUpload = (ctx: Ctx, input: ImageAssetUploadInput, deps: ProposedImageUploadDeps) => beginProposedImageUpload(
   proposingKey(ctx, bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:settings'))),
   'settings',
   input,
   deps,
 );
 
-export interface ProposedImageCompleteDeps extends ChangeProposalImageReleaseDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'insert' | 'release'>;
+export interface ProposedImageCompleteDeps {
+  quarantinedImages: Pick<QuarantinedImageRepository, 'insert'>;
+  storage: StorageProvider;
+  secretResolver: TenantSecretResolver;
   contentHash: ContentHash;
+  clock: Clock;
 }
 
 export interface QuarantinedImageUpload {
@@ -190,21 +218,16 @@ const completeProposedImageUpload = async (
     ...image,
     sizeBytes: bytes.byteLength,
     createdAt: deps.clock.nowIso(),
-  });
-  if (inserted.kind === 'cap_exceeded') {
-    const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
-    if (!removed.ok) return removed;
-    return err(changeProposalImageCapExceeded(inserted.cap));
-  }
-  const stored = await deps.storage.putObject({
+  }, () => deps.storage.putObject({
     url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString(),
     ...credentials,
     body: bytes,
     contentType,
-  });
-  if (!stored.ok) {
-    if (inserted.kind === 'stored') await releaseQuarantinedImages(tenantId, { kind: 'key', apiKeyId: keyId, images: [image] }, deps);
-    return stored;
+  }));
+  if (inserted.kind === 'cap_exceeded' || inserted.kind === 'store_failed') {
+    const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
+    if (!removed.ok) return removed;
+    return err(inserted.kind === 'cap_exceeded' ? changeProposalImageCapExceeded(inserted.cap) : inserted.error);
   }
   const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
   if (!removed.ok) return removed;
@@ -267,7 +290,7 @@ export type ApprovalImages =
   | { kind: 'missing'; proposal: ChangeProposal; image: ProposalImageReference }
   | { kind: 'failed'; error: AppError };
 
-export interface ChangeProposalImagePublishDeps {
+export interface ChangeProposalImagePrepareDeps {
   storage: StorageProvider;
   contentHash: ContentHash;
 }
@@ -277,7 +300,7 @@ export const prepareApprovalImages = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
   scope: ChangeProposalTransactionScope,
-  deps: ChangeProposalImagePublishDeps,
+  deps: ChangeProposalImagePrepareDeps,
 ): Promise<ApprovalImages> => {
   const images: PreparedImage[] = [];
   const settled: ProposalImageReference[] = [];
@@ -300,7 +323,7 @@ export const prepareApprovalImages = async (
         url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
         ...credentialsOf(configuration),
       }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
-      if (!read.ok) return { kind: 'failed', error: read.error };
+      if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
       if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
       images.push({ image, bytes: read.value });
     }
@@ -308,30 +331,93 @@ export const prepareApprovalImages = async (
   return { kind: 'ready', images, configuration };
 };
 
+export interface ApprovalPublication {
+  attemptId: string;
+  images: ProposalImageReference[];
+}
+
+export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepareDeps {
+  quarantinedImages: Pick<QuarantinedImageRepository, 'recordPublications'>;
+  secretResolver: TenantSecretResolver;
+  ids: IdGenerator;
+  clock: Clock;
+}
+
+const distinctImagesOf = (proposals: readonly ChangeProposal[]): ProposalImageReference[] => {
+  const images: ProposalImageReference[] = [];
+  for (const proposal of proposals) {
+    for (const image of changeProposalImageReferences(proposal.operation, proposal.input)) {
+      if (!images.some((known) => sameProposalImage(known, image))) images.push(image);
+    }
+  }
+  return images;
+};
+
 /**
- * Copies the verified bytes to their public, content-addressed key. This runs inside the approval transaction once the
- * outcome is applied and before COMMIT, so committed live state never points at an object that does not exist; every
- * image it writes, a failed write included, is added to `published` for `withdrawPublishedImages` when the approval does
- * not commit.
+ * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
+ * holds one. It records, in a commit of its own, the attempt's intent to write each attached image whose public object
+ * does not exist yet; an existing object has the same bytes, because its name is their digest, and is never written or
+ * recorded. What a record leaves behind when the attempt does not end applied, the withdrawal or the sweep removes.
+ */
+export const recordApprovalPublications = async (
+  tenantId: string,
+  proposals: readonly ChangeProposal[],
+  deps: ChangeProposalImagePublishDeps,
+): Promise<Result<ApprovalPublication, AppError>> => {
+  const images = distinctImagesOf(proposals);
+  if (images.length === 0) return ok({ attemptId: '', images: [] });
+  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  if (!configuration.ok) return configuration;
+  const absent: ProposalImageReference[] = [];
+  for (const image of images) {
+    const found = await deps.storage.head({
+      url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
+      ...credentialsOf(configuration.value),
+    });
+    if (found.ok) continue;
+    if (found.error.code !== 'not_found') return found;
+    absent.push(image);
+  }
+  if (absent.length === 0) return ok({ attemptId: '', images: [] });
+  const attemptId = deps.ids.nextId();
+  await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, deps.clock.nowIso());
+  return ok({ attemptId, images: absent });
+};
+
+/**
+ * Writes the verified bytes of each recorded image to its public, content-addressed key and deletes the attempt's
+ * records, inside the approval transaction once the outcome is applied and before COMMIT, so committed live state
+ * never points at an object that does not exist and the records disappear exactly when the approval commits. Every
+ * image it tries to write, a failed write included, is added to `written`. An image not recorded must still be public:
+ * the workspace lock this transaction holds keeps it there until the commit.
  */
 export const publishApprovalImages = async (
   tenantId: string,
   prepared: Extract<ApprovalImages, { kind: 'ready' }>,
-  deps: ChangeProposalImagePublishDeps,
-  published: ProposalImageReference[],
+  publication: ApprovalPublication,
+  scope: ChangeProposalTransactionScope,
+  deps: ChangeProposalImagePrepareDeps,
+  written: ProposalImageReference[],
 ): Promise<Result<void, AppError>> => {
+  const images = scope.repositories.quarantinedImages;
+  const recorded = (image: ProposalImageReference) => publication.images.some((known) => sameProposalImage(known, image));
+  const toWrite = prepared.images.filter(({ image }) => recorded(image)).map(({ image }) => image);
+  if (toWrite.length > 0 && !await images.claimPublications(tenantId, publication.attemptId, toWrite)) return err(changeProposalsBusy());
   const { configuration } = prepared;
-  if (configuration === null) return ok(undefined);
-  for (const { image, bytes } of prepared.images) {
-    published.push(image);
-    const written = await deps.storage.putObject({
-      url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString(),
-      ...credentialsOf(configuration),
-      body: bytes,
-      contentType: proposalImageContentType(image.extension),
-    });
-    if (!written.ok) return written;
+  if (configuration !== null) {
+    for (const { image, bytes } of prepared.images) {
+      const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
+      if (!recorded(image)) {
+        const present = await deps.storage.head({ url, ...credentialsOf(configuration) });
+        if (present.ok) continue;
+        return err(present.error.code === 'not_found' ? changeProposalsBusy() : present.error);
+      }
+      written.push(image);
+      const stored = await deps.storage.putObject({ url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension) });
+      if (!stored.ok) return stored;
+    }
   }
+  if (publication.images.length > 0) await images.settlePublications(tenantId, publication.attemptId);
   return ok(undefined);
 };
 
@@ -342,33 +428,52 @@ export interface ChangeProposalImageWithdrawDeps {
 }
 
 /**
- * Removes the public copies an approval wrote when it did not end applied, unless a live field shows the address. It
- * deletes under the workspace's approval lock, before that transaction ends, so no concurrent approval can publish the
- * same address again between the check and the deletion.
+ * Holds the workspace's approval lock, so no approval can publish the same address between the check and the deletion.
+ * When `written`, it deletes the public object first, except when a live field shows the address or an applied
+ * proposal carries it: then an applied approval published it, and product history may still point at it.
  */
-export const withdrawPublishedImages = async (
+const removePublication = async (
   tenantId: string,
-  published: readonly ProposalImageReference[],
+  attemptId: string,
+  image: ProposalImageReference,
+  written: boolean,
   deps: ChangeProposalImageWithdrawDeps,
-): Promise<void> => {
-  if (published.length === 0) return;
+): Promise<boolean> => {
+  const failure = 'could not withdraw an image published by an approval that did not apply';
   try {
-    const withdrawn = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<void, AppError>> => {
-      const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
-      if (!configuration.ok) return configuration;
-      for (const image of published) {
-        if (await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) continue;
-        const removed = await deps.storage.delete({
+    const removed = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<boolean, AppError>> => {
+      const images = scope.repositories.quarantinedImages;
+      if (!await images.claimPublications(tenantId, attemptId, [image])) return ok(false);
+      const path = proposalImagePublicPath(image);
+      if (written && !await images.inLiveUse(tenantId, path) && !await images.inAppliedProposal(tenantId, path)) {
+        const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
+        if (!configuration.ok) return configuration;
+        const deleted = await deps.storage.delete({
           url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
           ...credentialsOf(configuration.value),
         });
-        if (!removed.ok) return removed;
+        if (!deleted.ok) return deleted;
       }
-      return ok(undefined);
+      await images.deletePublication(tenantId, attemptId, image);
+      return ok(true);
     });
-    if (!withdrawn.ok) logImageFailure(deps, tenantId, 'could not withdraw an image published by an approval that did not apply', withdrawn.error.message);
+    if (!removed.ok) logImageFailure(deps, tenantId, failure, removed.error.message);
+    return removed.ok && removed.value;
   } catch (cause) {
-    logImageFailure(deps, tenantId, 'could not withdraw an image published by an approval that did not apply', cause);
+    logImageFailure(deps, tenantId, failure, cause);
+    return false;
+  }
+};
+
+/** Runs after an approval that did not end applied; a record it cannot remove stays for the sweep. */
+export const withdrawPublishedImages = async (
+  tenantId: string,
+  publication: ApprovalPublication,
+  written: readonly ProposalImageReference[],
+  deps: ChangeProposalImageWithdrawDeps,
+): Promise<void> => {
+  for (const image of publication.images) {
+    await removePublication(tenantId, publication.attemptId, image, written.some((known) => sameProposalImage(known, image)), deps);
   }
 };
 
@@ -409,7 +514,7 @@ export const getChangeProposalImage = async (
     url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
     ...credentialsOf(configuration.value),
   }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
-  if (!read.ok) return read;
+  if (!read.ok) return read.error.code === 'not_found' ? err(missing) : read;
   if (deps.contentHash.sha256(read.value) !== image.digest) return err(missing);
   return ok({
     bytes: read.value,
@@ -419,18 +524,74 @@ export const getChangeProposalImage = async (
   });
 };
 
-export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'listTenantIdsToSweep'>;
+export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDeps, ChangeProposalImageWithdrawDeps {
+  quarantinedImages: Pick<
+    QuarantinedImageRepository,
+    | 'release'
+    | 'finishRelease'
+    | 'listTenantIdsToSweep'
+    | 'listTenantIdsWithUploadsBefore'
+    | 'listUploadsBefore'
+    | 'deleteUpload'
+    | 'listTenantIdsWithPublicationsBefore'
+    | 'listPublicationsBefore'
+  >;
 }
+
+const before = (now: string, ageMs: number): string => new Date(Date.parse(now) - ageMs).toISOString();
+
+const sweepUploads = async (tenantId: string, createdBefore: string, deps: QuarantinedImageSweepDeps): Promise<number> => {
+  const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, createdBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
+  if (uploads.length === 0) return 0;
+  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  if (!configuration.ok) {
+    logImageFailure(deps, tenantId, 'could not remove expired image uploads', configuration.error.message);
+    return 0;
+  }
+  let removed = 0;
+  for (const upload of uploads) {
+    const deleted = await deps.storage.delete({
+      url: deps.storage.objectUrl(configuration.value, upload.objectKey).toString(),
+      ...credentialsOf(configuration.value),
+    });
+    if (!deleted.ok) {
+      logImageFailure(deps, tenantId, 'could not remove an expired image upload', deleted.error.message);
+      continue;
+    }
+    await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
+    removed += 1;
+  }
+  return removed;
+};
 
 export const sweepQuarantinedImages = async (
   deps: QuarantinedImageSweepDeps,
 ): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
-  const createdBefore = new Date(Date.parse(deps.clock.nowIso()) - QUARANTINED_IMAGE_LIMITS.unattachedMaxAgeMs).toISOString();
-  const tenantIds = await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun);
+  const now = deps.clock.nowIso();
+  const createdBefore = before(now, QUARANTINED_IMAGE_LIMITS.unattachedMaxAgeMs);
+  const limit = QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun;
+  const tenants = new Set<string>();
   let removed = 0;
-  for (const tenantId of tenantIds) {
+  for (const tenantId of await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit)) {
+    tenants.add(tenantId);
     removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps);
   }
-  return ok({ tenants: tenantIds.length, removed });
+  const uploadsBefore = before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs);
+  for (const tenantId of await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit)) {
+    tenants.add(tenantId);
+    try {
+      removed += await sweepUploads(tenantId, uploadsBefore, deps);
+    } catch (cause) {
+      logImageFailure(deps, tenantId, 'expired image upload sweep failed', cause);
+    }
+  }
+  const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
+  for (const tenantId of await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit)) {
+    tenants.add(tenantId);
+    const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);
+    for (const record of records) {
+      if (await removePublication(tenantId, record.attemptId, record.image, true, deps)) removed += 1;
+    }
+  }
+  return ok({ tenants: tenants.size, removed });
 };

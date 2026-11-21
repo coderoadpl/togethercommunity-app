@@ -99,7 +99,7 @@ const shopSettings: TenantSettings = {
 const pathOf = (bytes: Uint8Array, kind = 'product-cover', extension = 'png') =>
   `/api/public/assets/${kind}/${sha256HexOfBytes(bytes)}.${extension}`;
 
-const harness = (limits?: { assetsPerKey: number; bytesPerKey: number }) => {
+const harness = (limits?: { assetsPerKey: number; bytesPerKey: number; uploadsPerKey?: number }) => {
   const keys = [
     shopKey(),
     shopKey({ id: OTHER_KEY_ID, name: 'Second agent', keyHash: 'hash-2' }),
@@ -190,6 +190,46 @@ describe('uploading an image for a proposal', () => {
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await completeProposedBrandingAssetUpload(ctx, { key: `image-asset-candidates/${TENANT}/logo/00000000-0000-4000-8000-000000000001.png` }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('signs the declared size into the presigned write and records the upload before answering it', async () => {
+    const h = harness();
+    const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 1234 }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    expect(h.objects.signedLengths.get(started.value.key)).toBe(1234);
+    expect(h.store.imageUploads).toEqual([{ tenantId: TENANT, apiKeyId: KEY_ID, objectKey: started.value.key, createdAt: NOW }]);
+
+    for (const ctx of [ownerSession, keyCtx(KEY_ID, TENANT, 'direct')]) {
+      const live = await beginProductCoverUpload(ctx, { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 1234 }, h.deps);
+      if (!live.ok) throw new Error(live.error.message);
+      expect(h.objects.signedLengths.has(live.value.key)).toBe(false);
+    }
+    expect(h.store.imageUploads).toHaveLength(1);
+  });
+
+  it('refuses a key more uploads within the upload lifetime than the limit, with the cap named, and allows them again later', async () => {
+    const h = harness({ assetsPerKey: 100, bytesPerKey: 50 * 1024 * 1024, uploadsPerKey: 2 });
+    const begin = (ctx = keyCtx()) =>
+      beginProposedProductCoverUpload(ctx, { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
+    expect((await begin()).ok).toBe(true);
+    expect((await begin()).ok).toBe(true);
+    expect(await begin()).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_image_uploads' } } });
+    expect(h.objects.calls.filter(({ method }) => method === 'presignPut')).toHaveLength(2);
+    expect((await begin(keyCtx(OTHER_KEY_ID))).ok).toBe(true);
+    h.clock.now = '2026-03-01T10:15:00.001Z';
+    expect((await begin()).ok).toBe(true);
+  });
+
+  it('deletes the candidate and stores no row when the quarantined copy cannot be written', async () => {
+    const h = harness();
+    const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.objects.objects.set(started.value.key, { bytes: PNG(1), contentType: 'image/png' });
+    h.objects.failPuts = (key) => key.startsWith('image-asset-quarantine/');
+    expect(await completeProposedProductCoverUpload(keyCtx(), { key: started.value.key }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect([...h.objects.objects.keys()]).toEqual([]);
+    expect(h.store.imageRows).toEqual([]);
   });
 
   it('copies verified bytes to a private content-addressed key, deletes the candidate and answers the future public path', async () => {
@@ -403,6 +443,60 @@ describe('approving a proposal with an image', () => {
     expect(h.publicKeys()).toEqual([`image-assets/${TENANT}/product-cover/${sha256HexOfBytes(bytes)}.png`]);
   });
 
+  it('never deletes a public copy an earlier applied approval published, even once no live field shows it', async () => {
+    const h = harness();
+    const bytes = PNG(1);
+    const cover = await h.upload(bytes);
+    const first = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const second = await h.proposed('product.update', { id: 'product-live', coverUrl: cover });
+    expect(await approveChangeProposal(ownerSession, { id: first }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.store.imagePublications).toEqual([]);
+    const mug = h.state.products.find((candidate) => candidate.id === 'product-mug');
+    if (mug === undefined) throw new Error('missing product');
+    mug.coverUrl = null;
+    h.store.repository.transition = async () => ({ kind: 'busy' });
+
+    expect(await approveChangeProposal(ownerSession, { id: second }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(h.publicKeys()).toEqual([`image-assets/${TENANT}/product-cover/${sha256HexOfBytes(bytes)}.png`]);
+    expect(h.objects.calls.filter(({ method, key }) => method === 'putObject' && key.startsWith('image-assets/'))).toHaveLength(1);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
+  it('records the intent before writing and removes the record with the written copy when the approval aborts', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const put = h.objects.storage.putObject;
+    const recordedAtWrite: number[] = [];
+    h.objects.storage.putObject = async (input) => {
+      if (input.url.includes('/image-assets/')) recordedAtWrite.push(h.store.imagePublications.length);
+      return put(input);
+    };
+    h.store.repository.transition = async () => ({ kind: 'busy' });
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false });
+    expect(recordedAtWrite).toEqual([1]);
+    expect(h.publicKeys()).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
+  it('makes the approval stale with the image note when the quarantined object is gone, and only a failed read leaves it pending', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const [quarantined] = h.quarantinedKeys();
+    if (quarantined === undefined) throw new Error('missing quarantined image');
+    h.objects.failReads = (key) => key === quarantined;
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(h.proposal(id)?.status).toBe('pending');
+
+    h.objects.failReads = () => false;
+    h.objects.objects.delete(quarantined);
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(h.store.eventRows.at(-1)).toMatchObject({ kind: 'stale', note: expect.stringContaining(`${cover} is no longer available`) });
+    expect(h.publicKeys()).toEqual([]);
+  });
+
   it('makes the approval stale with a clear note when the image was released, and publishes nothing', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));
@@ -569,6 +663,23 @@ describe('releasing quarantined images', () => {
     expect(h.publicKeys()).toEqual([]);
   });
 
+  it('hides a released image whose object delete failed and lets the sweep remove it later', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    h.objects.failDeletes = (key) => key.startsWith('image-asset-quarantine/');
+    expect(await rejectChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true });
+    expect(h.store.imageRows).toEqual([]);
+    expect(h.store.releasedImageRows).toHaveLength(1);
+    expect(h.quarantinedKeys()).toHaveLength(1);
+    expect((await h.propose('product.update', { id: 'product-mug', coverUrl: cover })).ok).toBe(false);
+
+    h.objects.failDeletes = () => false;
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.releasedImageRows).toEqual([]);
+    expect(h.quarantinedKeys()).toEqual([]);
+  });
+
   it('sweeps images never attached past the age bound and every image of a revoked key, keeping attached and young ones', async () => {
     const h = harness();
     const attached = await h.upload(PNG(1));
@@ -582,7 +693,8 @@ describe('releasing quarantined images', () => {
     revoked.revokedAt = h.clock.now;
     h.clock.now = '2026-03-08T10:00:01.000Z';
 
-    expect(await sweepQuarantinedImages(h.deps)).toEqual({ ok: true, value: { tenants: 1, removed: 2 } });
+    expect(await sweepQuarantinedImages(h.deps)).toEqual({ ok: true, value: { tenants: 1, removed: 6 } });
+    expect(h.store.imageUploads).toEqual([]);
     expect(h.store.imageRows.map((row) => [row.apiKeyId, row.digest])).toEqual([
       [KEY_ID, sha256HexOfBytes(PNG(1))],
       [KEY_ID, sha256HexOfBytes(PNG(3))],
@@ -621,6 +733,21 @@ describe('the owner preview of a proposed image', () => {
     const bytes = PNG(1);
     const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: await h.upload(bytes) });
     expect(await getChangeProposalImage(ctx, { id, digest: sha256HexOfBytes(bytes) }, h.deps)).toMatchObject({ ok: false });
+  });
+
+  it('answers 404 when the quarantined object is gone and the storage error when the read fails', async () => {
+    const h = harness();
+    const bytes = PNG(1);
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: await h.upload(bytes) });
+    const [quarantined] = h.quarantinedKeys();
+    if (quarantined === undefined) throw new Error('missing quarantined image');
+    h.objects.failReads = () => true;
+    expect(await getChangeProposalImage(ownerSession, { id, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    h.objects.failReads = () => false;
+    h.objects.objects.delete(quarantined);
+    expect(await getChangeProposalImage(ownerSession, { id, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it('serves nothing the proposal does not attach, and nothing once it is decided', async () => {

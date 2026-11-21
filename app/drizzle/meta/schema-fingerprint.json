@@ -1,6 +1,6 @@
 {
-  "hash": "bfa4c4dc622467ec9dc9ab6139e6665c492ee1da652243805649d53e84313c21",
-  "shortId": "bfa4c4dc6224",
+  "hash": "f4b1a70ff48cc2c0a6259636fcf79888cec2330a2a5501e5931291b366c76801",
+  "shortId": "f4b1a70ff48c",
   "schema": {
     "constraints": [
       {
@@ -109,6 +109,11 @@
         "table": "shop_management_keys"
       },
       {
+        "definition": "CHECK (((released_at IS NULL) OR (released_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_released_at_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
         "name": "marketing_contact_imports_row_count_check",
         "table": "marketing_contact_imports"
@@ -200,6 +205,11 @@
       },
       {
         "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_image_uploads_created_at_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_images_created_at_check",
         "table": "change_proposal_images"
       },
@@ -230,6 +240,11 @@
       },
       {
         "definition": "CHECK ((digest ~ '^[0-9a-f]{64}$'::text))",
+        "name": "change_proposal_image_publications_digest_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK ((digest ~ '^[0-9a-f]{64}$'::text))",
         "name": "change_proposal_images_digest_check",
         "table": "change_proposal_images"
       },
@@ -257,6 +272,11 @@
         "definition": "CHECK ((expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposals_expires_at_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text])))",
+        "name": "change_proposal_image_publications_extension_check",
+        "table": "change_proposal_image_publications"
       },
       {
         "definition": "CHECK ((extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text])))",
@@ -297,6 +317,11 @@
         "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
         "name": "shop_management_key_events_kind_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
+        "name": "change_proposal_image_publications_kind_check",
+        "table": "change_proposal_image_publications"
       },
       {
         "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
@@ -362,6 +387,11 @@
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
         "name": "product_grants_mode_check",
         "table": "product_grants"
+      },
+      {
+        "definition": "CHECK ((object_key ~~ 'image-asset-candidates/%'::text))",
+        "name": "change_proposal_image_uploads_object_key_check",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CHECK ((on_hand >= 0))",
@@ -472,6 +502,11 @@
         "definition": "CHECK ((source = 'organization'::text))",
         "name": "tenant_config_sources_source_check",
         "table": "tenant_config_sources"
+      },
+      {
+        "definition": "CHECK ((started_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_image_publications_started_at_check",
+        "table": "change_proposal_image_publications"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
@@ -882,6 +917,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "change_proposal_groups_tenant_id_fkey",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_image_publications_tenant_id_fkey",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_image_uploads_tenant_id_fkey",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -2304,6 +2349,11 @@
         "table": "change_proposal_images"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, attempt_id, kind, digest, extension)",
+        "name": "change_proposal_image_publications_pkey",
+        "table": "change_proposal_image_publications"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
         "name": "checkout_consent_jobs_pkey",
         "table": "checkout_consent_jobs"
@@ -2377,6 +2427,11 @@
         "definition": "PRIMARY KEY (tenant_id, member_id)",
         "name": "marketing_member_sync_jobs_tenant_id_member_id_pk",
         "table": "marketing_member_sync_jobs"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, object_key)",
+        "name": "change_proposal_image_uploads_pkey",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, order_id, decision)",
@@ -2676,6 +2731,21 @@
         "definition": "CREATE INDEX change_proposal_groups_tenant_key_idx ON change_proposal_groups USING btree (tenant_id, proposed_by_key_id, created_at)",
         "name": "change_proposal_groups_tenant_key_idx",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_publications_started_idx ON change_proposal_image_publications USING btree (started_at)",
+        "name": "change_proposal_image_publications_started_idx",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_uploads_created_idx ON change_proposal_image_uploads USING btree (created_at)",
+        "name": "change_proposal_image_uploads_created_idx",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_uploads_key_idx ON change_proposal_image_uploads USING btree (tenant_id, api_key_id, created_at)",
+        "name": "change_proposal_image_uploads_key_idx",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CREATE INDEX change_proposal_images_created_idx ON change_proposal_images USING btree (created_at)",
@@ -11499,6 +11569,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "released_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "size_bytes",
             "notNull": true,
             "type": "integer"
@@ -11513,6 +11591,43 @@
           }
         ],
         "name": "change_proposal_images"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_uploads"
       },
       {
         "columns": [
@@ -11888,6 +12003,59 @@
           }
         ],
         "name": "download_copies"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempt_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "digest",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "extension",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_publications"
       },
       {
         "columns": [

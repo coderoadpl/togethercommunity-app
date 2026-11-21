@@ -91,6 +91,7 @@ const harness = (rows: ShopManagementKey[] = [], shopManagementKeysSwitch: ShopM
         releases.push({ tenantId, selection });
         return { kind: 'written', value: [] };
       },
+      finishRelease: async () => 'removed',
     },
     storage: createObjectStorageFake().storage,
     secretResolver: fakeStorageSecrets,

@@ -173,8 +173,14 @@ The email and the terms acceptance move to Stripe when the workspace has both a
 terms URL and a privacy URL (see
 [Payments](payments.md#terms-acceptance-on-the-together-checkout-page)). The page
 asks for the email only for a discount code with a per-person limit (the field
-appears inside the code row after the server asks for it), and for the email and
-the terms for an order with nothing to pay, which never reaches Stripe. A
+appears inside the code row after the server asks for it, with a line saying that
+without it the buyer pays the full price), and for the email and the terms for
+an order with nothing to pay, which never reaches Stripe. A code from the
+checkout link keeps its discount while the address in the code row is edited and
+is validated again for the new complete address; once that address is cleared
+or no longer complete, the discount is dropped, the pay button shows the full
+amount and sends no code, and the code is validated again by itself when the
+address is complete. A
 signed-in buyer is never asked for the email: the account email is sent with the
 request. A workspace without both legal URLs, and the development simulated
 payment, keep the email field and, when a URL is set, the terms checkbox on the
@@ -852,14 +858,19 @@ product cover with the product title as its alternative text when the product
 has a cover, the product title when the offer sells more than one product, the
 model identifier (c), and the safety warnings as plain text when the workspace
 entered any (d). A warning longer than 280 characters shows its first three
-lines with **Show more**, which extends the same text; screen readers read the
-whole warning either way. Products without warnings show no warning line.
+lines with **Show more**, which extends the same text; while it is collapsed
+the paragraphs of the warning sit without a gap, so the third line is never cut.
+Screen readers read the whole warning either way. Products without warnings show
+no warning line. When at least one product of a manufacturer has a picture, the
+rows without one keep an empty 40 px slot hidden from assistive technology, so
+the texts of one manufacturer start at the same edge.
 Products whose manufacturer name, address and e-mail are identical share one
 manufacturer line.
 
-**Details** on a manufacturer line holds only what goes beyond that minimum: per
-product (titled when the offer sells more than one product) the batch and the
-instructions link. A manufacturer whose products have neither shows no
+**Details**, after a manufacturer's product rows and directly above its panel,
+holds only what goes beyond that minimum: per product the batch and the
+instructions link, with the product's title only when more than one product of
+that manufacturer has them. A manufacturer whose products have neither shows no
 **Details**. The product data has no separate responsible-person field, so the
 page shows no line of its own for (b). The cart checkout keeps one section per
 product, expanded for physical products.

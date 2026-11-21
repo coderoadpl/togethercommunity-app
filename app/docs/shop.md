@@ -127,9 +127,13 @@ link checkout and the hosted cart page through `DeliveryStep`:
   read out. Enter inside the picker never submits the checkout.
 - The map element is created only while the picker is open and removed when it
   closes. When the map script fails to load (for example a content security
-  policy kept from an in-app navigation), the picker says so and offers
-  **Try again** and **Type the code**. **Try again** clears the failure, moves
-  focus to the picker title and mounts the map again with a fresh script.
+  policy kept from an in-app navigation), the picker says so in the guidance
+  line and again above **Try again** and **Type the code** in the map area
+  (that copy is hidden from assistive technology, so the failure is read out
+  once). The header then shows no **I know the code**, so **Type the code** is
+  the only code exit. **Try again** clears the failure, brings **I know the
+  code** back, moves focus to the picker title and mounts the map again with a
+  fresh script.
   After **Type the code** (or **I know the code**) the option shows the code
   input with the reason for the rest of the page's life. A script that fails
   while the picker is closed is removed, so the next opening loads it again.

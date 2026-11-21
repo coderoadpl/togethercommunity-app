@@ -311,6 +311,8 @@ const lockerSteps: Record<LockerStep, (canvasElement: HTMLElement) => Promise<vo
   },
   'picker-failed': async (canvasElement) => {
     await failLockerMap(canvasElement);
+    await expect(page(canvasElement).getByTestId('checkout-locker-map-failed-reason')).toBeVisible();
+    await expect(page(canvasElement).queryByTestId('checkout-locker-dialog-know-code')).toBeNull();
     await settled();
   },
   picker: async (canvasElement) => {

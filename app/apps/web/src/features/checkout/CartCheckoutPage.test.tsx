@@ -131,6 +131,8 @@ const renderCart = (path: string) => {
 };
 
 const line = (productId: string) => within(screen.getByTestId(`cart-line-${productId}`));
+const summaryAmount = (row: 'products' | 'discount' | 'delivery' | 'total') => within(screen.getByTestId(`cart-summary-${row}`)).getByRole('definition');
+const summaryRows = () => within(screen.getByTestId('cart-summary')).getAllByRole('term').map((term) => `${term.textContent ?? ''} ${term.nextElementSibling?.textContent ?? ''}`);
 
 const SingleProductCheckout = () => <CheckoutPage productRef={useParams({ strict: false }).productRef ?? ''} />;
 
@@ -163,10 +165,10 @@ describe('hosted cart checkout', () => {
     expect(line(poster).getByRole('heading', { name: 'Poster' })).toBeInTheDocument();
     expect(line(poster).getByText(exact(en.checkout.cartUnitPrice({ price: pln(3500) })))).toBeInTheDocument();
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
-    expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(en.checkout.cartLineTotal({ price: pln(7000) })));
+    expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(pln(7000)));
     expect(line(ebook).getByRole('heading', { name: 'E-book' })).toBeInTheDocument();
     expect(line(ebook).queryByTestId(`cart-quantity-${ebook}`)).not.toBeInTheDocument();
-    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(9500) })));
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(9500)));
     expect(screen.getByText(en.productSafety.offerHeadingFor({ title: 'Poster' }))).toBeInTheDocument();
     expect(screen.getAllByText('Send me news')).toHaveLength(1);
 
@@ -180,7 +182,7 @@ describe('hosted cart checkout', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
-    expect(screen.getByTestId('cart-delivery')).toHaveTextContent(exact(en.checkout.cartDelivery({ price: pln(1999) })));
+    expect(summaryAmount('delivery')).toHaveTextContent(exact(pln(1999)));
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(11499) })));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
 
@@ -251,7 +253,25 @@ describe('hosted cart checkout', () => {
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('10');
     expect(line(ebook).queryByTestId(`cart-quantity-${ebook}`)).not.toBeInTheDocument();
-    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(37500) })));
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(37500)));
+  });
+
+  it('sums the cart in one summary right above the pay button, the total last', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(summaryRows()).toEqual([
+      `${en.checkout.breakdownProducts} ${pln(9500)}`,
+      `${en.checkout.breakdownTotal} ${pln(9500)}`,
+    ]);
+    expect(screen.getByTestId('cart-summary').nextElementSibling).toBe(screen.getByTestId('checkout-pay-cta'));
+    await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
+    expect(summaryRows()).toEqual([
+      `${en.checkout.breakdownProducts} ${pln(9500)}`,
+      `${en.checkout.breakdownDelivery} ${pln(1999)}`,
+      `${en.checkout.breakdownTotal} ${pln(11499)}`,
+    ]);
+    expect(summaryAmount('total')).toHaveTextContent(exact(pln(11499)));
   });
 
   it('caps a stepper at the pieces left and says how many are left instead of the order limit', async () => {
@@ -357,7 +377,7 @@ describe('hosted cart checkout', () => {
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     await userEvent.click(within(screen.getByTestId(`cart-line-${ebook}`)).getByRole('button', { name: en.checkout.cartRemoveLine }));
     expect(screen.queryByText(en.checkout.cartProductMissing)).not.toBeInTheDocument();
-    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(3500) })));
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(3500)));
   });
 
   it('takes the single one-time price of a product that also has a recurring price, as the server does', async () => {
@@ -367,7 +387,7 @@ describe('hosted cart checkout', () => {
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
     expect(line(journal).getByText(exact(en.checkout.cartUnitPrice({ price: pln(4000) })))).toBeInTheDocument();
     expect(screen.queryByText(`Journal: ${en.checkout.cartLineUnavailable}`)).not.toBeInTheDocument();
-    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(6500) })));
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(6500)));
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
@@ -389,8 +409,8 @@ describe('hosted cart checkout', () => {
     serve({ requests });
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1~${mug}.2&code=CART`);
     expect(await screen.findByTestId('cart-currency-refusal')).toHaveTextContent(exact(en.checkout.cartCurrencyMismatch));
-    expect(line(mug).getByTestId(`cart-line-total-${mug}`)).toHaveTextContent(exact(en.checkout.cartLineTotal({ price: eur(2400) })));
-    expect(screen.queryByTestId('cart-subtotal')).not.toBeInTheDocument();
+    expect(line(mug).getByTestId(`cart-line-total-${mug}`)).toHaveTextContent(exact(eur(2400)));
+    expect(screen.queryByTestId('cart-summary')).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-coupon-reveal')).not.toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.cartPay));
@@ -402,14 +422,14 @@ describe('hosted cart checkout', () => {
 
     await userEvent.click(screen.getByRole('button', { name: en.checkout.cartRemove({ title: 'Mug' }) }));
     expect(screen.queryByTestId('cart-currency-refusal')).not.toBeInTheDocument();
-    expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(3500) })));
+    expect(summaryAmount('products')).toHaveTextContent(exact(pln(3500)));
     await waitFor(() => expect(requests).toContain('POST /api/public/checkout/coupon'));
   });
 
   it('prices a cart in the currency of its products', async () => {
     serve();
     renderCart(`${HOSTED_CART_PATH}?lines=${mug}.1`);
-    expect(await screen.findByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: eur(1200) })));
+    expect(await screen.findByTestId('cart-summary-products')).toHaveTextContent(exact(`${en.checkout.breakdownProducts}${eur(1200)}`));
     expect(screen.getByLabelText(exact(`Courier — ${eur(1999)}`))).toBeInTheDocument();
   });
 
@@ -417,7 +437,7 @@ describe('hosted cart checkout', () => {
     serve({ missing: [poster] });
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
     expect(await screen.findByText(en.checkout.cartProductMissing)).toBeInTheDocument();
-    expect(screen.queryByTestId('cart-subtotal')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cart-summary')).not.toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.cartPay));
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
   });
@@ -440,12 +460,18 @@ describe('hosted cart checkout', () => {
     await userEvent.click(screen.getByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByTestId('checkout-coupon-input'), 'CART');
     await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
-    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponFinal({ price: pln(8550) })));
+    expect(await screen.findByTestId('checkout-coupon-final')).toHaveTextContent(exact(en.checkout.couponAfterDiscount({ price: pln(8550) })));
     expect(coupons).toEqual([{ lines: [{ productId: poster, quantity: 2 }, { productId: ebook, quantity: 1 }], email: 'buyer@example.org', couponCode: 'CART' }]);
 
     await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
     await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
     expect(screen.getByTestId('checkout-pay-cta')).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(10549) })));
+    expect(summaryRows()).toEqual([
+      `${en.checkout.breakdownProducts} ${pln(9500)}`,
+      `${en.checkout.breakdownDiscount} −${pln(950)}`,
+      `${en.checkout.breakdownDelivery} ${pln(1999)}`,
+      `${en.checkout.breakdownTotal} ${pln(10549)}`,
+    ]);
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ couponCode: 'CART' });

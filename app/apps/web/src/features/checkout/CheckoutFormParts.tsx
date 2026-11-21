@@ -327,7 +327,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
               price: formatPrice(validation.data.breakdown.discountCents, currency, language),
             })}</Typography>
             <Typography data-testid="checkout-coupon-final">
-              {(row === null ? t.checkout.couponFinal : t.checkout.couponAfterDiscount)({
+              {t.checkout.couponAfterDiscount({
                 price: formatPrice(validation.data.breakdown.finalCents, currency, language),
               })}
             </Typography>

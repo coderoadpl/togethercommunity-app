@@ -35,6 +35,7 @@ import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { CheckoutPriceBreakdown } from '../../components/ui/CheckoutStepParts.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -148,46 +149,58 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
   const { product, quantity, max, stockCapped } = item;
   return (
     <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid={`cart-line-${item.productId}`}>
-      <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
-        <Box sx={{ width: '4.5rem', flexShrink: 0 }}>
+      <Box sx={{
+        display: 'grid',
+        gridTemplateColumns: '4.5rem minmax(0, 1fr) auto',
+        gridTemplateAreas: {
+          xs: '"cover info info" "controls controls amount" "note note note"',
+          sm: '"cover info amount" "cover controls amount" "cover note amount"',
+        },
+        gridTemplateRows: { sm: 'auto auto 1fr' },
+        columnGap: '0.75rem',
+        rowGap: '0.35rem',
+      }}>
+        <Box sx={{ gridArea: 'cover' }}>
           <Cover src={product.coverUrl} title={product.title} alt={product.title} />
         </Box>
-        <Stack useFlexGap spacing="0.35rem" sx={{ flex: 1, minWidth: 0 }}>
+        <Stack useFlexGap spacing="0.35rem" sx={{ gridArea: 'info', minWidth: 0 }}>
           <Typography variant="h3" component="h2">{product.title}</Typography>
           <Typography variant="body2" color="text.secondary">
             {t.checkout.cartUnitPrice({ price: formatPrice(item.unitCents, item.currency, language) })}
           </Typography>
-          <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            {max > 1 ? (
-              <>
-                <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
-                  disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)}>
-                  <StepIcon path={minusPath} />
-                </IconButton>
-                <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
-                  {quantity}
-                </Typography>
-                <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
-                  disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
-                  <StepIcon path={plusPath} />
-                </IconButton>
-              </>
-            ) : null}
-            <Button type="button" variant="text" size="small" disabled={disabled}
-              aria-label={t.checkout.cartRemove({ title: product.title })} onClick={onRemove}>
-              {t.checkout.cartRemoveLine}
-            </Button>
-          </Stack>
-          {max > 1 ? (
-            <FinePrint component="p" variant="caption">
-              {stockCapped ? t.checkout.cartStockLimit({ count: max }) : t.checkout.cartQuantityLimit({ max })}
-            </FinePrint>
-          ) : null}
         </Stack>
-        <DataValue data-testid={`cart-line-total-${item.productId}`}>
-          {t.checkout.cartLineTotal({ price: formatPrice(item.unitCents * quantity, item.currency, language) })}
-        </DataValue>
-      </Stack>
+        <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ gridArea: 'controls', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+          {max > 1 ? (
+            <>
+              <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
+                disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)}>
+                <StepIcon path={minusPath} />
+              </IconButton>
+              <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
+                {quantity}
+              </Typography>
+              <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
+                disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
+                <StepIcon path={plusPath} />
+              </IconButton>
+            </>
+          ) : null}
+          <Button type="button" variant="text" size="small" disabled={disabled}
+            aria-label={t.checkout.cartRemove({ title: product.title })} onClick={onRemove}>
+            {t.checkout.cartRemoveLine}
+          </Button>
+        </Stack>
+        {max > 1 ? (
+          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note' }}>
+            {stockCapped ? t.checkout.cartStockLimit({ count: max }) : t.checkout.cartQuantityLimit({ max })}
+          </FinePrint>
+        ) : null}
+        <Box sx={{ gridArea: 'amount', alignSelf: { xs: 'center', sm: 'start' }, justifySelf: 'end' }}>
+          <DataValue data-testid={`cart-line-total-${item.productId}`}>
+            {formatPrice(item.unitCents * quantity, item.currency, language)}
+          </DataValue>
+        </Box>
+      </Box>
     </Paper>
   );
 };
@@ -304,6 +317,17 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   if (items.length === 0) return <CartNotice title={t.checkout.cartEmptyTitle} body={t.checkout.cartEmptyBody} />;
 
   const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
+  const cartSummary = (summaryCurrency: string) => {
+    const money = (cents: number) => formatPrice(cents, summaryCurrency, language);
+    return {
+      lines: [
+        { label: t.checkout.breakdownProducts, amount: money(appliedCoupon?.breakdown.originalCents ?? subtotalCents), testId: 'cart-summary-products' },
+        ...(appliedCoupon === undefined ? [] : [{ label: t.checkout.breakdownDiscount, amount: `−${money(appliedCoupon.breakdown.discountCents)}`, testId: 'cart-summary-discount' }]),
+        ...(delivery.status === 'ready' ? [{ label: t.checkout.breakdownDelivery, amount: money(deliveryCents), testId: 'cart-summary-delivery' }] : []),
+      ],
+      total: { label: t.checkout.breakdownTotal, amount: money(payableCents), testId: 'cart-summary-total' },
+    };
+  };
   const sessionError = (error: unknown): string => {
     if (!(error instanceof ApiError) || error.appError.code !== 'sold_out') return checkoutSessionError(error, t);
     const details = soldOutDetailsSchema.safeParse(error.appError.details);
@@ -357,12 +381,6 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           })}
         </Stack>
         {currencyRefusal === null ? null : <Alert severity="error" data-testid="cart-currency-refusal">{currencyRefusal}</Alert>}
-        {currency === null ? null : (
-          <Typography data-testid="cart-subtotal">{t.checkout.cartSubtotal({ price: formatPrice(subtotalCents, currency, language) })}</Typography>
-        )}
-        {currency !== null && delivery.status === 'ready' ? (
-          <Typography data-testid="cart-delivery">{t.checkout.cartDelivery({ price: formatPrice(deliveryCents, currency, language) })}</Typography>
-        ) : null}
         {readyItems.flatMap(({ product }) => product.compliance == null ? [] : [
           <ProductSafetyInfo key={product.id} compliance={product.compliance} expanded={product.type === 'physical'}
             productTitle={readyItems.length > 1 ? product.title : undefined} />,
@@ -426,6 +444,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             disabled={checkoutSession.isPending}
           />
         ) : null}
+        {currency === null ? null : (
+          <Box data-testid="cart-summary">
+            <CheckoutPriceBreakdown {...cartSummary(currency)} />
+          </Box>
+        )}
         <EmberCtaButton
           type="submit"
           variant="contained"

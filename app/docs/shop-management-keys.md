@@ -167,8 +167,9 @@ pnpm --silent run cli api-key shop-management create Catalogue agent \
 
 Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
 `shop:catalog:write` and `shop:settings:write` grant only
-`proposal:submit:catalog` and `proposal:submit:settings` instead of the live
-write capabilities, and each needs its read scope (`shop:catalog:read`,
+`proposal:submit:catalog` and `proposal:submit:settings`, each with
+`proposal:asset:upload` for [images awaiting approval](change-proposals.md#images),
+instead of the live write capabilities, and each needs its read scope (`shop:catalog:read`,
 `shop:settings:read`): creation without it answers `400` and the database
 refuses such a row. `shop:fulfilment:write` and `shop:integrations:write` are
 refused at creation with `400`. The key lists, reads and withdraws only its

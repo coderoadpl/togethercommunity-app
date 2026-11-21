@@ -524,7 +524,8 @@ scopes on every shop key.
   unit.
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
-  `proposal:submit:settings` in place of the live write capabilities, and
+  `proposal:submit:settings`, each with `proposal:asset:upload` for images
+  that stay private until an approval, in place of the live write capabilities, and
   `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
   it. A write scope requires its read scope (`shop:catalog:write` needs
   `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the

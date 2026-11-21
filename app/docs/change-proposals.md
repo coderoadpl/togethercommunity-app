@@ -22,7 +22,7 @@ exactly the effect the owner saw, or applies nothing.
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
 | Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
 | Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
-| Images (product covers, branding) | Not yet available |
+| Images (product covers, branding): quarantine, address checks, publication on approval and cleanup ([Images](#images)) | Available in the use-cases; the image routes still refuse a propose-mode key |
 
 ## What a proposal is
 
@@ -119,11 +119,12 @@ behaviour. On a propose-mode key:
   proposal is refused (`403`, before any dry run) unless the key also holds
   the read capability of the operation's family (`product:read` for the
   catalogue, `tenant:settings:read` for the settings);
-- `shop:catalog:write` grants only `proposal:submit:catalog`, never
-  `product:write`, `product:price:write` or `product:publish`;
-- `shop:settings:write` grants only `proposal:submit:settings`, never
-  `tenant:settings:write`; the settings update becomes a proposal and the
-  branding image routes refuse the key;
+- `shop:catalog:write` grants only `proposal:submit:catalog` and
+  `proposal:asset:upload`, never `product:write`, `product:price:write` or
+  `product:publish`;
+- `shop:settings:write` grants only `proposal:submit:settings` and
+  `proposal:asset:upload`, never `tenant:settings:write`; the settings update
+  becomes a proposal and the branding image routes refuse the key;
 - `shop:fulfilment:write` and `shop:integrations:write` cannot be granted:
   creation answers `400`;
 - every propose-mode key holds `proposal:own:manage`, which reaches only the
@@ -310,9 +311,10 @@ that still holds a staff grant in this workspace, direct or derived from the
 organisation that manages it. For any other account, a removed team member or
 a deleted account, the e-mail is `null` and `issuerIsFormerTeamMember` or
 `decidedByIsFormerTeamMember` is `true`, so the page can say "former team
-member" without disclosing the address. Ownership follows the same effective
-grant as the owner session: an owner derived from the organisation counts as
-an owner. The accounts and grants of every person on a page are read in one
+member" without disclosing the address. The reader of those accounts returns
+only accounts that hold such a grant, and the owner view checks the grant
+again. Ownership follows the same effective grant as the owner session: an
+owner derived from the organisation counts as an owner. The accounts and grants of every person on a page are read in one
 query, whatever the page size.
 
 The group owner view carries the same `issuerEmail`, `issuerIsVerifiedOwner`
@@ -325,8 +327,13 @@ approval reports. None of these fields is ever part of a key receipt.
 owner of the workspace gets an in-app notification of kind `change-proposal`:
 the direct owners and the owners derived from the active organisation that
 manages the workspace, by the same effective grant the owner session checks.
-`authorDisplay` holds the key name, and for a group `contextId` holds the
-group id and `snippet` its title. There is at most one unread notification per
+Its payload carries its own typed field, `changeProposal: { keyName, groupId,
+groupTitle }`, with the key name and, for a group, the group id and title; the
+community fields `authorDisplay`, `contextId` and `snippet` stay empty. A
+notification stored before this field existed held the key name in
+`authorDisplay` and the group in `contextId` and `snippet`;
+`changeProposalNotificationFacts` in `core/domain` reads both forms, so such a
+notification stays readable. There is at most one unread notification per
 owner and key: the notification's source key is `change-proposal:<key id>`,
 and the unique source key per recipient makes the insert atomic, so a second
 proposal while it is unread adds nothing; once the owner read it, the next
@@ -362,7 +369,8 @@ inside the transaction rolls the notification back and is logged; a failure to
 write it is logged too, also when it comes after the deadline. None of these
 ever fails or changes the submission, which always answers its committed
 receipt. No migration is needed: the kind lives in the existing text
-column and the existing unique index carries the de-duplication.
+column, the typed field in the existing JSON payload column, and the existing
+unique index carries the de-duplication.
 
 ## Owner panel
 
@@ -517,7 +525,8 @@ transaction:
 6. read the target again and compute the effect; if it equals the stored
    effect, commit: the proposal is `applied`, and any effect outside the
    database (such as an object storage delete of a removed draft) runs after
-   the commit;
+   the commit; the one exception is publishing an attached image, which
+   happens just before the commit (see [Images](#images));
 7. if the effect differs, roll back the savepoint: the proposal is `stale`;
 8. if the live use-case refuses the command itself, roll back the savepoint:
    the proposal is `failed`, with the error code and message stored;
@@ -629,7 +638,14 @@ over a list that has no length limit, such as the prices and download files of
 a deleted draft.
 
 A decision note is at most 500 characters. The key's own rate limits (60
-requests a minute, 10,000 a day) apply as on every shop route.
+requests a minute, 10,000 a day) apply as on every shop route. The images a
+key holds for approval have two limits of their own, checked when an upload
+is completed, in the same transaction that records it (see [Images](#images)):
+
+| Limit | Value | `changeProposalCap` |
+|---|---|---|
+| Images awaiting approval per key | 100 | `key_quarantined_images` |
+| Bytes of images awaiting approval per key | 50 MiB | `key_quarantined_bytes` |
 
 ## Lock waits
 
@@ -916,11 +932,114 @@ replay and the whole approval, so no valid group reaches them; in a dry run
 the 2-second statement bound also ends a row lock wait before the 5-second
 `lock_timeout` would.
 
+## Images
+
+A propose-mode key can propose a new product cover and new branding images
+(logo, dark logo, favicon, share image). Nothing it uploads is publicly
+reachable until the owner approves the proposal that attaches it. The
+use-cases are in `core/server/usecases/change-proposal-images.ts`; the image
+routes still refuse a propose-mode key (see [Not yet available](#not-yet-available)).
+
+**Upload.** Starting an upload needs `proposal:asset:upload` with the
+submission capability of the family: `proposal:submit:catalog` for a product
+cover, `proposal:submit:settings` for a branding image. It presigns a `PUT` to
+the private candidate prefix `image-asset-candidates/`, exactly like the live
+upload. Completing it runs the live content checks (size and format; an upload
+that fails them is deleted and answers the same validation error), then copies
+the bytes to a private, content-addressed key of the key,
+`image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, deletes the
+candidate and answers `{ url, quarantined: true }`, where `url` is the public
+address the image will have once approved,
+`/api/public/assets/<kind>/<sha256>.<ext>`. Nothing is written under the public
+prefix `image-assets/`. The same bytes again give the same key; other bytes
+can never replace it, because the digest is the name. Each quarantined image
+is a row of `change_proposal_images` (workspace, key, kind, digest, extension,
+size, creation time), so the limits, the references and the cleanup never
+depend on listing object storage. The limits of the key (above) are counted
+under a lock of that key in the transaction that inserts the row, so two
+concurrent completions cannot both take the last slot.
+
+**Attaching.** The key then proposes `product.update` with `coverUrl`,
+`product.create` with `coverUrl`, or `settings.update` with `logoUrl`,
+`logoDarkUrl`, `faviconUrl` or `ogImageUrl` set to that address, alone or in a
+[group](#groups). Every image address a propose-mode key changes must be one of
+its own quarantined images of the kind the field expects, or an address a live
+product cover or branding field of the workspace already shows; clearing a
+field or leaving it unchanged is always allowed. Anything else, a foreign URL,
+another key's or another workspace's quarantined image, an image of another
+kind, is refused at submit with `400` and the validation message of the live
+route, naming the field. The stored effect shows the future public address as
+the "after" value. The proposal is stored in the transaction that checks again,
+holding the row, that each attached image is still quarantined for the key; one
+released meanwhile is refused with the same `400`. An owner session and a
+direct-mode key set any address the live validator accepts, exactly as before.
+
+**Owner preview.** `getChangeProposalImage` reads, for the verified owner in
+their own session with `proposal:read`, the quarantined bytes of an image that
+a pending proposal attaches, by proposal id and digest. It answers the bytes,
+the content type and the disposition: inline for a raster image, always an
+attachment for SVG, as the public asset route does. A key, an admin, a decided
+proposal or an image the proposal does not attach get `404` or `403`; no key
+can read quarantined bytes.
+
+**Publication on approval.** Approval, single or of a group, takes each
+attached image's row with a share lock inside the approval transaction, reads
+its quarantined bytes and checks that they still hash to the digest in the
+address. A missing row, or bytes that no longer match, make the proposal (or
+the whole group) `stale` with the note "The proposed image … is no longer
+available", and nothing is applied; an address with no row that a live field
+already shows is public already and needs nothing. When every item applied,
+the bytes are written to `image-assets/<workspace>/<kind>/<sha256>.<ext>`,
+after the live change and before the status change and the commit. Publishing before the commit means committed live state
+never points at an object that does not exist, also after a crash; publishing
+last keeps the time in which a public object exists without an applied
+proposal to the write itself and the commit. When the approval does not end
+`applied` after writing (a write fails, a lock wait or the commit fails), the
+copies it wrote are deleted again, under the workspace's approval lock so no
+concurrent approval can publish the same address in between, except an address
+a live field shows. A crash between the write and the commit can leave a public
+object no live field shows; its proposal is still pending, and approving it
+again writes the same bytes to the same address.
+
+**Cleanup.** After a decision commits, the quarantined images of the decided
+proposals are released: their rows are deleted, under the workspace's proposal
+lock and only when no pending, unexpired proposal of the same key still
+attaches them, and then their objects. This follows an applied, stale or failed
+approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
+(every image of that key) and a purge. An image held by an approval in progress
+is released only after that approval ends. The sweep
+(`sweepQuarantinedImages`) removes every image older than 7 days that no
+pending, unexpired proposal of its key attaches, and every image of a revoked
+or deleted key, 50 workspaces and 200 images per workspace at a time; it also
+catches what a failed release left behind. The
+storage orphan report counts a quarantined object whose row exists as
+`pending` and a published content-addressed image a live field shows as
+`referenced`.
+
+**Rolling back.** Migration `0168_change_proposal_images` only adds the table
+`change_proposal_images` and its index on `created_at`. `CREATE INDEX` locks
+only the new, empty table; the table's foreign key to `tenants` takes a
+`SHARE ROW EXCLUSIVE` lock on `tenants`, which blocks writes to `tenants` (not
+reads) until the migration transaction commits, a moment since nothing is
+scanned.
+A release before it ignores the table, and its image routes refuse a
+propose-mode key. Such a release serves only random-id file names from
+`/api/public/assets`, so an image published under its digest is not served
+there until rolling forward again, and approving there a pending proposal that
+attaches a quarantined image would set the address without publishing it.
+Before such a rollback, count these proposals:
+
+```sql
+select count(*) from change_proposals
+where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]';
+```
+
 ## Not yet available
 
-- **Images.** The product cover and branding image routes refuse a
-  propose-mode key. Images will be uploaded to a private quarantine and
-  published only on approval.
+- **Image routes.** The product cover and branding image routes refuse a
+  propose-mode key, no route serves the owner preview, and the minute tick
+  does not run the sweep yet; the use-cases they will call are described under
+  [Images](#images).
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

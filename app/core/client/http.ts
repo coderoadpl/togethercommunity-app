@@ -440,7 +440,6 @@ export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 /** Same-origin SSE endpoint for the browser EventSource wrapper. */
 export const NOTIFICATIONS_STREAM_PATH = API_ROUTES.notificationsStream.path;
 
-/** The owner-session address of an image a pending change proposal attaches; the bytes stay private until approval. */
 export const changeProposalImagePath = (proposalId: string, digest: string): string =>
   API_ROUTES.changeProposalImage.path.replace(':id', encodeURIComponent(proposalId)).replace(':digest', encodeURIComponent(digest));
 

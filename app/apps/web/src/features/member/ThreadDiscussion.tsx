@@ -32,7 +32,7 @@ import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
 
-export const PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
 
 const isForbidden = (error: Error | null) =>

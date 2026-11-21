@@ -258,7 +258,18 @@ offer has ended or is not available right now; a sold-out bundle without a
 variant choice says it is sold out; both show a link to the workspace home page.
 When the payment handoff fails in the browser, the page says a temporary problem
 stopped the payment and offers "Try again", which repeats the handoff, and the
-link to the home page.
+link to the home page; a refusal because the bundle sold out or the link ended
+meanwhile shows that state instead, without "Try again". The ended and sold-out
+states still name the offer when it is known.
+
+On the Together page of a sales link (`?checkout=together`), a sold-out bundle
+shows a notice above the summary: when another variant of each sold-out line is
+still available it asks the buyer to choose another variant, otherwise it names
+the lines that ran out. An offer that is not available, or a workspace without
+legal URLs, shows "Offer not available" with a link to the workspace home
+instead of the form. In the details panel each line leads with its gross price
+on the name row, followed by a caption with the product type and, for physical
+items, how they are delivered, and a caption with net, VAT rate and VAT amount.
 
 A coupon code given in the offer URL as `?code=<code>` is validated server-side,
 previewed on the offer page as the discount, the amount to pay and the lowest

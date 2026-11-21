@@ -596,14 +596,22 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           <Stack useFlexGap spacing="0.75rem">
             <CheckoutTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CheckoutTitle>
-            {bundle?.soldOut === true ? (
-              <Alert severity="warning" data-testid="bundle-sold-out-notice">
-                <AlertTitle>{t.salesLinks.soldOutTitle}</AlertTitle>
-                {bundle.lines.some((line) => line.maxQuantity === 0)
-                  ? t.salesLinks.soldOutLines({ names: bundle.lines.filter((line) => line.maxQuantity === 0).map((line) => line.name).join(', ') })
-                  : null}
-              </Alert>
-            ) : null}
+            {bundle?.soldOut === true ? (() => {
+              const soldOutLines = bundle.lines.filter((line) => line.maxQuantity === 0);
+              const takenProducts = new Set(bundle.lines.map((line) => line.productId));
+              const variantLeft = soldOutLines.length > 0 && soldOutLines.every((line) =>
+                line.variants.some((variant) => !variant.soldOut && variant.productId !== line.productId && !takenProducts.has(variant.productId)));
+              const names = soldOutLines.map((line) => {
+                const current = line.variants.find((variant) => variant.productId === line.productId);
+                return variantLeft && current !== undefined ? `${line.name} (${current.label})` : line.name;
+              }).join(', ');
+              return (
+                <Alert severity="warning" data-testid="bundle-sold-out-notice">
+                  <AlertTitle>{variantLeft ? t.salesLinks.variantSoldOutTitle : t.salesLinks.soldOutTitle}</AlertTitle>
+                  {soldOutLines.length === 0 ? null : variantLeft ? t.salesLinks.variantSoldOutLines({ names }) : t.salesLinks.soldOutLines({ names })}
+                </Alert>
+              );
+            })() : null}
             <CheckoutSummaryRow
               items={t.checkout.itemCount({ count: bundle?.lines.length ?? 1 })}
               total={formatOfferPrice(payableCents, selectedCurrency, language, t.common.free)}

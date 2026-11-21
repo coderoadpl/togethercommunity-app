@@ -17,13 +17,13 @@ const fakeDocument = (dataset: Record<string, string | undefined>, status = { te
   const main = { dataset };
   const actions = { hidden: true };
   let retryListener: (() => void) | undefined;
-  const retry = { addEventListener: (_type: string, listener: () => void) => { retryListener = listener; } };
+  const retry = { hidden: false, focus: vi.fn(), addEventListener: (_type: string, listener: () => void) => { retryListener = listener; } };
   const document = {
     querySelector: (selector: string) => selector === 'main' ? main
       : selector === '[role="status"]' ? status
         : selector === '[data-error-actions]' ? actions : retry,
   };
-  return { document, main, status, actions, clickRetry: () => retryListener?.() };
+  return { document, main, status, actions, retry, clickRetry: () => retryListener?.() };
 };
 
 describe('direct sales-link page', () => {
@@ -127,8 +127,12 @@ describe('direct sales-link page', () => {
     expect(html).toContain(`<div class="actions"><a href="https://example.test/">${directSalesLinkCopyPl.homeLink}</a></div>`);
     expect(html).not.toContain('class="total"');
     expect(html).not.toContain('class="offer"');
+    expect(html).toContain('data-state="error"');
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');
+    const known = renderDirectSalesLinkPage({ ...page, language: 'pl', error, offerKnown: true, total: { cents: 9900, currency: 'PLN' } });
+    expect(known).toContain('<p class="offer">Offer &quot;&lt;name&gt;</p>');
+    expect(known).not.toContain('class="total"');
   });
 
   it('names the offer and its total under the workspace name, and hides the total behind an applied coupon', () => {
@@ -160,11 +164,43 @@ describe('direct sales-link page', () => {
     expect(fetch).toHaveBeenCalledOnce();
     expect(replace).not.toHaveBeenCalled();
 
+    expect(fake.retry.hidden).toBe(false);
+    expect(fake.retry.focus).not.toHaveBeenCalled();
+
     fake.clickRetry();
     await vi.waitFor(() => expect(replace).toHaveBeenCalledExactlyOnceWith('https://example.test/payment'));
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fake.actions.hidden).toBe(true);
     expect(fake.status.textContent).toBe(directSalesLinkCopyPl.redirecting);
+  });
+
+  it.each([
+    ['sold_out', 'soldOut'],
+    ['not_found', 'unavailable'],
+  ] as const)('shows the real %s cause without a retry when the handoff is refused for good', async (code, key) => {
+    const html = renderDirectSalesLinkPage({ ...page, language: 'pl' });
+    expect(html).toContain(`data-sold-out="${directSalesLinkCopyPl.soldOut}"`);
+    const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+    if (script === undefined) throw new Error('Missing checkout script');
+    const fake = fakeDocument({ endpoint: page.endpoint, redirecting: directSalesLinkCopyPl.redirecting, temporaryProblem: directSalesLinkCopyPl.temporaryProblem, soldOut: directSalesLinkCopyPl.soldOut, unavailable: directSalesLinkCopyPl.unavailable });
+    const fetch = vi.fn(async () => ({ ok: false, json: async () => ({ ok: false, error: { code, message: 'refused' } }) }));
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(fake.document, fetch, { replace: vi.fn() });
+    expect(fake.status.textContent).toBe(directSalesLinkCopyPl[key]);
+    expect(fake.actions.hidden).toBe(false);
+    expect(fake.retry.hidden).toBe(true);
+  });
+
+  it('returns focus to Try again when a retried handoff fails again', async () => {
+    const html = renderDirectSalesLinkPage(page);
+    const script = html.match(/<script nonce="safe-nonce">([\s\S]*?)<\/script>/)?.[1];
+    if (script === undefined) throw new Error('Missing checkout script');
+    const fake = fakeDocument({ endpoint: page.endpoint, redirecting: directSalesLinkCopyEn.redirecting, temporaryProblem: directSalesLinkCopyEn.temporaryProblem });
+    const fetch = vi.fn(async () => { throw new Error('Network failure'); });
+    await new Function('document', 'fetch', 'location', `return ${script.trim()}`)(fake.document, fetch, { replace: vi.fn() });
+    expect(fake.retry.focus).not.toHaveBeenCalled();
+    fake.clickRetry();
+    await vi.waitFor(() => expect(fake.retry.focus).toHaveBeenCalledOnce());
+    expect(fake.status.textContent).toBe(directSalesLinkCopyEn.temporaryProblem);
   });
 
   it('escapes public metadata and localizes the redirect and form', () => {

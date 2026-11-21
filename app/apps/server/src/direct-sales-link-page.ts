@@ -31,6 +31,7 @@ export const renderDirectSalesLinkPage = (input: {
   crawler: boolean;
   nonce: string;
   homeUrl: string;
+  offerKnown?: boolean;
   total?: { cents: number; currency: string } | undefined;
   error?: 'unavailable' | 'soldOut';
 }): string => {
@@ -79,6 +80,7 @@ a { color: var(--text); font-weight: 600; text-underline-offset: 3px; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .spinner { width: 36px; height: 36px; margin: 0 auto 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 900ms linear infinite; }
 [data-state="error"] .spinner { display: none; }
+[data-state="error"] [role="status"] { color: var(--text); }
 strong { display: inline-block; margin: 0 0 24px; padding: 4px 10px; border: 1px solid currentColor; border-radius: 6px; color: var(--accent); font-size: 0.75rem; letter-spacing: 0.08em; }
 button { margin-top: 24px; padding: 12px 20px; border: 2px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
@@ -88,11 +90,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 </style>
 </head>
 <body style="${escapeHtml(appearance)}">
-<main data-attribution="${escapeHtml(JSON.stringify(input.attribution ?? {}))}" data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} ${input.couponCode === undefined ? '' : `data-coupon-code="${escapeHtml(input.couponCode)}" `}data-mode="${escapeHtml(input.mode)}" data-redirecting="${escapeHtml(copy.redirecting)}" data-temporary-problem="${escapeHtml(copy.temporaryProblem)}">
+<main data-attribution="${escapeHtml(JSON.stringify(input.attribution ?? {}))}" data-endpoint="${escapeHtml(input.endpoint)}"${input.returnUrl === undefined ? '' : ` data-return-url="${escapeHtml(input.returnUrl)}"`} ${input.couponCode === undefined ? '' : `data-coupon-code="${escapeHtml(input.couponCode)}" `}data-mode="${escapeHtml(input.mode)}" data-redirecting="${escapeHtml(copy.redirecting)}" data-temporary-problem="${escapeHtml(copy.temporaryProblem)}" data-sold-out="${escapeHtml(copy.soldOut)}" data-unavailable="${escapeHtml(copy.unavailable)}"${input.error === undefined ? '' : ' data-state="error"'}>
 ${input.branding?.logoUrl ? `<img class="logo" src="${escapeHtml(input.branding.logoUrl)}" alt="">` : ''}
 <h1>${escapeHtml(displayName)}</h1>
 ${input.mode === 'test' ? '<strong>TEST</strong>' : ''}
-${input.error === undefined ? `<p class="offer">${escapeHtml(input.heading)}</p>` : ''}
+${input.error === undefined || input.offerKnown === true ? `<p class="offer">${escapeHtml(input.heading)}</p>` : ''}
 ${input.error === undefined && input.total !== undefined && (input.coupon === undefined || input.coupon === null) ? `<p class="total">${escapeHtml(money(input.total.cents, input.total.currency))}</p>` : ''}
 ${!input.crawler && couponMessage !== undefined ? `<p>${escapeHtml(couponMessage)}</p>` : ''}
 ${!input.crawler && input.coupon !== undefined && input.coupon !== null ? `<p>${escapeHtml(copy.couponLowestPrice(money(input.coupon.lowestPriceLast30DaysCents, input.coupon.currency)))}</p>` : ''}
@@ -108,23 +110,28 @@ ${canSubmit ? `<script nonce="${escapeHtml(input.nonce)}">
   const status = document.querySelector('[role="status"]');
   const actions = document.querySelector('[data-error-actions]');
   const retry = document.querySelector('[data-retry]');
-  const start = async () => {
+  const start = async (fromRetry) => {
     page.dataset.state = 'loading';
     status.textContent = page.dataset.redirecting;
     actions.hidden = true;
+    let code = null;
     try {
       const response = await fetch(page.dataset.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(page.dataset.couponCode === undefined ? {} : { couponCode: page.dataset.couponCode }), attribution: JSON.parse(page.dataset.attribution ?? '{}'), ...(page.dataset.returnUrl === undefined ? {} : { returnUrl: page.dataset.returnUrl }) }) });
-      const result = await response.json();
+      const result = await response.json().catch(() => null);
+      code = typeof result?.error?.code === 'string' ? result.error.code : null;
       if (!response.ok || result?.ok !== true || typeof result.data?.url !== 'string') throw new Error();
       location.replace(result.data.url);
     } catch {
+      const final = code === 'sold_out' || code === 'not_found';
       page.dataset.state = 'error';
-      status.textContent = page.dataset.temporaryProblem;
+      status.textContent = code === 'sold_out' ? page.dataset.soldOut : code === 'not_found' ? page.dataset.unavailable : page.dataset.temporaryProblem;
+      retry.hidden = final;
       actions.hidden = false;
+      if (fromRetry && !final) retry.focus();
     }
   };
-  retry.addEventListener('click', () => { void start(); });
-  return start();
+  retry.addEventListener('click', () => { void start(true); });
+  return start(false);
 })();
 </script>` : ''}
 </body>

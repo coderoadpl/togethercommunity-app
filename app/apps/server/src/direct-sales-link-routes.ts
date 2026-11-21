@@ -60,6 +60,7 @@ export const registerDirectSalesLinkRoutes = (app: Hono<AppVars>, deps: AppDeps)
       crawler,
       nonce: c.get('secureHeadersNonce') ?? '',
       homeUrl: `${baseUrl}/`,
+      offerKnown: offer.ok,
       total: offer.ok ? { cents: offer.value.totalCents, currency: offer.value.currency } : undefined,
     };
     const headers = { 'cache-control': 'no-store', vary: 'User-Agent' };

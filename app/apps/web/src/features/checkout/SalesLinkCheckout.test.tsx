@@ -84,6 +84,24 @@ it('names the lines that ran out above the summary of a sold-out bundle', async 
   expect(notice).toHaveTextContent(en.salesLinks.soldOutLines({ names: 'Printed workbook' }));
 });
 
+it.each([
+  ['in stock', false, en.salesLinks.variantSoldOutTitle, en.salesLinks.variantSoldOutLines({ names: 'Printed workbook (Oak)' })],
+  ['sold out too', true, en.salesLinks.soldOutTitle, en.salesLinks.soldOutLines({ names: 'Printed workbook' })],
+] as const)('tells the buyer to pick another variant only when a sibling variant is %s', async (_case, siblingSoldOut, title, body) => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  const variants = [
+    { productId: 'product-1', slug: 'workbook-oak', label: 'Oak', soldOut: true, available: 0 },
+    { productId: 'product-1-walnut', slug: 'workbook-walnut', label: 'Walnut', soldOut: siblingSoldOut, available: siblingSoldOut ? 0 : 4 },
+  ];
+  server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: {
+    ...offer, soldOut: true, lines: offer.lines.map((line, index) => index === 0 ? { ...line, baseProductId: 'product-1', variants, maxQuantity: 0 } : { ...line, maxQuantity: 1 }),
+  } })));
+  renderOffer();
+  const notice = await screen.findByTestId('bundle-sold-out-notice');
+  expect(notice).toHaveTextContent(title);
+  expect(notice).toHaveTextContent(body);
+});
+
 it('puts the gross price on the line name row and the tax detail and delivery in captions', async () => {
   window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
   server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: {
@@ -96,6 +114,7 @@ it('puts the gross price on the line name row and the tax detail and delivery in
   expect(within(first).getByTestId('offer-line-gross').textContent).toBe(formatPrice(4200, 'PLN', 'en'));
   expect(within(first).getByTestId('offer-line-kind')).toHaveTextContent(`${en.salesLinks.lineTypes.physical} · ${en.salesLinks.lineDelivery.shipping}`);
   const taxes = within(first).getByTestId('offer-line-cells');
+  expect(within(first).getByTestId('offer-line-kind').compareDocumentPosition(taxes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(taxes.tagName).toBe('DL');
   expect(within(taxes).getByText(en.salesLinks.net).tagName).toBe('DT');
   expect(within(taxes).queryByText(en.salesLinks.gross)).toBeNull();

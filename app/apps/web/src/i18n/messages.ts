@@ -94,6 +94,8 @@ export interface Messages {
     goHome: string;
     soldOutTitle: string;
     soldOutLines: (input: { names: string }) => string;
+    variantSoldOutTitle: string;
+    variantSoldOutLines: (input: { names: string }) => string;
     lineTypes: Record<'course' | 'digital_download' | 'membership' | 'physical', string>;
     lineDelivery: Record<'pickup' | 'shipping', string>;
     total: string;

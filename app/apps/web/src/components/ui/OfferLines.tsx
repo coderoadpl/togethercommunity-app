@@ -26,12 +26,12 @@ const BuyerOfferLines = <L extends OfferLine & BuyerLineDetails>({ lines, curren
           {formatPrice(line.grossCents, currency, language)}
         </OfferLineGross>
       </Box>
+      {kind === null ? null : <Typography variant="caption" component="p" color="text.secondary" data-testid="offer-line-kind">{kind}</Typography>}
       <OfferTaxList data-testid="offer-line-cells">{[
         [t.salesLinks.net, formatPrice(line.netCents, currency, language)],
         [t.salesLinks.vatRate, line.vatRate === 'exempt' ? t.salesLinks.exempt : line.vatRate === null ? '—' : `${line.vatRate}%`],
         [t.salesLinks.vat, formatPrice(line.vatCents, currency, language)],
       ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</OfferTaxList>
-      {kind === null ? null : <Typography variant="caption" component="p" color="text.secondary" data-testid="offer-line-kind">{kind}</Typography>}
       {line.vatExemptionBasis === null ? null : <Typography variant="caption" component="p" color="text.secondary">{line.vatExemptionBasis}</Typography>}
     </Box>;
   })}</Stack>;

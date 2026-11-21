@@ -7,7 +7,7 @@ import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { closesOnEscape } from '../../components/ui/CheckoutStepParts.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { useTranslations } from '../../i18n/index.js';
-import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyPart, CheckoutSafetyProduct, CheckoutSafetySection, CheckoutSafetyThumbnail, CheckoutSafetyThumbnailSlot, CheckoutSafetyWarnings } from '../../theme.js';
+import { CheckoutInlineToggle, CheckoutSafetyHeading, CheckoutSafetyPart, CheckoutSafetyPartyName, CheckoutSafetyProduct, CheckoutSafetySection, CheckoutSafetyThumbnail, CheckoutSafetyThumbnailSlot, CheckoutSafetyWarnings } from '../../theme.js';
 
 type SafetyEntry = { productId: string; title: string; coverUrl: string | null; compliance: PublicProductCompliance };
 
@@ -106,7 +106,13 @@ const ProductExtras = ({ entry, titled }: { entry: SafetyEntry; titled: boolean 
   );
 };
 
-const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group: SafetyGroup; countProducts: boolean; titled: boolean; emphasised: boolean }) => {
+const PartyName = ({ label, name, emphasised }: { label: string | null; name: string; emphasised: boolean }) => (
+  label === null
+    ? <CheckoutSafetyPart emphasised={emphasised}>{name}</CheckoutSafetyPart>
+    : <CheckoutSafetyPart>{label}: <CheckoutSafetyPartyName emphasised={emphasised}>{name}</CheckoutSafetyPartyName></CheckoutSafetyPart>
+);
+
+const ManufacturerLine = ({ group, countProducts, titled, emphasised, labelled }: { group: SafetyGroup; countProducts: boolean; titled: boolean; emphasised: boolean; labelled: boolean }) => {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -115,14 +121,14 @@ const ManufacturerLine = ({ group, countProducts, titled, emphasised }: { group:
   return (
     <Box data-testid="product-safety-manufacturer" {...closesOnEscape}>
       <Typography variant="body2" color="text.secondary">
-        <CheckoutSafetyPart emphasised={emphasised}>{group.manufacturerName}</CheckoutSafetyPart>
+        <PartyName label={labelled ? t.productSafety.manufacturer : null} name={group.manufacturerName} emphasised={emphasised} />
         <CheckoutSafetyPart>{group.manufacturerAddress}</CheckoutSafetyPart>
         <CheckoutSafetyPart><Link href={`mailto:${group.manufacturerEmail}`} color="inherit">{group.manufacturerEmail}</Link></CheckoutSafetyPart>
         {countProducts ? <CheckoutSafetyPart>{t.productSafety.appliesTo({ count: group.entries.length })}</CheckoutSafetyPart> : null}
       </Typography>
       {group.responsiblePerson === null ? null : (
-        <Typography variant="body2" color="text.secondary" sx={{ pt: '0.25rem' }} data-testid="product-safety-responsible-person">
-          <CheckoutSafetyPart>{t.productSafety.responsiblePerson}: {group.responsiblePerson.name}</CheckoutSafetyPart>
+        <Typography variant="body2" color="text.secondary" sx={{ pt: '0.5rem' }} data-testid="product-safety-responsible-person">
+          <PartyName label={t.productSafety.responsiblePerson} name={group.responsiblePerson.name} emphasised={false} />
           <CheckoutSafetyPart>{group.responsiblePerson.address}</CheckoutSafetyPart>
           <CheckoutSafetyPart><Link href={`mailto:${group.responsiblePerson.email}`} color="inherit">{group.responsiblePerson.email}</Link></CheckoutSafetyPart>
         </Typography>
@@ -159,12 +165,13 @@ export const ProductSafetySummary = ({ entries, multiProduct }: { entries: reado
   const headingId = useId();
   if (entries.length === 0) return null;
   const groups = groupSafetyEntries(entries);
+  const labelled = groups.some((group) => group.responsiblePerson !== null);
   return (
     <CheckoutSafetySection aria-labelledby={headingId} data-testid="product-safety-info">
       <CheckoutSafetyHeading id={headingId} component="h2">{t.productSafety.offerHeading}</CheckoutSafetyHeading>
       <Stack useFlexGap spacing={groups.length > 1 ? '0.75rem' : '0.35rem'} sx={{ mt: '0.25rem' }}>
         {groups.map((group) => (
-          <ManufacturerLine key={group.key} group={group} countProducts={multiProduct} titled={multiProduct} emphasised={groups.length > 1} />
+          <ManufacturerLine key={group.key} group={group} countProducts={multiProduct} titled={multiProduct} emphasised={groups.length > 1} labelled={labelled} />
         ))}
       </Stack>
     </CheckoutSafetySection>

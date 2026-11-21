@@ -3077,6 +3077,13 @@ export const CheckoutSafetyPart = styled('span', {
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
 }));
 
+export const CheckoutSafetyPartyName = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'emphasised',
+})<{ emphasised?: boolean }>(({ emphasised = false, theme }) => ({
+  color: theme.palette.text.primary,
+  ...(emphasised ? { fontWeight: 500 } : {}),
+}));
+
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',
   fontWeight: 600,

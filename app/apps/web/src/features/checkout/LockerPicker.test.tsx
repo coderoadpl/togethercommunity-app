@@ -386,7 +386,7 @@ describe('parcel locker picker', () => {
     const dialog = await picker();
     act(() => { document.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error')); });
     expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
-    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close, en.shipping.lockerTypeCode]);
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close, en.common.retry, en.shipping.lockerTypeCode]);
     expect(document.querySelector('inpost-geowidget')).toBeNull();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
 
@@ -402,6 +402,29 @@ describe('parcel locker picker', () => {
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+  });
+
+  it('mounts the map again with a fresh script when the buyer tries again after a failure inside the picker', async () => {
+    serve();
+    await renderCheckout();
+    await userEvent.click(chooseButton());
+    const dialog = await picker();
+    const failedScript = document.getElementById('inpost-geowidget-script');
+    act(() => { failedScript?.dispatchEvent(new Event('error')); });
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.retry }));
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerPrompt);
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: en.shipping.lockerChoose })).toHaveFocus());
+    const retried = document.getElementById('inpost-geowidget-script');
+    expect(retried).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
+    expect(retried).not.toBe(failedScript);
+    expect(within(dialog).getByTestId('checkout-inpost-geowidget').firstElementChild).toBe(widget());
+
+    pickOnMap(shop);
+    await pickerClosed();
+    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
+    expect(screen.queryByTestId('checkout-locker-map-failed')).not.toBeInTheDocument();
   });
 
   it('shows the typed code directly, without a picker or a reason, when the workspace has no map token', async () => {

@@ -39,6 +39,20 @@ describe('locker picker state', () => {
     expect(reduceLockerPicker(closed, { type: 'pickerOpened' })).toBe(closed);
   });
 
+  it('shows the map again when the buyer asks to retry a failure inside the open picker', () => {
+    const retried = run({ type: 'pickerOpened' }, { type: 'mapFailed' }, { type: 'mapRetryRequested' });
+    expect(retried).toEqual({ mapFailed: false, picker: { status: 'open', map: 'shown' } });
+    expect(acceptsPoint(retried)).toBe(true);
+    expect(lockerEntry(map, reduceLockerPicker(retried, { type: 'pickerCancelled' }))).toEqual({ kind: 'map', token: 'public-map-token' });
+  });
+
+  it('ignores a retry while the map is shown or the picker is closed, so a failure left behind keeps the typed code', () => {
+    const opened = run({ type: 'pickerOpened' });
+    expect(reduceLockerPicker(opened, { type: 'mapRetryRequested' })).toBe(opened);
+    const left = run({ type: 'pickerOpened' }, { type: 'mapFailed' }, { type: 'pickerCancelled' });
+    expect(reduceLockerPicker(left, { type: 'mapRetryRequested' })).toBe(left);
+  });
+
   it('keeps one picker open when it is asked to open twice', () => {
     const opened = run({ type: 'pickerOpened' });
     expect(reduceLockerPicker(opened, { type: 'pickerOpened' })).toBe(opened);

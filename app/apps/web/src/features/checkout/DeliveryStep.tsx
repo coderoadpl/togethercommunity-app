@@ -158,6 +158,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       mapFailed={picker.picker.status === 'open' && picker.picker.map === 'failed'}
       onPoint={commitPoint}
       onMapFailed={() => sendPicker({ type: 'mapFailed' })}
+      onMapRetry={() => sendPicker({ type: 'mapRetryRequested' })}
       onCancel={cancelPicker}
       onExited={pickerExited}
     />

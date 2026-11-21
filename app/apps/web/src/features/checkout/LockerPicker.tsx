@@ -1,5 +1,5 @@
 import { useId, useRef } from 'react';
-import { Box, Button, CircularProgress, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
 import { AccountGlyph, CheckoutLockerDialog, CheckoutLockerMapArea, CheckoutLockerMapCover, CheckoutLockerPickerBar, CheckoutLockerPickerHeading } from '../../theme.js';
@@ -17,7 +17,7 @@ const SHORT_SCREEN = '(max-height: 599.95px)';
 
 export const pointSummary = (point: PickedPickupPoint) => [point.code, point.name].filter((value) => value !== null).join(' · ');
 
-export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPoint, onMapFailed, onCancel, onExited }: {
+export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPoint, onMapFailed, onMapRetry, onCancel, onExited }: {
   open: boolean;
   token: string;
   language: 'pl' | 'en';
@@ -25,6 +25,7 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
   mapFailed: boolean;
   onPoint: (point: PickedPickupPoint) => void;
   onMapFailed: () => void;
+  onMapRetry: () => void;
   onCancel: () => void;
   onExited: () => void;
 }) => {
@@ -35,6 +36,10 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
   const titleId = `${id}-title`;
   const statusId = `${id}-status`;
   const heading = useRef<HTMLHeadingElement>(null);
+  const retryMap = () => {
+    heading.current?.focus();
+    onMapRetry();
+  };
   return (
     <CheckoutLockerDialog
       open={open}
@@ -85,7 +90,10 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
       <CheckoutLockerMapArea data-testid="checkout-locker-map-area">
         {mapFailed ? (
           <CheckoutLockerMapCover>
-            <Button variant="outlined" onClick={onCancel} data-testid="checkout-locker-type-code">{t.shipping.lockerTypeCode}</Button>
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
+              <Button variant="contained" onClick={retryMap} data-testid="checkout-locker-map-retry">{t.common.retry}</Button>
+              <Button variant="outlined" onClick={onCancel} data-testid="checkout-locker-type-code">{t.shipping.lockerTypeCode}</Button>
+            </Stack>
           </CheckoutLockerMapCover>
         ) : (
           <>

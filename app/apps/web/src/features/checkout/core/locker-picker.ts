@@ -18,6 +18,8 @@ export const reduceLockerPicker = (state: LockerPickerState, event: LockerPicker
       return acceptsPoint(state) ? { ...state, picker: { status: 'closed' } } : state;
     case 'mapFailed':
       return state.picker.status === 'open' ? { mapFailed: true, picker: { status: 'open', map: 'failed' } } : { ...state, mapFailed: true };
+    case 'mapRetryRequested':
+      return state.picker.status === 'open' && state.picker.map === 'failed' ? { mapFailed: false, picker: { status: 'open', map: 'shown' } } : state;
     case 'pickerCancelled':
       return state.picker.status === 'closed' ? state : { ...state, picker: { status: 'closed' } };
   }

@@ -16,4 +16,5 @@ export type LockerPickerEvent =
   | { type: 'pickerOpened' }
   | { type: 'pointSelected' }
   | { type: 'mapFailed' }
+  | { type: 'mapRetryRequested' }
   | { type: 'pickerCancelled' };

@@ -18,6 +18,15 @@ const outsideEu = complianceDraftFrom({
   safetyWarnings: 'Keep away from water.',
 });
 
+const inEu = complianceDraftFrom({
+  manufacturerName: 'Example Workshop',
+  manufacturerAddress: 'Example Street 1, 00-001 Warsaw, Poland',
+  manufacturerEmail: 'safety@studio.togethercommunity.app',
+  manufacturerOutsideEu: false,
+  modelIdentifier: 'STAND-1',
+  safetyWarnings: 'Keep away from open flame.',
+});
+
 const failingOf = (draft: ComplianceDraft): ComplianceFailure => {
   const parsed = complianceFromDraft(draft);
   return parsed.ok ? [] : parsed.failing;
@@ -50,3 +59,6 @@ export const ResponsiblePersonMissing: Story = {
   render: () => <EditorPreview initial={{ ...outsideEu, responsiblePersonAddress: '', responsiblePersonEmail: '' }} validated />,
 };
 export const ResponsiblePersonMissingPolish: Story = { ...ResponsiblePersonMissing, parameters: { locale: 'pl' } };
+export const ManufacturerInEu: Story = { render: () => <EditorPreview initial={inEu} /> };
+export const ManufacturerInEuDark: Story = { ...ManufacturerInEu, parameters: { colorScheme: 'dark' } };
+export const ManufacturerInEuPolishDark: Story = { ...ManufacturerInEu, parameters: { locale: 'pl', colorScheme: 'dark' } };

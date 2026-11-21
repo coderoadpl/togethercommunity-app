@@ -307,6 +307,7 @@ describe('getPublicOffer', () => {
       manufacturerName: 'Example Workshop',
       manufacturerAddress: 'Example Street 1, Warsaw',
       manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: false,
       modelIdentifier: 'STAND-1',
       safetyWarnings: 'Keep away from **open flame**.<script>alert(1)</script>',
     };

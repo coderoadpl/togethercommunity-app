@@ -11871,7 +11871,7 @@ describe('direct public sales-link checkout', () => {
     expect(item.checkoutConsentDefinitionIds ?? []).toEqual([]);
     item.compliance = {
       manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
-      modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
+      manufacturerOutsideEu: false, modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
     };
     h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
     const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });

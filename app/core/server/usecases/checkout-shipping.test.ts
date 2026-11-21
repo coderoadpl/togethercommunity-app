@@ -289,7 +289,7 @@ describe('checkout with shipping', () => {
   it('refuses the direct Stripe handoff when a collected sales-link product carries product safety information', async () => {
     const collected: Product = {
       ...accessory, deliveryMethod: 'pickup',
-      compliance: { manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com', modelIdentifier: 'M-1', safetyWarnings: '' },
+      compliance: { manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com', manufacturerOutsideEu: false, modelIdentifier: 'M-1', safetyWarnings: '' },
     };
     const h = harness([collected, course], [course.id, collected.id]);
     const result = await createDirectSalesLinkCheckout(tenant, 'https://alpha.example.com', {

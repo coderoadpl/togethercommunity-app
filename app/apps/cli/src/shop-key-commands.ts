@@ -677,7 +677,7 @@ export const registerShopKeyCommands = (
 
   const proposals = shop.command('proposals').description('Change proposals made by a propose-mode key: only that key\'s own proposals, never the live values they change');
   keyed(proposals.command('list').description('List this key\'s proposals, newest first')
-    .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+    .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed, expired, or decided (every proposal no longer waiting)')
     .option('--group <id>', 'only the items of this group')
     .option('--cursor <id>', 'continue after this proposal id')
     .option('--limit <n>', 'proposals per page (1-100, default 50)'))

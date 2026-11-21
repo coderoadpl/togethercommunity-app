@@ -2615,6 +2615,18 @@ describe('owner change proposal commands', () => {
       '1998-08-01T00:00:00.000Z\tpending\tproduct.update\tproduct:product-1\tCatalogue agent\tgroup Spring launch #2 (group-1)\t(proposal-1)',
     );
   });
+  it('lists the decided proposals, the filter the history page uses', async () => {
+    h.listChangeProposals.mockReset().mockResolvedValue(ok({ proposals: [], nextCursor: null }));
+    await run('proposals', 'list', '--status', 'decided');
+    expect(h.listChangeProposals).toHaveBeenCalledWith({ status: 'decided' });
+    expect(logSpy).toHaveBeenCalledWith('no change proposals');
+  });
+  it('names the decided filter in the list help', async () => {
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await run('proposals', 'list', '--help');
+    expect(output).toHaveBeenCalledWith(expect.stringMatching(/expired,\s+or\s+decided\s+\(every\s+proposal\s+no\s+longer\s+waiting\)/));
+    output.mockRestore();
+  });
   it('refuses an unknown status before calling the API', async () => {
     h.listChangeProposals.mockReset();
     await run('--json', 'proposals', 'list', '--status', 'approved');

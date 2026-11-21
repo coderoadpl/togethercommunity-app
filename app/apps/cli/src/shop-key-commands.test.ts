@@ -1010,6 +1010,21 @@ describe('shop image CLI with a propose-mode key', () => {
     expect(calls.at(-1)?.body).toEqual({ id: '$proposal:proposal-1', coverUrl: coverPath });
   });
 
+  it('checks a $proposal: reference like any product id when no group is given, before anything is uploaded', async () => {
+    h.fetchImpl = async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      if (url.pathname.endsWith('/prices')) {
+        calls.push({ method: init?.method ?? 'GET', path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: null });
+        return Response.json({ ok: false, error: { code: 'not_found', message: 'Product not found' } }, { status: 404 });
+      }
+      return quarantineFetch(input, init);
+    };
+    await run('shop', 'cover', 'upload', '$proposal:proposal-1', file);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.path.endsWith('/prices')).toBe(true);
+  });
+
   it('prints the receipt and that the image stays private until approval without --json', async () => {
     process.argv = ['node', 'together', 'shop', 'cover', 'upload', 'product-1', file];
     vi.resetModules();

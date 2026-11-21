@@ -507,9 +507,10 @@ shop key, never the storage PUT. With a propose-mode key the completed result
 also carries `quarantined: true`. `shop cover upload` first reads the product's
 prices to check that the product exists in the key's workspace, so its key needs
 `shop:catalog:read` as well as `shop:catalog:write`; an unknown product fails
-with `not_found` (exit code 5) before anything is uploaded. A `$proposal:`
-reference to a product an earlier item of the same group creates skips that
-check. The CLI adds the product update after successful completion, and never
+with `not_found` (exit code 5) before anything is uploaded. Only with
+`--group <id>` does a `$proposal:` reference to a product an earlier item of
+that group creates skip that check; without a group it is checked like any
+other id. The CLI adds the product update after successful completion, and never
 updates the product when upload or completion fails. With a propose-mode key
 that update is a proposal: the command prints the receipt and the image address,
 which stays private until the owner approves, and `--group <id>` adds the

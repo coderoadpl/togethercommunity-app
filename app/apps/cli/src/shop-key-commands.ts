@@ -683,11 +683,11 @@ export const registerShopKeyCommands = (
     }));
 
   const cover = shop.command('cover').description('Product cover images');
-  proposableKeyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read), upload a product cover and attach the completed image to the product; a propose-mode key proposes the attachment, and its image stays private until the owner approves it'))
+  proposableKeyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read; with --group, a $proposal: reference is not checked), upload a product cover and attach the completed image to the product; a propose-mode key proposes the attachment, and its image stays private until the owner approves it'))
     .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file], proposal) => {
       const input = await imageUploadInput('product-cover', file);
       if (!input.ok) return input;
-      if (!isChangeProposalReference(id)) {
+      if (proposal.groupId === undefined || !isChangeProposalReference(id)) {
         const product = await client.listProductPrices(id);
         if (!product.ok) return product;
       }

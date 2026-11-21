@@ -1059,8 +1059,9 @@ it holds one. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
-approval commits. An image it did not record must still exist at that moment,
-or the approval answers busy; the workspace's approval lock it holds keeps the
+approval commits. A quarantined image it did not record must still have its
+public object at that moment, or the approval answers busy (a failed storage
+request answers its error); the workspace's approval lock it holds keeps the
 object there until the commit. Publishing before the commit means committed
 live state never points at an object that does not exist, also after a crash.
 

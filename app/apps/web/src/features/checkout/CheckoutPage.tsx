@@ -416,7 +416,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       : null;
     const failedContact = failed && statusTimedOut && supportUrl !== null;
     const offersRecheck = failed || timedOut;
-    const externalContact = supportUrl !== null && !supportUrl.startsWith('mailto:');
+    const externalContact = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
     const contactLink = supportUrl !== null && (soldOutRefund || timedOut || failedContact)
       ? externalContact
         ? <Button href={supportUrl} target="_blank" rel="noopener noreferrer" variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>

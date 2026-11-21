@@ -395,8 +395,9 @@ the value now and after approval, stacked under the label on narrow screens;
 the rows share the component of the course version preview. A new record (a new
 product, sales link or price) is one framed definition list under a single
 caption, "Will be created with:", with label and value side by side on wide
-screens and stacked on narrow ones; a deleted record shows only the current
-value. Money is formatted with its currency, booleans as words, lists as
+screens and stacked on narrow ones; a new price shows its terms there as one
+line ("PLN 490.00 per year"), on its own card and as a group step; a deleted
+record shows only the current value. Money is formatted with its currency, booleans as words, lists as
 lists, and every enumerated value (product type, visibility, sales channel,
 delivery method, parcel size, price kind and interval, VAT rate and mode,
 exemption basis, invoicing provider, KSeF submission mode, invoicing scope,

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 
 import { stockAdjustmentEventType, type ChangeProposalOwnerView, type ChangeProposalTargetKind } from '#core/domain/index.js';
@@ -8,6 +8,7 @@ import { formatDateTime, formatFileSize, formatPrice } from '../../../lib/format
 import { FinePrint, PreLineText } from '../../../theme.js';
 import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffText } from '../FieldDiff.js';
 import {
+  priceOf,
   proposalCreatesRecord,
   proposalRemovesRecord,
   proposalRows,
@@ -187,7 +188,13 @@ const StockDeltaRow = ({
   );
 };
 
-const NewRecord = ({ rows, targetKind }: { rows: readonly DisplayRow[]; targetKind: ChangeProposalTargetKind | undefined }) => {
+interface NewRecordEntry {
+  field: string;
+  label: string;
+  value: ReactNode;
+}
+
+const NewRecord = ({ entries }: { entries: readonly NewRecordEntry[] }) => {
   const t = useTranslations().changeProposals;
   return (
     <Paper variant="outlined" sx={{ p: '1rem' }} data-testid="proposal-new-record">
@@ -203,16 +210,16 @@ const NewRecord = ({ rows, targetKind }: { rows: readonly DisplayRow[]; targetKi
           mt: '0.75rem',
         }}
       >
-        {rows.map((row) => row.kind === 'change' && row.after !== null ? (
-          <Box key={row.field} sx={{ display: 'contents' }} data-testid={`proposal-field-${row.field}`}>
+        {entries.map((entry) => (
+          <Box key={entry.field} sx={{ display: 'contents' }} data-testid={`proposal-field-${entry.field}`}>
             <Typography component="dt" variant="body2" color="text.secondary" sx={{ pt: { xs: '0.5rem', sm: 0 } }}>
-              {fieldLabel(t, row.field, targetKind)}
+              {entry.label}
             </Typography>
             <Box component="dd" sx={{ m: 0, minWidth: 0 }}>
-              <ProposalValue value={row.after} />
+              {entry.value}
             </Box>
           </Box>
-        ) : null)}
+        ))}
       </Box>
     </Paper>
   );
@@ -225,17 +232,27 @@ export const ProposalFieldRows = ({
   stockNow,
   labelComponent = 'h3',
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'>;
+  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation'>>;
   targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
   labelComponent?: HeadingLevel;
 }) => {
   const t = useTranslations().changeProposals;
+  const { language } = useLanguage();
   const rows = proposalRows(proposal, references);
   const removal = proposalRemovesRecord(proposal);
+  const newPrice = proposal.operation === 'price.create' ? priceOf(proposal.input) : null;
+  if (newPrice !== null) {
+    return <NewRecord entries={[{ field: 'price', label: t.fields.priceCents, value: <FieldDiffText breakAnywhere>{priceTerms(t, newPrice, language)}</FieldDiffText> }]} />;
+  }
   if (rows.length === 0) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
-  if (proposalCreatesRecord(proposal)) return <NewRecord rows={rows} targetKind={targetKind} />;
+  if (proposalCreatesRecord(proposal)) {
+    const entries = rows.flatMap((row): NewRecordEntry[] => row.kind === 'change' && row.after !== null
+      ? [{ field: row.field, label: fieldLabel(t, row.field, targetKind), value: <ProposalValue value={row.after} /> }]
+      : []);
+    return <NewRecord entries={entries} />;
+  }
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
       {rows.map((row) => {

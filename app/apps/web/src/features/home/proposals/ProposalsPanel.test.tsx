@@ -414,6 +414,40 @@ describe('ProposalsPanel', () => {
     expect(record.querySelector('img')).toBeNull();
   });
 
+  it('shows a new price as the framed new-record block with its terms on one line, alone and as a group step', async () => {
+    const groupPrice = pendingChangeProposals.find((proposal) => proposal.id === 'proposal-field-guide-price');
+    if (groupPrice === undefined) throw new Error('missing fixture');
+    usePending([...pendingChangeProposals.filter((proposal) => proposal.groupId !== null), {
+      ...groupPrice,
+      id: 'proposal-club-yearly',
+      groupId: null,
+      groupTitle: null,
+      groupPosition: null,
+      target: { kind: 'product', id: 'product-club' },
+      targetLabel: 'Studio Club',
+      input: { productId: 'product-club', kind: 'recurring', interval: 'year', amountCents: 49000, currency: 'PLN' },
+      effect: { activePrices: {
+        before: [{ kind: 'recurring', interval: 'month', amountCents: 4900, currency: 'PLN' }],
+        after: [{ kind: 'recurring', interval: 'month', amountCents: 4900, currency: 'PLN' }, { kind: 'recurring', interval: 'year', amountCents: 49000, currency: 'PLN' }],
+      } },
+    }]);
+
+    renderPanel();
+
+    const card = await screen.findByTestId('proposal-card-proposal-club-yearly');
+    const record = within(card).getByTestId('proposal-new-record');
+    expect(record).toHaveTextContent(t.newRecordCaption);
+    expect(within(record).getByTestId('proposal-field-price')).toHaveTextContent(
+      normalized(t.priceRecurring({ price: formatPrice(49000, 'PLN', 'en'), interval: t.priceInterval.year })),
+    );
+    expect(within(card).queryByText(t.columnNow)).toBeNull();
+    expect(within(card).queryByText(t.columnAfter)).toBeNull();
+
+    const step = await screen.findByTestId('proposal-group-item-proposal-field-guide-price');
+    expect(within(step).getByTestId('proposal-field-price')).toHaveTextContent(normalized(t.priceOneTime({ price: formatPrice(3900, 'PLN', 'en') })));
+    expect(within(step).queryByText(t.columnNow)).toBeNull();
+  });
+
   it('names which price a price change touches, on the card and in the confirmation', async () => {
     usePending([{
       ...stockAdjustmentProposal,

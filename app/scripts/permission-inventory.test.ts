@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectPermissionInventory,
+  ENTITLEMENT_KEY_PRINCIPAL,
   collectUseCasesInSource,
   renderPermissionTable,
   SHOP_MANAGEMENT_KEY_PRINCIPAL,
@@ -15,8 +16,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(535);
-    expect(inventory.useCases).toHaveLength(400);
+    expect(inventory.routes).toHaveLength(539);
+    expect(inventory.useCases).toHaveLength(404);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -249,6 +250,18 @@ describe('permission inventory', () => {
       expect(routes.find((row) => row.subject === `GET /api/reports/${path}`)).toMatchObject({
         capability: 'report:read', before: ['report-api-key'], after: ['report-api-key'], evidence: 'Tenant API key',
       });
+    }
+  });
+
+  it('gives the entitlement check only to the entitlement key and its key routes only to the owner', () => {
+    const inventory = collectPermissionInventory();
+    const rows = [...inventory.routes, ...inventory.useCases];
+    const row = (subject: string) => rows.find((entry) => entry.subject === subject);
+    for (const subject of ['POST /api/m2m/entitlements/check', 'entitlement-check.ts#checkEntitlements']) {
+      expect(row(subject)).toMatchObject({ capability: 'entitlement:check', before: [ENTITLEMENT_KEY_PRINCIPAL], after: [ENTITLEMENT_KEY_PRINCIPAL] });
+    }
+    for (const subject of ['GET /api/api-keys/entitlement', 'POST /api/api-keys/entitlement', 'DELETE /api/api-keys/entitlement/:id', 'entitlement-keys.ts#createEntitlementKey', 'entitlement-keys.ts#listEntitlementKeys', 'entitlement-keys.ts#revokeEntitlementKey']) {
+      expect(row(subject)).toMatchObject({ capability: 'api-key:write', before: ['owner'], after: ['owner'] });
     }
   });
 

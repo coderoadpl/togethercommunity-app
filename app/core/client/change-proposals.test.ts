@@ -68,6 +68,26 @@ describe('shop management client with a propose-mode key', () => {
     for (const result of results) expect(result).toEqual({ ok: true, value: { outcome: 'proposed', proposal: receipt } });
   });
 
+  it('says that an image a propose-mode key uploaded is quarantined until an approved proposal attaches it', async () => {
+    const digest = 'a'.repeat(64);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'storage.example.test') return new Response(null);
+      if (url.pathname === SHOP_CATALOG_ROUTES.updateProduct.path) {
+        return Response.json({ ok: true, data: { outcome: 'proposed', proposal: receipt } }, { status: 202 });
+      }
+      return Response.json({ ok: true, data: url.pathname.endsWith('/upload')
+        ? { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: null, quarantined: true, upload: { url: 'https://storage.example.test/candidate', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+        : { url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true } });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    const uploaded = await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array(4) });
+    expect(uploaded).toEqual({ ok: true, value: { url: `/api/public/assets/product-cover/${digest}.png`, quarantined: true } });
+    if (!uploaded.ok) throw new Error('upload failed');
+    const attached = await client.updateProduct({ id: 'product-1', coverUrl: uploaded.value.url });
+    expect(attached.ok && isProposedChange(attached.value)).toBe(true);
+  });
+
   it('returns the receipt of a 202 as a proposed outcome on the sales-link and settings mutations', async () => {
     const seen: string[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {

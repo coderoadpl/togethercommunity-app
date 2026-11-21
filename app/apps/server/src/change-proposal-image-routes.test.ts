@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -325,7 +324,7 @@ describe('attaching a quarantined image', () => {
 describe('checkout appearance images', () => {
   it('refuses a propose-mode key a new checkout logo or icon, single and grouped, and leaves a direct-mode key unchanged', async () => {
     const live = { displayName: 'Acme checkout', logoUrl: 'https://images.example.test/checkout-logo.png' };
-    await database.db.update(tenants).set({ checkoutAppearance: live }).where(eq(tenants.id, 'acme'));
+    await database.db.execute(`update tenants set checkout_appearance = '${JSON.stringify(live)}'::jsonb where id = 'acme'`);
     const key = await createShopKey(PROPOSE_SCOPES, 'propose');
     const created = await keyed(key.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: 'Checkout look' });
     expect(created.status).toBe(201);
@@ -347,7 +346,7 @@ describe('checkout appearance images', () => {
     const changed = { ...live, iconUrl: 'https://images.example.test/new-icon.png' };
     expect((await keyed(direct.secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { checkoutAppearance: changed })).status).toBe(200);
     expect((await database.db.select().from(tenants)).find((row) => row.id === 'acme')?.checkoutAppearance).toMatchObject({ iconUrl: changed.iconUrl });
-    await database.db.update(tenants).set({ checkoutAppearance: null }).where(eq(tenants.id, 'acme'));
+    await database.db.execute("update tenants set checkout_appearance = null where id = 'acme'");
   });
 });
 

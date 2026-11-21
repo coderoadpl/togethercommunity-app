@@ -841,6 +841,17 @@ import API; Studio shows the expandable **Product safety (GPSR)** section in the
 product editor for physical products only. The workspace is responsible for the
 content; the platform only validates the shape.
 
+In that section the **The manufacturer is established outside the EU** switch,
+its hint and, while it is on, the three responsible-person fields sit in one
+group under a left rule. The name field says the responsible person is usually
+the importer or the manufacturer's authorised representative in the EU, and the
+address field asks for the country. Saving checks the draft against the same
+schema: when a responsible-person field fails, the editor asks to fill in or
+correct the responsible person and marks the failing fields; when another field
+fails, it shows the manufacturer message; both show when both fail. While the
+switch is off, the hidden responsible-person texts do not count, so clearing
+every visible field removes the safety information.
+
 The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
@@ -865,7 +876,10 @@ section above the pay button, for every product type with `compliance`. Without
 a click it shows, per manufacturer, the name, the postal address, the contact
 e-mail and, when the offer sells more than one product, `applies to N products`
 (a); for a manufacturer outside the EU, a **Responsible person in the EU** line
-right under it with that person's name, postal address and e-mail (b); then,
+right under it with that person's name, postal address and e-mail (b), and when
+the section shows a responsible person every manufacturer name in it carries a
+**Manufacturer** label in the same form, the label in the line colour and the
+name in the primary colour; then,
 for each product of that manufacturer, a 40 px picture from the product cover
 with the product title as its alternative text when the product has a cover,
 the product title when the offer sells more than one product, the model
@@ -887,7 +901,8 @@ instructions link, with the product's title only when more than one product of
 that manufacturer has them. A manufacturer whose products have neither shows no
 **Details**. The cart checkout keeps one section per product, expanded for
 physical products, with the responsible person under the manufacturer when it
-applies.
+applies, in the manufacturer's shape: a label, name and address row, then its
+contact row right under it.
 A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,

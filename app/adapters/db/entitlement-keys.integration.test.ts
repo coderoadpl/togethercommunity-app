@@ -171,6 +171,17 @@ describe('entitlement subject reader', () => {
     expect(await reader.listPaidCheckoutOrders(TENANT, 'm-buyer')).toHaveLength(2);
   });
 
+  it('skips deleted and erased rows before the limit, so two live rows sharing an address are both seen', async () => {
+    await database.db.insert(dbSchema.members).values([
+      { id: 'm-twin-deleted', tenantId: TENANT, userId: 'user-twin-deleted', email: 'twin@example.test', createdAt: NOW, deletedAt: NOW },
+      { id: 'm-twin-erased', tenantId: TENANT, userId: 'deleted:m-twin-erased', email: 'twin@example.test', createdAt: NOW },
+      { id: 'm-twin-a', tenantId: TENANT, userId: 'user-twin-a', email: 'twin@example.test', createdAt: NOW },
+      { id: 'm-twin-b', tenantId: TENANT, userId: 'user-twin-b', email: 'TWIN@example.test', createdAt: NOW },
+    ]);
+    const found = await createEntitlementSubjectReader(database.db).findMembersByEmail(TENANT, 'twin@example.test');
+    expect(found.map((row) => row.id).sort()).toEqual(['m-twin-a', 'm-twin-b']);
+  });
+
   it('keeps the e-mail being checked out of a database error and keeps only the SQLSTATE', async () => {
     const emptyUrl = new URL(database.url);
     emptyUrl.pathname = '/postgres';

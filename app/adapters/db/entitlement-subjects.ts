@@ -52,7 +52,12 @@ export const createEntitlementSubjectReader = (db: Db): EntitlementSubjectReader
     findMembersByEmail: (tenantId, email) => sanitized(async () => (await db
       .select()
       .from(memberRows)
-      .where(and(eq(memberRows.tenantId, tenantId), sql`lower(btrim(${memberRows.email})) = ${normalizeEmail(email)}`))
+      .where(and(
+        eq(memberRows.tenantId, tenantId),
+        sql`lower(btrim(${memberRows.email})) = ${normalizeEmail(email)}`,
+        isNull(memberRows.deletedAt),
+        sql`${memberRows.userId} <> 'deleted:' || ${memberRows.id}`,
+      ))
       .limit(2)).map((row) => memberSchema.parse(row))),
     listPaidCheckoutOrders: (tenantId, memberId) => sanitized(async () => (await db
       .select({ kind: orders.kind, productId: orders.productId, lines: orders.lines, providerObjectIds: orders.providerObjectIds })

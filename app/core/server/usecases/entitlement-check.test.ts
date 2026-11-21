@@ -127,7 +127,7 @@ const harness = (world: Partial<World> = {}) => {
     findMemberById: vi.fn(async (tenantId: string, memberId: string) =>
       state.members.find((row) => row.tenantId === tenantId && row.id === memberId) ?? null),
     findMembersByEmail: vi.fn(async (tenantId: string, email: string) =>
-      state.members.filter((row) => row.tenantId === tenantId && row.email.trim().toLowerCase() === email).slice(0, 2)),
+      state.members.filter((row) => row.tenantId === tenantId && row.email.trim().toLowerCase() === email && row.deletedAt === null && row.userId !== `deleted:${row.id}`).slice(0, 2)),
     listPaidCheckoutOrders: vi.fn(async (_tenantId: string, memberId: string) =>
       (state.orders ?? [])
         .filter((order) => order.memberId === memberId && order.status === 'paid' && order.cancelled !== true

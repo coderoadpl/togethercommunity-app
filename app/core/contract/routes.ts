@@ -1347,6 +1347,11 @@ export const notificationsListOutputSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+export const notificationStreamFrameSchema = z.object({
+  id: z.string(),
+  kind: z.string().min(1).optional(),
+});
+
 export const notificationReadInputSchema = notificationMarkReadInputSchema;
 
 export type NotificationReadInput = z.input<typeof notificationReadInputSchema>;

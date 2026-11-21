@@ -355,18 +355,18 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
     ? undefined
     : (openReports.data?.openCount ?? 0) + (openDmReports.data?.openCount ?? 0);
   const failedReportQuery = openReports.isError ? openReports : openDmReports.isError ? openDmReports : null;
-  const { tenant } = usePanelContext();
+  const { tenant, emailVerified, impersonating = false } = usePanelContext();
   const owner = tenant.staffRole === 'owner';
-  const proposalSummary = useQuery({ ...actions.changeProposalSummary, enabled: owner });
-  const pendingProposals = owner ? proposalSummary.data?.pending ?? 0 : 0;
+  const decidingOwner = owner && emailVerified && !impersonating;
+  const proposalSummary = useQuery({ ...actions.changeProposalSummary, enabled: decidingOwner });
+  const pendingProposals = decidingOwner ? proposalSummary.data?.pending ?? 0 : 0;
   const counts: Partial<Record<PanelSection, NavCount>> = {
     ...(openReportCount === undefined ? {} : { reports: { value: openReportCount, testId: 'reports-open-count' } }),
     ...(pendingProposals === 0 ? {} : {
       proposals: { value: pendingProposals, testId: 'proposals-pending-count', label: t.changeProposals.navBadge({ count: pendingProposals }) },
     }),
   };
-  const visible = (descriptor: SectionDescriptor): boolean =>
-    descriptor.id !== 'proposals' || (owner && (pendingProposals > 0 || isActive(pathname, descriptor.to, false)));
+  const visible = (descriptor: SectionDescriptor): boolean => descriptor.id !== 'proposals' || owner;
   const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
 
   const toggleGroup = (groupId: NavigationGroupId) => {
@@ -812,7 +812,9 @@ export const PanelLayout = () => {
   return (
     <ThemeProvider theme={theme}>
       <DocumentTitleProvider tenantName={tenant.name} studio>
-        <PanelContextProvider value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified }}>
+        <PanelContextProvider
+          value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified, impersonating: me.data.impersonation !== null }}
+        >
           <PanelShell
             tenant={tenant}
             name={me.data.name}

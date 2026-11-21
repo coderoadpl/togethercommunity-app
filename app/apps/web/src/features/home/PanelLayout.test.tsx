@@ -549,6 +549,38 @@ describe('Proposals navigation entry', () => {
     expect(within(entry).getByText(en.changeProposals.navBadge({ count: 7 }))).toBeInTheDocument();
   });
 
+  it('shows the owner the entry without a badge when nothing is pending, and keeps it when the summary fails', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(http.get('/api/change-proposals/summary', () =>
+      HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 })));
+
+    await renderPanelAt('/panel/products');
+
+    const entry = await screen.findByTestId('section-proposals');
+    expect(entry).toHaveTextContent(en.sections.proposals);
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+  });
+
+  it('does not ask for the summary of an owner who has not verified the e-mail', async () => {
+    stubViewport(true);
+    commonHandlers();
+    let summaryRead = false;
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: { ...meWithTenant, emailVerified: false } })),
+      http.get('/api/change-proposals/summary', () => {
+        summaryRead = true;
+        return HttpResponse.json({ ok: true, data: { pending: 7, pendingGroups: 1 } });
+      }),
+    );
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('section-proposals')).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+    expect(summaryRead).toBe(false);
+  });
+
   it('hides the entry from an admin and never reads the owner summary', async () => {
     stubViewport(true);
     commonHandlers();

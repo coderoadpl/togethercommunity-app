@@ -1715,6 +1715,7 @@ export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
 const changeProposalScopes = {
   all: () => ['change-proposals'] as const,
   lists: (input: ChangeProposalListQueryInput) => ['change-proposals', 'list', input] as const,
+  pages: (input: Omit<ChangeProposalListQueryInput, 'cursor'>) => ['change-proposals', 'pages', input] as const,
   summary: () => ['change-proposals', 'summary'] as const,
   detail: (id: string) => ['change-proposals', 'detail', id] as const,
   group: (id: string) => ['change-proposals', 'group', id] as const,
@@ -1724,6 +1725,15 @@ export const changeProposalsQuery = (api: ApiClient, input: ChangeProposalListQu
   defineQuery({
     queryKey: changeProposalScopes.lists(input),
     call: ({ signal }) => api.listChangeProposals(input, signal),
+  });
+
+export const changeProposalPagesQuery = (api: ApiClient, input: Omit<ChangeProposalListQueryInput, 'cursor'>) =>
+  defineCursorQuery({
+    queryKey: changeProposalScopes.pages(input),
+    call: ({ signal, pageParam }) => api.listChangeProposals({
+      ...input, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => page.hasMore ? page.nextCursor : null,
   });
 
 export const changeProposalSummaryQuery = (api: ApiClient) =>

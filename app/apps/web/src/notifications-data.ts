@@ -1,9 +1,16 @@
 import { useEffect } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+
+import { notificationKindSchema } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { connectNotificationsStream, streamlessPollInterval } from './notifications-stream.js';
 import { useNotificationsTransport } from './notifications-transport.js';
+
+export const refreshForNotificationKind = (queryClient: QueryClient, kind: string): Promise<void> =>
+  kind === notificationKindSchema.enum['change-proposal']
+    ? queryClient.invalidateQueries(actions.changeProposalsInvalidates())
+    : Promise.resolve();
 
 /**
  * The bell owns the stream (`stream: true`); every other surface reads the same
@@ -24,6 +31,7 @@ export const useNotifications = ({
         void queryClient.invalidateQueries(actions.notificationsInvalidates());
         void queryClient.invalidateQueries(actions.messagesInvalidates());
       },
+      onNotificationKind: (kind) => void refreshForNotificationKind(queryClient, kind),
       onFallback: reportStreamless,
       onStreaming: reportStreaming,
     });

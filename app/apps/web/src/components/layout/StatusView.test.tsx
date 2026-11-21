@@ -73,6 +73,13 @@ describe('StatusView', () => {
     expect(screen.getByTestId('nf')).not.toHaveClass('MuiPaper-root');
   });
 
+  it('centres a not-found state by default and starts it at the left edge on request', () => {
+    const { rerender } = render(<StatusView state={{ kind: 'not-found', title: 'Nothing here' }} surface={false} data-testid="nf" />);
+    expect(screen.getByTestId('nf')).toHaveStyle({ alignItems: 'center', textAlign: 'center' });
+    rerender(<StatusView state={{ kind: 'not-found', title: 'Nothing here', align: 'start' }} surface={false} data-testid="nf" />);
+    expect(screen.getByTestId('nf')).toHaveStyle({ alignItems: 'flex-start', textAlign: 'start' });
+  });
+
   it('can render an empty state inside an existing surface', () => {
     render(
       <StatusView

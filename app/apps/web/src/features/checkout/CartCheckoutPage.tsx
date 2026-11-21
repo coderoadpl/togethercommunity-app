@@ -126,6 +126,7 @@ const CartNotice = ({ title, body }: { title: string; body: string }) => {
         kind: 'not-found',
         title,
         heading: 'h1',
+        align: 'start',
         body,
         action: <Button component={Link} to="/login" variant="contained">{t.checkout.goToLogin}</Button>,
       }} />

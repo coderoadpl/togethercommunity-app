@@ -81,6 +81,8 @@ const stockLoweredFixture = cartFixture('together-cart-stock-lowered', [
   { key: 'workbook', quantity: 3, change: { stock: { tracked: true, soldOut: false, low: true, available: 1 }, maxQuantity: 1 } },
   { key: 'stand', quantity: 1 },
 ]);
+const emptyCartFixture = cartFixture('together-cart-empty', [{ key: 'course', quantity: 1 }]);
+const invalidCartFixture = { ...checkout, scenario: 'together-cart-invalid-link', route: `${HOSTED_CART_PATH}?${CART_LINES_PARAM}=not-a-product` };
 const limitOneFixture = cartFixture('together-cart-limit-one', [{ key: 'course', quantity: 1 }, { key: 'stand', quantity: 1 }]);
 const discountFixture = cartFixture('together-cart-discount-delivery', discountLines, {
   code: couponCode,
@@ -164,3 +166,26 @@ export const SummaryWithDiscountAndDeliveryPolish: Story = {
   parameters: { ...SummaryWithDiscountAndDelivery.parameters, locale: 'pl' },
   play: async ({ canvasElement }) => applyDiscountWithCourier(canvasElement, 'E-mail'),
 };
+export const EmptyCartNotice: Story = {
+  parameters: {
+    fixture: emptyCartFixture,
+    docs: { description: { story: 'The last line was removed: the notice is the card\'s own page heading, left-aligned like the cancelled-payment card.' } },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: /Together 101 Course/u }));
+    await canvas.findByRole('heading', { level: 1 });
+  },
+};
+export const EmptyCartNoticeMobile: Story = withMobile(EmptyCartNotice);
+export const EmptyCartNoticeDark: Story = withDark(EmptyCartNotice);
+export const EmptyCartNoticeMobileDark: Story = withDark(EmptyCartNoticeMobile);
+export const InvalidCartLinkNotice: Story = {
+  parameters: {
+    fixture: invalidCartFixture,
+    docs: { description: { story: 'A cart link whose lines cannot be read: the notice is the card\'s own page heading, left-aligned like the cancelled-payment card.' } },
+  },
+};
+export const InvalidCartLinkNoticeMobile: Story = withMobile(InvalidCartLinkNotice);
+export const InvalidCartLinkNoticeDark: Story = withDark(InvalidCartLinkNotice);
+export const InvalidCartLinkNoticeMobileDark: Story = withDark(InvalidCartLinkNoticeMobile);

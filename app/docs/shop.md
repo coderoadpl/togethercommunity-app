@@ -64,7 +64,7 @@ pay button. For a parcel locker option it shows, under the chosen option, a
 rule in
 [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map)),
 and a small **I know the code** toggle that reveals the **Parcel locker code**
-input (upper-cased, 4–12 letters or digits). Once a locker is confirmed the
+input (upper-cased, 4–12 letters or digits). Once a locker is chosen the
 option shows its code, name and address and a **Change** button that reopens
 the picker. Without a map (no Geowidget token, a staff session or test mode, or
 a map that failed to load) the option shows the code input directly, with one
@@ -82,25 +82,44 @@ link checkout and the hosted cart page through `DeliveryStep`:
   600 px) it is a full-screen view of `100dvh` that respects the safe-area
   insets; on a desktop it is a large dialog. The page behind it does not scroll
   and is hidden from assistive technology.
-- A fixed header holds the title and a close button, the map fills all the
-  remaining space without a scrolling container around it, and a fixed footer
-  holds one status line and one primary button. Before a point is picked the
-  line says **Pick a point on the map** and the button is disabled; after the
-  buyer picks a point in the map the line shows its code, name and address and
-  **Confirm this parcel locker** is enabled. Only that button commits the
-  locker and closes the picker.
+- A fixed header holds the title, one line of guidance under it (**Pick a
+  point on the map and tap “Select” in its card.**) and a close button. The
+  map fills all the remaining space down to the bottom edge, without a
+  scrolling container around it and without a footer.
+- One tap chooses the locker. InPost's map reports a point only when the buyer
+  taps the map's own yellow **Wybierz** / **Select** button in the point's card
+  or details panel; tapping a marker, a list item or **Zobacz szczegóły** only
+  shows the point. The picker therefore commits the reported point at once,
+  closes, returns focus to **Change** and announces the chosen locker in a
+  polite live region on the page ("Parcel locker WAW01M chosen: Example
+  Street 5, 00-001 Warsaw."). There is no second confirm button: it would mean
+  the same as the map's **Select**, and the map shows no feedback after
+  **Select**, so our page closing is the feedback.
+- Reopening the picker with a locker already chosen asks the map to show that
+  locker (`showPoint` on the handle from `inpost.geowidget.init`). The call is
+  guarded: a missing handle, a missing method, a thrown error or a rejected
+  promise is ignored, and the map then starts at its own default spot. InPost
+  ignores such calls silently until the token is registered for the exact
+  domain.
 - The close button, Escape (also from inside the map, which reports it with the
   `inpost.geowidget.escape` event) and the phone's back gesture close the picker
-  and keep the previous choice. Opening the picker adds one browser history
-  entry for the same address, so the back gesture closes the picker instead of
-  leaving the checkout; closing it in any other way removes that entry again.
+  and keep the previous choice.
+- Opening the picker adds one browser history entry for the same address, so
+  the back gesture closes the picker instead of leaving the checkout; closing
+  it in any other way, or choosing a locker, removes that entry again without
+  leaving the page.
 - Focus moves to the picker title when it opens, stays inside it, and returns to
-  **Choose a parcel locker** or **Change** when it closes. The status line is a
-  polite live region. Enter inside the picker never submits the checkout.
+  **Choose a parcel locker** or **Change** when it closes. The guidance line
+  describes the dialog and is a polite live region, so a map failure is read
+  out. Enter inside the picker never submits the checkout.
 - The map element is created only while the picker is open and removed when it
   closes. When the map script fails to load (for example a content security
   policy kept from an in-app navigation), the picker says so and offers
   **Type the code**, and the option then shows the code input with the reason.
+  A token InPost rejects (for example one issued for another domain) loads the
+  map with InPost's own red "Brak dostępu" banner, a watermark and no points;
+  the page cannot detect that inside the cross-origin frame, so the buyer
+  closes the picker and uses **I know the code**.
 
 ### Layout of the Together checkout page
 

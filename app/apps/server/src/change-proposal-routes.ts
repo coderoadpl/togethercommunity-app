@@ -13,6 +13,7 @@ import {
   approveChangeProposalGroup,
   getChangeProposal,
   getChangeProposalGroup,
+  getChangeProposalSummary,
   listChangeProposals,
   rejectChangeProposal,
   rejectChangeProposalGroup,
@@ -21,6 +22,7 @@ import {
   type ChangeProposalGroupApprovalDeps,
   type ChangeProposalGroupDecisionDeps,
   type ChangeProposalOwnerReadDeps,
+  type ChangeProposalSummaryDeps,
 } from '#core/server/index.js';
 
 import type { AppVars } from './app-vars.js';
@@ -31,7 +33,7 @@ import { respond, retryAfterHeaders } from './respond.js';
 export const registerChangeProposalRoutes = (
   app: Hono<AppVars>,
   deps: ChangeProposalOwnerReadDeps & ChangeProposalDecisionDeps & ChangeProposalApprovalDeps
-    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps,
+    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps & ChangeProposalSummaryDeps,
 ): void => {
   app.get(API_PATHS.changeProposals, async (c) => {
     const query = changeProposalListQuerySchema.safeParse({
@@ -48,6 +50,8 @@ export const registerChangeProposalRoutes = (
       ...(query.data.limit === undefined ? {} : { limit: query.data.limit }),
     }, deps));
   });
+
+  app.get(API_PATHS.changeProposalSummary, async (c) => respond(await getChangeProposalSummary(ctxOf(c), deps)));
 
   app.get(API_PATHS.changeProposal, async (c) => {
     const result = await getChangeProposal(ctxOf(c), { id: c.req.param('id') ?? '' }, deps);

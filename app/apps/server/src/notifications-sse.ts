@@ -99,6 +99,7 @@ export const replayRealtimeEvents = async (input: {
       tenantId: input.tenantId,
       recipientUserId: input.recipientUserId,
       notificationId: notification.id,
+      notificationKind: notification.kind,
       createdAt: notification.createdAt,
     })),
     ...dmEvents,
@@ -130,7 +131,7 @@ const isDirectMessageEvent = (event: RealtimeEvent): boolean =>
 const realtimeChunk = (event: RealtimeEvent): string => {
   const id = streamEventId(event);
   return event.kind === 'notification'
-    ? sseEvent('notification', { id: event.notificationId }, id)
+    ? sseEvent('notification', { id: event.notificationId, ...(event.notificationKind === undefined ? {} : { kind: event.notificationKind }) }, id)
     : sseEvent('dm', { conversationId: event.conversationId }, id);
 };
 

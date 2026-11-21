@@ -4989,6 +4989,11 @@ export const createTenantTeamRepository = (db: Db): TenantTeamRepository => ({
   }),
 });
 
+export const effectiveStaffGrantOf = (directRole: string | null, organizationRole: string | null): ReturnType<typeof effectiveStaffGrant> => {
+  const organization = organizationRoleSchema.safeParse(organizationRole);
+  return effectiveStaffGrant(directRole === null ? null : parseStaffRole(directRole), organization.success ? organization.data : null);
+};
+
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {
   const grantQuery = (userId: string) =>
     db
@@ -5015,11 +5020,7 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
   const toMembership = (
     row: Tenant & { directRole: string | null; organizationRole: string | null },
   ): Membership | null => {
-    const organizationRole = organizationRoleSchema.safeParse(row.organizationRole);
-    const grant = effectiveStaffGrant(
-      row.directRole === null ? null : parseStaffRole(row.directRole),
-      organizationRole.success ? organizationRole.data : null,
-    );
+    const grant = effectiveStaffGrantOf(row.directRole, row.organizationRole);
     return grant
       ? {
           tenant: {

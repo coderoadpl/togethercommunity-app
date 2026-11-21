@@ -1,12 +1,14 @@
-import { and, asc, count, desc, eq, gt, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import {
+  CHANGE_PROPOSAL_DECIDED_FILTER,
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
   CHANGE_PROPOSAL_LIMITS,
   CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
   changeProposalEffectWithinLimit,
   changeProposalEventSchema,
   changeProposalSchema,
+  changeProposalTargetPriceSchema,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
@@ -19,6 +21,8 @@ import type {
   ChangeProposalListQuery,
   ChangeProposalPage,
   ChangeProposalRepository,
+  ChangeProposalTargetLabelReader,
+  ChangeProposalTargetLabelRequest,
   ChangeProposalTargetLocks,
   ChangeProposalTransition,
   ChangeProposalTransitionGuard,
@@ -108,6 +112,7 @@ const pendingAt = (now: string): SQL | undefined =>
 const statusFilter = (query: ChangeProposalListQuery): SQL | undefined => {
   if (query.status === undefined) return undefined;
   if (query.status === 'pending') return pendingAt(query.now);
+  if (query.status === CHANGE_PROPOSAL_DECIDED_FILTER) return or(ne(changeProposals.status, 'pending'), lte(changeProposals.expiresAt, query.now));
   if (query.status === 'expired') return and(eq(changeProposals.status, 'pending'), lte(changeProposals.expiresAt, query.now));
   return eq(changeProposals.status, query.status);
 };
@@ -362,7 +367,48 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
     if (locked === null) return null;
     return updateProposalStatus(tx, tenantId, id, transition);
   }),
+  decide: async (tenantId, id, guard, decide) => {
+    const outcome = await boundedWrite(db, bounds, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(changeProposals)
+        .where(and(eq(changeProposals.tenantId, tenantId), eq(changeProposals.id, id), ...guardFilter(guard)))
+        .for('update');
+      if (row === undefined) return null;
+      const locked = parseProposal(row);
+      const decision = decide(locked);
+      if (decision.kind === 'refuse') return { decision, proposal: locked };
+      if (decision.kind === 'record_expiry') {
+        await recordProposalExpiry(tx, tenantId, id, decision.event);
+        return { decision, proposal: locked };
+      }
+      if (locked.status !== 'pending') throw new Error(`A decision moved change proposal ${id}, which is no longer pending`);
+      const moved = await updateProposalStatus(tx, tenantId, id, decision.transition);
+      if (moved === null) throw new Error(`Change proposal ${id} vanished while its row was locked`);
+      return { decision, proposal: moved };
+    });
+    if (outcome.kind === 'busy') return outcome;
+    return outcome.value === null ? { kind: 'not_found' } : { kind: 'decided', ...outcome.value };
+  },
   recordExpiry: (tenantId, id, event) => boundedWrite(db, bounds, (tx) => recordProposalExpiry(tx, tenantId, id, event)),
+  countPending: async (tenantId, now) => {
+    const [row] = await db
+      .select({
+        proposals: count(),
+        groups: sql<number>`count(distinct ${changeProposals.groupId})::int`,
+      })
+      .from(changeProposals)
+      .where(and(eq(changeProposals.tenantId, tenantId), pendingAt(now)));
+    return { proposals: row?.proposals ?? 0, groups: row?.groups ?? 0 };
+  },
+  hasAny: async (tenantId) => {
+    const rows = await db
+      .select({ id: changeProposals.id })
+      .from(changeProposals)
+      .where(eq(changeProposals.tenantId, tenantId))
+      .limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createChangeProposalRepository = (db: Db, options: ChangeProposalBoundOptions = {}): ChangeProposalRepository =>
@@ -375,6 +421,43 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
       .from(changeProposalEvents)
       .where(and(eq(changeProposalEvents.tenantId, tenantId), eq(changeProposalEvents.proposalId, proposalId)))
       .orderBy(asc(changeProposalEvents.sequence))).map(parseEvent),
+});
+
+const idsOfKind = (targets: readonly ChangeProposalTargetLabelRequest[], kind: ChangeProposalTargetLabelRequest['kind']): string[] =>
+  [...new Set(targets.filter((target) => target.kind === kind).map((target) => target.id))];
+
+export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTargetLabelReader => ({
+  labels: async (tenantId, targets) => {
+    const productIds = idsOfKind(targets, 'product');
+    const priceIds = idsOfKind(targets, 'price');
+    const salesLinkIds = idsOfKind(targets, 'sales-link');
+    const productRows = productIds.length === 0 ? [] : await db
+      .select({ id: products.id, label: products.title })
+      .from(products)
+      .where(and(eq(products.tenantId, tenantId), inArray(products.id, productIds)));
+    const priceRows = priceIds.length === 0 ? [] : await db
+      .select({
+        id: productPrices.id,
+        label: products.title,
+        kind: productPrices.kind,
+        interval: productPrices.interval,
+        intervalCount: productPrices.intervalCount,
+        amountCents: productPrices.amountCents,
+        currency: productPrices.currency,
+      })
+      .from(productPrices)
+      .innerJoin(products, and(eq(products.tenantId, productPrices.tenantId), eq(products.id, productPrices.productId)))
+      .where(and(eq(productPrices.tenantId, tenantId), inArray(productPrices.id, priceIds)));
+    const salesLinkRows = salesLinkIds.length === 0 ? [] : await db
+      .select({ id: salesLinks.id, label: salesLinks.title })
+      .from(salesLinks)
+      .where(and(eq(salesLinks.tenantId, tenantId), inArray(salesLinks.id, salesLinkIds), isNull(salesLinks.deletedAt)));
+    return [
+      ...productRows.map((row) => ({ kind: 'product' as const, ...row, price: null })),
+      ...priceRows.map(({ id, label, ...price }) => ({ kind: 'price' as const, id, label, price: changeProposalTargetPriceSchema.parse(price) })),
+      ...salesLinkRows.map((row) => ({ kind: 'sales-link' as const, ...row, price: null })),
+    ];
+  },
 });
 
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;

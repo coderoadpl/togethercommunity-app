@@ -2810,7 +2810,6 @@ export interface Messages {
     payIdle: (params: { price: string }) => string;
     payPending: string;
     simulatedPaymentNote: string;
-    successEyebrow: string;
     successPendingTitle: string;
     successPendingBody: string;
     successPendingTimeout: string;
@@ -2826,6 +2825,9 @@ export interface Messages {
     subscriptionSuccessEyebrow: string;
     successTitle: string;
     successBody: string;
+    successWhere: string;
+    successShipping: string;
+    successSpam: string;
     subscriptionSuccessTitle: string;
     subscriptionSuccessBody: string;
     goToLogin: string;

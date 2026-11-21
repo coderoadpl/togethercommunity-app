@@ -138,9 +138,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
     enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
       !statusTimedOut && (query.state.data?.status ?? 'pending') === 'pending',
-    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' ||
+    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' || query.state.status === 'error' ||
       statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
-    retry: false,
+    retry: 1,
+    retryDelay: 1000,
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
   const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
@@ -148,10 +149,18 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const statusRequestFailed = hasSessionId && paymentStatus.isError && !paymentSettled;
   const workspaceOffer = useQuery({ ...actions.publicOffer, enabled: checkoutStatus === 'success' });
   const supportUrl = workspaceOffer.data?.tenant.support.url ?? null;
+  const returnTitle = useRef<HTMLHeadingElement | null>(null);
+  const [rechecking, setRechecking] = useState(false);
   const checkAgain = () => {
+    const wasFailed = statusRequestFailed;
     setStatusTimedOut(false);
     setStatusDeadline(Date.now() + 180_000);
-    void paymentStatus.refetch();
+    setRechecking(true);
+    if (!wasFailed) window.requestAnimationFrame(() => returnTitle.current?.focus());
+    void paymentStatus.refetch().finally(() => {
+      setRechecking(false);
+      if (wasFailed) window.requestAnimationFrame(() => returnTitle.current?.focus());
+    });
   };
 
   useEffect(() => {
@@ -402,9 +411,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             : timedOut
               ? [t.checkout.successPendingTimeout, ...(supportUrl === null ? [] : [t.checkout.successPendingContact])]
               : [t.checkout.successPendingBody];
+    const paidLines = paymentPaid && !testPurchase && !soldOutRefund && !subscriptionSuccess
+      ? [t.checkout.successBody, `${t.checkout.successWhere} ${t.checkout.successShipping}`, t.checkout.successSpam]
+      : null;
+    const failedContact = failed && statusTimedOut && supportUrl !== null;
     const offersRecheck = failed || timedOut;
-    const contactLink = supportUrl !== null && (soldOutRefund || timedOut)
-      ? <Button href={supportUrl} target="_blank" rel="noopener noreferrer" variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+    const externalContact = supportUrl !== null && !supportUrl.startsWith('mailto:');
+    const contactLink = supportUrl !== null && (soldOutRefund || timedOut || failedContact)
+      ? <Button href={supportUrl} {...(externalContact ? { target: '_blank', rel: 'noopener noreferrer' } : {})} variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
       : null;
     return (
       <FocusCard {...frame} eyebrow={eyebrow}>
@@ -418,14 +432,17 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <Stack useFlexGap spacing="1rem" role="status" aria-live="polite" aria-atomic="true" data-testid="checkout-return-status">
-            <CardTitle variant="h1">{title}</CardTitle>
+            <CardTitle variant="h1" ref={returnTitle} tabIndex={-1}>{title}</CardTitle>
             {failed ? (
-              <Alert severity="error">{body[0]}</Alert>
-            ) : body.map((line) => <Typography key={line} variant="body1">{line}</Typography>)}
+              <>
+                <Alert severity="error" role="none" data-testid="checkout-return-error">{body[0]}</Alert>
+                {failedContact ? <Typography variant="body1">{t.checkout.successPendingContact}</Typography> : null}
+              </>
+            ) : (paidLines ?? body).map((line) => <Typography key={line} variant="body1">{line}</Typography>)}
           </Stack>
           {paymentSettled || offersRecheck ? null : <LinearProgress aria-label={title} />}
           {offersRecheck ? (
-            <Button variant="contained" fullWidth onClick={checkAgain} disabled={paymentStatus.isFetching}>
+            <Button variant="contained" fullWidth onClick={checkAgain} disabled={rechecking}>
               {t.checkout.checkAgain}
             </Button>
           ) : null}

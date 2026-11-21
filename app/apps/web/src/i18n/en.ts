@@ -3190,6 +3190,10 @@ export const en: Messages = {
     payBlockedPersonalizationText: 'Enter the personalisation text, or untick the option, to go to payment.',
     payBlockedPersonalizationCondition: 'Accept the personalisation condition, or untick the option, to go to payment.',
     payBlockedCoupon: 'Checking the discount code…',
+    cartStockLimit: ({ count }) => format('Only {count} left', { count }),
+    cartLineSoldOut: 'Sold out. Remove it to continue.',
+    cartPayBlockedLines: 'Remove the products marked above to continue.',
+    cartStockRefusal: ({ title }) => format('Not enough of “{title}” is left for this order. The cart now shows the current stock.', { title }),
   },
   directory: {
     activeConsent: 'Consent granted',

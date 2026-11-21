@@ -3214,6 +3214,10 @@ export const pl: Messages = {
     payBlockedPersonalizationText: 'Wpisz treść personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedPersonalizationCondition: 'Zaakceptuj warunek personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedCoupon: 'Sprawdzamy kod rabatowy…',
+    cartStockLimit: ({ count }) => format('Zostało tylko {count} szt.', { count }),
+    cartLineSoldOut: 'Wyprzedane. Usuń ten produkt, aby kontynuować.',
+    cartPayBlockedLines: 'Usuń produkty oznaczone powyżej, aby kontynuować.',
+    cartStockRefusal: ({ title }) => format('Produktu „{title}” nie ma już w takiej ilości. Koszyk pokazuje teraz aktualny stan.', { title }),
   },
   directory: {
     activeConsent: 'Zgoda udzielona',

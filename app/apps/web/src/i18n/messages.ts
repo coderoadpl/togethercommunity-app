@@ -2874,6 +2874,10 @@ export interface Messages {
     payBlockedPersonalizationText: string;
     payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;
+    cartStockLimit: (params: { count: number }) => string;
+    cartLineSoldOut: string;
+    cartPayBlockedLines: string;
+    cartStockRefusal: (params: { title: string }) => string;
   };
   directory: {
     activeConsent: string;

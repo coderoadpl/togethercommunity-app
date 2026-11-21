@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useReducer, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { z } from 'zod';
 
 import {
   attributionFromSearchParams,
@@ -45,12 +46,14 @@ import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo } from './ProductSafetyInfo.js';
 import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
 
+type Translations = ReturnType<typeof useTranslations>;
 type OfferProduct = PublicOfferOutput['products'][number];
 type ProductOffer = { productId: string; offer: UseQueryResult<PublicOfferOutput> };
 type CartItem =
   | { kind: 'missing'; productId: string }
   | { kind: 'unavailable'; productId: string; product: OfferProduct }
-  | { kind: 'ready'; productId: string; product: OfferProduct; unitCents: number; currency: string; quantity: number; max: number };
+  | { kind: 'soldOut'; productId: string; product: OfferProduct }
+  | { kind: 'ready'; productId: string; product: OfferProduct; unitCents: number; currency: string; quantity: number; max: number; stockCapped: boolean };
 
 const StepIcon = ({ path }: { path: string }) => (
   <SvgIcon fontSize="small" aria-hidden><path d={path} /></SvgIcon>
@@ -64,8 +67,26 @@ const cartItem = (line: CartLine, product: OfferProduct | undefined): CartItem =
   if (product.type === 'membership' || price === null) {
     return { kind: 'unavailable', productId: line.productId, product };
   }
-  const max = cartLineMaxQuantity(product.type);
-  return { kind: 'ready', productId: line.productId, product, unitCents: price.amountCents, currency: price.currency, quantity: Math.min(line.quantity, max), max };
+  const ruleMax = cartLineMaxQuantity(product.type);
+  const max = Math.min(ruleMax, product.maxQuantity);
+  if (product.stock.soldOut || max < 1) return { kind: 'soldOut', productId: line.productId, product };
+  return {
+    kind: 'ready', productId: line.productId, product, unitCents: price.amountCents, currency: price.currency,
+    quantity: Math.min(line.quantity, max), max, stockCapped: max < ruleMax && product.stock.available === max,
+  };
+};
+
+const soldOutDetailsSchema = z.object({ productId: z.string() });
+
+const cartLineAlert = (item: Exclude<CartItem, { kind: 'ready' }>, t: Translations): string => {
+  switch (item.kind) {
+    case 'missing':
+      return t.checkout.cartProductMissing;
+    case 'unavailable':
+      return `${item.product.title}: ${t.checkout.cartLineUnavailable}`;
+    case 'soldOut':
+      return `${item.product.title}: ${t.checkout.cartLineSoldOut}`;
+  }
 };
 
 const CartOffers = ({ productIds, loaded, render }: {
@@ -124,7 +145,7 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const { product, quantity, max } = item;
+  const { product, quantity, max, stockCapped } = item;
   return (
     <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid={`cart-line-${item.productId}`}>
       <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
@@ -136,25 +157,32 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
           <Typography variant="body2" color="text.secondary">
             {t.checkout.cartUnitPrice({ price: formatPrice(item.unitCents, item.currency, language) })}
           </Typography>
-          {product.stock.soldOut ? <Typography variant="body2" color="error">{t.checkout.soldOut}</Typography> : null}
           <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
-              disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)}>
-              <StepIcon path={minusPath} />
-            </IconButton>
-            <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
-              {quantity}
-            </Typography>
-            <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
-              disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
-              <StepIcon path={plusPath} />
-            </IconButton>
+            {max > 1 ? (
+              <>
+                <IconButton size="small" aria-label={t.checkout.cartDecrease({ title: product.title })}
+                  disabled={disabled || quantity <= 1} onClick={() => onQuantityChange(quantity - 1)}>
+                  <StepIcon path={minusPath} />
+                </IconButton>
+                <Typography component="output" aria-label={t.checkout.cartQuantity({ title: product.title })} data-testid={`cart-quantity-${item.productId}`}>
+                  {quantity}
+                </Typography>
+                <IconButton size="small" aria-label={t.checkout.cartIncrease({ title: product.title })}
+                  disabled={disabled || quantity >= max} onClick={() => onQuantityChange(quantity + 1)}>
+                  <StepIcon path={plusPath} />
+                </IconButton>
+              </>
+            ) : null}
             <Button type="button" variant="text" size="small" disabled={disabled}
               aria-label={t.checkout.cartRemove({ title: product.title })} onClick={onRemove}>
               {t.checkout.cartRemoveLine}
             </Button>
           </Stack>
-          <FinePrint component="p" variant="caption">{t.checkout.cartQuantityLimit({ max })}</FinePrint>
+          {max > 1 ? (
+            <FinePrint component="p" variant="caption">
+              {stockCapped ? t.checkout.cartStockLimit({ count: max }) : t.checkout.cartQuantityLimit({ max })}
+            </FinePrint>
+          ) : null}
         </Stack>
         <DataValue data-testid={`cart-line-total-${item.productId}`}>
           {t.checkout.cartLineTotal({ price: formatPrice(item.unitCents * quantity, item.currency, language) })}
@@ -182,6 +210,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const { couponVisible, couponCode } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
+  const payReasonId = useId();
 
   const productsById = new Map(offers.flatMap(({ productId, offer }) => {
     const product = offer.data?.products.find((candidate) => candidate.id === productId);
@@ -192,11 +221,11 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const cartLines = readyItems.map((item) => ({ productId: item.productId, quantity: item.quantity }));
   const cartKey = formatCartLinesParam(cartLines);
   const allReady = readyItems.length === items.length && items.length > 0;
+  const blockedByLines = items.some((item) => item.kind !== 'ready');
   const currencies = cartCurrencies(readyItems);
   const currency = currencies.length === 1 ? currencies[0] ?? null : null;
   const currencyRefusal = currencies.length > 1 ? checkoutRefusal(CART_CURRENCY_MISMATCH_MESSAGE, t) : null;
   const subtotalCents = readyItems.reduce((total, item) => total + item.unitCents * item.quantity, 0);
-  const soldOut = readyItems.some((item) => item.product.stock.soldOut);
   const shippingRequired = readyItems.some((item) => item.product.deliveryMethod === 'shipping');
   const shippingRates = paymentConfig.data?.shippingRates ?? [];
   const delivery = selectDelivery(checkoutState, { required: shippingRequired, rates: shippingRates });
@@ -214,6 +243,9 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const checkoutSession = useMutation({
     ...actions.createCartCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
+    onError: (error) => {
+      if (error instanceof ApiError && error.appError.code === 'sold_out') for (const { offer } of offers) void offer.refetch();
+    },
   });
   const couponValidation = useMutation({ ...actions.validateCartCouponForCheckout });
   const appliedCoupon = testEnabled ? undefined : couponValidation.data;
@@ -235,6 +267,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const changeLines = (next: readonly CartLine[]) => {
     setLines(next);
     couponValidation.reset();
+    checkoutSession.reset();
   };
 
   const loading = offers.some(({ offer }) => offer.isPending) || paymentConfig.isPending;
@@ -271,6 +304,12 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   if (items.length === 0) return <CartNotice title={t.checkout.cartEmptyTitle} body={t.checkout.cartEmptyBody} />;
 
   const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
+  const sessionError = (error: unknown): string => {
+    if (!(error instanceof ApiError) || error.appError.code !== 'sold_out') return checkoutSessionError(error, t);
+    const details = soldOutDetailsSchema.safeParse(error.appError.details);
+    const product = details.success ? productsById.get(details.data.productId) : undefined;
+    return product === undefined ? checkoutSessionError(error, t) : t.checkout.cartStockRefusal({ title: product.title });
+  };
   const formDisabled = checkoutSession.isPending;
 
   const submit = (event: FormEvent) => {
@@ -312,7 +351,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             return (
               <Alert key={item.productId} severity="error" data-testid={`cart-line-${item.productId}`}
                 action={<Button type="button" color="inherit" size="small" onClick={remove}>{t.checkout.cartRemoveLine}</Button>}>
-                {item.kind === 'missing' ? t.checkout.cartProductMissing : `${item.product.title}: ${t.checkout.cartLineUnavailable}`}
+                {cartLineAlert(item, t)}
               </Alert>
             );
           })}
@@ -392,8 +431,8 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           variant="contained"
           fullWidth
           data-testid="checkout-pay-cta"
+          aria-describedby={blockedByLines ? payReasonId : undefined}
           disabled={
-            soldOut ||
             !allReady ||
             currency === null ||
             delivery.status === 'incomplete' ||
@@ -403,12 +442,15 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             (payableCents > 0 && !stripeConfigured)
           }
         >
-          {soldOut ? t.checkout.soldOut : currency === null ? t.checkout.cartPay : payableCents === 0
+          {currency === null ? t.checkout.cartPay : payableCents === 0
             ? checkoutSession.isPending ? t.checkout.freePending : t.checkout.freeIdle({ price: formatPrice(payableCents, currency, language) })
             : checkoutSession.isPending ? t.checkout.payPending : t.checkout.payIdle({ price: formatPrice(payableCents, currency, language) })}
         </EmberCtaButton>
+        {blockedByLines ? (
+          <Typography id={payReasonId} variant="body2" color="text.secondary" data-testid="cart-pay-reason">{t.checkout.cartPayBlockedLines}</Typography>
+        ) : null}
         {currency !== null && payableCents > 0 && !stripeConfigured ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-        {checkoutSession.isError ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
+        {checkoutSession.isError ? <Alert severity="error">{sessionError(checkoutSession.error)}</Alert> : null}
       </Stack>
     </FocusCard>
   );

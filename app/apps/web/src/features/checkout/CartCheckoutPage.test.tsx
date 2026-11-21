@@ -31,7 +31,7 @@ const analyticsConfig = { cookieScope: 'host' as const, metaPixelId: '12345678',
 const products = {
   [poster]: {
     id: poster, type: 'physical', deliveryMethod: 'shipping', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
-    priceCents: 3500, currency: 'PLN', prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3500, currency: 'PLN' }],
+    priceCents: 3500, currency: 'PLN', maxQuantity: 10, prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3500, currency: 'PLN' }],
     marketingConsents: [{ definitionId: 'news', label: 'Send me news', doubleOptIn: false, documentUrl: null }],
     compliance: { manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null },
   },
@@ -53,16 +53,19 @@ const products = {
   },
   [bag]: {
     id: bag, type: 'physical', deliveryMethod: 'pickup', slug: 'bag', title: 'Bag', description: '', coverUrl: null,
-    priceCents: 1000, currency: 'PLN', marketingConsents: [], prices: [
+    priceCents: 1000, currency: 'PLN', maxQuantity: 10, marketingConsents: [], prices: [
       { id: 'price-bag-small', kind: 'one_time', interval: null, amountCents: 1000, currency: 'PLN' },
       { id: 'price-bag-large', kind: 'one_time', interval: null, amountCents: 1200, currency: 'PLN' },
     ],
   },
   [mug]: {
     id: mug, type: 'physical', deliveryMethod: 'shipping', slug: 'mug', title: 'Mug', description: '', coverUrl: null,
-    priceCents: 1200, currency: 'EUR', marketingConsents: [], prices: [{ id: 'price-mug', kind: 'one_time', interval: null, amountCents: 1200, currency: 'EUR' }],
+    priceCents: 1200, currency: 'EUR', maxQuantity: 10, marketingConsents: [], prices: [{ id: 'price-mug', kind: 'one_time', interval: null, amountCents: 1200, currency: 'EUR' }],
   },
 };
+
+const lowStock = (available: number) => ({ stock: { tracked: true, soldOut: false, low: true, available }, maxQuantity: available });
+const soldOutStock = { stock: { tracked: true, soldOut: true, low: true, available: 0 }, maxQuantity: 0 };
 
 const shippingRates = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
@@ -74,8 +77,10 @@ const serve = (input: {
   canTest?: boolean;
   testEnabled?: boolean;
   missing?: readonly string[];
+  overrides?: Readonly<Record<string, Record<string, unknown>>>;
   requests?: string[];
   sessionError?: string;
+  sessionRefusal?: { status: number; error: Record<string, unknown> };
   onSession?: (body: unknown) => void;
   onCoupon?: (body: unknown) => void;
 } = {}) => {
@@ -89,7 +94,7 @@ const serve = (input: {
         ? HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'No product' } }, { status: 404 })
         : HttpResponse.json({ ok: true, data: {
           tenant: { slug: 'acme', name: 'Acme School', legal: { termsUrl: 'https://acme.example/terms', privacyUrl: null } },
-          contentVersion: 1, products: [product],
+          contentVersion: 1, products: [{ ...product, ...input.overrides?.[product.id] }],
         } });
     }),
     http.get('/api/public/payment-config', ({ request }) => {
@@ -103,7 +108,9 @@ const serve = (input: {
     http.post('/api/public/checkout/session', async ({ request }) => {
       record(request);
       input.onSession?.(await request.json());
-      return HttpResponse.json({ ok: false, error: { code: 'validation', message: input.sessionError ?? 'Stop before redirect' } }, { status: 400 });
+      return input.sessionRefusal === undefined
+        ? HttpResponse.json({ ok: false, error: { code: 'validation', message: input.sessionError ?? 'Stop before redirect' } }, { status: 400 })
+        : HttpResponse.json({ ok: false, error: input.sessionRefusal.error }, { status: input.sessionRefusal.status });
     }),
     http.post('/api/public/checkout/coupon', async ({ request }) => {
       record(request);
@@ -158,7 +165,7 @@ describe('hosted cart checkout', () => {
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
     expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(en.checkout.cartLineTotal({ price: pln(7000) })));
     expect(line(ebook).getByRole('heading', { name: 'E-book' })).toBeInTheDocument();
-    expect(line(ebook).getByTestId(`cart-quantity-${ebook}`)).toHaveTextContent('1');
+    expect(line(ebook).queryByTestId(`cart-quantity-${ebook}`)).not.toBeInTheDocument();
     expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(9500) })));
     expect(screen.getByText(en.productSafety.offerHeadingFor({ title: 'Poster' }))).toBeInTheDocument();
     expect(screen.getAllByText('Send me news')).toHaveLength(1);
@@ -201,8 +208,6 @@ describe('hosted cart checkout', () => {
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('10');
     expect(increasePoster).toBeDisabled();
     expect(line(poster).getByText(en.checkout.cartQuantityLimit({ max: 10 }))).toBeInTheDocument();
-    expect(line(ebook).getByRole('button', { name: en.checkout.cartIncrease({ title: 'E-book' }) })).toBeDisabled();
-    expect(line(ebook).getByRole('button', { name: en.checkout.cartDecrease({ title: 'E-book' }) })).toBeDisabled();
 
     await userEvent.click(screen.getByRole('button', { name: en.checkout.cartRemove({ title: 'E-book' }) }));
     expect(screen.queryByTestId(`cart-line-${ebook}`)).not.toBeInTheDocument();
@@ -245,8 +250,87 @@ describe('hosted cart checkout', () => {
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.25~${ebook}.3`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('10');
-    expect(line(ebook).getByTestId(`cart-quantity-${ebook}`)).toHaveTextContent('1');
+    expect(line(ebook).queryByTestId(`cart-quantity-${ebook}`)).not.toBeInTheDocument();
     expect(screen.getByTestId('cart-subtotal')).toHaveTextContent(exact(en.checkout.cartSubtotal({ price: pln(37500) })));
+  });
+
+  it('caps a stepper at the pieces left and says how many are left instead of the order limit', async () => {
+    serve({ overrides: { [poster]: lowStock(2) } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.5`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
+    expect(line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).toBeDisabled();
+    expect(line(poster).getByText(exact(en.checkout.cartStockLimit({ count: 2 })))).toBeInTheDocument();
+    expect(line(poster).queryByText(en.checkout.cartQuantityLimit({ max: 10 }))).not.toBeInTheDocument();
+    await userEvent.click(line(poster).getByRole('button', { name: en.checkout.cartDecrease({ title: 'Poster' }) }));
+    expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('1');
+    expect(line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).toBeEnabled();
+  });
+
+  it('keeps the order limit note while the stock is not the cap', async () => {
+    serve({ overrides: { [poster]: { ...lowStock(12), maxQuantity: 10 } } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(line(poster).getByText(exact(en.checkout.cartQuantityLimit({ max: 10 })))).toBeInTheDocument();
+    expect(line(poster).queryByText(en.checkout.cartStockLimit({ count: 12 }))).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a product type sold one per order', ebook, {}],
+    ['a physical product with one piece left', poster, lowStock(1)],
+  ])('shows no stepper and no limit note for %s, only Remove', async (_case, productId, override) => {
+    serve({ overrides: { [productId]: override } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${productId}.1`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    const title = productId === poster ? 'Poster' : 'E-book';
+    expect(line(productId).queryByRole('button', { name: en.checkout.cartIncrease({ title }) })).not.toBeInTheDocument();
+    expect(line(productId).queryByRole('button', { name: en.checkout.cartDecrease({ title }) })).not.toBeInTheDocument();
+    expect(line(productId).queryByText(en.checkout.cartQuantityLimit({ max: 1 }))).not.toBeInTheDocument();
+    expect(line(productId).queryByText(en.checkout.cartStockLimit({ count: 1 }))).not.toBeInTheDocument();
+    expect(line(productId).getByRole('button', { name: en.checkout.cartRemove({ title }) })).toBeEnabled();
+  });
+
+  it('turns a sold-out line into an alert with Remove and keeps the amount on the disabled pay button with its reason', async () => {
+    const bodies: unknown[] = [];
+    serve({ overrides: { [poster]: soldOutStock }, onSession: (body) => bodies.push(body) });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
+    const soldOutLine = await screen.findByTestId(`cart-line-${poster}`);
+    expect(soldOutLine).toHaveAttribute('role', 'alert');
+    expect(soldOutLine).toHaveTextContent(`Poster: ${en.checkout.cartLineSoldOut}`);
+    expect(within(soldOutLine).queryByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).not.toBeInTheDocument();
+    const pay = screen.getByTestId('checkout-pay-cta');
+    expect(pay).toBeDisabled();
+    expect(pay).toHaveTextContent(exact(en.checkout.payIdle({ price: pln(2500) })));
+    expect(pay).toHaveAccessibleDescription(en.checkout.cartPayBlockedLines);
+
+    await userEvent.click(within(soldOutLine).getByRole('button', { name: en.checkout.cartRemoveLine }));
+    expect(screen.queryByTestId(`cart-line-${poster}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.cartPayBlockedLines)).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ lines: [{ productId: ebook, quantity: 1 }] });
+  });
+
+  it('refetches the offers on a sold-out refusal and names the product from the refusal', async () => {
+    const requests: string[] = [];
+    serve({
+      requests,
+      sessionRefusal: { status: 409, error: { code: 'sold_out', message: '"Poster" is sold out', details: { productId: poster } } },
+    });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2~${ebook}.1`);
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
+    const offerReads = (productId: string) => requests.filter((request) => request === `GET /api/public/offer?productRef=${productId}`).length;
+    expect(offerReads(poster)).toBe(1);
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+
+    expect(await screen.findByText(en.checkout.cartStockRefusal({ title: 'Poster' }))).toBeInTheDocument();
+    await waitFor(() => expect(offerReads(poster)).toBe(2));
+    expect(offerReads(ebook)).toBe(2);
+    expect(screen.queryByText(en.errors.messageSoldOut)).not.toBeInTheDocument();
   });
 
   it.each([

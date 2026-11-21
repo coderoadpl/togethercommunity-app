@@ -894,6 +894,16 @@ describe('ProductsPanel', () => {
       screen.getByLabelText(en.productSafety.responsiblePersonEmail),
     ];
 
+    it('says under the responsible person fields who it usually is and that the address includes the country', async () => {
+      const user = userEvent.setup();
+      await renderLamp(manufacturer);
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      const [name, address, email] = responsiblePersonFields();
+      expect(name).toHaveAccessibleDescription(en.productSafety.responsiblePersonNameHint);
+      expect(address).toHaveAccessibleDescription(en.productSafety.responsiblePersonAddressHint);
+      expect(email).not.toHaveAccessibleDescription();
+    });
+
     it('asks to correct the responsible person, not the manufacturer, when only its e-mail is malformed, and marks only that field', async () => {
       const user = userEvent.setup();
       const bodies = await renderLamp(manufacturer);

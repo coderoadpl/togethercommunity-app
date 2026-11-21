@@ -795,7 +795,9 @@ export interface Messages {
     manufacturerOutsideEu: string;
     manufacturerOutsideEuHint: string;
     responsiblePersonName: string;
+    responsiblePersonNameHint: string;
     responsiblePersonAddress: string;
+    responsiblePersonAddressHint: string;
     responsiblePersonEmail: string;
     modelIdentifier: string;
     batchIdentifier: string;

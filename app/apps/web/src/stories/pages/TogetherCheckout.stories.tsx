@@ -91,11 +91,11 @@ const safetyOutsideEuFixture = safetyFixture('together-checkout-safety-outside-e
   compliance: {
     ...compliance,
     manufacturerName: 'Example Lamp Works',
-    manufacturerAddress: '1 Example Road, 0150 Example City, Norway',
+    manufacturerAddress: '1 Example Road, Toronto ON M5V 2T6, Canada',
     manufacturerEmail: 'safety@lamps.togethercommunity.app',
     manufacturerOutsideEu: true,
     responsiblePersonName: 'Studio Workshop EU Representative',
-    responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw',
+    responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw, Poland',
     responsiblePersonEmail: 'eu-rep@studio.togethercommunity.app',
   },
 });

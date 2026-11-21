@@ -118,8 +118,8 @@ export const ProductComplianceFields = ({
           </Stack>
           {value.manufacturerOutsideEu ? (
             <>
-              {field('responsiblePersonName', t.productSafety.responsiblePersonName, { maxLength: 200 })}
-              {field('responsiblePersonAddress', t.productSafety.responsiblePersonAddress, { maxLength: 300 })}
+              {field('responsiblePersonName', t.productSafety.responsiblePersonName, { helperText: t.productSafety.responsiblePersonNameHint, maxLength: 200 })}
+              {field('responsiblePersonAddress', t.productSafety.responsiblePersonAddress, { helperText: t.productSafety.responsiblePersonAddressHint, maxLength: 300 })}
               {field('responsiblePersonEmail', t.productSafety.responsiblePersonEmail, { type: 'email', maxLength: 254 })}
             </>
           ) : null}

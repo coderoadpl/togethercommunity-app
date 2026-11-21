@@ -1,6 +1,6 @@
 {
-  "hash": "97d2d06f33d54139be5963f37d653652e39e2054b6ee08bdd375c4d8364607ab",
-  "shortId": "97d2d06f33d5",
+  "hash": "bfa4c4dc622467ec9dc9ab6139e6665c492ee1da652243805649d53e84313c21",
+  "shortId": "bfa4c4dc6224",
   "schema": {
     "constraints": [
       {
@@ -119,6 +119,11 @@
         "table": "survey_responses"
       },
       {
+        "definition": "CHECK (((size_bytes >= 1) AND (size_bytes <= 5242880)))",
+        "name": "change_proposal_images_size_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
@@ -195,6 +200,11 @@
       },
       {
         "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_images_created_at_check",
+        "table": "change_proposal_images"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposals_created_at_check",
         "table": "change_proposals"
       },
@@ -217,6 +227,11 @@
         "definition": "CHECK ((delivery_method = ANY (ARRAY['pickup'::text, 'shipping'::text])))",
         "name": "products_delivery_method_check",
         "table": "products"
+      },
+      {
+        "definition": "CHECK ((digest ~ '^[0-9a-f]{64}$'::text))",
+        "name": "change_proposal_images_digest_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK ((email = lower(btrim(email))))",
@@ -242,6 +257,11 @@
         "definition": "CHECK ((expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposals_expires_at_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text])))",
+        "name": "change_proposal_images_extension_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK ((group_position >= 1))",
@@ -277,6 +297,11 @@
         "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
         "name": "shop_management_key_events_kind_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
+        "name": "change_proposal_images_kind_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK ((kind = ANY (ARRAY['proposed'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'expired'::text, 'apply_failed'::text])))",
@@ -857,6 +882,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "change_proposal_groups_tenant_id_fkey",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_images_tenant_id_fkey",
+        "table": "change_proposal_images"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -2269,6 +2299,11 @@
         "table": "tenant_transactional_email_pools"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, api_key_id, kind, digest, extension)",
+        "name": "change_proposal_images_pkey",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
         "name": "checkout_consent_jobs_pkey",
         "table": "checkout_consent_jobs"
@@ -2641,6 +2676,11 @@
         "definition": "CREATE INDEX change_proposal_groups_tenant_key_idx ON change_proposal_groups USING btree (tenant_id, proposed_by_key_id, created_at)",
         "name": "change_proposal_groups_tenant_key_idx",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_images_created_idx ON change_proposal_images USING btree (created_at)",
+        "name": "change_proposal_images_created_idx",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CREATE INDEX change_proposals_tenant_key_created_idx ON change_proposals USING btree (tenant_id, proposed_by_key_id, created_at)",
@@ -11412,6 +11452,67 @@
           }
         ],
         "name": "shop_management_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "digest",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "extension",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_images"
       },
       {
         "columns": [

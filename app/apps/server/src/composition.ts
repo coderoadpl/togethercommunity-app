@@ -62,6 +62,7 @@ import {
   createChangeProposalTargetLabelReader,
 } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
+import { createQuarantinedImageRepository } from '#adapters/db/change-proposal-images.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import type {
   ChangeProposalEventRepository,
@@ -71,6 +72,7 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalOwnerNotifier,
   ChangeProposalPeopleReader,
+  QuarantinedImageRepository,
 } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
@@ -586,6 +588,7 @@ export interface AppDeps {
   changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
   changeProposalPeople: ChangeProposalPeopleReader;
   changeProposalTransaction: ChangeProposalTransaction;
+  quarantinedImages: QuarantinedImageRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -1663,6 +1666,7 @@ export const createDeps = (
       (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
       options.changeProposalBounds,
     ),
+    quarantinedImages: createQuarantinedImageRepository(db, options.changeProposalBounds),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

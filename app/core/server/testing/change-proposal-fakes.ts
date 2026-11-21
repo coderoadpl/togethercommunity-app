@@ -6,7 +6,10 @@ import {
   CHANGE_PROPOSAL_LIMITS,
   changeProposalEffectWithinLimit,
   changeProposalGroupOpen,
+  changeProposalImageReferences,
   err,
+  QUARANTINED_IMAGE_LIMITS,
+  sha256HexOfBytes,
   notFound,
   ok,
   validation,
@@ -22,6 +25,8 @@ import {
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
+  type ProposalImageReference,
+  type QuarantinedImageAsset,
   type SalesLink,
   type ShopManagementKey,
   type StaffRole,
@@ -46,6 +51,8 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
+  QuarantinedImageRelease,
+  QuarantinedImageRepository,
   RealtimeEvent,
   SalesLinkRepository,
   TenantSecretResolver,
@@ -169,9 +176,17 @@ const salesLinkRepositoryOver = (state: FakeCatalogState): SalesLinkRepository =
   };
 };
 
+const imageInLiveUse = (state: FakeCatalogState, tenantId: string, path: string): boolean =>
+  state.products.some((candidate) => candidate.tenantId === tenantId && candidate.coverUrl === path)
+  || state.settings.some(({ tenantId: owner, settings }) => owner === tenantId
+    && [settings.logoUrl, settings.logoDarkUrl, settings.faviconUrl, settings.ogImageUrl].includes(path));
+
+const sameImageRow = (row: QuarantinedImageAsset, tenantId: string, apiKeyId: string, image: ProposalImageReference): boolean =>
+  row.tenantId === tenantId && row.apiKeyId === apiKeyId && row.kind === image.kind && row.digest === image.digest && row.extension === image.extension;
+
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups'>,
+  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows'>,
   locks: ChangeProposalTarget[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
@@ -274,6 +289,13 @@ const catalogRepositoriesOver = (
         return product(tenantId, target.id) !== null;
       },
     },
+    quarantinedImages: {
+      inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
+      lockForPublication: async (tenantId, apiKeyId, image) => {
+        const row = store.imageRows.find((candidate) => sameImageRow(candidate, tenantId, apiKeyId, image));
+        return row === undefined ? null : { ...row };
+      },
+    },
   };
 };
 
@@ -285,6 +307,7 @@ export interface FakeChangeProposalStore {
   eventRows: ChangeProposalEvent[];
   groupRows: ChangeProposalGroup[];
   keys: ShopManagementKey[];
+  imageRows: QuarantinedImageAsset[];
   seed(proposal: ChangeProposal): void;
 }
 
@@ -294,6 +317,9 @@ const byNewestFirst = (left: ChangeProposal, right: ChangeProposal): number =>
 export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): FakeChangeProposalStore => {
   const proposals: ChangeProposal[] = [];
   const eventRows: ChangeProposalEvent[] = [];
+  const imageRows: QuarantinedImageAsset[] = [];
+  const imagesPresent = (tenantId: string, keyId: string, images: readonly ProposalImageReference[]): boolean =>
+    images.every((image) => imageRows.some((row) => sameImageRow(row, tenantId, keyId, image)));
   const pendingAt = (proposal: ChangeProposal, now: string) => proposal.status === 'pending' && proposal.expiresAt > now;
   const matchesStatus = (proposal: ChangeProposal, query: ChangeProposalListQuery): boolean => {
     if (query.groupId !== undefined && proposal.groupId !== query.groupId) return false;
@@ -355,9 +381,10 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     return true;
   };
   const repository: ChangeProposalRepository = {
-    create: async (tenantId, proposal, event, now) => {
+    create: async (tenantId, proposal, event, now, images = []) => {
       if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
       if (!keyActive(tenantId, proposal.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      if (!imagesPresent(tenantId, proposal.proposedByKeyId, images)) return { kind: 'image_missing' };
       const cap = countCapReached(tenantId, proposal.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
       proposals.push({ ...proposal });
@@ -424,9 +451,10 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     findById: async (tenantId, id) => withItems(groupNamed(tenantId, id)),
     findByKey: async (tenantId, keyId, id) => withItems(groupNamed(tenantId, id, keyId)),
     listByIds: async (tenantId, ids) => groupRows.filter((group) => group.tenantId === tenantId && ids.includes(group.id)).map((group) => ({ ...group })),
-    addItem: async (tenantId, proposal, event, clock) => {
+    addItem: async (tenantId, proposal, event, clock, images = []) => {
       if (!changeProposalEffectWithinLimit(proposal.effect)) return { kind: 'cap_exceeded', cap: 'effect_size' };
       if (!keyActive(tenantId, proposal.proposedByKeyId, clock.nowIso())) return { kind: 'key_inactive' };
+      if (!imagesPresent(tenantId, proposal.proposedByKeyId, images)) return { kind: 'image_missing' };
       const current = withItems(groupNamed(tenantId, proposal.groupId ?? '', proposal.proposedByKeyId));
       if (current === null) return { kind: 'not_found' };
       const now = clock.nowIso();
@@ -498,7 +526,63 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     listByProposal: async (tenantId, proposalId) =>
       eventRows.filter((event) => event.tenantId === tenantId && event.proposalId === proposalId).sort((left, right) => left.sequence - right.sequence),
   };
-  return { repository, events, groups, proposals, eventRows, groupRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
+  return { repository, events, groups, proposals, eventRows, groupRows, keys, imageRows, seed: (proposal) => { proposals.push({ ...proposal }); } };
+};
+
+export const fakeContentHash = {
+  sha256: (content: string | Uint8Array): string => sha256HexOfBytes(typeof content === 'string' ? new TextEncoder().encode(content) : content),
+};
+
+export interface FakeQuarantinedImages {
+  repository: QuarantinedImageRepository;
+  releases: QuarantinedImageRelease[];
+}
+
+export const createQuarantinedImagesFake = (
+  state: FakeCatalogState,
+  store: Pick<FakeChangeProposalStore, 'imageRows' | 'proposals' | 'keys'>,
+  limits: { assetsPerKey: number; bytesPerKey: number } = QUARANTINED_IMAGE_LIMITS,
+): FakeQuarantinedImages => {
+  const rows = store.imageRows;
+  const releases: QuarantinedImageRelease[] = [];
+  const keyActive = (row: QuarantinedImageAsset): boolean =>
+    store.keys.some((key) => key.tenantId === row.tenantId && key.id === row.apiKeyId && key.revokedAt === null);
+  const sweepable = (row: QuarantinedImageAsset, createdBefore: string): boolean => row.createdAt < createdBefore || !keyActive(row);
+  const referenced = (row: QuarantinedImageAsset, now: string): boolean => store.proposals.some((proposal) =>
+    proposal.tenantId === row.tenantId && proposal.proposedByKeyId === row.apiKeyId && proposal.status === 'pending' && proposal.expiresAt > now
+    && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => sameImageRow(row, row.tenantId, row.apiKeyId, image)));
+  const repository: QuarantinedImageRepository = {
+    inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
+    insert: async (tenantId, asset) => {
+      const existing = rows.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
+      if (existing !== undefined) return { kind: 'existing', asset: { ...existing } };
+      const ofKey = rows.filter((row) => row.tenantId === tenantId && row.apiKeyId === asset.apiKeyId);
+      if (ofKey.length >= limits.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
+      if (ofKey.reduce((total, row) => total + row.sizeBytes, 0) + asset.sizeBytes > limits.bytesPerKey) {
+        return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
+      }
+      rows.push({ ...asset });
+      return { kind: 'stored', asset: { ...asset } };
+    },
+    find: async (tenantId, apiKeyId, image) => {
+      const found = rows.find((row) => sameImageRow(row, tenantId, apiKeyId, image));
+      return found === undefined ? null : { ...found };
+    },
+    release: async (tenantId, selection, now) => {
+      releases.push(selection);
+      const selected = rows.filter((row) => row.tenantId === tenantId && (selection.kind === 'sweep'
+        ? sweepable(row, selection.createdBefore)
+        : row.apiKeyId === selection.apiKeyId && (selection.images === undefined
+          || selection.images.some((image) => sameImageRow(row, tenantId, selection.apiKeyId, image)))));
+      const candidates = selection.kind === 'sweep' ? selected.slice(0, selection.limit) : selected;
+      const released = candidates.filter((row) => !referenced(row, now));
+      for (const row of released) rows.splice(rows.indexOf(row), 1);
+      return { kind: 'written', value: released.map((row) => ({ ...row })) };
+    },
+    listTenantIdsToSweep: async (createdBefore, limit) =>
+      [...new Set(rows.filter((row) => sweepable(row, createdBefore)).map((row) => row.tenantId))].sort().slice(0, limit),
+  };
+  return { repository, releases };
 };
 
 export interface FakeProposalAccount {
@@ -623,7 +707,7 @@ const noSecrets: TenantSecretResolver = { resolve: async (_tenantId, key) => err
 
 export const createChangeProposalTransactionFake = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups'>,
+  store: Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows'>,
   secretResolver: TenantSecretResolver = noSecrets,
 ): FakeChangeProposalTransaction => {
   const calls: Array<'run' | 'dryRun'> = [];

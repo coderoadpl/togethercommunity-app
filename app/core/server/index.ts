@@ -186,3 +186,4 @@ export * from './change-proposal-effects.js';
 export * from './usecases/change-proposal-operations.js';
 export * from './usecases/change-proposals.js';
 export * from './usecases/change-proposal-groups.js';
+export * from './usecases/change-proposal-images.js';

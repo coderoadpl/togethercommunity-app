@@ -42,6 +42,7 @@ export const storageReferenceInventorySchema = z.object({
     status: z.enum(['pending', 'ready']),
     supersededAt: z.string().nullable(),
   })),
+  quarantinedImages: z.array(z.object({ storageKey: z.string().min(1) })),
   currentDocuments: z.array(jsonValueSchema),
   historyDocuments: z.array(jsonValueSchema),
 });

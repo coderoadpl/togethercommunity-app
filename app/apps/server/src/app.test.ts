@@ -14,6 +14,7 @@ import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   emptyCatalogState,
 } from '#core/server/testing/change-proposal-fakes.js';
@@ -392,6 +393,7 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {

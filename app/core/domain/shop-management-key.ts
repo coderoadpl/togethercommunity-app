@@ -112,11 +112,11 @@ const capabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Ca
 
 const proposeModeCapabilitiesByShopManagementScope: Record<ShopManagementScope, readonly Capability[]> = {
   'shop:catalog:read': ['product:read', 'product:price:read'],
-  'shop:catalog:write': ['proposal:submit:catalog'],
+  'shop:catalog:write': ['proposal:submit:catalog', 'proposal:asset:upload'],
   'shop:orders:read': ['order:read', 'order:export'],
   'shop:fulfilment:write': [],
   'shop:settings:read': ['tenant:settings:read'],
-  'shop:settings:write': ['proposal:submit:settings'],
+  'shop:settings:write': ['proposal:submit:settings', 'proposal:asset:upload'],
   'shop:integrations:read': ['tenant:secret:read'],
   'shop:integrations:write': [],
 };

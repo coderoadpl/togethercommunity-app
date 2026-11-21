@@ -20,6 +20,7 @@ import {
 } from '#core/server/index.js';
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
@@ -97,6 +98,7 @@ const deps = (
   shopManagementKeys: createShopManagementKeyRepository(db),
   changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
   realtimeBus: { publish: (event) => { published.push(event); } },
+  quarantinedImages: createQuarantinedImageRepository(db, bounds),
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },

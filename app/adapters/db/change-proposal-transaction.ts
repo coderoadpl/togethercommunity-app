@@ -17,6 +17,7 @@ import {
   type ChangeProposalBounds,
 } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageLocks } from './change-proposal-images.js';
 import {
   createChangeProposalEventRepository,
   createChangeProposalRepository,
@@ -64,6 +65,7 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
     changeProposalEvents: createChangeProposalEventRepository(tx),
     changeProposalGroups: createChangeProposalGroupRepository(tx, bounds),
     targets: createChangeProposalTargetLocks(tx),
+    quarantinedImages: createQuarantinedImageLocks(tx),
   };
 };
 

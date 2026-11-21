@@ -42,6 +42,7 @@ const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
 
 const imageAssetFilePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|svg|ico)$/;
+const publicImageAssetFilePattern = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})\.(png|jpg|webp|svg|ico)$/;
 const avatarServePathPattern = /^\/api\/public\/assets\/avatar\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.webp)$/iu;
 
 const servePath = (kind: ImageAssetKind, file: string): string =>
@@ -116,7 +117,7 @@ export interface ImageAssetUploadStart {
   expiresAt: string;
 }
 
-const beginUpload = async (
+export const beginCandidateUpload = async (
   tenantId: string,
   allowedKinds: readonly ImageAssetKind[],
   input: ImageAssetUploadInput,
@@ -150,12 +151,22 @@ const beginUpload = async (
   });
 };
 
-const completeUpload = async (
+interface CandidateImage {
+  kind: ImageAssetKind;
+  file: string;
+  contentType: string;
+  bytes: Uint8Array;
+  configuration: StorageConfiguration;
+  credentials: { accessKeyId: string; secretAccessKey: string; region: string };
+  candidateUrl: string;
+}
+
+export const readCandidateImage = async (
   tenantId: string,
   allowedKinds: readonly ImageAssetKind[],
   input: { key: string },
   deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
-): Promise<Result<{ url: string }, AppError>> => {
+): Promise<Result<CandidateImage, AppError>> => {
   const parsed = parseCandidateKey(tenantId, input.key);
   if (parsed === null || !allowedKinds.includes(parsed.kind)) {
     return err(notFound('Image asset not found'));
@@ -195,16 +206,28 @@ const completeUpload = async (
     if (!removed.ok) return removed;
     return err(validation('Uploaded image does not match its declared format or size'));
   }
+  return ok({ ...parsed, bytes: source.value, configuration: configuration.value, credentials, candidateUrl: target });
+};
+
+const completeUpload = async (
+  tenantId: string,
+  allowedKinds: readonly ImageAssetKind[],
+  input: { key: string },
+  deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
+): Promise<Result<{ url: string }, AppError>> => {
+  const candidate = await readCandidateImage(tenantId, allowedKinds, input, deps);
+  if (!candidate.ok) return candidate;
+  const { kind, file, contentType, bytes, configuration, credentials, candidateUrl } = candidate.value;
   const published = await deps.storage.putObject({
-    url: deps.storage.objectUrl(configuration.value, `image-assets/${tenantId}/${parsed.kind}/${parsed.file}`).toString(),
+    url: deps.storage.objectUrl(configuration, `image-assets/${tenantId}/${kind}/${file}`).toString(),
     ...credentials,
-    body: source.value,
-    contentType: parsed.contentType,
+    body: bytes,
+    contentType,
   });
   if (!published.ok) return published;
-  const removed = await deps.storage.delete({ url: target, ...credentials });
+  const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
   if (!removed.ok) return removed;
-  return ok({ url: servePath(parsed.kind, parsed.file) });
+  return ok({ url: servePath(kind, file) });
 };
 
 export const beginCourseCoverUpload = async (
@@ -214,7 +237,7 @@ export const beginCourseCoverUpload = async (
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   const tenant = authorizeTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
-  return beginUpload(tenant.value, ['course-cover'], input, deps);
+  return beginCandidateUpload(tenant.value, ['course-cover'], input, deps);
 };
 
 export const completeCourseCoverUpload = async (
@@ -234,7 +257,7 @@ export const beginProductCoverUpload = async (
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
-  return beginUpload(tenant.value, ['product-cover'], input, deps);
+  return beginCandidateUpload(tenant.value, ['product-cover'], input, deps);
 };
 
 export const completeProductCoverUpload = async (
@@ -254,7 +277,7 @@ export const beginBrandingAssetUpload = async (
 ): Promise<Result<ImageAssetUploadStart, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write', { shopManagementKeyGrant: brandingAssetGrant });
   if (!tenant.ok) return tenant;
-  return beginUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
+  return beginCandidateUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };
 
 export const completeBrandingAssetUpload = async (
@@ -275,7 +298,7 @@ export const beginAvatarUpload = async (
   const tenant = authorizeTenant(ctx, 'member:profile:self-write');
   if (!tenant.ok) return tenant;
   if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));
-  return beginUpload(tenant.value, ['avatar'], input, deps);
+  return beginCandidateUpload(tenant.value, ['avatar'], input, deps);
 };
 
 export const completeAvatarUpload = async (
@@ -417,7 +440,7 @@ export const getPublicImageAssetUrl = async (
   deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
 ): Promise<Result<string, AppError>> => {
   const kind = imageAssetKindSchema.safeParse(input.kind);
-  const fileMatch = imageAssetFilePattern.exec(input.file);
+  const fileMatch = publicImageAssetFilePattern.exec(input.file);
   if (!kind.success || fileMatch === null) return err(notFound('Image asset not found'));
   const contentType = fileContentType(input.file);
   if (contentType === undefined || !imageAssetContentTypesFor(kind.data).includes(contentType)

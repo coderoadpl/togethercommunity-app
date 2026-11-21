@@ -1177,6 +1177,13 @@
       "when": 1790964000123,
       "tag": "0167_order_refund_job_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1790964000124,
+      "tag": "0168_change_proposal_images",
+      "breakpoints": true
     }
   ]
 }

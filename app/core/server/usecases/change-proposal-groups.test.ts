@@ -29,9 +29,11 @@ import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   emptyCatalogState,
   failingSalesLinkSaves,
+  fakeContentHash,
   type FakeChangeProposalStore,
   type FakeChangeProposalTransaction,
 } from '../testing/change-proposal-fakes.js';
@@ -170,6 +172,9 @@ const harness = (keys: ShopManagementKey[] = [
     ...notificationFakes,
     ...changeProposalOwnerViewFakes(state, accounts),
     storage: recordingStorage(deletes),
+    quarantinedImages: createQuarantinedImagesFake(state, store).repository,
+    secretResolver: storageSecrets,
+    contentHash: fakeContentHash,
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },
     clock: { nowIso: () => clock.now },
@@ -1007,12 +1012,12 @@ describe('the owner notification of a group', () => {
       { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
     ]);
+    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === null && row.payload.snippet === '' && row.payload.contextId === null)).toBe(true);
     const rowIds = new Map(h.notifications.rows.map((row) => [row.recipientUserId, row.id]));
     expect(h.notifications.published).toHaveLength(10);
     expect(h.notifications.published.every((event) => event.kind === 'notification'
       && event.notificationKind === 'change-proposal' && event.notificationId === rowIds.get(event.recipientUserId))).toBe(true);
 
-    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === null && row.payload.snippet === '' && row.payload.contextId === null)).toBe(true);
     for (const row of h.notifications.rows) row.readAt = NOW;
     await h.add(groupId, 'stock.adjust', { productId: 'product-live', delta: 1, reason: 'Count' });
     expect(h.notifications.rows.every((row) => row.readAt === NOW)).toBe(true);

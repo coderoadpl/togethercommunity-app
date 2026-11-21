@@ -16,7 +16,7 @@ describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
     expect(inventory.routes).toHaveLength(536);
-    expect(inventory.useCases).toHaveLength(401);
+    expect(inventory.useCases).toHaveLength(406);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -317,6 +317,17 @@ describe('permission inventory', () => {
       ['getChangeProposalGroup', 'proposal:read', ['owner']],
       ['rejectChangeProposalGroup', 'proposal:decide', ['owner']],
       ['approveChangeProposalGroup', 'proposal:decide', ['owner']],
+    ]);
+  });
+
+  it('gives the proposal image uploads to the propose-mode key and the image preview to the owner', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposal-images.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposal-images.ts#', ''), capability, after])).toEqual([
+      ['beginProposedProductCoverUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['beginProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['completeProposedProductCoverUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['completeProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
+      ['getChangeProposalImage', 'proposal:read', ['owner']],
     ]);
   });
 

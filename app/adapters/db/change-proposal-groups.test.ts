@@ -2,6 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
@@ -36,6 +37,7 @@ import {
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
@@ -128,6 +130,9 @@ const deps = (db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) => 
     changeProposalPeople: createChangeProposalPeopleReader(db),
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
     realtimeBus: { publish: () => undefined },
+    quarantinedImages: createQuarantinedImageRepository(db, bounds),
+    secretResolver: createTenantSecretResolver(createTenantSecretRepository(db), secretCrypto),
+    contentHash: createContentHash(),
     storage,
     logger,
     ids: { nextId: () => `group-${String(++sequence)}` },

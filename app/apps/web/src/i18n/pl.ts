@@ -853,7 +853,7 @@ export const pl: Messages = {
     manufacturerOutsideEuHint: 'Oferta pokaże wtedy także osobę odpowiedzialną w UE, czego wymaga art. 19 rozporządzenia (UE) 2023/988.',
     responsiblePersonName: 'Nazwa osoby odpowiedzialnej',
     responsiblePersonAddress: 'Adres pocztowy osoby odpowiedzialnej',
-    responsiblePersonEmail: 'E-mail kontaktowy osoby odpowiedzialnej',
+    responsiblePersonEmail: 'E-mail osoby odpowiedzialnej',
     modelIdentifier: 'Oznaczenie modelu lub typu',
     batchIdentifier: 'Numer partii lub seryjny (opcjonalnie)',
     safetyWarnings: 'Ostrzeżenia dotyczące bezpieczeństwa',

@@ -427,6 +427,10 @@ interface UploadedImage {
   quarantined?: true | undefined;
 }
 
+type BrandingUploadResult =
+  | (UploadedImage & { field: string })
+  | (ProposableResult<{ settings: unknown }> & { image: UploadedImage });
+
 const quarantinedImageLine = (image: UploadedImage): string => image.quarantined === true
   ? `image: ${image.url} (private until the owner approves this proposal; published at this address on approval)`
   : `image: ${image.url}`;
@@ -663,7 +667,7 @@ export const registerShopKeyCommands = (
   const branding = shop.command('branding').description('Brand images of the key\'s workspace');
   proposableKeyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set; with --attach, also set it as the workspace image of that kind. A propose-mode key\'s image stays private until the owner approves the proposal that attaches it')
     .option('--attach', 'set the uploaded image as the logo, dark logo, favicon or share image (a propose-mode key proposes this change)'))
-    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema.extend({ attach: z.boolean().optional() })]), async (client, [kind, file, options], proposal) => {
+    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema.extend({ attach: z.boolean().optional() })]), async (client, [kind, file, options], proposal): Promise<Result<BrandingUploadResult, AppError>> => {
       const input = await imageUploadInput(kind, file);
       if (!input.ok) return input;
       const uploaded = await client.uploadBrandingAsset(input.value);

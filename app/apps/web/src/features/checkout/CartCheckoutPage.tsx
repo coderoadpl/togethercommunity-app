@@ -86,14 +86,14 @@ const cartLineNote = (item: Extract<CartItem, { kind: 'ready' }>, t: Translation
   return item.max > 1 ? t.checkout.cartQuantityLimit({ max: item.max }) : null;
 };
 
-const cartLineAlert = (item: Exclude<CartItem, { kind: 'ready' }>, t: Translations): string => {
+const cartLineAlert = (item: Exclude<CartItem, { kind: 'ready' }>, t: Translations): ReactNode => {
   switch (item.kind) {
     case 'missing':
       return t.checkout.cartProductMissing;
     case 'unavailable':
-      return `${item.product.title}: ${t.checkout.cartLineUnavailable}`;
+      return <><strong>{item.product.title}</strong>: {t.checkout.cartLineUnavailable}</>;
     case 'soldOut':
-      return `${item.product.title}: ${t.checkout.cartLineSoldOut}`;
+      return <><strong>{item.product.title}</strong>: {t.checkout.cartLineSoldOut}</>;
   }
 };
 
@@ -405,12 +405,16 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
               );
             }
             return (
-              <Alert key={item.productId} severity="error" data-testid={`cart-line-${item.productId}`}
-                action={<Button type="button" color="inherit" size="small" onClick={remove}
-                  {...(item.kind === 'missing' ? {} : { 'aria-label': t.checkout.cartRemove({ title: item.product.title }) })}>
-                  {t.checkout.cartRemoveLine}
-                </Button>}>
-                {cartLineAlert(item, t)}
+              <Alert key={item.productId} severity="error" data-testid={`cart-line-${item.productId}`} sx={{ '& .MuiAlert-message': { flexGrow: 1 } }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 1fr) auto' }, columnGap: '0.75rem', alignItems: 'start' }}>
+                  <Box component="span">{cartLineAlert(item, t)}</Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', height: { sm: '1lh' } }}>
+                    <Button type="button" color="inherit" size="small" onClick={remove} sx={{ px: 0, minWidth: '2.75rem', justifyContent: 'flex-start' }}
+                      {...(item.kind === 'missing' ? {} : { 'aria-label': t.checkout.cartRemove({ title: item.product.title }) })}>
+                      {t.checkout.cartRemoveLine}
+                    </Button>
+                  </Box>
+                </Box>
               </Alert>
             );
           })}

@@ -130,6 +130,8 @@ export const SoldOutAndUnavailableLines: Story = {
 };
 export const SoldOutAndUnavailableLinesMobile: Story = withMobile(SoldOutAndUnavailableLines);
 export const SoldOutAndUnavailableLinesDark: Story = withDark(SoldOutAndUnavailableLines);
+export const SoldOutAndUnavailableLinesPolish: Story = { parameters: { ...SoldOutAndUnavailableLines.parameters, locale: 'pl' } };
+export const SoldOutAndUnavailableLinesMobilePolish: Story = withMobile(SoldOutAndUnavailableLinesPolish);
 export const StockCappedLine: Story = {
   parameters: {
     fixture: stockCappedFixture,

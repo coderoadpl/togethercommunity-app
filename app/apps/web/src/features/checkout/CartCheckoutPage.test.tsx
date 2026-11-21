@@ -384,6 +384,10 @@ describe('hosted cart checkout', () => {
     const soldOutLine = await screen.findByTestId(`cart-line-${poster}`);
     expect(soldOutLine).toHaveAttribute('role', 'alert');
     expect(soldOutLine).toHaveTextContent(`Poster: ${en.checkout.cartLineSoldOut}`);
+    expect(within(soldOutLine).getByText('Poster', { selector: 'strong' })).toBeInTheDocument();
+    expect(soldOutLine.querySelector('.MuiAlert-action')).toBeNull();
+    expect(phoneStyle(within(soldOutLine).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) }).parentElement?.parentElement ?? null, 'grid-template-columns'))
+      .toBe('minmax(0, 1fr)');
     expect(within(soldOutLine).queryByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).not.toBeInTheDocument();
     const pay = screen.getByTestId('checkout-pay-cta');
     expect(pay).toBeDisabled();
@@ -491,7 +495,7 @@ describe('hosted cart checkout', () => {
     renderCart(`${HOSTED_CART_PATH}?lines=${journal}.1~${ebook}.1`);
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
     expect(line(journal).getByText(exact(en.checkout.cartUnitPrice({ price: pln(4000) })))).toBeInTheDocument();
-    expect(screen.queryByText(`Journal: ${en.checkout.cartLineUnavailable}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.checkout.cartLineUnavailable, { exact: false })).not.toBeInTheDocument();
     expect(summaryAmount('products')).toHaveTextContent(exact(pln(6500)));
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
@@ -505,7 +509,7 @@ describe('hosted cart checkout', () => {
   it('refuses a product with two one-time prices, as the server does', async () => {
     serve();
     renderCart(`${HOSTED_CART_PATH}?lines=${bag}.1~${ebook}.1`);
-    expect(await screen.findByText(`Bag: ${en.checkout.cartLineUnavailable}`)).toBeInTheDocument();
+    expect(await screen.findByTestId(`cart-line-${bag}`)).toHaveTextContent(`Bag: ${en.checkout.cartLineUnavailable}`);
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     expect(line(bag).getByRole('button', { name: en.checkout.cartRemove({ title: 'Bag' }) })).toBeEnabled();
   });

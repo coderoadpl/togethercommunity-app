@@ -135,8 +135,8 @@ link checkout and the hosted cart page through `DeliveryStep`:
   the only code exit. **Try again** clears the failure, brings **I know the
   code** back, moves focus to the picker title and mounts the map again with a
   fresh script.
-  After **Type the code** (or **I know the code**) the option shows the code
-  input with the reason for the rest of the page's life. A script that fails
+  After **Type the code** the option shows the code input with the reason for
+  the rest of the page's life. A script that fails
   while the picker is closed is removed, so the next opening loads it again.
   A token InPost rejects (for example one issued for another domain) loads the
   map with InPost's own red access-denied banner, a watermark and no points;

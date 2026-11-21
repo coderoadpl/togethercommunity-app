@@ -691,13 +691,24 @@ export const en: Messages = {
     approveProductDeleteDraft: ({ target }) => format('The draft product “{target}” will be deleted.', { target }),
     approvePriceCreate: ({ target, price }) => format('A new price will be added to “{target}”: {price}.', { target, price }),
     approvePriceDeactivate: ({ target, price }) => format('The price {price} of “{target}” will be turned off.', { target, price }),
-    approveStockEnable: ({ target }) => format('Stock of “{target}” will be tracked from now on.', { target }),
+    approveStockEnable: ({ target, count }) => format(plural(
+      count,
+      'Stock of “{target}” will be tracked from now on, starting at {count} piece on hand.',
+      'Stock of “{target}” will be tracked from now on, starting at {count} pieces on hand.',
+    ), { target, count }),
+    approveStockEnableWithThreshold: ({ target, count, threshold }) => format(plural(
+      count,
+      'Stock of “{target}” will be tracked from now on, starting at {count} piece on hand, with the low-stock alert level at {threshold}.',
+      'Stock of “{target}” will be tracked from now on, starting at {count} pieces on hand, with the low-stock alert level at {threshold}.',
+    ), { target, count, threshold }),
     approveStockThreshold: ({ target }) => format('The low-stock alert level of “{target}” will change.', { target }),
     approveSalesLinkCreate: ({ target }) => format('A new sales link “{target}” will be created.', { target }),
     approveSalesLinkDelete: ({ target }) => format('The sales link “{target}” will be deleted.', { target }),
     approveFieldsChange: ({ target, count }) =>
       format(plural(count, '{count} field of “{target}” will change.', '{count} fields of “{target}” will change.'), { target, count }),
     approveSettingsChange: ({ count }) => format(plural(count, '{count} shop setting will change.', '{count} shop settings will change.'), { count }),
+    approveFieldCount: ({ count }) => format(plural(count, '{count} field will change.', '{count} fields will change.'), { count }),
+    approveOtherFields: ({ count }) => format(plural(count, '{count} other field will change too.', '{count} other fields will change too.'), { count }),
     approveGroupTitle: ({ count }) => plural(count, 'Approve this change?', 'Approve the whole group?'),
     approveGroupBody: ({ count }) =>
       format(plural(count, 'The change will be applied.', 'All {count} changes will be applied together, or none.'), { count }),

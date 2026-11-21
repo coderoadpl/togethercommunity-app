@@ -419,10 +419,14 @@ changes** ("Approve the change" for a group of one) and **Reject group**.
 Approve asks for one confirmation that repeats what will happen, built from
 the same data as the card: the target and the essence ("Creator Workbook
 (print): 50 pieces will be added to stock.", "The product “Field Guide (print)”
-will be published.", "3 fields of “Field Guide (print)” will change."),
-followed by "Nothing else changes."; a group's confirmation reads "All 5
-changes will be applied together, or none.". Reject opens a dialog with an
-optional comment that is shown to the proposer.
+will be published.", "3 fields of “Field Guide (print)” will change.", "Stock of
+“Field Guide (print)” will be tracked from now on, starting at 40 pieces on
+hand, with the low-stock alert level at 5."). "Nothing else changes." follows
+only a sentence that names every changed field of the proposal; when the
+sentence leaves fields unnamed, the confirmation says how many other fields
+change instead ("2 other fields will change too."). A group's confirmation
+reads "All 5 changes will be applied together, or none.". Reject opens a
+dialog with an optional comment that is shown to the proposer.
 
 The group card reads the group itself (`GET /api/change-proposals/groups/:id`).
 When the approve dialog opens, the card saves the ordered item ids rendered at

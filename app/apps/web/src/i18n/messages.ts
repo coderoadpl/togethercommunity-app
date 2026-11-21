@@ -666,12 +666,15 @@ export interface Messages {
     approveProductDeleteDraft: (params: { target: string }) => string;
     approvePriceCreate: (params: { target: string; price: string }) => string;
     approvePriceDeactivate: (params: { target: string; price: string }) => string;
-    approveStockEnable: (params: { target: string }) => string;
+    approveStockEnable: (params: { target: string; count: number }) => string;
+    approveStockEnableWithThreshold: (params: { target: string; count: number; threshold: number }) => string;
     approveStockThreshold: (params: { target: string }) => string;
     approveSalesLinkCreate: (params: { target: string }) => string;
     approveSalesLinkDelete: (params: { target: string }) => string;
     approveFieldsChange: (params: { target: string; count: number }) => string;
     approveSettingsChange: (params: { count: number }) => string;
+    approveFieldCount: (params: { count: number }) => string;
+    approveOtherFields: (params: { count: number }) => string;
     approveGroupTitle: (params: { count: number }) => string;
     approveGroupBody: (params: { count: number }) => string;
     approveConfirm: string;

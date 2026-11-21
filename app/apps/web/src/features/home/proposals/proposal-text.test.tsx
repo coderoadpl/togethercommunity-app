@@ -45,6 +45,15 @@ describe('proposal text', () => {
     expect(fields(24)).toBe(fields(4));
   });
 
+  it('ends the Polish group confirmation like the card and names the target before the price it turns off', () => {
+    for (const count of [3, 5, 22]) {
+      expect(pl.changeProposals.approveGroupBody({ count })).toMatch(/ razem albo wcale\.$/u);
+    }
+    expect(pl.changeProposals.groupAllOrNothing).toMatch(/ razem albo wcale\.$/u);
+    expect(pl.changeProposals.approvePriceDeactivate({ target: 'Club', price: 'P' })).toMatch(/^Produkt \u201EClub\u201D: /u);
+    expect(pl.changeProposals.decidedByFormerTeamMember({ date: 'D' })).toMatch(/^Decyzja: \S+ osoba z zespo\S+, D$/u);
+  });
+
   it('isolates the inserted value so it cannot reorder the sentence', () => {
     const { container } = render(<p><Isolated sentence={(key) => en.changeProposals.proposedBy({ key })} value={'Agent” \u202Eone'} /></p>);
     expect(container.querySelector('bdi')).toHaveTextContent('Agent” \u202Eone');

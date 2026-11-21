@@ -1080,7 +1080,8 @@ attached image, whether its public object
 `image-assets/<workspace>/<kind>/<sha256>.<ext>` exists. An existing object
 has the same bytes, because its name is their digest: it is neither written
 nor recorded, so an approval never deletes a public object an earlier approval
-published. For every other image it commits a publication record of its attempt
+published. A storage request that fails here answers its error, and nothing is
+recorded or changed. For every other image it commits a publication record of its attempt
 in `change_proposal_image_publications` (workspace, attempt, kind, digest,
 extension, start time). This single insert runs on its own before the
 transaction, so the approval never waits for a second database connection while

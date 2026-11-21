@@ -425,7 +425,7 @@ describe('shop settings and branding CLI', () => {
     const file = join(directory, 'logo.png');
     await writeFile(file, new Uint8Array([137, 80, 78, 71]));
     await run('shop', 'branding', 'upload', 'logo', file);
-    expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/logo/1.png' } });
+    expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/logo/1.png', field: 'logoUrl' } });
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       'POST /api/m2m/shop/image-assets/branding/upload',
       'PUT /candidate',
@@ -953,5 +953,91 @@ describe('shop key CLI with a proposal group', () => {
     const lines = String(logSpy.mock.calls[0]?.[0]).split('\n').filter((line) => line.startsWith('  '));
     expect(lines.map((line) => line.includes('refer to what it creates as $proposal:'))).toEqual([true, true, true, false, false]);
     expect(lines[0]).toContain('$proposal:proposal-1');
+  });
+});
+
+const QUARANTINED_DIGEST = 'b'.repeat(64);
+
+const quarantineFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  if (url.hostname === 'storage.example.test') return new Response(null, { status: 200 });
+  const kind = url.pathname.includes('/branding/') || url.pathname === '/api/m2m/shop/settings' ? 'logo' : 'product-cover';
+  if (url.pathname.endsWith('/upload')) {
+    return Response.json({ ok: true, data: { key: `image-asset-candidates/acme/${kind}/1.png`, servePath: null, quarantined: true, upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } } });
+  }
+  if (url.pathname.endsWith('/complete')) return Response.json({ ok: true, data: { url: `/api/public/assets/${kind}/${QUARANTINED_DIGEST}.png`, quarantined: true } });
+  if (url.pathname.endsWith('/prices')) return Response.json({ ok: true, data: { prices: [price] } });
+  const header = new Headers(init?.headers).get('x-proposal-group');
+  const proposal = { ...receipt, operation: kind === 'logo' ? 'settings.update' : 'product.update', groupId: header };
+  return Response.json({ ok: true, data: { outcome: 'proposed', proposal, ...(header === null ? {} : { group: groupReceipt([proposal]) }) } }, { status: 202 });
+};
+
+describe('shop image CLI with a propose-mode key', () => {
+  let directory: string;
+  let file: string;
+  beforeEach(async () => {
+    h.fetchImpl = quarantineFetch;
+    directory = await mkdtemp(join(tmpdir(), 'shop-quarantine-cli-'));
+    file = join(directory, 'image.png');
+    await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+  });
+  afterEach(async () => { await rm(directory, { recursive: true }); });
+
+  const coverPath = `/api/public/assets/product-cover/${QUARANTINED_DIGEST}.png`;
+  const logoPath = `/api/public/assets/logo/${QUARANTINED_DIGEST}.png`;
+
+  it('uploads a cover into quarantine and proposes attaching it, in the group named by --group', async () => {
+    await run('shop', 'cover', 'upload', 'product-1', file, '--group', 'group-1');
+    expect(soleJson()).toMatchObject({
+      ok: true,
+      data: { outcome: 'proposed', proposal: { operation: 'product.update', groupId: 'group-1' }, image: { url: coverPath, quarantined: true } },
+    });
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /api/m2m/shop/products/product-1/prices',
+      'POST /api/m2m/shop/image-assets/product-cover/upload', 'PUT /candidate',
+      'POST /api/m2m/shop/image-assets/product-cover/complete', 'POST /api/m2m/shop/products/update',
+    ]);
+    expect(calls[4]?.body).toEqual({ id: 'product-1', coverUrl: coverPath });
+    expect(calls[4]?.headers.get('x-proposal-group')).toBe('group-1');
+    for (const call of calls.slice(0, 4)) expect(call.headers.has('x-proposal-group')).toBe(false);
+  });
+
+  it('skips the product check for a product an earlier item of the group creates', async () => {
+    await run('shop', 'cover', 'upload', '$proposal:proposal-1', file, '--group', 'group-1');
+    expect(calls.map((call) => call.path)).not.toContain('/api/m2m/shop/products/$proposal:proposal-1/prices');
+    expect(calls.at(-1)?.body).toEqual({ id: '$proposal:proposal-1', coverUrl: coverPath });
+  });
+
+  it('prints the receipt and that the image stays private until approval without --json', async () => {
+    process.argv = ['node', 'together', 'shop', 'cover', 'upload', 'product-1', file];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('proposed, waiting for the owner\'s decision:');
+    expect(printed).toContain('proposal proposal-1: product.update [pending]');
+    expect(printed).toContain(`image: ${coverPath} (private until the owner approves this proposal; published at this address on approval)`);
+  });
+
+  it('prints a quarantined branding image with the settings command that proposes it', async () => {
+    process.argv = ['node', 'together', 'shop', 'branding', 'upload', 'logo', file];
+    vi.resetModules();
+    await import('./main.js');
+    expect(logSpy).toHaveBeenCalledWith([
+      logoPath,
+      `quarantined: private until the owner approves a proposal that sets it; propose it with --attach on this command, or with: echo '{"logoUrl":"${logoPath}"}' | together shop settings set --json-file -`,
+    ].join('\n'));
+    expect(calls.map((call) => `${call.method} ${call.path}`)).not.toContain('POST /api/m2m/shop/settings');
+  });
+
+  it('proposes the settings change for the uploaded branding image with --attach', async () => {
+    await run('shop', 'branding', 'upload', 'logo', file, '--attach', '--group', 'group-1');
+    expect(soleJson()).toMatchObject({
+      ok: true,
+      data: { outcome: 'proposed', proposal: { operation: 'settings.update', groupId: 'group-1' }, image: { url: logoPath, quarantined: true } },
+    });
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', path: '/api/m2m/shop/settings', body: { logoUrl: logoPath } });
+    expect(calls.at(-1)?.headers.get('x-proposal-group')).toBe('group-1');
   });
 });

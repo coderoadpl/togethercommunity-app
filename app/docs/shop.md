@@ -58,15 +58,16 @@ the link.
 The checkout page renders a **Delivery** section with the active options and
 their prices directly under the order summary, the variant chips and the price
 choice, before the personalisation, the invoice and discount code rows and the
-pay button. For a parcel locker option it shows, under the chosen option, a
-**Choose a parcel locker** button that opens the
+pay button. For a parcel locker option it shows, under the chosen option, a filled
+**Choose a parcel locker** button with a map pin that opens the
 [parcel locker picker](#parcel-locker-picker) with the InPost map (under the
 rule in
 [Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map)),
-and a small **I know the code** toggle that reveals the **Parcel locker code**
-input (upper-cased, 4–12 letters or digits). Once a locker is chosen the
-option shows its code, name and address and a **Change** button that reopens
-the picker. Without a map (no Geowidget token, a staff session or test mode, or
+and a small **I know the code** toggle with a chevron that reveals the
+**Parcel locker code** input (upper-cased, 4–12 letters or digits). Once a
+locker is chosen on the map the option shows a check with **Selected parcel
+locker**, the code, name and address and a **Change** button that reopens the
+picker, and the typed-code field closes. Without a map (no Geowidget token, a staff session or test mode, or
 a map that failed to load) the option shows the code input directly, with one
 short reason when there is one. The pay button stays disabled until an option,
 and a valid code when the option needs one, is chosen, and a line under the
@@ -82,10 +83,21 @@ link checkout and the hosted cart page through `DeliveryStep`:
   600 px) it is a full-screen view of `100dvh` that respects the safe-area
   insets; on a desktop it is a large dialog. The page behind it does not scroll
   and is hidden from assistive technology.
-- A fixed header holds the title, one line of guidance under it (**Pick a
-  point on the map and tap “Select” in its card.**) and a close button. The
-  map fills all the remaining space down to the bottom edge, without a
-  scrolling container around it and without a footer.
+- A fixed header holds the title, one line of guidance (**Tap a point, then
+  the yellow “Select” button.**), an **I know the code** action and the way
+  out. In the full-screen view the way out is a **Back** control with an arrow
+  on the left, away from the map's own close buttons at the top right; the
+  desktop dialog keeps a close button. On a phone narrower than the `sm`
+  breakpoint the header has two rows, **Back** and **I know the code** above
+  the guidance line, and the title stays in the page only as the dialog's
+  heading for assistive technology; wider screens show **Back**, the title
+  with the guidance line and **I know the code** in one row. The map fills all
+  the remaining space down to the bottom edge, without a scrolling container
+  around it and without a footer, and the full-screen view has no rounded
+  corners or border.
+- **I know the code** in the header closes the picker the same way as
+  **Back**, opens the **Parcel locker code** field on the page and moves focus
+  into it.
 - One tap chooses the locker. InPost's map reports a point only when the buyer
   taps the map's own yellow select button in the point's card or details
   panel; tapping a marker, a list item or the map's details link only shows
@@ -101,7 +113,7 @@ link checkout and the hosted cart page through `DeliveryStep`:
   promise is ignored, and the map then starts at its own default spot. InPost
   ignores such calls silently until the token is registered for the exact
   domain.
-- The close button, Escape (also from inside the map, which reports it with the
+- **Back**, the close button, Escape (also from inside the map, which reports it with the
   `inpost.geowidget.escape` event, on the map element or on the document) and
   the phone's back gesture close the picker and keep the previous choice.
 - Opening the picker adds one browser history entry for the same address, so
@@ -110,19 +122,21 @@ link checkout and the hosted cart page through `DeliveryStep`:
   leaving the page.
 - Focus moves to the picker title when it opens, stays inside it, and returns to
   **Choose a parcel locker** or **Change** when it closes (to the code input
-  after a map failure). The guidance line describes the dialog and is a polite
-  live region, so a map failure is read out. Enter inside the picker never
-  submits the checkout.
+  after **I know the code**, **Type the code** or a map failure). The guidance
+  line describes the dialog and is a polite live region, so a map failure is
+  read out. Enter inside the picker never submits the checkout.
 - The map element is created only while the picker is open and removed when it
   closes. When the map script fails to load (for example a content security
   policy kept from an in-app navigation), the picker says so and offers
-  **Type the code**, and the option then shows the code input with the reason
-  for the rest of the page's life. A script that fails while the picker is
-  closed is removed, so the next opening loads it again.
+  **Try again** and **Type the code**. **Try again** clears the failure, moves
+  focus to the picker title and mounts the map again with a fresh script.
+  After **Type the code** (or **I know the code**) the option shows the code
+  input with the reason for the rest of the page's life. A script that fails
+  while the picker is closed is removed, so the next opening loads it again.
   A token InPost rejects (for example one issued for another domain) loads the
   map with InPost's own red access-denied banner, a watermark and no points;
-  the page cannot detect that inside the cross-origin frame, so the buyer
-  closes the picker and uses **I know the code**.
+  the page cannot detect that inside the cross-origin frame, so the buyer uses
+  **I know the code** in the picker header.
 
 ### Layout of the Together checkout page
 

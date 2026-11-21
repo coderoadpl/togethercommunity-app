@@ -3,6 +3,7 @@
     "getChangeProposalSummary:[]": {
       "ok": true,
       "value": {
+        "hasProposals": false,
         "pending": 0,
         "pendingGroups": 0
       }

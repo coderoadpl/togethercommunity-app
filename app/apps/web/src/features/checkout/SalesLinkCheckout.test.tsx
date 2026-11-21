@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -49,7 +49,10 @@ it('reuses consent and simulated checkout with the sales link and first product'
 it('shows unavailable notice for an unknown or inactive offer', async () => {
   server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Sales link not found' } }, { status: 404 })));
   renderOffer();
-  expect(await screen.findByText(en.checkout.unavailableTitle)).toBeVisible();
+  expect(await screen.findByText(en.salesLinks.offerUnavailableTitle)).toBeVisible();
+  expect(screen.getByText(en.salesLinks.offerUnavailableBody)).toBeVisible();
+  expect(screen.getByRole('link', { name: en.salesLinks.goHome })).toHaveAttribute('href', '/');
+  expect(screen.queryByRole('link', { name: en.checkout.goToLogin })).toBeNull();
   expect(screen.queryByTestId('checkout-pay-cta')).toBeNull();
 });
 
@@ -63,10 +66,40 @@ it.each([
     ok: true, data: { ...offer, tenant: { ...offer.tenant, legal } },
   })));
   renderOffer();
-  expect(await screen.findByRole('alert')).toHaveTextContent(en.checkout.unavailableTitle);
+  expect(await screen.findByText(en.salesLinks.offerUnavailableBody)).toBeVisible();
+  expect(screen.getByRole('link', { name: en.salesLinks.goHome })).toHaveAttribute('href', '/');
   expect(screen.queryByLabelText(en.checkout.emailLabel)).toBeNull();
   expect(screen.queryByTestId('checkout-pay-cta')).toBeNull();
   expect(document.querySelector('form')).toBeNull();
+});
+
+it('names the lines that ran out above the summary of a sold-out bundle', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: {
+    ...offer, soldOut: true, lines: offer.lines.map((line, index) => ({ ...line, maxQuantity: index === 0 ? 0 : 1 })),
+  } })));
+  renderOffer();
+  const notice = await screen.findByTestId('bundle-sold-out-notice');
+  expect(notice).toHaveTextContent(en.salesLinks.soldOutTitle);
+  expect(notice).toHaveTextContent(en.salesLinks.soldOutLines({ names: 'Printed workbook' }));
+});
+
+it('puts the gross price on the line name row and the tax detail and delivery in captions', async () => {
+  window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
+  server.use(http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: {
+    ...offer, lines: offer.lines.map((line, index) => index === 0 ? { ...line, type: 'physical', deliveryMethod: 'shipping' } : line),
+  } })));
+  renderOffer();
+  await userEvent.click(await screen.findByRole('button', { name: en.checkout.summaryDetails }));
+  const first = screen.getByTestId('offer-line-product-1');
+  expect(within(first).getByRole('heading', { level: 2, name: 'Printed workbook' })).toBeVisible();
+  expect(within(first).getByTestId('offer-line-gross')).toHaveTextContent(formatPrice(4200, 'PLN', 'en'));
+  expect(within(first).getByTestId('offer-line-kind')).toHaveTextContent(`${en.salesLinks.lineTypes.physical} · ${en.salesLinks.lineDelivery.shipping}`);
+  const taxes = within(first).getByTestId('offer-line-cells');
+  expect(taxes.tagName).toBe('DL');
+  expect(within(taxes).getByText(en.salesLinks.net).tagName).toBe('DT');
+  expect(within(taxes).queryByText(en.salesLinks.gross)).toBeNull();
+  expect(within(screen.getByTestId('offer-line-product-3')).getByTestId('offer-line-kind')).toHaveTextContent(en.salesLinks.lineTypes.course);
 });
 
 it.each([true, false])('shows the sales-link test success notice only to staff: %s', async (canTest) => {

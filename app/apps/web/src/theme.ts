@@ -2904,7 +2904,6 @@ export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8re
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
 
-export const OfferCellValue = styled(Typography)({ whiteSpace: 'nowrap' });
 
 export const CheckoutTitle = styled(CardTitle)({ wordSpacing: '0.12em' });
 

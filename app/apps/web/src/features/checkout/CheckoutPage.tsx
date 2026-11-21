@@ -9,6 +9,7 @@ import { ProductSafetySummary } from './ProductSafetySummary.js';
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
+  AlertTitle,
   Button,
   FormControl,
   FormControlLabel,
@@ -461,7 +462,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         eyebrow={t.checkout.orderEyebrow}
       >
         <StatusView
-          state={{
+          state={salesLinkSlug === undefined ? {
             kind: 'not-found',
             title: t.checkout.unavailableTitle,
             body: t.checkout.unavailableBody,
@@ -470,6 +471,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 {t.checkout.goToLogin}
               </Button>
             ),
+          } : {
+            kind: 'not-found',
+            title: t.salesLinks.offerUnavailableTitle,
+            body: t.salesLinks.offerUnavailableBody,
+            action: <Button href="/" variant="contained">{t.salesLinks.goHome}</Button>,
           }}
         />
       </FocusCard>
@@ -479,7 +485,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (salesLinkSlug !== undefined && (!legal?.termsUrl || !legal.privacyUrl)) {
     return (
       <FocusCard {...frame} eyebrow={t.checkout.orderEyebrow}>
-        <Alert severity="error">{t.checkout.unavailableTitle}</Alert>
+        <StatusView
+          state={{
+            kind: 'not-found',
+            title: t.salesLinks.offerUnavailableTitle,
+            body: t.salesLinks.offerUnavailableBody,
+            action: <Button href="/" variant="contained">{t.salesLinks.goHome}</Button>,
+          }}
+        />
       </FocusCard>
     );
   }
@@ -583,6 +596,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           <Stack useFlexGap spacing="0.75rem">
             <CheckoutTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CheckoutTitle>
+            {bundle?.soldOut === true ? (
+              <Alert severity="warning" data-testid="bundle-sold-out-notice">
+                <AlertTitle>{t.salesLinks.soldOutTitle}</AlertTitle>
+                {bundle.lines.some((line) => line.maxQuantity === 0)
+                  ? t.salesLinks.soldOutLines({ names: bundle.lines.filter((line) => line.maxQuantity === 0).map((line) => line.name).join(', ') })
+                  : null}
+              </Alert>
+            ) : null}
             <CheckoutSummaryRow
               items={t.checkout.itemCount({ count: bundle?.lines.length ?? 1 })}
               total={formatOfferPrice(payableCents, selectedCurrency, language, t.common.free)}

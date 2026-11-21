@@ -84,7 +84,13 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     sendPicker({ type: 'pointSelected' });
   };
   const pickerExited = () => {
-    (codeAfterExit.current ? codeInput.current : opener.current ?? codeInput.current)?.focus();
+    const code = codeInput.current;
+    if (codeAfterExit.current) {
+      code?.focus();
+      if (code !== null && code.value !== '') code.select();
+    } else {
+      (opener.current ?? code)?.focus();
+    }
     codeAfterExit.current = false;
     setAnnouncedCode(committed.current);
     committed.current = null;

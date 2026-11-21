@@ -97,7 +97,8 @@ link checkout and the hosted cart page through `DeliveryStep`:
   corners or border.
 - **I know the code** in the header closes the picker the same way as
   **Back**, opens the **Parcel locker code** field on the page and moves focus
-  into it.
+  into it. When the field already holds a code, that code is selected, so the
+  first key replaces it (the same after **Type the code**).
 - One tap chooses the locker. InPost's map reports a point only when the buyer
   taps the map's own yellow select button in the point's card or details
   panel; tapping a marker, a list item or the map's details link only shows

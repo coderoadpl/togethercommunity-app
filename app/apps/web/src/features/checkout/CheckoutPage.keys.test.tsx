@@ -260,8 +260,13 @@ const enterCases: EnterCase[] = [
     },
     after: async () => {
       await pickerClosed();
-      await waitFor(() => expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveFocus());
-      expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+      const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      await waitFor(() => expect(code).toHaveFocus());
+      expect(code).toHaveValue('KRA010');
+      if (!(code instanceof HTMLInputElement)) throw new Error('Missing locker code input');
+      expect([code.selectionStart, code.selectionEnd]).toEqual([0, 'KRA010'.length]);
+      await userEvent.keyboard('WAW01M');
+      expect(code).toHaveValue('WAW01M');
     },
   },
   ...invoiceFields.map((label): EnterCase => ({

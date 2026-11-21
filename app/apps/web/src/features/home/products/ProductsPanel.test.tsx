@@ -949,6 +949,9 @@ describe('ProductsPanel', () => {
       expect(alert).toHaveTextContent(en.productSafety.incomplete);
       expect(alert).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
       for (const field of responsiblePersonFields()) expect(field).toHaveAttribute('aria-invalid', 'true');
+      for (const key of ['responsiblePersonName', 'responsiblePersonAddress']) {
+        expect(document.getElementById(`product-compliance-${key}-helper-text`)).not.toHaveClass('Mui-error');
+      }
       expect(screen.getByLabelText(en.productSafety.modelIdentifier)).toHaveAttribute('aria-invalid', 'false');
       expect(bodies).toEqual([]);
     });

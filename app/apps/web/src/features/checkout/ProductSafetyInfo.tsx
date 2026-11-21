@@ -20,7 +20,7 @@ const Party = ({ label, name, address, email, testId }: { label: string; name: s
     <Stack useFlexGap spacing="0.125rem" data-testid={testId}>
       <Detail label={label}>{name}, {address}</Detail>
       <Detail label={t.productSafety.contact}>
-        <Link href={`mailto:${email}`}>{email}</Link>
+        <Link href={`mailto:${email}`} sx={{ display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere' }}>{email}</Link>
       </Detail>
     </Stack>
   );

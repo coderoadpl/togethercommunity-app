@@ -94,7 +94,7 @@ export const ProductComplianceFields = ({
       helperText={extra.helperText}
       error={isResponsiblePersonField(key) && failing.includes(key)}
       onChange={(event) => onChange({ ...value, [key]: event.target.value })}
-      slotProps={{ htmlInput: { maxLength: extra.maxLength } }}
+      slotProps={{ htmlInput: { maxLength: extra.maxLength }, formHelperText: { error: false } }}
     />
   );
   return (

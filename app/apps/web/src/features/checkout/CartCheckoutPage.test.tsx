@@ -196,6 +196,27 @@ describe('hosted cart checkout', () => {
     });
   });
 
+  it('shows the responsible person in the shape of the manufacturer, each e-mail row closer to its party than to the other party', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    const person = await screen.findByTestId('product-safety-responsible-person');
+    const manufacturer = screen.getByTestId('product-safety-manufacturer');
+    for (const [party, label, nameAndAddress, email] of [
+      [manufacturer, en.productSafety.manufacturer, 'Print House, Main Street 1', 'safety@example.org'],
+      [person, en.productSafety.responsiblePerson, 'Example EU Representative, Example Street 2, Warsaw', 'eu-rep@example.org'],
+    ] as const) {
+      const [identity, contact, ...rest] = [...party.children];
+      expect(rest).toEqual([]);
+      expect(identity).toHaveTextContent(exact(`${label}: ${nameAndAddress}`));
+      expect(contact).toHaveTextContent(exact(`${en.productSafety.contact}: ${email}`));
+      expect(within(party).getByRole('link', { name: email })).toHaveAttribute('href', `mailto:${email}`);
+      expect(party).toHaveStyle({ gap: '0.125rem' });
+    }
+    expect(manufacturer.parentElement).toBe(person.parentElement);
+    expect(manufacturer.nextElementSibling).toBe(person);
+    expect(person.parentElement).toHaveStyle({ gap: '0.5rem' });
+  });
+
   it('keeps each stepper within the line limits and posts the changed quantities', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });

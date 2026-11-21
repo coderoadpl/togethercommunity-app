@@ -8,11 +8,12 @@ import { withAccountPreview } from './page-decorators.js';
 
 type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'>;
 
-const Rows = ({ proposal, stockNow, inGroup = false }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean }) => (
+const Rows = ({ proposal, stockNow, inGroup = false, pendingProposalId = null }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean; pendingProposalId?: string | null }) => (
   <Paper elevation={1} sx={{ p: '1.5rem', maxWidth: '48rem' }}>
     <ProposalFieldRows
       proposal={proposal}
       stockNow={stockNow}
+      pendingProposalId={pendingProposalId}
       {...(inGroup ? { references: groupReferences(changeProposalGroupItems) } : {})}
     />
   </Paper>
@@ -48,6 +49,19 @@ const image: Proposal = {
     coverUrl: { before: 'https://images.example.org/old-cover.jpg', after: '/api/public/assets/product-cover/field-guide.webp' },
   },
 };
+const proposedCover: Proposal = {
+  input: {},
+  effect: {
+    coverUrl: {
+      before: '/api/public/assets/product-cover/field-guide.webp',
+      after: '/api/public/assets/product-cover/4f1d0c2b9a8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c.png',
+    },
+  },
+};
+const proposedSvgLogo: Proposal = {
+  input: {},
+  effect: { logoUrl: { before: null, after: '/api/public/assets/logo/9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b.svg' } },
+};
 const reference: Proposal = { input: {}, effect: { productIds: { before: null, after: ['$proposal:proposal-field-guide-product'] } } };
 const unknown: Proposal = { input: {}, effect: { giftWrapping: { before: null, after: 'Recycled paper, red ribbon' } } };
 const stockDelta: Proposal = { input: { productId: 'product-studio-workbook-print', delta: -3, reason: 'Damaged copies' }, effect: { onHand: { delta: -3 } } };
@@ -70,6 +84,9 @@ export const MoneyValue: Story = { render: () => <Rows proposal={money} /> };
 export const BooleanValue: Story = { render: () => <Rows proposal={boolean} /> };
 export const ListValue: Story = { render: () => <Rows proposal={list} /> };
 export const ImageValue: Story = { render: () => <Rows proposal={image} /> };
+export const ProposedImageAwaitingApproval: Story = { render: () => <Rows proposal={proposedCover} pendingProposalId="proposal-field-guide-cover" /> };
+export const ProposedSvgAwaitingApproval: Story = { render: () => <Rows proposal={proposedSvgLogo} pendingProposalId="proposal-studio-logo" /> };
+export const ProposedSvgPolishMobile: Story = { ...ProposedSvgAwaitingApproval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const ReferenceValue: Story = { render: () => <Rows proposal={reference} inGroup /> };
 export const UnknownField: Story = { render: () => <Rows proposal={unknown} /> };
 export const StockDelta: Story = { render: () => <Rows proposal={stockDelta} stockNow={{ tracked: true, onHand: 12 }} /> };

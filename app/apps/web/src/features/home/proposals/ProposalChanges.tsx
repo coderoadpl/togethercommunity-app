@@ -19,6 +19,7 @@ import {
   type GroupReferences,
 } from './proposal-display.js';
 import { enumValueLabel, fieldLabel, Isolated, priceTerms } from './proposal-text.js';
+import { ProposedImage } from './ProposedImage.js';
 
 const COLLAPSED_LENGTH = 280;
 
@@ -113,7 +114,9 @@ const ProposalValue = ({ value, initiallyExpanded = false }: { value: DisplayVal
         ? <LongText text={value.text} initiallyExpanded={initiallyExpanded} />
         : <FieldDiffText breakAnywhere={value.breakAnywhere}><bdi>{value.text}</bdi></FieldDiffText>;
     case 'image':
-      return <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} />;
+      return value.awaitingApproval === null
+        ? <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} />
+        : <ProposedImage image={value.awaitingApproval} path={value.path} />;
     case 'list':
       return <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: <ValueText value={item} /> }))} />;
     case 'record':
@@ -231,16 +234,18 @@ export const ProposalFieldRows = ({
   references,
   stockNow,
   labelComponent = 'h3',
+  pendingProposalId = null,
 }: {
   proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation'>>;
   targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
   labelComponent?: HeadingLevel;
+  pendingProposalId?: string | null;
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
-  const rows = proposalRows(proposal, references);
+  const rows = proposalRows(proposal, references, pendingProposalId);
   const removal = proposalRemovesRecord(proposal);
   const newPrice = proposal.operation === 'price.create' ? priceOf(proposal.input) : null;
   if (newPrice !== null) {

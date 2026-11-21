@@ -25,8 +25,29 @@ describe('proposal display', () => {
       kind: 'change',
       field: 'coverUrl',
       before: { kind: 'text', text: 'https://images.example.org/old.jpg', long: false, breakAnywhere: true },
-      after: { kind: 'image', path: '/api/public/assets/product-cover/new.webp' },
+      after: { kind: 'image', path: '/api/public/assets/product-cover/new.webp', awaitingApproval: null },
     }]);
+  });
+
+  it('routes the proposed image of a pending proposal to the owner preview, and keeps the public rule otherwise', () => {
+    const digest = 'e'.repeat(64);
+    const proposed = `/api/public/assets/product-cover/${digest}.webp`;
+    const live = `/api/public/assets/product-cover/${'f'.repeat(64)}.png`;
+    const proposal = { input: { coverUrl: proposed }, effect: { coverUrl: { before: live, after: proposed } } };
+    expect(proposalRows(proposal, undefined, 'proposal-1')).toEqual([{
+      kind: 'change',
+      field: 'coverUrl',
+      before: { kind: 'image', path: live, awaitingApproval: null },
+      after: { kind: 'image', path: proposed, awaitingApproval: { proposalId: 'proposal-1', digest, extension: 'webp' } },
+    }]);
+    expect(proposalRows(proposal)).toEqual([{
+      kind: 'change',
+      field: 'coverUrl',
+      before: { kind: 'image', path: live, awaitingApproval: null },
+      after: { kind: 'image', path: proposed, awaitingApproval: null },
+    }]);
+    expect(proposalRows({ input: {}, effect: { coverUrl: { before: null, after: 'https://images.example.org/a.png' } } }, undefined, 'proposal-1')[0])
+      .toMatchObject({ after: { kind: 'text', text: 'https://images.example.org/a.png' } });
   });
 
   it('keeps a stock adjustment a delta', () => {

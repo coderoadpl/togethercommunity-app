@@ -631,6 +631,13 @@ export interface Messages {
     columnRemoved: string;
     newRecordCaption: string;
     imageNotShown: string;
+    proposedImageAlt: string;
+    proposedImageLoading: string;
+    proposedImageFailed: string;
+    proposedImageFacts: (params: { format: string; fingerprint: string }) => string;
+    proposedImagePrivate: string;
+    proposedImageSvgReason: string;
+    proposedImageSvgDownload: string;
     emptyValue: string;
     yes: string;
     no: string;

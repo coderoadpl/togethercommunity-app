@@ -275,6 +275,60 @@ describe('ProposalsPanel', () => {
     expect(sources).toEqual(['/api/public/assets/logo/current.png']);
   });
 
+  it('shows an image awaiting approval only through the owner preview, with its loading and failed states', async () => {
+    const digest = 'c'.repeat(64);
+    const proposed = `/api/public/assets/logo/${digest}.png`;
+    usePending([{
+      ...settingsProposal,
+      id: 'proposal-quarantined-logo',
+      input: { logoUrl: proposed },
+      effect: { logoUrl: { before: '/api/public/assets/logo/current.png', after: proposed } },
+    }]);
+
+    const { container } = renderPanel();
+
+    const row = await screen.findByTestId('proposal-field-logoUrl');
+    const preview = within(row).getByTestId('proposed-image');
+    expect(preview).toHaveAttribute('data-state', 'loading');
+    expect(within(preview).getByRole('status')).toHaveTextContent(t.proposedImageLoading);
+    expect(within(preview).getByTestId('proposed-image-facts')).toHaveTextContent(t.proposedImageFacts({ format: 'PNG', fingerprint: digest.slice(0, 12) }));
+    expect(within(preview).getByText(t.proposedImagePrivate)).toBeInTheDocument();
+    const sources = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
+    expect(sources).toEqual(['/api/public/assets/logo/current.png', `/api/change-proposals/proposal-quarantined-logo/assets/${digest}`]);
+
+    const image = within(preview).getByRole('img', { name: t.proposedImageAlt });
+    fireEvent.load(image);
+    expect(preview).toHaveAttribute('data-state', 'loaded');
+    expect(within(preview).queryByRole('status')).toBeNull();
+    fireEvent.error(image);
+    expect(preview).toHaveAttribute('data-state', 'failed');
+    expect(within(preview).getByRole('alert')).toHaveTextContent(t.proposedImageFailed);
+    expect(within(preview).queryByRole('img')).toBeNull();
+    expect(within(preview).getByText(proposed)).toBeInTheDocument();
+  });
+
+  it('never renders a proposed SVG inline: it offers a download through the owner preview and says why', async () => {
+    const digest = 'd'.repeat(64);
+    const proposed = `/api/public/assets/logo/${digest}.svg`;
+    usePending([{
+      ...settingsProposal,
+      id: 'proposal-quarantined-svg',
+      input: { logoUrl: proposed },
+      effect: { logoUrl: { before: null, after: proposed } },
+    }]);
+
+    const { container } = renderPanel();
+
+    const row = await screen.findByTestId('proposal-field-logoUrl');
+    const preview = within(row).getByTestId('proposed-image');
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(within(preview).getByText(t.proposedImageSvgReason)).toBeInTheDocument();
+    const link = within(preview).getByRole('link', { name: t.proposedImageSvgDownload });
+    expect(link).toHaveAttribute('href', `/api/change-proposals/proposal-quarantined-svg/assets/${digest}`);
+    expect(link).toHaveAttribute('download', `${digest}.svg`);
+    expect(within(preview).getByTestId('proposed-image-facts')).toHaveTextContent(t.proposedImageFacts({ format: 'SVG', fingerprint: digest.slice(0, 12) }));
+  });
+
   it('lists decided proposals in the history tab with their status and note', async () => {
     usePending([]);
     server.use(http.get('/api/change-proposals', ({ request }) => {

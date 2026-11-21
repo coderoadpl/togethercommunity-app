@@ -177,7 +177,7 @@ export const ProposalBody = ({
   live,
   labelComponent,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'input' | 'effect' | 'target'>;
+  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target'>;
   references?: GroupReferences;
   live: boolean;
   labelComponent: 'h3' | 'h4';
@@ -199,6 +199,7 @@ export const ProposalBody = ({
         {...(references === undefined ? {} : { references })}
         stockNow={stockNow}
         labelComponent={labelComponent}
+        pendingProposalId={live ? proposal.id : null}
       />
     </Stack>
   );

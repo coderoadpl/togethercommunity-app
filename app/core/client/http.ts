@@ -367,6 +367,7 @@ import {
   type ProductStockThresholdInput,
   type SubscriptionSimulateInput,
   type DiscussionGetInput,
+  type DiscussionThreadGetInput,
   type PostCreateInput,
   type PostDeleteInput,
   type PostPinInput,
@@ -2256,6 +2257,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.discussion.method,
       `${API_ROUTES.discussion.path}?${params.toString()}`,
+      discussionOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  discussionThread: (input: DiscussionThreadGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ contextKind: input.contextKind, contextId: input.contextId });
+    return request(
+      options,
+      API_ROUTES.discussionThread.method,
+      `${API_ROUTES.discussionThread.path.replace(':postId', encodeURIComponent(input.postId))}?${params.toString()}`,
       discussionOutputSchema,
       undefined,
       signal,

@@ -11,7 +11,7 @@ import { useRedirectToLogin } from './use-login-redirect.js';
 import { ThreadHeadline } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceThreadPage } from './PublicSpaceThreadPage.js';
-import { PAGE_SIZE, ThreadDiscussion } from './ThreadDiscussion.js';
+import { ThreadDiscussion } from './ThreadDiscussion.js';
 import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -49,9 +49,7 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
   const navigate = useNavigate();
   const redirectToLogin = useRedirectToLogin();
   const spaces = useQuery(actions.spaces);
-  const discussion = useQuery(
-    actions.discussion({ contextKind: 'space', contextId: spaceId, limit: PAGE_SIZE }),
-  );
+  const thread = useQuery(actions.discussionThread({ contextKind: 'space', contextId: spaceId, postId }));
   const unauthorized = isUnauthorized(spaces.error);
 
   useEffect(() => {
@@ -100,7 +98,7 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
     );
   }
 
-  const rootPost = discussion.data?.discussion.threads.find((thread) => thread.id === postId);
+  const rootPost = thread.data?.discussion.threads.find((candidate) => candidate.id === postId);
   const headline = rootPost === undefined ? null : threadHeadline(rootPost.bodyPlainText);
 
   return (

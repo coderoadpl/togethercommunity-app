@@ -50,6 +50,7 @@ import {
   deletePost,
   purgePost,
   editPost,
+  getThread,
   listDiscussion,
   listNotifications,
   markAllNotificationsRead,
@@ -1198,6 +1199,66 @@ describe('community use-cases', () => {
     expect(listed).toMatchObject({ ok: true, value: { threads: [{ body: '[deleted-post]', replyCount: 0 }] } });
     if (!listed.ok) throw new Error('Discussion failed');
     expect(listed.value.threads[0]?.replies).toHaveLength(withReply ? 1 : 0);
+  });
+
+  it('reads a thread by its root id even when it is past the first discussion page', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const older = await createPostAndDrain(ctx(), { ...input, body: 'Older thread' }, d);
+    const newer = await createPostAndDrain(ctx(), { ...input, body: 'Newer thread' }, d);
+    if (!older.ok || !newer.ok) throw new Error('Roots failed');
+    const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: newer.value.id, body: 'Reply' }, d);
+    if (!reply.ok) throw new Error('Reply failed');
+
+    const firstPage = await listDiscussion(ctx(), { ...input, limit: 1 }, d);
+    expect(firstPage).toMatchObject({ ok: true, value: { threads: [{ id: older.value.id }] } });
+
+    const thread = await getThread(ctx(), { ...input, postId: newer.value.id }, d);
+    expect(thread).toMatchObject({
+      ok: true,
+      value: {
+        threads: [{ id: newer.value.id, body: 'Newer thread', replyCount: 1, replies: [{ id: reply.value.id }] }],
+        nextCursor: null,
+        viewerSubscriptions: { [newer.value.id]: 'subscribed' },
+      },
+    });
+  });
+
+  it('answers not found for a reply id, another context or a missing post, and keeps the lesson guard', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Root' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    const reply = await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+    if (!reply.ok) throw new Error('Reply failed');
+
+    for (const query of [
+      { ...input, postId: reply.value.id },
+      { contextKind: 'lesson', contextId: 'l2', postId: root.value.id },
+      { ...input, postId: 'missing' },
+    ]) {
+      expect(await getThread(ctx(), query, d)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    }
+    expect(await getThread(ctx(), { ...input }, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+
+    const locked = deps([previewAccess], [grant('m1', 'preview')]);
+    expect(await getThread(ctx(), { ...input, postId: root.value.id }, locked)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('returns a soft-deleted root as a tombstone rather than not found', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const input = { contextKind: 'lesson', contextId: 'l1' } as const;
+    const root = await createPostAndDrain(ctx(), { ...input, body: 'Gone' }, d);
+    if (!root.ok) throw new Error('Root failed');
+    await createPostAndDrain(ctx(), { ...input, parentPostId: root.value.id, body: 'Reply' }, d);
+    await deletePost(ctx(), { id: root.value.id }, d);
+    const thread = await getThread(ctx(), { ...input, postId: root.value.id }, d);
+    expect(thread).toMatchObject({ ok: true, value: { threads: [{ id: root.value.id, replyCount: 1 }] } });
+    if (!thread.ok) throw new Error('Thread failed');
+    expect(thread.value.threads[0]?.deletedAt).not.toBeNull();
   });
 
   it('denies author purge and lets staff remove a tombstone and its descendants', async () => {

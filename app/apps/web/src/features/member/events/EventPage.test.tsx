@@ -88,11 +88,13 @@ const rootPost = (): DiscussionPost => ({
 });
 
 const okDiscussion = () =>
-  http.get('/api/discussion', () =>
-    HttpResponse.json({
-      ok: true,
-      data: { discussion: { threads: [rootPost()], nextCursor: null, viewerSubscriptions: {} } },
-    }),
+  http.get('/api/discussion/threads/:postId', ({ params, request }) =>
+    params.postId === 'root-1' && new URL(request.url).searchParams.get('contextId') === 's1'
+      ? HttpResponse.json({
+          ok: true,
+          data: { discussion: { threads: [rootPost()], nextCursor: null, viewerSubscriptions: {} } },
+        })
+      : HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 }),
   );
 
 const event = (overrides: Partial<PublicSpaceEvent> = {}): PublicSpaceEvent => ({

@@ -38,6 +38,9 @@ const MAX_INDENT = 5;
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
+
 const ThreadSubscriptionToggle = ({
   rootPostId,
   state,
@@ -428,10 +431,20 @@ export const ThreadDiscussion = ({
 
   const me = useQuery(actions.me);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const discussion = useQuery({
+  const listQuery = useQuery({
     ...actions.discussion({ contextKind: context.contextKind, contextId: context.contextId, limit }),
     placeholderData: (previous) => previous,
+    enabled: focus === undefined,
   });
+  const threadQuery = useQuery({
+    ...actions.discussionThread({
+      contextKind: context.contextKind,
+      contextId: context.contextId,
+      postId: focus?.rootPostId ?? '',
+    }),
+    enabled: focus !== undefined,
+  });
+  const discussion = focus === undefined ? listQuery : threadQuery;
 
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -594,6 +607,20 @@ export const ThreadDiscussion = ({
         </Paper>
       ) : discussion.isPending ? (
         <Typography variant="body2">{t.discussion.loading}</Typography>
+      ) : focus !== undefined && (isNotFound(discussion.error) || (discussion.isSuccess && subthreadRoot === null)) ? (
+        <StatusView
+          data-testid="thread-not-found"
+          state={{
+            kind: 'not-found',
+            title: t.community.threadNotFoundTitle,
+            body: t.community.threadNotFoundBody,
+            action: (
+              <Button variant="text" onClick={focus.onExit}>
+                {focus.exitLabel}
+              </Button>
+            ),
+          }}
+        />
       ) : discussion.isError ? (
         <StatusView
           data-testid="discussion-error"
@@ -603,15 +630,6 @@ export const ThreadDiscussion = ({
             retry: { label: discussion.isFetching ? t.discussion.retrying : t.discussion.retry, onRetry: () => void discussion.refetch() },
           }}
         />
-      ) : focus !== undefined && subthreadRoot === null ? (
-        <Stack useFlexGap sx={{ rowGap: '1rem' }} data-testid="thread-not-found">
-          <Typography variant="body1">{t.discussion.deletedPost}</Typography>
-          <Box>
-            <Button variant="text" onClick={focus.onExit}>
-              {focus.exitLabel}
-            </Button>
-          </Box>
-        </Stack>
       ) : subthreadRoot !== null ? (
         <Stack useFlexGap sx={{ rowGap: '1rem' }}>
           <Box>

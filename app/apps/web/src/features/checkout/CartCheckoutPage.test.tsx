@@ -274,17 +274,39 @@ describe('hosted cart checkout', () => {
     expect(summaryAmount('total')).toHaveTextContent(exact(pln(11499)));
   });
 
-  it('caps a stepper at the pieces left and says how many are left instead of the order limit', async () => {
+  it('caps a stepper at the pieces left, says the quantity was lowered, and drops that once the buyer changes it', async () => {
     serve({ overrides: { [poster]: lowStock(2) } });
     renderCart(`${HOSTED_CART_PATH}?lines=${poster}.5`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
     expect(line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).toBeDisabled();
-    expect(line(poster).getByText(exact(en.checkout.cartStockLimit({ count: 2 })))).toBeInTheDocument();
+    expect(line(poster).getByText(exact(en.checkout.cartStockLowered({ count: 2 })))).toBeInTheDocument();
     expect(line(poster).queryByText(en.checkout.cartQuantityLimit({ max: 10 }))).not.toBeInTheDocument();
     await userEvent.click(line(poster).getByRole('button', { name: en.checkout.cartDecrease({ title: 'Poster' }) }));
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('1');
     expect(line(poster).getByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).toBeEnabled();
+    expect(line(poster).getByText(exact(en.checkout.cartStockLimit({ count: 2 })))).toBeInTheDocument();
+    expect(line(poster).queryByText(en.checkout.cartStockLowered({ count: 2 }))).not.toBeInTheDocument();
+  });
+
+  it('says how many are left without a lowered quantity when the link asks for no more than the stock', async () => {
+    serve({ overrides: { [poster]: lowStock(2) } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.2`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(line(poster).getByText(exact(en.checkout.cartStockLimit({ count: 2 })))).toBeInTheDocument();
+  });
+
+  it.each([
+    ['one piece asked', 1, en.checkout.cartStockLimit({ count: 1 })],
+    ['three pieces asked', 3, en.checkout.cartStockLowered({ count: 1 })],
+  ])('keeps the stock note on a line with one piece left and %s, with no stepper', async (_case, asked, note) => {
+    serve({ overrides: { [poster]: lowStock(1) } });
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.${String(asked)}`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+    expect(line(poster).queryByRole('button', { name: en.checkout.cartIncrease({ title: 'Poster' }) })).not.toBeInTheDocument();
+    expect(line(poster).getByText(exact(note))).toBeInTheDocument();
+    expect(line(poster).getByTestId(`cart-line-total-${poster}`)).toHaveTextContent(exact(pln(3500)));
+    expect(line(poster).getByRole('button', { name: en.checkout.cartRemove({ title: 'Poster' }) })).toBeEnabled();
   });
 
   it('keeps the order limit note while the stock is not the cap', async () => {
@@ -295,19 +317,15 @@ describe('hosted cart checkout', () => {
     expect(line(poster).queryByText(en.checkout.cartStockLimit({ count: 12 }))).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['a product type sold one per order', ebook, {}],
-    ['a physical product with one piece left', poster, lowStock(1)],
-  ])('shows no stepper and no limit note for %s, only Remove', async (_case, productId, override) => {
-    serve({ overrides: { [productId]: override } });
-    renderCart(`${HOSTED_CART_PATH}?lines=${productId}.1`);
+  it('shows no stepper and no limit note for a product type sold one per order, only Remove', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1`);
     await screen.findByRole('heading', { name: en.checkout.cartTitle });
-    const title = productId === poster ? 'Poster' : 'E-book';
-    expect(line(productId).queryByRole('button', { name: en.checkout.cartIncrease({ title }) })).not.toBeInTheDocument();
-    expect(line(productId).queryByRole('button', { name: en.checkout.cartDecrease({ title }) })).not.toBeInTheDocument();
-    expect(line(productId).queryByText(en.checkout.cartQuantityLimit({ max: 1 }))).not.toBeInTheDocument();
-    expect(line(productId).queryByText(en.checkout.cartStockLimit({ count: 1 }))).not.toBeInTheDocument();
-    expect(line(productId).getByRole('button', { name: en.checkout.cartRemove({ title }) })).toBeEnabled();
+    expect(line(ebook).queryByRole('button', { name: en.checkout.cartIncrease({ title: 'E-book' }) })).not.toBeInTheDocument();
+    expect(line(ebook).queryByRole('button', { name: en.checkout.cartDecrease({ title: 'E-book' }) })).not.toBeInTheDocument();
+    expect(line(ebook).queryByText(en.checkout.cartQuantityLimit({ max: 1 }))).not.toBeInTheDocument();
+    expect(line(ebook).queryByText(en.checkout.cartStockLimit({ count: 1 }))).not.toBeInTheDocument();
+    expect(line(ebook).getByRole('button', { name: en.checkout.cartRemove({ title: 'E-book' }) })).toBeEnabled();
   });
 
   it('turns a sold-out line into an alert with Remove and keeps the amount on the disabled pay button with its reason', async () => {

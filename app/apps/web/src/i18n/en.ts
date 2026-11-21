@@ -3187,6 +3187,7 @@ export const en: Messages = {
     payBlockedPersonalizationCondition: 'Accept the personalisation condition, or untick the option, to go to payment.',
     payBlockedCoupon: 'Checking the discount code…',
     cartStockLimit: ({ count }) => format('Only {count} left', { count }),
+    cartStockLowered: ({ count }) => format('Only {count} left. Quantity lowered to {count}.', { count }),
     cartLineSoldOut: 'Sold out. Remove it to continue.',
     cartPayBlockedLines: 'Remove the products marked above to continue.',
     cartStockRefusal: ({ title }) => format('Not enough of “{title}” is left for this order. The cart now shows the current stock.', { title }),

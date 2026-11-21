@@ -54,7 +54,7 @@ type CartItem =
   | { kind: 'missing'; productId: string }
   | { kind: 'unavailable'; productId: string; product: OfferProduct }
   | { kind: 'soldOut'; productId: string; product: OfferProduct }
-  | { kind: 'ready'; productId: string; product: OfferProduct; unitCents: number; currency: string; quantity: number; max: number; stockCapped: boolean };
+  | { kind: 'ready'; productId: string; product: OfferProduct; unitCents: number; currency: string; quantity: number; max: number; stockCapped: boolean; quantityLowered: boolean };
 
 const StepIcon = ({ path }: { path: string }) => (
   <SvgIcon fontSize="small" aria-hidden><path d={path} /></SvgIcon>
@@ -71,13 +71,20 @@ const cartItem = (line: CartLine, product: OfferProduct | undefined): CartItem =
   const ruleMax = cartLineMaxQuantity(product.type);
   const max = Math.min(ruleMax, product.maxQuantity);
   if (product.stock.soldOut || max < 1) return { kind: 'soldOut', productId: line.productId, product };
+  const stockCapped = max < ruleMax && product.stock.available === max;
   return {
     kind: 'ready', productId: line.productId, product, unitCents: price.amountCents, currency: price.currency,
-    quantity: Math.min(line.quantity, max), max, stockCapped: max < ruleMax && product.stock.available === max,
+    quantity: Math.min(line.quantity, max), max, stockCapped, quantityLowered: stockCapped && line.quantity > max,
   };
 };
 
 const soldOutDetailsSchema = z.object({ productId: z.string() });
+
+const cartLineNote = (item: Extract<CartItem, { kind: 'ready' }>, t: Translations): string | null => {
+  if (item.quantityLowered) return t.checkout.cartStockLowered({ count: item.max });
+  if (item.stockCapped) return t.checkout.cartStockLimit({ count: item.max });
+  return item.max > 1 ? t.checkout.cartQuantityLimit({ max: item.max }) : null;
+};
 
 const cartLineAlert = (item: Exclude<CartItem, { kind: 'ready' }>, t: Translations): string => {
   switch (item.kind) {
@@ -147,7 +154,8 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const { product, quantity, max, stockCapped } = item;
+  const { product, quantity, max } = item;
+  const note = cartLineNote(item, t);
   return (
     <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid={`cart-line-${item.productId}`}>
       <Box sx={{
@@ -191,11 +199,9 @@ const CartLineRow = ({ item, disabled, onQuantityChange, onRemove }: {
             {t.checkout.cartRemoveLine}
           </Button>
         </Stack>
-        {max > 1 ? (
-          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note' }}>
-            {stockCapped ? t.checkout.cartStockLimit({ count: max }) : t.checkout.cartQuantityLimit({ max })}
-          </FinePrint>
-        ) : null}
+        {note === null ? null : (
+          <FinePrint component="p" variant="caption" sx={{ gridArea: 'note' }}>{note}</FinePrint>
+        )}
         <Box sx={{ gridArea: 'amount', alignSelf: 'start', justifySelf: 'end', display: 'flex', alignItems: 'center', minHeight: { xs: '2.75rem', sm: 'auto' } }}>
           <DataValue data-testid={`cart-line-total-${item.productId}`}>
             {formatPrice(item.unitCents * quantity, item.currency, language)}

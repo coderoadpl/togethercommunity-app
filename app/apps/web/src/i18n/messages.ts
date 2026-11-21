@@ -2871,6 +2871,7 @@ export interface Messages {
     payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;
     cartStockLimit: (params: { count: number }) => string;
+    cartStockLowered: (params: { count: number }) => string;
     cartLineSoldOut: string;
     cartPayBlockedLines: string;
     cartStockRefusal: (params: { title: string }) => string;

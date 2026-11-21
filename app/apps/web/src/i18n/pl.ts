@@ -3211,6 +3211,7 @@ export const pl: Messages = {
     payBlockedPersonalizationCondition: 'Zaakceptuj warunek personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedCoupon: 'Sprawdzamy kod rabatowy…',
     cartStockLimit: ({ count }) => format('Zostało tylko {count} szt.', { count }),
+    cartStockLowered: ({ count }) => format('Zostało tylko {count} szt. Zmniejszyliśmy ilość do {count}.', { count }),
     cartLineSoldOut: 'Wyprzedane. Usuń ten produkt, aby kontynuować.',
     cartPayBlockedLines: 'Usuń produkty oznaczone powyżej, aby kontynuować.',
     cartStockRefusal: ({ title }) => format('Produktu „{title}” nie ma już w takiej ilości. Koszyk pokazuje teraz aktualny stan.', { title }),

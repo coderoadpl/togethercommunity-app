@@ -77,6 +77,10 @@ const stockCappedFixture = cartFixture('together-cart-stock-capped', [
   { key: 'workbook', quantity: 2, change: { stock: { tracked: true, soldOut: false, low: true, available: 2 }, maxQuantity: 2 } },
   { key: 'stand', quantity: 1 },
 ]);
+const stockLoweredFixture = cartFixture('together-cart-stock-lowered', [
+  { key: 'workbook', quantity: 3, change: { stock: { tracked: true, soldOut: false, low: true, available: 1 }, maxQuantity: 1 } },
+  { key: 'stand', quantity: 1 },
+]);
 const limitOneFixture = cartFixture('together-cart-limit-one', [{ key: 'course', quantity: 1 }, { key: 'stand', quantity: 1 }]);
 const discountFixture = cartFixture('together-cart-discount-delivery', discountLines, {
   code: couponCode,
@@ -132,6 +136,14 @@ export const StockCappedLine: Story = {
 };
 export const StockCappedLineMobile: Story = withMobile(StockCappedLine);
 export const StockCappedLinePolish: Story = { parameters: { ...StockCappedLine.parameters, locale: 'pl' } };
+export const StockLoweredLine: Story = {
+  parameters: {
+    fixture: stockLoweredFixture,
+    docs: { description: { story: 'The link asks for three workbooks and one is left, so the line has no stepper and says the quantity was lowered to the one left.' } },
+  },
+};
+export const StockLoweredLineMobile: Story = withMobile(StockLoweredLine);
+export const StockLoweredLineMobilePolish: Story = withMobile({ parameters: { ...StockLoweredLine.parameters, locale: 'pl' } });
 export const LimitOneLine: Story = {
   parameters: {
     fixture: limitOneFixture,

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from '@tanstack/react-router';
 
+const armedHistories = new WeakSet<object>();
+
 export const useFullNavigationExit = () => {
   const router = useRouter();
   const armed = useRef(false);
@@ -27,6 +29,8 @@ export const useFullNavigationExit = () => {
     };
   }, [router]);
   return useCallback(() => {
+    if (armedHistories.has(router.history)) return;
+    armedHistories.add(router.history);
     armed.current = true;
-  }, []);
+  }, [router]);
 };

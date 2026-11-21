@@ -10,7 +10,7 @@ import { RegisterRoute } from '../routes/register.js';
 import { LoginRoute } from '../routes/login.js';
 import { ForgotPasswordRoute } from '../routes/forgot-password.js';
 import { ResetPasswordRoute } from '../routes/reset-password.js';
-import { CheckoutRoute, SalesLinkOfferRoute } from '../routes/checkout.js';
+import { CartCheckoutRoute, CheckoutRoute, SalesLinkOfferRoute } from '../routes/checkout.js';
 import { HomeRoute } from '../routes/home.js';
 import { CommunityRoute, CourseRoute, CourseStructureRoute, LessonPlayerRoute, MemberAccountRoute, MemberShellRoute, MyCoursesRoute, MyProductsRoute, SearchRoute, SpaceFeedRoute, StartRoute, validateAccountSearch, validateLessonSearch } from '../routes/member.js';
 import { TenantBrandingBoundary } from '../branding.js';
@@ -48,7 +48,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
     const fixture = selectFixture(parameters.fixture);
     const location = new URL(window.location.href);
     const routeLocation = new URL(fixture.route, location.origin);
-    for (const key of ['token', 'error', 'status', 'purchase_kind', 'code']) {
+    for (const key of ['token', 'error', 'status', 'purchase_kind', 'code', 'lines']) {
       location.searchParams.delete(key);
       const value = routeLocation.searchParams.get(key);
       if (value !== null) location.searchParams.set(key, value);
@@ -65,6 +65,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
       createRoute({ getParentRoute: () => root, path: '/login', component: LoginRoute }),
       createRoute({ getParentRoute: () => root, path: '/forgot-password', component: ForgotPasswordRoute }),
       createRoute({ getParentRoute: () => root, path: '/reset-password', component: ResetPasswordRoute }),
+      createRoute({ getParentRoute: () => root, path: '/checkout/cart/pay', component: CartCheckoutRoute }),
       createRoute({ getParentRoute: () => root, path: '/checkout/$productRef', component: CheckoutRoute }),
       createRoute({ getParentRoute: () => root, path: '/offer/$slug', component: SalesLinkOfferRoute }),
     ];

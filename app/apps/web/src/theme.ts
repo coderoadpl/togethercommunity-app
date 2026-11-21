@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -2824,6 +2824,80 @@ export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: 'tabular-nums',
   fontWeight: 600,
+}));
+
+export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  alignSelf: 'stretch',
+  gap: '0.75rem',
+  padding: '0.5rem 0.5rem 0.5rem 0.875rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const CheckoutLockerChosenCaption = styled(Typography)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  fontSize: '0.75rem',
+  '& svg': { width: '1rem', height: '1rem', color: theme.palette.success.main },
+}));
+
+export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerDialog = styled(Dialog)({
+  '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },
+});
+
+export const CheckoutLockerPickerBar = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'fullScreen',
+})<{ fullScreen: boolean }>(({ fullScreen, theme }) => ({
+  flex: 'none',
+  display: 'grid',
+  alignItems: 'center',
+  columnGap: '0.5rem',
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  ...(fullScreen
+    ? {
+        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+        gridTemplateAreas: '"back text code"',
+        [theme.breakpoints.down('sm')]: { gridTemplateAreas: '"back . code" "text text text"' },
+      }
+    : { gridTemplateColumns: 'minmax(0, 1fr) auto auto', gridTemplateAreas: '"text code close"' }),
+}));
+
+export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  outline: 'none',
+  [theme.breakpoints.down('sm')]: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
+}));
+
+export const CheckoutLockerMapArea = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  flex: '1 1 auto',
+  minHeight: 0,
+  overflow: 'hidden',
+  backgroundColor: theme.palette.action.hover,
+}));
+
+export const CheckoutLockerMapCover = styled(Stack)(({ theme }) => ({
+  position: 'absolute',
+  inset: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  padding: '1rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8rem)';

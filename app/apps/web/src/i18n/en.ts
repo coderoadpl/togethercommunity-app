@@ -684,6 +684,7 @@ export const en: Messages = {
     lockerChosenAnnouncement: ({ code, address }) => (address === null ? `Parcel locker ${code} chosen.` : `Parcel locker ${code} chosen: ${address}.`),
     lockerMapLoading: 'Loading the map…',
     lockerMapFailed: 'The map could not load. Type the parcel locker code instead.',
+    lockerPickerMapFailed: 'The map could not load.',
     lockerTypeCode: 'Type the code',
     lockerCodeInvalid: 'A parcel locker code has 4–12 letters or digits.',
     lockerSelected: 'Selected parcel locker',

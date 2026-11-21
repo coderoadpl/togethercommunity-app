@@ -339,7 +339,7 @@ describe('parcel locker picker', () => {
     expect(retried).toHaveAttribute('src', 'https://geowidget.inpost.pl/inpost-geowidget.js');
     expect(retried).not.toBe(first);
     act(() => { retried?.dispatchEvent(new Event('error')); });
-    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerMapFailed);
   });
 
   it('keeps focus inside the picker and hides the checkout behind it from assistive technology', async () => {
@@ -388,7 +388,7 @@ describe('parcel locker picker', () => {
     await userEvent.click(chooseButton());
     const dialog = await picker();
     act(() => { document.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error')); });
-    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerMapFailed);
     expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.shipping.lockerKnowCode, en.common.close, en.common.retry, en.shipping.lockerTypeCode]);
     expect(document.querySelector('inpost-geowidget')).toBeNull();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
@@ -414,7 +414,7 @@ describe('parcel locker picker', () => {
     const dialog = await picker();
     const failedScript = document.getElementById('inpost-geowidget-script');
     act(() => { failedScript?.dispatchEvent(new Event('error')); });
-    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
+    expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerMapFailed);
 
     await userEvent.click(within(dialog).getByRole('button', { name: en.common.retry }));
     expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerPickerPrompt);

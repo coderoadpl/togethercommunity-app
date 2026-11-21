@@ -109,7 +109,7 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
         <Box sx={{ gridArea: 'text', minWidth: 0 }}>
           <CheckoutLockerPickerHeading component="h2" variant="h6" id={titleId} ref={heading} tabIndex={-1}>{t.shipping.lockerChoose}</CheckoutLockerPickerHeading>
           <Typography id={statusId} role="status" aria-live="polite" variant="body2" color="text.secondary" data-testid="checkout-locker-dialog-status">
-            {mapFailed ? t.shipping.lockerMapFailed : t.shipping.lockerPickerPrompt}
+            {mapFailed ? t.shipping.lockerPickerMapFailed : t.shipping.lockerPickerPrompt}
           </Typography>
         </Box>
         <Button

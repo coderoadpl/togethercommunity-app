@@ -691,6 +691,7 @@ export const pl: Messages = {
     lockerChosenAnnouncement: ({ code, address }) => (address === null ? `Wybrano paczkomat ${code}.` : `Wybrano paczkomat ${code}: ${address}.`),
     lockerMapLoading: 'Wczytywanie mapy…',
     lockerMapFailed: 'Nie udało się wczytać mapy. Wpisz kod paczkomatu.',
+    lockerPickerMapFailed: 'Nie udało się wczytać mapy.',
     lockerTypeCode: 'Wpisz kod',
     lockerCodeInvalid: 'Kod paczkomatu ma od 4 do 12 liter lub cyfr.',
     lockerSelected: 'Wybrany paczkomat',

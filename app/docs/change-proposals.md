@@ -266,7 +266,7 @@ as a member, not an admin, never with an API key):
 | Route | Answer |
 |---|---|
 | `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor, hasMore }`, newest first |
-| `GET /api/change-proposals/summary` | `{ pending, pendingGroups }`: the pending, unexpired proposals of the workspace (grouped items included) and the groups they belong to |
+| `GET /api/change-proposals/summary` | `{ pending, pendingGroups, hasProposals }`: the pending, unexpired proposals of the workspace (grouped items included), the groups they belong to, and whether the workspace holds any proposal at all, whatever its status |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
 | `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
@@ -353,10 +353,11 @@ transaction-local `lock_timeout` and `statement_timeout` of 500 ms (the
 `notificationMs` bound, injectable like the other proposal bounds) on each of
 its statements. The key's `202` waits for the notification at most that bound
 in all, the wait for a database connection included: past it, the submission
-logs that the notification passed its deadline and answers without publishing
-anything. The notification transaction is not cancelled then; its own bounds
-end it soon after, and it may still commit, in which case the owner sees the
-notification on the next bell refresh rather than live. A bound that runs out
+logs that the notification passed its deadline and answers, and the bell entry
+is not signalled live (no realtime event is published for it). The entry is
+not dropped: the notification transaction is not cancelled, its own bounds end
+it soon after, and when its write completes the entry appears on the owner's
+next bell refresh. A bound that runs out
 inside the transaction rolls the notification back and is logged; a failure to
 write it is logged too, also when it comes after the deadline. None of these
 ever fails or changes the submission, which always answers its committed
@@ -368,21 +369,30 @@ column and the existing unique index carries the de-duplication.
 The workspace owner reviews and decides every proposal on one page,
 `/panel/proposals`, reached from **Proposals** in the Offer group of the panel
 navigation and from the bell notification of kind `change-proposal`. The
-navigation entry is always shown to the owner, in the same place, whether or
-not anything is pending, while the [summary](#routes) loads and when it fails,
-so the navigation never shifts; its badge shows the number of pending changes
-and appears only when something is pending. An admin never sees the entry; one
-who opens the address sees an "owner only" page, and the panel never sends them
-the owner routes. When the notification stream delivers a `notification` frame
-of kind `change-proposal`, the panel refreshes the pending summary and the
-proposal lists. When the stream is unavailable and the bell falls back to
-polling, the summary is polled at the same 30-second interval, and a change in
-its counts refreshes the proposal lists.
+address always works for the owner, whether or not the workspace has
+proposals. The navigation entry is shown to the owner when the
+[summary](#routes) says the workspace has proposals (`hasProposals`, any status,
+a decided or expired one included), and while the page itself is open; a
+workspace that has never received a proposal shows no entry. Its badge shows
+the number of pending changes and appears only when something is pending. The
+panel remembers the last `hasProposals` answer per workspace in the browser
+(`together-has-proposals-<workspace id>` in local storage) and renders the
+entry from it until the summary answers and when the summary fails, so the
+entry does not appear late and shift the navigation on every page view; when
+storage is unavailable the entry follows the summary alone. An admin never sees
+the entry; one who opens the address sees an "owner only" page, and the panel
+never sends them the owner routes. When the notification stream delivers a
+`notification` frame of kind `change-proposal`, the panel refreshes the pending
+summary and the proposal lists, so the entry appears when the first proposal
+arrives. When the stream is unavailable and the bell falls back to polling, the
+summary is polled at the same 30-second interval, and a change in its counts
+refreshes the proposal lists.
 
 The page follows the server's gate. An owner whose e-mail is not verified sees
 "verify your e-mail to decide" with a link to the account page, and an owner
 viewing the community as a member sees "leave the member view"; neither gets a
-Retry that cannot succeed, and the summary is not requested for either.
+Retry that cannot succeed, and the summary is not requested for either, so
+their navigation entry follows the remembered answer alone.
 
 **Waiting for you** lists the pending proposals oldest first: one card per
 group and one card per single proposal. A card names the change in plain words

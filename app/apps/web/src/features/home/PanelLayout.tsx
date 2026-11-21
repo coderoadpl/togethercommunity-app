@@ -157,6 +157,17 @@ const navigationGroupPreference = persistedJsonPreference(
   defaultNavigationGroupState,
 );
 
+const hasProposalsMemory = (tenantId: string) => persistedJsonPreference(
+  `together-has-proposals-${tenantId}`,
+  (value) => {
+    const result = z.boolean().safeParse(value);
+    return result.success ? result.data : undefined;
+  },
+  false,
+);
+
+const proposalsPath = '/panel/proposals';
+
 const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
 const integrationsDescriptor: SectionDescriptor = { id: 'integrations', to: '/panel/integrations' };
 const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
@@ -173,7 +184,7 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
     id: 'offer',
     sections: [
       { id: 'products', to: '/panel/products' },
-      { id: 'proposals', to: '/panel/proposals' },
+      { id: 'proposals', to: proposalsPath },
       { id: 'coupons', to: '/panel/sales/coupons' },
     ],
   },
@@ -361,13 +372,21 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const decidingOwner = owner && emailVerified && !impersonating;
   const proposalSummary = useChangeProposalSummary(decidingOwner);
   const pendingProposals = decidingOwner ? proposalSummary.data?.pending ?? 0 : 0;
+  const proposalsMemory = useMemo(() => hasProposalsMemory(tenant.id), [tenant.id]);
+  const rememberedHasProposals = useMemo(() => proposalsMemory.load(), [proposalsMemory]);
+  const answeredHasProposals = decidingOwner ? proposalSummary.data?.hasProposals : undefined;
+  useEffect(() => {
+    if (answeredHasProposals !== undefined) proposalsMemory.save(answeredHasProposals);
+  }, [answeredHasProposals, proposalsMemory]);
+  const showProposals = owner
+    && ((answeredHasProposals ?? rememberedHasProposals) || isActive(pathname, proposalsPath, false));
   const counts: Partial<Record<PanelSection, NavCount>> = {
     ...(openReportCount === undefined ? {} : { reports: { value: openReportCount, testId: 'reports-open-count' } }),
     ...(pendingProposals === 0 ? {} : {
       proposals: { value: pendingProposals, testId: 'proposals-pending-count', label: t.changeProposals.navBadge({ count: pendingProposals }) },
     }),
   };
-  const visible = (descriptor: SectionDescriptor): boolean => descriptor.id !== 'proposals' || owner;
+  const visible = (descriptor: SectionDescriptor): boolean => descriptor.id !== 'proposals' || showProposals;
   const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
 
   const toggleGroup = (groupId: NavigationGroupId) => {

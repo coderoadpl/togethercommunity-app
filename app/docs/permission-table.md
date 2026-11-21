@@ -1035,9 +1035,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/image-assets.ts:300` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:311` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/image-assets.ts:395` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:322` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:406` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/invoices.ts:542` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |

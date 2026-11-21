@@ -554,7 +554,10 @@ scopes on every shop key.
   attaches), with `nosniff`, `private, no-store` and SVG always as an
   attachment; the owner panel never renders a proposed SVG. No key can read
   quarantined bytes. Each key holds at most 100 quarantined images and 50 MiB,
-  and decisions, revocation and a sweep on the minute tick remove them. A
+  and starts at most 60 uploads in 15 minutes, each presigned for exactly its
+  declared size; decisions, revocation and a sweep on the minute tick remove
+  them, and the sweep also removes the key's upload candidates and the public
+  copies of approvals that did not end applied. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before

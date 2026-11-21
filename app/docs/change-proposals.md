@@ -645,12 +645,14 @@ a deleted draft.
 A decision note is at most 500 characters. The key's own rate limits (60
 requests a minute, 10,000 a day) apply as on every shop route. The images a
 key holds for approval have two limits of their own, checked when an upload
-is completed, in the same transaction that records it (see [Images](#images)):
+is completed, in the same transaction that records it, and the uploads it
+starts a third, checked when an upload is started (see [Images](#images)):
 
 | Limit | Value | `changeProposalCap` |
 |---|---|---|
 | Images awaiting approval per key | 100 | `key_quarantined_images` |
 | Bytes of images awaiting approval per key | 50 MiB | `key_quarantined_bytes` |
+| Image uploads started per key in 15 minutes, completed or not | 60 | `key_image_uploads` |
 
 ## Lock waits
 
@@ -957,9 +959,19 @@ are the shop image routes a direct-mode key uses, which are of route class
 (scope `shop:settings:write`) need `proposal:asset:upload` with the
 submission capability of the family: `proposal:submit:catalog` for a product
 cover, `proposal:submit:settings` for a branding image. They presign a `PUT` to
-the private candidate prefix `image-asset-candidates/`, exactly like the live
-upload, and answer `servePath: null` with `quarantined: true`, because the
-address depends on the bytes. Completing it (the matching `.../complete`
+the private candidate prefix `image-asset-candidates/` like the live upload,
+but the signature also covers `content-length` with the declared `sizeBytes`
+(1 to 5 MiB), so the storage refuses a body of any other size, and answer
+`servePath: null` with `quarantined: true`, because the address depends on the
+bytes. Before it answers, each such upload start is recorded in
+`change_proposal_image_uploads` (workspace, key, candidate key, creation
+time); a key that already started 60 uploads in the last 15 minutes, the
+lifetime of the presigned `PUT`, gets `409` with `key_image_uploads` (see
+[Limits](#limits)). The minute sweep deletes the candidate object of every
+record older than 20 minutes (the lifetime and a 5-minute margin) and then the
+record, whether the upload was completed or not, so neither an upload that is
+never completed nor a second `PUT` through a still valid URL stays in the
+bucket. Completing it (the matching `.../complete`
 route) runs the live content checks (size and format; an upload
 that fails them is deleted and answers the same validation error), then copies
 the bytes to a private, content-addressed key of the key,
@@ -970,10 +982,15 @@ address the image will have once approved,
 prefix `image-assets/`. The same bytes again give the same key; other bytes
 can never replace it, because the digest is the name. Each quarantined image
 is a row of `change_proposal_images` (workspace, key, kind, digest, extension,
-size, creation time), so the limits, the references and the cleanup never
-depend on listing object storage. The limits of the key (above) are counted
-under a lock of that key in the transaction that inserts the row, so two
-concurrent completions cannot both take the last slot.
+size, creation time, release time), so the limits, the references and the
+cleanup never depend on listing object storage. Under a lock of that key,
+completion counts the key's limits (above) over its unreleased rows, inserts
+the row (or revives a released row of the same image) and writes the
+quarantined object before the lock is released; when the write fails, the row
+is rolled back, the candidate is deleted and the storage error is answered. Two
+concurrent completions therefore cannot both take the last slot, and a
+quarantined object never exists without its counted row except while a
+completion or a release of it is in progress or recorded for the sweep.
 
 **Attaching.** The key then proposes `product.update` with `coverUrl`,
 `product.create` with `coverUrl`, or `settings.update` with `logoUrl`,
@@ -987,7 +1004,8 @@ kind, is refused at submit with `400` and the validation message of the live
 route, naming the field. The stored effect shows the future public address as
 the "after" value. The proposal is stored in the transaction that checks again,
 holding the row, that each attached image is still quarantined for the key; one
-released meanwhile is refused with the same `400`. An owner session and a
+released meanwhile is refused with the same `400`. A released row counts as
+gone everywhere: for the submit check, the approval and the limits. An owner session and a
 direct-mode key set any address the live validator accepts, exactly as before.
 
 **Owner preview.** `GET /api/change-proposals/:id/assets/:digest`
@@ -998,8 +1016,10 @@ and answers them with the image's content type, `x-content-type-options: nosniff
 no-store`; the disposition is `inline` for a raster image and always
 `attachment` for SVG, as the public asset route does. A key, an admin, an
 unverified or impersonating owner, another workspace, a decided or expired
-proposal, an image the proposal does not attach and an image no longer
-quarantined get `401`, `403` or `404`; no key can read quarantined bytes.
+proposal, an image the proposal does not attach, an image no longer
+quarantined and one whose object the storage reports missing or whose bytes no
+longer hash to the digest get `401`, `403` or `404`; a failed storage request
+is answered with its storage error. No key can read quarantined bytes.
 
 The [owner panel](#owner-panel) loads a pending proposal's proposed
 content-addressed image only from this route: a raster image is shown with a
@@ -1017,35 +1037,67 @@ uploads into the quarantine and proposes the `product.update`;
 `--attach`. Both accept `--group <id>` ([CLI](cli.md)).
 
 **Publication on approval.** Approval, single or of a group, takes each
-attached image's row with a share lock inside the approval transaction, reads
-its quarantined bytes and checks that they still hash to the digest in the
-address. A missing row, or bytes that no longer match, make the proposal (or
-the whole group) `stale` with the note "The proposed image … is no longer
-available", and nothing is applied; an address with no row that a live field
-already shows is public already and needs nothing. When every item applied,
-the bytes are written to `image-assets/<workspace>/<kind>/<sha256>.<ext>`,
-after the live change and before the status change and the commit. Publishing before the commit means committed live state
-never points at an object that does not exist, also after a crash; publishing
-last keeps the time in which a public object exists without an applied
-proposal to the write itself and the commit. When the approval does not end
-`applied` after writing (a write fails, a lock wait or the commit fails), the
-copies it wrote are deleted again, under the workspace's approval lock so no
-concurrent approval can publish the same address in between, except an address
-a live field shows. A crash between the write and the commit can leave a public
-object no live field shows; its proposal is still pending, and approving it
-again writes the same bytes to the same address.
+attached image's unreleased row with a share lock inside the approval
+transaction, reads its quarantined bytes and checks that they still hash to the
+digest in the address. A missing row, an object the storage reports missing or
+bytes that no longer match make the proposal (or the whole group) `stale` with
+the note "The proposed image … is no longer available", and nothing is
+applied; only a failed storage request answers the error and leaves the
+proposal `pending`. An address with no row that a live field already shows is
+public already and needs nothing.
+
+Before the approval transaction opens, the approval asks the storage, for each
+attached image, whether its public object
+`image-assets/<workspace>/<kind>/<sha256>.<ext>` exists. An existing object
+has the same bytes, because its name is their digest: it is neither written
+nor recorded, so an approval never deletes a public object an earlier approval
+published. For every other image it commits a publication record of its attempt
+in `change_proposal_image_publications` (workspace, attempt, kind, digest,
+extension, start time). This single insert runs on its own before the
+transaction, so the approval never waits for a second database connection while
+it holds one. When every item applied, the approval locks the records of the
+images it writes (it answers busy, writing nothing, when one is gone), writes
+their bytes after the live change and before the status change and the commit, and
+deletes its records in the same transaction, so they disappear exactly when the
+approval commits. An image it did not record must still exist at that moment,
+or the approval answers busy; the workspace's approval lock it holds keeps the
+object there until the commit. Publishing before the commit means committed
+live state never points at an object that does not exist, also after a crash.
+
+When the approval does not end `applied` (a write fails, a lock wait, the
+status change or the commit fails), each record of the attempt is removed
+under the workspace's approval lock, so no concurrent approval can publish the
+same address in between: an object the attempt wrote is deleted first, except
+when a live field shows the address or an applied proposal carries it in its
+input. A record that cannot be removed then (the lock wait runs out, the
+storage configuration cannot be read, the delete fails, or the process died)
+stays, and the minute sweep removes every record older than 10 minutes under
+the same lock, deleting its object with the same exceptions, 50 workspaces and
+20 records per workspace at a time. Every public object written by an approval
+that did not end applied is therefore removed without anyone's help, unless a
+live field shows its address or an applied proposal carries it.
 
 **Cleanup.** After a decision commits, the quarantined images of the decided
-proposals are released: their rows are deleted, under the workspace's proposal
-lock and only when no pending, unexpired proposal of the same key still
-attaches them, and then their objects. This follows an applied, stale or failed
+proposals are released: under the workspace's proposal lock, their rows are
+marked released when no pending, unexpired proposal of the same key still
+attaches them. Then, for each image, a short transaction under the key's lock
+that completion takes deletes the object and then the row, if the row is still
+released; a completion that revived it meanwhile keeps both. A failed or busy
+object delete leaves the row released and invisible, and the sweep retries it.
+The workspace's approval lock is never held across these storage requests. This
+follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
 (every image of that key) and a purge. An image held by an approval in progress
 is released only after that approval ends. The sweep
-(`sweepQuarantinedImages`) removes every image older than 7 days that no
-pending, unexpired proposal of its key attaches, and every image of a revoked
-or deleted key, 50 workspaces and 200 images per workspace at a time; it also
-catches what a failed release left behind. It runs on the existing minute tick
+(`sweepQuarantinedImages`) finishes every released image and releases every
+image older than 7 days that no pending, unexpired proposal of its key
+attaches, and every image of a revoked or deleted key, 50 workspaces and 200
+images per workspace at a time. Images a pending proposal attaches are left
+out in the database query itself, so they never fill a batch and an image
+behind them is never starved; the query reads the image fields of each
+operation from the stored input exactly as the application does. The same
+sweep removes expired upload candidates (see Upload) and unfinished publication
+records (see above). It runs on the existing minute tick
 (the `/api/internal/dispatch-email` cron route and the Node ticker), at most
 once every 50 seconds per server process, and a failing sweep is logged and
 never stops the tick. The
@@ -1053,16 +1105,20 @@ storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
 
-**Rolling back.** Migration `0169_change_proposal_images` only adds the table
-`change_proposal_images` and its index on `created_at`. `CREATE INDEX` locks
-only the new, empty table; the table's foreign key to `tenants` takes a
-`SHARE ROW EXCLUSIVE` lock on `tenants`, which blocks writes to `tenants` (not
-reads) until the migration transaction commits, a moment since nothing is
-scanned.
-A release before it ignores the table, and its image routes refuse a
+**Rolling back.** Migration `0169_change_proposal_images` only adds three
+tables and their indexes: `change_proposal_images` (with its release time) and
+its index on `created_at`, `change_proposal_image_uploads` and its indexes on
+the key and on `created_at`, and `change_proposal_image_publications` and its
+index on `started_at`. Each `CREATE INDEX` locks only its new, empty table; the
+foreign key of each table to `tenants` takes a `SHARE ROW EXCLUSIVE` lock on
+`tenants`, which blocks writes to `tenants` (not reads) until the migration
+transaction commits, a moment since nothing is scanned.
+A release before it ignores the three tables, and its image routes refuse a
 propose-mode key. Such a release serves only random-id file names from
-`/api/public/assets`, so an image published under its digest is not served
-there until rolling forward again, and approving there a pending proposal that
+`/api/public/assets`, so an image published under its digest, and any copy a
+publication record still points at, is not served there until rolling forward
+again; quarantined and candidate objects stay private, and the sweep removes
+them after rolling forward. Approving there a pending proposal that
 attaches a quarantined image would set the address without publishing it.
 Before such a rollback, count these proposals:
 

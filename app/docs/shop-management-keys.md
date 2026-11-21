@@ -188,8 +188,10 @@ the address the image takes once approved, and nothing is public until the
 owner approves a proposal that sets that address (`product.update` or
 `product.create` with `coverUrl`, `settings.update` with `logoUrl`,
 `logoDarkUrl`, `faviconUrl` or `ogImageUrl`). The upload start answers
-`servePath: null` and `quarantined: true`. A key holds at most 100 such images
-and 50 MiB of them at a time (`409` beyond); see
+`servePath: null` and `quarantined: true`; its presigned `PUT` accepts only a
+body of the declared `sizeBytes`. A key holds at most 100 such images and
+50 MiB of them at a time, and starts at most 60 uploads in 15 minutes (`409`
+beyond); see
 [Images](change-proposals.md#images) for the checks, the owner preview,
 publication and cleanup.
 

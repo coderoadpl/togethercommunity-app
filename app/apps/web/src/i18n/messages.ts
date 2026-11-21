@@ -652,6 +652,7 @@ export interface Messages {
     lockerChangeLabel: string;
     lockerKnowCode: string;
     lockerPickerPrompt: string;
+    lockerPickerBack: string;
     lockerChosenAnnouncement: (point: { code: string; address: string | null }) => string;
     lockerMapLoading: string;
     lockerMapFailed: string;

@@ -56,9 +56,11 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const opener = useRef<HTMLButtonElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
   const committed = useRef<string | null>(null);
+  const codeAfterExit = useRef(false);
   const [announcedCode, setAnnouncedCode] = useState<string | null>(null);
   const openPicker = () => {
     committed.current = null;
+    codeAfterExit.current = false;
     setAnnouncedCode(null);
     pickerHistory.enter();
     sendPicker({ type: 'pickerOpened' });
@@ -66,6 +68,11 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const cancelPicker = () => {
     pickerHistory.leave();
     sendPicker({ type: 'pickerCancelled' });
+  };
+  const typeCode = () => {
+    codeAfterExit.current = true;
+    setCodeShown(true);
+    cancelPicker();
   };
   const commitPoint = (point: PickedPickupPoint) => {
     if (!acceptsPoint(picker)) return;
@@ -76,7 +83,8 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     sendPicker({ type: 'pointSelected' });
   };
   const pickerExited = () => {
-    (opener.current ?? codeInput.current)?.focus();
+    (codeAfterExit.current ? codeInput.current : opener.current ?? codeInput.current)?.focus();
+    codeAfterExit.current = false;
     setAnnouncedCode(committed.current);
     committed.current = null;
   };
@@ -159,6 +167,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       onPoint={commitPoint}
       onMapFailed={() => sendPicker({ type: 'mapFailed' })}
       onMapRetry={() => sendPicker({ type: 'mapRetryRequested' })}
+      onTypeCode={typeCode}
       onCancel={cancelPicker}
       onExited={pickerExited}
     />

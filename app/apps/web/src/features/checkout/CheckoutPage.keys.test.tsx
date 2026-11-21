@@ -249,6 +249,19 @@ const enterCases: EnterCase[] = [
       expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010');
     },
   },
+  {
+    control: 'picker "I know the code" action', state: 'locker chosen, pay enabled', setup: { map: true }, outcome: 'does not submit',
+    arrange: async () => {
+      await pickLockerOnMap();
+      await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChangeLabel }));
+      return within(await pickerDialog()).getByRole('button', { name: en.shipping.lockerKnowCode });
+    },
+    after: async () => {
+      await pickerClosed();
+      await waitFor(() => expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveFocus());
+      expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveValue('KRA010');
+    },
+  },
   ...invoiceFields.map((label): EnterCase => ({
     control: `invoice field "${label}"`, state: 'invoice filled, pay enabled', outcome: 'submits',
     arrange: async () => { await chooseCourier(); await fillInvoice(); return screen.getByLabelText(label); },

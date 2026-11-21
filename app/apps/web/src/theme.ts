@@ -2843,13 +2843,36 @@ export const CheckoutLockerDialog = styled(Dialog)({
   '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },
 });
 
-export const CheckoutLockerPickerBar = styled(Stack)(({ theme }) => ({
+export const CheckoutLockerPickerBar = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'fullScreen',
+})<{ fullScreen: boolean }>(({ fullScreen, theme }) => ({
   flex: 'none',
+  display: 'grid',
+  alignItems: 'center',
+  columnGap: '0.5rem',
   backgroundColor: theme.palette.background.paper,
   borderBottom: `1px solid ${theme.palette.divider}`,
+  ...(fullScreen
+    ? {
+        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+        gridTemplateAreas: '"back text code"',
+        [theme.breakpoints.down('sm')]: { gridTemplateAreas: '"back . code" "text text text"' },
+      }
+    : { gridTemplateColumns: 'minmax(0, 1fr) auto auto', gridTemplateAreas: '"text code close"' }),
 }));
 
-export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>({ outline: 'none' });
+export const CheckoutLockerPickerHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  outline: 'none',
+  [theme.breakpoints.down('sm')]: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
+}));
 
 export const CheckoutLockerMapArea = styled(Box)(({ theme }) => ({
   position: 'relative',

@@ -70,6 +70,12 @@ const renderCheckout = async (options: { from?: string; themed?: boolean } = {})
 const chooseButton = () => screen.getByRole('button', { name: en.shipping.lockerChoose });
 const changeButton = () => screen.getByRole('button', { name: en.shipping.lockerChangeLabel });
 const picker = () => screen.findByRole('dialog', { name: en.shipping.lockerChoose });
+const onPhone = () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true, media: query, onchange: null,
+    addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
+  }));
+};
 const announcement = () => screen.getByTestId('checkout-locker-announcement');
 const widget = () => {
   const element = document.querySelector('inpost-geowidget');
@@ -132,7 +138,7 @@ describe('parcel locker picker', () => {
     const status = within(dialog).getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
     expect(status).toHaveTextContent(en.shipping.lockerPickerPrompt);
-    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close]);
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.shipping.lockerKnowCode, en.common.close]);
     expect(screen.queryByTestId('checkout-locker-confirm')).not.toBeInTheDocument();
   });
 
@@ -365,10 +371,7 @@ describe('parcel locker picker', () => {
   });
 
   it('fills the whole screen on a phone with a flat paper, without the dialog corners and border', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: true, media: query, onchange: null,
-      addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
-    }));
+    onPhone();
     serve();
     await renderCheckout({ themed: true });
     await userEvent.click(chooseButton());
@@ -386,7 +389,7 @@ describe('parcel locker picker', () => {
     const dialog = await picker();
     act(() => { document.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error')); });
     expect(within(dialog).getByRole('status')).toHaveTextContent(en.shipping.lockerMapFailed);
-    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.common.close, en.common.retry, en.shipping.lockerTypeCode]);
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.shipping.lockerKnowCode, en.common.close, en.common.retry, en.shipping.lockerTypeCode]);
     expect(document.querySelector('inpost-geowidget')).toBeNull();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
 
@@ -461,6 +464,53 @@ describe('parcel locker picker', () => {
     expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
     expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint.name');
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
+  });
+
+  it('offers "I know the code" inside the picker, which closes it, opens the typed-code field on the page and focuses it', async () => {
+    serve();
+    const { router } = await renderCheckout();
+    const formIndex = entryIndex(router);
+    await userEvent.click(chooseButton());
+    const dialog = await picker();
+    await waitFor(() => expect(entryIndex(router)).toBe(formIndex + 1));
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.shipping.lockerKnowCode }));
+    await pickerClosed();
+    await waitFor(() => expect(entryIndex(router)).toBe(formIndex));
+    expect(router.state.location.pathname).toBe(formPath);
+    expect(screen.getByRole('button', { name: en.shipping.lockerKnowCode })).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveFocus());
+    expect(chooseButton()).toBeVisible();
+  });
+
+  it('offers "I know the code" inside the picker after a map failure too, and focuses the typed code', async () => {
+    serve();
+    await renderCheckout();
+    await userEvent.click(chooseButton());
+    const dialog = await picker();
+    act(() => { document.getElementById('inpost-geowidget-script')?.dispatchEvent(new Event('error')); });
+    await userEvent.click(within(dialog).getByRole('button', { name: en.shipping.lockerKnowCode }));
+    await pickerClosed();
+    expect(screen.getByTestId('checkout-locker-map-failed')).toHaveTextContent(en.shipping.lockerMapFailed);
+    await waitFor(() => expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveFocus());
+  });
+
+  it('gives the full-screen picker a labelled Back control instead of a bare close icon, which closes it and keeps the choice', async () => {
+    onPhone();
+    serve();
+    const { router } = await renderCheckout();
+    const formIndex = entryIndex(router);
+    await chooseShop();
+    await userEvent.click(changeButton());
+    const dialog = await picker();
+    expect(within(dialog).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([en.shipping.lockerPickerBack, en.shipping.lockerKnowCode]);
+    expect(within(dialog).queryByRole('button', { name: en.common.close })).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.shipping.lockerPickerBack }));
+    await pickerClosed();
+    await waitFor(() => expect(entryIndex(router)).toBe(formIndex));
+    expect(screen.getByTestId('checkout-pickup-point-selected')).toHaveTextContent('KRA010 · Next to the shop');
+    await waitFor(() => expect(changeButton()).toHaveFocus());
   });
 
   it('closes the typed-code field when the buyer then chooses a locker on the map', async () => {

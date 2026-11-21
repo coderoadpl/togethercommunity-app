@@ -1,8 +1,8 @@
 import { useId, useRef } from 'react';
-import { Box, Button, CircularProgress, Dialog, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Typography, useMediaQuery, useTheme } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
-import { AccountGlyph, CheckoutLockerMapArea, CheckoutLockerMapCover, CheckoutLockerPickerBar, CheckoutLockerPickerHeading } from '../../theme.js';
+import { AccountGlyph, CheckoutLockerDialog, CheckoutLockerMapArea, CheckoutLockerMapCover, CheckoutLockerPickerBar, CheckoutLockerPickerHeading } from '../../theme.js';
 import { InpostGeowidget } from './InpostGeowidget.js';
 import type { PickedPickupPoint } from './index.web.js';
 
@@ -36,7 +36,7 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
   const statusId = `${id}-status`;
   const heading = useRef<HTMLHeadingElement>(null);
   return (
-    <Dialog
+    <CheckoutLockerDialog
       open={open}
       onClose={onCancel}
       fullScreen={fullScreen}
@@ -97,6 +97,6 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
           </>
         )}
       </CheckoutLockerMapArea>
-    </Dialog>
+    </CheckoutLockerDialog>
   );
 };

@@ -1,12 +1,14 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createBrowserHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
+import { ThemeProvider } from '@mui/material';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { formatPrice } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
+import { createThemeForMode } from '../../theme.js';
 import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
 
@@ -43,7 +45,7 @@ const serve = (input: { token?: string | null; onSession?: (body: unknown) => vo
 };
 
 const histories: ReturnType<typeof createBrowserHistory>[] = [];
-const renderCheckout = async (options: { from?: string } = {}) => {
+const renderCheckout = async (options: { from?: string; themed?: boolean } = {}) => {
   window.history.replaceState(null, '', options.from ?? formPath);
   const location = window.location;
   const assign = vi.fn();
@@ -59,7 +61,8 @@ const renderCheckout = async (options: { from?: string } = {}) => {
   const checkout = createRoute({ getParentRoute: () => root, path: '/checkout/$ref', component: () => <CheckoutPage productRef="accessory" /> });
   const member = createRoute({ getParentRoute: () => root, path: '/my', component: () => <p>Member view</p> });
   const router = createRouter({ routeTree: root.addChildren([checkout, member]), history });
-  renderWithProviders(<RouterProvider router={router} />);
+  const app = <RouterProvider router={router} />;
+  renderWithProviders(options.themed === true ? <ThemeProvider theme={createThemeForMode('shadcn', undefined, 'light', 'member')}>{app}</ThemeProvider> : app);
   await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
   return { router, assign, reload };
 };
@@ -361,15 +364,18 @@ describe('parcel locker picker', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('fills the whole screen on a phone', async () => {
+  it('fills the whole screen on a phone with a flat paper, without the dialog corners and border', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: true, media: query, onchange: null,
       addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
     }));
     serve();
-    await renderCheckout();
+    await renderCheckout({ themed: true });
     await userEvent.click(chooseButton());
-    expect(await picker()).toHaveClass('MuiDialog-paperFullScreen');
+    const paper = await picker();
+    expect(paper).toHaveClass('MuiDialog-paperFullScreen');
+    expect(getComputedStyle(paper).borderRadius).toBe('0px');
+    expect(getComputedStyle(paper).borderTopWidth).toBe('0px');
   });
 
   it('explains a map that fails to load inside the picker and then offers the typed code directly', async () => {

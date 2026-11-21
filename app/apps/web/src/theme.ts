@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -2838,6 +2838,10 @@ export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
 }));
 
 export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerDialog = styled(Dialog)({
+  '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },
+});
 
 export const CheckoutLockerPickerBar = styled(Stack)(({ theme }) => ({
   flex: 'none',

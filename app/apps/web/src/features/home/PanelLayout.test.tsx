@@ -581,6 +581,32 @@ describe('Proposals navigation entry', () => {
     expect(summaryRead).toBe(false);
   });
 
+  it('does not ask for the summary of an owner viewing the community as a member', async () => {
+    stubViewport(true);
+    commonHandlers();
+    let summaryRead = false;
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({
+        ok: true,
+        data: {
+          ...meWithTenant,
+          impersonation: { id: 'imp-1', subjectMemberId: 'mem-1', subjectName: 'John Participant', actorName: 'Demo', expiresAt: '2026-08-15T09:00:00.000Z' },
+        },
+      })),
+      http.get('/api/change-proposals/summary', () => {
+        summaryRead = true;
+        return HttpResponse.json({ ok: true, data: { pending: 7, pendingGroups: 1 } });
+      }),
+    );
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('section-proposals')).toBeInTheDocument();
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+    expect(summaryRead).toBe(false);
+  });
+
   it('hides the entry from an admin and never reads the owner summary', async () => {
     stubViewport(true);
     commonHandlers();

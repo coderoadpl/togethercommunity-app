@@ -348,6 +348,49 @@ describe('ProposalsPanel', () => {
     expect(await screen.findByRole('button', { name: t.approveGroup({ count: 6 }) })).toBeEnabled();
   });
 
+  it('says the group changed without claiming an attempt when no dialog was open', async () => {
+    const [first] = changeProposalGroup.items;
+    if (first === undefined) throw new Error('missing fixture');
+    let grown = false;
+    usePending(pendingChangeProposals.filter((proposal) => proposal.groupId !== null));
+    server.use(http.get('/api/change-proposals/groups/:id', () => HttpResponse.json({
+      ok: true,
+      data: { group: grown ? { ...changeProposalGroup, items: [...changeProposalGroup.items, { ...first, id: 'proposal-field-guide-extra', groupPosition: 6 }] } : changeProposalGroup },
+    })));
+
+    const { queryClient } = renderPanel();
+
+    expect(await screen.findByRole('button', { name: t.approveGroup({ count: 5 }) })).toBeInTheDocument();
+    grown = true;
+    await queryClient.invalidateQueries(actions.changeProposalsInvalidates());
+
+    const notice = await screen.findByTestId('proposal-group-changed');
+    expect(notice).toHaveTextContent(t.groupChangedWhileReviewing);
+    expect(notice).not.toHaveTextContent(t.groupChanged);
+    expect(t.groupChangedWhileReviewing).not.toMatch(/applied/u);
+  });
+
+  it.each(['expired', 'withdrawn', 'applied'] as const)('closes an open dialog when the group is %s elsewhere', async (status) => {
+    let closed = false;
+    usePending(pendingChangeProposals.filter((proposal) => proposal.groupId !== null));
+    server.use(http.get('/api/change-proposals/groups/:id', () => HttpResponse.json({
+      ok: true,
+      data: { group: closed ? { ...changeProposalGroup, status } : changeProposalGroup },
+    })));
+
+    const { queryClient } = renderPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: t.rejectGroup }));
+    expect(await screen.findByTestId('proposal-reject-dialog')).toBeInTheDocument();
+    closed = true;
+    await queryClient.invalidateQueries(actions.changeProposalGroup(CHANGE_PROPOSAL_GROUP_ID));
+
+    await waitFor(() => expect(screen.queryByTestId('proposal-reject-dialog')).toBeNull());
+    const card = screen.getByTestId(`proposal-group-card-${CHANGE_PROPOSAL_GROUP_ID}`);
+    expect(within(card).getByText(t.status[status])).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: t.rejectGroup })).toBeNull();
+  });
+
   it('keeps text written by the key out of the application sentences and isolates it where it is shown', async () => {
     const title = 'Spring” \u202Elaunch';
     const keyName = 'Agent \u202Eone';

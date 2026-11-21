@@ -435,9 +435,13 @@ that moment (by position, whatever order the server served them in) and the
 approval sends exactly that saved list. While the group is refetching, the
 confirm button is disabled. Whenever a refetch (window focus, a list refresh, a
 realtime notification) changes the id list compared with what the owner last
-acknowledged, the dialog closes, the card says "this group changed, review it
-again", and approving needs a fresh click; when the server answers that the
-items changed, the card does the same and nothing is applied. A single
+acknowledged, the dialog closes and approving needs a fresh click. The card
+says "this group changed in the meantime and nothing was applied" when a
+dialog was open or the server answered that the items changed (nothing is
+applied then), and only "this group changed while you were looking at it" when
+no dialog was open, since nothing was attempted. An open dialog also closes
+when a refetch shows the group is no longer open (expired, withdrawn or
+decided elsewhere); the card then shows that status without the buttons. A single
 proposal needs no such step: its effect is fixed when it is proposed, so a
 refetch cannot change what the owner approves.
 

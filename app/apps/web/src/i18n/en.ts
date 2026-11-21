@@ -639,6 +639,7 @@ export const en: Messages = {
     groupAllOrNothing: 'These changes are applied together, or not at all.',
     groupLoading: 'Loading the changes of this group…',
     groupChanged: 'This group changed in the meantime and nothing was applied. Review the changes again before you decide.',
+    groupChangedWhileReviewing: 'This group changed while you were looking at it. Review the changes again before you decide.',
     columnNow: 'Now',
     columnAfter: 'After approval',
     columnRemoved: 'Now (will be removed)',

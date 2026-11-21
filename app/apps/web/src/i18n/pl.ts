@@ -646,6 +646,7 @@ export const pl: Messages = {
     groupAllOrNothing: 'Te zmiany wchodzą w życie razem albo wcale.',
     groupLoading: 'Wczytywanie zmian z tej grupy…',
     groupChanged: 'Ta grupa zmieniła się w międzyczasie i nic nie zostało wprowadzone. Przejrzyj zmiany jeszcze raz, zanim zdecydujesz.',
+    groupChangedWhileReviewing: 'Ta grupa zmieniła się w trakcie przeglądania. Przejrzyj zmiany jeszcze raz, zanim zdecydujesz.',
     columnNow: 'Teraz',
     columnAfter: 'Po zatwierdzeniu',
     columnRemoved: 'Teraz (do usunięcia)',

@@ -437,6 +437,8 @@ const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerVi
 
 const ID_SEPARATOR = '\n';
 
+type GroupChange = 'while-reviewing' | 'while-deciding';
+
 export const GroupProposalCard = ({
   groupId,
   itemCount,
@@ -446,7 +448,7 @@ export const GroupProposalCard = ({
   const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
-  const [changed, setChanged] = useState(false);
+  const [changed, setChanged] = useState<GroupChange | null>(null);
   const [observedIds, setObservedIds] = useState<string | null>(null);
   const [shownIds, setShownIds] = useState<readonly string[]>([]);
   const groupView = group.data?.group;
@@ -459,14 +461,15 @@ export const GroupProposalCard = ({
   if (groupView !== undefined && observedIds !== currentIds) {
     setObservedIds(currentIds);
     if (observedIds !== null) {
-      setChanged(true);
+      setChanged(dialog === null && changed !== 'while-deciding' ? 'while-reviewing' : 'while-deciding');
       setDialog(null);
     }
   }
+  if (groupView !== undefined && groupView.status !== 'open' && dialog !== null) setDialog(null);
 
   const acknowledge = (next: 'approve' | 'reject') => {
     setBusy(false);
-    setChanged(false);
+    setChanged(null);
     setShownIds(itemIds);
     setDialog(next);
   };
@@ -474,7 +477,7 @@ export const GroupProposalCard = ({
   const groupFailed = async (error: unknown): Promise<void> => {
     setDialog(null);
     if (groupItemsChanged(error)) {
-      setChanged(true);
+      setChanged('while-deciding');
       toast.info(t.changeProposals.groupChanged);
       await Promise.all([group.refetch(), refreshLists()]);
       return;
@@ -540,7 +543,11 @@ export const GroupProposalCard = ({
           <GroupTitle title={group.data.group.title} keyLabel={group.data.group.proposedBy.keyName ?? group.data.group.proposedBy.keyId} />
           <ProposalMeta keyName={group.data.group.proposedBy.keyName} createdAt={group.data.group.createdAt} expiresAt={group.data.group.expiresAt} />
           <ProposerWarnings proposer={group.data.group.proposedBy} />
-          {changed ? <CardNotice testId="proposal-group-changed">{t.changeProposals.groupChanged}</CardNotice> : null}
+          {changed === null ? null : (
+            <CardNotice testId="proposal-group-changed">
+              {changed === 'while-deciding' ? t.changeProposals.groupChanged : t.changeProposals.groupChangedWhileReviewing}
+            </CardNotice>
+          )}
           {busy ? <CardNotice testId="proposal-busy">{t.changeProposals.busy}</CardNotice> : null}
           {open ? <Typography variant="body2">{t.changeProposals.groupAllOrNothing}</Typography> : (
             <Typography variant="body2">{groupStatusLabel(t.changeProposals, group.data.group.status)}</Typography>
@@ -557,7 +564,7 @@ export const GroupProposalCard = ({
         onClose={() => setDialog(null)}
         approveTitle={t.changeProposals.approveGroupTitle({ count: shownIds.length })}
         approveBody={<Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>}
-        approveDisabled={group.isFetching || changed}
+        approveDisabled={group.isFetching || changed !== null}
         rejectTitle={t.changeProposals.rejectGroupTitle}
         pending={pending}
         onApprove={() => approve.mutate({ id: groupId, itemIds: [...shownIds] })}

@@ -625,6 +625,7 @@ export interface Messages {
     groupAllOrNothing: string;
     groupLoading: string;
     groupChanged: string;
+    groupChangedWhileReviewing: string;
     columnNow: string;
     columnAfter: string;
     columnRemoved: string;

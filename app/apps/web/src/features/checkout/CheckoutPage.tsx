@@ -418,7 +418,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     const offersRecheck = failed || timedOut;
     const externalContact = supportUrl !== null && !supportUrl.startsWith('mailto:');
     const contactLink = supportUrl !== null && (soldOutRefund || timedOut || failedContact)
-      ? <Button href={supportUrl} {...(externalContact ? { target: '_blank', rel: 'noopener noreferrer' } : {})} variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+      ? externalContact
+        ? <Button href={supportUrl} target="_blank" rel="noopener noreferrer" variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+        : <Button href={supportUrl} variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
       : null;
     return (
       <FocusCard {...frame} eyebrow={eyebrow}>

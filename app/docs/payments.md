@@ -588,6 +588,24 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
 
+## Order and subscription e-mail subjects
+
+Order e-mails to buyers lead with the outcome and the workspace and carry a short
+order reference, the first eight characters of the order id upper-cased with a
+`#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
+<workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
+<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+body keeps the full order id on the order-number line so the seller can match
+it. The payment-failed, direct-message and community notification subjects end
+with " — <workspace>".
+
+When a subscription payment fails, the e-mail says the access ends on the period
+end unless the payment goes through. It links the workspace billing portal when
+one is configured. Otherwise it asks the member to contact the workspace to
+settle the payment and links, in this order, the account page with its support
+form open (`/account?support=open`) when the workspace has a support e-mail, the
+workspace support page, or the workspace home page; it never promises a retry.
+
 ## Adopting existing Stripe subscriptions
 
 Adoption connects a live subscription in the tenant's existing Stripe account to

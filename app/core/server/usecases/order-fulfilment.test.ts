@@ -133,7 +133,8 @@ describe('ship order', () => {
     expect(rendered.success).toBe(true);
     if (!rendered.success || payload === undefined) return;
     expect(rendered.data).toEqual(orderShipped('pl', { tenantName: 'Acme Shop', shipment: payload.shipment }));
-    expect(rendered.data.subject).toContain('order-1');
+    expect(rendered.data.subject).toContain('(#ORDER-1)');
+    expect(rendered.data.text).toContain('order-1');
     expect(rendered.data.text).toContain('- Printed stand');
     expect(rendered.data.text).not.toContain('- Parcel locker');
     expect(rendered.data.text).toContain('Paczkomat: WAW01M');

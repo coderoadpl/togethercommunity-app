@@ -1053,7 +1053,7 @@ storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
 
-**Rolling back.** Migration `0168_change_proposal_images` only adds the table
+**Rolling back.** Migration `0169_change_proposal_images` only adds the table
 `change_proposal_images` and its index on `created_at`. `CREATE INDEX` locks
 only the new, empty table; the table's foreign key to `tenants` takes a
 `SHARE ROW EXCLUSIVE` lock on `tenants`, which blocks writes to `tenants` (not

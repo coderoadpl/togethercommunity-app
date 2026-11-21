@@ -349,8 +349,8 @@ describe('ProposalsPanel', () => {
   });
 
   it('keeps text written by the key out of the application sentences and isolates it where it is shown', async () => {
-    const title = 'Spring” ‮launch';
-    const keyName = 'Agent ‮one';
+    const title = 'Spring” \u202Elaunch';
+    const keyName = 'Agent \u202Eone';
     const items = changeProposalGroup.items.map((item) => ({ ...item, groupTitle: title }));
     const group = { ...changeProposalGroup, title, proposedBy: { ...changeProposalGroup.proposedBy, keyName }, items };
     usePending(pendingChangeProposals.filter((proposal) => proposal.groupId !== null).map((proposal) => ({ ...proposal, groupTitle: title })), group);

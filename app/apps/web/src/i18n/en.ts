@@ -655,7 +655,7 @@ export const en: Messages = {
     },
     stockDeltaLabel: 'Pieces on hand',
     stockReason: ({ reason }) => format('Reason: {reason}', { reason }),
-    stockReasonReturned: 'Returned by a buyer',
+    stockReasonReturned: 'Returned goods',
     stockOnHandNow: ({ count }) => format(plural(count, 'On hand now: {count} piece', 'On hand now: {count} pieces'), { count }),
     stockNotTrackedNow: 'Stock of this product is not tracked now.',
     stockDeltaRule: 'The pieces are added to, or removed from, whatever is on hand when you approve.',

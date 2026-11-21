@@ -377,7 +377,7 @@ of what it touches, the proposing key, when it was proposed and when it
 expires, and a warning line when the key is revoked, purged or expired, when
 the account that issued it is no longer a verified owner, or when that account
 is no longer on the team. A price target says which price it is, from the
-structured price facts ("Studio Club: 49,00 zł per month"), on the card, in the
+structured price facts ("Studio Club: PLN 49.00 per month"), on the card, in the
 confirmation and in history. A target that no longer exists says so; "not
 created yet" is kept for a target that is still to be created or is a
 reference inside a group. A group title is the key's text: it is shown under a

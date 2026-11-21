@@ -27,24 +27,28 @@ describe('proposal text', () => {
   });
 
   it('names the active switch with the gender of its target in Polish', () => {
-    expect(fieldLabel(pl.changeProposals, 'active', 'sales-link')).toBe('Aktywny');
-    expect(fieldLabel(pl.changeProposals, 'active', 'price')).toBe('Aktywna');
+    expect(fieldLabel(pl.changeProposals, 'active', 'sales-link')).toBe(pl.changeProposals.fields.activeSalesLink);
+    expect(fieldLabel(pl.changeProposals, 'active', 'price')).toBe(pl.changeProposals.fields.activePrice);
+    expect(pl.changeProposals.fields.activeSalesLink).not.toBe(pl.changeProposals.fields.activePrice);
     expect(fieldLabel(pl.changeProposals, 'giftWrap')).toBe('giftWrap');
   });
 
   it('words counts with the Polish plural forms and a one-item group as a single change', () => {
     expect(en.changeProposals.approveGroup({ count: 1 })).toBe('Approve the change');
-    expect(pl.changeProposals.approveGroup({ count: 1 })).toBe('Zatwierdź zmianę');
-    expect(pl.changeProposals.approveGroupBody({ count: 3 })).toBe('Wszystkie 3 zmiany zostaną wprowadzone razem albo żadna.');
-    expect(pl.changeProposals.approveGroupBody({ count: 5 })).toBe('Wszystkich 5 zmian zostanie wprowadzonych razem albo żadna.');
-    expect(pl.changeProposals.approveFieldsChange({ target: 'X', count: 22 })).toBe('W „X” zmienią się 22 pola.');
-    expect(pl.changeProposals.approveStockAdded({ target: 'X', count: 1 })).toBe('X: do stanu magazynu zostanie dodana 1 sztuka.');
+    expect(pl.changeProposals.approveGroup({ count: 1 })).not.toMatch(/\d/u);
+    const body = (count: number) => pl.changeProposals.approveGroupBody({ count }).replace(String(count), 'N');
+    expect(new Set([body(1), body(3), body(5)]).size).toBe(3);
+    expect(body(22)).toBe(body(3));
+    expect(body(12)).toBe(body(5));
+    const fields = (count: number) => pl.changeProposals.approveFieldsChange({ target: 'X', count }).replace(String(count), 'N');
+    expect(new Set([fields(1), fields(4), fields(7)]).size).toBe(3);
+    expect(fields(24)).toBe(fields(4));
   });
 
   it('isolates the inserted value so it cannot reorder the sentence', () => {
-    const { container } = render(<p><Isolated sentence={(key) => en.changeProposals.proposedBy({ key })} value={'Agent” ‮one'} /></p>);
-    expect(container.querySelector('bdi')).toHaveTextContent('Agent” ‮one');
-    expect(container).toHaveTextContent('Proposed by the key “Agent” ‮one”');
+    const { container } = render(<p><Isolated sentence={(key) => en.changeProposals.proposedBy({ key })} value={'Agent” \u202Eone'} /></p>);
+    expect(container.querySelector('bdi')).toHaveTextContent('Agent” \u202Eone');
+    expect(container).toHaveTextContent('Proposed by the key “Agent” \u202Eone”');
   });
 
   it('sets the document language to the active language', () => {

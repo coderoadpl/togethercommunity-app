@@ -116,6 +116,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       <Button
         ref={opener}
         variant="text"
+        disableFocusRipple
         disabled={disabled}
         onClick={openPicker}
         aria-label={t.shipping.lockerChangeLabel}

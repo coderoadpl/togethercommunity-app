@@ -94,9 +94,9 @@ const DIGEST_TAIL_LENGTH = 4;
 
 export const imageFingerprint = (digest: string): string => digest.slice(0, IMAGE_FINGERPRINT_LENGTH);
 
-export const shortProposedImagePath = (path: string): string => {
+export const shortProposedImagePath = (path: string): string | null => {
   const proposed = parseProposalImagePath(path);
-  if (proposed === null) return path;
+  if (proposed === null) return null;
   const digest = `${imageFingerprint(proposed.digest)}…${proposed.digest.slice(-DIGEST_TAIL_LENGTH)}`;
   return `/api/public/assets/${proposed.kind}/${digest}.${proposed.extension}`;
 };

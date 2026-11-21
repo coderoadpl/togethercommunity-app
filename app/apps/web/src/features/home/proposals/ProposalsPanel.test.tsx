@@ -306,8 +306,8 @@ describe('ProposalsPanel', () => {
     expect(within(preview).queryByRole('img')).toBeNull();
     expect(within(preview).queryByText(t.proposedImagePrivate)).toBeNull();
     expect(within(preview).getByText(proposed)).toBeInTheDocument();
-    expect(within(preview).getByTestId('proposed-image-address')).toHaveAttribute('title', proposed);
-    expect(within(preview).getByTestId('proposed-image-address-short')).toHaveTextContent(`/api/public/assets/logo/${digest.slice(0, 12)}…${digest.slice(-4)}.png`);
+    expect(within(preview).getByTestId('content-address')).toHaveAttribute('title', proposed);
+    expect(within(preview).getByTestId('content-address-short')).toHaveTextContent(`/api/public/assets/logo/${digest.slice(0, 12)}…${digest.slice(-4)}.png`);
   });
 
   it('never renders a proposed SVG inline: it offers a download through the owner preview and says why', async () => {
@@ -445,6 +445,9 @@ describe('ProposalsPanel', () => {
     expect(timeline).not.toHaveTextContent(t.event.stale);
     expect(timeline).not.toHaveTextContent(t.outcomeImageUnavailable);
     expect(timeline).not.toHaveTextContent('image_unavailable');
+    const address = within(within(goneRow).getByTestId('proposal-field-logoUrl')).getByTestId('content-address');
+    expect(address).toHaveAttribute('title', proposed);
+    expect(address).toHaveTextContent(`/api/public/assets/logo/${digest.slice(0, 12)}…${digest.slice(-4)}.png`);
   });
 
   it('lists decided proposals in the history tab with their status and note', async () => {

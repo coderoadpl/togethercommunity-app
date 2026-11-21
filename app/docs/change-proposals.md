@@ -1071,7 +1071,8 @@ nothing and the image has to be uploaded and proposed again; otherwise try
 again in a moment. The private note is not shown then. A proposed SVG is never
 rendered: the panel shows a labelled download link through the same route, the
 same facts and the reason. For a decided proposal the panel keeps the rule for every image
-address: it shows an image only for a same-origin public asset path.
+address: it shows an image only for a same-origin public asset path, and it
+shortens a content-addressed address the same way.
 
 **CLI.** `shop cover upload <productId> <file>` with a propose-mode key
 uploads into the quarantine and proposes the `product.update`;

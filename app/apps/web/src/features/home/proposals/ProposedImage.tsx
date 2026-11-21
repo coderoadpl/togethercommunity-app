@@ -18,11 +18,11 @@ const FORMAT_NAMES: Record<ProposalImageExtension, string> = {
   ico: 'ICO',
 };
 
-const ProposedAddress = ({ path }: { path: string }) => {
-  const segments = shortProposedImagePath(path).split('/');
+export const ContentAddress = ({ path, short }: { path: string; short: string }) => {
+  const segments = short.split('/');
   return (
-    <BreakAnywhereText component="p" variant="caption" title={path} data-testid="proposed-image-address">
-      <span aria-hidden data-testid="proposed-image-address-short">
+    <BreakAnywhereText component="p" variant="caption" title={path} data-testid="content-address">
+      <span aria-hidden data-testid="content-address-short">
         {segments.map((segment, index) => (
           <Fragment key={index}>
             {index === 0 ? null : <>/<wbr /></>}
@@ -42,7 +42,7 @@ const ImageFacts = ({ image, path, privateNote }: { image: ImageAwaitingApproval
       <FinePrint component="p" data-testid="proposed-image-facts">
         {t.proposedImageFacts({ format: FORMAT_NAMES[image.extension], fingerprint: imageFingerprint(image.digest) })}
       </FinePrint>
-      <ProposedAddress path={path} />
+      <ContentAddress path={path} short={shortProposedImagePath(path) ?? path} />
       {privateNote ? <FinePrint component="p">{t.proposedImagePrivate}</FinePrint> : null}
     </>
   );

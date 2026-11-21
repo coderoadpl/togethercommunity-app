@@ -19,8 +19,8 @@ describe('proposal display', () => {
     expect(shortProposedImagePath(proposed)).toBe('/api/public/assets/product-cover/88daee5b3769…271c.png');
     expect(shortProposedImagePath(proposed)).toContain(imageFingerprint(digest));
     expect(imageFingerprint(digest)).toBe('88daee5b3769');
-    expect(shortProposedImagePath('/api/public/assets/product-cover/field-guide.webp')).toBe('/api/public/assets/product-cover/field-guide.webp');
-    expect(shortProposedImagePath('https://images.example.org/a.webp')).toBe('https://images.example.org/a.webp');
+    expect(shortProposedImagePath('/api/public/assets/product-cover/field-guide.webp')).toBeNull();
+    expect(shortProposedImagePath('https://images.example.org/a.webp')).toBeNull();
   });
 
   it('lists each distinct proposed image address of pending proposals once', () => {

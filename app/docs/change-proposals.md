@@ -1132,6 +1132,13 @@ where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{
 
 - **Other files.** Download files of digital products and images other than
   product covers and branding (course covers, avatars) cannot be proposed.
+- **Checkout appearance images.** A propose-mode key cannot propose a new
+  `checkoutAppearance.logoUrl` or `checkoutAppearance.iconUrl`: a
+  `settings.update` that sets either to an address other than the live one is
+  refused at submit with `400` and a validation message on `checkoutAppearance`
+  saying that the image cannot be proposed yet. Clearing them, leaving them
+  unchanged and the other appearance fields stay proposable; an owner session
+  and a direct-mode key set them as before.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

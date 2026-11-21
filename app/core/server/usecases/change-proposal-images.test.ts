@@ -327,6 +327,41 @@ describe('the image addresses a propose-mode key may propose', () => {
     expect(h.store.proposals).toEqual([]);
   });
 
+  it('refuses a new checkout logo or icon address, single and grouped, and allows clearing it, keeping it and the other appearance fields', async () => {
+    const h = harness();
+    const live = { displayName: 'Acme checkout', logoUrl: 'https://cdn.example.test/checkout-logo.png', iconUrl: null };
+    const settings = h.state.settings.find((entry) => entry.tenantId === TENANT)?.settings;
+    if (settings === undefined) throw new Error('missing settings');
+    settings.checkoutAppearance = live;
+    const refused = (field: 'logoUrl' | 'iconUrl') => ({
+      ok: false,
+      error: { code: 'validation', message: 'Invalid shop settings', details: { formErrors: [], fieldErrors: { checkoutAppearance: [`${field} cannot be proposed yet: this image must be empty or unchanged`] } } },
+    });
+    const group = await createChangeProposalGroup(keyCtx(), { title: 'Checkout look' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    const grouped = (input: unknown) => submitGroupedChangeProposal(keyCtx(), { groupId: group.value.id, operation: 'settings.update', input }, h.deps);
+
+    for (const [field, appearance] of [
+      ['logoUrl', { ...live, logoUrl: 'https://cdn.example.test/new-logo.png' }],
+      ['iconUrl', { ...live, iconUrl: 'https://cdn.example.test/new-icon.png' }],
+    ] as const) {
+      expect(await h.propose('settings.update', { checkoutAppearance: appearance })).toEqual(refused(field));
+      expect(await grouped({ checkoutAppearance: appearance })).toEqual(refused(field));
+    }
+    expect(h.store.proposals).toEqual([]);
+
+    expect((await h.propose('settings.update', { checkoutAppearance: { ...live, displayName: 'Renamed checkout' } })).ok).toBe(true);
+    expect((await h.propose('settings.update', { checkoutAppearance: { ...live, logoUrl: null } })).ok).toBe(true);
+    expect((await grouped({ checkoutAppearance: { ...live, buttonColor: '#112233' } })).ok).toBe(true);
+
+    const update = CHANGE_PROPOSAL_OPERATIONS['settings.update'].prepare({ checkoutAppearance: { ...live, iconUrl: 'https://cdn.example.test/new-icon.png' } });
+    if (!update.ok) throw new Error(update.error.message);
+    for (const ctx of [ownerSession, keyCtx(KEY_ID, TENANT, 'direct')]) {
+      expect(await h.transaction.run(TENANT, (scope) => update.value.run(ctx, scope, h.deps))).toEqual({ ok: true, value: null });
+    }
+    expect(h.state.settings.find((entry) => entry.tenantId === TENANT)?.settings.checkoutAppearance).toMatchObject({ iconUrl: 'https://cdn.example.test/new-icon.png' });
+  });
+
   it('refuses an image released between the check and the insert', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));

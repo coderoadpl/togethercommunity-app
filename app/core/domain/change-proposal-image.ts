@@ -164,7 +164,42 @@ export const changeProposalImageChanges = (
     return [{ ...field, value: change.after }];
   });
 
-export type ChangeProposalImageCap = 'key_quarantined_images' | 'key_quarantined_bytes' | 'key_image_uploads';
+const UNPROPOSABLE_IMAGE_FIELDS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  'settings.update': { checkoutAppearance: ['logoUrl', 'iconUrl'] },
+};
+
+const nestedImageAddressesSchema = z.record(z.string(), z.unknown()).nullable().catch(null);
+
+const nestedAddress = (value: unknown, name: string): string | null => {
+  const address = nestedImageAddressesSchema.parse(value)?.[name];
+  return typeof address === 'string' && address.length > 0 ? address : null;
+};
+
+/** Image addresses nested in an object field that a propose-mode key cannot propose yet: set to a new address rather than cleared or kept. */
+export const changeProposalUnproposableImageChanges = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> =>
+  Object.entries(UNPROPOSABLE_IMAGE_FIELDS[operation] ?? {}).flatMap(([field, names]) => {
+    const change = effect[field];
+    if (change === undefined || !('after' in change)) return [];
+    return names
+      .filter((name) => {
+        const after = nestedAddress(change.after, name);
+        return after !== null && after !== nestedAddress(change.before, name);
+      })
+      .map((name) => ({ field, name }));
+  });
+
+export const changeProposalImageNotProposable = (
+  invalidInputMessage: string,
+  changes: ReadonlyArray<{ field: string; name: string }>,
+): AppError => {
+  const fieldErrors: Record<string, string[]> = {};
+  for (const { field, name } of changes) {
+    fieldErrors[field] = [...fieldErrors[field] ?? [], `${name} cannot be proposed yet: this image must be empty or unchanged`];
+  }
+  return validation(invalidInputMessage, { formErrors: [], fieldErrors });
+};
+
+export type ChangeProposalImageCap ='key_quarantined_images' | 'key_quarantined_bytes' | 'key_image_uploads';
 
 const imageCapMessages: Record<ChangeProposalImageCap, string> = {
   key_quarantined_images: `This key already holds ${String(QUARANTINED_IMAGE_LIMITS.assetsPerKey)} uploaded images awaiting approval`,

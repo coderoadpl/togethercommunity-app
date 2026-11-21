@@ -5,7 +5,9 @@ import {
   changeProposalImageChanges,
   changeProposalImageInputSchema,
   changeProposalImageReferences,
+  changeProposalImageNotProposable,
   changeProposalImageRefused,
+  changeProposalUnproposableImageChanges,
   err,
   IMAGE_ASSET_MAX_BYTES,
   notFound,
@@ -261,6 +263,8 @@ export const checkProposedImages = async (
   invalidInputMessage: string,
   deps: ProposedImageCheckDeps,
 ): Promise<Result<ProposalImageReference[], AppError>> => {
+  const unproposable = changeProposalUnproposableImageChanges(operation, effect);
+  if (unproposable.length > 0) return err(changeProposalImageNotProposable(invalidInputMessage, unproposable));
   const images: ProposalImageReference[] = [];
   for (const change of changeProposalImageChanges(operation, effect)) {
     const quarantined = parseProposalImagePath(change.value);

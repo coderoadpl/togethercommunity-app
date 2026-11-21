@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -318,6 +319,35 @@ describe('attaching a quarantined image', () => {
     expect(envelope(changeProposalShowOutputSchema).parse(await shown.json()).data.proposal.effect['coverUrl']).toEqual({ before: null, after: own });
     expect(await coverOf(productId)).toBeNull();
     expect(studioProductId).not.toBe(productId);
+  });
+});
+
+describe('checkout appearance images', () => {
+  it('refuses a propose-mode key a new checkout logo or icon, single and grouped, and leaves a direct-mode key unchanged', async () => {
+    const live = { displayName: 'Acme checkout', logoUrl: 'https://images.example.test/checkout-logo.png' };
+    await database.db.update(tenants).set({ checkoutAppearance: live }).where(eq(tenants.id, 'acme'));
+    const key = await createShopKey(PROPOSE_SCOPES, 'propose');
+    const created = await keyed(key.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: 'Checkout look' });
+    expect(created.status).toBe(201);
+    const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
+    for (const [field, appearance] of [
+      ['logoUrl', { ...live, logoUrl: 'https://images.example.test/new-logo.png' }],
+      ['iconUrl', { ...live, iconUrl: 'https://images.example.test/new-icon.png' }],
+    ] as const) {
+      for (const extra of [{}, { 'x-proposal-group': group.id }]) {
+        const response = await keyed(key.secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { checkoutAppearance: appearance }, acmeHost, extra);
+        expect(response.status, field).toBe(400);
+        expect(JSON.stringify(await response.json()), field).toContain(`"checkoutAppearance":["${field} cannot be proposed yet: this image must be empty or unchanged"]`);
+      }
+    }
+    await propose(key.secret, SHOP_SETTINGS_ROUTES.updateSettings.path, { checkoutAppearance: { ...live, displayName: 'Renamed checkout' } });
+    await propose(key.secret, SHOP_SETTINGS_ROUTES.updateSettings.path, { checkoutAppearance: { displayName: 'No logo' } }, { 'x-proposal-group': group.id });
+
+    const direct = await createShopKey(['shop:settings:read', 'shop:settings:write'], 'direct');
+    const changed = { ...live, iconUrl: 'https://images.example.test/new-icon.png' };
+    expect((await keyed(direct.secret, 'POST', SHOP_SETTINGS_ROUTES.updateSettings.path, { checkoutAppearance: changed })).status).toBe(200);
+    expect((await database.db.select().from(tenants)).find((row) => row.id === 'acme')?.checkoutAppearance).toMatchObject({ iconUrl: changed.iconUrl });
+    await database.db.update(tenants).set({ checkoutAppearance: null }).where(eq(tenants.id, 'acme'));
   });
 });
 

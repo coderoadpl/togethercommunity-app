@@ -576,7 +576,10 @@ two optional addresses on the shop's own site:
 - `returnUrl`: stored with the checkout for the "Back to shop" button on the
   workspace confirmation page (section 7). Payment success still returns to the
   workspace confirmation page; the success address sent to Stripe does not
-  change.
+  change. Without a `cancelUrl`, cart and standard single-product checkout
+  also keep the address on the workspace cancel URL and show it before payment
+  as a "Back to shop" link without checkout result parameters, so point
+  `returnUrl` at a page that works without them.
 
 Each address is accepted only when all of these hold; otherwise the answer is a
 `validation` error (400) and nothing is stored or sent to Stripe:

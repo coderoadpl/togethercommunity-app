@@ -521,42 +521,59 @@ order and enrollment.
 ## Payments that could not be recorded
 
 A signature-verified live `checkout.session.completed` or
-`checkout.session.async_payment_succeeded` event whose session is paid or needs
-no payment (`payment_status` other than `unpaid`) can still be refused with a
-non-2xx answer, for example when its metadata no longer matches the checkout
-snapshot. Stripe then retries the delivery for about three days and gives up. So
-that a refusal does not go unnoticed, the webhook route records it after the
-answer is decided, in `payment_event_rejections` (migration 0171):
+`checkout.session.async_payment_succeeded` event whose session Stripe reports
+as paid (`payment_status` `paid`) can still be refused with a non-2xx answer,
+for example when its metadata no longer matches the checkout snapshot, or end
+in a 500 when its processing throws. Stripe then retries the delivery for about
+three days and gives up. So that a refusal does not go unnoticed, the webhook
+route records it after the answer is decided, in `payment_event_rejections`
+(migration 0171):
 
 - One row per workspace and Stripe event: event type, checkout session id, the
-  `AppError` code and message, first and last sighting and the attempt count.
+  `AppError` code, a reason, first and last sighting and the attempt count.
   Every later refusal of the same event bumps the count. No payload, buyer
-  e-mail or address is stored; an `internal` failure is stored as `Payment
-  processing failed unexpectedly` because its message can quote stored data.
+  e-mail or address is stored. The reason is the error message only when it is
+  one of the constant refusal messages of the checkout webhook path; any other
+  message, which can quote checkout metadata or stored data, is replaced by a
+  fixed text for its code (`internal`: `Payment processing failed
+  unexpectedly`).
+- A thrown error is recorded as `internal` and then rethrown, so Stripe still
+  gets the same 500.
 - Nothing is recorded for a request whose signature fails, for test-mode,
-  foreign-tenant or unpaid events, for an in-progress conflict (another worker
-  holds the event) or when an order already exists for the session.
-- A later delivery of the same event that is answered with 2xx marks the row
-  resolved (`resolved_at`).
+  foreign-tenant events or sessions whose status is not `paid`, for an
+  in-progress conflict (another worker holds the event) or when a live order
+  already exists for the session. When a concurrent delivery commits the order
+  while the refusal is being recorded, the row is resolved right away.
+- A later delivery of the same event resolves the row (`resolved_at`) only when
+  it processed the payment or a live order exists for the session; a 2xx that
+  ignored the event (ownership conflict, mode mismatch) leaves it open.
 - Recording never changes the answer: a failed write is only logged, so the
   refusal still makes Stripe retry and an acceptance stays an acceptance.
 
-Every workspace owner gets one e-mail per event, not per retry (outbox id
-`payment-event-rejected:<tenantId>:<eventId>:<userId>`, kept on conflict). It
-says the payment succeeded at Stripe but no order was recorded, that Stripe
-retries for up to three days, not to refund or ask the buyer to pay again
-before support has checked it, and the reason.
+The workspace staff recipients get one e-mail per event, on its first refusal
+only: the workspace support address when one is set, otherwise every staff
+member once per address (outbox id
+`payment-event-rejected:<tenantId>:<eventId>:<recipient index>`, kept on
+conflict). It says the payment succeeded at Stripe but no order was recorded,
+that Stripe retries for up to three days, not to refund or ask the buyer to pay
+again before support has checked it, and the reason.
 
-Owners and admins see the unresolved rows in Studio → Sales under **Payments
-that could not be recorded** (`GET /api/orders/rejected-payments`, capability
-`order:reconcile`); the CLI reads the same list with
-`together orders rejected-payments [--limit <n>]`, and `--json` prints one
-envelope.
+Owners and admins see the unresolved rows that still have no live order for
+their checkout session in Studio → Sales under **Payments that could not be
+recorded** (`GET /api/orders/rejected-payments`, capability `order:reconcile`);
+the CLI reads the same list with `together orders rejected-payments [--limit
+<n>]`, and `--json` prints one envelope.
 
 Each recorded refusal also logs one error line for the production health alarm:
 `[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
 A failed record or resolve write logs
 `[payment-webhook-rejected] record failed ...` or `... resolve failed ...`.
+
+Rollback: a release older than this feature does not know the outbox kind
+`payment-event-rejected`, so after a rollback its e-mail worker fails to render
+a queued message of that kind on every attempt until the message reaches its
+terminal failure; each such failure is marked on that message alone and the
+worker goes on with the rest of the batch, so no other message is blocked.
 
 ## Test mode for staff
 

@@ -2489,7 +2489,8 @@ export interface Messages {
     submitIdle: string;
     submitPending: string;
     successTitle: string;
-    successBody: string;
+    successBody: (params: { email: string }) => string;
+    useDifferentAddress: string;
     backToLogin: string;
   };
   resetPassword: {

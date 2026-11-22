@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { returnToFromSearch } from '../../lib/auth-return.js';
-import { AuthAccentLink, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthHelp, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
@@ -32,7 +32,20 @@ export const ForgotPasswordPage = () => {
   const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
   const [emailError, setEmailError] = useState<string | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  const sentTitleRef = useRef<HTMLHeadingElement>(null);
+  const [returnedToForm, setReturnedToForm] = useState(false);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
+  const sent = requestPasswordReset.isSuccess;
+
+  useEffect(() => {
+    if (sent) sentTitleRef.current?.focus();
+    else if (returnedToForm) emailRef.current?.focus();
+  }, [sent, returnedToForm]);
+
+  const useDifferentAddress = () => {
+    requestPasswordReset.reset();
+    setReturnedToForm(true);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -65,10 +78,23 @@ export const ForgotPasswordPage = () => {
 
   return (
     <AuthShell title={t.forgotPassword.title} footer={footer}>
-      {requestPasswordReset.isSuccess ? (
+      {sent ? (
         <Box data-testid="forgot-password-success">
-          <AuthTitle variant="h1">{t.forgotPassword.successTitle}</AuthTitle>
-          <AuthLead component="p">{t.forgotPassword.successBody}</AuthLead>
+          <AuthTitle variant="h1" ref={sentTitleRef} tabIndex={-1}>{t.forgotPassword.successTitle}</AuthTitle>
+          <AuthLead component="p">
+            {t.forgotPassword.successBody({ email: requestPasswordReset.variables?.email ?? email.trim() })}
+          </AuthLead>
+          <AuthHelp component="p" sx={{ mt: '1rem' }}>
+            <AuthAccentLink
+              standalone
+              component="button"
+              type="button"
+              data-testid="forgot-password-use-different"
+              onClick={useDifferentAddress}
+            >
+              {t.forgotPassword.useDifferentAddress}
+            </AuthAccentLink>
+          </AuthHelp>
         </Box>
       ) : (
         <>

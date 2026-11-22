@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
@@ -39,6 +39,8 @@ export const ResetPasswordPage = () => {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const invalidTitleRef = useRef<HTMLHeadingElement>(null);
+  const successTitleRef = useRef<HTMLHeadingElement>(null);
   const token = tokenFromLocation();
   const invalidToken = invalidTokenFromLocation();
   const returnTo = returnToFromSearch(window.location.search);
@@ -74,7 +76,14 @@ export const ResetPasswordPage = () => {
   };
 
   const linkUnusable = !token || invalidToken || providerRejectedToken;
-  const footer = resetPassword.isSuccess && !linkUnusable ? null : (
+  const passwordSet = resetPassword.isSuccess && !linkUnusable;
+
+  useEffect(() => {
+    if (linkUnusable) invalidTitleRef.current?.focus();
+    else if (passwordSet) successTitleRef.current?.focus();
+  }, [linkUnusable, passwordSet]);
+
+  const footer = passwordSet ? null : (
     <AuthSecondaryAction component="p">
       <AuthAccentLink standalone component={Link} to={loginPath}>
         {linkUnusable ? t.resetPassword.backToLogin : t.resetPassword.goToLogin}
@@ -87,7 +96,7 @@ export const ResetPasswordPage = () => {
         {linkUnusable ? (
           <Stack useFlexGap spacing="1rem" data-testid="reset-invalid-token">
             <Box>
-              <AuthTitle variant="h1">{t.resetPassword.missingTokenTitle}</AuthTitle>
+              <AuthTitle variant="h1" ref={invalidTitleRef} tabIndex={-1}>{t.resetPassword.missingTokenTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.missingToken}</AuthLead>
             </Box>
             <Button component={Link} to={forgotPasswordPath} variant="contained" fullWidth>
@@ -97,7 +106,7 @@ export const ResetPasswordPage = () => {
         ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="1rem" data-testid="reset-success">
             <Box>
-              <AuthTitle variant="h1">{t.resetPassword.successTitle}</AuthTitle>
+              <AuthTitle variant="h1" ref={successTitleRef} tabIndex={-1}>{t.resetPassword.successTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.successBody}</AuthLead>
             </Box>
             <Button component={Link} to={loginPath} variant="contained" fullWidth>

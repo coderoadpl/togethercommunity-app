@@ -91,7 +91,7 @@ describe('ForgotPasswordPage', () => {
       await userEvent.click(screen.getByTestId('forgot-password-submit'));
 
       expect(await screen.findByTestId('forgot-password-success')).toHaveTextContent(
-        en.forgotPassword.successBody,
+        en.forgotPassword.successBody({ email }),
       );
       expect(body).toEqual({
         email,
@@ -107,7 +107,7 @@ describe('ForgotPasswordPage', () => {
       const view = await renderForgotPasswordPage();
       await userEvent.type(screen.getByTestId('forgot-password-email'), email);
       await userEvent.click(screen.getByTestId('forgot-password-submit'));
-      outcomes.push((await screen.findByTestId('forgot-password-success')).outerHTML);
+      outcomes.push((await screen.findByTestId('forgot-password-success')).outerHTML.replaceAll(email, '{email}'));
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       view.unmount();
     }
@@ -146,6 +146,32 @@ describe('ForgotPasswordPage', () => {
     await screen.findByTestId('forgot-password-success');
 
     expect(body).toMatchObject({ redirectTo: 'http://localhost:3000/reset-password' });
+  });
+
+  it('names the submitted address, focuses the heading and returns to the prefilled form on request', async () => {
+    let requests = 0;
+    server.use(anonymousMe(), http.post('*', () => {
+      requests += 1;
+      return HttpResponse.json({ status: true });
+    }));
+    await renderForgotPasswordPage();
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'member@example.com');
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+
+    const heading = await screen.findByRole('heading', { level: 1, name: en.forgotPassword.successTitle });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
+    expect(screen.getByTestId('forgot-password-success')).toHaveTextContent(
+      en.forgotPassword.successBody({ email: 'member@example.com' }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: en.forgotPassword.useDifferentAddress }));
+
+    const email = screen.getByTestId('forgot-password-email');
+    expect(email).toHaveValue('member@example.com');
+    expect(email).toHaveFocus();
+    expect(screen.queryByTestId('forgot-password-success')).not.toBeInTheDocument();
+    expect(requests).toBe(1);
   });
 
   it('prefills a deep-linked email and submits the edited address', async () => {

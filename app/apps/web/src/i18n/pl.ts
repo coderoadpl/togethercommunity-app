@@ -2807,7 +2807,8 @@ export const pl: Messages = {
     submitIdle: 'Wyślij link do resetowania',
     submitPending: 'Wysyłanie…',
     successTitle: 'Sprawdź skrzynkę',
-    successBody: 'Jeśli konto o tym adresie istnieje, wysłaliśmy link do resetowania hasła.',
+    successBody: ({ email }) => format('Jeśli konto o adresie {email} istnieje, wysłaliśmy link do resetowania hasła.', { email }),
+    useDifferentAddress: 'Użyj innego adresu',
     backToLogin: 'Wróć do logowania',
   },
   resetPassword: {

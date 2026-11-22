@@ -116,6 +116,9 @@ describe('ResetPasswordPage', () => {
 
     expect(await screen.findByTestId('reset-success')).toBeInTheDocument();
     expect(body).toEqual({ token: 'valid-token', newPassword: VALID_PASSWORD });
+    const heading = screen.getByRole('heading', { level: 1, name: en.resetPassword.successTitle });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
   });
 
   it('blocks submission when the two passwords do not match', async () => {
@@ -241,7 +244,9 @@ describe('ResetPasswordPage', () => {
   it('builds the invalid-link state like the other recovery states, with a way back to sign in', async () => {
     await renderResetPage('?error=INVALID_TOKEN');
 
-    expect(await screen.findByRole('heading', { level: 1, name: en.resetPassword.missingTokenTitle })).toBeInTheDocument();
+    const heading = await screen.findByRole('heading', { level: 1, name: en.resetPassword.missingTokenTitle });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
     expect(screen.getByTestId('reset-invalid-token')).not.toHaveAttribute('data-state');
     expect(screen.getByTestId('reset-invalid-token').closest('.MuiPaper-root')).toBeNull();
     const back = screen.getByRole('link', { name: en.resetPassword.backToLogin });

@@ -2784,7 +2784,8 @@ export const en: Messages = {
     submitIdle: 'Send reset link',
     submitPending: 'Sending…',
     successTitle: 'Check your inbox',
-    successBody: 'If an account exists for that address, we sent a password reset link.',
+    successBody: ({ email }) => format('If an account exists for {email}, we sent a password reset link.', { email }),
+    useDifferentAddress: 'Use a different address',
     backToLogin: 'Back to sign in',
   },
   resetPassword: {

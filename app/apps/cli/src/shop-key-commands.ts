@@ -824,7 +824,7 @@ export const registerShopKeyCommands = (
   keyed(files.command('staged').description('List this key\'s staged files that are not attached yet'))
     .action(run(z.tuple([keyOnlySchema]), (client) => client.listStagedDownloads(), (data) =>
       data.files.length === 0 ? 'no staged files' : data.files.map(stagedFileLine).join('\n')));
-  keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy; a file a pending proposal attaches cannot be discarded'))
+  keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy; a pending proposal that attaches it can then no longer be applied'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.discardStagedDownload(id), () => 'discarded'));
 
   const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');

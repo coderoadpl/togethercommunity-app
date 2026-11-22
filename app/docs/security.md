@@ -577,10 +577,29 @@ scopes on every shop key.
   and the minute sweep, which has its own time budget and never holds back
   e-mail or refund dispatch, retries owed deletions
   ([Download file prefixes](storage.md#download-file-prefixes)). A propose-mode
-  key is refused on every download file route except the product file list in
-  this release (route class `refuse`, reason `not-in-release`), so it can
-  neither stage bytes nor change a file. See
-  [Download files](shop-management-keys.md#download-files).
+  key stages files through the same routes and limits (route class `direct`,
+  with `proposal:asset:upload` and `proposal:submit:catalog`), but changes no
+  file: its attach, replace and remove requests become `download.add`,
+  `download.replace` and `download.remove` proposals that only an owner
+  approval applies. A staged file is held by at most one pending proposal,
+  checked before the dry run and again under the staged row's lock in the
+  transaction that stores the proposal. The approval asks the storage about
+  each attached object before its transaction, never under the workspace's
+  approval lock, then locks the staged row and checks it is the same file
+  (key, object, size, SHA-256, held by that proposal); a gone file ends the
+  proposal or its whole group `stale` and nothing is attached. Because only the
+  server writes the staged object and the row stays locked until the commit,
+  the bytes an approval attaches are the bytes the owner could download. The
+  owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
+  (verified owner session, `proposal:read`, a file the pending proposal holds):
+  a 60-second signed `GET` that forces a download of type
+  `application/octet-stream` with `no-store`, answered `private, no-store` with
+  `referrer-policy: no-referrer`. It is a bearer link: whoever holds the
+  address can fetch the file until it expires, so the server never logs it and
+  the CLI never prints it. Rejection, withdrawal, expiry and revocation discard
+  the held files. See
+  [Download files](shop-management-keys.md#download-files) and
+  [Change proposals](change-proposals.md#download-files).
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
   `proposal:submit:settings`, each with `proposal:asset:upload` for images
@@ -597,13 +616,13 @@ scopes on every shop key.
   a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
   without one: the ten catalogue write routes, the three sales-link write
-  routes and the settings update store a
+  routes, the settings update and the three product file write routes store a
   [change proposal](change-proposals.md) instead of running their handler,
-  the four product cover and branding image routes (class `direct`) upload
-  into the key's private quarantine, every other write route (fulfilment,
-  integrations, the download file routes) and the staged download file list
-  answer `403`, and a test drives a propose-mode key over every
-  registered shop route and asserts that no live row changed and no object
+  the four product cover and branding image routes and the four download file
+  staging routes (class `direct`) upload into the key's private quarantine or
+  staging, every other write route (fulfilment, integrations) answers `403`,
+  and a test drives a propose-mode key over every registered shop route and
+  asserts that no live row changed, no product file appeared and no object
   appeared under the public image prefix. A quarantined image is stored under
   `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
   private prefix the public asset route never serves; its address names its

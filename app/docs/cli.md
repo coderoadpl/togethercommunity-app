@@ -144,18 +144,29 @@ the next version of `--replaces`, refusing before the upload a `--note` over
 copies a ready file on the server and attaches the copy to the other product;
 `shop files list <productId>`, `shop files remove <productId> <assetId>`,
 `shop files staged` and `shop files discard <id>` list a product's files, remove
-a version, and list or discard the key's staged files. A propose-mode key gets
-the refusal on every `shop files` command except `list`; see
+a version, and list or discard the key's staged files. With a propose-mode key
+`shop files upload` and `shop files copy` stage the file the same way and
+propose attaching it, printing the receipt, the staged file and that it stays
+private until the owner approves, and `shop files remove` proposes the
+removal; all three accept `--group <id>`, and with it `upload` and `copy` do
+not check a `'$proposal:<id>'` product first; see
 [Download files](shop-management-keys.md#download-files).
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
-before/after effect, approve it or reject it. `proposals approve` prints the
+before/after effect, approve it or reject it. `proposals show` also lists the
+staged file a download file proposal attaches, whether the proposal still
+holds it, where a copy comes from and, while it is pending, the command that
+downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
+server for a 60-second link and streams the file from the storage to `--out`
+without printing the link, refuses to overwrite an existing file without
+`--force`, and removes what it wrote when the download breaks off or its size
+is not the announced one. `proposals approve` prints the
 outcome first: `applied` exits `0` and names the resource by the operation
 (`applied: price <id>` for a new price, `applied: sales link <id>`,
-`applied: settings`); `stale` (the live state changed since the
-proposal was made, or an image it attaches is no longer available) and `failed` (the live use-case refused the stored change,
+`applied: file <id>` for an attached file, `applied: settings`); `stale` (the live state changed since the
+proposal was made, or an image or file it attaches is no longer available) and `failed` (the live use-case refused the stored change,
 with its error code and message) apply nothing and exit `6`, the conflict exit
 code, as does approving a proposal that is no longer pending.
 Proposals that depend on each other go into a

@@ -4,7 +4,7 @@ export const metaCapiConfig = {
   consent: 'undecided' as const,
   withdrawnAt: null,
   textVersion: 'a'.repeat(64),
-  heading: 'Share this purchase with Meta to measure our ads?',
+  heading: 'May we share data about this purchase with Meta to measure and optimize ads, including matching to your account and ad personalization?',
   body: "I agree to the use of the ad click identifier and to sharing with Meta Platforms Ireland information about my purchase and its value, a SHA-256 hash of my email address, my IP address, browser information, the Meta browser identifier (if available) and my country, to measure and optimize Meta ads, including matching to my account and ad personalization. Consent is optional; not giving it does not affect my purchase or my access. I can withdraw it on the purchase confirmation page or in my account settings (Notifications tab). Withdrawal stops any further sharing of this order's data with Meta; it does not undo data already shared. Details: privacy policy.",
   acceptLabel: 'Yes, share with Meta',
   declineLabel: 'No, do not share',

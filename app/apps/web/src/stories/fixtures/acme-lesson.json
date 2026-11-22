@@ -108,6 +108,7 @@
             "deliveryMethod": "pickup",
             "description": "",
             "id": "product-acme-course",
+            "images": [],
             "marketingConsents": [],
             "maxQuantity": 1,
             "personalization": null,

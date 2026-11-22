@@ -24,6 +24,13 @@ export const SlidersHorizontalIcon = () => (<Glyph><line x1="21" x2="14" y1="4" 
   <line x1="8" x2="8" y1="10" y2="14" />
   <line x1="16" x2="16" y1="18" y2="22" /></Glyph>);
 
+export const CreditCardIcon = () => (<Glyph><rect width="20" height="14" x="2" y="5" rx="2" />
+  <line x1="2" x2="22" y1="10" y2="10" /></Glyph>);
+
+export const DownloadIcon = () => (<Glyph><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <polyline points="7 10 12 15 17 10" />
+  <line x1="12" x2="12" y1="15" y2="3" /></Glyph>);
+
 export const PlayIcon = () => (<Glyph><polygon points="6 3 20 12 6 21 6 3" /></Glyph>);
 
 export const MailCheckIcon = () => (<Glyph><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />

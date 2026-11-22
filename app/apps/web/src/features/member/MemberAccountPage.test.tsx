@@ -895,6 +895,9 @@ describe('MemberAccountPage', () => {
     const link = await screen.findByTestId('account-manage-payments');
     expect(link).toHaveAttribute('href', 'https://billing.stripe.com/p/login/test_example');
     expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveClass('MuiButton-outlined');
+    expect(screen.getByRole('heading', { name: en.account.billingHeading }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('heading', { name: en.account.dataExportHeading }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('keeps the external support link available through member settings', async () => {

@@ -1,5 +1,5 @@
 import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
-import { LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, SlidersHorizontalIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
+import { CreditCardIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, SlidersHorizontalIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -616,14 +616,14 @@ export const MemberAccountPage = () => {
 
         {selectedTab === 'profile' && (billingPortalUrl || !impersonating) ? <Stack data-account-compact useFlexGap spacing="1.5rem">
         {billingPortalUrl ? (
-          <Box><SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
+          <Box><SectionCard icon={<CreditCardIcon />} title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
                   component="a"
                   href={billingPortalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  variant="contained"
+                  variant="outlined"
                   data-testid="account-manage-payments"
                 >
                   {t.account.managePayments}

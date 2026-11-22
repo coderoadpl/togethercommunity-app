@@ -1927,12 +1927,26 @@ describe('LessonPlayerPage', () => {
       okProgress(),
     );
     const { unmount } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByTestId('locked-product-scope')).toHaveTextContent(/^Every module,\s?quizzes$/);
+    expect((await screen.findByTestId('locked-product-scope')).textContent).toBe('Every module, quizzes');
     unmount();
 
     server.use(okOffer({ description: '<p> </p>' }));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     expect(await screen.findByTestId('locked-product-scope')).toHaveTextContent(en.salesLinks.lineTypes.course);
+  });
+
+  it('keeps adjacent paragraphs, list items and line breaks apart in the scope line', async () => {
+    const cases = [
+      ['<p>All lessons</p><p>Community access</p>', 'All lessons · Community access'],
+      ['<p>Includes:</p><ul><li>Video\n  lessons</li><li>Quizzes</li></ul>', 'Includes: Video lessons · Quizzes'],
+      ['<p>Lifetime access<br>Certificate</p>', 'Lifetime access · Certificate'],
+    ] as const;
+    for (const [description, expected] of cases) {
+      server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer({ description }), okProgress());
+      const { unmount } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+      expect((await screen.findByTestId('locked-product-scope')).textContent).toBe(expected);
+      unmount();
+    }
   });
 
   it('falls back to the product price when the locked product has no active price rows', async () => {

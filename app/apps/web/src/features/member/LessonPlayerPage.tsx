@@ -197,10 +197,26 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
   }
 };
 
+const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
+const TEXT_BREAK = '\u2029';
+const ENDS_WITH_PUNCTUATION = /[.,;:!?…]$/u;
+
 const plainText = (html: string): string => {
   const template = document.createElement('template');
   template.innerHTML = html;
-  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim();
+  for (const block of template.content.querySelectorAll(TEXT_BLOCK_SELECTOR)) {
+    block.before(TEXT_BREAK);
+    block.after(TEXT_BREAK);
+  }
+  for (const lineBreak of template.content.querySelectorAll('br')) lineBreak.replaceWith(TEXT_BREAK);
+  const segments = (template.content.textContent ?? '')
+    .split(TEXT_BREAK)
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter((segment) => segment !== '');
+  return segments.reduce(
+    (text, segment) => text === '' ? segment : `${text}${ENDS_WITH_PUNCTUATION.test(text) ? ' ' : ' · '}${segment}`,
+    '',
+  );
 };
 
 const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (

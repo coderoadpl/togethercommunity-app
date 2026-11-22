@@ -206,8 +206,43 @@ describe('public event surface', () => {
     expect(await screen.findByTestId('public-post-root-1')).toHaveTextContent(
       'Event thread: Live Q&A',
     );
+    const details = screen.getByTestId('public-event-details');
+    expect(within(details).getByText(en.events.detailsHeading)).toBeInTheDocument();
+    expect(within(details).getByTestId('public-event-join')).toHaveAttribute('href', '/#offer');
+    expect(within(details).getByTestId('public-event-join')).toHaveTextContent(en.anon.salesCta);
+    expect(within(details).getByTestId('public-event-sign-in')).toHaveClass('MuiButton-outlined');
+    const crumbs = within(screen.getByTestId('member-breadcrumbs'));
+    expect(crumbs.getByRole('link', { name: en.shell.start })).toHaveAttribute('href', '/');
+    expect(crumbs.getByRole('link', { name: 'General' })).toHaveAttribute('href', '/community/s1');
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-ics')).not.toBeInTheDocument();
+  });
+
+  it('leads with sign-in on the event details when the workspace sells nothing', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            tenant: { slug: 'acme', name: 'Acme', support: { url: null } },
+            contentVersion: 1,
+            products: [],
+            salesLinks: [],
+            previewLessons: [],
+          },
+        }),
+      ),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const signIn = await screen.findByTestId('public-event-sign-in');
+    await waitFor(() => expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument());
+    expect(signIn).toHaveClass('MuiButton-contained');
   });
 
   it('plays the live stream of a public event without offering an RSVP', async () => {

@@ -1,4 +1,4 @@
-import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -10,10 +10,11 @@ import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
+import { anonCrumbs } from '../anon-crumbs.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { PublicThreadView } from '../PublicFeed.js';
 import { useLoginLinkWithReturn } from '../use-login-redirect.js';
-import { RouterButton } from '../visitor-actions.js';
+import { RouterButton, useVisitorJoin, VisitorJoinButton } from '../visitor-actions.js';
 import { formatEventRange } from './event-time.js';
 import { EventMedia } from './EventMedia.js';
 
@@ -55,9 +56,10 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
   const t = useTranslations();
   const { language } = useLanguage();
   const loginLink = useLoginLinkWithReturn();
+  const join = useVisitorJoin(event.spaceId);
 
   const rail = (
-    <SectionCard title={t.events.sectionTitle} data-testid="public-event-details">
+    <SectionCard title={t.events.detailsHeading} data-testid="public-event-details">
       <PostMetaText component="time" dateTime={event.startsAt}>
         {formatEventRange(event.startsAt, event.endsAt, language)}
       </PostMetaText>
@@ -75,11 +77,16 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
           {t.events.notGoingCount({ count: event.notGoingCount })}
         </FinePrint>
       </Stack>
-      <Box>
-        <RouterButton {...loginLink} variant="contained" data-testid="public-event-sign-in">
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+        <VisitorJoinButton target={join.target} testId="public-event-join" />
+        <RouterButton
+          {...loginLink}
+          variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
+          data-testid="public-event-sign-in"
+        >
           {t.events.signInToRsvp}
         </RouterButton>
-      </Box>
+      </Stack>
     </SectionCard>
   );
 
@@ -90,7 +97,8 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
       width="wide"
       rail={rail}
       mobileRail="before"
-      breadcrumbs={[
+      breadcrumbs={anonCrumbs(
+        t,
         {
           label: spaceName,
           link: (
@@ -100,7 +108,7 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
           ),
         },
         { label: event.title },
-      ]}
+      )}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }} data-testid="public-event-page">
         <EventMedia event={event} />

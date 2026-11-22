@@ -1224,6 +1224,9 @@ describe('community pages', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Public thread' })).toBeInTheDocument();
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Reply');
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
+    const header = screen.getByRole('heading', { level: 1, name: 'Public thread' }).closest('header');
+    if (header === null) throw new Error('Expected the thread page header');
+    expect(within(header).getByTestId('anon-join-cta-header')).toHaveAttribute('href', '/#offer');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 

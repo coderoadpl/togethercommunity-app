@@ -34,11 +34,13 @@ export const EmailVerificationStatus = ({
   emailVerified,
   resendPending,
   onResend,
+  audience = 'creator',
 }: {
   email: string;
   emailVerified: boolean;
   resendPending: boolean;
   onResend: () => void;
+  audience?: 'creator' | 'member';
 }) => {
   const t = useTranslations();
 
@@ -48,7 +50,9 @@ export const EmailVerificationStatus = ({
       <AccountWrappingText variant="body2" component="div" sx={{ minWidth: 0, flex: 1 }}>
         {emailVerified
           ? t.emailVerification.verifiedStatus
-          : t.emailVerification.pending({ email })}
+          : audience === 'member'
+            ? t.emailVerification.pendingMember({ email })
+            : t.emailVerification.pending({ email })}
       </AccountWrappingText>
       {!emailVerified ? (
         <Button

@@ -1191,6 +1191,7 @@ export interface Messages {
     heading: string;
     verifiedStatus: string;
     pending: (params: { email: string }) => string;
+    pendingMember: (params: { email: string }) => string;
     resend: string;
     sending: string;
     sent: string;

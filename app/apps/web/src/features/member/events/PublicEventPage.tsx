@@ -1,4 +1,4 @@
-import { Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -11,6 +11,8 @@ import { localizeError, useLanguage, useTranslations } from '../../../i18n/index
 import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { PublicThreadView } from '../PublicFeed.js';
+import { useLoginLinkWithReturn } from '../use-login-redirect.js';
+import { RouterButton } from '../visitor-actions.js';
 import { formatEventRange } from './event-time.js';
 import { EventMedia } from './EventMedia.js';
 
@@ -35,6 +37,7 @@ const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootP
 const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceName: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const loginLink = useLoginLinkWithReturn();
 
   const rail = (
     <SectionCard title={t.events.sectionTitle} data-testid="public-event-details">
@@ -56,9 +59,9 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
         </FinePrint>
       </Stack>
       <Box>
-        <Button component={Link} to="/login" variant="contained" data-testid="public-event-sign-in">
+        <RouterButton {...loginLink} variant="contained" data-testid="public-event-sign-in">
           {t.events.signInToRsvp}
-        </Button>
+        </RouterButton>
       </Box>
     </SectionCard>
   );

@@ -199,7 +199,10 @@ describe('public event surface', () => {
     expect(screen.getByTestId('public-event-going-count')).toHaveTextContent(
       en.events.goingCount({ count: 4 }),
     );
-    expect(screen.getByTestId('public-event-sign-in')).toHaveAttribute('href', '/login');
+    expect(screen.getByTestId('public-event-sign-in')).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fcommunity%2Fs1%2Fevents%2Fe1',
+    );
     expect(await screen.findByTestId('public-post-root-1')).toHaveTextContent(
       'Event thread: Live Q&A',
     );

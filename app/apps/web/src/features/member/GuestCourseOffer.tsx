@@ -10,6 +10,7 @@ import { formatOfferPrice } from '../../lib/format.js';
 import { EmberCtaLink } from '../../theme.js';
 import { courseTotals, formatTotalDuration } from './CourseRail.js';
 import { StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+import { useLoginLinkWithReturn } from './use-login-redirect.js';
 
 interface GuestOffer {
   purchasable: boolean;
@@ -24,18 +25,22 @@ const useGuestOffer = (course: CourseStructureWithAccess): GuestOffer => {
   const offer = course.offer;
   const product = offer?.product;
   const salesUrl = offer?.salesUrl;
-  const href = product ? `/checkout/${encodeURIComponent(product.id)}` : salesUrl || '/login';
+  const loginLink = useLoginLinkWithReturn();
   const label = product ? t.anon.unlockCta : salesUrl ? t.anon.salesCta : t.auth.signInLink;
   const amount = product ? formatOfferPrice(product.priceCents, product.currency, language, t.common.free) : null;
   const price = amount === null ? null : product?.interval === 'month'
     ? t.anon.monthlyPrice({ price: amount })
     : product?.interval === 'year' ? t.anon.yearlyPrice({ price: amount }) : amount;
-  const cta = (testId: string) => product || !salesUrl ? (
-    <EmberCtaLink component={Link} to={href} variant="contained" data-testid={testId} fullWidth>
+  const cta = (testId: string) => product ? (
+    <EmberCtaLink component={Link} to={`/checkout/${encodeURIComponent(product.id)}`} variant="contained" data-testid={testId} fullWidth>
+      {label}
+    </EmberCtaLink>
+  ) : !salesUrl ? (
+    <EmberCtaLink component={Link} {...loginLink} variant="contained" data-testid={testId} fullWidth>
       {label}
     </EmberCtaLink>
   ) : (
-    <EmberCtaLink href={href} variant="contained" data-testid={testId} fullWidth>
+    <EmberCtaLink href={salesUrl} variant="contained" data-testid={testId} fullWidth>
       {label}
     </EmberCtaLink>
   );

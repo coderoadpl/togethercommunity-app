@@ -132,9 +132,10 @@ export const createMetaCapiRepository = (
       .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
       .orderBy(desc(sql`(${orders.metaCapiConsent} = 'granted' AND ${orders.metaCapiConsentWithdrawnAt} IS NULL)`), desc(orders.createdAt), desc(orders.id))
       .limit(100)).map(({ lines, productTitle, paidAt, createdAt, ...row }) => {
-        const purchased = productLines(lines);
+        const named = productLines(lines).filter((line) => typeof line.name === 'string' && line.name.trim() !== '');
+        const title = productTitle !== null && productTitle.trim() !== '' ? productTitle : null;
         return { ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt),
-          productName: purchased.length > 0 ? purchased.map(orderLineLabel).join(', ') : productTitle, purchasedAt: iso(paidAt ?? createdAt) };
+          productName: named.length > 0 ? named.map(orderLineLabel).join(', ') : title, purchasedAt: iso(paidAt ?? createdAt) };
       })),
   };
 };

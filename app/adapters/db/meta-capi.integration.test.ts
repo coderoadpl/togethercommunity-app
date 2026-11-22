@@ -100,6 +100,20 @@ describe('durable Meta consent and outbox', () => {
     await repo.decide('workspace', access, async () => ok({ decision: 'denied', capture }));
     expect(await repo.listMemberConsents('workspace', 'buyer')).toContainEqual({ orderId: 'named', consent: 'denied', consentAt: now, withdrawnAt: null, productName: '2 × Book', purchasedAt: now });
   });
+
+  it('skips nameless purchase lines and falls back to the product title', async () => {
+    const line = { productId: 'book', productType: 'digital_download', quantity: 1, grossCents: 9000, netCents: 9000, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null } as const;
+    const nameless = await makeOrder('nameless');
+    const mixed = await makeOrder('mixed');
+    const repo = repository();
+    await repo.decide('workspace', nameless, async () => ok({ decision: 'denied', capture }));
+    await repo.decide('workspace', mixed, async () => ok({ decision: 'denied', capture }));
+    await database.db.update(orders).set({ lines: [{ ...line, name: '' }] }).where(eq(orders.id, 'nameless'));
+    await database.db.update(orders).set({ lines: [{ ...line, name: ' ' }, { ...line, name: 'Workbook' }] }).where(eq(orders.id, 'mixed'));
+    const listed = await repo.listMemberConsents('workspace', 'buyer');
+    expect(listed).toContainEqual(expect.objectContaining({ orderId: 'nameless', productName: 'Book' }));
+    expect(listed).toContainEqual(expect.objectContaining({ orderId: 'mixed', productName: 'Workbook' }));
+  });
 });
 
 const erase = async (memberId: string) => {

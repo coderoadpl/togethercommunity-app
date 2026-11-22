@@ -8,6 +8,8 @@ export const unusedKeyDownloadRepositories = (): { keyDownloadFiles: KeyDownload
     claimCompletion: unused('claimCompletion'),
     finishCompletion: unused('finishCompletion'),
     releaseRecord: unused('releaseRecord'),
+    interruptAttempt: unused('interruptAttempt'),
+    listRecordEvents: unused('listRecordEvents'),
     findStaged: unused('findStaged'),
     listStaged: unused('listStaged'),
     discard: unused('discard'),

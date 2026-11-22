@@ -1,14 +1,17 @@
-import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   KEY_DOWNLOAD_FILE_LIMITS,
   keyDownloadObjectOwner,
   keyDownloadPendingDeletionSchema,
+  keyDownloadRecordEventSchema,
   keyDownloadStagedFileSchema,
+  keyDownloadStagedKey,
   keyDownloadUploadRecordSchema,
   productDownloadAssetSchema,
   type KeyDownloadFileCap,
   type KeyDownloadPendingDeletion,
+  type KeyDownloadRecordEvent,
   type KeyDownloadStagedFile,
   type KeyDownloadUploadRecord,
 } from '#core/domain/index.js';
@@ -18,9 +21,11 @@ import type {
   KeyDownloadClaim,
   KeyDownloadCompletion,
   KeyDownloadFileRepository,
+  KeyDownloadInterruption,
   KeyDownloadObjectRemoval,
   KeyDownloadReservation,
   KeyDownloadSweepCutoffs,
+  KeyDownloadSweepRow,
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
@@ -29,6 +34,7 @@ import type { Db } from './client.js';
 import {
   changeProposalDownloadDeletions as deletions,
   changeProposalDownloadFiles as stagedFiles,
+  changeProposalDownloadUploadEvents as recordEvents,
   changeProposalDownloadUploads as records,
   changeProposals,
   productDownloadAssets,
@@ -84,6 +90,16 @@ const parseRecord = (row: RecordRow): KeyDownloadUploadRecord => keyDownloadUplo
   completedAt: row.completedAt,
 });
 
+const parseEvent = (row: typeof recordEvents.$inferSelect): KeyDownloadRecordEvent => keyDownloadRecordEventSchema.parse({
+  tenantId: row.tenantId,
+  recordId: row.recordId,
+  apiKeyId: row.apiKeyId,
+  kind: row.kind,
+  attemptId: row.attemptId,
+  reason: row.reason,
+  at: row.at,
+});
+
 const parseDeletion = (row: typeof deletions.$inferSelect): KeyDownloadPendingDeletion => keyDownloadPendingDeletionSchema.parse({
   tenantId: row.tenantId,
   apiKeyId: row.apiKeyId,
@@ -98,10 +114,6 @@ const keyLock = (tenantId: string, apiKeyId: string): string => `key-download-fi
 
 const before = (now: string, ms: number): string => new Date(Date.parse(now) - ms).toISOString();
 
-const bytesOf = (value: unknown): number => Number(value ?? 0);
-
-const recordObjectBytes = sql<string>`${records.declaredBytes}::bigint * ((${records.candidateKey} is not null)::int + (${records.stagedKey} is not null)::int)`;
-
 interface Usage {
   keyFiles: number;
   keyBytes: number;
@@ -110,30 +122,57 @@ interface Usage {
   keyDailyBytes: number;
 }
 
+const wholeNumberOf = (row: unknown, column: string): number => {
+  const value = Number(typeof row === 'object' && row !== null ? Reflect.get(row, column) : undefined);
+  if (!Number.isSafeInteger(value)) throw new Error(`Staging usage column ${column} is not a whole number`);
+  return value;
+};
+
+const firstRowOf = (result: unknown): unknown =>
+  typeof result === 'object' && result !== null && 'rows' in result && Array.isArray(result.rows) ? result.rows[0] : undefined;
+
+/**
+ * One statement, so every count reads one snapshot: an object whose ownership moves from an upload record to a staged
+ * row while it runs is counted exactly once. A completed upload's file is counted through its staged row, its owed
+ * deletion or its product file, never again through its record.
+ */
 const usageOf = async (tx: Db, tenantId: string, apiKeyId: string, now: string): Promise<Usage> => {
-  const ofKey = (column: SQL | typeof stagedFiles.apiKeyId) => sql`${column} = ${apiKeyId}`;
-  const [staged] = await tx.select({
-    keyFiles: sql<string>`count(*) filter (where ${ofKey(stagedFiles.apiKeyId)})`,
-    keyBytes: sql<string>`coalesce(sum(${stagedFiles.sizeBytes}::bigint) filter (where ${ofKey(stagedFiles.apiKeyId)}), 0)`,
-    workspaceBytes: sql<string>`coalesce(sum(${stagedFiles.sizeBytes}::bigint), 0)`,
-  }).from(stagedFiles).where(eq(stagedFiles.tenantId, tenantId));
-  const [owed] = await tx.select({
-    keyBytes: sql<string>`coalesce(sum(${deletions.sizeBytes}::bigint) filter (where ${deletions.apiKeyId} = ${apiKeyId}), 0)`,
-    workspaceBytes: sql<string>`coalesce(sum(${deletions.sizeBytes}::bigint), 0)`,
-  }).from(deletions).where(eq(deletions.tenantId, tenantId));
-  const [open] = await tx.select({
-    keyFiles: sql<string>`count(*) filter (where ${records.apiKeyId} = ${apiKeyId} and ${records.state} in ('started', 'completing'))`,
-    keyBytes: sql<string>`coalesce(sum(${recordObjectBytes}) filter (where ${records.apiKeyId} = ${apiKeyId}), 0)`,
-    workspaceBytes: sql<string>`coalesce(sum(${recordObjectBytes}), 0)`,
-    keyStarts: sql<string>`count(*) filter (where ${records.apiKeyId} = ${apiKeyId} and ${records.createdAt} > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.startsWindowMs)})`,
-    keyDailyBytes: sql<string>`coalesce(sum(${records.declaredBytes}::bigint) filter (where ${records.apiKeyId} = ${apiKeyId} and ${records.createdAt} > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.dailyWindowMs)}), 0)`,
-  }).from(records).where(eq(records.tenantId, tenantId));
+  const result = await tx.execute(sql`
+    with staged as (
+      select ${stagedFiles.apiKeyId} as api_key_id, ${stagedFiles.sizeBytes}::bigint as bytes
+      from ${stagedFiles} where ${stagedFiles.tenantId} = ${tenantId}
+    ), owed as (
+      select ${deletions.apiKeyId} as api_key_id, ${deletions.sizeBytes}::bigint as bytes
+      from ${deletions} where ${deletions.tenantId} = ${tenantId}
+    ), open as (
+      select ${records.apiKeyId} as api_key_id, ${records.createdAt} as created_at, ${records.declaredBytes}::bigint as declared,
+        ${records.declaredBytes}::bigint * ((${records.candidateKey} is not null)::int + (${records.stagedKey} is not null)::int) as bytes,
+        ${records.state} in ('started', 'completing', 'interrupted', 'failed')
+          and (${records.candidateKey} is not null or ${records.stagedKey} is not null) as holds_file
+      from ${records} where ${records.tenantId} = ${tenantId} and ${records.state} <> 'settled'
+    ), started as (
+      select ${records.createdAt} as created_at, ${records.declaredBytes}::bigint as declared
+      from ${records} where ${records.tenantId} = ${tenantId} and ${records.apiKeyId} = ${apiKeyId}
+    )
+    select
+      (select count(*) from staged where api_key_id = ${apiKeyId})
+        + (select count(*) from owed where api_key_id = ${apiKeyId})
+        + (select count(*) from open where api_key_id = ${apiKeyId} and holds_file) as key_files,
+      (select coalesce(sum(bytes), 0) from staged where api_key_id = ${apiKeyId})
+        + (select coalesce(sum(bytes), 0) from owed where api_key_id = ${apiKeyId})
+        + (select coalesce(sum(bytes), 0) from open where api_key_id = ${apiKeyId}) as key_bytes,
+      (select coalesce(sum(bytes), 0) from staged) + (select coalesce(sum(bytes), 0) from owed)
+        + (select coalesce(sum(bytes), 0) from open) as workspace_bytes,
+      (select count(*) from started where created_at > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.startsWindowMs)}) as key_starts,
+      (select coalesce(sum(declared), 0) from started where created_at > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.dailyWindowMs)}) as key_daily_bytes
+  `);
+  const row = firstRowOf(result);
   return {
-    keyFiles: bytesOf(staged?.keyFiles) + bytesOf(open?.keyFiles),
-    keyBytes: bytesOf(staged?.keyBytes) + bytesOf(owed?.keyBytes) + bytesOf(open?.keyBytes),
-    workspaceBytes: bytesOf(staged?.workspaceBytes) + bytesOf(owed?.workspaceBytes) + bytesOf(open?.workspaceBytes),
-    keyStarts: bytesOf(open?.keyStarts),
-    keyDailyBytes: bytesOf(open?.keyDailyBytes),
+    keyFiles: wholeNumberOf(row, 'key_files'),
+    keyBytes: wholeNumberOf(row, 'key_bytes'),
+    workspaceBytes: wholeNumberOf(row, 'workspace_bytes'),
+    keyStarts: wholeNumberOf(row, 'key_starts'),
+    keyDailyBytes: wholeNumberOf(row, 'key_daily_bytes'),
   };
 };
 
@@ -186,7 +225,7 @@ const objectOwned = async (tx: Db, tenantId: string, objectKey: string): Promise
 const recordSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => and(
   ne(records.state, 'settled'),
   lt(records.createdAt, cutoffs.recordsStartedBefore),
-  or(ne(records.state, 'completing'), lt(records.attemptAt, cutoffs.attemptsStartedBefore)),
+  or(notInArray(records.state, ['completing', 'interrupted']), lt(records.attemptAt, cutoffs.attemptsStartedBefore)),
 );
 
 const recordPurgeable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined =>
@@ -206,7 +245,22 @@ const stagedSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => a
 const waitingSince = (table: typeof records | typeof stagedFiles | typeof deletions): SQL<string> =>
   sql<string>`coalesce(${table.sweepAttemptedAt}, ${table.createdAt})`;
 
-/** Records an object deletion owed for each staged object among `assets`, in the caller's transaction. */
+const appendEvent = async (tx: Db, event: KeyDownloadRecordEvent): Promise<void> => {
+  const parsed = keyDownloadRecordEventSchema.parse(event);
+  await tx.insert(recordEvents).values(parsed);
+};
+
+const eventOf = (
+  row: Pick<RecordRow, 'tenantId' | 'id' | 'apiKeyId'>,
+  kind: KeyDownloadRecordEvent['kind'],
+  attemptId: string | null,
+  reason: string | null,
+  at: string,
+): KeyDownloadRecordEvent => ({ tenantId: row.tenantId, recordId: row.id, apiKeyId: row.apiKeyId, kind, attemptId, reason, at });
+
+const leaseEnd = (attemptAt: string): string => new Date(Date.parse(attemptAt) + KEY_DOWNLOAD_FILE_LIMITS.completionDeadlineMs).toISOString();
+
+/** The debt is the key's whose key-files prefix holds the object, whoever removed the file, so that key's limits carry it. */
 export const oweKeyFileDeletions = async (
   tx: Db,
   tenantId: string,
@@ -245,6 +299,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         const cap = capReached(await usageOf(tx, tenantId, parsed.apiKeyId, now), parsed);
         if (cap !== null) return { kind: 'cap_exceeded', cap };
         await tx.insert(records).values(recordValues(parsed));
+        await appendEvent(tx, eventOf(parsed, 'started', parsed.attemptId, parsed.kind, now));
         return { kind: 'reserved', record: parsed };
       }), { kind: 'busy' } as const);
     },
@@ -252,16 +307,27 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       const [row] = await tx.select().from(records)
         .where(and(recordOf(tenantId, uploadId), eq(records.apiKeyId, apiKeyId), eq(records.kind, 'upload'))).for('update');
       if (row === undefined) return { kind: 'not_found' };
+      const open = Date.parse(now) - Date.parse(row.createdAt) <= KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000;
+      const claim = async (reason: string | null): Promise<KeyDownloadClaim> => {
+        const [claimed] = await tx.update(records).set({ state: 'completing', attemptId, attemptAt: now })
+          .where(recordOf(tenantId, uploadId)).returning();
+        if (claimed === undefined) throw new Error('Upload record claim returned no row');
+        await appendEvent(tx, eventOf(row, 'claimed', attemptId, reason, now));
+        return { kind: 'claimed', record: parseRecord(claimed) };
+      };
       switch (row.state) {
-        case 'started': {
-          if (Date.parse(now) - Date.parse(row.createdAt) > KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000) return { kind: 'expired' };
-          const [claimed] = await tx.update(records).set({ state: 'completing', attemptId, attemptAt: now })
-            .where(recordOf(tenantId, uploadId)).returning();
-          if (claimed === undefined) throw new Error('Upload record claim returned no row');
-          return { kind: 'claimed', record: parseRecord(claimed) };
-        }
+        case 'started':
+          return open ? claim(null) : { kind: 'expired' };
         case 'completing':
-          return { kind: 'in_progress' };
+        case 'interrupted': {
+          if (row.attemptAt === null) throw new Error('A completing upload record has no attempt');
+          const until = leaseEnd(row.attemptAt);
+          if (now < until) {
+            const reclaimable = row.candidateKey !== null && Date.parse(until) - Date.parse(row.createdAt) <= KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000;
+            return { kind: row.state === 'completing' ? 'in_progress' : 'interrupted', until, reclaimable };
+          }
+          return open && row.candidateKey !== null ? claim('reclaimed') : { kind: 'closed' };
+        }
         case 'completed': {
           const [file] = await tx.select().from(stagedFiles).where(and(stagedOf(tenantId, row.fileId), eq(stagedFiles.apiKeyId, apiKeyId)));
           return { kind: 'completed', record: parseRecord(row), file: file === undefined ? null : parseStaged(file) };
@@ -270,7 +336,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         case 'settled':
           return { kind: 'closed' };
       }
-    }, { kind: 'in_progress' }),
+    }, { kind: 'busy' }),
     finishCompletion: (tenantId, uploadId, attemptId, file, now) => {
       const parsed = keyDownloadStagedFileSchema.parse(file);
       if (parsed.tenantId !== tenantId) throw new Error('A staged file belongs to another tenant');
@@ -278,6 +344,11 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
         if (row?.state !== 'completing' || row.attemptId !== attemptId || row.fileId !== parsed.id || row.stagedKey !== parsed.objectKey) {
           return { kind: 'lost' };
+        }
+        if (row.attemptAt === null || now >= leaseEnd(row.attemptAt)) {
+          await tx.update(records).set({ state: 'interrupted' }).where(recordOf(tenantId, uploadId));
+          await appendEvent(tx, eventOf(row, 'interrupted', attemptId, 'lease_expired', now));
+          return { kind: 'lease_expired' };
         }
         await tx.insert(stagedFiles).values({
           tenantId,
@@ -292,11 +363,20 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
           proposalId: null,
           createdAt: parsed.createdAt,
         });
-        await tx.update(records).set({ state: row.kind === 'copy' ? 'settled' : 'completed', completedAt: now, stagedKey: null })
-          .where(recordOf(tenantId, uploadId));
+        const state = row.kind === 'copy' ? 'settled' : 'completed';
+        await tx.update(records).set({ state, completedAt: now, stagedKey: null }).where(recordOf(tenantId, uploadId));
+        await appendEvent(tx, eventOf(row, 'completed', attemptId, null, now));
+        if (state === 'settled') await appendEvent(tx, eventOf(row, 'settled', attemptId, 'copied', now));
         return { kind: 'stored', file: parsed };
-      }, { kind: 'lost' });
+      }, { kind: 'busy' });
     },
+    interruptAttempt: (tenantId, uploadId, attemptId, reason, now) => locked(async (tx): Promise<KeyDownloadInterruption> => {
+      const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
+      if (row?.state !== 'completing' || row.attemptId !== attemptId || row.attemptAt === null) return { kind: 'kept' };
+      await tx.update(records).set({ state: 'interrupted' }).where(recordOf(tenantId, uploadId));
+      await appendEvent(tx, eventOf(row, 'interrupted', attemptId, reason, now));
+      return { kind: 'interrupted', until: leaseEnd(row.attemptAt) };
+    }, { kind: 'busy' }),
     releaseRecord: (tenantId, uploadId, selection, remove) => locked(async (tx): Promise<KeyDownloadObjectRemoval> => {
       const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
       if (row === undefined) return 'gone';
@@ -312,13 +392,24 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         destination !== null && !await objectOwned(tx, tenantId, destination) ? destination : null,
       ].filter((key): key is string => key !== null);
       const removed = objects.length === 0 || await remove(objects);
-      const state = attempt && row.state === 'completing' ? 'failed' : row.state;
+      const failing = attempt && row.state === 'completing';
+      const now = attempt ? selection.now : selection.cutoffs.now;
       if (!removed) {
-        await tx.update(records).set(attempt ? { state } : { sweepAttemptedAt: selection.cutoffs.now }).where(recordOf(tenantId, uploadId));
+        if (failing) {
+          await tx.update(records).set({ state: 'failed' }).where(recordOf(tenantId, uploadId));
+          await appendEvent(tx, eventOf(row, 'failed', selection.attemptId, selection.reason, now));
+        } else if (!attempt) {
+          await tx.update(records).set({ sweepAttemptedAt: now }).where(recordOf(tenantId, uploadId));
+        }
         return 'failed';
       }
-      await tx.update(records).set(attempt ? { state, stagedKey: null } : { state: 'settled', candidateKey: null, stagedKey: null })
-        .where(recordOf(tenantId, uploadId));
+      if (attempt) {
+        await tx.update(records).set({ state: failing ? 'failed' : row.state, stagedKey: null }).where(recordOf(tenantId, uploadId));
+        if (failing) await appendEvent(tx, eventOf(row, 'failed', selection.attemptId, selection.reason, now));
+        return 'removed';
+      }
+      await tx.update(records).set({ state: 'settled', candidateKey: null, stagedKey: null }).where(recordOf(tenantId, uploadId));
+      await appendEvent(tx, eventOf(row, 'settled', row.attemptId, 'swept', now));
       return 'removed';
     }, 'busy'),
     findStaged: async (tenantId, apiKeyId, id) => {
@@ -328,6 +419,9 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
     listStaged: async (tenantId, apiKeyId) => (await db.select().from(stagedFiles)
       .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, apiKeyId)))
       .orderBy(asc(stagedFiles.createdAt), asc(stagedFiles.id))).map(parseStaged),
+    listRecordEvents: async (tenantId, recordId) => (await db.select().from(recordEvents)
+      .where(and(eq(recordEvents.tenantId, tenantId), eq(recordEvents.recordId, recordId)))
+      .orderBy(asc(recordEvents.sequence))).map(parseEvent),
     discard: (tenantId, apiKeyId, id, now) => db.transaction(async (tx) => {
       const [row] = await tx.select().from(stagedFiles).where(and(stagedOf(tenantId, id), eq(stagedFiles.apiKeyId, apiKeyId))).for('update');
       if (row === undefined) return null;
@@ -371,35 +465,52 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         .where(stagedSweepable(cutoffs)).groupBy(stagedFiles.tenantId));
       collect(await db.select({ tenantId: deletions.tenantId, waiting: sql<string | null>`min(${waitingSince(deletions)})` }).from(deletions)
         .groupBy(deletions.tenantId));
+      collect(await db.select({ tenantId: recordEvents.tenantId, waiting: sql<string | null>`min(${recordEvents.at})` }).from(recordEvents)
+        .where(lt(recordEvents.at, cutoffs.eventsBefore)).groupBy(recordEvents.tenantId));
       return [...waiting.entries()]
         .sort(([leftId, left], [rightId, right]) => left < right ? -1 : left > right ? 1 : leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
         .slice(0, limit)
         .map(([tenantId]) => tenantId);
     },
-    listToSweep: async (tenantId, cutoffs, limit) => ({
-      records: (await db.select().from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
-        .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit)).map(parseRecord),
-      stagedFiles: (await db.select().from(stagedFiles).where(and(eq(stagedFiles.tenantId, tenantId), stagedSweepable(cutoffs)))
-        .orderBy(asc(waitingSince(stagedFiles)), asc(stagedFiles.id)).limit(limit)).map(parseStaged),
-      deletions: (await db.select().from(deletions).where(eq(deletions.tenantId, tenantId))
-        .orderBy(asc(waitingSince(deletions)), asc(deletions.objectKey)).limit(limit)).map(parseDeletion),
-    }),
+    listToSweep: async (tenantId, cutoffs, limit) => {
+      const recordRows = await db.select({ row: records, waiting: waitingSince(records) }).from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
+        .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit);
+      const stagedRows = await db.select({ row: stagedFiles, waiting: waitingSince(stagedFiles) }).from(stagedFiles)
+        .where(and(eq(stagedFiles.tenantId, tenantId), stagedSweepable(cutoffs)))
+        .orderBy(asc(waitingSince(stagedFiles)), asc(stagedFiles.id)).limit(limit);
+      const deletionRows = await db.select({ row: deletions, waiting: waitingSince(deletions) }).from(deletions).where(eq(deletions.tenantId, tenantId))
+        .orderBy(asc(waitingSince(deletions)), asc(deletions.objectKey)).limit(limit);
+      const queue: Array<{ waiting: string; tie: string; row: KeyDownloadSweepRow }> = [
+        ...recordRows.map(({ row, waiting }) => ({ waiting, tie: `record:${row.id}`, row: { kind: 'record' as const, record: parseRecord(row) } })),
+        ...stagedRows.map(({ row, waiting }) => ({ waiting, tie: `staged:${row.id}`, row: { kind: 'staged' as const, file: parseStaged(row) } })),
+        ...deletionRows.map(({ row, waiting }) => ({ waiting, tie: `deletion:${row.objectKey}`, row: { kind: 'deletion' as const, deletion: parseDeletion(row) } })),
+      ];
+      queue.sort((left, right) => left.waiting < right.waiting ? -1 : left.waiting > right.waiting ? 1 : left.tie < right.tie ? -1 : left.tie > right.tie ? 1 : 0);
+      return { rows: queue.map(({ row }) => row) };
+    },
     markAttempted: async (tenantId, batch, now) => {
-      if (batch.records.length > 0) {
-        await db.update(records).set({ sweepAttemptedAt: now })
-          .where(and(eq(records.tenantId, tenantId), inArray(records.id, batch.records.map((row) => row.id))));
+      const ids = (kind: KeyDownloadSweepRow['kind']) => batch.rows.flatMap((row) => row.kind !== kind ? []
+        : [row.kind === 'record' ? row.record.id : row.kind === 'staged' ? row.file.id : row.deletion.objectKey]);
+      const recordIds = ids('record');
+      const stagedIds = ids('staged');
+      const objectKeys = ids('deletion');
+      if (recordIds.length > 0) {
+        await db.update(records).set({ sweepAttemptedAt: now }).where(and(eq(records.tenantId, tenantId), inArray(records.id, recordIds)));
       }
-      if (batch.stagedFiles.length > 0) {
-        await db.update(stagedFiles).set({ sweepAttemptedAt: now })
-          .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, batch.stagedFiles.map((row) => row.id))));
+      if (stagedIds.length > 0) {
+        await db.update(stagedFiles).set({ sweepAttemptedAt: now }).where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, stagedIds)));
       }
-      if (batch.deletions.length > 0) {
-        await db.update(deletions).set({ sweepAttemptedAt: now })
-          .where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, batch.deletions.map((row) => row.objectKey))));
+      if (objectKeys.length > 0) {
+        await db.update(deletions).set({ sweepAttemptedAt: now }).where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, objectKeys)));
       }
     },
-    purgeSettled: async (tenantId, cutoffs) =>
-      (await db.delete(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs))).returning({ id: records.id })).length,
+    purgeSettled: (tenantId, cutoffs) => db.transaction(async (tx) => {
+      const purged = await tx.delete(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs)))
+        .returning({ tenantId: records.tenantId, id: records.id, apiKeyId: records.apiKeyId });
+      for (const row of purged) await appendEvent(tx, eventOf(row, 'purged', null, 'retention', cutoffs.now));
+      await tx.delete(recordEvents).where(and(eq(recordEvents.tenantId, tenantId), lt(recordEvents.at, cutoffs.eventsBefore)));
+      return purged.length;
+    }),
   };
 };
 
@@ -426,7 +537,12 @@ export const createKeyDownloadAttachRepository = (executor: Db): KeyDownloadAtta
     if (product.type !== 'digital_download') return { kind: 'not_digital' };
     const [staged] = await tx.select().from(stagedFiles)
       .where(and(stagedOf(tenantId, input.stagedFileId), eq(stagedFiles.apiKeyId, input.apiKeyId))).for('update');
-    if (staged === undefined) return { kind: 'staged_not_found' };
+    if (staged === undefined) {
+      const [applied] = await tx.select().from(productDownloadAssets)
+        .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.stagedFileId)));
+      const ownPrefix = keyDownloadStagedKey(tenantId, input.apiKeyId, input.stagedFileId, '');
+      return applied?.storageKey.startsWith(ownPrefix) === true ? { kind: 'attached', asset: parseAsset(applied) } : { kind: 'staged_not_found' };
+    }
     const [files] = await tx.select({ files: count() }).from(productDownloadAssets).where(assetsOfProduct(tenantId, input.productId));
     if ((files?.files ?? 0) >= KEY_DOWNLOAD_FILE_LIMITS.filesPerProduct) return { kind: 'cap_exceeded', cap: 'product_files' };
     let lineageId = staged.id;

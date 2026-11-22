@@ -1,6 +1,7 @@
 import type {
   KeyDownloadFileCap,
   KeyDownloadPendingDeletion,
+  KeyDownloadRecordEvent,
   KeyDownloadStagedFile,
   KeyDownloadUploadRecord,
   ProductDownloadAsset,
@@ -11,25 +12,38 @@ export type KeyDownloadReservation =
   | { kind: 'cap_exceeded'; cap: KeyDownloadFileCap }
   | { kind: 'busy' };
 
+/**
+ * `until` is when the attempt holding the record loses its lease, so that a new claim may take the record over;
+ * `reclaimable` says whether the upload is still open then.
+ */
 export type KeyDownloadClaim =
   | { kind: 'claimed'; record: KeyDownloadUploadRecord }
   | { kind: 'completed'; record: KeyDownloadUploadRecord; file: KeyDownloadStagedFile | null }
-  | { kind: 'in_progress' }
+  | { kind: 'in_progress'; until: string; reclaimable: boolean }
+  | { kind: 'interrupted'; until: string; reclaimable: boolean }
   | { kind: 'expired' }
   | { kind: 'closed' }
-  | { kind: 'not_found' };
+  | { kind: 'not_found' }
+  | { kind: 'busy' };
 
 export type KeyDownloadCompletion =
   | { kind: 'stored'; file: KeyDownloadStagedFile }
-  | { kind: 'lost' };
+  | { kind: 'lost' }
+  | { kind: 'lease_expired' }
+  | { kind: 'busy' };
+
+export type KeyDownloadInterruption = { kind: 'interrupted'; until: string } | { kind: 'kept' } | { kind: 'busy' };
 
 /** What a locked removal step found: the objects it may delete, or why it deletes nothing. */
 export type KeyDownloadObjectRemoval = 'removed' | 'failed' | 'gone' | 'kept' | 'busy';
 
+export type KeyDownloadSweepRow =
+  | { kind: 'record'; record: KeyDownloadUploadRecord }
+  | { kind: 'staged'; file: KeyDownloadStagedFile }
+  | { kind: 'deletion'; deletion: KeyDownloadPendingDeletion };
+
 interface KeyDownloadSweepBatch {
-  records: KeyDownloadUploadRecord[];
-  stagedFiles: KeyDownloadStagedFile[];
-  deletions: KeyDownloadPendingDeletion[];
+  rows: KeyDownloadSweepRow[];
 }
 
 export interface KeyDownloadSweepCutoffs {
@@ -38,6 +52,7 @@ export interface KeyDownloadSweepCutoffs {
   attemptsStartedBefore: string;
   stagedCreatedBefore: string;
   settledStartedBefore: string;
+  eventsBefore: string;
 }
 
 /**
@@ -46,32 +61,42 @@ export interface KeyDownloadSweepCutoffs {
  */
 export interface KeyDownloadFileRepository {
   /**
-   * Under the workspace's staging lock and then the key's, counts everything the limits count (open records, staged
-   * files, owed deletions, and the records started inside each window) and inserts the record only when it fits.
+   * Under the workspace's staging lock and then the key's, counts in one statement everything the limits count (records
+   * that still own an object, staged files, owed deletions, and the records started inside each window) and inserts the
+   * record only when it fits.
    */
   reserve(tenantId: string, record: KeyDownloadUploadRecord, now: string): Promise<KeyDownloadReservation>;
   /**
    * In a short transaction of its own, holding the record row: moves a started upload of the key to completing under
-   * `attemptId`, so exactly one request performs its storage requests.
+   * `attemptId`, so exactly one request performs its storage requests. A completing or interrupted upload is taken over
+   * the same way once its attempt's lease ended, while the upload is open and still owns its upload object.
    */
   claimCompletion(tenantId: string, apiKeyId: string, uploadId: string, attemptId: string, now: string): Promise<KeyDownloadClaim>;
   /**
-   * Holding the record row: when the record is still completing under `attemptId`, inserts the staged row, which takes
-   * ownership of the staged object, and closes the record in the same transaction; otherwise changes nothing.
+   * Holding the record row: when the record is still completing under `attemptId` within its lease, inserts the staged
+   * row, which takes ownership of the staged object, and closes the record in the same transaction. Past the lease it
+   * marks the record interrupted and keeps every object with it; for another attempt it changes nothing.
    */
   finishCompletion(tenantId: string, uploadId: string, attemptId: string, file: KeyDownloadStagedFile, now: string): Promise<KeyDownloadCompletion>;
   /**
    * Holding the record row until `remove` answered, deletes what the record still owns: its candidate, and its staged
    * destination only while no staged row and no product file row points at it. An `attempt` acts only for the attempt
-   * that claimed the record and marks a completing record failed; a `sweep` acts only on a record it still selects and
-   * settles it. A failed `remove` keeps the keys for the sweep.
+   * that claimed the record and marks a completing record failed with `reason`; a `sweep` acts only on a record it
+   * still selects and settles it. A failed `remove` keeps the keys for the sweep.
    */
   releaseRecord(
     tenantId: string,
     uploadId: string,
-    selection: { kind: 'attempt'; attemptId: string; destination: string } | { kind: 'sweep'; cutoffs: KeyDownloadSweepCutoffs },
+    selection: { kind: 'attempt'; attemptId: string; destination: string; reason: string; now: string } | { kind: 'sweep'; cutoffs: KeyDownloadSweepCutoffs },
     remove: (objectKeys: readonly string[]) => Promise<boolean>,
   ): Promise<KeyDownloadObjectRemoval>;
+  /**
+   * Holding the record row: an attempt whose storage outcome is unknown leaves the record interrupted, still owning its
+   * upload object and its destination at their declared size, so neither is deleted while a storage write may land.
+   */
+  interruptAttempt(tenantId: string, uploadId: string, attemptId: string, reason: string, now: string): Promise<KeyDownloadInterruption>;
+  /** The state changes of one record, oldest first, kept 30 days after each. */
+  listRecordEvents(tenantId: string, recordId: string): Promise<KeyDownloadRecordEvent[]>;
   findStaged(tenantId: string, apiKeyId: string, id: string): Promise<KeyDownloadStagedFile | null>;
   listStaged(tenantId: string, apiKeyId: string): Promise<KeyDownloadStagedFile[]>;
   /** Moves the key's staged file to the owed deletions in one transaction; null when the key has no such file. */
@@ -85,11 +110,14 @@ export interface KeyDownloadFileRepository {
   sweepStaged(tenantId: string, id: string, cutoffs: KeyDownloadSweepCutoffs, remove: () => Promise<boolean>): Promise<KeyDownloadObjectRemoval>;
   /** Workspaces with rows the sweep selects, the one waiting longest first, by the attempt time or else the creation time. */
   listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<string[]>;
-  /** The rows of one workspace the sweep selects, each kind ordered by its attempt time or else its creation time. */
+  /**
+   * The rows of one workspace the sweep selects, up to `limit` of each kind, in one queue ordered by the attempt time or
+   * else the creation time, longest waiting first.
+   */
   listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<KeyDownloadSweepBatch>;
   /** Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others. */
   markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string): Promise<void>;
-  /** Deletes settled records started before `settledStartedBefore`; they own no object. */
+  /** Deletes settled records started before `settledStartedBefore`, which own no object, and events older than `eventsBefore`. */
   purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs): Promise<number>;
 }
 
@@ -115,7 +143,8 @@ type KeyDownloadAssetRemoval =
 export interface KeyDownloadAttachRepository {
   /**
    * Inserts a ready file whose id is the staged file's id and whose object is the staged object, as a new file or as the
-   * next version of `replacesAssetId`, and deletes the staged row; only a staged file of `apiKeyId` is attached.
+   * next version of `replacesAssetId`, and deletes the staged row; only a staged file of `apiKeyId` is attached. A retry
+   * of an attach that already applied finds no staged row and answers the product file it made.
    */
   attach(tenantId: string, input: {
     productId: string;

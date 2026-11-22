@@ -21,9 +21,12 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
   completionDeadlineMs: 10 * MINUTE_MS,
   recordSweepAfterMs: 20 * MINUTE_MS,
   recordRetentionMs: DAY_MS,
+  recordEventRetentionMs: 30 * DAY_MS,
   stagedMaxAgeMs: 7 * DAY_MS,
   sweepTenantsPerRun: 50,
   sweepRowsPerTenant: 50,
+  sweepBudgetMs: 10_000,
+  sweepMinimumDeleteMs: 1_000,
   headBytes: 4096,
 } as const;
 
@@ -184,7 +187,7 @@ export const keyDownloadStagedFileSchema = z.object({
 
 export type KeyDownloadStagedFile = z.output<typeof keyDownloadStagedFileSchema>;
 
-const KEY_DOWNLOAD_RECORD_STATES = ['started', 'completing', 'completed', 'failed', 'settled'] as const;
+const KEY_DOWNLOAD_RECORD_STATES = ['started', 'completing', 'interrupted', 'completed', 'failed', 'settled'] as const;
 
 const keyDownloadRecordStateSchema = z.enum(KEY_DOWNLOAD_RECORD_STATES);
 
@@ -215,6 +218,23 @@ export const keyDownloadUploadRecordSchema = z.object({
 }).strict();
 
 export type KeyDownloadUploadRecord = z.output<typeof keyDownloadUploadRecordSchema>;
+
+const KEY_DOWNLOAD_RECORD_EVENT_KINDS = ['started', 'claimed', 'completed', 'failed', 'interrupted', 'settled', 'purged'] as const;
+
+export type KeyDownloadRecordEventKind = (typeof KEY_DOWNLOAD_RECORD_EVENT_KINDS)[number];
+
+/** One state change of an upload or copy record, appended in the transaction that made it and kept 30 days. */
+export const keyDownloadRecordEventSchema = z.object({
+  tenantId: z.string().min(1),
+  recordId: z.string().min(1),
+  apiKeyId: z.string().min(1),
+  kind: z.enum(KEY_DOWNLOAD_RECORD_EVENT_KINDS),
+  attemptId: z.string().min(1).nullable(),
+  reason: z.string().regex(/^[a-z_]{1,64}$/).nullable(),
+  at: isoMilliseconds,
+}).strict();
+
+export type KeyDownloadRecordEvent = z.output<typeof keyDownloadRecordEventSchema>;
 
 export const keyDownloadPendingDeletionSchema = z.object({
   tenantId: z.string().min(1),
@@ -290,6 +310,18 @@ export const keyDownloadTypeMismatch = (contentType: KeyDownloadContentType): Ap
     formErrors: [],
     fieldErrors: { contentType: ['Must match the first bytes of the file'] },
   });
+
+const definiteFailureSchema = z.object({ definite: z.literal(true) });
+
+/** A storage answer that settles the request: the provider refused it, or the object it read cannot be the declared one. */
+export const storageDefiniteFailure = (message: string): AppError => appError('integration_unavailable', message, { definite: true });
+
+/** A missing object or a definite answer; any other storage failure leaves the outcome unknown, so a copy may still land. */
+export const storageFailureIsDefinite = (error: AppError): boolean =>
+  error.code === 'not_found' || definiteFailureSchema.safeParse(error.details).success;
+
+/** Every failure of a copy after its source was found answers this, so a key learns nothing about the stored bytes. */
+export const keyDownloadCopyRefused = (): AppError => validation('This file cannot be copied by a key; nothing was staged');
 
 export const keyDownloadFilesBusy = (): AppError =>
   appError('unavailable', 'Staged files of this workspace are busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });

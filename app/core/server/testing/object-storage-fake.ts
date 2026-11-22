@@ -1,4 +1,4 @@
-import { err, integrationUnavailable, notFound, ok, validation } from '#core/domain/index.js';
+import { err, integrationUnavailable, notFound, ok, storageDefiniteFailure, validation } from '#core/domain/index.js';
 
 import type { StorageProvider } from '../ports.js';
 import { createMemoryStorageList } from './storage-list.js';
@@ -102,7 +102,7 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         if (fake.failReads(key)) return unreachable(key);
         const found = objects.get(key);
         if (found === undefined) return missing(key);
-        if (found.bytes.byteLength > maxBytes) return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        if (found.bytes.byteLength > maxBytes) return err(storageDefiniteFailure('Object is empty or exceeds the byte ceiling'));
         return ok({ sha256: digest(found.bytes), sizeBytes: found.bytes.byteLength, head: found.bytes.slice(0, headBytes) });
       },
       presignPut: (input) => {

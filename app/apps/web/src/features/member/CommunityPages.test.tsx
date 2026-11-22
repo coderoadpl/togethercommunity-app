@@ -246,7 +246,27 @@ const countedAnonMe = (counter: { calls: number }) =>
     );
   });
 
-const okOffer = () =>
+const offerProduct = (id: string, title: string) => ({
+  id,
+  type: 'course',
+  slug: id,
+  title,
+  description: '',
+  coverUrl: null,
+  priceCents: 19_900,
+  currency: 'PLN',
+  prices: [{ id: `price-${id}`, kind: 'one_time', interval: null, amountCents: 19_900, currency: 'PLN' }],
+});
+
+const okOffer = ({
+  products = [],
+  salesLinks = [],
+  supportUrl = null,
+}: {
+  products?: ReturnType<typeof offerProduct>[];
+  salesLinks?: { id: string; slug: string; heading: string; description: string; totalCents: number; currency: string }[];
+  supportUrl?: string | null;
+} = {}) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
@@ -256,9 +276,12 @@ const okOffer = () =>
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
           socialLinks: [],
+          support: { url: supportUrl },
         },
         contentVersion: 1,
-        products: [],
+        products,
+        salesLinks,
+        previewLessons: [],
       },
     }),
   );
@@ -1039,13 +1062,49 @@ describe('community pages', () => {
     );
   });
 
-  it('points an anonymous visitor at checkout for a product-gated space', async () => {
-    server.use(anonMe(), okPublicNavigation());
+  it('shows a visitor an access card for a product-gated space with the product, price and checkout', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        lockedSpaces: [{
+          id: 'gated',
+          slug: 'premium',
+          name: 'Premium',
+          description: 'Weekly reviews for students.',
+          productIds: ['p1'],
+          products: [{ id: 'p1', title: 'Premium access' }],
+        }],
+      })),
+      okOffer({ products: [offerProduct('p1', 'Premium access')] }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
+
+    const card = await screen.findByTestId('anon-locked-space');
+    expect(screen.getAllByText('Premium')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Premium' })).toBeInTheDocument();
+    expect(within(card).getByTestId('anon-locked-space-description')).toHaveTextContent('Weekly reviews for students.');
+    expect(card).toHaveTextContent(en.anon.lockedSpaceBody);
+    expect(card).not.toHaveTextContent(en.shell.lockedSpaceHint);
+    expect(within(card).getByTestId('anon-locked-space-product')).toHaveTextContent(
+      en.community.productGatedFor({ product: 'Premium access' }),
+    );
+    expect(await within(card).findByTestId('anon-locked-space-price')).toHaveTextContent('199');
+    const unlock = within(card).getByTestId('anon-space-unlock');
+    expect(unlock).toHaveAttribute('href', '/checkout/p1');
+    expect(unlock).toHaveTextContent(en.anon.unlockCta);
+    expect(screen.queryByText(en.community.spaceNotFoundTitle)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
+  });
+
+  it('leaves the price out of the access card when the offer does not list the product', async () => {
+    server.use(anonMe(), okPublicNavigation(), okOffer());
 
     await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
 
     expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
-    expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-locked-space-price')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-locked-space-description')).not.toBeInTheDocument();
   });
 
   it('renders an anonymous thread read-only with its replies', async () => {

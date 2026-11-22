@@ -1,16 +1,69 @@
-import { Button, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+
+import type { PublicNavigation } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { PostBody, QuietNotice } from '../../theme.js';
+import { EmberCtaLink, PostBody, QuietNotice } from '../../theme.js';
 import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
 import { PublicFeedList } from './PublicFeed.js';
 import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
+import { LockClosed } from './tree-icons.js';
+import { usePublicOfferPrice } from './visitor-actions.js';
+
+type LockedSpace = PublicNavigation['lockedSpaces'][number];
+
+const LockedSpaceAccess = ({ locked }: { locked: LockedSpace }) => {
+  const t = useTranslations();
+  const priceFor = usePublicOfferPrice();
+  const productId = locked.productIds[0];
+  const product = locked.products?.find((candidate) => candidate.id === productId) ?? locked.products?.[0];
+  const price = priceFor(productId);
+  return (
+    <Paper variant="outlined" sx={{ p: '1.5rem', maxWidth: '40rem' }} data-testid="anon-locked-space">
+      <Stack useFlexGap sx={{ rowGap: '1rem', alignItems: 'flex-start' }}>
+        {locked.description === null ? null : (
+          <PostBody variant="body1" component="p" data-testid="anon-locked-space-description">
+            {locked.description}
+          </PostBody>
+        )}
+        <Typography variant="body2" color="text.secondary">
+          {t.anon.lockedSpaceBody}
+        </Typography>
+        {product === undefined ? null : (
+          <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.5rem' }}>
+            <LockClosed fontSize="small" />
+            <Typography variant="body2" component="p" data-testid="anon-locked-space-product">
+              {t.community.productGatedFor({ product: product.title })}
+            </Typography>
+          </Stack>
+        )}
+        {price === null ? null : (
+          <Typography variant="h2" component="p" data-testid="anon-locked-space-price">
+            {price}
+          </Typography>
+        )}
+        {productId === undefined ? null : (
+          <Box>
+            <EmberCtaLink
+              component={Link}
+              to={`/checkout/${encodeURIComponent(productId)}`}
+              variant="contained"
+              data-testid="anon-space-unlock"
+            >
+              {t.anon.unlockCta}
+            </EmberCtaLink>
+          </Box>
+        )}
+      </Stack>
+    </Paper>
+  );
+};
 
 export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
@@ -48,29 +101,30 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
     (candidate) => candidate.id === spaceId,
   );
 
-  if (space === undefined) {
-    const productId = locked?.productIds[0];
+  if (space === undefined && locked !== undefined) {
     return (
       <MemberSurface
-        title={locked?.name ?? t.community.spaceNotFoundTitle}
+        title={locked.name}
+        eyebrow={t.anon.eyebrow}
+        width="wide"
+        breadcrumbs={anonCrumbs(t, { label: locked.name })}
+      >
+        <LockedSpaceAccess locked={locked} />
+      </MemberSurface>
+    );
+  }
+
+  if (space === undefined) {
+    return (
+      <MemberSurface
+        title={t.community.spaceNotFoundTitle}
         eyebrow={t.anon.eyebrow}
         width="wide"
         state={{
           kind: 'not-found',
-          title: locked?.name ?? t.community.spaceNotFoundTitle,
-          body: locked === undefined ? t.community.spaceNotFoundBody : t.shell.lockedSpaceHint,
-          action: productId === undefined
-            ? <MuiLink component={Link} to={anonHomePath()}>{t.shell.start}</MuiLink>
-            : (
-                <Button
-                  component={Link}
-                  to={`/checkout/${encodeURIComponent(productId)}`}
-                  variant="contained"
-                  data-testid="anon-space-unlock"
-                >
-                  {t.anon.unlockCta}
-                </Button>
-              ),
+          title: t.community.spaceNotFoundTitle,
+          body: t.community.spaceNotFoundBody,
+          action: <MuiLink component={Link} to={anonHomePath()}>{t.shell.start}</MuiLink>,
         }}
       />
     );

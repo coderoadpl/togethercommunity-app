@@ -2337,6 +2337,7 @@ export const en: Messages = {
     emptyTitle: 'This community has no public content',
     emptyBody: 'The creator has not opened any space or course to visitors.',
     courseNotFoundBody: 'This course does not exist or is not open to visitors.',
+    lockedSpaceBody: 'Posts in this space are for buyers. Unlock access to read them and join the conversation.',
   },
   search: {
     title: 'Search',

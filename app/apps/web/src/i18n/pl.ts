@@ -2358,6 +2358,7 @@ export const pl: Messages = {
     emptyTitle: 'Ta społeczność nie ma treści publicznych',
     emptyBody: 'Twórca nie udostępnił gościom żadnej przestrzeni ani kursu.',
     courseNotFoundBody: 'Tego kursu nie ma albo nie jest dostępny dla gości.',
+    lockedSpaceBody: 'Wpisy w tej przestrzeni są dla kupujących. Odblokuj dostęp, aby je czytać i dołączyć do rozmowy.',
   },
   search: {
     title: 'Szukaj',

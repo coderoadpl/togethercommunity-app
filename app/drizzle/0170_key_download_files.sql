@@ -30,7 +30,7 @@ CREATE TABLE "change_proposal_download_uploads" (
   "id" text NOT NULL,
   "api_key_id" text NOT NULL,
   "kind" text NOT NULL CONSTRAINT "change_proposal_download_uploads_kind_check" CHECK ("kind" IN ('upload', 'copy')),
-  "state" text NOT NULL CONSTRAINT "change_proposal_download_uploads_state_check" CHECK ("state" IN ('started', 'completing', 'completed', 'failed', 'settled')),
+  "state" text NOT NULL CONSTRAINT "change_proposal_download_uploads_state_check" CHECK ("state" IN ('started', 'completing', 'interrupted', 'completed', 'failed', 'settled')),
   "file_id" text NOT NULL,
   "file_name" text NOT NULL CONSTRAINT "change_proposal_download_uploads_file_name_check" CHECK (char_length("file_name") BETWEEN 1 AND 255),
   "content_type" text NOT NULL CONSTRAINT "change_proposal_download_uploads_content_type_check" CHECK ("content_type" IN ('application/pdf', 'application/epub+zip', 'application/zip', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'image/png', 'image/jpeg')),
@@ -69,3 +69,25 @@ CREATE TABLE "change_proposal_download_deletions" (
 CREATE INDEX "change_proposal_download_deletions_created_idx" ON "change_proposal_download_deletions" ("created_at");
 --> statement-breakpoint
 ALTER TABLE "product_download_assets" ADD COLUMN "sha256" text;
+--> statement-breakpoint
+CREATE TABLE "change_proposal_download_upload_events" (
+  "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "sequence" bigserial NOT NULL,
+  "record_id" text NOT NULL,
+  "api_key_id" text NOT NULL,
+  "kind" text NOT NULL CONSTRAINT "change_proposal_download_upload_events_kind_check" CHECK ("kind" IN ('started', 'claimed', 'completed', 'failed', 'interrupted', 'settled', 'purged')),
+  "attempt_id" text,
+  "reason" text CONSTRAINT "change_proposal_download_upload_events_reason_check" CHECK ("reason" IS NULL OR "reason" ~ '^[a-z_]{1,64}$'),
+  "at" text NOT NULL CONSTRAINT "change_proposal_download_upload_events_at_check" CHECK ("at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  CONSTRAINT "change_proposal_download_upload_events_pkey" PRIMARY KEY ("tenant_id", "sequence")
+);
+--> statement-breakpoint
+CREATE INDEX "change_proposal_download_upload_events_record_idx" ON "change_proposal_download_upload_events" ("tenant_id", "record_id", "sequence");
+--> statement-breakpoint
+CREATE INDEX "change_proposal_download_upload_events_at_idx" ON "change_proposal_download_upload_events" ("tenant_id", "at");
+--> statement-breakpoint
+ALTER TABLE "change_proposal_images" ADD COLUMN "sweep_attempted_at" text;
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "sweep_attempted_at" text;
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_publications" ADD COLUMN "sweep_attempted_at" text;

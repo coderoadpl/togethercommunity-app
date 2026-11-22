@@ -1,6 +1,6 @@
 {
-  "hash": "a38eb581e78ebfa86875890e94ac1ff8438f7c08ae95e324166ef9fca070894d",
-  "shortId": "a38eb581e78e",
+  "hash": "20231666d38886989a50edad7233639c6aa5dcda9b0767c51c77a72191b834c7",
+  "shortId": "20231666d388",
   "schema": {
     "constraints": [
       {
@@ -149,6 +149,11 @@
         "table": "shop_management_keys"
       },
       {
+        "definition": "CHECK (((reason IS NULL) OR (reason ~ '^[a-z_]{1,64}$'::text)))",
+        "name": "change_proposal_download_upload_events_reason_check",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
         "definition": "CHECK (((released_at IS NULL) OR (released_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
         "name": "change_proposal_images_released_at_check",
         "table": "change_proposal_images"
@@ -222,6 +227,11 @@
         "definition": "CHECK ((amount_cents > 0))",
         "name": "order_refund_jobs_amount_check",
         "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_download_upload_events_at_check",
+        "table": "change_proposal_download_upload_events"
       },
       {
         "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
@@ -429,6 +439,11 @@
         "table": "change_proposal_events"
       },
       {
+        "definition": "CHECK ((kind = ANY (ARRAY['started'::text, 'claimed'::text, 'completed'::text, 'failed'::text, 'interrupted'::text, 'settled'::text, 'purged'::text])))",
+        "name": "change_proposal_download_upload_events_kind_check",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
         "definition": "CHECK ((kind = ANY (ARRAY['upload'::text, 'copy'::text])))",
         "name": "change_proposal_download_uploads_kind_check",
         "table": "change_proposal_download_uploads"
@@ -629,7 +644,7 @@
         "table": "change_proposal_image_publications"
       },
       {
-        "definition": "CHECK ((state = ANY (ARRAY['started'::text, 'completing'::text, 'completed'::text, 'failed'::text, 'settled'::text])))",
+        "definition": "CHECK ((state = ANY (ARRAY['started'::text, 'completing'::text, 'interrupted'::text, 'completed'::text, 'failed'::text, 'settled'::text])))",
         "name": "change_proposal_download_uploads_state_check",
         "table": "change_proposal_download_uploads"
       },
@@ -1042,6 +1057,11 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "change_proposal_download_files_tenant_id_fkey",
         "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_download_upload_events_tenant_id_fkey",
+        "table": "change_proposal_download_upload_events"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -2609,6 +2629,11 @@
         "table": "sales_link_events"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, sequence)",
+        "name": "change_proposal_download_upload_events_pkey",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, snapshot_id, contact_id)",
         "name": "marketing_campaign_audience_contacts_tenant_id_snapshot_id_cont",
         "table": "marketing_campaign_audience_contacts"
@@ -2901,6 +2926,16 @@
         "definition": "CREATE INDEX change_proposal_download_files_proposal_idx ON change_proposal_download_files USING btree (tenant_id, proposal_id)",
         "name": "change_proposal_download_files_proposal_idx",
         "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_upload_events_at_idx ON change_proposal_download_upload_events USING btree (tenant_id, at)",
+        "name": "change_proposal_download_upload_events_at_idx",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_upload_events_record_idx ON change_proposal_download_upload_events USING btree (tenant_id, record_id, sequence)",
+        "name": "change_proposal_download_upload_events_record_idx",
+        "table": "change_proposal_download_upload_events"
       },
       {
         "definition": "CREATE INDEX change_proposal_download_uploads_created_idx ON change_proposal_download_uploads USING btree (created_at)",
@@ -4009,6 +4044,15 @@
       }
     ],
     "sequences": [
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "change_proposal_download_upload_events_sequence_seq",
+        "start": "1"
+      },
       {
         "cycle": false,
         "dataType": "bigint",
@@ -9547,6 +9591,75 @@
       {
         "columns": [
           {
+            "default": "nextval('change_proposal_download_upload_events_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempt_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "record_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_download_upload_events"
+      },
+      {
+        "columns": [
+          {
             "default": "nextval('coupon_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -12062,6 +12175,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "tenant_id",
             "notNull": true,
             "type": "text"
@@ -12146,6 +12267,14 @@
             "identity": "",
             "name": "object_key",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -12574,6 +12703,14 @@
             "identity": "",
             "name": "started_at",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
             "type": "text"
           },
           {

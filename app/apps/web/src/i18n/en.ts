@@ -3001,7 +3001,8 @@ export const en: Messages = {
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email password link to set one. Magic-link sign-in keeps working.',
-    forgotPasswordEmailLink: 'Forgot your current password? Email me a reset link',
+    forgotPasswordPrompt: 'Forgot your current password?',
+    forgotPasswordEmailLink: 'Email me a reset link',
     resetSending: 'Sending…',
     resetSent: 'We sent you an email with a link to set your password. Check your inbox.',
     billingHeading: 'Payments',

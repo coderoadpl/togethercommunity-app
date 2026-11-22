@@ -2644,6 +2644,7 @@ export interface Messages {
     passwordStatusUnset: string;
     passwordHeading: string;
     passwordIntro: string;
+    forgotPasswordPrompt: string;
     forgotPasswordEmailLink: string;
     resetSending: string;
     resetSent: string;

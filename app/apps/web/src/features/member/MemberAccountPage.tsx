@@ -413,9 +413,16 @@ export const MemberAccountPage = () => {
                   />
                   <Divider />
                 </> : null}
-                <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }} data-testid="account-reset-password-row">
+                  {me.data.hasPassword ? (
+                    <Typography variant="caption" color="text.secondary" id="account-forgot-password-prompt" data-testid="account-forgot-password-prompt">
+                      {t.account.forgotPasswordPrompt}
+                    </Typography>
+                  ) : null}
                   <Button
                     variant={me.data.hasPassword ? 'text' : 'contained'}
+                    size={me.data.hasPassword ? 'small' : 'medium'}
+                    aria-describedby={me.data.hasPassword ? 'account-forgot-password-prompt' : undefined}
                     data-testid="account-reset-password"
                     disabled={requestPasswordLink.isPending}
                     onClick={() => {
@@ -425,13 +432,13 @@ export const MemberAccountPage = () => {
                   >
                     {requestPasswordLink.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.security.setOrResetPassword}
                   </Button>
-                  <AccountHelp title={t.account.passwordLinkHelp}>
-                    <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
-                    <AccountWrappingText variant="body2">{email}</AccountWrappingText>
-                    <Typography variant="body2">{t.account.passwordIntro}</Typography>
-                  </AccountHelp>
                 </Stack>
                 {passwordLinkFromCard && requestPasswordLink.error ? <Alert severity="error" data-testid="account-reset-password-error">{localizeError(requestPasswordLink.error, t)}</Alert> : null}
+                <AccountHelp title={t.account.passwordLinkHelp}>
+                  <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
+                  <AccountWrappingText variant="body2">{email}</AccountWrappingText>
+                  <Typography variant="body2">{t.account.passwordIntro}</Typography>
+                </AccountHelp>
             </SectionCard></Box>}
                 sessionsCard={<ActiveSessions
                 Card={SectionCard}

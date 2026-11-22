@@ -1112,6 +1112,10 @@ describe('MemberAccountPage', () => {
       revokeOtherSessions: true,
     });
     expect(screen.getByTestId('account-reset-password')).toHaveTextContent(en.account.forgotPasswordEmailLink);
+    expect(screen.getByTestId('account-forgot-password-prompt')).toHaveTextContent(en.account.forgotPasswordPrompt);
+    expect(screen.getByTestId('account-reset-password')).toHaveAccessibleDescription(en.account.forgotPasswordPrompt);
+    expect(within(screen.getByTestId('account-reset-password-row')).queryByText(en.account.passwordLinkHelp)).not.toBeInTheDocument();
+    expect(screen.getByText(en.account.passwordLinkHelp)).toBeInTheDocument();
     expect(screen.getByTestId('change-password-open')).toHaveClass('MuiButton-contained');
     expect(screen.getByTestId('account-reset-password')).toHaveClass('MuiButton-text');
   });

@@ -3055,7 +3055,8 @@ export const pl: Messages = {
     passwordHeading: 'Hasło',
     passwordIntro:
       'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem. Logowanie magicznym linkiem nadal będzie działać.',
-    forgotPasswordEmailLink: 'Nie pamiętasz obecnego hasła? Wyślij link do resetu na e-mail',
+    forgotPasswordPrompt: 'Nie pamiętasz obecnego hasła?',
+    forgotPasswordEmailLink: 'Wyślij mi link do zmiany hasła',
     resetSending: 'Wysyłanie…',
     resetSent: 'Wysłaliśmy e-mail z linkiem do ustawienia hasła. Sprawdź swoją skrzynkę.',
     billingHeading: 'Płatności',

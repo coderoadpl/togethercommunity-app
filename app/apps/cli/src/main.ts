@@ -646,6 +646,10 @@ const spaceReplyOptionsSchema = spacePostOptionsSchema.extend({
 const spaceIdOptionsSchema = z.object({
   space: z.string().min(1),
 });
+const spaceThreadOptionsSchema = z.object({
+  space: z.string().min(1),
+  post: z.string().min(1),
+});
 const positiveIntegerOptionSchema = z
   .string()
   .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
@@ -3195,6 +3199,24 @@ space
                   return `- ${item.authorDisplay}: ${item.body} (${item.id.slice(0, 8)}, ${item.replyCount} replies${reactions.length > 0 ? `, ${reactions}` : ''})`;
                 })
                 .join('\n'),
+      );
+    }),
+  );
+
+space
+  .command('thread')
+  .description('Show one space thread with its replies')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--post <rootPostId>')
+  .action(
+    withInput(z.tuple([spaceThreadOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.discussionThread({ contextKind: 'space', contextId: options.space, postId: options.post }),
+        ctx.json,
+        (data) =>
+          data.discussion.threads
+            .map((post) => `- ${post.authorDisplay}: ${post.body} (${post.id.slice(0, 8)}, ${post.replyCount} replies)`)
+            .join('\n'),
       );
     }),
   );

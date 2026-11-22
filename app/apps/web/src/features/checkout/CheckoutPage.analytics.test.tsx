@@ -57,6 +57,7 @@ afterEach(() => {
 });
 
 it.each(['/checkout/course-1', '/offer/bundle'])('leaves %s through a full document navigation when the sign-in button is clicked after loading a vendor', async (path) => {
+  server.use(http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'pending' } })));
   const returnPath = `${path}?status=success&session_id=cs_live_one`;
   window.history.replaceState(null, '', returnPath);
   const location = window.location;
@@ -72,6 +73,7 @@ it.each(['/checkout/course-1', '/offer/bundle'])('leaves %s through a full docum
 });
 
 it('leaves the hosted cart success return through a full document navigation when the sign-in button is clicked after loading a vendor', async () => {
+  server.use(http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'pending' } })));
   const returnPath = `${HOSTED_CART_PATH}?status=success&purchase_kind=one_time&session_id=cs_live_one`;
   window.history.replaceState(null, '', returnPath);
   const location = window.location;

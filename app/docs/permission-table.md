@@ -30,7 +30,7 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 144. Route rows: 537. Exported `Ctx` use-case rows: 402.
+Closed capability count: 145. Route rows: 537. Exported `Ctx` use-case rows: 405.
 
 ## Human-readable diff
 
@@ -939,6 +939,9 @@ no changes
 | `spaces.ts#markSpaceSeen` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
+| `staff-refunds.ts#previewStaffRefund` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
+| `staff-refunds.ts#createStaffRefund` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
+| `staff-refunds.ts#shipRefundedOrderAnyway` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
 | `stock.ts#getProductStock` | product:read | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |
 | `stock.ts#listProductStock` | product:read | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |
 | `stock.ts#enableProductStock` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |

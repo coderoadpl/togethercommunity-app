@@ -16,7 +16,7 @@ describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
     expect(inventory.routes).toHaveLength(537);
-    expect(inventory.useCases).toHaveLength(402);
+    expect(inventory.useCases).toHaveLength(405);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [

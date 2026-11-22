@@ -40,10 +40,8 @@ import type {
   StaffRefundDecision,
 } from '../ports.js';
 
-const authorizeRefund = (ctx: Ctx): Result<string, AppError> => {
-  if (ctx.machineActor !== undefined) return err(forbidden('order:refund is not permitted for a machine key'));
-  return authorizeTenant(ctx, 'order:refund');
-};
+const machineKeyRefusal = (ctx: Ctx): Result<never, AppError> | null =>
+  ctx.machineActor === undefined ? null : err(forbidden('order:refund is not permitted for a machine key'));
 
 type ProviderCommitted = { cents: number; source: 'provider' } | { cents: null; source: 'platform' };
 
@@ -91,7 +89,9 @@ export const previewStaffRefund = async (
   orderId: string,
   deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices'>,
 ): Promise<Result<StaffRefundPreview, AppError>> => {
-  const tenant = authorizeRefund(ctx);
+  const refusal = machineKeyRefusal(ctx);
+  if (refusal !== null) return refusal;
+  const tenant = authorizeTenant(ctx, 'order:refund');
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
@@ -193,7 +193,9 @@ export const createStaffRefund = async (
   input: unknown,
   deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'ids' | 'clock' | 'logger' | 'dispatchOrderRefunds'>,
 ): Promise<Result<{ refund: OrderStaffRefundView; created: boolean }, AppError>> => {
-  const tenant = authorizeRefund(ctx);
+  const refusal = machineKeyRefusal(ctx);
+  if (refusal !== null) return refusal;
+  const tenant = authorizeTenant(ctx, 'order:refund');
   if (!tenant.ok) return tenant;
   const parsed = createStaffRefundInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid refund request', parsed.error.flatten()));
@@ -229,7 +231,9 @@ export const shipRefundedOrderAnyway = async (
   orderId: string,
   deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds'>,
 ): Promise<Result<Order, AppError>> => {
-  const tenant = authorizeRefund(ctx);
+  const refusal = machineKeyRefusal(ctx);
+  if (refusal !== null) return refusal;
+  const tenant = authorizeTenant(ctx, 'order:refund');
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));

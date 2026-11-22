@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const CHECKOUT_RETURN_ORIGINS_MAX = 5;
+export const CHECKOUT_RETURN_PARAM = 'return';
 export const CHECKOUT_RETURN_URL_MAX_LENGTH = 2000;
 
 const ORIGIN_FORM = /^https:\/\/[^/?#\\@\s]+\/?$/iu;
@@ -60,6 +61,9 @@ export const resolveCheckoutReturnUrl = (value: string, allowedOrigins: readonly
   url.hash = '';
   return url.href.length > CHECKOUT_RETURN_URL_MAX_LENGTH ? null : url.href;
 };
+
+export const resolveHostedCheckoutReturnUrl = (value: string | null, allowedOrigins: readonly string[]): string | null =>
+  value !== null && /^https:\/\/[^/\\\s]/iu.test(value) ? resolveCheckoutReturnUrl(value, allowedOrigins) : null;
 
 export const checkoutReturnLink = (
   returnUrl: string,

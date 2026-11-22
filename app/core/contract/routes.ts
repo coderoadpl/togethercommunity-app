@@ -1,6 +1,6 @@
 import { tenantTeamMemberSchema, tenantTeamOrganizationSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { createShopManagementKeyInputSchema, shopManagementKeyEventSchema, shopManagementKeyPublicSchema } from '#core/domain/index.js';
-import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
+import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema, checkoutReturnOriginsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { ORGANIZATION_ROUTES } from './organizations.js';
@@ -503,6 +503,7 @@ export const publicPaymentConfigOutputSchema = z.object({
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
+  checkoutReturnOrigins: checkoutReturnOriginsSchema.default([]),
   shippingRates: z.array(publicShippingRateSchema).default([]),
   inpostGeowidgetToken: z.string().nullable().default(null),
   inpostGeowidgetWithheld: z.boolean().default(false),

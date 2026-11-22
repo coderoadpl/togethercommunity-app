@@ -1,5 +1,6 @@
 import {
   CART_LINES_PARAM,
+  CHECKOUT_RETURN_PARAM,
   HOSTED_CART_PATH,
   SALES_LINK_VARIANT_PARAM,
   SINGLE_CHECKOUT_LINE_QUANTITY,
@@ -247,6 +248,8 @@ export const startCheckoutSession = async (
   const checkoutQuery = selection.salesLinkId === undefined ? '' : `&salesLinkId=${encodeURIComponent(selection.salesLinkId)}`;
   const campaignQuery = attributionToSearchParams(fields).toString();
   const variantQuery = new URLSearchParams((selection.variantSelections ?? []).map((item) => [SALES_LINK_VARIANT_PARAM, formatSalesLinkVariantParam(item)])).toString();
+  const returnQuery = selection.returnUrl === undefined || selection.salesLinkId !== undefined
+    ? '' : `&${CHECKOUT_RETURN_PARAM}=${encodeURIComponent(selection.returnUrl)}`;
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   const reserveStock = () => mode === 'test' ? Promise.resolve(ok(null)) : reserveCheckoutStock(tenant.id, { checkoutSnapshotId, products: selection.products ?? [product], lines }, deps);
   let applied:
@@ -345,7 +348,7 @@ export const startCheckoutSession = async (
     priceCents: totalCents,
     currency,
     successUrl: `${checkoutPath}?status=success${mode === 'test' ? '&test_purchase=1' : ''}&purchase_kind=${purchaseKind}${checkoutQuery}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: selection.cancelUrl ?? `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}`,
+    cancelUrl: selection.cancelUrl ?? `${checkoutPath}?status=cancelled${cartQuery}${selection.salesLinkId !== undefined ? '&checkout=together' : ''}${checkoutQuery}${couponQuery}${campaignQuery === '' ? '' : `&${campaignQuery}`}${variantQuery === '' ? '' : `&${variantQuery}`}${returnQuery}`,
     ...(input.email === undefined ? {} : { customerEmail: input.email }),
     ...(input.language === undefined ? {} : { language: input.language }),
     ...(price === null ? {} : { priceId: price.id }),

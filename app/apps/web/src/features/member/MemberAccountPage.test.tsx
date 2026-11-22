@@ -136,6 +136,26 @@ afterEach(() => {
 });
 
 describe('MemberAccountPage', () => {
+  it('drops tab icons and narrows the tabs on phones while the scroll edge fades instead of showing chevrons', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount('/account?tab=notifications');
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.id)).toEqual(['account-tab-profile', 'account-tab-security', 'account-tab-notifications', 'account-tab-playback']);
+    const rootClass = tabs[0]?.closest('.MuiTabs-root')?.className.split(' ').find((name) => name.startsWith('css-'));
+    expect(rootClass).toBeDefined();
+    const phoneRules = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.media.mediaText.replace(/\s/gu, '').includes('max-width:599.95px'))
+      .flatMap((rule) => Array.from(rule.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText.startsWith(`.${rootClass ?? ''} `));
+    const phoneRule = (suffix: string) => phoneRules.find((rule) => rule.selectorText.endsWith(suffix))?.style;
+    expect(phoneRule('.MuiTab-icon')?.display).toBe('none');
+    expect(phoneRule('.MuiTab-root')?.minWidth).toBe('0px');
+    expect(phoneRule('.MuiTab-root')?.paddingLeft).toBe('10px');
+    expect(phoneRule('.MuiTabScrollButton-root svg')?.display).toBe('none');
+    expect(phoneRule('.MuiTabScrollButton-root:last-of-type')?.background).toContain('linear-gradient');
+  });
+
   it('mounts passkey and two-factor management on the member surface', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=security');

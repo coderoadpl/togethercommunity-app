@@ -4441,6 +4441,13 @@ export const AccountTabs = styled(Tabs)(({ theme }) => {
     '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
     '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },
     '& .MuiTabScrollButton-root.Mui-disabled': { display: 'none' },
+    [theme.breakpoints.down('sm')]: {
+      '& .MuiTab-root': { minWidth: 0, paddingLeft: 10, paddingRight: 10 },
+      '& .MuiTab-icon': { display: 'none' },
+      '& .MuiTabScrollButton-root': { width: 24, position: 'relative', zIndex: 1, opacity: 1, '& svg': { display: 'none' } },
+      '& .MuiTabScrollButton-root:first-of-type': { marginRight: -24, background: `linear-gradient(to left, transparent, ${theme.palette.background.default})` },
+      '& .MuiTabScrollButton-root:last-of-type': { marginLeft: -24, background: `linear-gradient(to right, transparent, ${theme.palette.background.default})` },
+    },
   };
 });
 

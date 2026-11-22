@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from '@tanstack/react-router';
 
@@ -51,6 +51,28 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
 };
 
 type OfferAnchorSection = 'offer' | 'locked' | 'courses' | 'spaces';
+
+const EmptyWorkspaceActions = ({ supportUrl }: { supportUrl: string | null }) => {
+  const t = useTranslations();
+  const external = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap sx={{ gap: '0.75rem', justifyContent: 'center' }}>
+      <Button component={Link} to="/login" variant="contained" data-testid="anon-empty-sign-in">
+        {t.auth.signInLink}
+      </Button>
+      {supportUrl === null ? null : (
+        <Button
+          href={supportUrl}
+          variant="outlined"
+          data-testid="anon-empty-contact"
+          {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+        >
+          {t.anon.contactCreator}
+        </Button>
+      )}
+    </Stack>
+  );
+};
 
 const useScrollToOfferAnchor = (ready: boolean) => {
   const hash = useLocation({ select: (location) => location.hash });
@@ -128,10 +150,18 @@ export const AnonHomePage = () => {
   ) {
     return (
       <MemberSurface title={title} eyebrow={t.anon.eyebrow} width="wide">
-        <StatusView
-          state={{ kind: 'empty', icon: <EmptyLibraryIcon />, title: t.anon.emptyTitle, body: t.anon.emptyBody }}
-          data-testid="anon-empty-state"
-        />
+        <Box sx={{ maxWidth: '32rem', mx: 'auto' }}>
+          <StatusView
+            state={{
+              kind: 'not-found',
+              icon: <EmptyLibraryIcon />,
+              title: t.anon.emptyTitle,
+              body: t.anon.emptyBody,
+              action: <EmptyWorkspaceActions supportUrl={offer.data?.tenant.support.url ?? null} />,
+            }}
+            data-testid="anon-empty-state"
+          />
+        </Box>
       </MemberSurface>
     );
   }

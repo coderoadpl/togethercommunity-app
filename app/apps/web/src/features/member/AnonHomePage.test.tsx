@@ -87,15 +87,17 @@ const okOffer = ({
   products = [],
   salesLinks = [],
   previewLessons = [],
+  supportUrl = null,
 }: {
   products?: ReturnType<typeof offerProduct>[];
   salesLinks?: OfferSalesLinkInput[];
   previewLessons?: { id: string; name: string; courseId: string }[];
+  supportUrl?: string | null;
 } = {}) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
-      data: { tenant: { slug: 'acme', name: 'Acme Academy' }, contentVersion: 1, products, salesLinks, previewLessons },
+      data: { tenant: { slug: 'acme', name: 'Acme Academy', support: { url: supportUrl } }, contentVersion: 1, products, salesLinks, previewLessons },
     }));
 
 const renderPage = async (initialEntry = '/') => {
@@ -178,8 +180,26 @@ describe('AnonHomePage', () => {
     await renderPage();
 
     const empty = await screen.findByTestId('anon-empty-state');
-    expect(empty).toHaveTextContent(en.anon.emptyTitle);
+    expect(within(empty).getByRole('heading', { level: 2, name: en.anon.emptyTitle })).toBeInTheDocument();
     expect(empty).toHaveTextContent(en.anon.emptyBody);
+    expect(empty).toHaveAttribute('data-state', 'not-found');
+    expect(screen.getByRole('heading', { level: 1, name: 'Acme Academy' })).toBeInTheDocument();
+    expect(within(empty).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+    expect(within(empty).queryByRole('link', { name: en.anon.contactCreator })).not.toBeInTheDocument();
+  });
+
+  it('offers to contact the creator from the empty state when the workspace has a support link', async () => {
+    server.use(
+      okNavigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] }),
+      okOffer({ supportUrl: 'https://studio.example.org/help' }),
+    );
+
+    await renderPage();
+
+    const contact = await screen.findByRole('link', { name: en.anon.contactCreator });
+    expect(contact).toHaveAttribute('href', 'https://studio.example.org/help');
+    expect(contact).toHaveAttribute('target', '_blank');
+    expect(within(screen.getByTestId('anon-empty-state')).getByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
   });
 
   it('uses the workspace name as the page heading under the visitor eyebrow', async () => {

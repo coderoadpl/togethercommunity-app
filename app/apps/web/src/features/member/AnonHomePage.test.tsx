@@ -360,6 +360,71 @@ describe('AnonHomePage', () => {
     expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
   });
 
+  it('shows the jump as an outlined button on phones and as a text link from md up', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+    const compact = await renderPage();
+
+    const button = await screen.findByTestId('anon-offer-jump');
+    expect(button).toHaveClass('MuiButton-outlined');
+    expect(getComputedStyle(button).minHeight).toBe('44px');
+    expect(within(screen.getByTestId('anon-read-only-banner')).getByRole('link', { name: en.auth.signInLink })).not.toHaveClass('MuiButton-root');
+    compact.unmount();
+
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    try {
+      await renderPage();
+      const link = await screen.findByTestId('anon-offer-jump');
+      expect(link).toHaveClass('MuiLink-root');
+      expect(link).not.toHaveClass('MuiButton-root');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('drops the jump when the anchored section sits right under the read-only notice', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null })),
+      okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }),
+    );
+
+    await renderPage();
+
+    const banner = await screen.findByTestId('anon-read-only-banner');
+    expect(within(banner).queryByTestId('anon-offer-jump')).not.toBeInTheDocument();
+    expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('keeps the jump when other sections precede the anchored locked spaces', async () => {
+    server.use(okNavigation(navigation({ defaultHomeSpaceId: null })), okOffer());
+
+    await renderPage();
+
+    expect(await screen.findByTestId('anon-locked')).toHaveAttribute('id', 'offer');
+    expect(within(screen.getByTestId('anon-read-only-banner')).getByTestId('anon-offer-jump')).toHaveAttribute('href', '/#offer');
+  });
+
+  it('leaves the read-only notice out when no space or course is listed', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [] })),
+      okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByTestId('anon-offer')).toBeInTheDocument();
+    expect(screen.getByTestId('anon-locked')).toBeInTheDocument();
+    expect(screen.queryByTestId('anon-read-only-banner')).not.toBeInTheDocument();
+  });
+
   it('drops the sign-in link from the read-only banner for a signed-in visitor', async () => {
     server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
 

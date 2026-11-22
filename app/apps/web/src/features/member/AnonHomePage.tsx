@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Box, Button, Link as MuiLink, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from '@tanstack/react-router';
 
@@ -75,6 +75,62 @@ const EmptyWorkspaceActions = ({ supportUrl, signedIn }: { supportUrl: string | 
         </Button>
       )}
     </Stack>
+  );
+};
+
+const ReadOnlyNotice = ({ showOfferJump, showSignIn }: { showOfferJump: boolean; showSignIn: boolean }) => {
+  const t = useTranslations();
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const signIn = showSignIn ? (
+    <MuiLink component={Link} to="/login">
+      {t.auth.signInLink}
+    </MuiLink>
+  ) : null;
+
+  if (isDesktop) {
+    return (
+      <QuietNotice variant="outlined" data-testid="anon-read-only-banner">
+        <span>{t.anon.readOnlyBanner}</span>
+        <Box
+          component="span"
+          sx={{ display: 'inline-flex', flexWrap: 'wrap', columnGap: '1rem', rowGap: '0.4rem', ml: 'auto' }}
+        >
+          {showOfferJump ? (
+            <MuiLink component={Link} to="/" hash={PUBLIC_OFFER_ANCHOR} data-testid="anon-offer-jump">
+              {t.anon.salesCta}
+            </MuiLink>
+          ) : null}
+          {signIn}
+        </Box>
+      </QuietNotice>
+    );
+  }
+
+  return (
+    <QuietNotice variant="outlined" data-testid="anon-read-only-banner">
+      <span>{t.anon.readOnlyBanner}</span>
+      {showOfferJump || signIn !== null ? (
+        <Box
+          sx={{ display: 'flex', flexBasis: '100%', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.4rem' }}
+        >
+          {showOfferJump ? (
+            <Button
+              component={Link}
+              to="/"
+              hash={PUBLIC_OFFER_ANCHOR}
+              variant="outlined"
+              size="small"
+              data-testid="anon-offer-jump"
+              sx={{ minHeight: 44, ml: 0 }}
+            >
+              {t.anon.salesCta}
+            </Button>
+          ) : null}
+          {signIn}
+        </Box>
+      ) : null}
+    </QuietNotice>
   );
 };
 
@@ -154,7 +210,12 @@ export const AnonHomePage = ({ visitorEmail = null }: { visitorEmail?: string | 
           : null;
   const anchorFor = (section: OfferAnchorSection) =>
     section === anchorSection ? PUBLIC_OFFER_ANCHOR : undefined;
-  const showOfferJump = anchorSection !== null && anchorSection !== 'spaces';
+  const showReadOnlyNotice = spaces.length > 0 || courses.length > 0;
+  const sectionsBeforeAnchor =
+    homeSpace !== undefined ||
+    (anchorSection === 'locked' && (tileSpaces.length > 0 || courses.length > 0)) ||
+    (anchorSection === 'courses' && tileSpaces.length > 0);
+  const showOfferJump = anchorSection !== null && anchorSection !== 'spaces' && sectionsBeforeAnchor;
 
   if (
     spaces.length === 0 &&
@@ -186,29 +247,9 @@ export const AnonHomePage = ({ visitorEmail = null }: { visitorEmail?: string | 
   return (
     <MemberSurface title={title} eyebrow={t.anon.eyebrow} width="wide">
       <Stack useFlexGap sx={{ rowGap: '2rem' }}>
-        <QuietNotice variant="outlined" data-testid="anon-read-only-banner">
-          <span>{t.anon.readOnlyBanner}</span>
-          <Box
-            component="span"
-            sx={{ display: 'inline-flex', flexWrap: 'wrap', columnGap: '1rem', rowGap: '0.4rem', ml: 'auto' }}
-          >
-            {showOfferJump ? (
-              <MuiLink
-                component={Link}
-                to="/"
-                hash={PUBLIC_OFFER_ANCHOR}
-                data-testid="anon-offer-jump"
-              >
-                {t.anon.salesCta}
-              </MuiLink>
-            ) : null}
-            {visitorEmail === null ? (
-              <MuiLink component={Link} to="/login">
-                {t.auth.signInLink}
-              </MuiLink>
-            ) : null}
-          </Box>
-        </QuietNotice>
+        {showReadOnlyNotice ? (
+          <ReadOnlyNotice showOfferJump={showOfferJump} showSignIn={visitorEmail === null} />
+        ) : null}
         {homeSpace === undefined ? null : (
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}

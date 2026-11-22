@@ -24,7 +24,7 @@ exactly the effect the owner saw, or applies nothing.
 | Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
 | Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
 | Images (product covers, branding): private upload, address checks, owner preview, publication on approval and cleanup ([Images](#images)) | Available |
-| Download files of digital products: private staging, proposed attach, replacement and removal, owner download link, release on decisions ([Download files](#download-files)); the owner panel of this release cannot approve them ([Not yet available](#not-yet-available)) | Available |
+| Download files of digital products: private staging, proposed attach, replacement and removal, owner download link, review and decision in the owner panel, release on decisions ([Download files](#download-files)) | Available |
 
 ## What a proposal is
 
@@ -474,15 +474,13 @@ it is loaded only through the owner preview, and an SVG is offered as a
 download instead (see [Images](#images)). Inside a group, a `$proposal:` reference is shown as "the product from
 step 1" with that step's title. A field the page does not know is shown with
 its raw name and its value as text, and a proposal of an operation the page
-does not know is shown but cannot be approved from the page. The page of this
-release does not know the three download file operations. A single
-`download.add`, `download.replace` or `download.remove` proposal shows the
-unknown-operation notice ("This version of the app cannot apply this kind of
-change, so it can only be rejected here.") with **Approve** disabled, so only
-**Reject** works there. A group that holds one shows its other items as usual,
-that notice on the file item only, and **Approve all N changes** disabled;
-**Reject group** works. The owner approves either with `proposals approve` or
-`proposals group approve` ([Download files](#download-files)).
+does not know is shown with the notice "This version of the app cannot apply
+this kind of change, so it can only be rejected here." and cannot be approved
+from the page. Every operation the server can store and apply has its own
+title and is approved from the page, the three download file operations
+included ("New download file", "New version of a download file", "Remove a
+download file"); their file rows, download and confirmation are described under
+[Download files](#download-files).
 
 A single proposal has **Approve** and **Reject**; a group has **Approve all N
 changes** ("Approve the change" for a group of one) and **Reject group**.
@@ -500,7 +498,9 @@ or any item of the group, carries a proposed image under its digest (the
 images the card loads through the owner preview), the confirmation adds one
 more sentence, counted per distinct image: approving makes the proposed image
 public at the address shown, and if it no longer exists nothing is changed (for
-a group: none of the changes is applied). Reject opens a
+a group: none of the changes is applied). A file proposal, alone or as a group
+item, adds the sentences described under [Download files](#download-files).
+Reject opens a
 dialog with an optional comment that is shown to the proposer.
 
 The group card reads the group itself (`GET /api/change-proposals/groups/:id`).
@@ -528,7 +528,9 @@ shop changed; the proposer can send it again", except when an item that
 attaches an image ended stale because the image is no longer available: the
 panel then reads that item's events and, finding the note code
 `image_unavailable`, says that the proposed image is no longer available,
-nothing was changed, and it has to be uploaded and proposed again. "Show more proposals" appends the next page
+nothing was changed, and it has to be uploaded and proposed again. An item that
+attaches a file is read the same way for the note code `file_unavailable`
+([Download files](#download-files)). "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
 first new card. The full-page error appears only when nothing has loaded yet: a
 next page that fails keeps the list and shows an inline error with a Retry of
@@ -543,7 +545,8 @@ is `image_unavailable`, shows the image line above in the row, labels its
 status "Not applied: image no longer available" instead of "the shop changed",
 and its timeline entry "Not applied: the proposed image was no longer
 available" without repeating the line or showing the note code; the other
-items of its group keep the generic label; an empty
+items of its group keep the generic label; a proposal that attaches a file is
+labelled the same way for `file_unavailable` ([Download files](#download-files)); an empty
 page shows the empty state, and "Show details" sits on the title row. Nothing
 on the page updates live data optimistically: every change on screen comes
 from a server answer. Headings inside cards follow the page outline without
@@ -556,8 +559,17 @@ failed, in English and Polish) and a proposed SVG awaiting approval. Storybook
 serves a small cover image at the same-origin asset path the fixtures use; it
 has no owner preview route, so its fixture API answers the owner preview
 address of two known story digests itself, with a small inline image for the
-loaded story and an unreadable one for the failed story. These stories have no
-committed golden.
+loaded story and an unreadable one for the failed story. File proposals are in
+`Panel/ProposalChanges` too (an uploaded file, a copied file, a new version, a
+removal and the gone state of **Download file**, each in English and Polish),
+in `Pages/PanelProposalFiles` (a group that creates a digital product, adds its
+file, adds a price and publishes it, next to a single file proposal; English on
+desktop and mobile, Polish on desktop) and in `Pages/PanelProposalFilesHistory`
+(an approval that ended stale because its file was no longer available, with
+its timeline open). Storybook has no owner link route: its fixture API answers
+the link of the gone story's file with `404`, and the link of any other story
+file fails, so its row says the download could not be started. These stories
+have no committed golden.
 
 ## Approval
 
@@ -1407,6 +1419,66 @@ lock takes the product row `FOR NO KEY UPDATE`, then its stock row
 a direct-mode key and a draft deletion take, so an approval and a live file
 change wait for each other instead of deadlocking.
 
+**In the owner panel.** A file proposal shows one **Files** row, built from
+the effect's two file lists matched by id and from `proposedFiles`. A new file reads "Added: workbook.pdf ·
+PDF · 12.4 MB · fingerprint 3f6c9a0e12bd", a new version "New version of
+workbook.pdf: version 2 → 3 · PDF · 12.4 MB → 13.1 MB · fingerprint
+3f6c9a0e12bd" (with the new name on its own line when the new version is named
+differently), and a removal "Removed: workbook.pdf version 2 · PDF · 12.4 MB",
+followed by the version that becomes current, the version that stays current
+or that no version of the file is left, and always by "If this is the
+product’s only file and the product is published when you approve, it stays
+published with nothing to download." The type is shown by its label (PDF,
+EPUB, ZIP, MP3, M4A, MP4, PNG, JPEG; any other type as its raw value). The
+fingerprint shows the first twelve characters of the SHA-256, with the full
+value as the element's title and for assistive technology, as for a proposed
+image; a file uploaded in the product editor has no fingerprint and shows none.
+A version note is shown under the file, and a copy names its source ("Copy of
+version 2 of “Creator Workbook (print)”", or "of a product that no longer
+exists"). File names, version notes and product titles are text a key or a
+person wrote, and each sits in its own `<bdi>` element, inside the row and
+inside the confirmation.
+
+While the proposal is pending, the row of a new file or a new version has
+**Download file**. It asks the [owner link](#download-files) route, shows
+"Preparing the download…" with the button disabled while it waits, and then
+navigates to the returned address, which the storage answers as an attachment
+to save; the page never shows the address and never previews the file. A `404`
+replaces the button with the warning "This file is no longer available;
+approving changes nothing.", in the warning style of a proposed image that
+cannot be loaded; any other failure keeps the button and says the download
+could not be started. When `proposedFiles` says the proposal no longer holds
+the file, the row shows the same warning instead of the button. A decided
+proposal shows the row without either.
+
+The confirmation is built from the same data. A new file: "“workbook.pdf” (PDF,
+12.4 MB, fingerprint 3f6c9a0e12bd) will be added to “Field Guide (digital)”.
+Everyone who has access to this product, current buyers included, can download
+it at once." A new version: "“workbook.pdf” (PDF, 13.1 MB, fingerprint …)
+becomes version 3 of “workbook.pdf” in “Field Guide (digital)”; buyers get the
+new version." A removal: "Buyers of “Field Guide (digital)” will no longer be
+able to download “workbook.pdf” version 2." followed by the version that
+becomes or stays current, or that no version of the file is left. "Nothing
+else changes." follows, as after any sentence that
+names every changed field; when the file list changed in any other way than
+the one proposed change, the confirmation names the operation and counts the
+changed fields instead. A removal's confirmation always adds the only-file
+sentence above, and a proposal that attaches a file adds "If the proposed file
+no longer exists, nothing is changed." A group with a file item is approved
+like any other group: its confirmation repeats the sentence of each file item,
+adds the only-file sentence when an item removes a file, and "If the proposed
+file no longer exists, none of the changes is applied." when an item attaches
+one ("If one of the 2 proposed files no longer exists, none of the changes is
+applied." for two distinct files).
+
+An approval that ended `stale` because a file was gone, the note code
+`file_unavailable` on its `stale` event, is explained in the settled notice and
+in its history row as "The proposed file is no longer available, so nothing was
+changed. It has to be staged and proposed again."; the row's status reads "Not
+applied: file no longer available" and its timeline entry "Not applied: the
+proposed file was no longer available", without the note code. The other items
+of its group keep the generic label.
+
 **Release on decisions.** After a decision commits, the files of the decided
 proposals are released, never failing the decision: a rejection, a
 withdrawal (by the key, or by revoking or purging it) and a recorded expiry
@@ -1434,8 +1506,9 @@ literal copies of that release's schemas and parsing steps:
   input is a JSON record and its `files` effect a before/after change, so the
   owner list, show and summary, the key's list, show and withdrawal, a
   rejection and a key revocation read it as before. Its panel shows the
-  proposal with the unknown-operation notice and **Approve** disabled, the same
-  as the page of this release ([Owner panel](#owner-panel)). Its approval ends
+  proposal with the unknown-operation notice and **Approve** disabled, where
+  the page of this release shows its file row and approves it (In the owner
+  panel, above). Its approval ends
   `stale` with the note `This release does not know the operation
   "download.add", so the proposal cannot be applied; nothing was changed` before
   any target lock, and nothing is applied; in a group that item halts the group
@@ -1487,14 +1560,8 @@ the owner to the proposals, which stay listed under
 
 ## Not yet available
 
-- **Download files in the owner panel.** The panel of this release shows a
-  `download.add`, `download.replace` or `download.remove` proposal with the
-  unknown-operation notice and **Approve** disabled, and in a group that notice
-  on the file item and **Approve all N changes** disabled
-  ([Owner panel](#owner-panel)); the owner approves it with `proposals approve`
-  or `proposals group approve` and downloads the proposed file with
-  `proposals file` ([CLI](cli.md)). Renaming and reordering files and changing
-  what a product grants cannot be proposed.
+- **Other file changes.** Renaming and reordering files and changing what a
+  product grants cannot be proposed.
 - **Other images.** Images other than product covers and branding (course
   covers, avatars) cannot be proposed.
 - **Checkout appearance images.** A propose-mode key cannot propose a new

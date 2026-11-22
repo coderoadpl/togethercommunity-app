@@ -926,6 +926,27 @@ fields were added in version 11 (`core/domain/snapshots/product/v11.ts`); older
 snapshots read with `manufacturerOutsideEu: false` and no responsible person.
 The `compliance` column is JSON, so no migration was needed.
 
+Rollback: the release before the responsible-person fields reads `compliance`
+with a strict schema that knows none of `manufacturerOutsideEu`,
+`responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail`, and every product read parses the row with it. Every
+write of a product (Studio, the API, the CLI, the import API, change proposals
+and restores) therefore stores none of the four keys while the switch is off
+and no responsible-person field is given, so that release reads those products
+unchanged; the domain and every API output still carry
+`manufacturerOutsideEu: false`. A product with the switch on, or with a
+responsible-person field, stores the four keys, and that release cannot read
+it: reading that product, and every product list that includes it, fails.
+Before rolling back to that release, find every product whose `compliance`
+holds any of the four keys, whatever their values, and remove them; for a
+product with the switch on, keep the responsible person's details elsewhere
+first. Change proposals record safety information in the same stored form, so
+a pending proposal on a product with the switch off applies under either
+release; one on a product with the switch on is reported as stale after the
+rollback and has to be submitted again. Product content versions written by
+this release are snapshot version 11; that release refuses to open or restore
+them as newer than its version 10 and leaves the rows intact.
+
 ## Product variants
 
 Variants are separate products, each with its own price, stock, slug and

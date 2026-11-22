@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderListItem } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
@@ -105,6 +106,26 @@ describe('sales fulfilment', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(3));
     expect(packingQueries.at(-1)?.get('mode')).toBe('live');
     expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+  });
+});
+
+describe('order detail parcel locker verification', () => {
+  it('shows staff a visible note when the locker could not be verified at checkout', async () => {
+    const unverified = { ...order('o1', 'to_pack'), shipping: { ...shipping, pickupPoint: { ...shipping.pickupPoint, verified: false as const } } };
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: unverified, invoice: null } })));
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+    const note = await screen.findByTestId('order-locker-unverified');
+    expect(within(await screen.findByTestId('order-delivery')).getByTestId('order-locker-unverified')).toBe(note);
+    expect(note).toHaveTextContent(en.shipping.orderLockerUnverified);
+    expect(note).toHaveTextContent(en.shipping.orderLockerUnverifiedHint);
+    expect(pl.shipping.orderLockerUnverified).not.toBe(en.shipping.orderLockerUnverified);
+  });
+
+  it('shows no note for a verified locker or one stored before verification existed', async () => {
+    server.use(http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'to_pack'), invoice: null } })));
+    await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+    expect(await screen.findByTestId('order-delivery')).toBeInTheDocument();
+    expect(screen.queryByTestId('order-locker-unverified')).toBeNull();
   });
 });
 

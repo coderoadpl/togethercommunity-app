@@ -174,6 +174,11 @@ describe('the owner link to a proposed file', () => {
     expect(signed.searchParams.get('response-content-type')).toBe('application/octet-stream');
     expect(signed.searchParams.get('response-cache-control')).toBe('no-store');
     expect(storage.calls.filter((call) => call.method === 'presignGet').map((call) => call.key)).toEqual([await stagedObjectKey(staged.id)]);
+    for (const path of [API_PATHS.changeProposal.replace(':id', proposal.id), API_PATHS.changeProposals]) {
+      const other = await sessionRequest(ownerToken, 'GET', path);
+      expect(other.status).toBe(200);
+      expect(other.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    }
   });
 
   it('refuses an admin, an unverified owner, an owner viewing as a member, every key and a request without a session', async () => {

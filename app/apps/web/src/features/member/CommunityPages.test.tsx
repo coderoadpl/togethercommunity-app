@@ -1020,6 +1020,7 @@ describe('community pages', () => {
                   body: 'One two three four five six seven eight nine ten',
                   reactions: [{ emoji: '👍', count: 3, viewerReacted: false }],
                 }),
+                feedItem({ id: 'p2', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author' }),
               ],
               nextCursor: null,
               isFollowing: false,
@@ -1037,9 +1038,15 @@ describe('community pages', () => {
     });
     expect(reaction).toHaveTextContent('👍 3');
     expect(reaction).not.toHaveClass('MuiChip-root');
-    expect(within(post).getByTestId('public-open-thread-p1')).toHaveAccessibleName(
+    const openThread = within(post).getByTestId('public-open-thread-p1');
+    expect(openThread).toHaveAccessibleName(
       en.community.openThreadAria({ author: 'Olivia Author', excerpt: 'One two three four five six seven eight…' }),
     );
+    expect(openThread).toHaveTextContent(en.community.openThread);
+    expect(openThread.getAttribute('aria-label')?.startsWith(en.community.openThread)).toBe(true);
+    const openDeletedThread = screen.getByTestId('public-open-thread-p2');
+    expect(openDeletedThread).toHaveAccessibleName(en.community.openThreadAria({ author: 'Olivia Author', excerpt: '' }));
+    expect(openDeletedThread.getAttribute('aria-label')?.startsWith(en.community.openThread)).toBe(true);
     const pinnedHeading = screen.getByRole('heading', { level: 2, name: en.community.pinnedHeading });
     const latestHeading = screen.getByRole('heading', { level: 2, name: en.community.latestHeading });
     expect(pinnedHeading.compareDocumentPosition(screen.getByTestId('public-feed-post-pin1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -2852,8 +2852,8 @@ export const en: Messages = {
     openThread: 'Open thread',
     openThreadAria: ({ author, excerpt }) =>
       excerpt === ''
-        ? format('Open the thread by {author}', { author })
-        : format('Open the thread by {author}: {excerpt}', { author, excerpt }),
+        ? format('Open thread by {author}', { author })
+        : format('Open thread by {author}: {excerpt}', { author, excerpt }),
     reactAria: ({ emoji }) => format('React: {emoji}', { emoji }),
     reactionCountAria: ({ emoji, count }) => format('{emoji} reactions: {count}', { emoji, count: String(count) }),
     addReaction: 'Add a reaction',

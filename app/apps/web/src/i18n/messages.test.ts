@@ -95,6 +95,16 @@ describe('i18n dictionaries', () => {
     ]);
   });
 
+  it('starts every open-thread link name with the visible link text', () => {
+    for (const messages of [en, pl]) {
+      for (const excerpt of ['', 'First words…']) {
+        expect(messages.community.openThreadAria({ author: 'Olivia', excerpt })).toMatch(
+          new RegExp(`^${messages.community.openThread}`, 'u'),
+        );
+      }
+    }
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });

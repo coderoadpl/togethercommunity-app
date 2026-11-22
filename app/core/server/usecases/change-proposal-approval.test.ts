@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  appError,
   capabilitiesForApiKey,
   changeProposalExpiresAt,
   changeProposalOwnerViewSchema,
@@ -21,8 +22,11 @@ import type { Ctx } from '../context.js';
 import type { ChangeProposalTransaction, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
   emptyCatalogState,
+  failingSalesLinkSaves,
   type FakeCatalogState,
   type FakeChangeProposalStore,
   type FakeChangeProposalTransaction,
@@ -33,6 +37,7 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalApprovalDeps,
+  type ChangeProposalSubmitDeps,
 } from './change-proposals.js';
 import { publishProduct } from './products.js';
 import { shopManagementKeyCapabilities } from './shop-machine-auth.js';
@@ -137,11 +142,13 @@ const recordingStorage = (deletes: string[]): StorageProvider => {
   };
 };
 
+type HarnessDeps = ChangeProposalApprovalDeps & Omit<ChangeProposalSubmitDeps, 'changeProposals'>;
+
 interface Harness {
   state: FakeCatalogState;
   store: FakeChangeProposalStore;
   transaction: FakeChangeProposalTransaction;
-  deps: ChangeProposalApprovalDeps;
+  deps: HarnessDeps;
   deletes: string[];
   clock: { now: string };
   submit(operation: ChangeProposalOperation, input: unknown): Promise<string>;
@@ -167,12 +174,20 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const deletes: string[] = [];
+  const accounts = [
+    { userId: ISSUER, email: 'issuer@example.test', ownerOf: [TENANT] },
+    { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+  ];
+  const notificationFakes = createUnreadNotificationsFake(accounts);
   let sequence = 0;
   const clock = { now: NOW };
-  const deps: ChangeProposalApprovalDeps = {
+  const deps: HarnessDeps = {
     changeProposalTransaction: transaction,
     changeProposals: store.repository,
+    changeProposalGroups: store.groups,
     shopManagementKeys: { listByTenant: async (tenantId) => keys.filter((key) => key.tenantId === tenantId) },
+    ...notificationFakes,
+    ...changeProposalOwnerViewFakes(state, accounts),
     storage: recordingStorage(deletes),
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },
@@ -533,6 +548,44 @@ describe('approveChangeProposal for sales links and settings', () => {
 
     expect(await h.approve(id)).toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(h.state.settings[0]?.settings).toMatchObject({ name: 'Acme shop', supportEmail: 'help@acme.example.test' });
+  });
+});
+
+describe('approveChangeProposal records failed only for a refusal of the request', () => {
+  const linkUpdate = { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['product-live'] };
+
+  it.each([
+    appError('unavailable', 'The database is busy'),
+    appError('internal', 'Lost the connection'),
+    appError('rate_limited', 'Too many requests'),
+    appError('integration_unavailable', 'Storage is unreachable'),
+    appError('forbidden', 'Not allowed for this session'),
+  ])('keeps the proposal pending and answers $code when the live use-case returns it', async (error) => {
+    const h = harness();
+    const id = await h.submit('sales-link.update', linkUpdate);
+    const before = structuredClone(h.state);
+
+    const approved = await approveChangeProposal(ownerSession, { id }, { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, error) });
+
+    expect(approved).toEqual({ ok: false, error });
+    expect(h.proposal(id)).toMatchObject({ status: 'pending', decidedAt: null, failureCode: null });
+    expect(h.events(id)).toEqual(['1:proposed']);
+    expect(h.state).toEqual(before);
+    expect(await h.approve(id)).toMatchObject({ ok: true, value: { status: 'applied' } });
+  });
+
+  it.each([
+    appError('conflict', 'The sales link changed meanwhile'),
+    appError('validation', 'The heading is too long'),
+    appError('not_found', 'No such sales link'),
+  ])('records failed with the $code a live refusal of the request carries', async (error) => {
+    const h = harness();
+    const id = await h.submit('sales-link.update', linkUpdate);
+
+    const approved = await approveChangeProposal(ownerSession, { id }, { ...h.deps, changeProposalTransaction: failingSalesLinkSaves(h.transaction, error) });
+
+    expect(approved).toMatchObject({ ok: true, value: { status: 'failed', failureCode: error.code, failureMessage: error.message } });
+    expect(h.events(id)).toEqual(['1:proposed', '2:apply_failed']);
   });
 });
 

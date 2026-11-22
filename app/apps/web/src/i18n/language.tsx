@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { DEFAULT_LANGUAGE, LANGUAGES, type Language } from '#core/domain/index.js';
 
@@ -46,6 +46,10 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const setTenantDefaultLanguage = useCallback((next: Language) => {
     if (explicitLanguage === undefined) setLanguageState(next);
   }, [explicitLanguage]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   const value = useMemo<LanguageContextValue>(
     () => ({ language, explicitLanguage, setLanguage, setTenantDefaultLanguage, t: dictionaries[language] }),

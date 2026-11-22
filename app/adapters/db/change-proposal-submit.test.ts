@@ -1,4 +1,5 @@
 import { asc, eq } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
@@ -14,13 +15,16 @@ import {
   submitChangeProposal,
   type ChangeProposalSubmitDeps,
   type Ctx,
+  type RealtimeEvent,
   type StorageProvider,
 } from '#core/server/index.js';
 
+import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantSecretRepository } from './repositories.js';
+import { createNotificationRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposals,
@@ -32,8 +36,11 @@ import {
   productStock,
   salesLinkEvents,
   salesLinks,
+  notifications,
   stockEvents,
+  tenantAdmins,
   tenants,
+  user,
 } from './schema.js';
 import { createSalesLinkRepository } from './sales-links.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -45,6 +52,7 @@ const OWNER = 'user-owner';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let sequence = 0;
+const published: RealtimeEvent[] = [];
 
 const owner: Identity = {
   userId: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true, tenantAccess: 'staff',
@@ -78,11 +86,17 @@ const storage: StorageProvider = {
 
 const secretCrypto = createSecretCrypto(Buffer.alloc(32, 5).toString('base64'));
 
-const deps = (db: Db = database.db, logger = { error: vi.fn<(message: string) => void>() }): ChangeProposalSubmitDeps => ({
+const deps = (
+  db: Db = database.db,
+  logger = { error: vi.fn<(message: string) => void>() },
+  bounds: ChangeProposalBoundOptions = {},
+): ChangeProposalSubmitDeps => ({
   changeProposalTransaction: createChangeProposalTransaction(db, logger, (connection) =>
     createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)),
   changeProposals: createChangeProposalRepository(db),
   shopManagementKeys: createShopManagementKeyRepository(db),
+  changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
+  realtimeBus: { publish: (event) => { published.push(event); } },
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },
@@ -209,5 +223,147 @@ describe('submitChangeProposal over the database', () => {
     const result = await submitChangeProposal(keyCtx, { operation: 'stock.adjust', input: { productId: 'live', delta: -50, reason: 'Count' } }, deps());
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
+  });
+});
+
+describe('the owner notification of a submitted proposal over the database', () => {
+  const OTHER_OWNER = 'user-owner-two';
+  const ownerNotifications = async () =>
+    (await database.db.select().from(notifications).where(eq(notifications.tenantId, TENANT)).orderBy(asc(notifications.recipientUserId)));
+  const propose = async (title: string) => {
+    const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title } }, deps());
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+
+  beforeAll(async () => {
+    await database.db.insert(user).values([
+      { id: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true },
+      { id: OTHER_OWNER, email: 'second-owner@example.test', name: 'Second owner', emailVerified: true },
+      { id: 'user-admin', email: 'admin@example.test', name: 'Admin', emailVerified: true },
+    ]);
+    await database.db.insert(tenantAdmins).values([
+      { id: 'grant-owner', tenantId: TENANT, userId: OWNER, role: 'owner' },
+      { id: 'grant-owner-two', tenantId: TENANT, userId: OTHER_OWNER, role: 'owner' },
+      { id: 'grant-admin', tenantId: TENANT, userId: 'user-admin', role: 'admin' },
+    ]);
+  });
+
+  it('raises one unread notification per owner and key, re-raises it once read, and signals every owner for every proposal', async () => {
+    await database.db.delete(notifications);
+    published.length = 0;
+    await propose('First rename');
+    await propose('Second rename');
+
+    const unread = await ownerNotifications();
+    expect(unread.map((row) => [row.recipientUserId, row.kind, row.sourceKey, row.readAt])).toEqual([
+      [OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
+      [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
+    ]);
+    expect(unread[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '' });
+    const unreadIds = new Map(unread.map((row) => [row.recipientUserId, row.id]));
+    expect(published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : null)).toEqual([
+      [OWNER, unreadIds.get(OWNER), 'change-proposal'],
+      [OTHER_OWNER, unreadIds.get(OTHER_OWNER), 'change-proposal'],
+      [OWNER, unreadIds.get(OWNER), 'change-proposal'],
+      [OTHER_OWNER, unreadIds.get(OTHER_OWNER), 'change-proposal'],
+    ]);
+
+    await database.db.update(notifications).set({ readAt: NOW }).where(eq(notifications.recipientUserId, OWNER));
+    await propose('Third rename');
+
+    const after = await ownerNotifications();
+    expect(after).toHaveLength(2);
+    expect(after.every((row) => row.readAt === null)).toBe(true);
+    const rearmed = after.find((row) => row.recipientUserId === OWNER);
+    expect(rearmed?.id).not.toBe(unread.find((row) => row.recipientUserId === OWNER)?.id);
+    expect(after.find((row) => row.recipientUserId === OTHER_OWNER)?.id).toBe(unread.find((row) => row.recipientUserId === OTHER_OWNER)?.id);
+    expect(published).toHaveLength(6);
+    expect(published.slice(-2)).toEqual([
+      expect.objectContaining({ kind: 'notification', recipientUserId: OWNER, notificationId: rearmed?.id, notificationKind: 'change-proposal' }),
+      expect.objectContaining({ kind: 'notification', recipientUserId: OTHER_OWNER, notificationId: unreadIds.get(OTHER_OWNER), notificationKind: 'change-proposal' }),
+    ]);
+  });
+
+  it('never lets a late mark-read of an earlier occurrence clear the re-armed one', async () => {
+    await database.db.delete(notifications);
+    await propose('Occurrence one');
+    const [earlier] = (await ownerNotifications()).filter((row) => row.recipientUserId === OWNER);
+    if (earlier === undefined) throw new Error('The first occurrence is missing');
+    const repository = createNotificationRepository(database.db);
+    expect(await repository.markRead(TENANT, { id: earlier.id, recipientUserId: OWNER, readAt: NOW })).toMatchObject({ id: earlier.id });
+    await propose('Occurrence two');
+
+    expect(await repository.markRead(TENANT, { id: earlier.id, recipientUserId: OWNER, readAt: NOW })).toBeNull();
+
+    const [current] = (await ownerNotifications()).filter((row) => row.recipientUserId === OWNER);
+    expect(current).toMatchObject({ readAt: null, sourceKey: `change-proposal:${key.id}` });
+    expect(current?.id).not.toBe(earlier.id);
+  });
+
+  const waitersInThisDatabase = async (): Promise<number> => {
+    const observer = new pg.Client({ connectionString: database.url });
+    await observer.connect();
+    try {
+      const counted = await observer.query<{ waiting: number }>(
+        'select count(*)::int as waiting from pg_locks where not granted and database = (select oid from pg_database where datname = current_database())',
+      );
+      return counted.rows[0]?.waiting ?? 0;
+    } finally {
+      await observer.end();
+    }
+  };
+
+  it('answers the receipt within the notification bound while another transaction holds the notification row', async () => {
+    await database.db.delete(notifications);
+    await propose('Before the lock');
+    await database.db.update(notifications).set({ readAt: NOW }).where(eq(notifications.recipientUserId, OWNER));
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const holder = createDb('node-postgres', database.url, { max: 1, connectionTimeoutMillis: 2_000 });
+    try {
+      const { result, elapsedMs } = await holder.transaction(async (tx) => {
+        await tx.select({ id: notifications.id }).from(notifications).where(eq(notifications.recipientUserId, OWNER)).for('update');
+        const started = performance.now();
+        const submitted = await submitChangeProposal(
+          keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'While locked' } }, deps(database.db, logger, { notificationMs: 300 }),
+        );
+        const elapsed = performance.now() - started;
+        await vi.waitFor(async () => expect(await waitersInThisDatabase()).toBe(0), { timeout: 5_000, interval: 50 });
+        return { result: submitted, elapsedMs: elapsed };
+      });
+
+      expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
+      expect(elapsedMs).toBeLessThan(1_000);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/\[change-proposal\] owner notification (timed out|passed its 300 ms deadline)/u));
+      if (!result.ok) return;
+      expect(await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id))).toHaveLength(1);
+      expect((await ownerNotifications()).find((row) => row.recipientUserId === OWNER)?.readAt).toBe(NOW);
+    } finally {
+      await closeDb(holder);
+    }
+  });
+
+  it('keeps one notification per owner and key under concurrent submissions', async () => {
+    await database.db.delete(notifications);
+    await Promise.all(['Parallel one', 'Parallel two', 'Parallel three'].map((title) => propose(title)));
+    expect((await ownerNotifications()).map((row) => row.recipientUserId)).toEqual([OWNER, OTHER_OWNER]);
+  });
+
+  it('never fails the submission when the notification cannot be written, and logs it', async () => {
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const failing = { ...deps(database.db, logger), changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: () => Promise.reject(new Error('notifications table locked')) } };
+    const result = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: 'mug', title: 'Logged rename' } }, failing);
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'pending' } });
+    if (!result.ok) return;
+    expect(await database.db.select().from(changeProposals).where(eq(changeProposals.id, result.value.id))).toHaveLength(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification failed'));
+  });
+
+  it('raises nothing for a refused submission', async () => {
+    await database.db.delete(notifications);
+    const result = await submitChangeProposal(keyCtx, { operation: 'stock.adjust', input: { productId: 'live', delta: -500, reason: 'Count' } }, deps());
+    expect(result.ok).toBe(false);
+    expect(await ownerNotifications()).toEqual([]);
   });
 });

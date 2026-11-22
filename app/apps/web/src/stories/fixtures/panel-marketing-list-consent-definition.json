@@ -1,5 +1,13 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "hasProposals": false,
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getMarketingList:[{\"listId\":\"list-consent_definition\"}]": {
       "ok": true,
       "value": {

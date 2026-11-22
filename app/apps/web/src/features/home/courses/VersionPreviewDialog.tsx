@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -19,7 +18,8 @@ import { StatusView } from '../../../components/layout/index.js';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { BreakAnywhereText, CoverImageElement, Eyebrow, FinePrint, VersionDiffRow } from '../../../theme.js';
+import { FinePrint } from '../../../theme.js';
+import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffText } from '../FieldDiff.js';
 
 import { LessonEditionEditor } from './LessonEditionEditor.js';
 
@@ -28,55 +28,40 @@ type PreviewValue = VersionPreview['fields'][number]['value'];
 const FieldValue = ({ value, t, language }: { value: PreviewValue; t: Messages; language: string }) => {
   if (value.kind === 'text') {
     return value.value === '' ? (
-      <FinePrint component="p">{t.courses.versionEmptyValue}</FinePrint>
+      <FieldDiffEmpty>{t.courses.versionEmptyValue}</FieldDiffEmpty>
     ) : (
-      <Typography variant="body2">{value.value}</Typography>
+      <FieldDiffText>{value.value}</FieldDiffText>
     );
   }
   if (value.kind === 'flag') {
-    return <Typography variant="body2">{value.value ? t.courses.versionFlagOn : t.courses.versionFlagOff}</Typography>;
+    return <FieldDiffText>{value.value ? t.courses.versionFlagOn : t.courses.versionFlagOff}</FieldDiffText>;
   }
   if (value.kind === 'price') {
-    return <Typography variant="body2">{formatPrice(value.amountCents, value.currency, language)}</Typography>;
+    return <FieldDiffText>{formatPrice(value.amountCents, value.currency, language)}</FieldDiffText>;
   }
   if (value.kind === 'image') {
     return value.url === null ? (
-      <FinePrint component="p">{t.courses.versionEmptyValue}</FinePrint>
+      <FieldDiffEmpty>{t.courses.versionEmptyValue}</FieldDiffEmpty>
     ) : (
-      <Stack useFlexGap spacing="0.35rem">
-        <Box sx={{ maxWidth: '12rem' }}>
-          <CoverImageElement frame="card" src={value.url} alt="" />
-        </Box>
-        <BreakAnywhereText component="p" variant="caption">
-          {value.url}
-        </BreakAnywhereText>
-      </Stack>
+      <FieldDiffImage url={value.url} />
     );
   }
   if (value.kind === 'list') {
     return value.items.length === 0 ? (
-      <FinePrint component="p">{t.courses.versionEmptyList}</FinePrint>
+      <FieldDiffEmpty>{t.courses.versionEmptyList}</FieldDiffEmpty>
     ) : (
-      <Stack component="ul" useFlexGap spacing="0.15rem" sx={{ m: 0, pl: '1.1rem' }}>
-        {value.items.map((item, index) => (
-          <Typography key={`${item}-${index}`} component="li" variant="body2">
-            {item}
-          </Typography>
-        ))}
-      </Stack>
+      <FieldDiffList items={value.items.map((item, index) => ({ key: `${item}-${index}`, content: item }))} />
     );
   }
   return value.items.length === 0 ? (
-    <FinePrint component="p">{t.courses.versionEmptyList}</FinePrint>
+    <FieldDiffEmpty>{t.courses.versionEmptyList}</FieldDiffEmpty>
   ) : (
-    <Stack component="ul" useFlexGap spacing="0.15rem" sx={{ m: 0, pl: '1.1rem' }}>
-      {value.items.map((item, index) => (
-        <Typography key={`${item.type}-${index}`} component="li" variant="body2">
-          {t.courses.versionBlockType[item.type]}
-          {item.detail === '' ? null : ` · ${item.detail}`}
-        </Typography>
-      ))}
-    </Stack>
+    <FieldDiffList
+      items={value.items.map((item, index) => ({
+        key: `${item.type}-${index}`,
+        content: `${t.courses.versionBlockType[item.type]}${item.detail === '' ? '' : ` · ${item.detail}`}`,
+      }))}
+    />
   );
 };
 
@@ -95,29 +80,17 @@ const FieldRow = ({
   t: Messages;
   language: string;
 }) => (
-  <VersionDiffRow
-    useFlexGap
-    spacing="0.4rem"
+  <FieldDiffRow
+    label={t.courses.versionField[name]}
     changed={changed}
     data-testid={`version-field-${name}`}
-    data-changed={changed ? 'true' : 'false'}
-  >
-    <Eyebrow variant="overline" component="h4">
-      {t.courses.versionField[name]}
-    </Eyebrow>
-    <Stack useFlexGap direction={{ xs: 'column', sm: 'row' }} spacing="1rem">
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <FinePrint component="p">{t.courses.versionColumnStored}</FinePrint>
-        <FieldValue value={stored} t={t} language={language} />
-      </Box>
-      {current === undefined ? null : (
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <FinePrint component="p">{t.courses.versionColumnCurrent}</FinePrint>
-          <FieldValue value={current} t={t} language={language} />
-        </Box>
-      )}
-    </Stack>
-  </VersionDiffRow>
+    columns={[
+      { label: t.courses.versionColumnStored, value: <FieldValue value={stored} t={t} language={language} /> },
+      ...(current === undefined
+        ? []
+        : [{ label: t.courses.versionColumnCurrent, value: <FieldValue value={current} t={t} language={language} /> }]),
+    ]}
+  />
 );
 
 export const VersionPreviewDialog = ({

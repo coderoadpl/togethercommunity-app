@@ -42,6 +42,17 @@ describe('Account dialogs', () => {
     expect(within(screen.getByRole('dialog')).getByTestId('change-password-remote-error')).toBeVisible();
   });
 
+  it('checks the revocation box by default when asked and submits the cleared choice', async () => {
+    const onSubmit = vi.fn();
+    render(<LanguageProvider><ToastProvider><ChangePasswordForm dialog revokeOtherSessionsByDefault {...idle} onSubmit={onSubmit} /></ToastProvider></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).toBeChecked();
+    fill('change-current-password', 'current-password'); fill('change-new-password', 'new-password-long'); fill('change-confirm-password', 'new-password-long');
+    await userEvent.click(screen.getByTestId('change-revoke-sessions'));
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'current-password', newPassword: 'new-password-long', revokeOtherSessions: false });
+  });
+
   it('opens passkey registration, requires proof and submits a trimmed name', async () => {
     const run = vi.fn();
     render(tree(propsWith({ registerPasskey: { ...idle, error: failure, run } })));

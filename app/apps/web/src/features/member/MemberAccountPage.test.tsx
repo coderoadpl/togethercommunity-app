@@ -1028,6 +1028,9 @@ describe('MemberAccountPage', () => {
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
     await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
+    const revokeOthers = screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions });
+    expect(revokeOthers).toBeChecked();
+    expect(revokeOthers).toHaveAccessibleDescription(en.changePassword.revokeScopeHint);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await findToast('success')).toHaveTextContent(
@@ -1036,9 +1039,11 @@ describe('MemberAccountPage', () => {
     expect(body).toEqual({
       currentPassword: 'current-password',
       newPassword: VALID_PASSWORD,
-      revokeOtherSessions: false,
+      revokeOtherSessions: true,
     });
-    expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
+    expect(screen.getByTestId('account-reset-password')).toHaveTextContent(en.account.forgotPasswordEmailLink);
+    expect(screen.getByTestId('change-password-open')).toHaveClass('MuiButton-contained');
+    expect(screen.getByTestId('account-reset-password')).toHaveClass('MuiButton-text');
   });
 
   it('keeps the reset path available for a passwordless account', async () => {

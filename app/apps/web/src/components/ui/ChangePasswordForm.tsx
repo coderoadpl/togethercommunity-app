@@ -27,6 +27,7 @@ export const localizeChangePasswordError = (error: unknown, t: Messages): string
 interface ChangePasswordFormProps {
   showHeading?: boolean;
   dialog?: boolean;
+  revokeOtherSessionsByDefault?: boolean;
   pending: boolean;
   success: boolean;
   error: Error | null;
@@ -40,6 +41,7 @@ interface ChangePasswordFormProps {
 export const ChangePasswordForm = ({
   showHeading = true,
   dialog = false,
+  revokeOtherSessionsByDefault = false,
   pending,
   success,
   error,
@@ -50,8 +52,8 @@ export const ChangePasswordForm = ({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [revokeOtherSessions, setRevokeOtherSessions] = useState(revokeOtherSessionsByDefault);
+  const [localError, setLocalError] = useState<{ field: 'new' | 'confirm'; message: string } | null>(null);
   useEffect(() => {
     if (success) {
       setOpen(false);
@@ -73,17 +75,19 @@ export const ChangePasswordForm = ({
     event.preventDefault();
     setLocalError(null);
     if (!passwordMeetsMinimumLength(newPassword)) {
-      setLocalError(t.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }));
+      setLocalError({ field: 'new', message: t.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }) });
       return;
     }
     if (newPassword !== confirmPassword) {
-      setLocalError(t.changePassword.mismatch);
+      setLocalError({ field: 'confirm', message: t.changePassword.mismatch });
       return;
     }
     onSubmit({ currentPassword, newPassword, revokeOtherSessions });
   };
 
   const remoteError = error === null ? null : localizeChangePasswordError(error, t);
+  const newPasswordError = localError?.field === 'new' ? localError.message : null;
+  const confirmPasswordError = localError?.field === 'confirm' ? localError.message : null;
 
   const form = (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -103,7 +107,7 @@ export const ChangePasswordForm = ({
           required
         />
       </FormControl>
-      <FormControl fullWidth>
+      <FormControl fullWidth error={newPasswordError !== null}>
         <FormLabel htmlFor="change-new-password">{t.changePassword.newPasswordLabel}</FormLabel>
         <OutlinedInput
           id="change-new-password"
@@ -111,12 +115,13 @@ export const ChangePasswordForm = ({
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
           autoComplete="new-password"
-          inputProps={{ 'data-testid': 'change-new-password', 'aria-describedby': 'change-password-minimum' }}
+          inputProps={{ 'data-testid': 'change-new-password', 'aria-describedby': newPasswordError === null ? 'change-password-minimum' : 'change-password-minimum change-new-password-error' }}
           required
         />
         <FormHelperText id="change-password-minimum">{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
+        {newPasswordError === null ? null : <FormHelperText id="change-new-password-error" role="alert" data-testid="change-password-local-error">{newPasswordError}</FormHelperText>}
       </FormControl>
-      <FormControl fullWidth>
+      <FormControl fullWidth error={confirmPasswordError !== null}>
         <FormLabel htmlFor="change-confirm-password">{t.changePassword.confirmPasswordLabel}</FormLabel>
         <OutlinedInput
           id="change-confirm-password"
@@ -124,21 +129,23 @@ export const ChangePasswordForm = ({
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
           autoComplete="new-password"
-          inputProps={{ 'data-testid': 'change-confirm-password' }}
+          inputProps={{ 'data-testid': 'change-confirm-password', 'aria-describedby': confirmPasswordError === null ? undefined : 'change-confirm-password-error' }}
           required
         />
+        {confirmPasswordError === null ? null : <FormHelperText id="change-confirm-password-error" role="alert" data-testid="change-password-local-error">{confirmPasswordError}</FormHelperText>}
       </FormControl>
       <FormControlLabel
         control={(
           <Checkbox
             checked={revokeOtherSessions}
             onChange={(event) => setRevokeOtherSessions(event.target.checked)}
+            slotProps={{ input: { 'aria-describedby': 'change-revoke-sessions-hint' } }}
             data-testid="change-revoke-sessions"
           />
         )}
         label={t.changePassword.revokeOtherSessions}
       />
-      <Typography variant="caption" component="p">
+      <Typography variant="caption" component="p" id="change-revoke-sessions-hint">
         {t.changePassword.revokeScopeHint}
       </Typography>
       <Box>
@@ -152,7 +159,6 @@ export const ChangePasswordForm = ({
         </Button>
       </Box>
       {remoteError ? <Alert severity="error" data-testid="change-password-remote-error">{remoteError}</Alert> : null}
-      {localError ? <Alert severity="error" data-testid="change-password-local-error">{localError}</Alert> : null}
     </Box>
   );
   return dialog ? <>

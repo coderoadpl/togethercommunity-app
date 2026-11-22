@@ -421,6 +421,7 @@ export const MemberAccountPage = () => {
                   <ChangePasswordForm
                     dialog
                     showHeading={false}
+                    revokeOtherSessionsByDefault
                     pending={changePassword.isPending}
                     success={changePassword.isSuccess}
                     error={changePassword.error}
@@ -435,7 +436,7 @@ export const MemberAccountPage = () => {
                     disabled={requestPasswordReset.isPending}
                     onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
                   >
-                    {requestPasswordReset.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.setOrResetPassword : t.account.setPassword}
+                    {requestPasswordReset.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.account.setPassword}
                   </Button>
                   <AccountHelp title={t.account.passwordLinkHelp}>
                     <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>

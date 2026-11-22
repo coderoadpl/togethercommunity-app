@@ -2639,7 +2639,7 @@ export interface Messages {
     setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
-    setOrResetPassword: string;
+    forgotPasswordEmailLink: string;
     resetSending: string;
     resetSent: string;
     billingHeading: string;

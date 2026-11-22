@@ -3050,7 +3050,7 @@ export const pl: Messages = {
     passwordHeading: 'Hasło',
     passwordIntro:
       'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem. Logowanie magicznym linkiem nadal będzie działać.',
-    setOrResetPassword: 'Ustaw hasło linkiem',
+    forgotPasswordEmailLink: 'Nie pamiętasz obecnego hasła? Wyślij link do resetu na e-mail',
     resetSending: 'Wysyłanie…',
     resetSent: 'Wysłaliśmy e-mail z linkiem do ustawienia hasła. Sprawdź swoją skrzynkę.',
     billingHeading: 'Płatności',
@@ -3076,7 +3076,7 @@ export const pl: Messages = {
   },
   changePassword: {
     minimumHint: ({ min }) => `Co najmniej ${min} znaków.`,
-    revokeScopeHint: 'Wyloguje inne urządzenia i domeny.',
+    revokeScopeHint: 'Wylogowuje Cię na wszystkich pozostałych urządzeniach.',
     heading: 'Zmień hasło',
     intro: ({ min }) => format(
       'Wpisz obecne hasło i wybierz nowe, które ma co najmniej {min} znaków. Nie wymagamy określonych typów znaków.',

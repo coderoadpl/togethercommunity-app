@@ -2996,7 +2996,7 @@ export const en: Messages = {
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email password link to set one. Magic-link sign-in keeps working.',
-    setOrResetPassword: 'Set / reset password',
+    forgotPasswordEmailLink: 'Forgot your current password? Email me a reset link',
     resetSending: 'Sending…',
     resetSent: 'We sent you an email with a link to set your password. Check your inbox.',
     billingHeading: 'Payments',
@@ -3022,7 +3022,7 @@ export const en: Messages = {
   },
   changePassword: {
     minimumHint: ({ min }) => `At least ${min} characters.`,
-    revokeScopeHint: 'Signs out other devices and domains.',
+    revokeScopeHint: 'Signs you out everywhere else.',
     heading: 'Change password',
     intro: ({ min }) => format(
       'Enter your current password and choose a new one with at least {min} characters. No character types are required.',

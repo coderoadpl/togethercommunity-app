@@ -33,6 +33,8 @@ import {
   IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   isChangeProposalReference,
   KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
+  keyDownloadAttachInputSchema,
+  notFound,
   ok,
   parcelTemplateSchema,
   priceKindSchema,
@@ -191,7 +193,16 @@ const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'pro
   return input.ok ? ok({ ...input.value, body: bytes }) : input;
 };
 
-const fileAttachSchema = keyOnlySchema.extend({ replaces: idSchema.optional(), note: z.string().optional() });
+const fileNoteSchema = keyOnlySchema.extend({ note: keyDownloadAttachInputSchema.shape.versionNote });
+
+const fileAttachSchema = fileNoteSchema.extend({ replaces: idSchema.optional() });
+
+const replacementCheck = (assets: readonly ProductDownloadAssetMetadata[], replaces: string | undefined): Result<void, AppError> => {
+  if (replaces === undefined) return ok(undefined);
+  const replaced = assets.find((asset) => asset.id === replaces);
+  if (replaced === undefined) return err(notFound(`Replacement file "${replaces}" not found on this product; nothing was uploaded`));
+  return replaced.status === 'ready' ? ok(undefined) : err(validation(`Only ready files can be replaced; "${replaces}" is ${replaced.status} and nothing was uploaded`));
+};
 
 const downloadFileInput = async (file: string) => {
   const extension = extname(file).slice(1).toLowerCase();
@@ -785,13 +796,15 @@ export const registerShopKeyCommands = (
       if (!input.ok) return input;
       const product = await client.listProductDownloads(productId);
       if (!product.ok) return product;
+      const replacement = replacementCheck(product.value.assets, options.replaces);
+      if (!replacement.ok) return replacement;
       const staged = await client.stageProductDownload(input.value);
       if (!staged.ok) return err(withFileHint(staged.error));
       return attachStaged(client, productId, staged.value.file, options);
     }, attachedFileLines));
-  keyed(files.command('copy <fromProductId> <assetId> <toProductId>').description('Copy a ready file of one product on the server and attach the copy live to another product; the bytes never leave the storage')
+  keyed(files.command('copy <fromProductId> <assetId> <toProductId>').description('Copy a ready file of one product on the server and attach the copy live to another product; the bytes never pass through this command')
     .option('--note <text>', 'version note shown with the copied file'))
-    .action(run(z.tuple([idSchema, idSchema, idSchema, keyOnlySchema.extend({ note: z.string().optional() })]), async (client, [fromProductId, assetId, toProductId, options]) => {
+    .action(run(z.tuple([idSchema, idSchema, idSchema, fileNoteSchema]), async (client, [fromProductId, assetId, toProductId, options]) => {
       const target = await client.listProductDownloads(toProductId);
       if (!target.ok) return target;
       const staged = await client.copyProductDownload({ productId: fromProductId, assetId });

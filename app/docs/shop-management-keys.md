@@ -632,12 +632,21 @@ sweep. A completion whose storage outcome is unknown deletes nothing, because a
 copy the storage still runs may land later: the minute sweep deletes both
 objects once the upload is 20 minutes old and the attempt's lease has ended.
 
-**Types, names and size.** The type is one of `application/pdf` (the file
-starts with `%PDF-`), `application/epub+zip` (a ZIP whose first entry is the
-stored `mimetype` naming `application/epub+zip`), `application/zip`,
-`audio/mpeg` (an ID3 tag or an MPEG audio frame), `audio/mp4` and `video/mp4`
-(`ftyp` at offset 4), `image/png` and `image/jpeg`; any other type is refused
-with `400`. A file name has 1 to 255 characters after trimming and no control
+**Types, names and size.** The type is one of `application/pdf` (`%PDF-`
+within the first 1024 bytes), `application/epub+zip` (a ZIP whose first entry
+is the stored, uncompressed `mimetype` naming `application/epub+zip`),
+`application/zip` (a ZIP local file header first), `audio/mpeg` (first an
+ID3v2.2, 2.3 or 2.4 tag with a synchsafe size, or an MPEG audio frame header
+with a valid version, layer, bitrate and sampling rate), `audio/mp4` (an `ftyp`
+box at offset 4 whose major brand is `M4A `, `M4B `, `isom`, `iso2`, `mp41`,
+`mp42` or `dash`), `video/mp4` (the same, with `M4V ` and `avc1` in place of
+`M4A ` and `M4B `), `image/png` and `image/jpeg`; any other type is refused
+with `400`. The check reads the first 4096 bytes. Refused on purpose, although
+some readers and players open them: an EPUB whose `mimetype` entry is
+compressed or not first, an empty or spanned ZIP, an MP3 with padding or
+another tag before its first frame, a PDF whose `%PDF-` does not lie within the
+first 1024 bytes, and ISO media of any other brand (QuickTime, 3GP, HEIC,
+AVIF). A file name has 1 to 255 characters after trimming and no control
 or bidirectional formatting characters. A key's file is at most 256 MiB (the
 product editor keeps its 1 GiB), so that one completion can copy and hash it
 within a single request.
@@ -747,7 +756,9 @@ pnpm --silent run cli --tenant acme shop files discard <staged-file-id>
 
 `shop files upload` reads the product's file list first, so its key needs
 `shop:catalog:read` as well; an unknown product or one that is not a digital
-download fails before anything is uploaded. It takes the type from the file
+download fails before anything is uploaded, and so do a `--note` longer than
+500 characters after trimming and a `--replaces` that is not a file of the
+product (`not_found`) or not ready (`validation`). It takes the type from the file
 extension (`.pdf`, `.epub`, `.zip`, `.mp3`, `.m4a`, `.m4b`, `.mp4`, `.m4v`,
 `.png`, `.jpg`, `.jpeg`), streams the file from disk, completes the upload and
 attaches it; a failed upload or completion attaches nothing. When the attach

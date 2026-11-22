@@ -1076,7 +1076,17 @@ const fileAnswer = (method: string, path: string): unknown => {
   if (path === '/api/m2m/shop/downloads/copy') return { file: stagedCopy };
   if (path === '/api/m2m/shop/downloads/staged') return { files: [stagedFile, stagedCopy] };
   if (path.startsWith('/api/m2m/shop/downloads/staged/')) return { discarded: true };
-  if (method === 'GET') return { assets: [downloadAsset, { ...downloadAsset, id: 'asset-0', supersededAt: '2026-11-15T11:00:00.000Z' }], personalisationMaxBytes: 52428800 };
+  if (method === 'GET') {
+    return {
+      assets: [
+        downloadAsset,
+        { ...downloadAsset, id: 'asset-0', supersededAt: '2026-11-15T11:00:00.000Z' },
+        { ...downloadAsset, id: 'asset-1', lineageId: 'asset-1' },
+        { ...downloadAsset, id: 'asset-pending', lineageId: 'asset-pending', status: 'pending' },
+      ],
+      personalisationMaxBytes: 52428800,
+    };
+  }
   if (path.endsWith('/remove')) return { deleted: true };
   return { asset: path.endsWith('/replace') ? { ...downloadAsset, versionNumber: 2 } : downloadAsset };
 };
@@ -1156,6 +1166,29 @@ describe('shop files CLI', () => {
     await run('shop', 'files', 'upload', 'product-1', 'notes.txt');
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
+  });
+
+  it.each([
+    [['--replaces', 'asset-unknown'], 'not_found', 'Replacement file "asset-unknown" not found on this product; nothing was uploaded', ['/api/m2m/shop/products/product-1/downloads']],
+    [['--replaces', 'asset-pending'], 'validation', 'Only ready files can be replaced; "asset-pending" is pending and nothing was uploaded', ['/api/m2m/shop/products/product-1/downloads']],
+    [['--note', 'n'.repeat(501)], 'validation', '', []],
+  ])('refuses %j before anything is uploaded', async (options, code, message, paths) => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, ...options);
+      const printed = soleJson();
+      expect(printed).toMatchObject({ ok: false, error: { code } });
+      if (message !== '') expect(printedErrorMessage(printed)).toBe(message);
+      expect(calls.map((call) => call.path)).toEqual(paths);
+      expect(calls.filter((call) => call.method === 'PUT')).toEqual([]);
+    });
+  });
+
+  it('sends a trimmed note of up to 500 characters', async () => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, '--note', ` ${'n'.repeat(500)} `);
+      expect(soleJson()).toMatchObject({ ok: true });
+      expect(calls.at(-1)?.body).toEqual({ productId: 'product-1', stagedFileId: 'staged-1', versionNote: 'n'.repeat(500) });
+    });
   });
 
   it('explains a staging cap and never attaches a file that was not staged', async () => {

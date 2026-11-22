@@ -139,7 +139,8 @@ it, or proposes the settings change itself with `--attach`. Both accept
 With a direct-mode key `shop files upload <productId> <file> [--replaces <assetId>] [--note <text>]`
 checks the product, uploads the file (streamed from disk, at most 256 MiB, the
 type taken from its extension), completes it and attaches it as a new file or
-the next version of `--replaces`; `shop files copy <fromProductId> <assetId> <toProductId>`
+the next version of `--replaces`, refusing before the upload a `--note` over
+500 characters or a `--replaces` that is not a ready file of the product; `shop files copy <fromProductId> <assetId> <toProductId>`
 copies a ready file on the server and attaches the copy to the other product;
 `shop files list <productId>`, `shop files remove <productId> <assetId>`,
 `shop files staged` and `shop files discard <id>` list a product's files, remove

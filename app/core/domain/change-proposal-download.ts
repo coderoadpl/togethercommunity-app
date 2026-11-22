@@ -7,6 +7,9 @@ const GIB = 1024 * MIB;
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 
+export const binarySizeText = (bytes: number): string =>
+  bytes % GIB === 0 ? `${String(bytes / GIB)} GiB` : `${String(bytes / MIB)} MiB`;
+
 export const KEY_DOWNLOAD_FILE_LIMITS = {
   maxBytes: 256 * MIB,
   stagedFilesPerKey: 20,
@@ -86,21 +89,48 @@ const isEpub = (head: Uint8Array): boolean => {
     && startsWith(head, 38 + extraLength, ascii('application/epub+zip'));
 };
 
-const isMpegAudio = (head: Uint8Array): boolean => {
-  if (startsWith(head, 0, ascii('ID3'))) return true;
-  const first = head[0];
-  const second = head[1];
-  if (first !== 0xff || second === undefined || (second & 0xe0) !== 0xe0) return false;
-  return ((second >> 3) & 0x03) !== 0x01 && ((second >> 1) & 0x03) !== 0x00;
+const isId3Tag = (head: Uint8Array): boolean => {
+  const version = head[3];
+  const revision = head[4];
+  const size = head.subarray(6, 10);
+  return startsWith(head, 0, ascii('ID3')) && version !== undefined && version >= 2 && version <= 4
+    && revision !== undefined && revision !== 0xff && size.byteLength === 4 && size.every((byte) => byte < 0x80);
 };
 
+const isMpegFrame = (head: Uint8Array): boolean => {
+  const [first, second, third] = head;
+  if (first !== 0xff || second === undefined || third === undefined || (second & 0xe0) !== 0xe0) return false;
+  return ((second >> 3) & 0x03) !== 0x01 && ((second >> 1) & 0x03) !== 0x00 && (third >> 4) !== 0x0f && ((third >> 2) & 0x03) !== 0x03;
+};
+
+const PDF_HEADER_WINDOW = 1024;
+
+const isPdf = (head: Uint8Array): boolean => {
+  const marker = ascii('%PDF-');
+  const last = Math.min(PDF_HEADER_WINDOW, head.byteLength) - marker.length;
+  for (let offset = 0; offset <= last; offset += 1) {
+    if (startsWith(head, offset, marker)) return true;
+  }
+  return false;
+};
+
+const SHARED_MP4_BRANDS = ['isom', 'iso2', 'mp41', 'mp42', 'dash'];
+
+const MP4_BRANDS = {
+  audio: [...SHARED_MP4_BRANDS, 'M4A ', 'M4B '],
+  video: [...SHARED_MP4_BRANDS, 'M4V ', 'avc1'],
+} as const;
+
+const hasMp4Brand = (brands: readonly string[]) => (head: Uint8Array): boolean =>
+  startsWith(head, 4, ascii('ftyp')) && brands.some((brand) => startsWith(head, 8, ascii(brand)));
+
 const MATCHERS: Readonly<Record<KeyDownloadContentType, (head: Uint8Array) => boolean>> = {
-  'application/pdf': (head) => startsWith(head, 0, ascii('%PDF-')),
+  'application/pdf': isPdf,
   'application/epub+zip': isEpub,
   'application/zip': (head) => startsWith(head, 0, ZIP_LOCAL_HEADER),
-  'audio/mpeg': isMpegAudio,
-  'audio/mp4': (head) => startsWith(head, 4, ascii('ftyp')),
-  'video/mp4': (head) => startsWith(head, 4, ascii('ftyp')),
+  'audio/mpeg': (head) => isId3Tag(head) || isMpegFrame(head),
+  'audio/mp4': hasMp4Brand(MP4_BRANDS.audio),
+  'video/mp4': hasMp4Brand(MP4_BRANDS.video),
   'image/png': (head) => startsWith(head, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   'image/jpeg': (head) => startsWith(head, 0, [0xff, 0xd8, 0xff]),
 };
@@ -115,7 +145,7 @@ export const keyDownloadFileNameSchema = z.string().trim().min(1).max(255)
 export const keyDownloadUploadInputSchema = z.object({
   fileName: keyDownloadFileNameSchema,
   contentType: keyDownloadContentTypeSchema,
-  sizeBytes: z.number().int().min(1).max(KEY_DOWNLOAD_FILE_LIMITS.maxBytes),
+  sizeBytes: z.number().int().min(1).max(KEY_DOWNLOAD_FILE_LIMITS.maxBytes, { message: `A file a key stages is at most ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.maxBytes)}` }),
 }).strict();
 
 export type KeyDownloadUploadInput = z.input<typeof keyDownloadUploadInputSchema>;
@@ -123,6 +153,10 @@ export type KeyDownloadUploadInput = z.input<typeof keyDownloadUploadInputSchema
 export const keyDownloadCompleteInputSchema = z.object({ uploadId: z.string().min(1).max(200) }).strict();
 
 export type KeyDownloadCompleteInput = z.input<typeof keyDownloadCompleteInputSchema>;
+
+export const keyDownloadDiscardInputSchema = z.object({ id: z.string().min(1).max(200) }).strict();
+
+export type KeyDownloadDiscardInput = z.input<typeof keyDownloadDiscardInputSchema>;
 
 export const keyDownloadCopyInputSchema = z.object({
   productId: z.string().min(1).max(200),
@@ -193,11 +227,7 @@ const keyDownloadRecordStateSchema = z.enum(KEY_DOWNLOAD_RECORD_STATES);
 
 export type KeyDownloadRecordState = z.output<typeof keyDownloadRecordStateSchema>;
 
-/**
- * One upload or server-side copy a key started: the accounting row its limits count for a day, and until it settles the
- * owner of its candidate object and of its staged destination. `attemptId` names the one completion that may write the
- * destination.
- */
+/** `attemptId` names the one completion that may write the destination. */
 export const keyDownloadUploadRecordSchema = z.object({
   tenantId: z.string().min(1),
   id: z.string().min(1),
@@ -223,7 +253,6 @@ const KEY_DOWNLOAD_RECORD_EVENT_KINDS = ['started', 'claimed', 'completed', 'fai
 
 export type KeyDownloadRecordEventKind = (typeof KEY_DOWNLOAD_RECORD_EVENT_KINDS)[number];
 
-/** One state change of an upload or copy record, appended in the transaction that made it and kept 30 days. */
 export const keyDownloadRecordEventSchema = z.object({
   tenantId: z.string().min(1),
   recordId: z.string().min(1),
@@ -295,10 +324,10 @@ export type KeyDownloadFileCap =
 
 const capMessages: Record<KeyDownloadFileCap, string> = {
   key_staged_files: `This key already holds ${String(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey)} staged or uploading files`,
-  key_staged_bytes: `Staging this file would take this key past ${String(KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerKey)} staged bytes`,
-  workspace_staged_bytes: `Staging this file would take the workspace past ${String(KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerWorkspace)} staged bytes`,
+  key_staged_bytes: `Staging this file would take this key past ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerKey)} of staged files`,
+  workspace_staged_bytes: `Staging this file would take the workspace past ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerWorkspace)} of staged files`,
   key_file_uploads: `This key already started ${String(KEY_DOWNLOAD_FILE_LIMITS.startsPerKey)} file uploads or copies in the last ${String(KEY_DOWNLOAD_FILE_LIMITS.startsWindowMs / 60_000)} minutes`,
-  key_file_bytes_daily: `Staging this file would take this key past ${String(KEY_DOWNLOAD_FILE_LIMITS.declaredBytesPerKeyDaily)} bytes started in 24 hours`,
+  key_file_bytes_daily: `Staging this file would take this key past ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.declaredBytesPerKeyDaily)} of uploads and copies started in 24 hours`,
   product_files: `This product already has ${String(KEY_DOWNLOAD_FILE_LIMITS.filesPerProduct)} files`,
 };
 

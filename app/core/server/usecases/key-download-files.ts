@@ -1,5 +1,6 @@
 import {
   appError,
+  binarySizeText,
   err,
   forbidden,
   integrationUnavailable,
@@ -11,6 +12,7 @@ import {
   keyDownloadContentTypeSchema,
   keyDownloadCopyInputSchema,
   keyDownloadCopyRefused,
+  keyDownloadDiscardInputSchema,
   keyDownloadFileCapExceeded,
   keyDownloadFileNameSchema,
   keyDownloadFilesBusy,
@@ -25,6 +27,7 @@ import {
   type AppError,
   type KeyDownloadCompleteInput,
   type KeyDownloadCopyInput,
+  type KeyDownloadDiscardInput,
   type KeyDownloadStagedFile,
   type KeyDownloadStagedFileView,
   type KeyDownloadUploadInput,
@@ -56,10 +59,6 @@ interface StagingKey {
   keyId: string;
 }
 
-/**
- * Staging belongs to shop management keys alone: a direct-mode key with catalogue write, or a propose-mode key that may
- * upload assets for catalogue proposals. A session, an impersonation or any other caller is refused.
- */
 const stagingKey = (ctx: Ctx): Result<StagingKey, AppError> => {
   const actor = ctx.machineActor;
   if (actor?.kind !== 'shop_management_key' || ctx.capabilities === undefined || ctx.impersonation !== undefined) {
@@ -117,7 +116,7 @@ const reservationError = (reservation: Awaited<ReturnType<KeyDownloadFileReposit
   return null;
 };
 
-/** The presigned write is signed for the declared size and handed out only once the record holding its share of the limits committed. */
+/** Signed only after the reservation committed, so no write URL exists for bytes the limits did not count. */
 export const beginKeyDownloadUpload = async (
   ctx: Ctx,
   input: KeyDownloadUploadInput,
@@ -322,10 +321,6 @@ export const completeKeyDownloadUpload = async (
   }
 };
 
-/**
- * A server-side copy of a ready product file of the workspace; the key never receives its bytes or a fact derived from
- * them: once the source row was found and the copy reserved, every failure answers the same refusal.
- */
 export const copyKeyDownloadFile = async (
   ctx: Ctx,
   input: KeyDownloadCopyInput,
@@ -343,7 +338,7 @@ export const copyKeyDownloadFile = async (
     return err(notFound(`No ready file "${parsed.data.assetId}" on this product`));
   }
   if (asset.sizeBytes > KEY_DOWNLOAD_FILE_LIMITS.maxBytes) {
-    return err(validation(`Files larger than ${String(KEY_DOWNLOAD_FILE_LIMITS.maxBytes)} bytes cannot be copied by a key`));
+    return err(validation(`Files larger than ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.maxBytes)} cannot be copied by a key`));
   }
   const contentType = keyDownloadContentTypeSchema.safeParse(asset.contentType);
   const fileName = keyDownloadFileNameSchema.safeParse(asset.fileName);
@@ -392,16 +387,18 @@ export const listKeyDownloadFiles = async (
 
 export const discardKeyDownloadFile = async (
   ctx: Ctx,
-  input: { id: string },
+  input: KeyDownloadDiscardInput,
   deps: Pick<KeyDownloadStagingDeps, 'keyDownloadFiles' | 'storage' | 'secretResolver' | 'clock' | 'logger'>,
 ): Promise<Result<{ discarded: true }, AppError>> => {
   const key = stagingKey(ctx);
   if (!key.ok) return key;
   const { tenantId, keyId } = key.value;
+  const parsed = keyDownloadDiscardInputSchema.safeParse(input);
+  if (!parsed.success) return invalid('Invalid staged file discard', parsed.error);
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
-  const owed = await deps.keyDownloadFiles.discard(tenantId, keyId, input.id, deps.clock.nowIso());
-  if (owed === null) return err(notFound(`No staged file "${input.id}" of this key`));
+  const owed = await deps.keyDownloadFiles.discard(tenantId, keyId, parsed.data.id, deps.clock.nowIso());
+  if (owed === null) return err(notFound(`No staged file "${parsed.data.id}" of this key`));
   await finishOwedDeletion(tenantId, owed.objectKey, configuration.value, deps);
   return ok({ discarded: true });
 };
@@ -464,12 +461,7 @@ const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, r
   return removed;
 };
 
-/**
- * One pass over abandoned upload and copy records, staged files past their age or of a revoked, expired or deleted
- * key, and owed deletions, within a wall-clock budget. Workspaces and rows are served longest-waiting first, and a
- * failed row records its attempt, so rows whose deletion keeps failing move behind the others instead of filling every
- * batch.
- */
+/** A failed row records its attempt, so rows whose deletion keeps failing move behind the others instead of filling every batch. */
 export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
   const now = deps.clock.nowIso();
   const cutoffs = keyDownloadSweepCutoffs(now);

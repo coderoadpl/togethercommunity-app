@@ -184,7 +184,7 @@ describe('staged file keys and views', () => {
 });
 
 describe('download file proposals', () => {
-  it('registers the three file operations as catalogue proposals on a product, outside the operations the owner panel of this release shows', () => {
+  it('registers the three file operations as catalogue proposals on a product, outside the list of operations that need no file', () => {
     for (const operation of ['download.add', 'download.replace', 'download.remove'] as const) {
       expect(registeredChangeProposalOperation(operation)).toBe(operation);
       expect(changeProposalFamily(operation)).toBe('catalog');

@@ -1,7 +1,6 @@
 import type {
   ChangeProposalDisplayStatus,
   ChangeProposalEventKind,
-  ChangeProposalOperation,
   ChangeProposalReferenceKind,
   ChangeProposalTargetKind,
   ImportAuditAction,
@@ -9,6 +8,7 @@ import type {
   LessonBlockType,
   MemberEventType,
   OrderRefundJobView,
+  RegisteredChangeProposalOperation,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StripeAdoptionRefusal,
@@ -612,7 +612,7 @@ export interface Messages {
     loadMore: string;
     loadMoreFailed: string;
     navBadge: (params: { count: number }) => string;
-    operation: Record<ChangeProposalOperation, string>;
+    operation: Record<RegisteredChangeProposalOperation, string>;
     unknownOperation: string;
     unknownOperationName: (params: { operation: string }) => string;
     unknownOperationNotApprovable: string;
@@ -647,6 +647,23 @@ export interface Messages {
     proposedImagePrivate: string;
     proposedImageSvgReason: string;
     proposedImageSvgDownload: string;
+    fileAdded: (params: { name: string }) => string;
+    fileReplaced: (params: { name: string; from: number; to: number }) => string;
+    fileRemoved: (params: { name: string; version: number }) => string;
+    fileFingerprint: string;
+    fileNewName: (params: { name: string }) => string;
+    fileVersionNote: (params: { note: string }) => string;
+    fileCopiedFrom: (params: { version: number; product: string }) => string;
+    fileCopiedFromGone: (params: { version: number }) => string;
+    fileBecomesCurrent: (params: { version: number }) => string;
+    fileStaysCurrent: (params: { version: number }) => string;
+    fileNoVersionLeft: string;
+    fileDownload: string;
+    fileDownloadPreparing: string;
+    fileDownloadFailed: string;
+    fileUnavailable: string;
+    fileFacts: (params: { type: string; size: string }) => string;
+    fileFactsWithFingerprint: (params: { type: string; size: string; fingerprint: string }) => string;
     emptyValue: string;
     yes: string;
     no: string;
@@ -697,6 +714,12 @@ export interface Messages {
     approveGroupBody: (params: { count: number }) => string;
     approveImagesPublic: (params: { count: number }) => string;
     approveGroupImagesPublic: (params: { count: number }) => string;
+    approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
+    approveFileReplace: (params: { file: string; facts: string; version: number; previous: string; target: string }) => string;
+    approveFileRemove: (params: { file: string; version: number; target: string }) => string;
+    fileRemoveOnlyFile: string;
+    approveFileMissing: string;
+    approveGroupFilesMissing: (params: { count: number }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;
@@ -712,6 +735,7 @@ export interface Messages {
     outcomeGroupRejected: string;
     outcomeStale: string;
     outcomeImageUnavailable: string;
+    outcomeFileUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
     outcomeFailedUnknown: string;
     outcomeExpired: string;
@@ -731,6 +755,8 @@ export interface Messages {
     eventNoteKeyPurged: string;
     statusStaleImageUnavailable: string;
     eventStaleImageUnavailable: string;
+    statusStaleFileUnavailable: string;
+    eventStaleFileUnavailable: string;
     fields: {
       type: string;
       slug: string;
@@ -754,6 +780,7 @@ export interface Messages {
       activePrices: string;
       prices: string;
       downloads: string;
+      files: string;
       stock: string;
       kind: string;
       interval: string;

@@ -18,7 +18,7 @@ import {
   changeProposalStatusSchema,
   changeProposalSubmitCapability,
   changeProposalTargetKind,
-  knownChangeProposalOperation,
+  registeredChangeProposalOperation,
   toChangeProposalKeyReceipt,
   toChangeProposalOwnerDetail,
   type ChangeProposal,
@@ -164,8 +164,9 @@ describe('change proposal shape', () => {
   it('reads a stored operation this release does not know, of the stored shape, and refuses any other text', () => {
     const later = changeProposalSchema.parse({ ...proposal(), operation: 'image.attach-cover', target: { kind: 'product', id: 'product-1' } });
     expect(later.operation).toBe('image.attach-cover');
-    expect(knownChangeProposalOperation(later.operation)).toBeNull();
-    expect(knownChangeProposalOperation('product.update')).toBe('product.update');
+    expect(registeredChangeProposalOperation(later.operation)).toBeNull();
+    expect(registeredChangeProposalOperation('product.update')).toBe('product.update');
+    expect(registeredChangeProposalOperation('download.remove')).toBe('download.remove');
     expect(changeProposalKeyReceiptSchema.safeParse(toChangeProposalKeyReceipt(later, NOW)).success).toBe(true);
     for (const operation of ['Image.attach', 'image', 'image.attach.cover', 'image.attach-', '-image.attach', `image.${'a'.repeat(60)}`]) {
       expect(changeProposalSchema.safeParse({ ...proposal(), operation }).success, operation).toBe(false);

@@ -1,20 +1,26 @@
 import type { ReactNode } from 'react';
 import { Typography } from '@mui/material';
 
-import { knownChangeProposalOperation, type ChangeProposalOwnerView } from '#core/domain/index.js';
+import { changeProposalStagedFileIds, registeredChangeProposalOperation, type ChangeProposalOwnerView } from '#core/domain/index.js';
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { formatFileSize } from '../../../lib/format.js';
 import {
   priceOf,
   proposalCreatesRecord,
+  proposalFileChanges,
   proposalRemovesRecord,
   proposalRows,
   proposalTarget,
   proposedImagePaths,
   type DisplayRow,
+  type FileChange,
+  type GroupReferences,
+  type ProposalFile,
   type TargetDisplay,
 } from './proposal-display.js';
-import { Isolated, operationTitle, priceTerms, targetPriceTerms } from './proposal-text.js';
+import { currentVersionText, Fingerprint } from './ProposedFiles.js';
+import { fileTypeLabel, Isolated, operationTitle, priceTerms, Sentence, targetPriceTerms } from './proposal-text.js';
 
 export type ApprovalFacts = Pick<
   ChangeProposalOwnerView,
@@ -57,10 +63,58 @@ const closingSentence = (t: Translations, rows: readonly DisplayRow[], names: Co
   return names !== 'every-row' && names.length === 0 ? t.approveFieldCount({ count }) : t.approveOtherFields({ count });
 };
 
+const FileApprovalText = ({ change, target }: { change: FileChange; target: string }) => {
+  const t = useTranslations().changeProposals;
+  const { language } = useLanguage();
+  const facts = (file: ProposalFile, fingerprint: string): string => {
+    const type = fileTypeLabel(file.contentType);
+    const size = formatFileSize(file.sizeBytes, language);
+    return file.fingerprint === null ? t.fileFacts({ type, size }) : t.fileFactsWithFingerprint({ type, size, fingerprint });
+  };
+  const fileName = <bdi>{change.file.fileName}</bdi>;
+  const fingerprint = change.file.fingerprint === null ? null : <Fingerprint value={change.file.fingerprint} />;
+  const product = <bdi>{target}</bdi>;
+  switch (change.kind) {
+    case 'added':
+      return (
+        <Sentence
+          text={(file, slot, name) => t.approveFileAdd({ file, facts: facts(change.file, slot), target: name })}
+          parts={[fileName, fingerprint, product]}
+        />
+      );
+    case 'replaced':
+      return (
+        <Sentence
+          text={(file, slot, previous, name) => t.approveFileReplace({
+            file,
+            facts: facts(change.file, slot),
+            version: change.file.versionNumber,
+            previous,
+            target: name,
+          })}
+          parts={[fileName, fingerprint, <bdi>{change.previous.fileName}</bdi>, product]}
+        />
+      );
+    case 'removed':
+      return (
+        <>
+          <Sentence text={(file, name) => t.approveFileRemove({ file, version: change.file.versionNumber, target: name })} parts={[fileName, product]} />
+          {` ${currentVersionText(t, change)}`}
+        </>
+      );
+  }
+};
+
+const singleFileChange = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): FileChange | null => {
+  const files = proposalFileChanges(proposal);
+  const [change] = files?.complete === true && files.changes.length === 1 ? files.changes : [];
+  return change ?? null;
+};
+
 const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[]): ApprovalSentence => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
-  const operation = knownChangeProposalOperation(proposal.operation);
+  const operation = registeredChangeProposalOperation(proposal.operation);
   const fallback: ApprovalSentence = { text: t.approveFallback({ operation: operationTitle(t, proposal.operation) }), names: [] };
   if (operation === null) return fallback;
   if (operation === 'settings.update') return { text: t.approveSettingsChange({ count: rows.length }), names: 'every-row' };
@@ -117,7 +171,55 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
     case 'product.update':
     case 'sales-link.update':
       return named((target) => t.approveFieldsChange({ target, count: rows.length }), 'every-row');
+    case 'download.add':
+    case 'download.replace':
+    case 'download.remove': {
+      const change = singleFileChange(proposal);
+      return change === null ? fallback : { text: <FileApprovalText change={change} target={name} />, names: ['files'] };
+    }
   }
+};
+
+const FILE_OPERATIONS: ReadonlySet<string> = new Set(['download.add', 'download.replace', 'download.remove']);
+
+const removesFile = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean => proposal.operation === 'download.remove';
+
+export const ApprovalFilesNote = ({
+  proposals,
+  group,
+}: {
+  proposals: readonly Pick<ChangeProposalOwnerView, 'operation' | 'input'>[];
+  group: boolean;
+}) => {
+  const t = useTranslations().changeProposals;
+  const attached = changeProposalStagedFileIds(proposals).length;
+  const removal = proposals.some(removesFile);
+  if (attached === 0 && !removal) return null;
+  const missing = attached === 0 ? null : group ? t.approveGroupFilesMissing({ count: attached }) : t.approveFileMissing;
+  return (
+    <Typography variant="body2" data-testid="proposal-approve-files">
+      {[removal ? t.fileRemoveOnlyFile : null, missing].filter((sentence) => sentence !== null).join(' ')}
+    </Typography>
+  );
+};
+
+export const GroupFileSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
+  const t = useTranslations().changeProposals;
+  const files = items.flatMap((item) => {
+    if (!FILE_OPERATIONS.has(item.operation)) return [];
+    const change = singleFileChange(item);
+    const target = targetName(proposalTarget(item, references));
+    return [{ item, text: change === null || target === null
+      ? t.approveFallback({ operation: operationTitle(t, item.operation) })
+      : <FileApprovalText change={change} target={target} /> }];
+  });
+  return (
+    <>
+      {files.map(({ item, text }) => (
+        <Typography key={item.id} variant="body2" data-testid={`proposal-approve-file-${item.id}`}>{text}</Typography>
+      ))}
+    </>
+  );
 };
 
 export const ApprovalImagesNote = ({ proposals, group }: { proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]; group: boolean }) => {
@@ -142,6 +244,7 @@ export const ApprovalSummary = ({ proposal }: { proposal: ApprovalFacts }) => {
         {` ${closingSentence(t, rows, sentence.names)}`}
       </Typography>
       <ApprovalImagesNote proposals={[proposal]} group={false} />
+      <ApprovalFilesNote proposals={[proposal]} group={false} />
     </>
   );
 };

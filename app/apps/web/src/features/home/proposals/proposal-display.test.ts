@@ -5,6 +5,7 @@ import {
   groupReferences,
   imageFingerprint,
   isSameOriginPublicAssetPath,
+  proposalFileChanges,
   proposalRows,
   proposalTarget,
   proposedImagePaths,
@@ -120,5 +121,35 @@ describe('proposal display', () => {
           after: { kind: 'record', entries: [{ field: 'colour', value: { kind: 'text', text: 'red', long: false, breakAnywhere: true } }] },
         },
       ]);
+  });
+
+  it('derives an added file, a new version and a removal from the file lists by id', () => {
+    const file = (id: string, lineageId: string, versionNumber: number, latest: boolean) => ({
+      id, lineageId, versionNumber, latest, fileName: `${id}.pdf`, contentType: 'application/pdf', sizeBytes: 1024, fingerprint: null, versionNote: null,
+    });
+    const first = file('file-1', 'file-1', 1, true);
+    const added = file('staged-1', 'staged-1', 1, true);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [first, added] } } }))
+      .toEqual({ changes: [{ kind: 'added', file: added }], complete: true });
+
+    const second = file('staged-2', 'file-1', 2, true);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, latest: false }, second] } } }))
+      .toEqual({ changes: [{ kind: 'replaced', file: second, previous: first }], complete: true });
+
+    expect(proposalFileChanges({ effect: { files: { before: [{ ...first, latest: false }, second], after: [first] } } }))
+      .toEqual({ changes: [{ kind: 'removed', file: second, current: first }], complete: true });
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [] } } }))
+      .toEqual({ changes: [{ kind: 'removed', file: first, current: null }], complete: true });
+  });
+
+  it('marks a file change incomplete when another file changed too, and reads nothing from a list it cannot parse', () => {
+    const first = { id: 'f', lineageId: 'f', versionNumber: 1, latest: true, fileName: 'f.pdf', contentType: 'application/pdf', sizeBytes: 1, fingerprint: null, versionNote: null };
+    const added = { ...first, id: 'g', lineageId: 'g' };
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, fileName: 'renamed.pdf' }, added] } } })?.complete).toBe(false);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, latest: false }, added] } } })?.complete).toBe(false);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [first] } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { files: { before: 'none', after: [first] } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { title: { before: 'a', after: 'b' } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { files: { before: null, after: [added] } } })).toEqual({ changes: [{ kind: 'added', file: added }], complete: true });
   });
 });

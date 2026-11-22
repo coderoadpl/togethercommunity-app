@@ -10,7 +10,12 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { changeProposalImageMissingNote, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView } from '#core/domain/index.js';
+import {
+  changeProposalFileMissingNote,
+  changeProposalImageMissingNote,
+  type ChangeProposalGroupOwnerView,
+  type ChangeProposalOwnerView,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
@@ -19,7 +24,14 @@ import { formatPrice } from '../../../lib/format.js';
 import {
   CHANGE_PROPOSAL_GROUP_ID,
   changeProposalGroup,
+  FILE_GROUP_ID,
+  fileAddProposal,
+  fileChangeProposalGroup,
+  fileHistoryDetail,
+  fileRemoveProposal,
+  fileUnavailableHistoryProposal,
   pendingChangeProposals,
+  pendingFileChangeProposals,
   settingsProposal,
   STOCK_PRODUCT_ID,
   stockAdjustmentProposal,
@@ -821,5 +833,132 @@ describe('ProposalsPanel', () => {
     expect(await screen.findByText(title)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
     expect(listed).toBe(false);
+  });
+
+  it('shows a file proposal with its file row and lets the owner approve it with a confirmation built from the same data', async () => {
+    usePending([fileAddProposal, fileRemoveProposal]);
+
+    renderPanel();
+
+    const card = await screen.findByTestId(`proposal-card-${fileAddProposal.id}`);
+    expect(within(card).getByText(t.operation['download.add'])).toBeInTheDocument();
+    expect(within(card).queryByTestId('proposal-unknown-operation')).toBeNull();
+    expect(within(card).getByTestId('proposed-file')).toHaveTextContent('Added: bonus-chapter.epub');
+    expect(within(card).getByTestId('proposed-file-download')).toBeEnabled();
+    expect(within(card).getByTestId('proposal-approve')).toBeEnabled();
+
+    await userEvent.click(within(card).getByTestId('proposal-approve'));
+    const dialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? ''))
+      .toMatch(/^“bonus-chapter\.epub” \(EPUB, .+, fingerprint 3f6c9a0e12bd.+\) will be added to “Field Guide \(digital\)”\. Everyone who has access to this product, current buyers included, can download it at once\. Nothing else changes\.$/u);
+    expect(within(dialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.approveFileMissing);
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.cancel }));
+
+    const removal = screen.getByTestId(`proposal-card-${fileRemoveProposal.id}`);
+    expect(within(removal).getByText(t.operation['download.remove'])).toBeInTheDocument();
+    expect(within(removal).getByTestId('proposed-file')).toHaveTextContent(t.fileRemoveOnlyFile);
+    await userEvent.click(within(removal).getByTestId('proposal-approve'));
+    const removalDialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(within(removalDialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.fileRemoveOnlyFile);
+  });
+
+  it('shows the file row in its group step and approves a group with a file item like any other group', async () => {
+    usePending(pendingFileChangeProposals.filter((proposal) => proposal.groupId !== null), fileChangeProposalGroup);
+    let body: unknown;
+    server.use(http.post('/api/change-proposals/groups/:id/approve', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        ok: true,
+        data: { group: { ...fileChangeProposalGroup, status: 'applied', items: fileChangeProposalGroup.items.map((item) => ({ ...item, status: 'applied' })) } },
+      });
+    }));
+
+    renderPanel();
+
+    const group = await screen.findByTestId(`proposal-group-card-${FILE_GROUP_ID}`);
+    const step = await within(group).findByTestId('proposal-group-item-proposal-field-guide-digital-file');
+    expect(within(step).getByText(t.groupStep({ position: 2, operation: t.operation['download.add'] }))).toBeInTheDocument();
+    expect(step).toHaveTextContent('the product from step 1 (“Field Guide (digital)”)');
+    expect(within(step).getByTestId('proposed-file')).toHaveTextContent('Added: field-guide.pdf');
+    expect(within(group).queryByTestId('proposal-unknown-operation')).toBeNull();
+
+    await userEvent.click(within(group).getByRole('button', { name: t.approveGroup({ count: 4 }) }));
+    const dialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(within(dialog).getByTestId('proposal-approve-file-proposal-field-guide-digital-file'))
+      .toHaveTextContent('will be added to “Field Guide (digital)”. Everyone who has access to this product, current buyers included, can download it at once.');
+    expect(within(dialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.approveGroupFilesMissing({ count: 1 }));
+    await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
+
+    await waitFor(() => expect(body).toEqual({ itemIds: fileChangeProposalGroup.items.map((item) => item.id) }));
+  });
+
+  it('says the proposed file is gone, not that the shop changed, when an approval ends stale for a missing file', async () => {
+    const decided = settledView(fileAddProposal, { status: 'stale' });
+    usePending([fileAddProposal]);
+    server.use(
+      http.post('/api/change-proposals/:id/approve', () => HttpResponse.json({ ok: true, data: { proposal: decided } })),
+      http.get('/api/change-proposals/:id', () => HttpResponse.json({
+        ok: true,
+        data: {
+          proposal: {
+            ...decided,
+            events: [
+              { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: '2026-11-21T09:00:00.000Z' },
+              { sequence: 2, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note: changeProposalFileMissingNote('staged-file-bonus-chapter'), at: '2026-11-21T12:00:00.000Z' },
+            ],
+          },
+        },
+      })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('proposal-approve'));
+    await userEvent.click(await screen.findByTestId('proposal-approve-confirm'));
+    const outcome = await screen.findByTestId(`proposal-outcome-${fileAddProposal.id}`);
+    expect(outcome).toHaveTextContent(t.outcomeFileUnavailable);
+    expect(outcome).not.toHaveTextContent(t.outcomeStale);
+    expect(t.outcomeFileUnavailable).toContain('staged and proposed again');
+  });
+
+  it('labels a stale proposal of a missing file in history and its timeline, and keeps the generic label on a group sibling', async () => {
+    expect(fileHistoryDetail(fileUnavailableHistoryProposal).events.map((event) => event.note))
+      .toContain(changeProposalFileMissingNote('staged-file-bonus-chapter'));
+    const sibling = settledView({ ...fileAddProposal, id: 'proposal-file-sibling', groupId: 'group-files', groupPosition: 2 }, { status: 'stale' });
+    usePending([]);
+    server.use(
+      http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
+        ok: true,
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [fileUnavailableHistoryProposal, sibling] : [], nextCursor: null, hasMore: false },
+      })),
+      http.get('/api/change-proposals/:id', ({ params }) => HttpResponse.json({
+        ok: true,
+        data: {
+          proposal: params['id'] === sibling.id
+            ? { ...sibling, events: [{ sequence: 1, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note: 'Not applied because item 1 of the group did not apply', at: '2026-11-21T12:00:00.000Z' }] }
+            : fileHistoryDetail(fileUnavailableHistoryProposal),
+        },
+      })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('tab', { name: t.tabHistory }));
+    const row = await screen.findByTestId(`proposal-history-${fileUnavailableHistoryProposal.id}`);
+    expect(await within(row).findByText(t.outcomeFileUnavailable)).toBeInTheDocument();
+    expect(within(row).getByTestId('proposal-history-status')).toHaveTextContent(t.statusStaleFileUnavailable);
+    expect(row).not.toHaveTextContent(t.outcomeStale);
+    const siblingRow = screen.getByTestId(`proposal-history-${sibling.id}`);
+    await waitFor(() => expect(siblingRow).toHaveTextContent(t.outcomeStale));
+    expect(within(siblingRow).getByTestId('proposal-history-status')).toHaveTextContent(t.status.stale);
+
+    await userEvent.click(within(row).getByTestId('proposal-history-toggle'));
+    const timeline = await within(row).findByTestId('proposal-timeline');
+    expect(timeline).toHaveTextContent(t.eventStaleFileUnavailable);
+    expect(timeline).not.toHaveTextContent(t.event.stale);
+    expect(row).not.toHaveTextContent('file_unavailable');
+    expect(within(row).getByTestId('proposed-file')).toHaveTextContent('Added: bonus-chapter.epub');
+    expect(within(row).queryByTestId('proposed-file-download')).toBeNull();
+    expect(within(row).queryByTestId('proposed-file-unavailable')).toBeNull();
   });
 });

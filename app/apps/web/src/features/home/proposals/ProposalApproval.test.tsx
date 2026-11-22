@@ -2,12 +2,13 @@ import type { ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { changeProposalOperationSchema, type ChangeProposalOperation } from '#core/domain/index.js';
+import { registeredChangeProposalOperationSchema, type RegisteredChangeProposalOperation } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { formatPrice } from '../../../lib/format.js';
-import { ApprovalImagesNote, ApprovalSummary, type ApprovalFacts } from './ProposalApproval.js';
+import { groupReferences } from './proposal-display.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupFileSentences, type ApprovalFacts } from './ProposalApproval.js';
 
 const t = en.changeProposals;
 
@@ -15,7 +16,25 @@ const normalized = (text: string): string => text.replace(/\s+/gu, ' ');
 
 const product = { id: 'proposal-mug', target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
 
-const samples: Record<ChangeProposalOperation, ApprovalFacts> = {
+const mugGuide = {
+  id: 'file-mug-guide',
+  lineageId: 'file-mug-guide',
+  versionNumber: 1,
+  latest: true,
+  fileName: 'mug-guide.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 1_048_576,
+  fingerprint: null,
+  versionNote: null,
+};
+
+const FINGERPRINT = 'ab'.repeat(32);
+
+const careSheet = { ...mugGuide, id: 'staged-care-sheet', lineageId: 'staged-care-sheet', fileName: 'care-sheet.pdf', fingerprint: FINGERPRINT };
+
+const mugGuideSecond = { ...mugGuide, id: 'staged-mug-guide-2', versionNumber: 2, sizeBytes: 2_097_152, fingerprint: FINGERPRINT };
+
+const samples: Record<RegisteredChangeProposalOperation, ApprovalFacts> = {
   'product.create': {
     ...product, operation: 'product.create', target: { kind: 'product', id: null }, targetLabel: null, input: { title: 'Mug' },
     effect: { exists: { before: false, after: true }, title: { before: null, after: 'Mug' } },
@@ -61,6 +80,18 @@ const samples: Record<ChangeProposalOperation, ApprovalFacts> = {
     ...product, operation: 'settings.update', target: { kind: 'settings', id: null }, targetLabel: null,
     input: { shopName: 'Acme' }, effect: { shopName: { before: 'Old', after: 'Acme' } },
   },
+  'download.add': {
+    ...product, operation: 'download.add', input: { productId: 'product-mug', stagedFileId: careSheet.id },
+    effect: { files: { before: [mugGuide], after: [mugGuide, careSheet] } },
+  },
+  'download.replace': {
+    ...product, operation: 'download.replace', input: { productId: 'product-mug', replacesAssetId: mugGuide.id, stagedFileId: mugGuideSecond.id },
+    effect: { files: { before: [mugGuide], after: [{ ...mugGuide, latest: false }, mugGuideSecond] } },
+  },
+  'download.remove': {
+    ...product, operation: 'download.remove', input: { productId: 'product-mug', assetId: mugGuide.id },
+    effect: { files: { before: [mugGuide], after: [] } },
+  },
 };
 
 const summaryOf = (proposal: ApprovalFacts): string => {
@@ -75,19 +106,20 @@ const withUnnamedRow = (proposal: ApprovalFacts): ApprovalFacts => ({
   effect: { ...proposal.effect, giftWrap: { before: false, after: true } },
 });
 
-const COUNTS_EVERY_ROW: ReadonlySet<ChangeProposalOperation> = new Set(['product.update', 'sales-link.update', 'settings.update']);
+const COUNTS_EVERY_ROW: ReadonlySet<RegisteredChangeProposalOperation> = new Set(['product.update', 'sales-link.update', 'settings.update']);
 
-const WHOLE_RECORD: ReadonlySet<ChangeProposalOperation> = new Set(['product.create', 'product.delete-draft', 'sales-link.create', 'sales-link.delete']);
+const WHOLE_RECORD: ReadonlySet<RegisteredChangeProposalOperation> = new Set(['product.create', 'product.delete-draft', 'sales-link.create', 'sales-link.delete']);
 
 describe('the approval confirmation', () => {
   it('says nothing else changes after every operation sentence that names all of its rows', () => {
-    for (const operation of changeProposalOperationSchema.options) {
+    expect(registeredChangeProposalOperationSchema.options).toHaveLength(17);
+    for (const operation of registeredChangeProposalOperationSchema.options) {
       expect(summaryOf(samples[operation]), operation).toMatch(new RegExp(`${t.approveNothingElse}$`, 'u'));
     }
   });
 
   it('never claims nothing else changes while an effect row is left unnamed', () => {
-    for (const operation of changeProposalOperationSchema.options) {
+    for (const operation of registeredChangeProposalOperationSchema.options) {
       const summary = summaryOf(withUnnamedRow(samples[operation]));
       if (COUNTS_EVERY_ROW.has(operation) || WHOLE_RECORD.has(operation)) {
         expect(summary, operation).toMatch(new RegExp(`${t.approveNothingElse}$`, 'u'));
@@ -198,5 +230,82 @@ describe('the approval confirmation of a proposed image', () => {
     expect(polish.approveGroupImagesPublic({ count: 5 })).toContain('5 proponowanych obrazk');
     expect(polish.approveGroupImagesPublic({ count: 22 })).toContain('22 proponowane obrazki');
     expect(polish.approveGroupImagesPublic({ count: 12 })).toContain('12 proponowanych obrazk');
+  });
+});
+
+const OVERRIDE = '\u202E';
+
+const filesNoteOf = (element: ReactElement): string => dialogText(element);
+
+describe('the approval confirmation of a file proposal', () => {
+  it('names the added file with its facts, the product and who can download it, then that nothing else changes', () => {
+    const summary = summaryOf(samples['download.add']);
+    expect(summary).toBe(normalized(
+      `“care-sheet.pdf” (PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}) will be added to “Mug”. `
+      + 'Everyone who has access to this product, current buyers included, can download it at once. Nothing else changes.',
+    ));
+    render(<ApprovalSummary proposal={samples['download.add']} />);
+    expect(screen.getByTestId('file-fingerprint')).toHaveAttribute('title', FINGERPRINT);
+    expect(screen.getByTestId('proposal-approve-files')).toHaveTextContent(t.approveFileMissing);
+    expect(screen.getByTestId('proposal-approve-files')).not.toHaveTextContent(t.fileRemoveOnlyFile);
+  });
+
+  it('names the version a replacement becomes and that buyers get it', () => {
+    expect(summaryOf(samples['download.replace'])).toMatch(
+      /^“mug-guide\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 of “mug-guide\.pdf” in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['download.replace']]} group={false} />)).toBe(t.approveFileMissing);
+  });
+
+  it('says buyers lose a removed file and always warns about a published product left without a file', () => {
+    expect(summaryOf(samples['download.remove'])).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1. ${t.fileNoVersionLeft} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['download.remove']]} group={false} />)).toBe(t.fileRemoveOnlyFile);
+    expect(t.fileRemoveOnlyFile).toBe('If this is the product’s only file and the product is published when you approve, it stays published with nothing to download.');
+    const kept = { ...samples['download.remove'], effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } }, input: { productId: 'product-mug', assetId: mugGuideSecond.id } };
+    expect(summaryOf(kept)).toContain(`version 2. ${t.fileBecomesCurrent({ version: 1 })} ${t.approveNothingElse}`);
+  });
+
+  it('isolates a file name with a direction override inside the confirmation sentence', () => {
+    const name = `care${OVERRIDE}fdp.exe`;
+    const proposal = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [mugGuide, { ...careSheet, fileName: name }] } } };
+    render(<ApprovalSummary proposal={proposal} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual([name, 'Mug']);
+    const outside = summary.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+  });
+
+  it('falls back to counting the field when the file list changed beyond the proposed file', () => {
+    const extra = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [{ ...mugGuide, fileName: 'renamed.pdf' }, careSheet] } } };
+    expect(summaryOf(extra)).toBe(`${t.approveFallback({ operation: t.operation['download.add'] })} ${t.approveFieldCount({ count: 1 })}`);
+  });
+
+  it('adds for a group the sentence of every file item, the removal warning and that none of the changes applies when a file is gone', () => {
+    const items = [
+      { ...samples['download.add'], id: 'item-add', target: { kind: 'product' as const, id: '$proposal:item-product' }, targetLabel: null },
+      { ...samples['download.remove'], id: 'item-remove' },
+      { ...samples['product.publish'], id: 'item-publish' },
+    ];
+    const references = groupReferences([
+      { id: 'item-product', operation: 'product.create', input: { title: 'Field Guide (digital)' }, targetLabel: null, groupPosition: 1 },
+    ]);
+    const sentences = dialogText(<GroupFileSentences items={items} references={references} />);
+    expect(sentences).toContain('will be added to “Field Guide (digital)”.');
+    expect(sentences).toContain('Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1.');
+    expect(sentences).not.toContain(t.approveNothingElse);
+    expect(filesNoteOf(<ApprovalFilesNote proposals={items} group />)).toBe(`${t.fileRemoveOnlyFile} ${t.approveGroupFilesMissing({ count: 1 })}`);
+    expect(t.approveGroupFilesMissing({ count: 2 })).toBe('If one of the 2 proposed files no longer exists, none of the changes is applied.');
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['product.publish']]} group />)).toBe('');
+  });
+
+  it('words the file sentences in Polish with the file and product quoted', () => {
+    const polish = pl.changeProposals;
+    expect(polish.approveFileAdd({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' })).toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\./u);
+    expect(polish.approveGroupFilesMissing({ count: 1 })).not.toMatch(/\d/u);
+    expect(polish.approveGroupFilesMissing({ count: 5 })).toContain('5 proponowanych plik');
   });
 });

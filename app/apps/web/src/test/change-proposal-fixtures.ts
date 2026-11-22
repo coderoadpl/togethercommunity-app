@@ -291,3 +291,204 @@ export const historyDetail = <P extends DecidedProposal>(proposal: P) => ({
     }]),
   ],
 });
+
+const FILE_PRODUCT_ID = 'product-studio-field-guide-digital';
+
+const FINGERPRINTS = {
+  bonus: '3f6c9a0e12bd7a41c0e95b2d8f6a13c4e7b09d25f8a61c3e4b7d0f92a5c8e1b6',
+  copy: '9b2e4d6f8a1c3e5b7d9f0a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b',
+  workbookV2: 'c41a7e09d3b58f26a1e4c7b0d9f3a62e8b5c1d47f0a39e6b2c8d5f14a7e03b9c',
+  fieldGuide: '5d8e1a4c7f0b3e6a9d2c5f8b1e4a7d0c3f6b9e2a5d8c1f4b7e0a3d6c9f2b5e8a',
+} as const;
+
+type ProposalFileFixture = {
+  id: string;
+  lineageId: string;
+  versionNumber: number;
+  latest: boolean;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  fingerprint: string | null;
+  versionNote: string | null;
+};
+
+type ProposalFileFields = Omit<ProposalFileFixture, 'contentType' | 'fingerprint' | 'versionNote'>
+  & Partial<Pick<ProposalFileFixture, 'contentType' | 'fingerprint' | 'versionNote'>>;
+
+const productFile = (fields: ProposalFileFields): ProposalFileFixture => ({
+  contentType: 'application/pdf',
+  fingerprint: null,
+  versionNote: null,
+  ...fields,
+});
+
+const workbookFirst = productFile({ id: 'file-workbook-1', lineageId: 'file-workbook-1', versionNumber: 1, latest: true, fileName: 'workbook.pdf', sizeBytes: 13_002_342 });
+
+const bonusChapter = productFile({
+  id: 'staged-file-bonus-chapter',
+  lineageId: 'staged-file-bonus-chapter',
+  versionNumber: 1,
+  latest: true,
+  fileName: 'bonus-chapter.epub',
+  contentType: 'application/epub+zip',
+  sizeBytes: 2_431_119,
+  fingerprint: FINGERPRINTS.bonus,
+});
+
+const workbookSecond = productFile({
+  id: 'staged-file-workbook-2',
+  lineageId: 'file-workbook-1',
+  versionNumber: 2,
+  latest: true,
+  fileName: 'workbook.pdf',
+  sizeBytes: 13_731_020,
+  fingerprint: FINGERPRINTS.workbookV2,
+  versionNote: 'Fixed the exercises of chapter 3',
+});
+
+const fileProposal = <F extends object>(id: string, createdAt: string, fields: F) => ({
+  id,
+  groupId: null,
+  groupTitle: null,
+  groupPosition: null,
+  target: { kind: 'product' as const, id: FILE_PRODUCT_ID },
+  targetLabel: 'Field Guide (digital)',
+  targetPrice: null,
+  ...pendingBase,
+  createdAt,
+  expiresAt: '2026-12-21T09:00:00.000Z',
+  ...fields,
+});
+
+export const fileAddProposalOf = (stagedFileId: string, fileName: string) => {
+  const added = { ...bonusChapter, id: stagedFileId, lineageId: stagedFileId, fileName };
+  return fileProposal(`proposal-${stagedFileId}`, '2026-11-21T09:00:00.000Z', {
+    operation: 'download.add',
+    input: { productId: FILE_PRODUCT_ID, stagedFileId },
+    effect: { files: { before: [workbookFirst], after: [workbookFirst, added] } },
+    proposedFiles: [{ id: stagedFileId, available: true, copiedFrom: null }],
+  });
+};
+
+export const fileAddProposal = fileAddProposalOf(bonusChapter.id, bonusChapter.fileName);
+
+const copiedWorkbook = { ...bonusChapter, id: 'staged-file-workbook-copy', lineageId: 'staged-file-workbook-copy', fileName: 'workbook-print-edition.pdf', contentType: 'application/pdf', sizeBytes: 9_874_002, fingerprint: FINGERPRINTS.copy };
+
+export const fileCopyProposal = fileProposal('proposal-workbook-copy', '2026-11-21T09:05:00.000Z', {
+  operation: 'download.add',
+  input: { productId: FILE_PRODUCT_ID, stagedFileId: copiedWorkbook.id },
+  effect: { files: { before: [workbookFirst], after: [workbookFirst, copiedWorkbook] } },
+  proposedFiles: [{ id: copiedWorkbook.id, available: true, copiedFrom: { productId: STOCK_PRODUCT_ID, productTitle: 'Creator Workbook (print)', versionNumber: 2 } }],
+});
+
+export const fileReplaceProposal = fileProposal('proposal-workbook-version', '2026-11-21T09:10:00.000Z', {
+  operation: 'download.replace',
+  input: { productId: FILE_PRODUCT_ID, replacesAssetId: workbookFirst.id, stagedFileId: workbookSecond.id, versionNote: workbookSecond.versionNote },
+  effect: { files: { before: [workbookFirst], after: [{ ...workbookFirst, latest: false }, workbookSecond] } },
+  proposedFiles: [{ id: workbookSecond.id, available: true, copiedFrom: null }],
+});
+
+export const fileRemoveProposal = fileProposal('proposal-workbook-removal', '2026-11-21T09:15:00.000Z', {
+  operation: 'download.remove',
+  input: { productId: FILE_PRODUCT_ID, assetId: workbookSecond.id },
+  effect: { files: { before: [{ ...workbookFirst, latest: false }, workbookSecond], after: [workbookFirst] } },
+});
+
+export const FILE_GROUP_ID = 'proposal-group-field-guide-digital';
+
+const fileGroupProduct = '$proposal:proposal-field-guide-digital-product';
+
+const fieldGuideFile = productFile({
+  id: 'staged-file-field-guide',
+  lineageId: 'staged-file-field-guide',
+  versionNumber: 1,
+  latest: true,
+  fileName: 'field-guide.pdf',
+  sizeBytes: 21_504_331,
+  fingerprint: FINGERPRINTS.fieldGuide,
+});
+
+const fileGroupItem = <F extends object>(position: number, id: string, createdAt: string, fields: F) => ({
+  id,
+  groupId: FILE_GROUP_ID,
+  groupTitle: 'Launch the digital field guide',
+  groupPosition: position,
+  targetLabel: null,
+  targetPrice: null,
+  ...pendingBase,
+  createdAt,
+  expiresAt: '2026-12-21T10:00:00.000Z',
+  ...fields,
+});
+
+const fileGroupItemViews = [
+  fileGroupItem(1, 'proposal-field-guide-digital-product', '2026-11-21T10:00:00.000Z', {
+    operation: 'product.create',
+    target: { kind: 'product' as const, id: null },
+    input: { title: 'Field Guide (digital)', slug: 'field-guide-digital', type: 'digital_download', priceCents: 2900, currency: 'PLN' },
+    effect: {
+      exists: { before: false, after: true },
+      title: { before: null, after: 'Field Guide (digital)' },
+      slug: { before: null, after: 'field-guide-digital' },
+      type: { before: null, after: 'digital_download' },
+      priceCents: { before: null, after: 2900 },
+      currency: { before: null, after: 'PLN' },
+      published: { before: null, after: false },
+    },
+  }),
+  fileGroupItem(2, 'proposal-field-guide-digital-file', '2026-11-21T10:00:05.000Z', {
+    operation: 'download.add',
+    target: { kind: 'product' as const, id: fileGroupProduct },
+    input: { productId: fileGroupProduct, stagedFileId: fieldGuideFile.id },
+    effect: { files: { before: [], after: [fieldGuideFile] } },
+    proposedFiles: [{ id: fieldGuideFile.id, available: true, copiedFrom: null }],
+  }),
+  fileGroupItem(3, 'proposal-field-guide-digital-price', '2026-11-21T10:00:10.000Z', {
+    operation: 'price.create',
+    target: { kind: 'product' as const, id: fileGroupProduct },
+    input: { productId: fileGroupProduct, kind: 'one_time', amountCents: 2900, currency: 'PLN' },
+    effect: { activePrices: { before: [], after: [{ kind: 'one_time', interval: null, amountCents: 2900, currency: 'PLN' }] } },
+  }),
+  fileGroupItem(4, 'proposal-field-guide-digital-publish', '2026-11-21T10:00:15.000Z', {
+    operation: 'product.publish',
+    target: { kind: 'product' as const, id: fileGroupProduct },
+    input: { id: fileGroupProduct },
+    effect: { published: { before: false, after: true } },
+  }),
+];
+
+const fileGroupItems = fileGroupItemViews.map((item) => ({
+  ...item,
+  events: [{ sequence: 1, kind: 'proposed' as const, actorUserId: null, apiKeyId: proposer.keyId, note: null, at: item.createdAt }],
+}));
+
+export const fileChangeProposalGroup = {
+  id: FILE_GROUP_ID,
+  title: 'Launch the digital field guide',
+  status: 'open' as const,
+  proposedBy: proposer,
+  createdAt: '2026-11-21T09:59:00.000Z',
+  expiresAt: '2026-12-21T10:00:00.000Z',
+  items: fileGroupItems,
+};
+
+export const pendingFileChangeProposals = [...fileGroupItemViews.toReversed(), fileAddProposal];
+
+export const fileUnavailableHistoryProposal = {
+  ...fileAddProposal,
+  id: 'proposal-bonus-chapter-gone',
+  status: 'stale' as const,
+  ...decided,
+  decidedAt: '2026-11-21T12:00:00.000Z',
+  proposedFiles: [{ id: bonusChapter.id, available: false, copiedFrom: null }],
+};
+
+export const fileHistoryChangeProposals = [fileUnavailableHistoryProposal, ...historyChangeProposals.slice(0, 1)];
+
+export const fileHistoryDetail = <P extends DecidedProposal & { id: string }>(proposal: P) => {
+  const detail = historyDetail(proposal);
+  return proposal.id === fileUnavailableHistoryProposal.id
+    ? { ...detail, events: detail.events.map((event) => event.kind === 'stale' ? { ...event, note: `file_unavailable: The proposed file ${bonusChapter.id} is no longer available, so the proposal cannot be applied; nothing was changed` } : event) }
+    : detail;
+};

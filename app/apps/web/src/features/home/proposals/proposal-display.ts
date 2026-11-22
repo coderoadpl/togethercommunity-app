@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import {
   changeProposalCreatedKind,
   isChangeProposalReference,
@@ -282,6 +284,69 @@ export const stockAdjustmentProductId = (proposal: Pick<ChangeProposalOwnerView,
   if (!isStockAdjustment(proposal)) return null;
   const productId = stringField(proposal.input, 'productId');
   return productId === null || isChangeProposalReference(productId) ? null : productId;
+};
+
+const proposalFileSchema = z.object({
+  id: z.string(),
+  lineageId: z.string(),
+  versionNumber: z.number().int(),
+  latest: z.boolean(),
+  fileName: z.string(),
+  contentType: z.string(),
+  sizeBytes: z.number(),
+  fingerprint: z.string().nullable(),
+  versionNote: z.string().nullable(),
+});
+
+export type ProposalFile = z.output<typeof proposalFileSchema>;
+
+const proposalFileListSchema = z.array(proposalFileSchema).nullable().transform((files) => files ?? []);
+
+export type FileChange =
+  | { kind: 'added'; file: ProposalFile }
+  | { kind: 'replaced'; file: ProposalFile; previous: ProposalFile }
+  | { kind: 'removed'; file: ProposalFile; current: ProposalFile | null };
+
+export interface FileChanges {
+  changes: FileChange[];
+  complete: boolean;
+}
+
+const FILES_FIELD = 'files';
+
+const latestOf = (files: readonly ProposalFile[], lineageId: string): ProposalFile | null => {
+  const lineage = files.filter((file) => file.lineageId === lineageId);
+  return lineage.find((file) => file.latest) ?? lineage.toSorted((left, right) => right.versionNumber - left.versionNumber)[0] ?? null;
+};
+
+const differsOnlyInLatest = (left: ProposalFile, right: ProposalFile): boolean => {
+  const { latest: leftLatest, ...leftRest } = left;
+  const { latest: rightLatest, ...rightRest } = right;
+  return leftLatest !== rightLatest && JSON.stringify(leftRest) === JSON.stringify(rightRest);
+};
+
+export const proposalFileChanges = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): FileChanges | null => {
+  const change = proposal.effect[FILES_FIELD];
+  if (change === undefined || !('before' in change)) return null;
+  const before = proposalFileListSchema.safeParse(change.before);
+  const after = proposalFileListSchema.safeParse(change.after);
+  if (!before.success || !after.success) return null;
+  const beforeIds = new Map(before.data.map((file) => [file.id, file]));
+  const afterIds = new Map(after.data.map((file) => [file.id, file]));
+  const attached = after.data.filter((file) => !beforeIds.has(file.id)).map((file): FileChange => {
+    const previous = latestOf(before.data, file.lineageId);
+    return previous === null ? { kind: 'added', file } : { kind: 'replaced', file, previous };
+  });
+  const removed = before.data.filter((file) => !afterIds.has(file.id))
+    .map((file): FileChange => ({ kind: 'removed', file, current: latestOf(after.data, file.lineageId) }));
+  const changes = [...attached, ...removed];
+  if (changes.length === 0) return null;
+  const touched = new Set(changes.map((entry) => entry.file.lineageId));
+  const complete = before.data.every((file) => {
+    const kept = afterIds.get(file.id);
+    return kept === undefined || JSON.stringify(kept) === JSON.stringify(file) || (touched.has(file.lineageId) && differsOnlyInLatest(file, kept));
+  });
+  return { changes, complete };
 };
 
 export const proposedImagePaths = (proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]): string[] => {

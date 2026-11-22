@@ -66,9 +66,9 @@ const changeProposalFileOperationSchema = z.enum(
 );
 
 /**
- * Every operation the registry of this release applies. `changeProposalOperationSchema` keeps the operations the owner
- * panel of this release displays and approves; the panel shows a proposal of any other operation as one it does not
- * know, which the owner approves or rejects with the CLI.
+ * Every operation the registry of this release applies, which the owner panel and the CLI display and approve.
+ * `changeProposalOperationSchema` leaves out the three file operations: each needs a staged file or a ready product
+ * file before it can be proposed, so a table that proposes every operation of that list runs without one.
  */
 export const registeredChangeProposalOperationSchema = z.enum([
   ...changeProposalOperationSchema.options,
@@ -83,11 +83,6 @@ const CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH = 64;
 const changeProposalStoredOperationSchema = z.string()
   .max(CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH)
   .regex(/^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$/);
-
-export const knownChangeProposalOperation = (operation: string): ChangeProposalOperation | null => {
-  const known = changeProposalOperationSchema.safeParse(operation);
-  return known.success ? known.data : null;
-};
 
 export const registeredChangeProposalOperation = (operation: string): RegisteredChangeProposalOperation | null => {
   const known = registeredChangeProposalOperationSchema.safeParse(operation);

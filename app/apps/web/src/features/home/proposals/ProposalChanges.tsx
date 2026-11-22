@@ -10,6 +10,7 @@ import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffT
 import {
   priceOf,
   proposalCreatesRecord,
+  proposalFileChanges,
   proposalRemovesRecord,
   proposalRows,
   shortProposedImagePath,
@@ -20,6 +21,7 @@ import {
   type GroupReferences,
 } from './proposal-display.js';
 import { enumValueLabel, fieldLabel, Isolated, priceTerms } from './proposal-text.js';
+import { FileChangeRows } from './ProposedFiles.js';
 import { ContentAddress, ProposedImage } from './ProposedImage.js';
 
 const COLLAPSED_LENGTH = 280;
@@ -242,7 +244,7 @@ export const ProposalFieldRows = ({
   labelComponent = 'h3',
   pendingProposalId = null,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation'>>;
+  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation' | 'proposedFiles'>>;
   targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
@@ -251,13 +253,15 @@ export const ProposalFieldRows = ({
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
-  const rows = proposalRows(proposal, references, pendingProposalId);
+  const files = proposalFileChanges(proposal);
+  const rows = proposalRows(proposal, references, pendingProposalId)
+    .filter((row) => files?.complete !== true || row.field !== 'files');
   const removal = proposalRemovesRecord(proposal);
   const newPrice = proposal.operation === 'price.create' ? priceOf(proposal.input) : null;
   if (newPrice !== null) {
     return <NewRecord entries={[{ field: 'price', label: t.fields.priceCents, value: <FieldDiffText breakAnywhere>{priceTerms(t, newPrice, language)}</FieldDiffText> }]} />;
   }
-  if (rows.length === 0) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
+  if (rows.length === 0 && files === null) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
   if (proposalCreatesRecord(proposal)) {
     const entries = rows.flatMap((row): NewRecordEntry[] => row.kind === 'change' && row.after !== null
       ? [{ field: row.field, label: fieldLabel(t, row.field, targetKind), value: <ProposalValue value={row.after} /> }]
@@ -266,6 +270,15 @@ export const ProposalFieldRows = ({
   }
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
+      {files === null ? null : (
+        <FileChangeRows
+          files={files}
+          proposedFiles={proposal.proposedFiles ?? []}
+          pendingProposalId={pendingProposalId}
+          label={fieldLabel(t, 'files', targetKind)}
+          labelComponent={labelComponent}
+        />
+      )}
       {rows.map((row) => {
         if (row.kind === 'delta') {
           return <StockDeltaRow key={row.field} row={row} proposal={proposal} stockNow={stockNow} labelComponent={labelComponent} />;

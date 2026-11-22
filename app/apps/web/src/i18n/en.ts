@@ -2384,6 +2384,8 @@ export const en: Messages = {
     opensInNewTab: '(opens in a new tab)',
     openCourse: 'Open course',
     viewCourses: 'View courses',
+    productsOtherEmailHint: 'Bought with another email? Sign in with that address.',
+    browseOffers: 'Browse offers',
   },
   downloadCopies: {
     showMore: 'Show more copies',

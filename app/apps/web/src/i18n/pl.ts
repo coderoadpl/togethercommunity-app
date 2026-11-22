@@ -2405,6 +2405,8 @@ export const pl: Messages = {
     opensInNewTab: '(otwiera się w nowej karcie)',
     openCourse: 'Przejdź do kursu',
     viewCourses: 'Zobacz kursy',
+    productsOtherEmailHint: 'Kupiłeś na inny adres e-mail? Zaloguj się tym adresem.',
+    browseOffers: 'Zobacz ofertę',
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

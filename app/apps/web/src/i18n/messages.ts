@@ -2121,6 +2121,8 @@ export interface Messages {
     opensInNewTab: string;
     openCourse: string;
     viewCourses: string;
+    productsOtherEmailHint: string;
+    browseOffers: string;
   };
   downloadCopies: {
     showMore: string;

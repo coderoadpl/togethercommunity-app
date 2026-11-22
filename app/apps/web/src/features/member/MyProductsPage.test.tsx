@@ -112,3 +112,53 @@ describe('my products cards', () => {
     expect(expired.getByTestId('renew-price-product-expired')).toHaveTextContent(/49/u);
   });
 });
+
+const salesLink = (slug: string) => ({ id: `link-${slug}`, slug, heading: 'Complete bundle', description: '', totalCents: 4200, currency: 'EUR' });
+
+const mockPublicOffer = (salesLinks: unknown[]) => {
+  server.use(http.get('/api/public/offer', () => HttpResponse.json({
+    ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [], salesLinks },
+  })));
+};
+
+describe('my products empty state', () => {
+  it('says purchases appear here and suggests signing in with the address used to buy', async () => {
+    mockProducts([]);
+    mockPublicOffer([]);
+
+    await renderMyProducts();
+
+    const empty = within(await screen.findByTestId('my-products-empty-state'));
+    expect(empty.getByRole('heading', { name: en.student.noProducts })).toBeVisible();
+    expect(empty.getByText(en.student.productsWillAppear)).toBeVisible();
+    expect(empty.getByText(en.student.productsOtherEmailHint)).toBeVisible();
+    expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+  });
+
+  it('links to the offer when the workspace lists one', async () => {
+    mockProducts([]);
+    mockPublicOffer([salesLink('complete-bundle')]);
+
+    await renderMyProducts();
+
+    const empty = within(await screen.findByTestId('my-products-empty-state'));
+    expect(await empty.findByRole('link', { name: en.student.browseOffers })).toHaveAttribute('href', '/offer/complete-bundle');
+  });
+
+  it('offers no single link when the workspace lists several offers', async () => {
+    let offerRequests = 0;
+    mockProducts([]);
+    server.use(http.get('/api/public/offer', () => {
+      offerRequests += 1;
+      return HttpResponse.json({
+        ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [], salesLinks: [salesLink('first'), salesLink('second')] },
+      });
+    }));
+
+    await renderMyProducts();
+
+    const empty = within(await screen.findByTestId('my-products-empty-state'));
+    await expect.poll(() => offerRequests).toBeGreaterThan(0);
+    expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+  });
+});

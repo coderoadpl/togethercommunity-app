@@ -256,6 +256,7 @@ export const MyProductsPage = () => {
   const tenantSettings = useQuery(actions.memberSettings);
   const grantsCourses = products.data?.products.some((product) => product.accessItems.length > 0) ?? false;
   const courses = useQuery({ ...actions.studentCourses, enabled: grantsCourses });
+  const publicOffer = useQuery({ ...actions.publicOffer, enabled: products.data?.products.length === 0 });
   const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 
@@ -287,6 +288,8 @@ export const MyProductsPage = () => {
     );
   }
 
+  const offers = publicOffer.data?.salesLinks ?? [];
+  const onlyOffer = offers.length === 1 ? offers[0] : undefined;
   const accessibleCourseIds = courses.data === undefined
     ? null
     : new Set(courses.data.courses.map((course) => course.id));
@@ -299,8 +302,17 @@ export const MyProductsPage = () => {
             state={{
               kind: 'empty',
               title: t.student.noProducts,
-              body: t.student.productsWillAppear,
+              body: (
+                <Stack useFlexGap spacing="0.5rem">
+                  <Typography variant="body1">{t.student.productsWillAppear}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t.student.productsOtherEmailHint}</Typography>
+                </Stack>
+              ),
+              ...(onlyOffer === undefined ? {} : {
+                action: <MuiLink href={`/offer/${encodeURIComponent(onlyOffer.slug)}`}>{t.student.browseOffers}</MuiLink>,
+              }),
             }}
+            data-testid="my-products-empty-state"
           />
         ) : (
           <Stack useFlexGap spacing="0.85rem">

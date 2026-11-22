@@ -27,6 +27,9 @@ it('lists order decisions and withdraws a grant, then refreshes the account stat
   expect(await screen.findByText(en.metaCapi.purchase({ product: 'Course', date: day('2026-11-05T09:00:00.000Z') }))).toBeVisible();
   expect(screen.getByText(en.metaCapi.purchase({ product: 'Book', date: day('2026-11-04T09:00:00.000Z') }))).toBeVisible();
   expect(screen.queryByText(en.metaCapi.order({ id: 'order-1' }))).toBeNull();
+  expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(2);
+  expect(screen.queryAllByRole('heading', { level: 6 })).toHaveLength(0);
+  expect(screen.getByText('Course', { exact: false }).tagName).toBe('P');
   const [granted, denied] = rowStatuses();
   expect(granted).toHaveTextContent(`${en.metaCapi.rowGranted} · ${day('2026-11-05T10:00:00.000Z')}`);
   expect(denied).toHaveTextContent(`${en.metaCapi.rowDenied} · ${day('2026-11-04T10:00:00.000Z')}`);

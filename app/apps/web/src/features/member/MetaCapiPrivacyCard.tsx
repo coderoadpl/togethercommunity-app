@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Divider, Stack, Typography } from '@mui/material';
+import { Alert, Button, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { MetaCapiMemberConsent } from '#core/domain/index.js';
 import { actions } from '../../api.js';
@@ -34,10 +34,10 @@ const ConsentRow = ({ consent, onWithdrawn }: { consent: MetaCapiMemberConsent; 
     },
   });
   return (
-    <Stack spacing={1} data-testid="meta-capi-consent-row">
+    <Stack component="li" spacing={1} data-testid="meta-capi-consent-row">
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>{title}</Typography>
+          <Typography component="p" variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>{title}</Typography>
           <Typography ref={statusText} variant="body2" color="text.secondary" role="status" tabIndex={-1}>
             {at === null ? label : `${label} · ${day(at)}`}
           </Typography>
@@ -78,7 +78,7 @@ export const MetaCapiPrivacyCard = () => {
       </Typography>
       {consents.isError ? <StatusView state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
       {rows.length > 0 ? (
-        <Stack spacing={2} divider={<Divider flexItem />}>
+        <Stack component="ul" spacing={2} sx={{ listStyle: 'none', m: 0, p: 0, '& > li + li': { borderTop: 1, borderColor: 'divider', pt: 2 } }}>
           {rows.map((consent) => <ConsentRow key={consent.orderId} consent={consent} onWithdrawn={withdrawn} />)}
         </Stack>
       ) : null}

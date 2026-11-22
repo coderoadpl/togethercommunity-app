@@ -144,13 +144,13 @@ const keyFileObjectSchema = z.string().min(1).refine((key) => key.includes(KEY_F
 
 const keyUploadObjectSchema = z.string().min(1).refine((key) => key.includes(KEY_UPLOADS_SEGMENT));
 
-export const keyDownloadCopySourceSchema = z.object({
+const keyDownloadCopySourceSchema = z.object({
   productId: z.string().min(1),
   assetId: z.string().min(1),
   versionNumber: z.number().int().positive(),
 }).strict();
 
-export type KeyDownloadCopySource = z.output<typeof keyDownloadCopySourceSchema>;
+type KeyDownloadCopySource = z.output<typeof keyDownloadCopySourceSchema>;
 
 export const keyDownloadStagedFileSchema = z.object({
   tenantId: z.string().min(1),
@@ -168,9 +168,9 @@ export const keyDownloadStagedFileSchema = z.object({
 
 export type KeyDownloadStagedFile = z.output<typeof keyDownloadStagedFileSchema>;
 
-export const KEY_DOWNLOAD_RECORD_STATES = ['started', 'completing', 'completed', 'failed', 'settled'] as const;
+const KEY_DOWNLOAD_RECORD_STATES = ['started', 'completing', 'completed', 'failed', 'settled'] as const;
 
-export const keyDownloadRecordStateSchema = z.enum(KEY_DOWNLOAD_RECORD_STATES);
+const keyDownloadRecordStateSchema = z.enum(KEY_DOWNLOAD_RECORD_STATES);
 
 export type KeyDownloadRecordState = z.output<typeof keyDownloadRecordStateSchema>;
 

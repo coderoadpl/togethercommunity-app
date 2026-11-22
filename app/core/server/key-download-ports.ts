@@ -26,7 +26,7 @@ export type KeyDownloadCompletion =
 /** What a locked removal step found: the objects it may delete, or why it deletes nothing. */
 export type KeyDownloadObjectRemoval = 'removed' | 'failed' | 'gone' | 'kept' | 'busy';
 
-export interface KeyDownloadSweepBatch {
+interface KeyDownloadSweepBatch {
   records: KeyDownloadUploadRecord[];
   stagedFiles: KeyDownloadStagedFile[];
   deletions: KeyDownloadPendingDeletion[];
@@ -102,7 +102,7 @@ export type KeyDownloadAttachment =
   | { kind: 'replacement_not_ready' }
   | { kind: 'cap_exceeded'; cap: KeyDownloadFileCap };
 
-export type KeyDownloadAssetRemoval =
+type KeyDownloadAssetRemoval =
   | { kind: 'removed'; asset: ProductDownloadAsset; owedDeletion: KeyDownloadPendingDeletion | null }
   | { kind: 'not_found' };
 

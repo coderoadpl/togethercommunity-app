@@ -21,6 +21,8 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
+export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
@@ -4167,7 +4169,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
-    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
   },
   '& pre': {
     overflowX: 'auto',

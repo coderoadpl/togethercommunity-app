@@ -13,6 +13,7 @@ import type { PublicNavigation, SpaceFeedItem } from '#core/domain/index.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { SHELL_ANCHOR_SCROLL_MARGIN } from '../../theme.js';
 import { AnonHomePage } from './AnonHomePage.js';
 
 const navigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
@@ -251,6 +252,8 @@ describe('AnonHomePage', () => {
     expect(screen.getByTestId('offer-product-prod-free-price')).toHaveTextContent(en.common.free);
     expect(screen.getByTestId('offer-product-cta-prod-free')).toHaveTextContent(en.checkout.freeOrderIdle);
     expect(screen.getByTestId('anon-spaces')).not.toHaveAttribute('id');
+    expect(getComputedStyle(section).scrollMarginTop).toBe(SHELL_ANCHOR_SCROLL_MARGIN);
+    expect(getComputedStyle(screen.getByTestId('anon-spaces')).scrollMarginTop).not.toBe(SHELL_ANCHOR_SCROLL_MARGIN);
   });
 
   it('lists each product once even when the payload repeats it', async () => {

@@ -103,7 +103,7 @@ const AboutCourseCard = ({ description, clamp }: { description: string; clamp: b
   }, [collapsed, description]);
 
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
+    <Paper elevation={1} sx={{ p: '1.25rem' }} data-testid="course-about-card">
       <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
         {t.courseOverview.aboutCourse}
       </Eyebrow>

@@ -600,6 +600,24 @@ describe('CourseTree', () => {
     expect(within(chapter).queryByTestId('completion-mark')).not.toBeInTheDocument();
   });
 
+  it.each(['light', 'dark'] as const)('prints lesson durations in the readable secondary text colour in %s mode', async (scheme) => {
+    const theme = createThemeForMode('shadcn', undefined, scheme, 'member');
+    const cssColor = (value: string) => {
+      const probe = document.createElement('span');
+      probe.style.color = value;
+      return probe.style.color;
+    };
+    await renderNode(
+      <ThemeProvider theme={theme}>
+        <CourseTree courseId="course-1" structure={structure} expandAll />
+      </ThemeProvider>,
+    );
+
+    const duration = getComputedStyle(await screen.findByTestId('lesson-duration-l1')).color;
+    expect(duration).toBe(cssColor(theme.palette.text.secondary));
+    expect(duration).not.toBe(cssColor(theme.palette.text.disabled));
+  });
+
   it('shows per-lesson durations only when present', async () => {
     await renderTree();
 

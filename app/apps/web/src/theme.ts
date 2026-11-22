@@ -4072,7 +4072,7 @@ export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
   fontSize: '0.75rem',
-  color: theme.palette.text.disabled,
+  color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));

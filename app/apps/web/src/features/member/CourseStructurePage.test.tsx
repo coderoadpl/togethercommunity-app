@@ -756,6 +756,18 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('guest-course-offer').compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('pads the member About card like the other stacked cards', async () => {
+    stubViewport(true);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const about = await screen.findByTestId('course-about-card');
+    for (const width of [390, 1440]) {
+      expect(stylesAt(about, width).padding).toBe(stylesAt(screen.getByTestId('course-progress-card'), width).padding);
+      expect(stylesAt(about, width).padding).toBe('1.25rem');
+    }
+  });
+
   it('keeps the member course cover and about card on the same column width', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);

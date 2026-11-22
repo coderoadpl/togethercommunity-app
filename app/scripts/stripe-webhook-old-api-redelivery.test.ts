@@ -153,7 +153,7 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
     appliedChange(await catalog.createProductPrice({ productId: book.id, kind: 'one_time', amountCents: 3900, currency: 'PLN' }));
     appliedChange(await catalog.enableProductStock({ productId: book.id, onHand: 49, lowStockThreshold: null }));
     appliedChange(await catalog.publishProduct({ id: book.id }));
-    const link = unwrapped(await catalog.createSalesLink({ slug: 'book-bundle', title: 'Book bundle', heading: 'Book bundle', productIds: [course.id, book.id], active: true })).salesLink;
+    const link = appliedChange(await catalog.createSalesLink({ slug: 'book-bundle', title: 'Book bundle', heading: 'Book bundle', productIds: [course.id, book.id], active: true })).salesLink;
 
     const handoff = await app.request(`${baseUrl}${API_PATHS.checkoutSession}`, {
       method: 'POST',

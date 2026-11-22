@@ -34,12 +34,13 @@ it('lists order decisions and withdraws a grant, then refreshes the account stat
   expect(granted).toHaveTextContent(`${en.metaCapi.rowGranted} · ${day('2026-11-05T10:00:00.000Z')}`);
   expect(denied).toHaveTextContent(`${en.metaCapi.rowDenied} · ${day('2026-11-04T10:00:00.000Z')}`);
   expect(screen.getByText(en.metaCapi.withdrawHint)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdrawShort }));
+  const course = en.metaCapi.purchase({ product: 'Course', date: day('2026-11-05T09:00:00.000Z') });
+  fireEvent.click(screen.getByRole('button', { name: `${en.metaCapi.withdrawShort} ${course}` }));
   await waitFor(() => expect(rowStatuses()[0]).toHaveTextContent(`${en.metaCapi.rowWithdrawn} · ${day('2026-11-05T11:00:00.000Z')}`));
   expect(rowStatuses()[0]).toHaveFocus();
   expect(screen.getByTestId('meta-capi-withdrawn-notice')).toBeEmptyDOMElement();
   expect(withdraw).toHaveBeenCalledWith({ orderId: 'order-1' });
-  expect(screen.queryByRole('button', { name: en.metaCapi.withdrawShort })).toBeNull();
+  expect(screen.queryByRole('button', { name: new RegExp(`^${en.metaCapi.withdrawShort}`) })).toBeNull();
   expect(screen.queryByText(en.metaCapi.withdrawHint)).toBeNull();
 });
 
@@ -60,7 +61,7 @@ it('announces the withdrawal at card level and focuses it when the refreshed lis
   if (!olderRow) throw new Error('Missing older row');
   const notice = screen.getByTestId('meta-capi-withdrawn-notice');
   expect(notice).toBeEmptyDOMElement();
-  fireEvent.click(within(olderRow).getByRole('button', { name: new RegExp(`^${en.metaCapi.withdrawShort}`) }));
+  fireEvent.click(within(olderRow).getByRole('button', { name: `${en.metaCapi.withdrawShort} ${title}` }));
   await waitFor(() => expect(screen.getAllByTestId('meta-capi-consent-row')).toHaveLength(1));
   await waitFor(() => expect(notice).toHaveTextContent(en.metaCapi.withdrawnNotice({ title })));
   expect(notice).toHaveAttribute('role', 'status');
@@ -83,10 +84,11 @@ it('shows the pending label and the error on the tapped row only', async () => {
   renderWithProviders(<MetaCapiPrivacyCard />);
   expect(await screen.findByText('Course')).toBeVisible();
   expect(screen.getByText(en.metaCapi.order({ id: 'order-2' }))).toBeVisible();
-  const [first, second] = screen.getAllByRole('button', { name: en.metaCapi.withdrawShort });
-  if (!first || !second) throw new Error('Missing withdraw buttons');
+  const first = screen.getByRole('button', { name: `${en.metaCapi.withdrawShort} Course` });
+  const second = screen.getByRole('button', { name: `${en.metaCapi.withdrawShort} ${en.metaCapi.order({ id: 'order-2' })}` });
+  expect(screen.getAllByRole('button', { name: new RegExp(`^${en.metaCapi.withdrawShort}`) })).toEqual([first, second]);
   fireEvent.click(first);
-  expect(await screen.findByRole('button', { name: en.metaCapi.withdrawing })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: `${en.metaCapi.withdrawing} Course` })).toBeDisabled();
   expect(second).toBeEnabled();
   fail();
   await screen.findByRole('alert');
@@ -104,9 +106,10 @@ it('shows failures without removing the withdrawal action', async () => {
     http.post('/api/me/meta-capi/withdraw', () => HttpResponse.error()),
   );
   renderWithProviders(<MetaCapiPrivacyCard />);
-  fireEvent.click(await screen.findByRole('button', { name: en.metaCapi.withdrawShort }));
+  const name = `${en.metaCapi.withdrawShort} ${en.metaCapi.order({ id: 'order-1' })}`;
+  fireEvent.click(await screen.findByRole('button', { name }));
   await screen.findByRole('alert');
-  await waitFor(() => expect(screen.getByRole('button', { name: en.metaCapi.withdrawShort })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name })).toBeEnabled());
 });
 
 it('renders nothing for a member without recorded decisions', async () => {
@@ -134,6 +137,6 @@ it('shows the card with an error and a working retry when the decisions request 
   expect(screen.getByText(en.metaCapi.privacyHeading)).toBeVisible();
   failing = false;
   fireEvent.click(retry);
-  expect(await screen.findByRole('button', { name: en.metaCapi.withdrawShort })).toBeVisible();
+  expect(await screen.findByRole('button', { name: `${en.metaCapi.withdrawShort} ${en.metaCapi.order({ id: 'order-1' })}` })).toBeVisible();
   expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Button, Divider, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { MetaCapiMemberConsent } from '#core/domain/index.js';
@@ -12,6 +12,7 @@ const emptyNotice = { position: 'absolute', width: 1, height: 1, overflow: 'hidd
 const ConsentRow = ({ consent, onWithdrawn }: { consent: MetaCapiMemberConsent; onWithdrawn: (orderId: string, title: string) => Promise<boolean> }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const id = useId();
   const statusText = useRef<HTMLParagraphElement>(null);
   const focusStatus = useRef(false);
   const withdrawn = consent.withdrawnAt !== null;
@@ -37,13 +38,13 @@ const ConsentRow = ({ consent, onWithdrawn }: { consent: MetaCapiMemberConsent; 
     <Stack component="li" spacing={1} data-testid="meta-capi-consent-row">
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-          <Typography component="p" variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>{title}</Typography>
+          <Typography id={`${id}-title`} component="p" variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>{title}</Typography>
           <Typography ref={statusText} variant="body2" color="text.secondary" role="status" tabIndex={-1}>
             {at === null ? label : `${label} · ${day(at)}`}
           </Typography>
         </Stack>
         {active ? (
-          <Button variant="outlined" size="small" disabled={withdraw.isPending} onClick={() => withdraw.mutate({ orderId: consent.orderId })} sx={{ flexShrink: 0 }}>
+          <Button id={`${id}-withdraw`} aria-labelledby={`${id}-withdraw ${id}-title`} variant="outlined" size="small" disabled={withdraw.isPending} onClick={() => withdraw.mutate({ orderId: consent.orderId })} sx={{ flexShrink: 0 }}>
             {withdraw.isPending ? t.metaCapi.withdrawing : t.metaCapi.withdrawShort}
           </Button>
         ) : null}

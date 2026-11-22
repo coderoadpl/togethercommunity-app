@@ -135,7 +135,11 @@ export const recordStripeWebhookOutcome = async (
       reasonMessage: storedReason(error),
       seenAt: deps.clock.nowIso(),
     });
-    if (await notifyOwners(tenant, recorded, deps)) deps.dispatchEmail();
+    if (await hasLiveOrder(tenant.id, checkoutSessionId, deps)) {
+      await deps.paymentEventRejections.resolve(tenant.id, event.id, deps.clock.nowIso());
+      return;
+    }
+    if (recorded.attempts === 1 && await notifyOwners(tenant, recorded, deps)) deps.dispatchEmail();
   });
 };
 

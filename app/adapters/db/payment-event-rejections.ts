@@ -1,9 +1,10 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, notExists, sql } from 'drizzle-orm';
 
 import { paymentEventRejectionSchema, type PaymentEventRejection } from '#core/domain/index.js';
 import type { PaymentEventRejectionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { orders } from './app-schema.js';
 import { paymentEventRejections } from './payment-event-rejection-schema.js';
 
 const toRejection = (row: typeof paymentEventRejections.$inferSelect): PaymentEventRejection => paymentEventRejectionSchema.parse({
@@ -12,6 +13,12 @@ const toRejection = (row: typeof paymentEventRejections.$inferSelect): PaymentEv
   lastSeenAt: new Date(row.lastSeenAt).toISOString(),
   resolvedAt: row.resolvedAt === null ? null : new Date(row.resolvedAt).toISOString(),
 });
+
+const liveOrderOfSession = (db: Db) => db.select({ id: orders.id }).from(orders).where(and(
+  eq(orders.tenantId, paymentEventRejections.tenantId),
+  eq(orders.mode, 'live'),
+  sql`${orders.providerObjectIds} ->> 'checkoutSession' = ${paymentEventRejections.checkoutSessionId}`,
+));
 
 export const createPaymentEventRejectionRepository = (db: Db): PaymentEventRejectionRepository => ({
   record: async (tenantId, { seenAt, ...rejection }) => {
@@ -44,7 +51,11 @@ export const createPaymentEventRejectionRepository = (db: Db): PaymentEventRejec
   },
   listUnresolved: async (tenantId, limit) => {
     const rows = await db.select().from(paymentEventRejections)
-      .where(and(eq(paymentEventRejections.tenantId, tenantId), isNull(paymentEventRejections.resolvedAt)))
+      .where(and(
+        eq(paymentEventRejections.tenantId, tenantId),
+        isNull(paymentEventRejections.resolvedAt),
+        notExists(liveOrderOfSession(db)),
+      ))
       .orderBy(desc(paymentEventRejections.lastSeenAt), desc(paymentEventRejections.eventId))
       .limit(limit);
     return rows.map(toRejection);

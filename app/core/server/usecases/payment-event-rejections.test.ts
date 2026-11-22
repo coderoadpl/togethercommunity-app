@@ -166,16 +166,21 @@ describe('recordStripeWebhookOutcome', () => {
     }]);
   });
 
-  it('queues one e-mail per owner across all retries of an event', async () => {
-    const { deps, outbox } = setup({ staff: [
+  it('queues the owner e-mails only on the first refusal of an event', async () => {
+    const { deps, outbox, dispatchEmail } = setup({ staff: [
       { userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: null },
       { userId: 'owner-2', email: 'second-owner@togethercommunity.app', staffRole: 'owner', language: 'en' },
     ] });
+    const enqueue = vi.spyOn(deps.emailOutbox, 'enqueue');
+    const staffLookup = deps.tenantAccess === undefined ? undefined : vi.spyOn(deps.tenantAccess, 'listStaffForTenant');
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
     }
 
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(staffLookup).toHaveBeenCalledTimes(1);
+    expect(dispatchEmail).toHaveBeenCalledTimes(1);
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
       [`payment-event-rejected:${tenant.id}:evt_paid:owner-1`, 'owner@togethercommunity.app'],
       [`payment-event-rejected:${tenant.id}:evt_paid:owner-2`, 'second-owner@togethercommunity.app'],
@@ -265,6 +270,17 @@ describe('recordStripeWebhookOutcome', () => {
     expect(findOrder).toHaveBeenCalledWith(tenant.id, { checkoutSession: 'cs_paid' }, 'live');
     expect(store.rows.size).toBe(0);
     expect(outbox.size).toBe(0);
+  });
+
+  it('resolves the record and e-mails nobody when a concurrent delivery commits the order while it is being recorded', async () => {
+    const { deps, store, outbox, dispatchEmail, findOrder } = setup();
+    findOrder.mockResolvedValueOnce(null).mockResolvedValue(liveOrder);
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', resolvedAt: '2026-11-20T10:00:00.000Z' }]);
+    expect(outbox.size).toBe(0);
+    expect(dispatchEmail).not.toHaveBeenCalled();
   });
 
   it('swallows a failing record write so the answer to Stripe stays the refusal', async () => {

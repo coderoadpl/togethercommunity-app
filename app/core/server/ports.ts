@@ -1835,7 +1835,6 @@ export interface ProcessedPaymentEventRepository {
 }
 
 export interface PaymentEventRejectionRepository {
-  /** A later refusal of an event already resolved reopens its row. */
   record(
     tenantId: string,
     rejection: Pick<PaymentEventRejection, 'eventId' | 'eventType' | 'checkoutSessionId' | 'reasonCode' | 'reasonMessage'> & { seenAt: string },

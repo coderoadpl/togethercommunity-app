@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPaymentEventRejectionRepository } from './payment-event-rejections.js';
-import { paymentEventRejections, tenants } from './schema.js';
+import { members, orders, paymentEventRejections, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -24,9 +24,24 @@ beforeAll(async () => {
     { id: 'tenant-acme', slug: 'acme', name: 'Acme', createdAt: now },
     { id: 'tenant-studio', slug: 'studio', name: 'Studio', createdAt: now },
   ]);
+  await database.db.insert(user).values({ id: 'buyer', email: 'buyer@example.org', name: 'Buyer' });
+  for (const tenantId of ['tenant-acme', 'tenant-studio']) {
+    await database.db.insert(members).values({ id: `member-${tenantId}`, tenantId, userId: 'buyer', email: 'buyer@example.org', createdAt: now });
+    await database.db.insert(products).values({
+      id: `product-${tenantId}`, tenantId, description: '', slug: 'course', title: 'Course', priceCents: 4900, currency: 'PLN', published: true, createdAt: now,
+    });
+  }
 }, 60_000);
 afterAll(async () => { await database?.close(); });
-beforeEach(async () => { await database.db.delete(paymentEventRejections); });
+beforeEach(async () => {
+  await database.db.delete(paymentEventRejections);
+  await database.db.delete(orders);
+});
+
+const insertOrder = (tenantId: string, checkoutSession: string, mode: 'live' | 'test') => database.db.insert(orders).values({
+  id: `order-${tenantId}-${checkoutSession}-${mode}`, tenantId, mode, memberId: `member-${tenantId}`, productId: `product-${tenantId}`, kind: 'one_time',
+  status: 'paid', amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession }, createdAt: now,
+});
 
 describe('payment event rejection repository', () => {
   it('creates the record on the first refusal and counts later refusals of the same event', async () => {
@@ -73,6 +88,21 @@ describe('payment event rejection repository', () => {
     expect(done?.resolvedAt === null ? null : new Date(done?.resolvedAt ?? '').toISOString()).toBe('2026-11-20T12:00:00.000Z');
 
     expect(await repository.record('tenant-acme', rejection('evt_done', '2026-11-20T14:00:00.000Z'))).toMatchObject({ attempts: 2, resolvedAt: null });
+  });
+
+  it('leaves out an unresolved record whose checkout session now has a live order of the same workspace', async () => {
+    const repository = createPaymentEventRejectionRepository(database.db);
+    await repository.record('tenant-acme', rejection('evt_ordered', now));
+    await repository.record('tenant-acme', rejection('evt_test_order', now));
+    await repository.record('tenant-acme', rejection('evt_other_workspace', now));
+    await repository.record('tenant-acme', { ...rejection('evt_no_session', now), checkoutSessionId: null });
+    await insertOrder('tenant-acme', 'cs_evt_ordered', 'live');
+    await insertOrder('tenant-acme', 'cs_evt_test_order', 'test');
+    await insertOrder('tenant-studio', 'cs_evt_other_workspace', 'live');
+
+    expect((await repository.listUnresolved('tenant-acme', 10)).map((row) => row.eventId).sort()).toEqual([
+      'evt_no_session', 'evt_other_workspace', 'evt_test_order',
+    ]);
   });
 
   it('leaves an unknown event alone on resolve', async () => {

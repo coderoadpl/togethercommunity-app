@@ -13,7 +13,7 @@ export const server = setupServer(
     HttpResponse.json({ ok: true, data: { versions: [] } }),
   ),
   http.get('*/api/student/lessons/:lessonId/editions', () =>
-    HttpResponse.json({ ok: true, data: { editions: [] } }),
+    HttpResponse.json({ ok: true, data: { editions: [], currentEdition: null } }),
   ),
   http.get('*/api/change-proposals/summary', () =>
     HttpResponse.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: false } }),

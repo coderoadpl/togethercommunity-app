@@ -1,7 +1,7 @@
 import {
   appError, buildSnapshot, currentSnapshotParsers, err, lessonEditionNumberSchema,
   markLessonEditionInputSchema, notFound, ok, readSnapshot, snapshotPayloadsEqual, unmarkLessonEditionInputSchema, validation,
-  type AppError, type CourseLesson, type LessonEdition, type ReaderLessonEdition, type Result,
+  type AppError, type CourseLesson, type LessonEdition, type ReaderLessonEditions, type Result,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -20,13 +20,35 @@ export interface LessonEditionWriteDeps extends LessonEditionRepositories {
 
 export const listLessonEditions = async (
   ctx: Ctx, lessonId: string, deps: LessonEditionReadDeps,
-): Promise<Result<ReaderLessonEdition[], AppError>> => {
+): Promise<Result<ReaderLessonEditions, AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   const lesson = await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
   const editions = await deps.lessonEditions.list(tenant.value, lessonId);
-  return ok(editions.map(({ number, note, markedAt }) => ({ number, note, markedAt })));
+  return ok({
+    editions: editions.map(({ number, note, markedAt }) => ({ number, note, markedAt })),
+    currentEdition: await findCurrentEdition(tenant.value, lesson.value, editions, deps),
+  });
+};
+
+const readerContent = (payload: unknown) => {
+  const { name, contents, durationMinutes } = currentSnapshotParsers.course_lesson(payload);
+  return { name, contents, durationMinutes };
+};
+
+const findCurrentEdition = async (
+  tenantId: string, lesson: CourseLesson, editions: readonly LessonEdition[], deps: LessonEditionReadDeps,
+): Promise<string | null> => {
+  const live = buildSnapshot('course_lesson', lesson);
+  if (!live.ok) return null;
+  const liveContent = readerContent(live.value.payload);
+  for (const edition of editions) {
+    const version = await deps.lessonEditions.find(tenantId, lesson.id, edition.number);
+    const snapshot = version === null ? null : readSnapshot('course_lesson', version);
+    if (snapshot?.ok === true && snapshotPayloadsEqual(readerContent(snapshot.value.payload), liveContent)) return edition.number;
+  }
+  return null;
 };
 
 export const getLessonEdition = async (

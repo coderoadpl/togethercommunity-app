@@ -12,6 +12,11 @@ export const readerLessonEditionSchema = z.object({
   markedAt: z.string().datetime(),
 });
 export type ReaderLessonEdition = z.infer<typeof readerLessonEditionSchema>;
+export const readerLessonEditionsSchema = z.object({
+  editions: z.array(readerLessonEditionSchema),
+  currentEdition: lessonEditionNumberSchema.nullable(),
+});
+export type ReaderLessonEditions = z.infer<typeof readerLessonEditionsSchema>;
 export const lessonEditionSchema = readerLessonEditionSchema.extend({
   versionId: z.string().min(1),
 });

@@ -2777,8 +2777,8 @@ student
 
 student.command('editions <lessonId>').description('List marked lesson editions').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
-    emit(await ctx.api.studentLessonEditions(lessonId), ctx.json, ({ editions }) =>
-      editions.map((edition) => `${edition.number}  ${edition.markedAt}  ${edition.note ?? ''}`).join('\n') || 'no editions');
+    emit(await ctx.api.studentLessonEditions(lessonId), ctx.json, ({ editions, currentEdition }) =>
+      editions.map((edition) => `${edition.number}${edition.number === currentEdition ? ' (current)' : ''}  ${edition.markedAt}  ${edition.note ?? ''}`).join('\n') || 'no editions');
   }),
 );
 

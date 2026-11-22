@@ -1,11 +1,11 @@
 import {
-  PAYMENT_EVENT_REJECTION_MESSAGE_MAX_LENGTH,
   err,
   ok,
   paymentEventRejectionListQuerySchema,
   resolveEmailLanguage,
   validation,
   type AppError,
+  type ErrorCode,
   type PaymentEventRejection,
   type Result,
   type Tenant,
@@ -50,11 +50,37 @@ const isLivePaidCheckout = (event: PaymentWebhookEvent): boolean =>
   event.livemode !== false &&
   event.checkoutSession?.paymentStatus !== 'unpaid';
 
-// An internal message carries a serialized infrastructure error, which can quote stored buyer data.
+const CONSTANT_CHECKOUT_REFUSALS = new Set<string>([
+  'Payment event is missing its object id',
+  'Stripe event metadata does not match the webhook tenant',
+  'Stripe checkout event is missing session data',
+  'Stripe checkout metadata does not match the webhook tenant',
+  'Stripe checkout metadata is missing productId',
+  'Checkout snapshot not found',
+  'Sales link checkout snapshot does not match',
+  'Checkout snapshot product does not match',
+  'Direct checkout does not match its recorded session',
+  'Direct checkout consent evidence is missing',
+  'Stripe checkout terms consent evidence is missing',
+  'Checkout total does not match its lines',
+  'Checkout snapshot is missing its shipping selection',
+  'Checkout shipping cost does not match its shipping line',
+  'Stripe checkout session is missing the member email',
+  'Stripe checkout metadata references an unknown price',
+  'Coupon redemption limit reached',
+]);
+
+const FIXED_REASONS: Partial<Record<ErrorCode, string>> = {
+  internal: 'Payment processing failed unexpectedly',
+  not_found: 'A record the payment refers to was not found',
+  validation: 'The payment did not pass validation',
+};
+
+// Other messages can quote checkout metadata or a serialized infrastructure error, both of which can carry buyer data.
 const storedReason = (error: AppError): string =>
-  error.code === 'internal'
-    ? 'Payment processing failed unexpectedly'
-    : error.message.slice(0, PAYMENT_EVENT_REJECTION_MESSAGE_MAX_LENGTH);
+  error.code !== 'internal' && CONSTANT_CHECKOUT_REFUSALS.has(error.message)
+    ? error.message
+    : FIXED_REASONS[error.code] ?? 'The payment could not be processed';
 
 const notifyOwners = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,

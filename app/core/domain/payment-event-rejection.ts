@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ERROR_CODES } from './errors.js';
 
-export const PAYMENT_EVENT_REJECTION_MESSAGE_MAX_LENGTH = 500;
+const PAYMENT_EVENT_REJECTION_MESSAGE_MAX_LENGTH = 500;
 
 export const paymentEventRejectionSchema = z.object({
   tenantId: z.string().min(1),

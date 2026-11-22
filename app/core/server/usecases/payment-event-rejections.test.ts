@@ -4,6 +4,7 @@ import {
   appError,
   err,
   internal,
+  notFound,
   ok,
   renderEmailOutboxPayload,
   validation,
@@ -240,6 +241,20 @@ describe('recordStripeWebhookOutcome', () => {
 
     expect([...store.rows.values()]).toMatchObject([{ reasonCode: 'internal', reasonMessage: 'Payment processing failed unexpectedly' }]);
     expect(JSON.stringify([...outbox.values()])).not.toContain('buyer@togethercommunity.app');
+  });
+
+  it.each<[string, AppError, string]>([
+    ['an interpolated not-found message', notFound('No published product "buyer@togethercommunity.app" in this tenant'), 'A record the payment refers to was not found'],
+    ['an unknown validation message', validation('Unexpected value buyer@togethercommunity.app'), 'The payment did not pass validation'],
+    ['a message of another code', appError('integration_unavailable', 'Provider said buyer@togethercommunity.app'), 'The payment could not be processed'],
+  ])('stores and mails a fixed reason for %s', async (_label, error, reason) => {
+    const { deps, store, outbox } = setup();
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), err(error), deps);
+
+    expect([...store.rows.values()]).toMatchObject([{ reasonCode: error.code, reasonMessage: reason }]);
+    expect([...outbox.values()].map((input) => input.payload)).toMatchObject([{ reasonMessage: reason }]);
+    expect(JSON.stringify([...store.rows.values(), ...outbox.values()])).not.toContain('buyer@togethercommunity.app');
   });
 
   it.each<[string, PaymentWebhookEvent, Outcome]>([

@@ -136,7 +136,7 @@ const renderCollapsedTree = async () =>
 
 const cutTitles = (...titles: string[]) =>
   vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    return this.hasAttribute('data-course-tree-row-title') && titles.includes(this.textContent) ? 400 : 0;
+    return this.hasAttribute('data-course-tree-row-title') && titles.includes(this.textContent ?? '') ? 400 : 0;
   });
 
 const pastTooltipDelay = () => new Promise((resolve) => setTimeout(resolve, 700));

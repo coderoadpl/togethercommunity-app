@@ -478,7 +478,8 @@ export const renderPreferencesPage = (input: {
     nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle,
     eyebrow: t.preferencesEyebrow, body: `${lede}${body}`, testId: 'marketing-preferences',
   });
-  if (input.globallySuppressed) {
+  const nothingLeftToWithdraw = input.definitions.every((definition) => !definition.active && !definition.pendingConfirmation);
+  if (input.globallySuppressed && nothingLeftToWithdraw) {
     const contact = supportLink(input.brand.settings, t);
     return page(`<section class="card" data-state="unsubscribed-all"><p class="state-line">${escapeHtml(t.unsubscribedEverything({ tenant }))}</p><p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>${contact === null ? '' : `<p class="fine">${contact}</p>`}</section>`);
   }
@@ -499,7 +500,7 @@ export const renderPreferencesPage = (input: {
   const choices = input.definitions.length === 0
     ? `<p class="fine">${escapeHtml(t.noOptionalConsents)}</p>`
     : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
-  return page(`<section class="card" data-state="${allMarketing ? 'all-marketing-link' : scopedWithdrawn ? 'consent-withdrawn' : 'consent-link'}"><h2>${escapeHtml(t.unsubscribeTitle)}</h2>${options}</section><div class="card"><form method="post" action="${path}/preferences${formSuffix}"><fieldset class="choices"><legend>${escapeHtml(t.consentsTitle)}</legend><p class="fine">${escapeHtml(t.consentsIntro)}</p>${choices}</fieldset><div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form></div>`);
+  return page(`<section class="card" data-state="${allMarketing ? 'all-marketing-link' : scopedWithdrawn ? 'consent-withdrawn' : 'consent-link'}"><h2>${escapeHtml(t.unsubscribeTitle)}</h2>${options}</section><div class="card"><form method="post" action="${path}/preferences${formSuffix}"><fieldset class="choices"><legend>${escapeHtml(t.consentsTitle)}</legend><p class="fine">${escapeHtml(t.consentsIntro)}</p>${input.globallySuppressed ? `<p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>` : ''}${choices}</fieldset><div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form></div>`);
 };
 
 export const renderPreferenceResultPage = (input: {

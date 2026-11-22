@@ -104,17 +104,22 @@ describe('public marketing pages', () => {
     ...overrides,
   });
 
+  const withdrawnNews = { id: 'newsletter', label: 'Product news', active: false, pendingConfirmation: false };
+  const withdrawnOffers = { id: 'offers', label: 'Partner offers', active: false, pendingConfirmation: false };
+  const withdrawnDefinitions = [withdrawnNews, withdrawnOffers];
+
   it('shows only the unsubscribed status and the way to reach the sender once the address left everything', () => {
     if (brand.settings == null) throw new Error('Missing brand settings');
     const html = renderPreferencesPage(preferenceInput({
       globallySuppressed: true,
+      definitions: withdrawnDefinitions,
       brand: { ...brand, settings: { ...brand.settings, supportEmail: 'help@studio.test' } },
     }));
     expect(html).toContain('<section class="card" data-state="unsubscribed-all"><p class="state-line">You are unsubscribed from all marketing e-mails from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p><p class="fine"><a href="mailto:help@studio.test">help@studio.test</a></p></section>');
     expect(html).not.toContain('<form');
     expect(html).not.toContain('Select the messages');
     expect(html).not.toContain('<h2>Unsubscribe</h2>');
-    const polish = renderPreferencesPage(preferenceInput({ globallySuppressed: true, language: 'pl' }));
+    const polish = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions: withdrawnDefinitions, language: 'pl' }));
     expect(polish).toContain(publicMarketingMessagesPl.unsubscribedEverything({ tenant: 'Studio Demo' }));
     expect(polish).toContain(publicMarketingMessagesPl.resubscribeBlocked);
     expect(polish).not.toContain('<a href="mailto:');
@@ -124,14 +129,37 @@ describe('public marketing pages', () => {
     if (brand.settings == null) throw new Error('Missing brand settings');
     const withUrl = renderPreferencesPage(preferenceInput({
       globallySuppressed: true,
+      definitions: withdrawnDefinitions,
       brand: { ...brand, settings: { ...brand.settings, supportUrl: 'https://studio.test/help' } },
     }));
     expect(withUrl).toContain('<p class="fine"><a href="https://studio.test/help">Help and contact</a></p>');
     const unsafe = renderPreferencesPage(preferenceInput({
       globallySuppressed: true,
+      definitions: withdrawnDefinitions,
       brand: { ...brand, settings: { ...brand.settings, supportUrl: 'javascript:alert(1)' } },
     }));
     expect(unsafe).not.toContain('javascript:');
+  });
+
+  it('keeps every withdrawal action for a suppressed address that still has a consent to withdraw', () => {
+    const activeNews = [{ ...withdrawnNews, active: true }, withdrawnOffers];
+    const pendingOffers = [withdrawnNews, { ...withdrawnOffers, pendingConfirmation: true }];
+    for (const definitions of [activeNews, pendingOffers]) {
+      const html = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions }));
+      expect(html).not.toContain('data-state="unsubscribed-all"');
+      expect(html).not.toContain('You are unsubscribed from all marketing e-mails');
+      expect(html).toContain('<h2>Unsubscribe</h2>');
+      expect(html).toContain('<form method="post" action="/u/token_1234567890123456789012/all?lang=en">');
+      expect(html).toContain('<form method="post" action="/u/token_1234567890123456789012/preferences?lang=en">');
+      expect(html).toContain('<p class="fine">Select the messages you still want to receive. None of these choices is required.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p>');
+      expect(html).toContain('name="present-consent" value="newsletter"');
+      expect(html).toContain('name="present-consent" value="offers"');
+    }
+    const active = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions: activeNews }));
+    expect(active).toContain('<form method="post" action="/u/token_1234567890123456789012/confirm?lang=en">');
+    expect(active).toContain('name="consent" value="newsletter" checked');
+    const notSuppressed = renderPreferencesPage(preferenceInput());
+    expect(notSuppressed).not.toContain('You cannot subscribe again from this page');
   });
 
   it('replaces the scoped button with the withdrawn state and keeps the rest', () => {

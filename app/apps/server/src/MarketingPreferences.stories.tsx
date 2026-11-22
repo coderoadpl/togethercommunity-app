@@ -17,7 +17,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'marketing-preferences--shadcn--desktop' }, globals: { viewport: { value: 'desktop' } } };
 export const ShadcnMobile: Story = { parameters: { __id: 'marketing-preferences--shadcn--mobile' }, globals: { viewport: { value: 'mobile' } } };
-export const GloballyUnsubscribedMobile: Story = { render: () => frame({ ...input, globallySuppressed: true }), globals: { viewport: { value: 'mobile' } } };
+export const GloballyUnsubscribedMobile: Story = { render: () => frame({ ...withdrawn, globallySuppressed: true }), globals: { viewport: { value: 'mobile' } } };
 export const ConsentWithdrawnDesktop: Story = { render: () => frame(withdrawn), globals: { viewport: { value: 'desktop' } } };
 export const AllMarketingLinkMobile: Story = { render: () => frame({ ...input, scope: 'all_marketing', scopeLabel: null }), globals: { viewport: { value: 'mobile' } } };
 export const PolishDesktop: Story = { render: () => frame({ ...input, language: 'pl' }), globals: { viewport: { value: 'desktop' } } };

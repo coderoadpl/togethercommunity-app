@@ -1,14 +1,15 @@
+import { useEffect } from 'react';
 import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 
 import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { formatPrice } from '../../lib/format.js';
-import { CourseCardRoot, QuietNotice } from '../../theme.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
+import { QuietNotice } from '../../theme.js';
+import { AnonOfferSection, uniqueOfferProducts } from './AnonOfferSection.js';
 import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
@@ -43,17 +44,29 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
   );
 };
 
+type OfferAnchorSection = 'offer' | 'locked' | 'courses' | 'spaces';
+
+const useScrollToOfferAnchor = (ready: boolean) => {
+  const hash = useLocation({ select: (location) => location.hash });
+  useEffect(() => {
+    if (!ready || hash !== PUBLIC_OFFER_ANCHOR) return;
+    document.getElementById(PUBLIC_OFFER_ANCHOR)?.scrollIntoView({ block: 'start' });
+  }, [ready, hash]);
+};
+
 export const AnonHomePage = () => {
   const t = useTranslations();
-  const { language } = useLanguage();
   const offer = useQuery(actions.publicOffer);
   const salesLinks = offer.data?.salesLinks ?? [];
+  const offerProducts = uniqueOfferProducts(offer.data?.products ?? []);
+  const title = offer.data?.tenant.name ?? t.anon.homeTitle;
   const navigation = useQuery(actions.publicNavigation);
+  useScrollToOfferAnchor(navigation.isSuccess);
 
   if (navigation.isPending) {
     return (
       <MemberSurface
-        title={t.anon.homeTitle}
+        title={title}
         eyebrow={t.anon.eyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.common.loading }}
@@ -64,7 +77,7 @@ export const AnonHomePage = () => {
   if (navigation.isError) {
     return (
       <MemberSurface
-        title={t.anon.homeTitle}
+        title={title}
         eyebrow={t.anon.eyebrow}
         width="wide"
         state={{
@@ -79,13 +92,29 @@ export const AnonHomePage = () => {
   const { defaultHomeSpaceId, spaces, courses, lockedSpaces } = navigation.data.navigation;
   const homeSpace = spaces.find((space) => space.id === defaultHomeSpaceId);
   const tileSpaces = spaces.filter((space) => space.id !== homeSpace?.id);
-  const offerSection = tileSpaces.length > 0 ? 'spaces' : courses.length > 0 ? 'courses' : 'locked';
-  const anchorFor = (section: typeof offerSection) =>
-    section === offerSection ? PUBLIC_OFFER_ANCHOR : undefined;
+  const hasOffer = offerProducts.length > 0 || salesLinks.length > 0;
+  const anchorSection: OfferAnchorSection | null = hasOffer
+    ? 'offer'
+    : lockedSpaces.length > 0
+      ? 'locked'
+      : courses.length > 0
+        ? 'courses'
+        : tileSpaces.length > 0
+          ? 'spaces'
+          : null;
+  const anchorFor = (section: OfferAnchorSection) =>
+    section === anchorSection ? PUBLIC_OFFER_ANCHOR : undefined;
+  const showOfferJump = anchorSection !== null && anchorSection !== 'spaces';
 
-  if (spaces.length === 0 && courses.length === 0 && lockedSpaces.length === 0 && salesLinks.length === 0) {
+  if (
+    spaces.length === 0 &&
+    courses.length === 0 &&
+    lockedSpaces.length === 0 &&
+    salesLinks.length === 0 &&
+    offerProducts.length === 0
+  ) {
     return (
-      <MemberSurface title={t.anon.homeTitle} eyebrow={t.anon.eyebrow} width="wide">
+      <MemberSurface title={title} eyebrow={t.anon.eyebrow} width="wide">
         <StatusView
           state={{ kind: 'empty', icon: <EmptyLibraryIcon />, title: t.anon.emptyTitle, body: t.anon.emptyBody }}
           data-testid="anon-empty-state"
@@ -95,20 +124,35 @@ export const AnonHomePage = () => {
   }
 
   return (
-    <MemberSurface title={t.anon.homeTitle} eyebrow={t.anon.eyebrow} width="wide">
+    <MemberSurface title={title} eyebrow={t.anon.eyebrow} width="wide">
       <Stack useFlexGap sx={{ rowGap: '2rem' }}>
         <QuietNotice variant="outlined" data-testid="anon-read-only-banner">
           <span>{t.anon.readOnlyBanner}</span>
-          <MuiLink component={Link} to="/login">
-            {t.auth.signInLink}
-          </MuiLink>
+          <Box
+            component="span"
+            sx={{ display: 'inline-flex', flexWrap: 'wrap', columnGap: '1rem', rowGap: '0.4rem', ml: 'auto' }}
+          >
+            {showOfferJump ? (
+              <MuiLink
+                component={Link}
+                to="/"
+                hash={PUBLIC_OFFER_ANCHOR}
+                data-testid="anon-offer-jump"
+              >
+                {t.anon.salesCta}
+              </MuiLink>
+            ) : null}
+            <MuiLink component={Link} to="/login">
+              {t.auth.signInLink}
+            </MuiLink>
+          </Box>
         </QuietNotice>
         {homeSpace === undefined ? null : (
           <HomeSpaceFeed spaceId={homeSpace.id} name={homeSpace.name} />
         )}
-        {salesLinks.length === 0 ? null : <TileSection title={t.salesLinks.heading} testId="anon-sales-links">
-          {salesLinks.map((salesLink) => <CourseCardRoot key={salesLink.id} component="a" href={`/offer/${encodeURIComponent(salesLink.slug)}`}><Box sx={{ p: '1.25rem', display: 'grid', gap: '0.6rem' }}><Typography variant="h2" component="h3">{salesLink.heading}</Typography><Typography>{formatPrice(salesLink.totalCents, salesLink.currency, language)}</Typography><Typography>{t.salesLinks.buyBundle}</Typography></Box></CourseCardRoot>)}
-        </TileSection>}
+        {hasOffer ? (
+          <AnonOfferSection id={PUBLIC_OFFER_ANCHOR} products={offerProducts} salesLinks={salesLinks} />
+        ) : null}
         {tileSpaces.length === 0 ? null : (
           <TileSection title={t.anon.spacesSection} id={anchorFor('spaces')} testId="anon-spaces">
             {tileSpaces.map((space) => (

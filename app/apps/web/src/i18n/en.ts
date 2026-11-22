@@ -2310,7 +2310,7 @@ export const en: Messages = {
     emptyBody: 'Access comes with a purchase — check what you already own under your products.',
   },
   anon: {
-    salesCta: 'See offer',
+    salesCta: 'See the offer',
     contactCreator: 'Contact the creator',
     previewChip: 'Preview',
     monthlyPrice: (params: { price: string }) => `${params.price} / month`,
@@ -2319,6 +2319,8 @@ export const en: Messages = {
     homeTitle: 'Look inside',
     coursesSection: 'Courses',
     spacesSection: 'Spaces',
+    offersSection: 'Offer',
+    offerBuyCta: 'Buy now',
     guestHeading: 'For visitors',
     joinOfferCta: 'Join the community — see the offer',
     readOnlyBanner:

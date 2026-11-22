@@ -274,7 +274,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     tenantSlug: 'akademia',
     path: '/',
     ready: async (page) => {
-      await page.getByRole('heading', { name: en.anon.homeTitle }).waitFor(visible);
+      await page.getByTestId('anon-offer').waitFor(visible);
       await page.getByTestId('tenant-logo').first().waitFor(visible);
     },
   },

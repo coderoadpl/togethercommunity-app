@@ -328,7 +328,7 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
       await page.goto(new URL(path, foreignOrigin).href, { waitUntil: 'networkidle' });
       await page.getByTestId('foreign-tenant-notice').waitFor({ state: 'visible', timeout: 20000 });
       assert(new URL(page.url()).pathname === '/', 'foreign studio entry did not redirect home');
-      await page.getByRole('heading', { name: en.anon.homeTitle, exact: true }).waitFor({ state: 'visible' });
+      await page.getByText(en.anon.eyebrow, { exact: true }).waitFor({ state: 'visible' });
       assert(await page.getByText(en.errors.messageForbidden, { exact: true }).count() === 0, 'visitor entry showed a permission error');
       assert(await page.getByTestId('foreign-tenant-notice').textContent().then((text) => text?.includes(SMOKE_TENANT_CREATOR_EMAIL) === true), 'visitor notice omitted the signed-in account');
       await page.getByRole('banner').getByRole('link', { name: en.auth.signInLink, exact: true }).waitFor({ state: 'visible' });

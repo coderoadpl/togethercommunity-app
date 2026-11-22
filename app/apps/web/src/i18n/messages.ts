@@ -2060,6 +2060,8 @@ export interface Messages {
     homeTitle: string;
     coursesSection: string;
     spacesSection: string;
+    offersSection: string;
+    offerBuyCta: string;
     guestHeading: string;
     joinOfferCta: string;
     readOnlyBanner: string;

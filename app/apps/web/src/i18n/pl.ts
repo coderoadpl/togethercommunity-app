@@ -2340,6 +2340,8 @@ export const pl: Messages = {
     homeTitle: 'Zajrzyj do środka',
     coursesSection: 'Kursy',
     spacesSection: 'Przestrzenie',
+    offersSection: 'Oferta',
+    offerBuyCta: 'Kup teraz',
     guestHeading: 'Dla odwiedzających',
     joinOfferCta: 'Dołącz do społeczności — zobacz ofertę',
     readOnlyBanner:

@@ -1,6 +1,6 @@
 import { MetaCapiConsent } from './MetaCapiConsent.js';
 import { CheckoutAnalytics } from './CheckoutAnalytics.js';
-import { checkoutSessionError, completeEmail, CouponInputs, couponNeedsEmail, CouponTestModeNote, InvoiceInputs, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
+import { checkoutSessionError, completeEmail, lockerRefusalError, CouponInputs, couponNeedsEmail, CouponTestModeNote, InvoiceInputs, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { checkoutFormKeyDown } from './checkout-keys.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { PersonalizationField, usePersonalizations } from './PersonalizationField.js';
@@ -884,8 +884,10 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             messages={(
               <>
                 {paymentUnavailable ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-                {checkoutSession.isError && !stripeTermsRefused(checkoutSession.error) ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
-                {simulatePurchase.isError ? <Alert severity="error">{checkoutSessionError(simulatePurchase.error, t)}</Alert> : null}
+                {checkoutSession.isError && !stripeTermsRefused(checkoutSession.error) && !lockerRefusalError(checkoutSession.error)
+                  ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
+                {simulatePurchase.isError && !lockerRefusalError(simulatePurchase.error)
+                  ? <Alert severity="error">{checkoutSessionError(simulatePurchase.error, t)}</Alert> : null}
               </>
             )}
           />

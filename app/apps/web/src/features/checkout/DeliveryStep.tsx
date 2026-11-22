@@ -11,6 +11,7 @@ import {
   RadioGroup,
   Stack,
   Typography,
+  createSvgIcon,
 } from '@mui/material';
 
 import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
@@ -18,7 +19,7 @@ import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/inde
 import { CheckIcon, ChevronDownIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
+import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutLockerRejection, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
@@ -36,6 +37,11 @@ import {
   type GeowidgetAccess,
   type PickedPickupPoint,
 } from './index.web.js';
+
+const RejectionIcon = createSvgIcon(
+  <path d="M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />,
+  'LockerRejection',
+);
 
 export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, language, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
@@ -110,7 +116,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   }[entry.reason];
   const checkLine = codeInvalid || check === null || check.status === 'unavailable' ? null
     : check.status === 'checking' ? <Typography variant="body2" color="text.secondary">{t.shipping.lockerChecking}</Typography>
-      : check.status === 'rejected' ? <Typography variant="body2" color="error">{t.shipping.lockerRejected[check.reason]}</Typography>
+      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2"><RejectionIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
         : (
           <>
             <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerCheckFound}</CheckoutLockerChosenCaption>
@@ -127,15 +133,17 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         value={state.pickupPointCode}
         disabled={disabled}
         required
-        inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': checkLine === null ? 'checkout-pickup-point-hint' : 'checkout-pickup-point-hint checkout-pickup-point-check', 'data-testid': 'checkout-pickup-point' }}
+        inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': checkLine === null ? 'checkout-pickup-point-hint' : 'checkout-pickup-point-check', 'data-testid': 'checkout-pickup-point' }}
         onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
         onBlur={() => {
           setCodeBlurred(true);
           void checkLocker();
         }}
       />
-      <FormHelperText id="checkout-pickup-point-hint" sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
-      <Box id="checkout-pickup-point-check" role="status" aria-live="polite" data-testid="checkout-pickup-point-check" sx={{ minWidth: 0 }}>{checkLine}</Box>
+      {checkLine === null ? (
+        <FormHelperText id="checkout-pickup-point-hint" error={codeInvalid} sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
+      ) : null}
+      <Box id="checkout-pickup-point-check" role="status" aria-live="polite" data-testid="checkout-pickup-point-check" sx={{ minWidth: 0, mt: checkLine === null ? 0 : '3px' }}>{checkLine}</Box>
     </FormControl>
   );
   const lockerChoice = picked === null ? (
@@ -143,13 +151,13 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
       {t.shipping.lockerChoose}
     </Button>
   ) : (
-    <CheckoutLockerChosen>
+    <CheckoutLockerChosen rejected={pickedRejection !== null}>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
         <CheckoutLockerChosenCaption variant="caption" color="text.secondary">{pickedRejection === null ? <CheckIcon /> : null}{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
         <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
         {pickedRejection === null ? null : (
-          <Typography variant="body2" color="error" data-testid="checkout-pickup-point-selected-rejected">{t.shipping.lockerRejected[pickedRejection.reason]}</Typography>
+          <CheckoutLockerRejection variant="body2" role="alert" data-testid="checkout-pickup-point-selected-rejected"><RejectionIcon />{t.shipping.lockerRejected[pickedRejection.reason]}</CheckoutLockerRejection>
         )}
       </Box>
       <Button

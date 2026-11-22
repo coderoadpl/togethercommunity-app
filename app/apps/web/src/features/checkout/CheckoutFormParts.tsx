@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { CART_CURRENCY_MISMATCH_MESSAGE, FREE_ORDER_DELIVERY_UNAVAILABLE, PICKUP_POINT_REJECTION_MESSAGES, PICKUP_POINT_REJECTION_REASONS, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, FREE_ORDER_DELIVERY_UNAVAILABLE, PICKUP_POINT_REJECTION_MESSAGES, PICKUP_POINT_REJECTION_REASONS, pickupPointRejectionReason, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { localizeError, useTranslations } from '../../i18n/index.js';
@@ -65,6 +65,9 @@ export const checkoutRefusal = (message: string, t: Translations): string | null
       return null;
   }
 };
+
+export const lockerRefusalError = (error: unknown): boolean =>
+  error instanceof ApiError && pickupPointRejectionReason(error.appError.details) !== null;
 
 export const checkoutSessionError = (error: unknown, t: Translations): string =>
   (error instanceof ApiError ? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);

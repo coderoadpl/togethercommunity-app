@@ -125,7 +125,8 @@ describe('typed parcel locker code check', () => {
     expect(status).toHaveTextContent('WAW01M · Next to the main entrance');
     expect(status).toHaveTextContent('Main Street 1, 00-001 Warsaw');
     expect(field).not.toHaveAttribute('aria-invalid', 'true');
-    expect(field).toHaveAccessibleDescription(`${en.shipping.lockerCodeHint} ${en.shipping.lockerCheckFound} WAW01M · Next to the main entrance Main Street 1, 00-001 Warsaw`);
+    expect(field).toHaveAccessibleDescription(`${en.shipping.lockerCheckFound} WAW01M · Next to the main entrance Main Street 1, 00-001 Warsaw`);
+    expect(screen.queryByText(en.shipping.lockerCodeHint)).not.toBeInTheDocument();
     expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
     expect(h.lookups).toEqual(['WAW01M']);
   });
@@ -140,6 +141,7 @@ describe('typed parcel locker code check', () => {
     await typeCode('waw01m');
     await userEvent.tab();
     expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerChecking);
+    expect(screen.queryByText(en.shipping.lockerCodeHint)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerCheckFound));
   });
 
@@ -154,7 +156,10 @@ describe('typed parcel locker code check', () => {
     await userEvent.tab();
     await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(message));
     expect(field).toHaveAttribute('aria-invalid', 'true');
-    expect(field).toHaveAccessibleDescription(`${en.shipping.lockerCodeHint} ${message}`);
+    expect(field).toHaveAccessibleDescription(message);
+    expect(screen.getByTestId('checkout-pickup-point-check').querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryByText(en.shipping.lockerCodeHint)).not.toBeInTheDocument();
+    expect(screen.getByText(en.shipping.lockerCodeLabel)).toHaveClass('Mui-error');
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
     await userEvent.clear(field);
@@ -172,6 +177,8 @@ describe('typed parcel locker code check', () => {
     await waitFor(() => expect(h.lookups).toEqual(['OUTAGE01']));
     expect(screen.getByTestId('checkout-pickup-point-check')).toBeEmptyDOMElement();
     expect(field).not.toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
+    expect(screen.getByText(en.shipping.lockerCodeHint)).not.toHaveClass('Mui-error');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(h.sessions).toHaveLength(1));
     expect(h.sessions[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'OUTAGE01' } } });
@@ -187,6 +194,18 @@ describe('typed parcel locker code check', () => {
     await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toBeEmptyDOMElement());
     expect(field).not.toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+  });
+
+  it('turns the example hint into the format error for a malformed code and keeps the hint neutral otherwise', async () => {
+    serve();
+    renderCheckout();
+    const field = await typeCode('waw');
+    await userEvent.tab();
+    expect(field).toHaveAccessibleDescription(en.shipping.lockerCodeInvalid);
+    expect(screen.getByText(en.shipping.lockerCodeInvalid)).toHaveClass('Mui-error');
+    expect(screen.queryByText(en.shipping.lockerCodeHint)).not.toBeInTheDocument();
+    await userEvent.clear(field);
+    expect(field).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
   });
 
   it('checks a code that was never left before starting the payment on submit', async () => {
@@ -221,7 +240,9 @@ describe('typed parcel locker code check', () => {
     await waitFor(() => expect(h.sessions).toHaveLength(1));
     await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
     expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
-    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
   });
 
   it('does not ask the carrier about a locker chosen on the map', async () => {
@@ -352,6 +373,9 @@ describe('typed parcel locker code check', () => {
     await pickOnMap('KRA010');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-selected-rejected')).toHaveTextContent(en.shipping.lockerRejected.not_operating));
+    expect(screen.getByRole('alert')).toBe(screen.getByTestId('checkout-pickup-point-selected-rejected'));
+    expect(screen.getByTestId('checkout-pickup-point-selected-rejected').querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
     expect(screen.getByTestId('checkout-locker-change')).toHaveAccessibleDescription(expect.stringContaining(en.shipping.lockerRejected.not_operating));
@@ -372,7 +396,8 @@ describe('typed parcel locker code check', () => {
     await waitFor(() => expect(h.simulations).toHaveLength(1));
     await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
     expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found);
-    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_found);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByText(en.shipping.lockerRejected.not_found)).toHaveLength(1);
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
   });
 

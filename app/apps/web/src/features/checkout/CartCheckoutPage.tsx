@@ -45,7 +45,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, CartStockNote, CheckoutFieldset, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
 import { CheckoutPage } from './CheckoutPage.js';
-import { checkoutRefusal, checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
+import { checkoutRefusal, checkoutSessionError, completeEmail, lockerRefusalError, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo } from './ProductSafetyInfo.js';
 import { createCheckoutState, geowidgetAccess, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
@@ -547,7 +547,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           <Typography id={payReasonId} variant="body2" color="text.secondary" data-testid="cart-pay-reason">{payReason}</Typography>
         )}
         {currency !== null && payableCents > 0 && !stripeConfigured ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-        {checkoutSession.isError ? <Alert severity="error">{sessionError(checkoutSession.error)}</Alert> : null}
+        {checkoutSession.isError && !lockerRefusalError(checkoutSession.error) ? <Alert severity="error">{sessionError(checkoutSession.error)}</Alert> : null}
       </Stack>
       </CheckoutFieldset>
     </FocusCard>

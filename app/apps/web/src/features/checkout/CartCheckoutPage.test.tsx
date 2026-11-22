@@ -880,6 +880,26 @@ describe('hosted cart checkout', () => {
       }
     });
 
+    it('shows a server refusal of the typed locker once, next to the field, with no alert under the cart payment', async () => {
+      serve({ sessionRefusal: { status: 400, error: { code: 'validation', message: 'This InPost parcel locker is not operating',
+        details: { pickupPointReason: 'not_operating' } } } });
+      server.use(http.get('/api/public/parcel-lockers/:code', () =>
+        HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } })));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      await userEvent.type(field, 'waw01m');
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
+      expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+      expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    });
+
     it('does not start the cart payment when the price changes while the submit-time check runs', async () => {
       const bodies: unknown[] = [];
       let release: (() => void) | undefined;

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 
-import { CART_LINES_PARAM, HOSTED_CART_PATH, stripeTermsUrlMissing } from '#core/domain/index.js';
+import { CART_LINES_PARAM, HOSTED_CART_PATH, PICKUP_POINT_REJECTION_MESSAGES, stripeTermsUrlMissing } from '#core/domain/index.js';
 
 import checkout from '../fixtures/checkout.json';
 import account from '../fixtures/account.json';
@@ -78,6 +78,23 @@ const cartFixtureFor = (scenario: string, product: Record<string, unknown>, paym
   },
 });
 const cartLockerMapFixture = cartFixtureFor('together-cart-checkout-locker-map', stand, lockerMapPayment);
+const lockerLookupCall = (code: string) => `publicParcelLocker:["${code}"]`;
+const lockerLookups = {
+  [lockerLookupCall('WAW02M')]: { ok: true, value: { status: 'found', code: 'WAW02M', name: 'By the north gate of the shopping centre', address: 'North Street 2, 00-002 Warsaw', usable: true, reason: null } },
+  [lockerLookupCall('MISSING1')]: { ok: true, value: { status: 'not_found' } },
+  [lockerLookupCall('SENDONLY1')]: { ok: true, value: { status: 'found', code: 'SENDONLY1', name: 'Post office counter', address: 'Example Street 9, 00-009 Warsaw', usable: false, reason: 'not_usable' } },
+  [lockerLookupCall('CLOSED01')]: { ok: true, value: { status: 'found', code: 'CLOSED01', name: null, address: null, usable: false, reason: 'not_operating' } },
+  [lockerLookupCall('OUTAGE01')]: { ok: true, value: { status: 'unavailable' } },
+  [lockerLookupCall('PENDING1')]: { ok: true, value: { status: 'unavailable' } },
+};
+const mapRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"pickupPoint":{"address":"Example Street 5, 00-001 Warsaw","code":"WAW01M","name":"Next to the pharmacy entrance","provider":"inpost"},"rateId":"locker"}}]';
+const lockerCheckFixture = (pending: boolean) => {
+  const fixture = fixtureFor('together-checkout-locker-check', stand, lockerMapPayment, { calls: {
+    ...lockerLookups,
+    [mapRefusalCall]: { ok: false, error: { code: 'validation', message: PICKUP_POINT_REJECTION_MESSAGES.not_operating, details: { pickupPointReason: 'not_operating' } } },
+  } });
+  return pending ? { ...fixture, pending: [{ call: lockerLookupCall('PENDING1'), queryKeys: [['parcel-locker', 'PENDING1']] }] } : fixture;
+};
 const variantsFixture = fixtureFor('together-checkout-variants', { ...stand, variants: standVariants }, { shippingRates });
 const freeFixture = fixtureFor('together-checkout-free', { priceCents: 0, prices: [price(0)] }, {});
 const signedInFixture = fixtureFor('together-checkout-signed-in', stand, { shippingRates }, { calls: { 'me:[]': account.calls['me:[]'] } });
@@ -550,6 +567,43 @@ export const CartLockerOptionMapFailed: Story = lockerStory('map-failed', { cart
 export const CartLockerOptionMapFailedMobile: Story = lockerStory('map-failed', { viewport: mobile375, cart: true });
 export const CartLockerOptionCodeOpen: Story = lockerStory('code-open', { cart: true });
 export const CartLockerOptionCodeOpenMobile: Story = lockerStory('code-open', { viewport: mobile375, cart: true });
+const LOCKER_CHECK_STATES = ['idle', 'checking', 'found', 'not_found', 'not_usable', 'not_operating', 'unavailable', 'map_rejected'] as const;
+type LockerCheckState = typeof LOCKER_CHECK_STATES[number];
+const lockerCheckCodes: Record<Exclude<LockerCheckState, 'idle' | 'map_rejected'>, string> = {
+  checking: 'PENDING1', found: 'WAW02M', not_found: 'MISSING1', not_usable: 'SENDONLY1', not_operating: 'CLOSED01', unavailable: 'OUTAGE01',
+};
+const lockerCheckState = (value: unknown): LockerCheckState => LOCKER_CHECK_STATES.find((state) => state === value) ?? 'idle';
+const showLockerCheck = async (canvasElement: HTMLElement, state: LockerCheckState) => {
+  const canvas = within(canvasElement);
+  if (state === 'map_rejected') {
+    await pickOnStubMap(canvasElement);
+    await userEvent.click(await canvas.findByTestId('checkout-pay-cta'));
+    await canvas.findByTestId('checkout-pickup-point-selected-rejected');
+    await settled();
+    return;
+  }
+  await chooseRate(canvasElement, /parcel locker/u);
+  await userEvent.click(await canvas.findByTestId('checkout-locker-know-code'));
+  const field = await canvas.findByTestId('checkout-pickup-point');
+  if (state !== 'idle') {
+    await userEvent.type(field, lockerCheckCodes[state]);
+    field.blur();
+    if (state !== 'unavailable') await waitFor(() => expect(canvas.getByTestId('checkout-pickup-point-check')).not.toBeEmptyDOMElement());
+  }
+  await settled();
+};
+const lockerCheckStory = (pending: boolean): Story => ({
+  args: { lockerState: pending ? 'checking' : 'found' },
+  argTypes: { lockerState: { control: 'select', options: pending ? ['checking'] : LOCKER_CHECK_STATES.filter((state) => state !== 'checking') } },
+  parameters: {
+    fixture: lockerCheckFixture(pending),
+    docs: { description: { story: 'The parcel locker field in each check state; choose the state with the lockerState arg.' } },
+  },
+  beforeEach: stubGeowidget,
+  play: async ({ canvasElement, args }) => showLockerCheck(canvasElement, lockerCheckState(Reflect.get(args, 'lockerState'))),
+});
+export const LockerCheckStates: Story = lockerCheckStory(false);
+export const LockerCheckPending: Story = lockerCheckStory(true);
 export const TwoManufacturers: Story = { parameters: { fixture: twoManufacturersFixture } };
 export const TwoManufacturersMobile: Story = { ...mobile375, parameters: { ...mobile375.parameters, fixture: twoManufacturersFixture } };
 export const TwoManufacturersOneOutsideEu: Story = {

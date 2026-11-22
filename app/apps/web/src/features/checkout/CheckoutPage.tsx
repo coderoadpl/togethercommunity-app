@@ -372,7 +372,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     checkLocker,
     ready: !couponResolving && delivery.status !== 'incomplete' && !personalization.blocked,
     requestKey: JSON.stringify({ email: buyerEmail ?? email, payableCents, stripeConfigured, request: purchaseRequest() }),
-    start: proceed,
+    proceed,
   });
   const submit = (event: FormEvent) => {
     event.preventDefault();

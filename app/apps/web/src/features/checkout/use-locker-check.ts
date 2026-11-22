@@ -15,6 +15,7 @@ import {
 } from './index.web.js';
 
 export type CheckLocker = () => Promise<LockerCheck | null>;
+type ProceedToCheckout = () => void;
 
 export const useLockerCheck = (state: CheckoutState, dispatch: (event: CheckoutEvent) => void): CheckLocker => {
   const queryClient = useQueryClient();
@@ -43,7 +44,7 @@ export interface LockerHoldInput {
   checkLocker: CheckLocker;
   ready: boolean;
   requestKey: string;
-  start: () => void;
+  proceed: ProceedToCheckout;
 }
 
 export const useLockerHold = (input: LockerHoldInput): { holding: boolean; submit: () => void } => {
@@ -59,7 +60,7 @@ export const useLockerHold = (input: LockerHoldInput): { holding: boolean; submi
     if (heldCode !== null || !input.ready) return;
     const code = submitLockerCheckDue(input.state, input.delivery);
     if (code === null) {
-      input.start();
+      input.proceed();
       return;
     }
     const requestKey = input.requestKey;
@@ -69,7 +70,7 @@ export const useLockerHold = (input: LockerHoldInput): { holding: boolean; submi
       const current = latest.current;
       if (current === null || check?.status === 'rejected' || !current.ready || current.requestKey !== requestKey ||
         deliveryPickupPointCode(current.delivery) !== code) return;
-      current.start();
+      current.proceed();
     });
   };
   return { holding: heldCode !== null, submit };

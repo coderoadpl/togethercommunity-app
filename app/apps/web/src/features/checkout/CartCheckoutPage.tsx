@@ -340,7 +340,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     checkLocker,
     ready: !couponResolving && delivery.status !== 'incomplete' && allReady && currency !== null,
     requestKey: JSON.stringify(checkoutRequest()),
-    start: startCheckout,
+    proceed: startCheckout,
   });
 
   const changeLines = (next: readonly CartLine[]) => {

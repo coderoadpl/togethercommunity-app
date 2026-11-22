@@ -64,6 +64,7 @@ describe('lesson editions', () => {
     expect(trigger.querySelector('svg')).not.toBeNull();
     await userEvent.click(trigger);
     const dialog = screen.getByRole('dialog', { name: en.lesson.editionsTitle });
+    expect(document.querySelectorAll(`[id="${dialog.getAttribute('aria-labelledby') ?? ''}"]`)).toHaveLength(1);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: en.common.close }));

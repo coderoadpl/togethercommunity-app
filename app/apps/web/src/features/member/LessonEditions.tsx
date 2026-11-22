@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { Box, Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, ListItem, ListItemButton, ListItemText, Typography } from '@mui/material';
@@ -103,7 +103,6 @@ export const LessonEditionPicker = ({ editions, currentEdition, viewing, onSelec
   onCurrent: () => void;
 }) => {
   const t = useTranslations();
-  const titleId = useId();
   const [open, setOpen] = useState(false);
   if (editions.length === 0) return null;
   const onLive = liveOnScreen(currentEdition, viewing);
@@ -122,12 +121,12 @@ export const LessonEditionPicker = ({ editions, currentEdition, viewing, onSelec
       >
         {shown === null ? t.lesson.editionCurrentVersion : t.lesson.editionLabel({ number: shown })}
       </LessonEditionTrigger>
-      <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby={titleId}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', pr: '0.75rem' }}>
-          <Box component="span" id={titleId}>{t.lesson.editionsTitle}</Box>
+      <Dialog open={open} onClose={close} fullWidth maxWidth="sm">
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', pr: '0.75rem' }}>
+          <DialogTitle sx={{ flexGrow: 1 }}>{t.lesson.editionsTitle}</DialogTitle>
           <IconButton aria-label={t.common.close} onClick={close} data-testid="lesson-editions-close"><CloseIcon /></IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ px: 0, pb: '0.5rem' }}>
+        </Box>
+        <DialogContent sx={{ px: 0, pt: 0, pb: '0.5rem' }}>
           <LessonEditionsList
             editions={editions}
             currentEdition={currentEdition}

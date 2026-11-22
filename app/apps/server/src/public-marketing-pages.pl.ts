@@ -11,7 +11,11 @@ export const publicMarketingMessagesPl = {
   signupConsentDocument: 'Więcej informacji:',
   signupSubmit: 'Zapisuję się',
   signupThanks: 'Dziękujemy za zapis',
-  signupPending: 'Sprawdź skrzynkę odbiorczą i potwierdź adres e-mail, aby dokończyć zapis.',
+  signupPendingTitle: 'Jeszcze jeden krok: potwierdź adres e-mail',
+  signupPending: 'Jeśli ten adres nie jest jeszcze zapisany, wysłaliśmy na niego link potwierdzający. Otwórz go, aby dokończyć zapis.',
+  signupPendingValidity: 'Link jest ważny przez 24 godziny.',
+  signupPendingSpam: 'Jeśli nie widzisz wiadomości, sprawdź folder spam lub oferty.',
+  signupAgain: 'Zapisz się ponownie',
 
   language: 'Język',
   polish: 'Polski',

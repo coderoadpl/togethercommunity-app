@@ -9,7 +9,11 @@ export interface PublicMarketingMessages {
   signupConsentDocument: string;
   signupSubmit: string;
   signupThanks: string;
+  signupPendingTitle: string;
   signupPending: string;
+  signupPendingValidity: string;
+  signupPendingSpam: string;
+  signupAgain: string;
 
   language: string;
   polish: string;

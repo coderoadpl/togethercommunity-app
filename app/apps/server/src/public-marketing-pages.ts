@@ -618,9 +618,22 @@ export const renderSignupFormPage = (input: {
   const t = messages[input.language];
   const tenant = input.brand.tenant.name;
   const path = `/marketing/forms/${encodeURIComponent(input.form.slug)}`;
+  if (input.thanks) {
+    const successText = input.form.successText[input.language];
+    return renderStatusPage({
+      nonce: input.nonce,
+      brand: input.brand,
+      language: input.language,
+      path: `${path}/thanks`,
+      eyebrow: t.signupEyebrow,
+      title: input.doubleOptIn ? t.signupPendingTitle : t.signupThanks,
+      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam, successText] : [successText],
+      testId: 'marketing-signup-thanks',
+      cue: input.doubleOptIn ? 'info' : 'success',
+      links: input.doubleOptIn ? [{ label: t.signupAgain, href: `${path}?lang=${input.language}` }] : [],
+    });
+  }
   const consent = renderSignupConsent({ t, tenant, wording: input.wording, doubleOptIn: input.doubleOptIn, document: input.consentDocument ?? null });
-  const body = input.thanks
-    ? `<div class="status"><p class="lede">${escapeHtml(input.form.successText[input.language])}</p>${input.doubleOptIn ? `<p class="notice">${escapeHtml(t.signupPending)}</p>` : ''}</div>`
-    : `<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.thanks ? `${path}/thanks` : path, title: input.thanks ? t.signupThanks : t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: input.thanks ? 'marketing-signup-thanks' : 'marketing-signup-form' });
+  const body = `<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: 'marketing-signup-form' });
 };

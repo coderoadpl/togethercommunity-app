@@ -11,7 +11,11 @@ export const publicMarketingMessagesEn = {
   signupConsentDocument: 'More information:',
   signupSubmit: 'Sign up',
   signupThanks: 'Thank you for signing up',
-  signupPending: 'Check your inbox and confirm your email address to complete your signup.',
+  signupPendingTitle: 'One more step: confirm your e-mail',
+  signupPending: 'If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.',
+  signupPendingValidity: 'The link is valid for 24 hours.',
+  signupPendingSpam: 'If you cannot find the e-mail, check your spam or promotions folder.',
+  signupAgain: 'Sign up again',
 
   language: 'Language',
   polish: 'Polski',

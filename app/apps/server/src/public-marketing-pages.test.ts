@@ -531,6 +531,29 @@ describe('sign-up pages', () => {
     expect(html).toContain('from Studio &lt;b&gt;&amp;&lt;/b&gt;: &lt;img src=x onerror=alert(1)&gt;.');
     expect(html).toContain('<a href="/legal/privacy/v/2?a=&quot;b&quot;">&lt;script&gt;alert(1)&lt;/script&gt;</a>');
   });
+
+  it('makes the pending confirmation the headline of the thanks page with double opt-in', () => {
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: { ...signupForm, successText: { en: 'Welcome <aboard>.', pl: 'Witamy.' } }, wording: 'news', doubleOptIn: true, thanks: true });
+    expect(html).toContain('data-testid="marketing-signup-thanks"');
+    expect(html).toContain('<h1>One more step: confirm your e-mail</h1>');
+    expect(html).toContain('status-cue--info');
+    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the e-mail, check your spam or promotions folder.</p><p class="fine">Welcome &lt;aboard&gt;.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a>');
+    expect(html).toContain('<a href="/marketing/forms/newsletter/thanks?lang=pl"');
+    expect(html).not.toContain('Thank you for signing up');
+  });
+
+  it('keeps the thank-you heading without double opt-in and localizes the pending page in Polish', () => {
+    const subscribed = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: false, thanks: true });
+    expect(subscribed).toContain('<h1>Thank you for signing up</h1>');
+    expect(subscribed).toContain('<p class="lede">Welcome aboard.</p>');
+    expect(subscribed).toContain('status-cue--success');
+    expect(subscribed).not.toContain('Sign up again');
+    const pending = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: true });
+    expect(pending).toContain(`<h1>${publicMarketingMessagesPl.signupPendingTitle}</h1>`);
+    expect(pending).toContain(`<p class="lede">${publicMarketingMessagesPl.signupPending}</p>`);
+    expect(pending).toContain(`<a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
+    expect(pending).toContain('<p class="fine">Witamy.</p>');
+  });
 });
 
 const signupHttpFixture = async (doubleOptIn: boolean) => {

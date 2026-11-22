@@ -1277,7 +1277,8 @@ describe('shop files CLI with a propose-mode key', () => {
       const printed = String(logSpy.mock.calls[0]?.[0]);
       expect(printed).toContain('proposed, waiting for the owner\'s decision:');
       expect(printed).toContain('proposal proposal-1: download.add [pending]');
-      expect(printed).toContain(`file: workbook.pdf  application/pdf  9 bytes  sha256 ${'b'.repeat(64)}  expires 2026-11-22T10:00:00.000Z  (staged-1)`);
+      expect(printed).toContain(`file: workbook.pdf  application/pdf  9 bytes  sha256 ${'b'.repeat(64)}  kept while the proposal is pending  (staged-1)`);
+      expect(printed).not.toContain('expires 2026-11-22T10:00:00.000Z');
       expect(printed).toContain('the file stays private until the owner approves this proposal; nothing reaches buyers before that');
       expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
         'POST /api/m2m/shop/downloads/upload', 'PUT /candidate', 'POST /api/m2m/shop/downloads/complete', 'POST /api/m2m/shop/products/downloads',
@@ -1301,6 +1302,14 @@ describe('shop files CLI with a propose-mode key', () => {
     await run('shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2', '--group', 'group-1');
     expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { operation: 'download.add', groupId: 'group-1' }, staged: stagedCopy } });
     expect(calls.at(-1)?.headers.get('x-proposal-group')).toBe('group-1');
+    logSpy.mockClear();
+    calls = [];
+    process.argv = ['node', 'together', 'shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2'];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('file: workbook.pdf  application/pdf  9 bytes  copy of file asset-1 version 2 of product product-1  kept while the proposal is pending  (staged-2)');
+    expect(printed).not.toContain('expires 2026-11-22T10:00:00.000Z');
     logSpy.mockClear();
     calls = [];
     await run('shop', 'files', 'remove', 'product-1', 'asset-1', '--group', 'group-1');

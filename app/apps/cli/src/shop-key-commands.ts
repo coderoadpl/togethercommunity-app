@@ -245,12 +245,12 @@ const sizeLabel = (bytes: number): string => `${String(bytes)} bytes`;
 const downloadAssetLine = (asset: ProductDownloadAssetMetadata): string =>
   `- ${asset.fileName}  version ${String(asset.versionNumber)}${asset.supersededAt === null ? '' : ' (previous version)'}  ${asset.contentType}  ${sizeLabel(asset.sizeBytes)}  [${asset.status}]  (${asset.id})`;
 
-const stagedFileLine = (file: KeyDownloadStagedFileView): string => [
+const stagedFileLine = (file: KeyDownloadStagedFileView, lifetime = `expires ${file.expiresAt}`): string => [
   `- ${file.fileName}  ${file.contentType}  ${sizeLabel(file.sizeBytes)}`,
   file.copiedFrom === null
     ? `sha256 ${file.sha256 ?? '(not shown)'}`
     : `copy of file ${file.copiedFrom.assetId} version ${String(file.copiedFrom.versionNumber)} of product ${file.copiedFrom.productId}`,
-  `expires ${file.expiresAt}`,
+  lifetime,
   `(${file.id})`,
 ].join('  ');
 
@@ -487,7 +487,7 @@ type ProposableResult<A> = ChangeProposalProposedOutput | ({ outcome: 'applied' 
 type StagedAttachResult = (ChangeProposalProposedOutput | { outcome: 'applied'; asset: ProductDownloadAssetMetadata }) & { staged: KeyDownloadStagedFileView };
 
 const attachedOrProposedLines = (data: StagedAttachResult): string => isProposedChange(data)
-  ? [proposedLines(data), `file: ${stagedFileLine(data.staged).slice(2)}`, 'the file stays private until the owner approves this proposal; nothing reaches buyers before that'].join('\n')
+  ? [proposedLines(data), `file: ${stagedFileLine(data.staged, 'kept while the proposal is pending').slice(2)}`, 'the file stays private until the owner approves this proposal; nothing reaches buyers before that'].join('\n')
   : [`attached: ${downloadAssetLine(data.asset).slice(2)}`, `staged as: ${stagedFileLine(data.staged).slice(2)}`].join('\n');
 
 const BRANDING_FIELDS = {
@@ -823,7 +823,7 @@ export const registerShopKeyCommands = (
       client.removeProductDownload({ productId, assetId }, undefined, proposal), () => 'removed'));
   keyed(files.command('staged').description('List this key\'s staged files that are not attached yet'))
     .action(run(z.tuple([keyOnlySchema]), (client) => client.listStagedDownloads(), (data) =>
-      data.files.length === 0 ? 'no staged files' : data.files.map(stagedFileLine).join('\n')));
+      data.files.length === 0 ? 'no staged files' : data.files.map((file) => stagedFileLine(file)).join('\n')));
   keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy; a pending proposal that attaches it can then no longer be applied'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.discardStagedDownload(id), () => 'discarded'));
 

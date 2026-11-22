@@ -1,6 +1,6 @@
 {
-  "hash": "97d2d06f33d54139be5963f37d653652e39e2054b6ee08bdd375c4d8364607ab",
-  "shortId": "97d2d06f33d5",
+  "hash": "e42a0d926ba8b14cd2f25315fd2c951cad51705e2cd37967112012dd3e76be72",
+  "shortId": "e42a0d926ba8",
   "schema": {
     "constraints": [
       {
@@ -149,6 +149,11 @@
         "table": "order_refund_jobs"
       },
       {
+        "definition": "CHECK ((amount_cents > 0))",
+        "name": "order_staff_refunds_amount_check",
+        "table": "order_staff_refunds"
+      },
+      {
         "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_events_at_check",
         "table": "change_proposal_events"
@@ -177,6 +182,11 @@
         "definition": "CHECK ((char_length(note) <= 500))",
         "name": "change_proposal_events_note_length_check",
         "table": "change_proposal_events"
+      },
+      {
+        "definition": "CHECK ((char_length(note) <= 500))",
+        "name": "order_staff_refunds_note_check",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "CHECK ((char_length(resource_id) <= 200))",
@@ -282,6 +292,11 @@
         "definition": "CHECK ((kind = ANY (ARRAY['proposed'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'expired'::text, 'apply_failed'::text])))",
         "name": "change_proposal_events_kind_check",
         "table": "change_proposal_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['remainder'::text, 'amount'::text])))",
+        "name": "order_staff_refunds_kind_check",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
@@ -477,6 +492,11 @@
         "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text, 'resolved_externally'::text, 'unconfirmed'::text])))",
         "name": "order_refund_jobs_status_check",
         "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'submitted'::text, 'succeeded'::text, 'failed'::text, 'blocked_permission'::text, 'skipped_refunded'::text, 'resolved_externally'::text, 'unconfirmed'::text])))",
+        "name": "order_staff_refunds_status_check",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text])))",
@@ -1195,6 +1215,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "order_staff_refunds_tenant_id_fkey",
+        "table": "order_staff_refunds"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "orders_tenant_id_tenants_id_fk",
         "table": "orders"
       },
@@ -1594,6 +1619,11 @@
         "table": "order_refund_jobs"
       },
       {
+        "definition": "FOREIGN KEY (tenant_id, order_id) REFERENCES orders(tenant_id, id)",
+        "name": "order_staff_refunds_tenant_order_fk",
+        "table": "order_staff_refunds"
+      },
+      {
         "definition": "FOREIGN KEY (tenant_id, product_id) REFERENCES products(tenant_id, id) ON DELETE CASCADE",
         "name": "coupon_checkout_sessions_tenant_product_fk",
         "table": "coupon_checkout_sessions"
@@ -1987,6 +2017,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "order_shipments_pkey",
         "table": "order_shipments"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "order_staff_refunds_pkey",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2978,6 +3013,16 @@
         "table": "order_shipment_events"
       },
       {
+        "definition": "CREATE INDEX order_staff_refunds_due_idx ON order_staff_refunds USING btree (status, next_attempt_at)",
+        "name": "order_staff_refunds_due_idx",
+        "table": "order_staff_refunds"
+      },
+      {
+        "definition": "CREATE INDEX order_staff_refunds_tenant_order_idx ON order_staff_refunds USING btree (tenant_id, order_id, created_at)",
+        "name": "order_staff_refunds_tenant_order_idx",
+        "table": "order_staff_refunds"
+      },
+      {
         "definition": "CREATE INDEX orders_tenant_coupon_created_idx ON orders USING btree (tenant_id, coupon_id, created_at DESC NULLS LAST)",
         "name": "orders_tenant_coupon_created_idx",
         "table": "orders"
@@ -3496,6 +3541,21 @@
         "definition": "CREATE UNIQUE INDEX order_shipments_tenant_order_uidx ON order_shipments USING btree (tenant_id, order_id)",
         "name": "order_shipments_tenant_order_uidx",
         "table": "order_shipments"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_staff_refunds_idempotency_key_uidx ON order_staff_refunds USING btree (idempotency_key)",
+        "name": "order_staff_refunds_idempotency_key_uidx",
+        "table": "order_staff_refunds"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_staff_refunds_tenant_order_waiting_uidx ON order_staff_refunds USING btree (tenant_id, order_id) WHERE (status = ANY (ARRAY['pending'::text, 'running'::text, 'blocked_permission'::text]))",
+        "name": "order_staff_refunds_tenant_order_waiting_uidx",
+        "table": "order_staff_refunds"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX order_staff_refunds_tenant_request_key_uidx ON order_staff_refunds USING btree (tenant_id, request_key)",
+        "name": "order_staff_refunds_tenant_request_key_uidx",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "CREATE UNIQUE INDEX orders_tenant_provider_checkout_uidx ON orders USING btree (tenant_id, provider, ((provider_object_ids ->> 'checkoutSession'::text))) WHERE (provider_object_ids ? 'checkoutSession'::text)",
@@ -6506,6 +6566,243 @@
           }
         ],
         "name": "product_grants"
+      },
+      {
+        "columns": [
+          {
+            "default": "'pending'::text",
+            "generated": "",
+            "identity": "",
+            "name": "status",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "key_generation",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "status_checks",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "0",
+            "generated": "",
+            "identity": "",
+            "name": "transient_failure_streak",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "removed_from_packing_list",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "restocked",
+            "notNull": true,
+            "type": "boolean"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "amount_cents",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "buyer_notified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "currency",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "idempotency_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_error",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "locked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "next_attempt_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "note",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "order_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "payment_intent_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "permission_blocked_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "provider_refund_status",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "request_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "requested_by_email",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "requested_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "submitted_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "order_staff_refunds"
       },
       {
         "columns": [
@@ -16507,6 +16804,16 @@
         "definition": "CREATE TRIGGER order_refund_jobs_record_status AFTER UPDATE OF status ON order_refund_jobs FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION record_refund_job_order_change()",
         "name": "order_refund_jobs_record_status",
         "table": "order_refund_jobs"
+      },
+      {
+        "definition": "CREATE TRIGGER order_staff_refunds_record_insert AFTER INSERT ON order_staff_refunds FOR EACH ROW EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_staff_refunds_record_insert",
+        "table": "order_staff_refunds"
+      },
+      {
+        "definition": "CREATE TRIGGER order_staff_refunds_record_status AFTER UPDATE OF status ON order_staff_refunds FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION record_refund_job_order_change()",
+        "name": "order_staff_refunds_record_status",
+        "table": "order_staff_refunds"
       },
       {
         "definition": "CREATE TRIGGER orders_capture_single_line BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION capture_single_order_line()",

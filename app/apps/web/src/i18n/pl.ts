@@ -33,6 +33,7 @@ export const pl: Messages = {
     rowGranted: 'Zgoda udzielona',
     rowDenied: 'Odmowa zgody',
     rowWithdrawn: 'Zgoda wycofana',
+    withdrawnNotice: ({ title }) => format('Zgoda wycofana: {title}', { title }),
     privacyHeading: 'Przekazywanie zakupów do Meta',
     order: ({ id }) => format('Zamówienie {id}', { id }),
     purchase: ({ product, date }) => format('{product} · {date}', { product, date }),

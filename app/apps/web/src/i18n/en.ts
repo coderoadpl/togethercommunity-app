@@ -27,6 +27,7 @@ export const en: Messages = {
     rowGranted: 'Consent given',
     rowDenied: 'Consent declined',
     rowWithdrawn: 'Consent withdrawn',
+    withdrawnNotice: ({ title }) => format('Consent withdrawn: {title}', { title }),
     privacyHeading: 'Purchase sharing with Meta',
     order: ({ id }) => format('Order {id}', { id }),
     purchase: ({ product, date }) => format('{product} · {date}', { product, date }),

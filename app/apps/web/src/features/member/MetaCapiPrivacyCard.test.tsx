@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { expect, it, vi } from 'vitest';
 import { en } from '../../i18n/en.js';
@@ -7,6 +7,7 @@ import { server } from '../../test/server.js';
 import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
 
 const day = (value: string) => new Date(value).toLocaleDateString('en');
+const rowStatuses = () => screen.getAllByTestId('meta-capi-consent-row').map((row) => within(row).getByRole('status'));
 
 it('lists order decisions and withdraws a grant, then refreshes the account state', async () => {
   let withdrawnAt: string | null = null;
@@ -26,16 +27,41 @@ it('lists order decisions and withdraws a grant, then refreshes the account stat
   expect(await screen.findByText(en.metaCapi.purchase({ product: 'Course', date: day('2026-11-05T09:00:00.000Z') }))).toBeVisible();
   expect(screen.getByText(en.metaCapi.purchase({ product: 'Book', date: day('2026-11-04T09:00:00.000Z') }))).toBeVisible();
   expect(screen.queryByText(en.metaCapi.order({ id: 'order-1' }))).toBeNull();
-  const [granted, denied] = screen.getAllByRole('status');
+  const [granted, denied] = rowStatuses();
   expect(granted).toHaveTextContent(`${en.metaCapi.rowGranted} · ${day('2026-11-05T10:00:00.000Z')}`);
   expect(denied).toHaveTextContent(`${en.metaCapi.rowDenied} · ${day('2026-11-04T10:00:00.000Z')}`);
   expect(screen.getByText(en.metaCapi.withdrawHint)).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdrawShort }));
-  await waitFor(() => expect(screen.getAllByRole('status')[0]).toHaveTextContent(`${en.metaCapi.rowWithdrawn} · ${day('2026-11-05T11:00:00.000Z')}`));
-  expect(screen.getAllByRole('status')[0]).toHaveFocus();
+  await waitFor(() => expect(rowStatuses()[0]).toHaveTextContent(`${en.metaCapi.rowWithdrawn} · ${day('2026-11-05T11:00:00.000Z')}`));
+  expect(rowStatuses()[0]).toHaveFocus();
+  expect(screen.getByTestId('meta-capi-withdrawn-notice')).toBeEmptyDOMElement();
   expect(withdraw).toHaveBeenCalledWith({ orderId: 'order-1' });
   expect(screen.queryByRole('button', { name: en.metaCapi.withdrawShort })).toBeNull();
   expect(screen.queryByText(en.metaCapi.withdrawHint)).toBeNull();
+});
+
+it('announces the withdrawal at card level and focuses it when the refreshed list omits the row', async () => {
+  let withdrawn = false;
+  const older = { orderId: 'order-old', consent: 'granted', consentAt: '2026-01-05T10:00:00.000Z', withdrawnAt: null, productName: 'Course', purchasedAt: '2026-01-05T09:00:00.000Z' };
+  const newer = { orderId: 'order-new', consent: 'granted', consentAt: '2026-11-05T10:00:00.000Z', withdrawnAt: null, productName: 'Book', purchasedAt: '2026-11-05T09:00:00.000Z' };
+  server.use(
+    http.get('/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: withdrawn ? [newer] : [newer, older] } })),
+    http.post('/api/me/meta-capi/withdraw', () => {
+      withdrawn = true;
+      return HttpResponse.json({ ok: true, data: { consent: 'granted', withdrawnAt: '2026-11-06T10:00:00.000Z' } });
+    }),
+  );
+  renderWithProviders(<MetaCapiPrivacyCard />);
+  const title = en.metaCapi.purchase({ product: 'Course', date: day('2026-01-05T09:00:00.000Z') });
+  const [, olderRow] = await screen.findAllByTestId('meta-capi-consent-row');
+  if (!olderRow) throw new Error('Missing older row');
+  const notice = screen.getByTestId('meta-capi-withdrawn-notice');
+  expect(notice).toBeEmptyDOMElement();
+  fireEvent.click(within(olderRow).getByRole('button', { name: new RegExp(`^${en.metaCapi.withdrawShort}`) }));
+  await waitFor(() => expect(screen.getAllByTestId('meta-capi-consent-row')).toHaveLength(1));
+  await waitFor(() => expect(notice).toHaveTextContent(en.metaCapi.withdrawnNotice({ title })));
+  expect(notice).toHaveAttribute('role', 'status');
+  expect(notice).toHaveFocus();
 });
 
 it('shows the pending label and the error on the tapped row only', async () => {

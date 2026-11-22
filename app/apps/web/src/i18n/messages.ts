@@ -48,6 +48,7 @@ export interface Messages {
     rowGranted: string;
     rowDenied: string;
     rowWithdrawn: string;
+    withdrawnNotice: (params: { title: string }) => string;
     privacyHeading: string;
     order: (params: { id: string }) => string;
     purchase: (params: { product: string; date: string }) => string;

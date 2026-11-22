@@ -82,6 +82,7 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
+const LIGHTBOX_POINTER_STORY = 'pages-lessonplayer--lightbox-light-desktop';
 const UNREAD_BADGE_SELECTOR = '[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)';
 
 // The count arrives asynchronously, so a shot can otherwise land on a bare bell.
@@ -523,8 +524,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     viewports: ['desktop', 'mobile'],
     isolateCapture: true,
     ready: async (page) => {
-      await page.getByRole('dialog', { name: en.lesson.enlargeImage }).waitFor(visible);
-      await page.getByRole('button', { name: en.common.close }).waitFor(visible);
+      // Only a trusted pointer click leaves the close button without a focus ring; story play clicks are synthetic.
+      if (new URL(page.url()).searchParams.get('id') === LIGHTBOX_POINTER_STORY) await page.getByTestId('lesson-html').locator('img[role="button"]').click();
+      const lightbox = page.getByTestId('lesson-image-lightbox');
+      await lightbox.waitFor(visible);
+      await lightbox.locator('[data-slot="close"]').waitFor(visible);
+      await lightbox.locator('img').evaluate(async (image) => {
+        if (image instanceof HTMLImageElement) await image.decode();
+      });
     },
   })),
   {

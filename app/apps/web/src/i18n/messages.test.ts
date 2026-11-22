@@ -48,6 +48,18 @@ describe('i18n dictionaries', () => {
     expect(label).not.toBe(pl.tenantTeam.invitationSent);
   });
 
+  it('writes email without a hyphen across the English account copy', () => {
+    expect(plainStrings(en.account).filter((text) => /e-mail/iu.test(text))).toEqual([]);
+    expect(en.account.erasureConfirmLabel).toBe('Retype your email address');
+  });
+
+  it('names two-factor authentication and the setup link consistently in the security copy', () => {
+    expect(en.security.disableTwoFactorConfirm).toContain('two-factor authentication');
+    expect(en.security.otpauthUriLabel).toBe('Setup link (advanced)');
+    expect(pl.security.backupCodesSaved).toBe('Mam zapisane kody');
+    expect(pl.security.sessionsRevokeOthers).toBe('Wyloguj wszystkie inne urz\u0105dzenia');
+  });
+
   it('never names the retired sending-settings page', () => {
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });

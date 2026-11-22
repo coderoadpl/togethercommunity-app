@@ -8,7 +8,7 @@ import { envSchema } from './env.js';
 import { describe, expect, it } from 'vitest';
 
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
-import { contrastRatio, deriveLightAccent } from '#core/domain/index.js';
+import { contrastRatio, deriveLightAccent, type MarketingSignupForm } from '#core/domain/index.js';
 
 import {
   languageFromRequest,
@@ -17,6 +17,7 @@ import {
   renderLegalDocumentPage,
   renderPreferenceResultPage,
   renderPreferencesPage,
+  renderSignupFormPage,
   renderStatusPage,
   type PublicBrand,
 } from './public-marketing-pages.js';
@@ -474,6 +475,31 @@ it('recognizes a browser preference with a quality parameter', () => {
   expect(languageFromRequest(new Request('https://tenant.test/u/token', {
     headers: { 'accept-language': 'en;q=0.9' },
   }), 'pl')).toBe('en');
+});
+
+const signupForm: MarketingSignupForm = {
+  id: 'form-1', tenantId: 'tenant-1', slug: 'newsletter', name: 'Internal newsletter form',
+  consentDefinitionId: 'newsletter',
+  consentVersion: { id: 'newsletter-v1', tenantId: 'tenant-1', definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.test/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
+  listId: null, tags: [], collectName: true, successText: { en: 'Welcome aboard.', pl: 'Witamy.' },
+  redirectUrl: null, allowedOrigins: [], token: 'form_token_1234567890123456', status: 'active', revision: 1,
+  createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+describe('sign-up pages', () => {
+  it('draws input borders from a token with at least 3:1 contrast against the card in both themes', () => {
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: signupForm.consentVersion.label, doubleOptIn: true, thanks: false });
+    const light = /:root\{[^}]*--surface:(#[0-9A-F]{6});[^}]*--input-border:(#[0-9A-F]{6});/.exec(html);
+    const dark = /prefers-color-scheme:dark\)\{:root\{[^}]*--surface:(#[0-9A-F]{6});[^}]*--input-border:(#[0-9A-F]{6});/.exec(html);
+    if (light === null || dark === null) throw new Error('Missing input border tokens');
+    expect(contrastRatio(light[2] ?? '', light[1] ?? '')).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(dark[2] ?? '', dark[1] ?? '')).toBeGreaterThanOrEqual(3);
+    expect(html).toContain('.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--input-border);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}');
+    expect(html).toContain('.signup-field:first-child{margin-top:0}');
+    expect(html).toContain('.signup-consent{margin:1.25rem 0 0;');
+    expect(html).toContain('.signup-form .actions{margin-top:.75rem}');
+    expect(html).not.toContain('var(--text)');
+  });
 });
 
 const signupHttpFixture = async (doubleOptIn: boolean) => {

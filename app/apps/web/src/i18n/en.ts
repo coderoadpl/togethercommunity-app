@@ -2270,6 +2270,7 @@ export const en: Messages = {
   },
   shell: {
     navigationAria: 'Member navigation',
+    publicNavigationAria: 'Navigation',
     start: 'Start',
     searchEntry: 'Search',
     downloadsSection: 'Downloads',

@@ -75,7 +75,7 @@ export const AnonSidebar = ({ variant }: { variant: ShellVariant }) => {
   return (
     <Box
       component="nav"
-      aria-label={t.shell.navigationAria}
+      aria-label={t.shell.publicNavigationAria}
       data-testid="anon-sidebar"
       sx={{
         display: 'flex',

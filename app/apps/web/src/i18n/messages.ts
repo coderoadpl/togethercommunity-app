@@ -2011,6 +2011,7 @@ export interface Messages {
   };
   shell: {
     navigationAria: string;
+    publicNavigationAria: string;
     start: string;
     searchEntry: string;
     downloadsSection: string;

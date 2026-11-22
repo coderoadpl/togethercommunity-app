@@ -2291,6 +2291,7 @@ export const pl: Messages = {
   },
   shell: {
     navigationAria: 'Nawigacja uczestnika',
+    publicNavigationAria: 'Nawigacja',
     start: 'Start',
     searchEntry: 'Szukaj',
     downloadsSection: 'Pliki do pobrania',

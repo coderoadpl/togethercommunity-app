@@ -1293,7 +1293,8 @@ describe('MemberShell', () => {
     expect(signIn.closest('header')).not.toBeNull();
     expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
-    expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: en.shell.publicNavigationAria })).toBe(screen.getByTestId('anon-sidebar'));
+    expect(screen.queryByRole('navigation', { name: en.shell.navigationAria })).not.toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
     expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
     expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
@@ -1308,6 +1309,9 @@ describe('MemberShell', () => {
     const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
     expect(signIn).toHaveStyle({ whiteSpace: 'nowrap', minHeight: '44px' });
     expect(screen.getByTestId('tenant-name-mark')).toHaveStyle({ fontSize: '0.95rem' });
+    expect(screen.getByTestId('shell-brand')).not.toHaveAttribute('aria-label');
+    expect(screen.getByRole('link', { name: 'Acme' })).toBe(screen.getByTestId('shell-brand'));
+    expect(screen.getByTestId('color-scheme-cycle')).toBeVisible();
   });
 
   it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {

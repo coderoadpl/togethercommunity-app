@@ -34,14 +34,13 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
               <BrandLink
                 component={Link}
                 to={anonHomePath()}
-                aria-label={t.shell.start}
                 data-testid="shell-brand"
               >
                 <TenantLogo compact={compactBrand} />
               </BrandLink>
             </Box>
             <Box sx={{ flex: 1 }} />
-            <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <ColorSchemeCycleButton />
             </Box>
             <PublicSignInButton

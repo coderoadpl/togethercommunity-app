@@ -8,6 +8,7 @@ import { createPostInputSchema, updatePostInputSchema, type DiscussionPost, type
 import type { ReactNode } from 'react';
 
 import { en } from '../../i18n/en.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DiscussionSection } from './DiscussionSection.js';
@@ -285,7 +286,7 @@ describe('DiscussionSection', () => {
     expect(screen.getByTestId('delete-button-r1')).toBeDisabled();
   });
 
-  it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {
+  it('renders three nesting levels with indentation and author chip, without a childless deleted reply', async () => {
     const level3 = asThread(
       post({ id: 'c2', parentPostId: 'c1', rootPostId: 'r1', body: 'Third level' }),
     );
@@ -325,7 +326,7 @@ describe('DiscussionSection', () => {
     const level3Container = within(screen.getByTestId('replies-of-c1'));
     expect(level3Container.getByTestId('post-body-c2')).toHaveTextContent('Third level');
 
-    expect(screen.getByTestId('deleted-post-c3')).toHaveTextContent(en.discussion.deletedPost);
+    expect(screen.queryByTestId('deleted-post-c3')).not.toBeInTheDocument();
 
     expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
@@ -608,6 +609,57 @@ describe('DiscussionSection', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('hides a childless deleted reply from members and counts only the replies on screen', async () => {
+    const deletedAt = '2026-07-15T09:00:00.000Z';
+    server.use(okMe(), okDiscussion([{
+      ...asThread(post({ id: 'r1', body: 'Question' }), [
+        asThread(post({ id: 'gone', rootPostId: 'r1', parentPostId: 'r1', deletedAt })),
+        asThread(post({ id: 'kept', rootPostId: 'r1', parentPostId: 'r1', deletedAt }), [
+          asThread(post({ id: 'live', rootPostId: 'r1', parentPostId: 'kept', body: 'Still here' })),
+        ]),
+      ]),
+      replyCount: 1,
+    }]));
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('post-body-live')).toHaveTextContent('Still here');
+    expect(screen.queryByTestId('deleted-post-gone')).not.toBeInTheDocument();
+    expect(screen.getByTestId('deleted-post-kept')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(en.discussion.replyCount({ count: 2 }));
+  });
+
+  it('keeps Reply in the row and moves Message author and Report into a menu below sm', async () => {
+    server.use(okMe(), okDiscussion([asThread(post({ id: 'r1', body: 'Question' }))]));
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    const reply = await screen.findByTestId('reply-button-r1');
+    const inline = screen.getByTestId('post-contact-actions-r1');
+    const menuButton = screen.getByTestId('post-contact-menu-r1');
+    expect(stylesAt(reply, 375).display).not.toBe('none');
+    expect(stylesAt(inline, 375)).toMatchObject({ display: 'none' });
+    expect(stylesAt(inline, 900)).toMatchObject({ display: 'contents' });
+    expect(stylesAt(menuButton.parentElement, 375)).toMatchObject({ display: 'inline-flex' });
+    expect(stylesAt(menuButton.parentElement, 900)).toMatchObject({ display: 'none' });
+    expect(within(inline).getByTestId('start-message-r1')).toHaveTextContent(en.messages.messageAuthor);
+    expect(within(inline).getByRole('button', { name: en.community.report })).toBeInTheDocument();
+
+    await user.click(menuButton);
+    expect(screen.getByTestId('menu-start-message-r1')).toHaveTextContent(en.messages.messageAuthor);
+    await user.click(screen.getByTestId('menu-report-post-r1'));
+    expect(await screen.findByText(en.community.reportTitle)).toBeInTheDocument();
+  });
+
+  it('gives the follow toggle an outlined button with a bell icon', async () => {
+    server.use(okMe(), okDiscussion([asThread(post({ id: 'r1', body: 'Question' }))], { r1: 'subscribed' }));
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    const toggle = await screen.findByTestId('follow-toggle-r1');
+    expect(toggle).toHaveClass('MuiButton-outlined');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(within(toggle).getByTestId('follow-icon-active')).toBeInTheDocument();
+  });
+
   it('searches within this lesson, highlights matches and links each hit to its thread', async () => {
     const requestedUrls: string[] = [];
     const root = asThread(post({ id: 'r1', body: 'Base thread' }));
@@ -679,11 +731,14 @@ it.each(['owner', null] as const)('shows tombstone menus on roots and replies on
     asThread(post({ id: 'reply', rootPostId: 'root', parentPostId: 'root', deletedAt })),
   ])]));
   renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
-  await screen.findByTestId('deleted-post-reply');
+  await screen.findByTestId('deleted-post-root');
   if (role === null) {
     expect(screen.queryByTestId('post-menu-root')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('post-menu-reply')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('deleted-post-reply')).not.toBeInTheDocument();
+    expect(screen.getByTestId('reply-count-root')).toHaveTextContent(en.discussion.replyCount({ count: 0 }));
   } else {
+    expect(screen.getByTestId('deleted-post-reply')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-count-root')).toHaveTextContent(en.discussion.replyCount({ count: 1 }));
     expect(screen.getByTestId('post-menu-root')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('post-menu-reply'));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);

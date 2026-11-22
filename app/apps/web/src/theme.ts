@@ -4402,18 +4402,6 @@ export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const NotificationDot = styled('span', {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ theme, active }) => ({
-  display: 'inline-block',
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  backgroundColor:
-    active === true ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.25),
-  flexShrink: 0,
-}));
-
 export const PendingPostBox = styled(Box)({ opacity: 0.55 });
 
 export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) => ({

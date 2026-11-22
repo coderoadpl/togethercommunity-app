@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -16,7 +16,6 @@ import {
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
-  NotificationDot,
   PendingPostBox,
   PostAuthorName,
   PostMetaText,
@@ -26,6 +25,8 @@ import {
 import { PostContent } from '../../components/ui/PostContent.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../../components/ui/MarkdownEditor.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
+import { FollowThreadIcon } from './community-icons.js';
+import { PostContactMenu } from './PostContactMenu.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
 import { TombstonePostMenu } from './TombstonePostMenu.js';
@@ -55,11 +56,11 @@ const ThreadSubscriptionToggle = ({
   return (
     <Button
       size="small"
-      variant="text"
+      variant="outlined"
       aria-pressed={state === 'subscribed'}
       data-testid={`follow-toggle-${rootPostId}`}
       onClick={onToggle}
-      startIcon={<NotificationDot active={state === 'subscribed'} aria-hidden />}
+      startIcon={<FollowThreadIcon active={state === 'subscribed'} />}
     >
       {state === 'subscribed'
         ? t.discussion.following
@@ -339,8 +340,17 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </PostToolbarButton>
           )}
-          {!own && !deleted ? <StartMessageButton postId={post.id} /> : null}
-          {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
+          {!own && !deleted ? (
+            <>
+              <Box sx={{ display: { xs: 'none', sm: 'contents' } }} data-testid={`post-contact-actions-${post.id}`}>
+                <StartMessageButton postId={post.id} />
+                <ReportPostButton postId={post.id} />
+              </Box>
+              <Box sx={{ display: { xs: 'inline-flex', sm: 'none' }, ml: 'auto' }}>
+                <PostContactMenu postId={post.id} />
+              </Box>
+            </>
+          ) : null}
         </Stack>
       )}
 
@@ -407,6 +417,15 @@ const findPost = (threads: DiscussionPost[], id: string): DiscussionPost | null 
   }
   return null;
 };
+
+const withoutChildlessTombstones = (posts: DiscussionPost[]): DiscussionPost[] =>
+  posts.flatMap((post) => {
+    const replies = withoutChildlessTombstones(post.replies);
+    return post.deletedAt !== null && replies.length === 0 ? [] : [{ ...post, replies }];
+  });
+
+const countPosts = (posts: DiscussionPost[]): number =>
+  posts.reduce((total, post) => total + 1 + countPosts(post.replies), 0);
 
 const threadsContain = (threads: DiscussionPost[], id: string | undefined): boolean =>
   id !== undefined && threads.some((post) => post.id === id || threadsContain(post.replies, id));
@@ -479,7 +498,14 @@ export const ThreadDiscussion = ({
         };
   const banned = me.data?.tenant?.banned === true;
 
-  const threads = discussion.data?.discussion.threads ?? [];
+  const loadedThreads = discussion.data?.discussion.threads;
+  const canModerate = viewer?.canModerate === true;
+  const threads = useMemo(
+    () => (loadedThreads ?? []).map((thread) => (canModerate
+      ? thread
+      : { ...thread, replies: withoutChildlessTombstones(thread.replies) })),
+    [loadedThreads, canModerate],
+  );
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
   const subthreadRoot = subthreadRootId === null ? null : findPost(threads, subthreadRootId);
 
@@ -727,7 +753,7 @@ export const ThreadDiscussion = ({
                         sx={{ alignItems: 'center', columnGap: '1rem', flexWrap: 'wrap' }}
                       >
                         <PostMetaText component="span" data-testid={`reply-count-${thread.id}`}>
-                          {t.discussion.replyCount({ count: thread.replyCount })}
+                          {t.discussion.replyCount({ count: countPosts(thread.replies) })}
                         </PostMetaText>
                         {viewer !== null && (
                           <ThreadSubscriptionToggle

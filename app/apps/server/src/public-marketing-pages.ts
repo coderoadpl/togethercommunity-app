@@ -41,11 +41,12 @@ const escapeMarkdownText = (value: string): string =>
 const renderMarkdownText = (source: string): string => {
   let output = '';
   let cursor = 0;
-  for (const match of source.matchAll(/`([^`\n]+)`|\\([\\`*_[\]~])|\*\*([^*\n]+)\*\*|~~([^~\n]+)~~|(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu)) {
+  for (const match of source.matchAll(/`([^`\n]+)`|\\([\\`*_[\]~])|\*\*([^*\n]+)\*\*|\*(?![\s*])([^*\n]*[^\s*])\*|~~([^~\n]+)~~|(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu)) {
     const index = match.index;
     if (index === undefined) continue;
     output += escapeMarkdownText(source.slice(cursor, index));
-    const [token, code, escaped, strong, struck, emphasis] = match;
+    const [token, code, escaped, strong, starred, struck, underscored] = match;
+    const emphasis = starred ?? underscored;
     if (code !== undefined) output += `<code>${escapeHtml(code)}</code>`;
     else if (escaped !== undefined) output += escapeHtml(escaped);
     else if (strong !== undefined) output += `<strong>${escapeMarkdownText(strong)}</strong>`;
@@ -85,6 +86,7 @@ const quotePattern = /^ {0,3}>/;
 interface ListItemStart {
   indent: number;
   ordered: boolean;
+  number: number;
   content: string;
 }
 
@@ -93,7 +95,12 @@ const listItemStart = (line: string): ListItemStart | null => {
   const match = listItemPattern.exec(line);
   return match === null
     ? null
-    : { indent: (match[1] ?? '').length, ordered: match[2] !== undefined, content: match[3] ?? '' };
+    : {
+        indent: (match[1] ?? '').length,
+        ordered: match[2] !== undefined,
+        number: Number(match[2] ?? '1'),
+        content: match[3] ?? '',
+      };
 };
 
 const withoutLeadingParagraph = (blocks: readonly string[]): string => {
@@ -109,7 +116,19 @@ const renderListBlock = (lines: readonly string[], start: number): { html: strin
   let index = start;
   while (first !== null && index < lines.length) {
     const line = lines[index] ?? '';
-    if (line.trim() === '') break;
+    if (line.trim() === '') {
+      let following = index + 1;
+      while (following < lines.length && (lines[following] ?? '').trim() === '') following += 1;
+      const next = lines[following] ?? '';
+      const sibling = listItemStart(next);
+      const continuesList = sibling !== null && sibling.indent <= first.indent
+        ? sibling.ordered === first.ordered
+        : next.length - next.trimStart().length > first.indent && items.length > 0;
+      if (!continuesList) break;
+      if (sibling === null || sibling.indent > first.indent) items.at(-1)?.push('');
+      index = following;
+      continue;
+    }
     const item = listItemStart(line);
     if (item !== null && item.indent <= first.indent) {
       if (item.ordered !== first.ordered) break;
@@ -122,9 +141,11 @@ const renderListBlock = (lines: readonly string[], start: number): { html: strin
     current.push(item === null ? line.trim() : line);
     index += 1;
   }
-  const tag = first?.ordered === true ? 'ol' : 'ul';
+  const ordered = first?.ordered === true;
+  const tag = ordered ? 'ol' : 'ul';
+  const startAttribute = ordered && first.number !== 1 ? ` start="${String(first.number)}"` : '';
   const body = items.map((item) => `<li>${withoutLeadingParagraph(renderMarkdownBlocks(item))}</li>`).join('');
-  return { html: `<${tag}>${body}</${tag}>`, next: Math.max(index, start + 1) };
+  return { html: `<${tag}${startAttribute}>${body}</${tag}>`, next: Math.max(index, start + 1) };
 };
 
 const renderMarkdownBlocks = (lines: readonly string[]): string[] => {
@@ -149,10 +170,10 @@ const renderMarkdownBlocks = (lines: readonly string[]): string[] => {
       blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
     if (heading !== null) {
       flushParagraph();
-      const level = heading[1]?.length ?? 1;
+      const level = Math.min((heading[1]?.length ?? 1) + 1, 6);
       blocks.push(`<h${String(level)}>${renderInlineMarkdown(heading[2] ?? '')}</h${String(level)}>`);
       index += 1;
       continue;
@@ -271,10 +292,11 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .status .lede{max-width:32rem;margin-inline:auto}
 .status .actions{justify-content:center}
 .prose{margin-top:2rem;overflow-wrap:anywhere}
-.prose h1,.prose h2,.prose h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
-.prose h1{font-size:1.5rem}
-.prose h2{font-size:1.25rem}
-.prose h3{font-size:1.0625rem}
+.prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
+.prose h2{font-size:1.5rem}
+.prose h3{font-size:1.25rem}
+.prose h4{font-size:1.0625rem}
+.prose h5,.prose h6{font-size:1rem}
 .prose p,.prose ul,.prose ol,.prose blockquote{margin:0 0 1rem}
 .prose ul,.prose ol{padding-left:1.25rem}
 .prose blockquote{border-left:3px solid var(--line);padding-left:1rem;color:var(--muted)}

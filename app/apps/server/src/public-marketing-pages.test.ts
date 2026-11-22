@@ -75,7 +75,7 @@ describe('public marketing pages', () => {
     expect(html).toContain('.languages a{display:inline-flex');
     expect(html).toContain('min-height:44px');
     expect(html).toContain('@media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}');
-    expect(html).toContain('.prose h1{font-size:1.5rem}');
+    expect(html).toContain('.prose h2{font-size:1.5rem}');
     expect(html).toContain('<div class="brand-mark"><img class="brand-logo" src="/brand.svg" alt="Studio Demo"></div>');
     expect(html).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(html).toContain(':root{color-scheme:light dark;');
@@ -138,7 +138,8 @@ describe('public marketing pages', () => {
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {
     const rendered = renderHostedMarkdown('# Privacy\n\n**Safe** [link](https://example.test)\n\n<script>alert(1)</script> [bad](javascript:alert(1))');
-    expect(rendered).toContain('<h1>Privacy</h1>');
+    expect(rendered).toContain('<h2>Privacy</h2>');
+    expect(rendered).not.toContain('<h1>');
     expect(rendered).toContain('<strong>Safe</strong>');
     expect(rendered).toContain('href="https://example.test"');
     expect(rendered).toContain('&lt;script&gt;');
@@ -174,6 +175,35 @@ describe('public marketing pages', () => {
     expect(rendered).toContain('<ol><li>First step</li><li>Second step</li></ol>');
     expect(rendered).toContain('<ul><li>Only bullet</li></ul>');
     expect(rendered).toContain('Keep snake_case readable, show R&amp;D and 5 &lt; 6, and render <em>emphasis</em>.');
+  });
+
+  it('keeps a loose numbered list as one list and keeps its first number', () => {
+    const loose = renderHostedMarkdown(['1. First clause', '', '2. Second clause', '', '3. Third clause'].join('\n'));
+    expect(loose).toBe('<ol><li>First clause</li><li>Second clause</li><li>Third clause</li></ol>');
+    const continued = renderHostedMarkdown(['## Part two', '', '5. Fifth clause', '6. Sixth clause', '', '7. Seventh clause'].join('\n'));
+    expect(continued).toContain('<ol start="5"><li>Fifth clause</li><li>Sixth clause</li><li>Seventh clause</li></ol>');
+    const bullets = renderHostedMarkdown(['- one', '', '- two', '', 'After the list'].join('\n'));
+    expect(bullets).toBe('<ul><li>one</li><li>two</li></ul>\n<p>After the list</p>');
+    const continuation = renderHostedMarkdown(['1. Clause', '', '   Second paragraph of the clause', '', '2. Next clause'].join('\n'));
+    expect(continuation).toBe('<ol><li>Clause<p>Second paragraph of the clause</p></li><li>Next clause</li></ol>');
+    const switched = renderHostedMarkdown(['1. Numbered', '', '- Bullet'].join('\n'));
+    expect(switched).toBe('<ol><li>Numbered</li></ol>\n<ul><li>Bullet</li></ul>');
+  });
+
+  it('shifts headings one level below the page title and accepts single-asterisk emphasis', () => {
+    const rendered = renderHostedMarkdown(['# One', '## Two', '### Three', '#### Four', '##### Five', '###### Six', '', 'Read *carefully* but keep 5 * 3 * 2 and \\*literal\\*.'].join('\n'));
+    expect(rendered).toContain('<h2>One</h2>');
+    expect(rendered).toContain('<h3>Two</h3>');
+    expect(rendered).toContain('<h4>Three</h4>');
+    expect(rendered).toContain('<h5>Four</h5>');
+    expect(rendered).toContain('<h6>Five</h6>');
+    expect(rendered).toContain('<h6>Six</h6>');
+    expect(rendered).not.toContain('#');
+    expect(rendered).toContain('Read <em>carefully</em> but keep 5 * 3 * 2 and *literal*.');
+  });
+
+  it('renders an h4 from a level-three heading of the document', () => {
+    expect(renderHostedMarkdown('### Retention')).toBe('<h4>Retention</h4>');
   });
 
   it('renders the block structures the visual editor can produce', () => {

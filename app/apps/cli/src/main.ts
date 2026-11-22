@@ -75,6 +75,7 @@ import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
+import { registerOrderRefundCommands } from './order-refund-commands.js';
 import { registerTeamCommands } from './team-commands.js';
 import { registerOrganizationCommands } from './organization-commands.js';
 import { formatProductStock, registerStockCommands } from './stock-commands.js';
@@ -1902,6 +1903,7 @@ priceCommand
 
 const ordersCommand = program.command('orders').alias('order').description('Sales ledger of the active tenant (staff only)');
 registerOrderChangeCommands(ordersCommand, cliCtx);
+registerOrderRefundCommands(ordersCommand, cliCtx);
 
 ordersCommand.command('verify <reference>').description('Verify an order by QR token or order number').action(
   withInput(z.tuple([z.string().min(1), z.object({})]), async (ctx, [reference]) => {

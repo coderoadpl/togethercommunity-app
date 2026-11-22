@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -567,14 +567,103 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
     expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
-    expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
+    expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-lessons')).toHaveTextContent(
+      `5 ${en.courseOverview.statLessons({ count: 5 })}`,
+    );
+    expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-duration')).toHaveTextContent(
+      en.courseOverview.durationHoursMinutes({ hours: 1, minutes: 0 }),
+    );
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
-    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
+    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile', 'public-course-unlock-cta-repeat']) {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
     expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(en.shell.start);
+  });
+
+  it('names the course once and leads the offer card with the price', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const offer = await screen.findByTestId('guest-course-offer');
+    expect(screen.getAllByRole('heading', { name: structure.name })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: structure.name })).toBeInTheDocument();
+    expect(within(offer).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(offer).queryByText(anonOffer.description)).not.toBeInTheDocument();
+    expect(screen.getAllByText(anonOffer.description)).toHaveLength(1);
+    const price = within(offer).getByTestId('guest-course-price');
+    expect(price).toHaveClass('MuiTypography-h2');
+    expect(price.compareDocumentPosition(within(offer).getByTestId('guest-course-facts')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('repeats the price and the unlock button under the curriculum from md up', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const repeat = await screen.findByTestId('guest-course-offer-repeat');
+    expect(repeat).toHaveTextContent(en.anon.unlockCta);
+    expect(repeat).toHaveTextContent((screen.getByTestId('guest-course-price').textContent ?? '').replaceAll('\u00a0', ' '));
+    expect(screen.getByTestId('anon-course-program').compareDocumentPosition(repeat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(stylesAt(repeat, 390).display).toBe('none');
+    expect(stylesAt(repeat, 1440).display).toBe('flex');
+  });
+
+  it('repeats no offer under the curriculum when the course has nothing to buy', async () => {
+    anonCoursePage(null, { ...anonOffer, product: null, salesUrl: null });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    await screen.findByTestId('anon-course-program');
+    expect(screen.queryByTestId('guest-course-offer-repeat')).not.toBeInTheDocument();
+  });
+
+  it('keeps the phone bar hidden and inert while the in-card button is on screen', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const bar = await screen.findByTestId('guest-course-sticky-offer');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+    expect(bar).toHaveAttribute('inert');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('');
+  });
+
+  it('shows the phone bar and reserves its height once the in-card button scrolls away', async () => {
+    type Entry = { isIntersecting: boolean; boundingClientRect: { top: number } };
+    const observers: { callback: (entries: Entry[]) => void; targets: Element[] }[] = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      private readonly record: { callback: (entries: Entry[]) => void; targets: Element[] };
+      constructor(callback: (entries: Entry[]) => void) {
+        this.record = { callback, targets: [] };
+        observers.push(this.record);
+      }
+      observe(target: Element) { this.record.targets.push(target); }
+      unobserve() {}
+      disconnect() { this.record.targets = []; }
+      takeRecords() { return []; }
+    });
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(72);
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const bar = await screen.findByTestId('guest-course-sticky-offer');
+    const cardCta = screen.getByTestId('public-course-unlock-cta');
+    const observer = observers.find((candidate) => candidate.targets.some((target) => target.contains(cardCta)));
+    if (observer === undefined) throw new Error('Expected the in-card button to be observed');
+
+    act(() => observer.callback([{ isIntersecting: false, boundingClientRect: { top: 900 } }]));
+    expect(bar).toHaveAttribute('inert');
+
+    act(() => observer.callback([{ isIntersecting: false, boundingClientRect: { top: -120 } }]));
+    expect(bar).not.toHaveAttribute('aria-hidden');
+    expect(bar).not.toHaveAttribute('inert');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('72px');
+
+    act(() => observer.callback([{ isIntersecting: true, boundingClientRect: { top: 40 } }]));
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+    expect(bar).toHaveAttribute('inert');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('');
+    height.mockRestore();
   });
 
   it('crops the anonymous cover exactly like the member cover', async () => {

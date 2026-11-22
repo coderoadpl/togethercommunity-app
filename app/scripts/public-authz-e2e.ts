@@ -279,7 +279,7 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
   const viewport = page.viewportSize();
   assert(viewport !== null, 'public course journey requires a viewport');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByTestId('guest-course-sticky-offer').waitFor({ state: 'visible' });
+  await page.getByTestId('guest-course-sticky-offer').waitFor({ state: 'attached' });
   await expectHref(page, 'public-course-unlock-cta-mobile', '/checkout/product-free-preview');
   await page.setViewportSize(viewport);
 

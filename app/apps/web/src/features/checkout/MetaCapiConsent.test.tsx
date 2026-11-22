@@ -117,6 +117,10 @@ it('reopens the dialog from the error alert without recording a choice', async (
   expect(await screen.findByRole('dialog', { name: metaCapiConfig.heading })).toBeVisible();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(decide).toHaveBeenCalledOnce();
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.getByRole('status')).toHaveFocus());
+  expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.undecided);
 });
 
 it('refetches the consent copy on retry after the text changed and sends the current version', async () => {
@@ -162,6 +166,18 @@ it('reopens a dismissed dialog from the no-decision row and records nothing unti
   fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.declineLabel }));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.denied));
   expect(screen.queryByRole('button', { name: en.metaCapi.decide })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.getByRole('status')).toHaveFocus());
+});
+
+it('moves focus to the error alert when a reopened decision fails', async () => {
+  server.use(http.post('/api/public/meta-capi/consent', () => HttpResponse.error()));
+  dismissal.save();
+  renderConsent();
+  fireEvent.click(screen.getByRole('button', { name: en.metaCapi.decide }));
+  fireEvent.click(await screen.findByRole('button', { name: metaCapiConfig.acceptLabel }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus());
 });
 
 it('offers no new grant after a refusal', () => {

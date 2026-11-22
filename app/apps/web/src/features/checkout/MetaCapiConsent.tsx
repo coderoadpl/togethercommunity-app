@@ -25,51 +25,62 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
   const [dismissed, setDismissed] = useState(() => dismissal.load());
   const [savedState, setSavedState] = useState<MetaCapiState | null>(null);
   const statusText = useRef<HTMLParagraphElement>(null);
-  const focusStatus = useRef(false);
+  const errorAlert = useRef<HTMLDivElement>(null);
+  const [focusRequest, setFocusRequest] = useState<{ target: 'status' | 'error'; seq: number } | null>(null);
+  const requestFocus = (target: 'status' | 'error') => setFocusRequest((previous) => ({ target, seq: (previous?.seq ?? 0) + 1 }));
+  useEffect(() => {
+    if (focusRequest === null) return;
+    (focusRequest.target === 'error' ? errorAlert : statusText).current?.focus();
+  }, [focusRequest]);
+  const [reopened, setReopened] = useState(false);
   const choice = useMutation({
     ...actions.metaCapi.decide,
     onSuccess: setSavedState,
-    onError: () => dismissal.clear(),
+    onError: () => {
+      dismissal.clear();
+      if (document.activeElement === statusText.current) requestFocus('error');
+    },
   });
   const withdrawal = useMutation({
     ...actions.metaCapi.decide,
     onSuccess: (saved) => {
-      focusStatus.current = true;
+      requestFocus('status');
       setSavedState(saved);
     },
   });
   const state = savedState ?? config;
   const withdrawn = state.withdrawnAt !== null;
-  useEffect(() => {
-    if (!withdrawn || !focusStatus.current) return;
-    focusStatus.current = false;
-    statusText.current?.focus();
-  }, [withdrawn]);
   const dismiss = () => {
     setDismissed(true);
     dismissal.save();
   };
-  const reopen = () => {
+  const reopen = (next: MetaCapiConfig) => {
     choice.reset();
     dismissal.clear();
     setDismissed(false);
+    if (next.enabled && next.consent === 'undecided' && next.withdrawnAt === null) setReopened(true);
+    else requestFocus('status');
+  };
+  const closed = () => {
+    if (!reopened) return;
+    setReopened(false);
+    requestFocus(choice.isError ? 'error' : 'status');
   };
   const [refreshing, setRefreshing] = useState(false);
-  const retry = () => {
+  const retry = async () => {
     setRefreshing(true);
-    void queryClient.fetchQuery({ ...actions.publicCheckoutSessionStatus(sessionId, config.locale), staleTime: 0 })
-      .then((current) => { if (current.metaCapi) setRefreshedConfig(current.metaCapi); }, () => undefined)
-      .finally(() => {
-        setRefreshing(false);
-        reopen();
-      });
+    const current = await queryClient.fetchQuery({ ...actions.publicCheckoutSessionStatus(sessionId, config.locale), staleTime: 0 })
+      .then((status) => status.metaCapi, () => undefined);
+    if (current) setRefreshedConfig(current);
+    setRefreshing(false);
+    reopen(current ?? config);
   };
   const undecided = state.consent === 'undecided' && !withdrawn;
   const status = choice.isPending ? { text: t.metaCapi.saving }
     : withdrawn ? { text: t.metaCapi.withdrawn }
       : state.consent === 'granted' ? { text: t.metaCapi.granted, action: { label: t.metaCapi.withdraw, pending: withdrawal.isPending, run: () => withdrawal.mutate({ sessionId, decision: 'withdrawn' }) } }
         : state.consent === 'denied' ? { text: t.metaCapi.denied }
-          : config.enabled && dismissed && !choice.isError ? { text: t.metaCapi.undecided, action: { label: t.metaCapi.decide, pending: false, run: reopen } }
+          : config.enabled && dismissed && !choice.isError ? { text: t.metaCapi.undecided, action: { label: t.metaCapi.decide, pending: false, run: () => reopen(config) } }
             : null;
   return (
     <>
@@ -77,6 +88,8 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
         config={config}
         open={config.enabled && undecided && !dismissed}
         onDismiss={dismiss}
+        onExited={closed}
+        disableRestoreFocus={reopened}
         onDecision={(decision) => {
           dismiss();
           const fbp = browserIdentifier();
@@ -84,7 +97,7 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
         }}
       />
       {choice.isError ? (
-        <Alert severity="error" action={<Button color="inherit" size="small" disabled={refreshing} onClick={retry}>{t.common.retry}</Button>}>
+        <Alert ref={errorAlert} tabIndex={-1} severity="error" action={<Button color="inherit" size="small" disabled={refreshing} onClick={() => void retry()}>{t.common.retry}</Button>}>
           {staleText(choice.error) ? `${t.metaCapi.decisionError} ${t.metaCapi.textChanged}` : t.metaCapi.decisionError}
         </Alert>
       ) : null}

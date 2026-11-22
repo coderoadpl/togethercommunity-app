@@ -5,11 +5,13 @@ import { ChevronDownIcon, ExternalLinkIcon } from '../../components/ui/account-i
 import { useTranslations } from '../../i18n/index.js';
 import { AccountSessionDisclosure, VisuallyHidden } from '../../theme.js';
 
-export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, initiallyExpanded = false }: {
+export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onExited, disableRestoreFocus = false, initiallyExpanded = false }: {
   config: MetaCapiConfig;
   open: boolean;
   onDecision: (decision: 'granted' | 'denied') => void;
   onDismiss: () => void;
+  onExited?: () => void;
+  disableRestoreFocus?: boolean;
   initiallyExpanded?: boolean;
 }) => {
   const t = useTranslations();
@@ -31,6 +33,8 @@ export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, ini
     <Dialog
       open={open}
       onClose={onDismiss}
+      disableRestoreFocus={disableRestoreFocus}
+      slotProps={{ transition: { onExited } }}
       fullWidth
       maxWidth="sm"
       scroll="paper"

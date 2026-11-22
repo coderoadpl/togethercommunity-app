@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Button, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -8,7 +8,8 @@ import { ApiError } from '#core/client/index.js';
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
+import { formatDate } from '../../lib/format.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { CourseRow } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -19,6 +20,53 @@ const isUnauthorized = (error: Error | null) =>
 
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
+
+const productCrumbs = (t: Messages, current: string) => [
+  {
+    label: t.student.myProducts,
+    link: <MuiLink component={Link} to="/my/products">{t.student.myProducts}</MuiLink>,
+  },
+  { label: current },
+];
+
+const InactiveAccess = ({ product }: {
+  product: { id: string; grantStatus: 'upcoming' | 'expired'; grantStartsAt: string; grantExpiresAt: string | null; purchasable: boolean };
+}) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  if (product.grantStatus === 'upcoming') {
+    return (
+      <StatusView
+        data-testid="product-access-upcoming"
+        state={{ kind: 'empty', title: t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) }) }}
+      />
+    );
+  }
+  return (
+    <StatusView
+      data-testid="product-access-expired"
+      state={{
+        kind: 'empty',
+        title: t.student.productAccessExpired({ date: formatDate(product.grantExpiresAt ?? product.grantStartsAt, language) }),
+        ...(product.purchasable
+          ? {
+            action: (
+              <Button
+                variant="contained"
+                size="small"
+                component={Link}
+                to={`/checkout/${encodeURIComponent(product.id)}`}
+                data-testid={`renew-${product.id}`}
+              >
+                {t.student.renewAccess}
+              </Button>
+            ),
+          }
+          : { body: t.student.renewalUnavailable }),
+      }}
+    />
+  );
+};
 
 export const CoursePage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
@@ -35,9 +83,10 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   if (products.isPending) {
     return (
       <MemberSurface
-        title={t.student.myProducts}
-        eyebrow={t.student.courseEyebrow}
-        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
+        title={t.student.loadingProduct}
+        eyebrow={t.student.productEyebrow}
+        breadcrumbs={productCrumbs(t, t.student.productEyebrow)}
+        state={{ kind: 'loading', label: t.student.loadingProduct }}
       />
     );
   }
@@ -47,8 +96,9 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   if (products.isError) {
     return (
       <MemberSurface
-        title={t.student.myProducts}
-        eyebrow={t.student.courseEyebrow}
+        title={t.student.productLoadFailed}
+        eyebrow={t.student.productEyebrow}
+        breadcrumbs={productCrumbs(t, t.student.productEyebrow)}
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
@@ -63,15 +113,26 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   if (!product) {
     return (
       <MemberSurface
-        title={t.student.courseNotFound}
-        eyebrow={t.student.courseEyebrow}
+        title={t.student.productNotFound}
+        eyebrow={t.student.productEyebrow}
+        breadcrumbs={productCrumbs(t, t.student.productNotFound)}
         state={{
           kind: 'not-found',
-          title: t.student.courseNotFound,
-          body: t.student.productNotInLibrary,
+          title: t.student.productNotInLibrary,
           action: <MuiLink component={Link} to="/my/products">{t.student.backToMyProducts}</MuiLink>,
         }}
       />
+    );
+  }
+
+  const crumbs = productCrumbs(t, product.title);
+
+  if (product.grantStatus !== 'active') {
+    return (
+      <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
+        {product.description ? <RichTextContent html={product.description} /> : null}
+        <InactiveAccess product={{ ...product, grantStatus: product.grantStatus }} />
+      </MemberSurface>
     );
   }
 
@@ -80,7 +141,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
 
   if (grantedCourseIds.size === 0 && product.downloads.length > 0) {
     return (
-      <MemberSurface title={product.title} eyebrow={t.student.downloadsHeading}>
+      <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
         {product.description ? <RichTextContent html={product.description} /> : null}
         <Typography>{t.student.downloadProductBody}</Typography>
         <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
@@ -95,7 +156,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   );
 
   return (
-    <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
+    <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
       {product.description ? <RichTextContent html={product.description} /> : null}
       {courses.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />

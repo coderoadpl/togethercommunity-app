@@ -2358,7 +2358,6 @@ export const en: Messages = {
     productCoursesHeading: 'Available courses',
     productCoursesHint:
       'Pick a course to open it.',
-    courseNotFound: 'Course not found',
     productNotInLibrary: 'This product is not in your library.',
     backToMyProducts: 'Back to my products',
     grantActiveLabel: 'Active',
@@ -2393,6 +2392,11 @@ export const en: Messages = {
       not_found: 'This file is no longer available. A newer version may have replaced it.',
       failed: 'We could not prepare your file. Try again in a moment.',
     },
+    productEyebrow: 'Product',
+    loadingProduct: 'Loading the product…',
+    productLoadFailed: 'We could not load this product',
+    productNotFound: 'Product not found',
+    productAccessExpired: ({ date }) => `Your access expired on ${date}.`,
   },
   downloadCopies: {
     showMore: 'Show more copies',

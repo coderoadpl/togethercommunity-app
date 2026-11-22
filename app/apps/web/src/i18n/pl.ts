@@ -2379,7 +2379,6 @@ export const pl: Messages = {
     productCoursesHeading: 'Dostępne kursy',
     productCoursesHint:
       'Wybierz kurs, aby go otworzyć.',
-    courseNotFound: 'Nie znaleziono kursu',
     productNotInLibrary: 'Tego produktu nie ma w Twojej bibliotece.',
     backToMyProducts: 'Wróć do moich produktów',
     grantActiveLabel: 'Aktywny',
@@ -2414,6 +2413,11 @@ export const pl: Messages = {
       not_found: 'Ten plik nie jest już dostępny. Mogła go zastąpić nowsza wersja.',
       failed: 'Nie udało się przygotować pliku. Spróbuj ponownie za chwilę.',
     },
+    productEyebrow: 'Produkt',
+    loadingProduct: 'Ładowanie produktu…',
+    productLoadFailed: 'Nie udało się wczytać produktu',
+    productNotFound: 'Nie znaleziono produktu',
+    productAccessExpired: ({ date }) => `Twój dostęp wygasł ${date}.`,
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

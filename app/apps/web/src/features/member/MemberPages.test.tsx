@@ -355,7 +355,7 @@ describe('member pages', () => {
     expect(screen.getByText(en.student.productCoursesHint)).toBeVisible();
     expect(screen.getByText('Start here.')).toBeVisible();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
-    expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
+    expect(within(screen.getByRole('banner')).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/my/products']);
     expect(
       screen.queryByRole('heading', { name: en.student.productWithoutCoursesTitle }),
     ).not.toBeInTheDocument();

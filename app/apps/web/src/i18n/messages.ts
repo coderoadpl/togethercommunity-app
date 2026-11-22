@@ -2097,7 +2097,6 @@ export interface Messages {
     productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
-    courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;
     grantActiveLabel: string;
@@ -2127,6 +2126,11 @@ export interface Messages {
     continueCourse: string;
     downloadPreparing: string;
     downloadFailures: Record<MemberDownloadFailureCode, string>;
+    productEyebrow: string;
+    loadingProduct: string;
+    productLoadFailed: string;
+    productNotFound: string;
+    productAccessExpired: (params: { date: string }) => string;
   };
   downloadCopies: {
     showMore: string;

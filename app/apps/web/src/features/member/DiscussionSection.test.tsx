@@ -749,7 +749,12 @@ describe('DiscussionSection', () => {
     const hit = await screen.findByTestId('search-hit-h1');
     expect(hit).toHaveTextContent('The engine runs full throttle');
     expect(within(hit).getByText('engine').tagName).toBe('MARK');
-    expect(within(hit).getByRole('link', { name: 'Olivia Author' })).toHaveAttribute('href', '/my/courses/course-1/lessons/l1?thread=r1');
+    const link = within(hit).getByRole('link', { name: 'Olivia Author The engine runs full throttle' });
+    expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1?thread=r1');
+    expect(within(link).getByText('engine').tagName).toBe('MARK');
+    expect(within(link).getByTestId('search-hit-chevron')).toBeInTheDocument();
+    expect(within(hit).getAllByRole('link')).toHaveLength(1);
+    expect(within(link).queryAllByRole('button')).toHaveLength(0);
     expect(screen.queryByTestId('discussion-search-hint')).not.toBeInTheDocument();
 
     const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
@@ -768,7 +773,27 @@ describe('DiscussionSection', () => {
 
     await user.type(await screen.findByTestId('discussion-search-input'), 'engine');
 
-    expect(await screen.findByTestId('search-hit-link-h1')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1/editions/2?thread=r7');
+    const link = await screen.findByTestId('search-hit-link-h1');
+    expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1/editions/2?thread=r7');
+    expect(link).toHaveAccessibleName('Olivia Author Engine notes');
+  });
+
+  it('names two hits by one author apart by their snippets', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([]),
+      okSearch([
+        { post: post({ id: 'h1', rootPostId: 'r1', body: 'Engine notes' }), lessonId: 'l1', snippet: 'Engine notes' },
+        { post: post({ id: 'h2', rootPostId: 'r2', body: 'Engine questions' }), lessonId: 'l1', snippet: 'Engine questions' },
+      ]),
+    );
+    const user = userEvent.setup();
+    await renderInRouter(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'engine');
+
+    expect(await screen.findByRole('link', { name: 'Olivia Author Engine notes' })).toHaveAttribute('href', '/my/courses/course-1/lessons/l1?thread=r1');
+    expect(screen.getByRole('link', { name: 'Olivia Author Engine questions' })).toHaveAttribute('href', '/my/courses/course-1/lessons/l1?thread=r2');
   });
 
   it('shows the search hint only with an empty result', async () => {

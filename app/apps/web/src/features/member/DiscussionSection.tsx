@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Box, Link as MuiLink, Stack, TextField, Typography } from '@mui/material';
+import { useState, type ReactNode } from 'react';
+import { Box, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { createLink } from '@tanstack/react-router';
 
@@ -8,13 +8,17 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { DiscussionHitSnippet, DiscussionThread, PostAuthorName } from '../../theme.js';
+import { DiscussionHitCard, DiscussionHitChevron, DiscussionHitSnippet, DiscussionHitText, PostAuthorName } from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { ThreadDiscussion } from './ThreadDiscussion.js';
 
 const MIN_SEARCH_LENGTH = 2;
 
-const RouterLink = createLink(MuiLink);
+const HitCardLink = createLink(DiscussionHitCard);
+
+const HitChevron = () => (
+  <DiscussionHitChevron aria-hidden data-testid="search-hit-chevron" viewBox="0 0 24 24"><path d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z" /></DiscussionHitChevron>
+);
 
 interface LessonPlace {
   courseId: string;
@@ -22,26 +26,30 @@ interface LessonPlace {
   editionNumber?: string | undefined;
 }
 
-const ThreadHitLink = ({ place, rootPostId, testId, children }: { place: LessonPlace; rootPostId: string; testId: string; children: string }) => {
+const ThreadHitLink = ({ place, rootPostId, testId, label, children }: { place: LessonPlace; rootPostId: string; testId: string; label: string; children: ReactNode }) => {
   const { courseId, lessonId, editionNumber } = place;
   return editionNumber === undefined ? (
-    <RouterLink
+    <HitCardLink
       to="/my/courses/$courseId/lessons/$lessonId"
       params={{ courseId, lessonId }}
       search={{ thread: rootPostId }}
+      underline="none"
+      aria-label={label}
       data-testid={testId}
     >
       {children}
-    </RouterLink>
+    </HitCardLink>
   ) : (
-    <RouterLink
+    <HitCardLink
       to="/my/courses/$courseId/lessons/$lessonId/editions/$number"
       params={{ courseId, lessonId, number: editionNumber }}
       search={{ thread: rootPostId }}
+      underline="none"
+      aria-label={label}
       data-testid={testId}
     >
       {children}
-    </RouterLink>
+    </HitCardLink>
   );
 };
 
@@ -80,19 +88,23 @@ const LessonDiscussionSearch = ({ place }: { place: LessonPlace }) => {
               </Typography>
             </Stack>
           ) : (
-            <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
-              {search.data.hits.map((hit) => (
-                <DiscussionThread key={hit.post.id} sx={{ p: '0.6rem 0.9rem' }} data-testid={`search-hit-${hit.post.id}`}>
-                  <PostAuthorName component="span">
-                    <ThreadHitLink place={place} rootPostId={hit.post.rootPostId} testId={`search-hit-link-${hit.post.id}`}>
-                      {translateDeletedContent(hit.post.authorDisplay, t)}
+            <Stack component="ul" useFlexGap sx={{ rowGap: '0.5rem', m: 0, p: 0, listStyle: 'none' }}>
+              {search.data.hits.map((hit) => {
+                const author = translateDeletedContent(hit.post.authorDisplay, t);
+                return (
+                  <li key={hit.post.id} data-testid={`search-hit-${hit.post.id}`}>
+                    <ThreadHitLink place={place} rootPostId={hit.post.rootPostId} testId={`search-hit-link-${hit.post.id}`} label={`${author} ${hit.snippet}`}>
+                      <DiscussionHitText>
+                        <PostAuthorName component="span">{author}</PostAuthorName>
+                        <DiscussionHitSnippet variant="body2" component="span">
+                          <Highlighted text={hit.snippet} query={debounced} />
+                        </DiscussionHitSnippet>
+                      </DiscussionHitText>
+                      <HitChevron />
                     </ThreadHitLink>
-                  </PostAuthorName>
-                  <DiscussionHitSnippet variant="body2" component="p">
-                    <Highlighted text={hit.snippet} query={debounced} />
-                  </DiscussionHitSnippet>
-                </DiscussionThread>
-              ))}
+                  </li>
+                );
+              })}
             </Stack>
           )}
         </Box>

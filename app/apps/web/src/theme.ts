@@ -4445,6 +4445,37 @@ export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) =>
   overflowWrap: 'anywhere',
 }));
 
+export const DiscussionHitCard = styled(Link)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  padding: '0.6rem 0.9rem',
+  minHeight: 44,
+  color: theme.palette.text.primary,
+  fontWeight: 400,
+  textDecoration: 'none',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  transition: theme.transitions.create(['background-color', 'border-color'], { duration: theme.transitions.duration.shortest }),
+  '&:hover': { backgroundColor: theme.palette.action.hover, borderColor: theme.palette.text.secondary },
+  '&:focus-visible': { borderColor: theme.palette.primary.main },
+}));
+
+export const DiscussionHitText = styled('span')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  flex: 1,
+  minWidth: 0,
+});
+
+export const DiscussionHitChevron = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.25rem',
+  color: theme.palette.text.secondary,
+}));
+
 export const ThreadHeadline = styled('span')({
   display: 'block',
   overflow: 'hidden',

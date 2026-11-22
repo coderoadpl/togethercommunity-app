@@ -5,7 +5,7 @@ import type { PickupPointDirectory } from '#core/server/index.js';
 
 const INPOST_POINTS_URL = 'https://api-shipx-pl.easypack24.net/v1/points/';
 
-export const INPOST_POINTS_TIMEOUT_MS = 3000;
+const INPOST_POINTS_TIMEOUT_MS = 3000;
 
 const BODY_MAX_LENGTH = 64 * 1024;
 

@@ -234,7 +234,7 @@ const truncate = (value: string, maxLength: number): string => {
 
 export const PICKUP_POINT_REJECTION_REASONS = ['not_found', 'not_usable', 'not_operating'] as const;
 
-export const pickupPointRejectionReasonSchema = z.enum(PICKUP_POINT_REJECTION_REASONS);
+const pickupPointRejectionReasonSchema = z.enum(PICKUP_POINT_REJECTION_REASONS);
 
 export type PickupPointRejectionReason = z.infer<typeof pickupPointRejectionReasonSchema>;
 
@@ -244,7 +244,7 @@ export const PICKUP_POINT_REJECTION_MESSAGES: Readonly<Record<PickupPointRejecti
   not_operating: 'This InPost parcel locker is not operating',
 };
 
-export const pickupPointRejected = (reason: PickupPointRejectionReason): AppError =>
+const pickupPointRejected = (reason: PickupPointRejectionReason): AppError =>
   validation(PICKUP_POINT_REJECTION_MESSAGES[reason], { pickupPointReason: reason });
 
 const pickupPointRejectionDetailsSchema = z.object({ pickupPointReason: pickupPointRejectionReasonSchema });

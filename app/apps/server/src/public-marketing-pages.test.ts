@@ -635,6 +635,36 @@ describe('sign-up pages', () => {
     expect(submit().defaultPrevented).toBe(false);
   });
 
+  it.each(['generic', 'rate_limited'] as const)('moves focus to the %s alert, describes the e-mail field with it and marks the title as an error', (error) => {
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false, error, values: { email: 'reader@example.org', displayName: '' } });
+    expect(html).toContain('<title>Error: Sign up for e-mails from Studio Demo · Studio Demo</title>');
+    expect(html).toContain('<h1>Sign up for e-mails from Studio Demo</h1>');
+    expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">');
+    expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="reader@example.org" aria-describedby="signup-error">');
+    expect(html.match(/<script/g)).toHaveLength(1);
+    const script = /<script nonce="test-nonce">([^<]*)<\/script><\/body>/.exec(html)?.[1];
+    if (script === undefined) throw new Error('Missing page script');
+    const focused: string[] = [];
+    new Function('document', 'window', script)({
+      querySelector: () => null,
+      getElementById: (id: string) => ({ focus: () => { focused.push(id); } }),
+    }, { addEventListener: () => undefined });
+    expect(focused).toEqual(['signup-error']);
+    const polish = renderSignupFormPage({ nonce: '', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false, error });
+    expect(polish).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })} · Studio Demo</title>`);
+    expect(polish).toContain('aria-describedby="signup-error">');
+    expect(polish).not.toContain('<script');
+  });
+
+  it('keeps the plain title and no focus script without an error', () => {
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false });
+    expect(html).toContain('<title>Sign up for e-mails from Studio Demo · Studio Demo</title>');
+    expect(html).not.toContain('signup-error');
+    const invalidEmail = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false, error: 'email', values: { email: 'reader@', displayName: '' } });
+    expect(invalidEmail).toContain('<title>Error: Sign up for e-mails from Studio Demo · Studio Demo</title>');
+    expect(invalidEmail).not.toContain('signup-error');
+  });
+
   it('renders no script without a nonce and none on the thanks and unavailable pages', () => {
     expect(renderSignupFormPage({ nonce: '', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false })).not.toContain('<script');
     expect(renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: true })).not.toContain('<script');
@@ -767,6 +797,7 @@ describe('public signup persistence and confirmation', () => {
       const html = await response.text();
       expect(html).toContain('data-testid="marketing-signup-form"');
       expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="bad&quot;&lt;b&gt;@nowhere" aria-invalid="true" aria-describedby="signup-email-error" autofocus><p class="field-error" id="signup-email-error" role="alert">Enter a complete e-mail address, for example name@example.com.</p>');
+      expect(html).toContain('<title>Error: Sign up for e-mails from Directory A');
       expect(html).toContain('value="&lt;script&gt;alert(1)&lt;/script&gt;"');
       expect(html).not.toContain('<script>alert(1)</script>');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
@@ -784,7 +815,8 @@ describe('public signup persistence and confirmation', () => {
       });
       expect(stale.status).toBe(400);
       const html = await stale.text();
-      expect(html).toContain(`<p class="signup-alert" id="signup-error" role="alert">${publicMarketingMessagesPl.signupFailed}</p><form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=pl" data-pending-label="${publicMarketingMessagesPl.signupSubmitPending}" aria-describedby="signup-error">`);
+      expect(html).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupTitle({ tenant: 'Directory A' })}`);
+      expect(html).toContain(`<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">${publicMarketingMessagesPl.signupFailed}</p><form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=pl" data-pending-label="${publicMarketingMessagesPl.signupSubmitPending}" aria-describedby="signup-error">`);
       expect(html).toContain('value="new@example.org"');
       expect(html).toContain('value="New Reader"');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
@@ -827,7 +859,9 @@ describe('public signup persistence and confirmation', () => {
       expect(response.headers.get('retry-after')).toBeTruthy();
       expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
       const html = await response.text();
-      expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert">Too many sign-up attempts. Wait a few minutes and try again.</p>');
+      expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">Too many sign-up attempts. Wait a few minutes and try again.</p>');
+      expect(html).toContain('required value="limit@example.org" aria-describedby="signup-error">');
+      expect(html).toContain('<title>Error: Sign up for e-mails from Directory A');
       expect(html).toContain('value="limit@example.org"');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
       const json = await post('application/json', JSON.stringify({ email: 'limit@example.org', token: fixture.form.token }));

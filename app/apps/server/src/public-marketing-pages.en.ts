@@ -15,6 +15,7 @@ export const publicMarketingMessagesEn = {
   signupFailed: 'We could not sign you up. Check your details and try again.',
   signupRateLimited: 'Too many sign-up attempts. Wait a few minutes and try again.',
   signupRateLimitedTitle: 'Try again later',
+  errorTitlePrefix: 'Error: ',
   signupUnavailableTitle: 'This sign-up form is no longer available',
   signupUnavailableBody: 'The form has been closed or its address has changed.',
   signupThanks: 'Thank you for signing up',

@@ -13,6 +13,7 @@ export interface PublicMarketingMessages {
   signupFailed: string;
   signupRateLimited: string;
   signupRateLimitedTitle: string;
+  errorTitlePrefix: string;
   signupUnavailableTitle: string;
   signupUnavailableBody: string;
   signupThanks: string;

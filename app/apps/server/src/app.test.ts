@@ -3407,6 +3407,7 @@ describe('public rate limiting', () => {
     const html = await formPost.text();
     expect(html).toContain('<html lang="pl">');
     expect(html).toContain(`<p role="alert">${publicMarketingMessagesPl.signupRateLimited}</p>`);
+    expect(html).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupRateLimitedTitle}</title>`);
     expect(html).not.toContain('reader@example.org');
     for (const lookup of lookups) expect(lookup).not.toHaveBeenCalled();
     for (const [contentType, body] of [['application/json', JSON.stringify({ email: 'reader@example.org' })], ['text/plain', '{}']] as const) {

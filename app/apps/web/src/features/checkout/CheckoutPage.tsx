@@ -371,7 +371,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     delivery,
     checkLocker,
     ready: !couponResolving && delivery.status !== 'incomplete' && !personalization.blocked,
-    requestKey: JSON.stringify({ email: buyerEmail ?? email, payableCents, stripeConfigured, request: purchaseRequest() }),
+    requestKey: JSON.stringify({ email: buyerEmail ?? email, payableCents, currency: selectedCurrency, testEnabled, stripeConfigured, request: purchaseRequest() }),
     proceed,
   });
   const submit = (event: FormEvent) => {

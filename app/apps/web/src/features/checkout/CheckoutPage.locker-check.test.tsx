@@ -396,6 +396,24 @@ describe('typed parcel locker code check', () => {
     expect(h.sessions).toEqual([]);
   });
 
+  it('does not start the payment when the purchase switches from test to live mode at the same price during the check', async () => {
+    const h = serve({ canTest: true, testEnabled: true });
+    const release = holdLookups(h.lookups);
+    const { queryClient } = renderCheckout();
+    await typeCode('waw01m');
+    const pay = screen.getByTestId('checkout-pay-cta');
+    await userEvent.click(pay);
+    await waitFor(() => expect(pay).toHaveTextContent(en.checkout.payPending));
+    expect(screen.getByTestId('checkout-test-mode-hint')).toBeInTheDocument();
+    const live = serve({ canTest: true, testEnabled: false });
+    await act(() => queryClient.refetchQueries({ type: 'active' }));
+    await waitFor(() => expect(screen.queryByTestId('checkout-test-mode-hint')).not.toBeInTheDocument());
+    release();
+    await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+    expect(h.lookups).toEqual(['WAW01M']);
+    expect([...h.sessions, ...live.sessions]).toEqual([]);
+  });
+
   it('submits a courier order on the first click while a check of an abandoned locker code is still running', async () => {
     const h = serve({ rates: [lockerRate, courierRate] });
     const release = holdLookups(h.lookups);

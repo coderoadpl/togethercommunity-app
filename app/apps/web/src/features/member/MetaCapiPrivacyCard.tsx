@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Stack, Typography } from '@mui/material';
+import { Alert, Button, Divider, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { MetaCapiMemberConsent } from '#core/domain/index.js';
 import { actions } from '../../api.js';
@@ -78,7 +78,7 @@ export const MetaCapiPrivacyCard = () => {
       </Typography>
       {consents.isError ? <StatusView state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
       {rows.length > 0 ? (
-        <Stack component="ul" spacing={2} sx={{ listStyle: 'none', m: 0, p: 0, '& > li + li': { borderTop: 1, borderColor: 'divider', pt: 2 } }}>
+        <Stack component="ul" spacing={2} divider={<Divider component="li" aria-hidden flexItem />} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {rows.map((consent) => <ConsentRow key={consent.orderId} consent={consent} onWithdrawn={withdrawn} />)}
         </Stack>
       ) : null}

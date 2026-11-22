@@ -204,11 +204,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     onSuccess: (_, variables) => {
       setPasswordKnownFor(variables.email);
       setResolveFailure(null);
-      setMethod(!magicLinkExpired ? 'password' : 'magic-link');
+      setMethod('magic-link');
     },
     onError: (error, variables) => {
       if (passwordKnownFor === variables.email && !magicLinkExpired) {
-        setMethod('password');
+        setMethod('magic-link');
         return;
       }
       setResolveFailure(error);

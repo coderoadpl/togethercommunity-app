@@ -171,6 +171,7 @@ const continueWithEmail = async (email = 'creator@together.dev') => {
 
 const fillCredentials = async () => {
   await continueWithEmail();
+  await userEvent.click(await screen.findByTestId('use-password'));
   await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
 };
 
@@ -183,7 +184,7 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await waitFor(() => expect(signIn).toHaveBeenCalledWith({ autoFill: true }, expect.anything()));
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     expect(available).toHaveBeenCalledOnce();
     expect(signIn).toHaveBeenCalledOnce();
   });
@@ -237,7 +238,7 @@ describe('LoginPage', () => {
     await renderLoginPage(false, '/login', 'acme.localhost', ['password', 'passkey', 'magic-link']);
     if (step === 'methods') {
       await continueWithEmail();
-      await screen.findByLabelText(en.auth.passwordLabel);
+      await screen.findByTestId('use-password');
     }
     const content = screen.getByTestId('sign-in-content');
     const noticeSlot = screen.getByTestId('sign-in-notice-slot');
@@ -373,6 +374,7 @@ describe('LoginPage', () => {
     );
 
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
@@ -395,6 +397,7 @@ describe('LoginPage', () => {
       '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
@@ -555,6 +558,7 @@ describe('LoginPage', () => {
     );
     await continueWithEmail();
 
+    await userEvent.click(await screen.findByTestId('use-password'));
     expect(await screen.findByTestId('forgot-password')).toHaveAttribute(
       'href',
       '/forgot-password?email=creator%40together.dev&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
@@ -596,6 +600,7 @@ describe('LoginPage', () => {
   it('carries the entered email into the editable password-reset form', async () => {
     await renderLoginPage();
     await continueWithEmail('member+login@example.com');
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.click(await screen.findByTestId('forgot-password'));
     expect(await screen.findByTestId('forgot-password-email')).toHaveValue('member+login@example.com');
     await userEvent.clear(screen.getByTestId('forgot-password-email'));
@@ -603,9 +608,18 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('forgot-password-email')).toHaveValue('another@example.com');
   });
 
-  it('opens the password step for an account that has a password', async () => {
+  it('lands on the method step with no panel open and opens the password panel on its card', async () => {
     await renderLoginPage();
     await continueWithEmail();
+
+    const passwordCard = await screen.findByRole('button', { name: new RegExp(en.auth.methodPasswordTitle, 'u') });
+    expect(passwordCard).toBe(screen.getByTestId('use-password'));
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.activeElement?.getAttribute('type')).not.toBe('password');
+
+    await userEvent.click(passwordCard);
 
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveFocus();
     const identifier = screen.getByTestId('login-identity-email');
@@ -645,8 +659,10 @@ describe('LoginPage', () => {
   it('leaves the expanded password card head inert instead of an empty button', async () => {
     await renderLoginPage();
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
+    await screen.findByLabelText(en.auth.passwordLabel);
 
-    const head = await screen.findByTestId('use-password');
+    const head = screen.getByTestId('use-password');
     expect(head).not.toHaveAttribute('role');
     expect(head).not.toHaveAttribute('tabindex');
     expect(
@@ -662,7 +678,8 @@ describe('LoginPage', () => {
   ])('keeps every method available regardless of a legacy lookup response: %s', async (...methods) => {
     await renderLoginPage(false, '/login', undefined, methods);
     await continueWithEmail('nobody@example.com');
-    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeEnabled();
+    expect(screen.queryByTestId('login-password')).not.toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeEnabled();
     expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
     expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
@@ -671,11 +688,33 @@ describe('LoginPage', () => {
   it.each([
     { language: 'en', t: en },
     { language: 'pl', t: pl },
-  ] as const)('offers uniform methods without account-specific explanations in $language', async ({ language }) => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
-    await userEvent.type(screen.getByTestId('login-email'), 'learner@together.dev');
-    await userEvent.click(screen.getByTestId('login-continue'));
-    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
+  ] as const)('shows the same method step for a known and an unknown address in $language', async ({ language }) => {
+    const methodStepFor = async (email: string, methods: readonly string[]) => {
+      const view = await renderLoginPage(false, '/login', undefined, methods, [], anonymousMe(), null, language);
+      await userEvent.clear(screen.getByTestId('login-email'));
+      await userEvent.type(screen.getByTestId('login-email'), email);
+      await userEvent.click(screen.getByTestId('login-continue'));
+      await screen.findByTestId('use-password');
+      const content = screen.getByTestId('sign-in-content');
+      const layout = [...content.querySelectorAll('*')].map((element) => [
+        element.tagName,
+        element.getAttribute('data-testid'),
+        element.getAttribute('type'),
+        element.getAttribute('disabled'),
+        element.getAttribute('aria-expanded'),
+        element.children.length === 0 ? (element.textContent ?? '').replaceAll(email, '<email>') : null,
+      ]);
+      const focused = document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName;
+      view.unmount();
+      return { layout, focused };
+    };
+
+    const known = await methodStepFor('creator@together.dev', ['password', 'passkey', 'magic-link']);
+    window.sessionStorage.clear();
+    const unknown = await methodStepFor('crow.unknown@example.com', ['magic-link']);
+
+    expect(unknown).toEqual(known);
+    expect(known.layout.some(([, testId]) => testId === 'login-password')).toBe(false);
   });
 
   it('offers password when reported, with the link card first', async () => {
@@ -689,7 +728,7 @@ describe('LoginPage', () => {
       expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
 
@@ -722,7 +761,7 @@ describe('LoginPage', () => {
   it('remembers the last identifier for the next visit in this tab only', async () => {
     const first = await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     first.unmount();
 
     expect(window.localStorage.getItem('together-login-identifier')).toBeNull();
@@ -809,27 +848,27 @@ describe('LoginPage', () => {
 
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
     failSignInMethods();
 
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('does not carry a known password method over to another address', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
     failSignInMethods();
@@ -903,7 +942,7 @@ describe('LoginPage', () => {
 
       await continueWithEmail();
 
-      expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+      expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     } finally {
       allowSiteData();
     }
@@ -1399,7 +1438,7 @@ describe('LoginPage', () => {
     stubSignInMethods(['password']);
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
@@ -1420,6 +1459,7 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
+    await userEvent.click(await screen.findByTestId('use-password'));
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveValue('');
     expect(screen.queryByText(en.auth.invalidCredentials)).not.toBeInTheDocument();
   });

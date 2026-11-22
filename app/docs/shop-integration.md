@@ -193,7 +193,11 @@ New products have `published: false`.
 The CLI equivalent starts with `product create --type physical --title Paperback
 --slug paperback --price-cents 4900 --currency PLN --vat-rate 5
 --delivery-method shipping --parcel-template small --cover-url '<https-url>'`;
-`--compliance '<json-object>'` accepts the safety fields above.
+`--compliance '<json-object>'` accepts the safety fields above. For a
+manufacturer not established in the EU, add `"manufacturerOutsideEu": true`
+with `responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail` (see
+[Product safety information](shop.md#product-safety-information-gpsr)).
 
 ### Optional platform-hosted cover upload
 

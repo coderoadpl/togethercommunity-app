@@ -398,6 +398,24 @@ describe('m2m content import', () => {
     });
   });
 
+  it('imports the responsible person of a manufacturer outside the EU', async () => {
+    const h = harness();
+    const compliance = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: true, responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, Warsaw',
+      responsiblePersonEmail: 'eu-rep@example.com', modelIdentifier: 'LAMP-2',
+    };
+    const result = await importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        importKey: 'lamp', type: 'physical', slug: 'lamp', title: 'Imported lamp', description: '',
+        coverUrl: null, priceCents: 4900, currency: 'PLN', accessItems: [], compliance,
+      }],
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.products.get('lamp')).toMatchObject({ compliance: { ...compliance, safetyWarnings: '' } });
+  });
+
   it('creates an omitted sales channel as any and keeps the stored channel when an update omits it', async () => {
     const h = harness();
     await seedImportedProduct(h);

@@ -34,6 +34,13 @@ const compliance = {
   instructionsUrl: 'https://example.com/manual.pdf',
 };
 
+const outsideEu = {
+  manufacturerOutsideEu: true,
+  responsiblePersonName: 'Example EU Representative',
+  responsiblePersonAddress: 'Example Avenue 2, 10115 Berlin',
+  responsiblePersonEmail: 'eu-rep@example.com',
+};
+
 const product = (id: string, change: Record<string, unknown> = {}) => ({
   id, type: 'physical', deliveryMethod: 'pickup', slug: `stand-${id}`, title: `Printed stand ${id}`, description: '<p>A sturdy stand.</p>',
   coverUrl: null, priceCents: 4900, currency: 'PLN', prices: [], compliance: null, variants: [], ...change,
@@ -197,6 +204,47 @@ describe('checkout product safety information', () => {
     expect(within(section).queryByRole('button', { name: en.productSafety.detailsFor({ name: 'Example Workshop' }) })).toBeNull();
   });
 
+  it('shows the responsible person in the EU under the manufacturer of a manufacturer outside the EU without a click', async () => {
+    serve([product('black', { compliance: { ...compliance, ...outsideEu } })]);
+    renderCheckout('stand-black');
+    const line = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
+    const person = within(line).getByTestId('product-safety-responsible-person');
+    expect(person).toBeVisible();
+    expect(person).toHaveTextContent(stacked(`${en.productSafety.responsiblePerson}: Example EU Representative`, 'Example Avenue 2, 10115 Berlin', 'eu-rep@example.com'));
+    for (const part of ['Example Avenue 2, 10115 Berlin', 'eu-rep@example.com']) {
+      expect(within(person).getByText(exactly(part)).closest('span')).toHaveStyle({ display: 'block' });
+    }
+    expect(within(person).getByRole('link', { name: 'eu-rep@example.com' })).toHaveAttribute('href', 'mailto:eu-rep@example.com');
+    const manufacturerEmail = within(line).getByRole('link', { name: 'safety@example.com' });
+    expect(manufacturerEmail.compareDocumentPosition(person) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(person.compareDocumentPosition(within(line).getByTestId('product-safety-product-black')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('labels the manufacturer like the responsible person, the label in the line colour and the name in the primary colour, with a wider gap between the two', async () => {
+    serve([product('black', { compliance: { ...compliance, ...outsideEu } })]);
+    renderCheckout('stand-black');
+    const line = within(await screen.findByTestId('product-safety-info')).getByTestId('product-safety-manufacturer');
+    const person = within(line).getByTestId('product-safety-responsible-person');
+    const address = within(line).getByText(exactly('Example Street 1, Warsaw'));
+    for (const [label, name] of [[en.productSafety.manufacturer, 'Example Workshop'], [en.productSafety.responsiblePerson, 'Example EU Representative']] as const) {
+      const nameElement = within(line).getByText(exactly(name));
+      const part = nameElement.parentElement;
+      expect(part).toHaveTextContent(exactly(`${label}: ${name}`));
+      expect(part).toHaveStyle({ display: 'block' });
+      expect(getComputedStyle(nameElement).color).not.toBe(getComputedStyle(address).color);
+      expect(getComputedStyle(part ?? nameElement).color).toBe(getComputedStyle(address).color);
+    }
+    expect(person).toHaveStyle({ paddingTop: '0.5rem' });
+  });
+
+  it('shows no responsible person for a manufacturer in the EU even when one is stored', async () => {
+    serve([product('black', { compliance: { ...compliance, ...outsideEu, manufacturerOutsideEu: false } })]);
+    renderCheckout('stand-black');
+    const section = await screen.findByTestId('product-safety-info');
+    expect(within(section).queryByTestId('product-safety-responsible-person')).toBeNull();
+    expect(within(section).queryByText(/Example EU Representative/u)).toBeNull();
+  });
+
   it('renders no safety section without safety information', async () => {
     serve([product('black')]);
     renderCheckout('stand-black');
@@ -315,6 +363,32 @@ describe('sales-link product safety information', () => {
     expect(within(lamp).queryByRole('img')).toBeNull();
     expect(within(within(section).getByTestId('product-safety-product-black')).queryByTestId('product-safety-picture-slot')).toBeNull();
     expect(within(within(section).getByTestId('product-safety-product-book')).queryByTestId('product-safety-picture-slot')).toBeNull();
+  });
+
+  it('splits products of one manufacturer into separate lines when their responsible persons differ', async () => {
+    serveLink([
+      line('black', 'Printed stand', 'physical', { ...compliance, ...outsideEu }),
+      line('lamp', 'Printed lamp', 'physical', { ...compliance, ...outsideEu, responsiblePersonName: 'Other EU Representative', modelIdentifier: 'LAMP-1' }),
+      line('book', 'Printed book', 'physical', { ...compliance, ...outsideEu, modelIdentifier: 'BOOK-1' }),
+    ]);
+    renderLink();
+    const section = await screen.findByTestId('product-safety-info');
+    const lines = within(section).getAllByTestId('product-safety-manufacturer');
+    expect(lines).toHaveLength(2);
+    expect(lines.map((entry) => within(entry).getByTestId('product-safety-responsible-person').textContent))
+      .toEqual([expect.stringContaining('Example EU Representative'), expect.stringContaining('Other EU Representative')]);
+    expect(within(lines[0] ?? section).getByText('BOOK-1')).toBeVisible();
+  });
+
+  it('labels every manufacturer of a block once one of them shows a responsible person', async () => {
+    const other = { ...compliance, manufacturerName: 'Other Works', manufacturerEmail: 'hello@other.example', modelIdentifier: 'BOOK-1' };
+    serveLink([line('black', 'Printed stand', 'physical', { ...compliance, ...outsideEu }), line('book', 'Printed book', 'physical', other)]);
+    renderLink();
+    const [outside, inside] = within(await screen.findByTestId('product-safety-info')).getAllByTestId('product-safety-manufacturer');
+    if (outside === undefined || inside === undefined) throw new Error('expected two manufacturer lines');
+    expect(within(outside).getByText(exactly('Example Workshop')).parentElement).toHaveTextContent(exactly(`${en.productSafety.manufacturer}: Example Workshop`));
+    expect(within(inside).getByText(exactly('Other Works')).parentElement).toHaveTextContent(exactly(`${en.productSafety.manufacturer}: Other Works`));
+    expect(within(inside).queryByTestId('product-safety-responsible-person')).toBeNull();
   });
 
   it('spaces several manufacturers apart and names each one in the primary text colour', async () => {

@@ -10,10 +10,10 @@ const errorFixture = {
     ...fixture.calls,
     [resolveCall]: {
       ok: false,
-      error: { code: 'unavailable', message: 'Service unavailable' },
+      error: { code: 'rate_limited', message: 'Too many requests' },
     },
   },
-  expectedErrors: { [resolveCall]: 'unavailable' },
+  expectedErrors: { [resolveCall]: 'rate_limited' },
 };
 
 const meta = { title: 'Pages/LoginResolveError', id: 'login-resolve-error', render: () => <></>, decorators: [withPage], parameters: { fixture: errorFixture, locale: 'en', layout: 'fullscreen' } } satisfies Meta;
@@ -27,6 +27,6 @@ export const ShadcnMobile: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
-    await canvas.findByTestId('send-magic-link');
+    await canvas.findByTestId('sign-in-rate-limited');
   },
 };

@@ -118,7 +118,7 @@ const SCREENS: ScreenSpec[] = [
         }),
       );
       await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
-      await page.getByTestId('sign-in-methods-unavailable').waitFor(visible);
+      await page.getByTestId('sign-in-rate-limited').waitFor(visible);
       await page.unroute(AUTH_RESOLVE_PATTERN);
     },
   },

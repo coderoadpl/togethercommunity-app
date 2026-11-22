@@ -21,6 +21,12 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
+export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
+export const SHELL_ANCHOR_TARGET_STYLE = {
+  scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
+  '&:focus': { outline: 'none' },
+} as const;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
@@ -3089,6 +3095,21 @@ export const CheckoutSafetyPart = styled('span', {
   ...(emphasised ? { color: theme.palette.text.primary, fontWeight: 500 } : {}),
 }));
 
+export const ProductSafetyOutsideEuGroup = styled('div')(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+  paddingLeft: '1rem',
+  borderLeft: `2px solid ${theme.palette.divider}`,
+}));
+
+export const CheckoutSafetyPartyName = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'emphasised',
+})<{ emphasised?: boolean }>(({ emphasised = false, theme }) => ({
+  color: theme.palette.text.primary,
+  ...(emphasised ? { fontWeight: 500 } : {}),
+}));
+
 export const CheckoutSafetyHeading = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.75rem',
   fontWeight: 600,
@@ -3375,16 +3396,6 @@ export const CountBadge = styled('span')(({ theme }) => ({
 /** Direct messages stay ink: the red badge is reserved for the notification count. */
 export const InkDotBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
-}));
-
-export const LockedSpaceMark = styled(Box)(({ theme }) => ({
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '8px',
-  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -4168,7 +4179,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
-    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
   },
   '& pre': {
     overflowX: 'auto',

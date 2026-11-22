@@ -4,6 +4,7 @@ import {
   changeProposalExpired,
   changeProposalReference,
   checkChangeProposalReferences,
+  describesTheRequest,
   err,
   knownChangeProposalOperation,
   mapChangeProposalSnapshotStrings,
@@ -128,5 +129,6 @@ export const applyLockedProposal = async (
     return sameChangeProposalEffect(operation.effect(before, after), proposal.effect) ? ran : err(effectChanged);
   });
   if (applied.ok) return { status: 'applied', appliedResourceId: applied.value, at };
-  return applied.error === effectChanged ? { status: 'stale', note: null, at } : { status: 'failed', error: applied.error, at };
+  if (applied.error === effectChanged) return { status: 'stale', note: null, at };
+  return describesTheRequest(applied.error) ? { status: 'failed', error: applied.error, at } : { status: 'aborted', error: applied.error };
 };

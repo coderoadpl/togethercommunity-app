@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router';
 import type { SpaceProductSummary, SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, EmberCtaLink, LockedSpaceMark, UnreadDot } from '../../theme.js';
+import { CourseCardRoot, EmberCtaLink, SHELL_ANCHOR_TARGET_STYLE, UnreadDot } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
 
 const GLOBE_ICON_PATH =
@@ -176,11 +176,24 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
   );
 };
 
-export const LockedSpaceCard = ({ space, price }: { space: LockedSpaceCardSpace; price?: string | null | undefined }) => {
+export const LockedSpaceCard = ({
+  space,
+  price,
+  anchorId,
+}: {
+  space: LockedSpaceCardSpace;
+  price?: string | null | undefined;
+  anchorId?: string | undefined;
+}) => {
   const t = useTranslations();
   const productId = space.productIds[0];
   return (
-    <CourseCardRoot data-testid={`locked-space-card-${space.id}`}>
+    <CourseCardRoot
+      id={anchorId}
+      tabIndex={anchorId === undefined ? undefined : -1}
+      sx={anchorId === undefined ? undefined : SHELL_ANCHOR_TARGET_STYLE}
+      data-testid={`locked-space-card-${space.id}`}
+    >
       <Box
         sx={{
           p: '1rem 1.25rem',
@@ -199,10 +212,7 @@ export const LockedSpaceCard = ({ space, price }: { space: LockedSpaceCardSpace;
             width: '100%',
           }}
         >
-          <LockedSpaceMark sx={{ display: { xs: 'none', sm: 'grid' } }} data-testid={`locked-space-mark-${space.id}`}>
-            <LockClosed />
-          </LockedSpaceMark>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ flex: '1 1 14rem', minWidth: 0 }}>
             <Typography variant="h3" component="h3" color="text.primary">
               {space.name}
             </Typography>

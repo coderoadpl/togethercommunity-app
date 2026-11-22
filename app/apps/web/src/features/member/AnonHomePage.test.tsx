@@ -13,6 +13,7 @@ import type { PublicNavigation, SpaceFeedItem } from '#core/domain/index.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { SHELL_ANCHOR_SCROLL_MARGIN } from '../../theme.js';
 import { AnonHomePage } from './AnonHomePage.js';
 
 const navigation = (overrides: Partial<PublicNavigation> = {}): PublicNavigation => ({
@@ -66,19 +67,24 @@ const okFeed = (items: SpaceFeedItem[]) =>
 type OfferProductInput = {
   id: string;
   title: string;
+  description?: string;
+  soldOut?: boolean;
+  variants?: { productId: string; slug: string; label: string; soldOut: boolean }[];
   prices?: { id: string; kind: 'one_time' | 'recurring'; interval: 'month' | 'year' | null; amountCents: number; currency: string }[];
 };
 
-const offerProduct = ({ id, title, prices }: OfferProductInput) => ({
+const offerProduct = ({ id, title, description = '', soldOut = false, variants = [], prices }: OfferProductInput) => ({
   id,
   type: 'course',
   slug: id,
   title,
-  description: '',
+  description,
   coverUrl: null,
   priceCents: prices?.[0]?.amountCents ?? 19_900,
   currency: 'PLN',
   prices: prices ?? [{ id: `price-${id}`, kind: 'one_time', interval: null, amountCents: 19_900, currency: 'PLN' }],
+  stock: { tracked: soldOut, soldOut, low: false, available: soldOut ? 0 : null },
+  variants,
 });
 
 type OfferSalesLinkInput = { id: string; slug: string; heading: string; description: string; totalCents: number; currency: string };
@@ -251,6 +257,8 @@ describe('AnonHomePage', () => {
     expect(screen.getByTestId('offer-product-prod-free-price')).toHaveTextContent(en.common.free);
     expect(screen.getByTestId('offer-product-cta-prod-free')).toHaveTextContent(en.checkout.freeOrderIdle);
     expect(screen.getByTestId('anon-spaces')).not.toHaveAttribute('id');
+    expect(getComputedStyle(section).scrollMarginTop).toBe(SHELL_ANCHOR_SCROLL_MARGIN);
+    expect(getComputedStyle(screen.getByTestId('anon-spaces')).scrollMarginTop).not.toBe(SHELL_ANCHOR_SCROLL_MARGIN);
   });
 
   it('lists each product once even when the payload repeats it', async () => {
@@ -288,6 +296,61 @@ describe('AnonHomePage', () => {
     expect(section).toHaveTextContent('Every course in one pack.');
     expect(section).not.toHaveTextContent(en.salesLinks.heading);
     expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+  });
+
+  it('shows product and bundle descriptions as plain text and leaves the slot out when empty', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({
+        products: [
+          offerProduct({ id: 'prod-html', title: 'Starter course', description: '<p>Learn <strong>fast</strong> &amp; well.</p><script>window.offerScript = true</script>' }),
+          offerProduct({ id: 'prod-empty', title: 'Empty course', description: '<p> </p>' }),
+        ],
+        salesLinks: [{ id: 'link-md', slug: 'complete-bundle', heading: 'Complete bundle', description: '## Inside\n\nEvery **course** in one pack.', totalCents: 4200, currency: 'PLN' }],
+      }),
+    );
+
+    await renderPage();
+
+    const productDescription = await screen.findByTestId('offer-product-prod-html-description');
+    expect(productDescription).toHaveTextContent(/^Learn fast & well\.$/);
+    expect(productDescription.querySelector('strong')).toBeNull();
+    expect(Reflect.get(window, 'offerScript')).toBeUndefined();
+    expect(screen.queryByTestId('offer-product-prod-empty-description')).not.toBeInTheDocument();
+    const bundleDescription = screen.getByTestId('offer-sales-link-link-md-description');
+    expect(bundleDescription).toHaveTextContent(/^Inside Every course in one pack\.$/);
+    expect(bundleDescription.textContent).not.toContain('**');
+    expect(getComputedStyle(bundleDescription).webkitLineClamp).toBe('3');
+  });
+
+  it('replaces the buy button with a disabled sold-out label only when no variant is left', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({
+        products: [
+          offerProduct({ id: 'prod-gone', title: 'Printed workbook', soldOut: true }),
+          offerProduct({
+            id: 'prod-size-s',
+            title: 'Club shirt',
+            soldOut: true,
+            variants: [
+              { productId: 'prod-size-s', slug: 'prod-size-s', label: 'S', soldOut: true },
+              { productId: 'prod-size-m', slug: 'prod-size-m', label: 'M', soldOut: false },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const soldOut = await screen.findByTestId('offer-product-sold-out-prod-gone');
+    expect(soldOut).toBeDisabled();
+    expect(soldOut).toHaveTextContent(en.checkout.soldOut);
+    expect(screen.getByRole('button', { name: `${en.checkout.soldOut} Printed workbook` })).toBe(soldOut);
+    expect(screen.queryByTestId('offer-product-cta-prod-gone')).not.toBeInTheDocument();
+    expect(screen.getByTestId('offer-product-cta-prod-size-s')).toHaveAttribute('href', '/checkout/prod-size-s');
+    expect(screen.queryByTestId('offer-product-sold-out-prod-size-s')).not.toBeInTheDocument();
   });
 
   it('counts catalogue products when deciding whether the home is empty', async () => {
@@ -329,6 +392,71 @@ describe('AnonHomePage', () => {
     const banner = await screen.findByTestId('anon-read-only-banner');
     expect(within(banner).getByRole('link', { name: en.anon.salesCta })).toHaveAttribute('href', '/#offer');
     expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('shows the jump as an outlined button on phones and as a text link from md up', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+    const compact = await renderPage();
+
+    const button = await screen.findByTestId('anon-offer-jump');
+    expect(button).toHaveClass('MuiButton-outlined');
+    expect(getComputedStyle(button).minHeight).toBe('44px');
+    expect(within(screen.getByTestId('anon-read-only-banner')).getByRole('link', { name: en.auth.signInLink })).not.toHaveClass('MuiButton-root');
+    compact.unmount();
+
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    try {
+      await renderPage();
+      const link = await screen.findByTestId('anon-offer-jump');
+      expect(link).toHaveClass('MuiLink-root');
+      expect(link).not.toHaveClass('MuiButton-root');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('drops the jump when the anchored section sits right under the read-only notice', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null })),
+      okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }),
+    );
+
+    await renderPage();
+
+    const banner = await screen.findByTestId('anon-read-only-banner');
+    expect(within(banner).queryByTestId('anon-offer-jump')).not.toBeInTheDocument();
+    expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('keeps the jump when other sections precede the anchored locked spaces', async () => {
+    server.use(okNavigation(navigation({ defaultHomeSpaceId: null })), okOffer());
+
+    await renderPage();
+
+    expect(await screen.findByTestId('anon-locked')).toHaveAttribute('id', 'offer');
+    expect(within(screen.getByTestId('anon-read-only-banner')).getByTestId('anon-offer-jump')).toHaveAttribute('href', '/#offer');
+  });
+
+  it('leaves the read-only notice out when no space or course is listed', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [] })),
+      okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByTestId('anon-offer')).toBeInTheDocument();
+    expect(screen.getByTestId('anon-locked')).toBeInTheDocument();
+    expect(screen.queryByTestId('anon-read-only-banner')).not.toBeInTheDocument();
   });
 
   it('drops the sign-in link from the read-only banner for a signed-in visitor', async () => {
@@ -375,6 +503,8 @@ describe('AnonHomePage', () => {
     expect(priced).toHaveAttribute('href', '/checkout/p1');
     expect(screen.getByTestId('locked-space-cta-s8')).toHaveTextContent(en.courseTree.unlockAccess);
     expect(screen.getByTestId('locked-space-cta-s8').textContent).not.toContain('—');
+    expect(screen.queryByTestId('locked-space-mark-s9')).not.toBeInTheDocument();
+    expect(screen.getByTestId('space-visibility-s9')).toHaveTextContent(en.community.productGated);
   });
 
   it('marks a course card with the preview chip when one of its lessons is a free preview', async () => {
@@ -405,8 +535,32 @@ describe('AnonHomePage', () => {
 
       await renderPage('/#offer');
 
-      await screen.findByTestId('anon-offer');
+      const section = await screen.findByTestId('anon-offer');
       await waitFor(() => expect(scrolled).toEqual(['anon-offer']));
+      expect(section).toHaveAttribute('tabindex', '-1');
+      expect(section).toHaveFocus();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('scrolls to a locked-space card and focuses it when the page opens on its anchor', async () => {
+    const scrolled: (string | null)[] = [];
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function record(this: Element) {
+      scrolled.push(this.getAttribute('data-testid'));
+    });
+    try {
+      server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+
+      await renderPage('/#locked-s9');
+
+      const card = await screen.findByTestId('locked-space-card-s9');
+      expect(card).toHaveAttribute('id', 'locked-s9');
+      expect(getComputedStyle(card).scrollMarginTop).toBe(SHELL_ANCHOR_SCROLL_MARGIN);
+      await waitFor(() => expect(scrolled).toEqual(['locked-space-card-s9']));
+      expect(card).toHaveAttribute('tabindex', '-1');
+      expect(card).toHaveFocus();
+      expect(screen.getByTestId('anon-offer')).toHaveAttribute('id', 'offer');
     } finally {
       spy.mockRestore();
     }

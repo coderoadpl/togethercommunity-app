@@ -321,7 +321,7 @@ describe('MemberShell', () => {
       en.tenant.visitorNotice({ email: 'jan@example.com' }),
     );
     expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', 'http://start.localhost:3000');
-    expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeEnabled();
+    expect(within(screen.getByTestId('foreign-tenant-notice')).queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
     const header = screen.getByRole('banner');
     expect(within(header).getByTestId('anon-visitor-email')).toHaveTextContent('jan@example.com');
@@ -1352,7 +1352,7 @@ describe('MemberShell', () => {
       '/my/courses/c1',
     );
     const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
-    expect(locked).toHaveAttribute('href', '/#offer');
+    expect(locked).toHaveAttribute('href', '/#locked-s9');
     expect(within(screen.getByTestId('anon-sidebar-spaces')).getByTestId('anon-sidebar-locked-s9')).toBe(locked);
     expect(within(screen.getByTestId('anon-sidebar-courses')).getByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
     expect(within(nav).getByText(en.shell.spacesSection)).toBeInTheDocument();

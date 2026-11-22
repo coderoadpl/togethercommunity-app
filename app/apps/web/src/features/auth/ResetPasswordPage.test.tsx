@@ -33,6 +33,10 @@ afterEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
+const LESSON_RETURN_TO = '/my/courses/course-1/lessons/lesson-1?thread=t1';
+const ENCODED_LESSON_RETURN_TO = 'returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1';
+const UNSAFE_RETURN_TO = ['https://evil.example/x', '//evil.example/x', '/\\evil.example/x', '\\\\evil.example/x'];
+
 const expectSecondaryLink = (link: HTMLElement) => {
   const style = window.getComputedStyle(link);
   expect([style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
@@ -165,6 +169,48 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByTestId('reset-password')).toHaveFocus();
     expect(screen.getByTestId('reset-password-error')).not.toHaveTextContent('short');
+  });
+
+  it('carries a safe returnTo to both sign-in links', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+    await renderResetPage(`?token=valid-token&${new URLSearchParams({ returnTo: LESSON_RETURN_TO }).toString()}`);
+
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
+    await userEvent.click(screen.getByTestId('reset-submit'));
+
+    expect(await screen.findByTestId('reset-success')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+  });
+
+  it('carries a safe returnTo from the invalid-link state to sign-in and a new reset request', async () => {
+    await renderResetPage(`?error=INVALID_TOKEN&${new URLSearchParams({ returnTo: LESSON_RETURN_TO }).toString()}`);
+
+    expect(await screen.findByRole('link', { name: en.resetPassword.backToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute(
+      'href',
+      `/forgot-password?${ENCODED_LESSON_RETURN_TO}`,
+    );
+  });
+
+  it.each(UNSAFE_RETURN_TO)('drops the unsafe returnTo %s from every link', async (returnTo) => {
+    const formView = await renderResetPage(`?token=valid-token&${new URLSearchParams({ returnTo }).toString()}`);
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute('href', '/login');
+    formView.unmount();
+
+    await renderResetPage(`?error=INVALID_TOKEN&${new URLSearchParams({ returnTo }).toString()}`);
+    expect(await screen.findByRole('link', { name: en.resetPassword.backToLogin })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute('href', '/forgot-password');
   });
 
   it('guards a missing token before showing the password form', async () => {

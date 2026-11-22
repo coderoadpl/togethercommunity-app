@@ -34,6 +34,9 @@ const renderForgotPasswordPage = async (initialEntry = '/forgot-password') => {
   );
 };
 
+const LESSON_RETURN_TO = '/my/courses/course-1/lessons/lesson-1?thread=t1';
+const UNSAFE_RETURN_TO = ['https://evil.example/x', '//evil.example/x', '/\\evil.example/x', '\\\\evil.example/x'];
+
 const expectSecondaryLink = (link: HTMLElement) => {
   const style = window.getComputedStyle(link);
   expect([style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
@@ -110,6 +113,39 @@ describe('ForgotPasswordPage', () => {
     }
 
     expect(outcomes[0]).toBe(outcomes[1]);
+  });
+
+  it('keeps a safe returnTo on the reset link the provider sends', async () => {
+    let body: unknown;
+    server.use(anonymousMe(), http.post('*', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ status: true });
+    }));
+    await renderForgotPasswordPage(`/forgot-password?${new URLSearchParams({ returnTo: LESSON_RETURN_TO }).toString()}`);
+
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'member@example.com');
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    await screen.findByTestId('forgot-password-success');
+
+    expect(body).toMatchObject({
+      redirectTo: 'http://localhost:3000/reset-password?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    });
+  });
+
+  it.each(UNSAFE_RETURN_TO)('drops the unsafe returnTo %s from the provider reset link and the sign-in link', async (returnTo) => {
+    let body: unknown;
+    server.use(anonymousMe(), http.post('*', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ status: true });
+    }));
+    await renderForgotPasswordPage(`/forgot-password?${new URLSearchParams({ returnTo }).toString()}`);
+
+    expect(screen.getByRole('link', { name: en.forgotPassword.backToLogin })).toHaveAttribute('href', '/login');
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'member@example.com');
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    await screen.findByTestId('forgot-password-success');
+
+    expect(body).toMatchObject({ redirectTo: 'http://localhost:3000/reset-password' });
   });
 
   it('prefills a deep-linked email and submits the edited address', async () => {

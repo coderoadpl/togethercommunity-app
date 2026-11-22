@@ -15,6 +15,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 
 import { actions } from '../../api.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
+import { loginPathWithReturnTo, returnToFromSearch } from '../../lib/auth-return.js';
 import { AuthAccentLink, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
@@ -40,6 +41,11 @@ export const ResetPasswordPage = () => {
   const confirmRef = useRef<HTMLInputElement>(null);
   const token = tokenFromLocation();
   const invalidToken = invalidTokenFromLocation();
+  const returnTo = returnToFromSearch(window.location.search);
+  const loginPath = returnTo === null ? '/login' : loginPathWithReturnTo(returnTo);
+  const forgotPasswordPath = returnTo === null
+    ? '/forgot-password'
+    : `/forgot-password?${new URLSearchParams({ returnTo }).toString()}`;
 
   const resetPassword = useMutation(actions.resetPassword);
   const providerRejectedToken = providerCodeOf(resetPassword.error) === 'INVALID_TOKEN';
@@ -70,7 +76,7 @@ export const ResetPasswordPage = () => {
   const linkUnusable = !token || invalidToken || providerRejectedToken;
   const footer = resetPassword.isSuccess && !linkUnusable ? null : (
     <AuthSecondaryAction component="p">
-      <AuthAccentLink standalone component={Link} to="/login">
+      <AuthAccentLink standalone component={Link} to={loginPath}>
         {linkUnusable ? t.resetPassword.backToLogin : t.resetPassword.goToLogin}
       </AuthAccentLink>
     </AuthSecondaryAction>
@@ -84,7 +90,7 @@ export const ResetPasswordPage = () => {
               <AuthTitle variant="h1">{t.resetPassword.missingTokenTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.missingToken}</AuthLead>
             </Box>
-            <Button component={Link} to="/forgot-password" variant="contained" fullWidth>
+            <Button component={Link} to={forgotPasswordPath} variant="contained" fullWidth>
               {t.resetPassword.requestNewLink}
             </Button>
           </Stack>
@@ -94,7 +100,7 @@ export const ResetPasswordPage = () => {
               <AuthTitle variant="h1">{t.resetPassword.successTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.successBody}</AuthLead>
             </Box>
-            <Button component={Link} to="/login" variant="contained" fullWidth>
+            <Button component={Link} to={loginPath} variant="contained" fullWidth>
               {t.resetPassword.goToLogin}
             </Button>
           </Stack>

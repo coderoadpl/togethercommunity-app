@@ -46,9 +46,11 @@ export const ForgotPasswordPage = () => {
       emailRef.current?.focus();
       return;
     }
+    const redirectTo = new URL('/reset-password', window.location.origin);
+    if (returnTo !== null) redirectTo.searchParams.set('returnTo', returnTo);
     requestPasswordReset.mutate({
       email: normalizedEmail,
-      redirectTo: new URL('/reset-password', window.location.origin).toString(),
+      redirectTo: redirectTo.toString(),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
     });
   };

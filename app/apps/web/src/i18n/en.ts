@@ -956,7 +956,7 @@ export const en: Messages = {
     lockerCheckFound: 'Parcel locker found',
     lockerRejected: {
       not_found: 'No InPost parcel locker has this code. Check the code and type it again.',
-      not_usable: 'This InPost point cannot hold parcels for collection. Choose another parcel locker.',
+      not_usable: 'You cannot collect parcels at this InPost point. Choose another parcel locker.',
       not_operating: 'This InPost parcel locker is not operating. Choose another parcel locker.',
     },
     orderLockerUnverified: 'Locker not verified',
@@ -3481,7 +3481,7 @@ export const en: Messages = {
     couponEmailHint: 'This code has a limit per person, so we check it against your email.',
     payBlockedDelivery: 'Choose a delivery option to go to payment.',
     payBlockedLocker: 'Choose a parcel locker or type its code to go to payment.',
-    payBlockedLockerRejected: 'Choose another parcel locker to go to payment.',
+    payBlockedLockerRejected: 'Choose another parcel locker or type another code to go to payment.',
     payBlockedPersonalizationText: 'Enter the personalisation text, or untick the option, to go to payment.',
     payBlockedPersonalizationCondition: 'Accept the personalisation condition, or untick the option, to go to payment.',
     payBlockedCoupon: 'Checking the discount code…',

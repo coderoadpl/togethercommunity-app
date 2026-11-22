@@ -3536,7 +3536,7 @@ export const pl: Messages = {
     couponEmailHint: 'Ten kod ma limit na osobę, więc sprawdzamy go dla Twojego adresu e-mail.',
     payBlockedDelivery: 'Wybierz sposób dostawy, aby przejść do płatności.',
     payBlockedLocker: 'Wybierz paczkomat lub wpisz jego kod, aby przejść do płatności.',
-    payBlockedLockerRejected: 'Wybierz inny paczkomat, aby przejść do płatności.',
+    payBlockedLockerRejected: 'Wybierz inny paczkomat lub wpisz inny kod, aby przejść do płatności.',
     payBlockedPersonalizationText: 'Wpisz treść personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedPersonalizationCondition: 'Zaakceptuj warunek personalizacji albo odznacz tę opcję, aby przejść do płatności.',
     payBlockedCoupon: 'Sprawdzamy kod rabatowy…',

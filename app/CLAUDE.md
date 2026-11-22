@@ -83,6 +83,14 @@ The ten baselines changed by #448 and #450 and re-recorded in #452 were authored
 this way and are accepted. Risk accepted by the owner: the conditions are checked
 by a reviewer instead of being enforced by the command.
 
+In that decision, "a CI run on its own head" is the `pull_request` run of
+`ci.yml` for the pull request's head commit. Its `visual` job renders that head
+merged into the base branch, not the head alone; the conditions in
+`docs/visual-regression.md` name the commits to record and what a moved base
+requires. The ten baselines are six changed by #448 and four changed by #450 and
+re-recorded in #452. The owner's approving review of 2026-11-22 on pull request
+#454 is the record of the decision.
+
 ## Alerting (owner decision 2026-09-06 — HARD RULE)
 
 Every monitor that can page starts observe-only — summary and `::notice::`, no

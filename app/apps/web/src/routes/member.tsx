@@ -46,6 +46,7 @@ export const validateAccountSearch = (search: Record<string, unknown>) => ({
     || search['tab'] === 'playback'
     ? search['tab']
     : 'profile',
+  ...(search['support'] === 'open' ? { support: 'open' as const } : {}),
 });
 
 export const NotificationsRoute = () => {

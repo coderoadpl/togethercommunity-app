@@ -84,6 +84,7 @@ import type {
   NotificationReadInput,
   NotificationsListInput,
   DiscussionGetInput,
+  DiscussionThreadGetInput,
   PostCreateInput,
   PostDeleteInput,
   PostPinInput,
@@ -410,6 +411,7 @@ const studentScopes = {
 const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
+  thread: (contextId: string, postId: string) => ['discussion', 'thread', contextId, postId] as const,
   search: (query: string, lessonIds: readonly string[], spaceIds: readonly string[]) =>
     ['discussion', 'search', query, lessonIds.join(','), spaceIds.join(',')] as const,
 };
@@ -1368,6 +1370,12 @@ export const discussionQuery = (api: ApiClient, input: DiscussionGetInput) =>
   defineQuery({
     queryKey: discussionScopes.lesson(input.contextId, input.limit),
     call: ({ signal }) => api.discussion(input, signal),
+  });
+
+export const discussionThreadQuery = (api: ApiClient, input: DiscussionThreadGetInput) =>
+  defineQuery({
+    queryKey: discussionScopes.thread(input.contextId, input.postId),
+    call: ({ signal }) => api.discussionThread(input, signal),
   });
 
 export const createPostMutation = (api: ApiClient) =>

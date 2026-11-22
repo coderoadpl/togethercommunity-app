@@ -52,6 +52,7 @@ import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { selectDevEndpoints, selectDomainProvisioner, selectPlatformReset } from './composition.js';
 import { buildApp } from './app.js';
 import { DEEP_HEALTH_CACHE_TTL_MS } from './deep-health-route.js';
+import { directSalesLinkCopyEn } from './direct-sales-link-copy.en.js';
 import { directSalesLinkCopyPl } from './direct-sales-link-copy.pl.js';
 import { PUBLIC_ROUTE_MANIFEST, publicRouteManifestEntry } from './public-route-manifest.js';
 import { selectPublicRateLimitPolicies } from './public-rate-limit.js';
@@ -11403,7 +11404,7 @@ describe('stock-tracked sales links', () => {
     const page = await h.app.request('/offer/bundle', { headers: { host: 'acme.localhost' } });
     expect(page.status).toBe(409);
     const html = await page.text();
-    expect(html).toContain('Checkout is unavailable');
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyEn.soldOut}</p>`);
     expect(html).not.toContain('<form');
     const checkout = await h.app.request('/api/public/sales-links/bundle/checkout', {
       method: 'POST', headers: { host: 'acme.localhost', 'content-type': 'application/json' }, body: JSON.stringify({}),
@@ -11604,7 +11605,8 @@ describe('direct public sales-link checkout', () => {
     const html = await response.text();
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('<html lang="pl">');
-    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.checkoutUnavailable}</p>`);
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.unavailable}</p>`);
+    expect(html).toMatch(new RegExp(`<a href="https?://acme\\.localhost[^"]*/">${directSalesLinkCopyPl.homeLink}</a>`));
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<form');
     expect(h.create).not.toHaveBeenCalled();
@@ -11618,7 +11620,8 @@ describe('direct public sales-link checkout', () => {
     expect(response.headers.get('content-type')).toContain('text/html');
     const html = await response.text();
     expect(html).toContain('<html lang="pl">');
-    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.legalUrlsMissing}</p>`);
+    expect(html).toContain(`<p role="status">${directSalesLinkCopyPl.unavailable}</p>`);
+    expect(html).not.toMatch(/terms/i);
     expect(h.create).not.toHaveBeenCalled();
   });
 
@@ -12035,7 +12038,8 @@ describe('direct public sales-link checkout', () => {
       const response = await h.app.request(`/offer/bundle${query}`, { headers });
       expect(response.status).toBe(503);
       const html = await response.text();
-      expect(html).toContain('terms and privacy URLs');
+      expect(html).toContain(`<p role="status">${directSalesLinkCopyEn.unavailable}</p>`);
+      expect(html).not.toContain('terms and privacy URLs');
       expect(html).not.toContain('<script');
       expect(html).not.toContain('<form');
     }

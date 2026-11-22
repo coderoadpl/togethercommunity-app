@@ -32,7 +32,7 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 146. Route rows: 539. Exported `Ctx` use-case rows: 404.
+Closed capability count: 146. Route rows: 540. Exported `Ctx` use-case rows: 405.
 
 ## Human-readable diff
 
@@ -542,6 +542,7 @@ no changes
 | `DELETE /api/posts/:postId/permanent` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/discussion` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/discussion/threads/:postId` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/subscribe` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/mute` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/posts/search` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -618,6 +619,7 @@ no changes
 | `community-access.ts#listAccessibleSpaces` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community.ts#createPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `community.ts#getThread` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#purgePost` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/community.ts authorization call |
@@ -1000,13 +1002,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/entitlement-routes.ts:4` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/entitlement-routes.ts:55` | `const key = headers.get(API_KEY_HEADER);` |
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1294` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1296` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1318` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1332` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:217` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1296` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1298` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1320` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1334` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1865` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1865` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1027,9 +1029,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:267` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:179` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:193` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:395` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:181` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:195` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:445` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | staff-role | `core/server/usecases/entitlement-key-auth.ts:77` | `if (grant?.staffRole !== 'owner' \|\| grant.source !== 'direct' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:63` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |

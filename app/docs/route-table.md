@@ -507,6 +507,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/posts/:postId/permanent` | authenticated | mutating | posts purge |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
+| `GET /api/discussion/threads/:postId` | authenticated | read | discussion thread |
 | `POST /api/discussion/subscribe` | authenticated | mutating | thread subscribe |
 | `POST /api/discussion/mute` | authenticated | mutating | thread mute |
 | `GET /api/posts/search` | authenticated | read | posts search |

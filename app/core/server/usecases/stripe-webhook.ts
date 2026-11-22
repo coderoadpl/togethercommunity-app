@@ -2,6 +2,7 @@ import {
   ACCESS_RETAINING_ORDER_STATUSES,
   appError,
   emailBrandingFrom,
+  emailContactUrl,
   err,
   graceExpiresAt,
   internal,
@@ -199,6 +200,8 @@ const enqueueSubscriptionNotice = async (
           productTitle: product.title,
           accessEndsAt,
           billingPortalUrl: settings?.billingPortalUrl ?? null,
+          contactUrl: emailContactUrl(settings, tenantBaseUrl),
+          workspaceUrl: tenantBaseUrl,
           ...(branding === undefined ? {} : { branding }),
         }
       : {

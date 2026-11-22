@@ -1,6 +1,7 @@
 import {
   allocatePaidOrderLineGross,
   emailBrandingFrom,
+  emailContactUrl,
   err,
   notFound,
   ok,
@@ -99,6 +100,11 @@ const purchasePersonalizations = (lines: readonly OrderLine[]) => {
   return personalizations.length === 0 ? {} : { personalizations };
 };
 
+const purchaseProductTypes = (lines: readonly OrderLine[]) => {
+  const productTypes = [...new Set(lines.flatMap((line) => line.productType === 'shipping' ? [] : [line.productType]))];
+  return productTypes.length === 0 ? {} : { productTypes };
+};
+
 export const queueEnrollmentWelcome = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   member: Member,
@@ -152,6 +158,9 @@ export const queueEnrollmentWelcome = async (
         totalCents: order.amountCents,
         ...(order.shipping == null ? {} : { delivery: orderDeliveryDetails(order.shipping) }),
         ...purchasePersonalizations(order.lines ?? []),
+        ...purchaseProductTypes(order.lines ?? []),
+        signInPageUrl: new URL('/login', tenantBaseUrl).toString(),
+        contactUrl: emailContactUrl(settings, tenantBaseUrl),
       } }),
       ...(settings === null ? {} : { branding: emailBrandingFrom(settings, tenantBaseUrl) }),
     },

@@ -2106,6 +2106,12 @@ describe('LessonPlayerPage', () => {
           },
         }),
       ),
+      http.get('/api/discussion/threads/:postId', ({ params, request }) => {
+        expect(new URL(request.url).searchParams.get('contextKind')).toBe('lesson');
+        return params.postId === 't1'
+          ? HttpResponse.json({ ok: true, data: { discussion: { threads: [post('t1', 'Question about hammocks')], nextCursor: null, viewerSubscriptions: {} } } })
+          : HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 });
+      }),
     );
 
     const rootRoute = createRootRoute();

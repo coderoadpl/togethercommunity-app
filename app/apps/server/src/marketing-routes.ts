@@ -63,6 +63,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps, MarketingAppDeps } from './composition.js';
+import { signupFormAvailable } from './marketing-signup-routes.js';
 import { readJson, requireJsonContentType } from './read-json.js';
 import {
   languageFromRequest,
@@ -744,8 +745,8 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const consent = await marketing.marketingConsents.findById(tenantId, confirmation.marketingConsentRowId);
     const formId = consent?.source === 'signup_form' ? consent.evidence['formId'] : undefined;
     if (typeof formId !== 'string') return null;
-    const form = await deps.marketingSignup?.forms.findById(tenantId, formId);
-    return form?.status === 'active' ? `/marketing/forms/${encodeURIComponent(form.slug)}?lang=${language}` : null;
+    const form = await deps.marketingSignup?.forms.findById(tenantId, formId) ?? null;
+    return form !== null && await signupFormAvailable(deps, form) ? `/marketing/forms/${encodeURIComponent(form.slug)}?lang=${language}` : null;
   };
 
   app.get('/marketing/confirm/:token', async (c) => {

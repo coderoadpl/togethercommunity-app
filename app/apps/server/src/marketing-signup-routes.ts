@@ -46,9 +46,15 @@ const resolveForm = async (c: Context<AppVars>, deps: AppDeps) => {
   const form = await activeForm(deps, workspace.value.brand.tenant.id, c.req.param('slug') ?? '');
   return form === null ? err(notFound('Signup form was not found')) : { ok: true, value: { ...workspace.value, form } } as const;
 };
-const formPageData = async (deps: AppDeps, form: MarketingSignupForm) => {
+const activeConsentDefinition = async (deps: Pick<AppDeps, 'marketing'>, form: MarketingSignupForm) => {
   const definition = await deps.marketing?.definitions.findById(form.tenantId, form.consentDefinitionId);
-  if (definition === undefined || definition === null || definition.status !== 'active' || form.consentVersion === undefined) return null;
+  return definition?.status === 'active' ? definition : null;
+};
+export const signupFormAvailable = async (deps: Pick<AppDeps, 'marketing'>, form: MarketingSignupForm): Promise<boolean> =>
+  form.status === 'active' && form.consentVersion !== undefined && await activeConsentDefinition(deps, form) !== null;
+const formPageData = async (deps: AppDeps, form: MarketingSignupForm) => {
+  const definition = await activeConsentDefinition(deps, form);
+  if (definition === null || form.consentVersion === undefined) return null;
   const reference = form.consentVersion.documentVersionRef;
   const document = reference.mode === 'hosted'
     ? await deps.marketing?.documents.findPublishedVersionById(form.tenantId, reference.documentVersionId) ?? null

@@ -724,7 +724,7 @@ describe('public signup persistence and confirmation', () => {
     try {
       expect((await fixture.submit()).status).toBe(303);
       const consent = (await fixture.snapshot()).consents[0];
-      if (consent === undefined || fixture.deps.marketingSignup === undefined) throw new Error('Missing consent');
+      if (consent === undefined || fixture.deps.marketingSignup === undefined || fixture.deps.marketing === undefined) throw new Error('Missing consent');
       const token = await signupConfirmationToken(fixture.db, 'directory-a', consent.id);
       fixture.setNow(new Date(Date.parse(fixture.now) + 2 * 86_400_000).toISOString());
       const expired = await (await fixture.request(`/marketing/confirm/${token}?lang=pl`)).text();
@@ -736,6 +736,16 @@ describe('public signup persistence and confirmation', () => {
       expect(unknown).toContain('This link is no longer active');
       expect(unknown).not.toContain('button-link--primary"');
       expect(unknown).toContain('<a class="button-link" href="/">Go to the home page</a>');
+      const definitions = fixture.deps.marketing.definitions;
+      const definition = await definitions.findById('directory-a', 'newsletter');
+      if (definition === null) throw new Error('Missing definition');
+      await definitions.update('directory-a', { ...definition, status: 'archived' });
+      const archivedDefinition = await (await fixture.request(`/marketing/confirm/${token}?lang=en`)).text();
+      expect(archivedDefinition).not.toContain('button-link--primary"');
+      expect(archivedDefinition).toContain('<a class="button-link" href="/">Go to the home page</a>');
+      const archivedDefinitionPost = await (await fixture.request(`/marketing/confirm/${token}?lang=en`, { method: 'POST' })).text();
+      expect(archivedDefinitionPost).not.toContain('button-link--primary"');
+      await definitions.update('directory-a', definition);
       directoryValue(await fixture.deps.marketingSignup.forms.save('directory-a', { ...fixture.form, status: 'archived', revision: fixture.form.revision + 1 }, fixture.form.revision));
       const archived = await (await fixture.request(`/marketing/confirm/${token}?lang=en`)).text();
       expect(archived).not.toContain('button-link--primary"');

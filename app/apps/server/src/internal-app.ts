@@ -116,6 +116,7 @@ import {
   notificationsListInputSchema,
   ordersExportQuerySchema,
   ordersReconciliationQuerySchema,
+  paymentEventRejectionsQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
   postPinInputSchema,
@@ -353,6 +354,7 @@ import {
   listNotifications,
   listOrders,
   listPaidOrdersWithoutGrant,
+  listPaymentEventRejections,
   listProductAccessIssues,
   listProductDownloadAssets,
   listDownloadCopies,
@@ -2945,6 +2947,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(
       await listPaidOrdersWithoutGrant(ctxOf(c), parsed.data, deps),
     );
+  });
+
+  app.get(API_PATHS.paymentEventRejections, async (c) => {
+    const query = c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') };
+    const parsed = paymentEventRejectionsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid payment event rejection query', parsed.error.flatten())));
+    }
+    return respond(await listPaymentEventRejections(ctxOf(c), parsed.data, deps));
   });
 
   registerConsumerSalesRoutes(app, deps);

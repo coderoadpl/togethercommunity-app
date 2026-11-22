@@ -92,6 +92,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
+import { createPaymentEventRejectionRepository } from '#adapters/db/payment-event-rejections.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -344,6 +345,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   OrderRefundJobRepository,
+  PaymentEventRejectionRepository,
   PaymentRefundRepository,
   StripeWebhookOwnershipReader,
   PostRepository,
@@ -562,6 +564,7 @@ export interface AppDeps {
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
   processedPaymentEvents: ProcessedPaymentEventRepository;
+  paymentEventRejections: PaymentEventRejectionRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
@@ -1634,6 +1637,7 @@ export const createDeps = (
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
+    paymentEventRejections: createPaymentEventRejectionRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,

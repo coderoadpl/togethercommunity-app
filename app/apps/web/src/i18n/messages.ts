@@ -2193,7 +2193,7 @@ export interface Messages {
     videoPlaceholder: string;
     openPdf: string;
     contentLocked: string;
-    noAccessYet: string;
+    noAccess: string;
     lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
@@ -2230,6 +2230,8 @@ export interface Messages {
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;
     lockedSkipped: (params: { count: number }) => string;
+    notForSaleTitle: string;
+    notForSaleBody: string;
   };
   discussion: {
     heading: string;

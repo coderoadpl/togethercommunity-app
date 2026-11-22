@@ -4251,6 +4251,20 @@ export const LessonLockIcon = styled(SvgIcon)({
   color: 'inherit',
 });
 
+export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.5rem',
+  color: theme.palette.text.primary,
+}));
+
+export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+}));
+
 export const LessonNavLabel = styled('span')(({ theme }) => ({
   [theme.breakpoints.down('md')]: {
     position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,

@@ -36,7 +36,6 @@ import { localizeError, useLanguage, useTranslations, type Messages } from '../.
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
 import {
-  DataValue,
   Eyebrow,
   LessonActionLabel,
   LessonFooterBar,
@@ -48,10 +47,12 @@ import {
   LESSON_CARD_PADDING_X,
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
+  LockedScopeText,
+  VisuallyHidden,
 } from '../../theme.js';
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
+import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -195,19 +196,52 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
   }
 };
 
+const plainText = (html: string): string => {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim();
+};
+
+const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (
+  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center' }}>
+    <LockedLeadIcon />
+    <Typography variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
+      {children}
+    </Typography>
+  </Stack>
+);
+
+const LockedCardSkeleton = () => {
+  const t = useTranslations();
+  return (
+    <Stack role="status" aria-label={t.lesson.loading} aria-busy="true" useFlexGap spacing="1rem" data-testid="locked-lesson-skeleton">
+      <Skeleton width="70%" />
+      <Skeleton variant="text" width="40%" />
+      <Skeleton variant="rounded" height="3rem" />
+    </Stack>
+  );
+};
+
 const LockedView = ({
   courseId,
   lessonName,
   unlockProductId,
+  pending,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   unlockProductId?: string;
+  pending: boolean;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
+  const scope = useMemo(() => {
+    if (product === undefined) return null;
+    const description = plainText(product.description);
+    return description === '' ? t.salesLinks.lineTypes[product.type] : description;
+  }, [product, t]);
   const price = product === undefined ? null : product.prices[0] ?? ({
     kind: 'one_time',
     interval: null,
@@ -222,9 +256,14 @@ const LockedView = ({
       monthly: t.common.priceMonthly,
       yearly: t.common.priceYearly,
     });
+  const loading = pending || unlockProductId !== undefined && offer.isPending;
+  const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
-      title={lessonName ?? t.lesson.contentLocked}
+      title={lessonName ?? (pending
+        ? <><VisuallyHidden>{t.lesson.loading}</VisuallyHidden><Skeleton width="min(24rem, 65vw)" aria-hidden /></>
+        : t.lesson.contentLocked)}
+      documentTitle={lessonName ?? (pending ? t.lesson.loading : t.lesson.contentLocked)}
       eyebrow={t.lesson.eyebrow}
       width="wide"
     >
@@ -234,23 +273,32 @@ const LockedView = ({
           elevation={1}
           sx={{ p: '1.5rem', width: '100%', maxWidth: '28rem' }}
           data-testid="locked-lesson-upsell"
+          data-state={loading ? 'loading' : unlockProductId === undefined ? 'not-for-sale' : 'for-sale'}
         >
-          <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch', width: '100%', maxWidth: '28rem' }}>
-            <Typography variant="overline" component="p" color="text.secondary">
-              {t.lesson.lockedInProduct}
-            </Typography>
-            <Typography variant="h2" component="h2">
-              {product?.title ?? t.lesson.contentLocked}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {t.lesson.noAccessYet}
-            </Typography>
-            {priceTerms !== null ? (
-              <Typography variant="h3" component="p" data-testid="locked-product-price">
-                <DataValue>{priceTerms}</DataValue>
+          {loading ? <LockedCardSkeleton /> : unlockProductId === undefined ? (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
+              <Typography variant="body2" color="text.secondary">
+                {t.lesson.notForSaleBody}
               </Typography>
-            ) : null}
-            {unlockProductId === undefined ? null : (
+              <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
+                {t.lesson.backToCourse}
+              </Button>
+            </Stack>
+          ) : (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead>{t.lesson.noAccess}</LockedLead>
+              {product === undefined ? null : (
+                <Stack useFlexGap spacing="0.25rem">
+                  <Typography variant="overline" component="p" color="text.secondary">
+                    {t.lesson.lockedInProduct}
+                  </Typography>
+                  <Typography variant="h2" component="h2">
+                    {product.title}
+                  </Typography>
+                  {scope === null ? null : <LockedScopeText variant="body2" data-testid="locked-product-scope">{scope}</LockedScopeText>}
+                </Stack>
+              )}
               <Button
                 component={Link}
                 to={`/checkout/${encodeURIComponent(unlockProductId)}`}
@@ -261,10 +309,10 @@ const LockedView = ({
               >
                 {priceTerms === null ? t.courseTree.unlockAccess : t.courseTree.unlockAccessWithPrice({ price: priceTerms })}
               </Button>
-            )}
-          </Stack>
+            </Stack>
+          )}
         </Paper>
-        <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
+        {!loading && unlockProductId === undefined ? null : <MuiLink component={Link} to={courseHref}>{t.lesson.backToCourse}</MuiLink>}
       </Stack>
     </MemberSurface>
   );
@@ -474,6 +522,7 @@ export const LessonPlayerPage = ({
         <LockedView
           courseId={courseId}
           lessonName={lockedRow?.name}
+          pending={structure.isPending}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}

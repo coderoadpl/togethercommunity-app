@@ -1757,141 +1757,174 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('renders a locked state inside the member skeleton without a paid CTA', async () => {
-    server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
+  const forbiddenLesson = () =>
+    http.get('/api/student/lessons/:lessonId', () =>
+      HttpResponse.json(
+        { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
+        { status: 403 },
       ),
-      okStructure(),
+    );
+
+  const lockedStructure: CourseStructureWithAccess = {
+    ...structure,
+    modules: structure.modules.map((module) => ({
+      ...module,
+      chapters: module.chapters.map((chapter) => ({
+        ...chapter,
+        lessons: chapter.lessons.map((entry) => ({
+          ...entry,
+          accessStatus: 'not-accessible',
+          unlockProductId: 'prod-full',
+        })),
+      })),
+    })),
+  };
+
+  const offerProduct = {
+    id: 'prod-full',
+    type: 'course',
+    slug: 'complete-javascript-course',
+    title: 'Complete JavaScript Course',
+    description: 'All lessons',
+    coverUrl: null,
+    priceCents: 19900,
+    currency: 'PLN',
+    prices: [{
+      id: 'price-prod-full-monthly',
+      kind: 'recurring',
+      interval: 'month',
+      amountCents: 4900,
+      currency: 'PLN',
+    }],
+  };
+
+  const okOffer = (product: Record<string, unknown> = {}) =>
+    http.get('/api/public/offer', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          tenant: { slug: 'studio', name: 'Studio' },
+          contentVersion: 1,
+          products: [{ ...offerProduct, ...product }],
+        },
+      }),
+    );
+
+  it('tells the member a lesson no product sells is not for sale and leads back to the course', async () => {
+    server.use(forbiddenLesson(), okStructure(), okProgress());
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByRole('heading', { name: en.lesson.notForSaleTitle })).toBeInTheDocument();
+    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    expect(within(card).getByTestId('locked-lesson-lock')).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.lockedInProduct)).not.toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.contentLocked)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
+    const backLinks = screen.getAllByRole('link', { name: en.lesson.backToCourse });
+    expect(backLinks).toHaveLength(1);
+    expect(backLinks[0]).toHaveAttribute('href', '/my/courses/course-1');
+    expect(backLinks[0]).toHaveAttribute('data-testid', 'locked-back-to-course');
+  });
+
+  it('shows a skeleton card instead of the fallback copy while the course structure loads', async () => {
+    let releaseStructure: () => void = () => undefined;
+    const structureGate = new Promise<void>((resolve) => { releaseStructure = resolve; });
+    server.use(
+      forbiddenLesson(),
       okProgress(),
+      okOffer(),
+      http.get('/api/student/courses/:courseId/structure', async () => {
+        await structureGate;
+        return HttpResponse.json({ ok: true, data: { structure: lockedStructure } });
+      }),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByRole('heading', { name: en.lesson.contentLocked })).toBeInTheDocument();
-    expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute(
-      'href',
-      '/my/courses/course-1',
-    );
-    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
+    const skeleton = await screen.findByTestId('locked-lesson-skeleton');
+    expect(skeleton).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('locked-lesson-upsell')).toHaveAttribute('data-state', 'loading');
+    expect(screen.queryByText(en.lesson.notForSaleTitle)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.contentLocked)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.lockedInProduct)).not.toBeInTheDocument();
+
+    releaseStructure();
+    expect(await screen.findByTestId('unlock-lesson-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lesson-skeleton')).not.toBeInTheDocument();
   });
 
-  it('shows an unlock CTA on the locked page when a product covers the lesson', async () => {
-    const lockedStructure: CourseStructureWithAccess = {
-      ...structure,
-      modules: structure.modules.map((module) => ({
-        ...module,
-        chapters: module.chapters.map((chapter) => ({
-          ...chapter,
-          lessons: chapter.lessons.map((entry) => ({
-            ...entry,
-            accessStatus: 'not-accessible',
-            unlockProductId: 'prod-full',
-          })),
-        })),
-      })),
-    };
+  it('keeps the skeleton card while the offer for the unlocking product loads', async () => {
+    let releaseOffer: () => void = () => undefined;
+    const offerGate = new Promise<void>((resolve) => { releaseOffer = resolve; });
     server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
-      ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
-      ),
-      http.get('/api/public/offer', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            tenant: { slug: 'studio', name: 'Studio' },
-            contentVersion: 1,
-            products: [{
-              id: 'prod-full',
-              type: 'course',
-              slug: 'complete-javascript-course',
-              title: 'Complete JavaScript Course',
-              description: 'All lessons',
-              coverUrl: null,
-              priceCents: 19900,
-              currency: 'PLN',
-              prices: [{
-                id: 'price-prod-full-monthly',
-                kind: 'recurring',
-                interval: 'month',
-                amountCents: 4900,
-                currency: 'PLN',
-              }],
-            }],
-          },
-        }),
-      ),
+      forbiddenLesson(),
       okProgress(),
+      okStructureOf(lockedStructure),
+      http.get('/api/public/offer', async () => {
+        await offerGate;
+        return HttpResponse.json({
+          ok: true,
+          data: { tenant: { slug: 'studio', name: 'Studio' }, contentVersion: 1, products: [offerProduct] },
+        });
+      }),
     );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Intro to Variables' })).toBeInTheDocument();
+    expect(screen.getByTestId('locked-lesson-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
+
+    releaseOffer();
+    expect(await screen.findByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
+  });
+
+  it('leads with the lock and the no-access line and shows the price once, in the unlock button', async () => {
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer(), okProgress());
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const unlock = await screen.findByTestId('unlock-lesson-cta');
+    const price = en.common.priceMonthly({ price: 'PLN 49.00' });
     expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
-    expect(unlock).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceMonthly({ price: 'PLN 49.00' }) }));
-    expect(await screen.findByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceMonthly({ price: 'PLN 49.00' }));
+    expect(unlock).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price }));
+    const card = screen.getByTestId('locked-lesson-upsell');
+    expect(card.textContent?.match(/49\.00/g)).toHaveLength(1);
+    expect(screen.queryByTestId('locked-product-price')).not.toBeInTheDocument();
+    const lead = within(card).getByTestId('locked-lesson-lead');
+    expect(lead).toHaveTextContent(en.lesson.noAccess);
+    expect(lead.parentElement?.firstElementChild).toBe(within(card).getByTestId('locked-lesson-lock'));
+    expect(card.querySelector('[data-testid="locked-lesson-lead"]')).toBe(
+      [...card.querySelectorAll('p, h2')][0],
+    );
+    expect(within(card).getByText(en.lesson.lockedInProduct)).toBeInTheDocument();
+    expect(within(card).getByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
+    expect(within(card).getByTestId('locked-product-scope')).toHaveTextContent('All lessons');
+    expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute('href', '/my/courses/course-1');
+  });
+
+  it('reads the scope line from the product description as plain text, or names the product type', async () => {
+    server.use(
+      forbiddenLesson(),
+      okStructureOf(lockedStructure),
+      okOffer({ description: '<p>Every <strong>module</strong>,</p><ul><li>quizzes</li></ul>' }),
+      okProgress(),
+    );
+    const { unmount } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByTestId('locked-product-scope')).toHaveTextContent(/^Every module,\s?quizzes$/);
+    unmount();
+
+    server.use(okOffer({ description: '<p> </p>' }));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByTestId('locked-product-scope')).toHaveTextContent(en.salesLinks.lineTypes.course);
   });
 
   it('falls back to the product price when the locked product has no active price rows', async () => {
-    const lockedStructure: CourseStructureWithAccess = {
-      ...structure,
-      modules: structure.modules.map((module) => ({
-        ...module,
-        chapters: module.chapters.map((chapter) => ({
-          ...chapter,
-          lessons: chapter.lessons.map((entry) => ({
-            ...entry,
-            accessStatus: 'not-accessible',
-            unlockProductId: 'prod-full',
-          })),
-        })),
-      })),
-    };
-    server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
-      ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
-      ),
-      http.get('/api/public/offer', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            tenant: { slug: 'studio', name: 'Studio' },
-            contentVersion: 1,
-            products: [{
-              id: 'prod-full',
-              type: 'course',
-              slug: 'complete-javascript-course',
-              title: 'Complete JavaScript Course',
-              description: 'All lessons',
-              coverUrl: null,
-              priceCents: 19900,
-              currency: 'PLN',
-              prices: [],
-            }],
-          },
-        }),
-      ),
-      okProgress(),
-    );
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer({ prices: [] }), okProgress());
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceOneTime({ price: 'PLN 199.00' }));
-    expect(screen.getByTestId('unlock-lesson-cta')).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceOneTime({ price: 'PLN 199.00' }) }));
+    expect(await screen.findByTestId('unlock-lesson-cta')).toHaveTextContent(
+      en.courseTree.unlockAccessWithPrice({ price: en.common.priceOneTime({ price: 'PLN 199.00' }) }),
+    );
   });
 
   it('leaves the program to the shell below md, where the program sheet carries it', async () => {

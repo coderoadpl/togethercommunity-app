@@ -1,4 +1,4 @@
-import { LessonBlockIcon, LessonLockIcon, LessonNavIcon } from '../../theme.js';
+import { LessonBlockIcon, LessonLockIcon, LessonNavIcon, LockedLeadSvg } from '../../theme.js';
 
 export const PreviousLessonIcon = () => (
   <LessonNavIcon aria-hidden data-testid="lesson-nav-icon" viewBox="0 0 24 24"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></LessonNavIcon>
@@ -11,6 +11,9 @@ export const MarkCompleteIcon = () => (
 );
 export const LockedLessonIcon = () => (
   <LessonLockIcon aria-hidden data-testid="lock-closed" viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 1 1 6 0v3H9z" /></LessonLockIcon>
+);
+export const LockedLeadIcon = () => (
+  <LockedLeadSvg aria-hidden data-testid="locked-lesson-lock" viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 1 1 6 0v3H9z" /></LockedLeadSvg>
 );
 
 export const LinkIcon = () => (

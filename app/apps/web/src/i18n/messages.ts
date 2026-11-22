@@ -442,6 +442,7 @@ export interface Messages {
     methodPasskeyBody: string;
     passkeyLink: string;
     passkeyPending: string;
+    passkeyCancelled: string;
     twoFactorTitle: string;
     twoFactorIntro: string;
     twoFactorCodeLabel: string;

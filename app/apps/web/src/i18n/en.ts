@@ -432,6 +432,7 @@ export const en: Messages = {
     methodPasskeyBody: 'Face ID, Touch ID or Windows Hello.',
     passkeyLink: 'Sign in with a passkey',
     passkeyPending: 'Signing in…',
+    passkeyCancelled: 'Passkey sign-in was cancelled or no passkey was found on this device. Try again or use another method.',
     twoFactorTitle: 'Two-factor verification',
     twoFactorIntro: 'Enter the code from your authenticator app to finish signing in.',
     twoFactorCodeLabel: 'Authenticator app code',

@@ -439,6 +439,7 @@ export const pl: Messages = {
     methodPasskeyBody: 'Face ID, Touch ID albo Windows Hello.',
     passkeyLink: 'Zaloguj się kluczem dostępu',
     passkeyPending: 'Logowanie…',
+    passkeyCancelled: 'Logowanie kluczem dostępu zostało przerwane albo na tym urządzeniu nie ma klucza dostępu. Spróbuj ponownie lub wybierz inny sposób logowania.',
     twoFactorTitle: 'Weryfikacja dwuetapowa',
     twoFactorIntro: 'Wpisz kod z aplikacji uwierzytelniającej, aby dokończyć logowanie.',
     twoFactorCodeLabel: 'Kod z aplikacji uwierzytelniającej',

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
+import { ApiError } from '#core/client/index.js';
 import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type Language } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
@@ -419,6 +420,48 @@ describe('LoginPage', () => {
     await userEvent.click(await screen.findByTestId('signin-passkey'));
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/lesson-1'));
+  });
+
+  it.each([
+    { step: 'identifier', providerCode: 'AUTH_CANCELLED' },
+    { step: 'method', providerCode: 'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY' },
+  ])('names a cancelled or missing passkey on the $step step', async ({ step, providerCode }) => {
+    vi.spyOn(actions.signInWithPasskey, 'mutationFn').mockRejectedValue(
+      new ApiError({ code: 'validation', message: 'Authentication cancelled', details: { providerCode } }),
+    );
+    await renderLoginPage();
+    if (step === 'method') await continueWithEmail();
+
+    await userEvent.click(await screen.findByTestId('signin-passkey'));
+
+    const alert = await screen.findByTestId('passkey-error');
+    expect(alert).toHaveTextContent(en.auth.passkeyCancelled);
+    expect(alert).not.toHaveTextContent(en.errors.messageValidation);
+  });
+
+  it('reaches the cancelled-passkey copy through the real passkey client when the browser has no WebAuthn', async () => {
+    server.use(http.get('*/passkey/generate-authenticate-options', () => HttpResponse.json({
+      challenge: 'Y2hhbGxlbmdl',
+      rpId: 'localhost',
+      allowCredentials: [],
+      userVerification: 'preferred',
+    })));
+    await renderLoginPage();
+
+    await userEvent.click(await screen.findByTestId('signin-passkey'));
+
+    expect(await screen.findByTestId('passkey-error')).toHaveTextContent(en.auth.passkeyCancelled);
+  });
+
+  it('keeps the generic copy for a passkey failure that is not a cancellation', async () => {
+    vi.spyOn(actions.signInWithPasskey, 'mutationFn').mockRejectedValue(
+      new ApiError({ code: 'internal', message: 'boom' }),
+    );
+    await renderLoginPage();
+
+    await userEvent.click(await screen.findByTestId('signin-passkey'));
+
+    expect(await screen.findByTestId('passkey-error')).toHaveTextContent(en.errors.messageInternal);
   });
 
   it('returns two-factor completion to the safe returnTo path', async () => {

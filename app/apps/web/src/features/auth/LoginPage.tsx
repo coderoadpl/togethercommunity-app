@@ -62,6 +62,11 @@ const EMAIL_HELPER_ID = 'login-email-helper';
 const PASSWORD_ERROR_ID = 'login-password-error';
 const TWO_FACTOR_ERROR_ID = 'two-factor-error';
 const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
+const PASSKEY_CANCELLED_CODES: readonly string[] = [
+  'AUTH_CANCELLED',
+  'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
+  'ERROR_CEREMONY_ABORTED',
+];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
 const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
@@ -123,6 +128,11 @@ const RateLimitMessage = ({ error, remaining }: { error: unknown; remaining: num
       <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ seconds: initial })}</VisuallyHidden>
     </>
   );
+};
+
+const isPasskeyCancelled = (error: unknown): boolean => {
+  const providerCode = providerCodeOf(error);
+  return providerCode !== null && PASSKEY_CANCELLED_CODES.includes(providerCode);
 };
 
 const initialsOf = (email: string): string =>
@@ -471,6 +481,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       ? t.auth.invalidCredentials
       : localizeError(signIn.error, t);
 
+  const passkeyErrorMessage = isPasskeyCancelled(signInWithPasskey.error)
+    ? t.auth.passkeyCancelled
+    : localizeError(signInWithPasskey.error, t);
+
   const showDemoAccount =
     authConfig.data?.exposeMagicLinks === true &&
     platformSurface &&
@@ -789,7 +803,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           </AuthPasskeyLink>
           {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
           {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
-            <Alert severity="error">{localizeError(signInWithPasskey.error, t)}</Alert>
+            <Alert severity="error" data-testid="passkey-error">{passkeyErrorMessage}</Alert>
           ) : null}
         </Stack>
       </>,
@@ -916,7 +930,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         ) : null}
       </AuthMethodList>
       {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
-        <Alert severity="error" sx={{ mt: '1rem' }}>{localizeError(signInWithPasskey.error, t)}</Alert>
+        <Alert severity="error" sx={{ mt: '1rem' }} data-testid="passkey-error">{passkeyErrorMessage}</Alert>
       ) : null}
       {signInWithGoogle.isError ? (
         <Alert severity="error" sx={{ mt: '1rem' }}>{localizeError(signInWithGoogle.error, t)}</Alert>

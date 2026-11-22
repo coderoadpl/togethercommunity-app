@@ -39,6 +39,27 @@ covers `content-length`, so the bucket accepts only a body of the declared
 size. The quarantine is
 described in [Change proposals](change-proposals.md#images).
 
+## Download file prefixes
+
+Product files live under the workspace's private download prefix:
+
+| Prefix | Holds | Served |
+|---|---|---|
+| `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
+| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. Completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old, a second `PUT` through a still valid URL included |
+| `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never while staged; an attached file is served like any other product file |
+
+The server-side copy into `key-files/` replaces the object metadata with
+`application/octet-stream`, `attachment` and `no-store`, so no header the key
+sent with its upload survives. Every staged object is owned by a database row
+(an upload or copy record, a staged file, or an owed deletion); the minute
+sweep deletes what those rows give up, and the storage orphan report counts
+the objects they name as pending. Deleting a file version or a draft product whose
+file object is under `key-files/`, or discarding a staged file, records the
+object's deletion in the same transaction, and the sweep retries a storage
+delete that failed. Files uploaded in the product
+editor are deleted as before: the object is deleted once after its row.
+
 ## File versions
 
 Digital download products deliver personalised PDF and EPUB copies or signed,

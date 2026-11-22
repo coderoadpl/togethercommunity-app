@@ -1991,6 +1991,40 @@ describe('LessonPlayerPage', () => {
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it('offers the in-app support form from the not-for-sale card when the workspace has no support address', async () => {
+    server.use(
+      forbiddenLesson(),
+      okStructure(),
+      okProgress(),
+      http.get('/api/member/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              billingPortalUrl: null,
+              supportUrl: null, supportConfigured: true,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.notForSaleBodyNoContact)).not.toBeInTheDocument();
+    const contact = within(card).getByTestId('locked-contact-creator');
+    expect(contact).toHaveAttribute('href', '/account?tab=profile&support=open');
+    expect(contact).not.toHaveAttribute('target');
+    expect(contact).toHaveAccessibleName(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    expect(within(card).getByTestId('locked-back-to-course').compareDocumentPosition(contact))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('shows a skeleton card instead of the fallback copy while the course structure loads', async () => {
     let releaseStructure: () => void = () => undefined;
     const structureGate = new Promise<void>((resolve) => { releaseStructure = resolve; });

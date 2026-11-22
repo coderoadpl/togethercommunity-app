@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  type ButtonProps,
   Chip,
   Link as MuiLink,
   Paper,
@@ -12,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createLink, Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import {
@@ -201,6 +202,8 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
 
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
+const ButtonLink = createLink(({ href = '', ...props }: Omit<ButtonProps<'a'>, 'component'>) => <Button href={href} {...props} />);
+
 const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
 const TEXT_BREAK = '\u2029';
 const ENDS_WITH_PUNCTUATION = /[.,;:!?…]$/u;
@@ -249,12 +252,14 @@ const LockedView = ({
   unlockProductId,
   pending,
   supportUrl,
+  supportConfigured,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   unlockProductId?: string;
   pending: boolean;
   supportUrl: string | null | undefined;
+  supportConfigured: boolean;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -281,6 +286,7 @@ const LockedView = ({
     });
   const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
   const externalSupport = typeof supportUrl === 'string' && !supportUrl.toLowerCase().startsWith('mailto:');
+  const supportForm = supportUrl === null && supportConfigured;
   const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
@@ -303,7 +309,7 @@ const LockedView = ({
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
               <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
               <Typography variant="body2" color="text.secondary">
-                {typeof supportUrl === 'string' ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
+                {typeof supportUrl === 'string' || supportForm ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
               </Typography>
               <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
                 {t.lesson.backToCourse}
@@ -320,6 +326,17 @@ const LockedView = ({
                 >
                   {t.lesson.contactCreator}
                 </Button>
+              ) : supportForm ? (
+                <ButtonLink
+                  to="/account"
+                  search={{ tab: 'profile', support: 'open' }}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  data-testid="locked-contact-creator"
+                >
+                  {t.lesson.contactCreator}
+                </ButtonLink>
               ) : null}
             </Stack>
           ) : (
@@ -561,6 +578,7 @@ export const LessonPlayerPage = ({
           lessonName={lockedRow?.name}
           pending={structure.isPending}
           supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
+          supportConfigured={tenantSettings.data?.settings.supportConfigured === true}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}

@@ -17,6 +17,9 @@ type Translations = Messages['changeProposals'];
 
 type DownloadState = 'idle' | 'loading' | 'gone' | 'failed';
 
+const NBSP = '\u00a0';
+const SEPARATOR = `${NBSP}· `;
+
 export const Fingerprint = ({ value }: { value: string }) => (
   <span title={value} data-testid="file-fingerprint">
     <span aria-hidden>{imageFingerprint(value)}</span>
@@ -26,7 +29,7 @@ export const Fingerprint = ({ value }: { value: string }) => (
 
 const FingerprintPart = ({ value }: { value: string | null }) => {
   const t = useTranslations().changeProposals;
-  return value === null ? null : <>{` · ${t.fileFingerprint} `}<Fingerprint value={value} /></>;
+  return value === null ? null : <>{`${SEPARATOR}${t.fileFingerprint}${NBSP}`}<Fingerprint value={value} /></>;
 };
 
 const FileUnavailable = () => {
@@ -51,7 +54,7 @@ const FileDownload = ({ proposalId, fileId }: { proposalId: string; fileId: stri
   if (state === 'gone') return <FileUnavailable />;
   const loading = state === 'loading';
   return (
-    <Stack useFlexGap spacing="0.35rem" sx={{ alignItems: 'flex-start' }}>
+    <Stack useFlexGap spacing="0.35rem" sx={{ alignItems: 'flex-start', pt: '0.25rem' }}>
       <Button
         size="small"
         variant="outlined"
@@ -115,7 +118,7 @@ const FileChangeText = ({
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
-  const size = (file: ProposalFile): string => formatFileSize(file.sizeBytes, language);
+  const size = (file: ProposalFile): string => formatFileSize(file.sizeBytes, language).replaceAll(' ', NBSP);
   const proposed = proposedFiles.find((entry) => entry.id === change.file.id);
   switch (change.kind) {
     case 'added':
@@ -123,7 +126,7 @@ const FileChangeText = ({
         <Stack useFlexGap spacing="0.25rem" data-testid="proposed-file" data-change="added">
           <WrapAnywhereText variant="body2" component="p">
             <Isolated sentence={(name) => t.fileAdded({ name })} value={change.file.fileName} />
-            {` · ${fileTypeLabel(change.file.contentType)} · ${size(change.file)}`}
+            {`${SEPARATOR}${fileTypeLabel(change.file.contentType)}${SEPARATOR}${size(change.file)}`}
             <FingerprintPart value={change.file.fingerprint} />
           </WrapAnywhereText>
           <ProposedFileFacts file={change.file} proposed={proposed} pendingProposalId={pendingProposalId} />
@@ -137,7 +140,7 @@ const FileChangeText = ({
               sentence={(name) => t.fileReplaced({ name, from: change.previous.versionNumber, to: change.file.versionNumber })}
               value={change.previous.fileName}
             />
-            {` · ${fileTypeLabel(change.file.contentType)} · ${size(change.previous)} → ${size(change.file)}`}
+            {`${SEPARATOR}${fileTypeLabel(change.file.contentType)}${SEPARATOR}${size(change.previous)}${NBSP}→ ${size(change.file)}`}
             <FingerprintPart value={change.file.fingerprint} />
           </WrapAnywhereText>
           {change.file.fileName === change.previous.fileName ? null : (
@@ -151,7 +154,7 @@ const FileChangeText = ({
         <Stack useFlexGap spacing="0.25rem" data-testid="proposed-file" data-change="removed">
           <WrapAnywhereText variant="body2" component="p">
             <Isolated sentence={(name) => t.fileRemoved({ name, version: change.file.versionNumber })} value={change.file.fileName} />
-            {` · ${fileTypeLabel(change.file.contentType)} · ${size(change.file)}`}
+            {`${SEPARATOR}${fileTypeLabel(change.file.contentType)}${SEPARATOR}${size(change.file)}`}
           </WrapAnywhereText>
           <FinePrint component="p">{currentVersionText(t, change)}</FinePrint>
           <FinePrint component="p">{t.fileRemoveOnlyFile}</FinePrint>

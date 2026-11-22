@@ -2061,7 +2061,10 @@ describe('LessonPlayerPage', () => {
     );
     expect(within(card).getByText(en.lesson.lockedInProduct)).toBeInTheDocument();
     expect(within(card).getByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
-    expect(within(card).getByTestId('locked-product-scope')).toHaveTextContent('All lessons');
+    const scope = within(card).getByTestId('locked-product-scope');
+    expect(scope).toHaveTextContent('All lessons');
+    expect(stylesAt(scope, 390)).toMatchObject({ '-webkit-line-clamp': '3' });
+    expect(stylesAt(scope, 600)).toMatchObject({ '-webkit-line-clamp': '2' });
     expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute('href', '/my/courses/course-1');
   });
 

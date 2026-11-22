@@ -4288,9 +4288,10 @@ export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
 export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
   display: '-webkit-box',
-  WebkitLineClamp: 2,
+  WebkitLineClamp: 3,
   WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
+  [theme.breakpoints.up('sm')]: { WebkitLineClamp: 2 },
 }));
 
 export const LessonNavLabel = styled('span')(({ theme }) => ({

@@ -275,16 +275,18 @@ describe('CourseStructurePage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('orders compact course sections before the curriculum', async () => {
+  it('puts the compact program right under the progress card, ahead of tiles, cover, About and discussions', async () => {
     stubViewport(true);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const progressCard = await screen.findByTestId('course-progress-card');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
     const aboutCard = screen.getByTestId('course-about-card');
     const discussionSearch = screen.getByTestId('course-discussion-search');
-    const inlineProgram = screen.getByTestId('course-tree-inline');
-    const compactOrder = [progressCard, aboutCard, discussionSearch, inlineProgram]
+    const compactOrder = [progressCard, inlineProgram, statTile, cover, aboutCard, discussionSearch]
       .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
 
     expect(compactOrder).toEqual([...compactOrder].sort((left, right) => left - right));
@@ -299,6 +301,53 @@ describe('CourseStructurePage', () => {
       'false',
     );
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+  });
+
+  it('clamps a long compact About text to five lines behind a show more toggle', async () => {
+    stubViewport(true);
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const user = userEvent.setup();
+
+    const text = await screen.findByTestId('course-about-text');
+    expect(text).toHaveAttribute('data-collapsed', 'true');
+    expect(stylesAt(text, 390)['-webkit-line-clamp']).toBe('5');
+    const toggle = screen.getByRole('button', { name: en.courseOverview.aboutShowMore });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', text.id);
+
+    await user.click(toggle);
+
+    expect(text).toHaveAttribute('data-collapsed', 'false');
+    expect(stylesAt(text, 390)['-webkit-line-clamp']).toBeUndefined();
+    expect(screen.getByRole('button', { name: en.courseOverview.aboutShowLess })).toHaveAttribute('aria-expanded', 'true');
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
+  });
+
+  it('shows a short compact About text without a toggle', async () => {
+    stubViewport(true);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'true');
+    expect(screen.queryByTestId('course-about-toggle')).not.toBeInTheDocument();
+  });
+
+  it('leaves the desktop About text unclamped', async () => {
+    stubViewport(false);
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const text = await screen.findByTestId('course-about-text');
+    expect(text).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.queryByTestId('course-about-toggle')).not.toBeInTheDocument();
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
   });
 
   it('opens the small-screen program on the branch of the last viewed lesson', async () => {

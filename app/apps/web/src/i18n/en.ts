@@ -2702,6 +2702,8 @@ export const en: Messages = {
     statDuration: 'Total duration',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} h {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
+    aboutShowMore: 'Show more',
+    aboutShowLess: 'Show less',
   },
   lesson: {
     enlargeImage: 'Enlarge image',

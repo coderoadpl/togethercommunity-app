@@ -2386,6 +2386,8 @@ export interface Messages {
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
+    aboutShowMore: string;
+    aboutShowLess: string;
   };
   lesson: {
     enlargeImage: string;

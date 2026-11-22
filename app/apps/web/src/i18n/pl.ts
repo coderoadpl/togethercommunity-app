@@ -2754,6 +2754,8 @@ export const pl: Messages = {
     statDuration: 'Łączny czas',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} godz. {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),
+    aboutShowMore: 'Pokaż więcej',
+    aboutShowLess: 'Pokaż mniej',
   },
   lesson: {
     enlargeImage: 'Powiększ obraz',

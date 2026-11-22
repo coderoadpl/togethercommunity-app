@@ -1667,7 +1667,8 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('prev-lesson')).toBeDisabled();
   });
 
-  it('disables the next slot when every remaining lesson is locked', async () => {
+  it('links the next locked lesson with a visible label when every remaining lesson is locked', async () => {
+    stubMobileViewport();
     server.use(
       okStructureOf(
         structureOf([entry('l1', 'Intro to Variables'), entry('l2', 'Advanced Variables', false)]),
@@ -1677,10 +1678,46 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('next-locked')).toBeDisabled();
-    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-contained');
+    const nextLocked = await screen.findByRole('link', { name: en.lesson.nextLocked });
+    expect(nextLocked).toHaveAttribute('data-testid', 'next-locked');
+    expect(nextLocked).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(nextLocked).not.toHaveAttribute('aria-disabled');
+    expect(nextLocked).toHaveClass('MuiButton-contained');
+    expect(nextLocked).toHaveAttribute('data-slot', 'primary');
+    expect(within(nextLocked).getByTestId('lock-closed')).toBeInTheDocument();
+    const label = within(nextLocked).getByText(en.lesson.nextLocked);
+    expect(stylesAt(label, 390)).not.toMatchObject({ position: 'absolute' });
+    const markComplete = screen.getByTestId('mark-complete');
+    expect(markComplete).toHaveClass('MuiButton-outlined');
+    expect(markComplete).toHaveAttribute('data-slot', 'compact');
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lessons-skipped')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [1, ['l2']],
+    [2, ['l2', 'l3']],
+  ] as const)('says that %i locked lessons were skipped and links the first one', async (count, lockedIds) => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          ...lockedIds.map((id) => entry(id, `Locked ${id}`, false)),
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkipped({ count }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(skipped.closest('footer')).not.toBeNull();
+    expect(screen.getByTestId('complete-continue')).toBeInTheDocument();
+    expect(screen.queryByTestId('next-locked')).not.toBeInTheDocument();
   });
 
   it('renders an entitlement-backed attachment download', async () => {

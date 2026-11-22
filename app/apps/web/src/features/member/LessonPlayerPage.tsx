@@ -51,7 +51,7 @@ import {
 } from '../../theme.js';
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
+import { LinkIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -507,9 +507,10 @@ export const LessonPlayerPage = ({
   const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
-  const compactCompletion = nextHref !== null;
   const previousLesson = neighbours?.previous ?? null;
-  const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
+  const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
+  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.next : null;
+  const compactCompletion = nextHref !== null || nextLockedLesson !== null;
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
@@ -623,6 +624,18 @@ export const LessonPlayerPage = ({
         ) : null}
 
         {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+          {firstSkipped !== null && neighbours !== null ? (
+            <MuiLink
+              component={Link}
+              to={lessonPath(courseId, firstSkipped.lessonId)}
+              variant="body2"
+              data-testid="locked-lessons-skipped"
+              sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', mb: '0.5rem' }}
+            >
+              <LockedLessonIcon />
+              {t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })}
+            </MuiLink>
+          ) : null}
           <Stack
             direction="row"
             useFlexGap
@@ -676,7 +689,7 @@ export const LessonPlayerPage = ({
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
-                variant={nextHref === null ? 'contained' : 'outlined'}
+                variant={compactCompletion ? 'outlined' : 'contained'}
                 data-testid="mark-complete"
                 data-slot={compactCompletion ? 'compact' : 'fill'}
                 onClick={() => complete.mutate({ lessonId })}
@@ -711,14 +724,17 @@ export const LessonPlayerPage = ({
                 <LessonActionLabel>{t.lesson.next({ name: nextLesson.name })}</LessonActionLabel>
               </Button>
             )}
-            {lockedAhead && (
-              <Tooltip title={t.courseTree.lockedTooltip}>
-                <Box component="span" data-slot="compact">
-                  <Button variant="outlined" data-testid="next-locked" disabled>
-                    <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLocked}</LessonNavLabel>
-                  </Button>
-                </Box>
-              </Tooltip>
+            {!continuing && nextLockedLesson !== null && (
+              <Button
+                component={Link}
+                to={lessonPath(courseId, nextLockedLesson.lessonId)}
+                variant="contained"
+                data-testid="next-locked"
+                data-slot="primary"
+                startIcon={<LockedLessonIcon />}
+              >
+                <LessonActionLabel>{t.lesson.nextLocked}</LessonActionLabel>
+              </Button>
             )}
             {atCourseEnd && (
               structure.data?.structure.completionStatus === 'fully-completed' ? (

@@ -2515,6 +2515,7 @@ export const pl: Messages = {
     pdfTitle: 'PDF lekcji',
     attachmentsHeading: 'Pliki do pobrania',
     downloadAttachment: ({ name }) => format('Pobierz {name}', { name }),
+    lockedSkipped: ({ count }) => format(plural(count, 'Pominięto {count} zablokowaną lekcję — odblokuj', 'Pominięto {count} zablokowane lekcje — odblokuj', 'Pominięto {count} zablokowanych lekcji — odblokuj'), { count }),
   },
   discussion: {
     heading: 'Dyskusja',

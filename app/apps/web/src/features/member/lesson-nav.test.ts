@@ -93,6 +93,15 @@ describe('lessonNeighbours', () => {
     const first = lessonNeighbours(linear, 'l1');
     expect(first?.next?.lessonId).toBe('l2');
     expect(first?.nextUnlocked?.lessonId).toBe('l3');
+    expect(first?.lockedSkipped).toBe(1);
+  });
+
+  it('counts no skipped lessons when the next lesson is open or nothing open is left', () => {
+    expect(lessonNeighbours(linear, 'l3')?.lockedSkipped).toBe(0);
+    const tail = linearizeCourse(
+      course([[{ id: 'c1', lessons: [lesson('l1'), lesson('l2', false)] }]]),
+    );
+    expect(lessonNeighbours(tail, 'l1')?.lockedSkipped).toBe(0);
   });
 
   it('reports a locked previous lesson so it can be shown as disabled', () => {

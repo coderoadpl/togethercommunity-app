@@ -2229,6 +2229,7 @@ export interface Messages {
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;
+    lockedSkipped: (params: { count: number }) => string;
   };
   discussion: {
     heading: string;

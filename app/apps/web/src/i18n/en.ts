@@ -2494,6 +2494,7 @@ export const en: Messages = {
     pdfTitle: 'Lesson PDF',
     attachmentsHeading: 'Downloads',
     downloadAttachment: ({ name }) => format('Download {name}', { name }),
+    lockedSkipped: ({ count }) => format(plural(count, '{count} locked lesson skipped — unlock', '{count} locked lessons skipped — unlock'), { count }),
   },
   discussion: {
     heading: 'Discussion',

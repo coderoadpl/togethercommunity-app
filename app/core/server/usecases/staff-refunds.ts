@@ -129,7 +129,7 @@ export const previewStaffRefund = async (
   });
 };
 
-export const decideStaffRefund = (
+const decideStaffRefund = (
   state: StaffRefundCreationState,
   request: {
     tenantId: string;

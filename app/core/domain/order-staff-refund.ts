@@ -8,12 +8,12 @@ import type { ProviderRefund } from './refund.js';
 import { err, ok, type Result } from './result.js';
 
 export const STAFF_REFUND_KINDS = ['remainder', 'amount'] as const;
-export const staffRefundKindSchema = z.enum(STAFF_REFUND_KINDS);
+const staffRefundKindSchema = z.enum(STAFF_REFUND_KINDS);
 export type StaffRefundKind = z.infer<typeof staffRefundKindSchema>;
 
-export const STAFF_REFUND_NOTE_MAX_LENGTH = 500;
+const STAFF_REFUND_NOTE_MAX_LENGTH = 500;
 
-export const staffRefundRequestKeySchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/, 'Request key may contain only letters, digits, dots, colons, underscores and hyphens');
+const staffRefundRequestKeySchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/, 'Request key may contain only letters, digits, dots, colons, underscores and hyphens');
 
 const staffRefundNoteSchema = z.string().trim().max(STAFF_REFUND_NOTE_MAX_LENGTH, `Reason must be at most ${String(STAFF_REFUND_NOTE_MAX_LENGTH)} characters`);
 
@@ -51,7 +51,7 @@ export const orderStaffRefundSchema = z.object({
 
 export type OrderStaffRefund = z.output<typeof orderStaffRefundSchema>;
 
-export const staffRefundIdempotencyKey = (refundId: string): string => `staff-refund-${refundId}`;
+const staffRefundIdempotencyKey = (refundId: string): string => `staff-refund-${refundId}`;
 
 export const STAFF_REFUND_WAITING_STATUSES = ['pending', 'running', 'blocked_permission'] as const;
 
@@ -63,10 +63,10 @@ const SETTLED_STAFF_REFUND_STATUSES = ['succeeded', 'skipped_refunded', 'resolve
 export const isActiveStaffRefundStatus = (status: OrderStaffRefund['status']): boolean =>
   !SETTLED_STAFF_REFUND_STATUSES.some((settled) => settled === status);
 
-export const isPlatformCommittedRefundStatus = (status: OrderStaffRefund['status']): boolean =>
+const isPlatformCommittedRefundStatus = (status: OrderStaffRefund['status']): boolean =>
   PLATFORM_COMMITTED_REFUND_STATUSES.some((committed) => committed === status);
 
-export const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): boolean =>
+const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): boolean =>
   refund.status !== 'failed' && refund.status !== 'canceled';
 
 export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
@@ -100,7 +100,7 @@ export const shipAnywayBlocker = (order: Pick<Order, 'status' | 'shipping' | 'fu
 
 const fractionDigitsCache = new Map<string, number>();
 
-export const currencyFractionDigits = (currency: string): number => {
+const currencyFractionDigits = (currency: string): number => {
   const cached = fractionDigitsCache.get(currency);
   if (cached !== undefined) return cached;
   let digits = 2;
@@ -113,7 +113,7 @@ export const currencyFractionDigits = (currency: string): number => {
   return digits;
 };
 
-export const formatMinorUnits = (amountCents: number, currency: string): string => {
+const formatMinorUnits = (amountCents: number, currency: string): string => {
   const digits = currencyFractionDigits(currency);
   const sign = amountCents < 0 ? '-' : '';
   const absolute = Math.abs(amountCents);
@@ -181,8 +181,6 @@ export const createStaffRefundInputSchema = z.object({
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
 }).strict();
-
-export type CreateStaffRefundInput = z.input<typeof createStaffRefundInputSchema>;
 
 export const resolveStaffRefundChoices = (
   options: StaffRefundFulfilmentOptions,
@@ -254,7 +252,7 @@ export const newOrderStaffRefund = (input: {
   updatedAt: input.now,
 });
 
-export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
+const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   id: true,
   kind: true,
   status: true,
@@ -278,7 +276,7 @@ export type OrderStaffRefundView = z.output<typeof orderStaffRefundViewSchema>;
 
 export const orderStaffRefundView = (refund: OrderStaffRefund): OrderStaffRefundView => orderStaffRefundViewSchema.parse(refund);
 
-export const orderRefundTotalsSchema = z.object({
+const orderRefundTotalsSchema = z.object({
   paidCents: z.number().int().nonnegative(),
   refundedCents: z.number().int().nonnegative(),
   remainingCents: z.number().int().nonnegative(),
@@ -287,7 +285,7 @@ export const orderRefundTotalsSchema = z.object({
 
 export type OrderRefundTotals = z.output<typeof orderRefundTotalsSchema>;
 
-export const platformRefundedCents = (
+const platformRefundedCents = (
   order: Pick<Order, 'status' | 'amountCents'>,
   refunds: readonly Pick<OrderStaffRefund, 'status' | 'amountCents'>[],
 ): number => {
@@ -304,13 +302,11 @@ export const orderRefundTotals = (
   return orderRefundTotalsSchema.parse({ paidCents: order.amountCents, refundedCents, remainingCents: order.amountCents - refundedCents, currency: order.currency });
 };
 
-export type RefundJobSource = 'out_of_stock' | 'staff';
-
 export type RefundJob =
   | (OrderRefundJob & { source: 'out_of_stock' })
   | (OrderStaffRefund & { source: 'staff' });
 
-export type ClaimedStaffRefund = {
+type ClaimedStaffRefund = {
   job: OrderStaffRefund;
   phase: ClaimedOrderRefundJob['phase'];
   lease: ClaimedOrderRefundJob['lease'] & { source: 'staff' };

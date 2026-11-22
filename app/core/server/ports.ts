@@ -1478,7 +1478,7 @@ export type StaffRefundDecision =
   | { kind: 'existing'; refund: OrderStaffRefund }
   | { kind: 'create'; refund: OrderStaffRefund };
 
-export interface StaffRefundCreated {
+interface StaffRefundCreated {
   refund: OrderStaffRefund;
   created: boolean;
   returnedToStock: Array<{ productId: string; quantity: number }>;

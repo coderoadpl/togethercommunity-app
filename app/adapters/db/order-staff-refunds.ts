@@ -26,7 +26,7 @@ import { returnableOrderStock, returnCommittedOrderStock } from './stock.js';
 
 type Executor = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export const STAFF_REFUND_STOCK_REASON = 'staff_refund';
+const STAFF_REFUND_STOCK_REASON = 'staff_refund';
 
 export const toStaffRefund = (row: typeof orderStaffRefunds.$inferSelect): OrderStaffRefund => orderStaffRefundSchema.parse({
   ...row,

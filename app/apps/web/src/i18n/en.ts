@@ -1287,9 +1287,11 @@ export const en: Messages = {
     sending: 'Sending…',
     sent: 'We sent a new verification link. Check your inbox.',
     verified: 'Your email address has been verified.',
-    expired: 'This verification link has expired. Send a new link from your account settings.',
-    invalid: 'This verification link is invalid. Send a new link from your account settings.',
+    expired: 'This verification link has expired. Send a new one from the Security tab of your account.',
+    invalid: 'This verification link is invalid. Send a new one from the Security tab of your account.',
     providerError: 'Email verification could not be completed. Try again.',
+    resendSignedIn: 'Open the Security tab',
+    resendSignedOut: 'Sign in to send a new link',
   },
   security: {
     passkeyProofShort: 'Your current password confirms this change.',

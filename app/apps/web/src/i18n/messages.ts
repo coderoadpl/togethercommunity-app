@@ -1200,6 +1200,8 @@ export interface Messages {
     expired: string;
     invalid: string;
     providerError: string;
+    resendSignedIn: string;
+    resendSignedOut: string;
   };
   security: {
     passkeyProofShort: string;

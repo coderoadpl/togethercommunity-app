@@ -1295,9 +1295,11 @@ export const pl: Messages = {
     sending: 'Wysyłanie…',
     sent: 'Wysłaliśmy nowy link weryfikacyjny. Sprawdź swoją skrzynkę.',
     verified: 'Adres e-mail został zweryfikowany.',
-    expired: 'Link weryfikacyjny wygasł. Wyślij nowy link z ustawień konta.',
-    invalid: 'Link weryfikacyjny jest nieprawidłowy. Wyślij nowy link z ustawień konta.',
+    expired: 'Link weryfikacyjny wygasł. Wyślij nowy w zakładce Bezpieczeństwo na swoim koncie.',
+    invalid: 'Link weryfikacyjny jest nieprawidłowy. Wyślij nowy w zakładce Bezpieczeństwo na swoim koncie.',
     providerError: 'Nie udało się obsłużyć weryfikacji adresu e-mail. Spróbuj ponownie.',
+    resendSignedIn: 'Otwórz zakładkę Bezpieczeństwo',
+    resendSignedOut: 'Zaloguj się, żeby wysłać nowy link',
   },
   security: {
     passkeyProofShort: 'Obecne hasło potwierdza tę zmianę.',

@@ -2746,7 +2746,7 @@ export const pl: Messages = {
     continueLearning: 'Kontynuuj naukę',
     reviewAgain: 'Powtórz lekcję',
     courseCompleted: 'Kurs ukończony',
-    firstIncomplete: ({ name }) => `Zacznij od pierwszej nieukończonej: ${name}`,
+    firstIncomplete: ({ name }) => `Pierwsza nieukończona lekcja: ${name}`,
     curriculum: 'Program kursu',
     aboutCourse: 'O kursie',
     coverAlt: ({ name }) => format('Okładka kursu {name}', { name }),

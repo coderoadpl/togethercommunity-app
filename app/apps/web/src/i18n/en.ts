@@ -2694,7 +2694,7 @@ export const en: Messages = {
     continueLearning: 'Continue learning',
     reviewAgain: 'Review again',
     courseCompleted: 'Course completed',
-    firstIncomplete: ({ name }) => `Start from the first incomplete lesson: ${name}`,
+    firstIncomplete: ({ name }) => `First unfinished lesson: ${name}`,
     curriculum: 'Course curriculum',
     aboutCourse: 'About this course',
     coverAlt: ({ name }) => format('Course cover for {name}', { name }),

@@ -4037,6 +4037,17 @@ export const EllipsisTableCell = styled(TableCell)({
   textOverflow: 'ellipsis',
 });
 
+export const ContinueCtaLesson = styled('span')({
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  textAlign: 'center',
+  fontWeight: 400,
+});
+
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
   const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);
   return {

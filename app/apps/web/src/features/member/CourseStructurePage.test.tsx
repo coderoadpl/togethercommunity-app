@@ -484,6 +484,24 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
+  it('puts the lesson name on its own wrapping line of the continue CTA, clamped to two lines', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    const lesson = within(cta).getByTestId('continue-cta-lesson');
+    expect(lesson).toHaveTextContent('Advanced Variables');
+    expect(lesson.previousSibling?.textContent).toBe(' ');
+    expect(cta).toHaveAccessibleName(`${en.courseOverview.continueLearning} Advanced Variables`);
+    for (const width of [390, 1440]) {
+      const styles = stylesAt(lesson, width);
+      expect(styles['white-space']).not.toBe('nowrap');
+      expect(styles['-webkit-line-clamp']).toBe('2');
+      expect(stylesAt(cta, width)['flex-direction']).toBe('column');
+    }
+  });
+
   it('offers the server-provided first incomplete lesson beneath a different resume target', async () => {
     mockPage({ lastViewedLessonId: 'l2', resume: {
       target: { id: 'l2', name: 'Advanced Variables' },
@@ -493,6 +511,8 @@ describe('CourseStructurePage', () => {
     const link = await screen.findByTestId('first-lesson-link');
     expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
     expect(link).toHaveTextContent(en.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
+    expect(link).toHaveTextContent('First unfinished lesson: Intro to Variables');
+    expect(link).toHaveClass('MuiLink-underlineAlways');
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {

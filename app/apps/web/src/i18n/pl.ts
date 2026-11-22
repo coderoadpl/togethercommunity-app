@@ -407,8 +407,11 @@ export const pl: Messages = {
   auth: {
     signInNoticeLabel: 'Informacja o logowaniu',
     invalidCredentials: 'Nieprawidłowy e-mail lub hasło.',
-    signInRateLimitedRetryIn: ({ seconds }) => format('Zbyt wiele prób. Spróbuj ponownie za {seconds} s.', { seconds }),
-    signInRateLimitedTitle: 'Poczekaj chwilę',
+    signInRateLimitedRetryIn: ({ delay }) => format('Zbyt wiele prób. Spróbuj ponownie za {delay}.', { delay }),
+    signInRateLimitedTitle: 'Zbyt wiele prób',
+    signInRateLimitedRetryNow: 'Możesz spróbować ponownie.',
+    signInRateLimitedLeadRetryIn: ({ delay }) => format('Spróbuj ponownie za {delay}.', { delay }),
+    signInRateLimitedLeadWait: 'Odczekaj chwilę i spróbuj ponownie.',
     signInTitle: 'Zaloguj się',
     signInToTenant: ({ tenant }) => format('Zaloguj się do {tenant}', { tenant }),
     signInLead: 'Wpisz e-mail podany przy zakupie lub zapisie.',
@@ -466,7 +469,7 @@ export const pl: Messages = {
     magicLinkSentHint: ({ minutes }) =>
       format('Nie widać wiadomości? Sprawdź folder spam. Link jest ważny przez {minutes} {unit}.', { minutes, unit: plural(minutes, 'minutę', 'minuty', 'minut') }),
     magicLinkResend: 'Wyślij link ponownie',
-    magicLinkResendCooldown: ({ seconds }) => format('Wyślij ponownie ({seconds} s)', { seconds }),
+    magicLinkResendCooldown: ({ delay }) => format('Wyślij ponownie ({delay})', { delay }),
     magicLinkResent: 'Jeśli konto istnieje, wysłaliśmy nowy link do logowania.',
     magicLinkFetching: 'Pobieranie deweloperskiego magicznego linku…',
     openMagicLink: 'Otwórz magiczny link (tryb deweloperski)',

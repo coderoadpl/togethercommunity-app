@@ -5,6 +5,7 @@ import { EMAIL_SEND_SOURCE_KINDS } from '#core/domain/index.js';
 import { en } from './en.js';
 import { format, type Messages } from './messages.js';
 import { pl } from './pl.js';
+import { GENDERED_PAST_TENSE, SIGN_IN_LINK_TERM } from './sign-in-copy-rules.pl.js';
 
 /**
  * The `: Messages` annotation on each dictionary already makes a missing key a
@@ -59,8 +60,11 @@ describe('i18n dictionaries', () => {
       /does not exist/iu,
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
-      messages.auth.signInRateLimitedRetryIn({ seconds: 30 }),
+      messages.auth.signInRateLimitedRetryIn({ delay: '30 s' }),
       messages.auth.signInRateLimitedTitle,
+      messages.auth.signInRateLimitedRetryNow,
+      messages.auth.signInRateLimitedLeadRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedLeadWait,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,
@@ -75,13 +79,13 @@ describe('i18n dictionaries', () => {
 
   it('keeps the sign-in copy consistent: one link term, one example address, neutral Polish', () => {
     expect(plainStrings(en.auth).filter((text) => text.includes('e-mail'))).toEqual([]);
-    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => /\u0142e\u015b|\u0142a\u015b/u.test(text))).toEqual([]);
+    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => GENDERED_PAST_TENSE.test(text))).toEqual([]);
     for (const messages of Object.values(dictionaries)) {
       expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
       expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
     }
     expect(en.auth.methodMagicLinkTitle).toContain('sign-in link');
-    expect(pl.auth.methodMagicLinkTitle).toContain('link do logowania');
+    expect(pl.auth.methodMagicLinkTitle).toContain(SIGN_IN_LINK_TERM);
   });
 
   it('labels exactly the e-mail send source kinds in every language', () => {

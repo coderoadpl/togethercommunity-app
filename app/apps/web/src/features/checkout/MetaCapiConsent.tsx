@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Stack, Typography } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '#core/client/index.js';
 import type { MetaCapiConfig, MetaCapiState } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
+import { fieldErrorEntries } from '../../lib/validation-details.js';
 import { sessionFlag } from '../../theme-mode.js';
 import { MetaCapiConsentDialog } from './MetaCapiConsentDialog.js';
 const browserIdentifier = (): string | undefined => {
@@ -11,9 +13,14 @@ const browserIdentifier = (): string | undefined => {
   if (!value) return undefined;
   try { return decodeURIComponent(value); } catch { return undefined; }
 };
+const staleText = (error: unknown): boolean => error instanceof ApiError && error.appError.code === 'validation'
+  && fieldErrorEntries(error.appError.details).some(([field]) => field === 'textVersion');
 
-export const MetaCapiConsent = ({ config, sessionId }: { config: MetaCapiConfig; sessionId: string }) => {
+export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: MetaCapiConfig; sessionId: string }) => {
   const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [refreshedConfig, setRefreshedConfig] = useState<MetaCapiConfig | null>(null);
+  const config = refreshedConfig ?? initialConfig;
   const dismissal = sessionFlag(`meta-capi-dismissed:${sessionId}`);
   const [dismissed, setDismissed] = useState(() => dismissal.load());
   const [savedState, setSavedState] = useState<MetaCapiState | null>(null);
@@ -47,6 +54,16 @@ export const MetaCapiConsent = ({ config, sessionId }: { config: MetaCapiConfig;
     dismissal.clear();
     setDismissed(false);
   };
+  const [refreshing, setRefreshing] = useState(false);
+  const retry = () => {
+    setRefreshing(true);
+    void queryClient.fetchQuery({ ...actions.publicCheckoutSessionStatus(sessionId, config.locale), staleTime: 0 })
+      .then((current) => { if (current.metaCapi) setRefreshedConfig(current.metaCapi); }, () => undefined)
+      .finally(() => {
+        setRefreshing(false);
+        reopen();
+      });
+  };
   const undecided = state.consent === 'undecided' && !withdrawn;
   const status = choice.isPending ? { text: t.metaCapi.saving }
     : withdrawn ? { text: t.metaCapi.withdrawn }
@@ -67,7 +84,9 @@ export const MetaCapiConsent = ({ config, sessionId }: { config: MetaCapiConfig;
         }}
       />
       {choice.isError ? (
-        <Alert severity="error" action={<Button color="inherit" size="small" onClick={reopen}>{t.common.retry}</Button>}>{t.metaCapi.decisionError}</Alert>
+        <Alert severity="error" action={<Button color="inherit" size="small" disabled={refreshing} onClick={retry}>{t.common.retry}</Button>}>
+          {staleText(choice.error) ? `${t.metaCapi.decisionError} ${t.metaCapi.textChanged}` : t.metaCapi.decisionError}
+        </Alert>
       ) : null}
       {status === null ? null : (
         <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }} data-testid="meta-capi-status">

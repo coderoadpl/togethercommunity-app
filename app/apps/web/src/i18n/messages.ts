@@ -33,6 +33,7 @@ export interface Messages {
     fieldsBrowser: string;
     fieldsAttribution: string;
     decisionError: string;
+    textChanged: string;
     withdrawError: string;
     saving: string;
     decide: string;

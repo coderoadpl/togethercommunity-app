@@ -12,6 +12,7 @@ export const en: Messages = {
     fieldsBrowser: 'Your IP address, browser information and the Meta browser identifier (_fbp), when present.',
     fieldsAttribution: 'The ad click identifier (fbc), built from the click identifier stored with your order, when present.',
     decisionError: 'Your choice could not be saved. Your purchase is unaffected.',
+    textChanged: 'The wording of this request has changed. Try again to see the current version, or reload this page.',
     withdrawError: 'Your consent could not be withdrawn. Try again.',
     saving: 'Saving your choice…',
     decide: 'Decide',

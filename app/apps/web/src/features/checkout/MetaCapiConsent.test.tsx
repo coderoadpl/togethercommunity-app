@@ -104,7 +104,10 @@ it('clears dismissal after a write error so a reload can retry', async () => {
 
 it('reopens the dialog from the error alert without recording a choice', async () => {
   const decide = vi.fn(() => HttpResponse.error());
-  server.use(http.post('/api/public/meta-capi/consent', decide));
+  server.use(
+    http.post('/api/public/meta-capi/consent', decide),
+    http.get('/api/public/checkout/session-status', () => HttpResponse.json({ ok: true, data: { status: 'paid', metaCapi: metaCapiConfig } })),
+  );
   renderConsent();
   fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
   const alert = await screen.findByRole('alert');
@@ -114,6 +117,37 @@ it('reopens the dialog from the error alert without recording a choice', async (
   expect(await screen.findByRole('dialog', { name: metaCapiConfig.heading })).toBeVisible();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(decide).toHaveBeenCalledOnce();
+});
+
+it('refetches the consent copy on retry after the text changed and sends the current version', async () => {
+  const updated = { ...metaCapiConfig, heading: 'Updated heading for this purchase?', textVersion: 'b'.repeat(64) };
+  const requestBody = vi.fn();
+  const statusQuery = vi.fn();
+  server.use(
+    http.post('/api/public/meta-capi/consent', async ({ request }) => {
+      const body: unknown = await request.json();
+      requestBody(body);
+      return typeof body === 'object' && body !== null && 'textVersion' in body && body.textVersion === updated.textVersion
+        ? HttpResponse.json({ ok: true, data: { consent: 'granted', withdrawnAt: null } })
+        : HttpResponse.json({ ok: false, error: { code: 'validation', message: 'The consent text changed; reload before deciding', details: { fieldErrors: { textVersion: ['The consent text changed'] } } } }, { status: 400 });
+    }),
+    http.get('/api/public/checkout/session-status', ({ request }) => {
+      statusQuery(new URL(request.url).searchParams.get('session_id'));
+      return HttpResponse.json({ ok: true, data: { status: 'paid', metaCapi: updated } });
+    }),
+  );
+  renderConsent();
+  fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent(en.metaCapi.decisionError);
+  expect(alert).toHaveTextContent(en.metaCapi.textChanged);
+  fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
+  expect(await screen.findByRole('dialog', { name: updated.heading })).toBeVisible();
+  expect(statusQuery).toHaveBeenCalledWith(sessionId);
+  fireEvent.click(screen.getByRole('button', { name: updated.acceptLabel }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.granted));
+  expect(requestBody).toHaveBeenLastCalledWith(expect.objectContaining({ decision: 'granted', textVersion: updated.textVersion }));
+  expect(requestBody).toHaveBeenCalledTimes(2);
 });
 
 it('reopens a dismissed dialog from the no-decision row and records nothing until a choice', async () => {

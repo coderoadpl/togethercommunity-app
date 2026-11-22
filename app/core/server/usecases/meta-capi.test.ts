@@ -79,7 +79,8 @@ describe('Meta CAPI use cases', () => {
       .toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.job.consent.consent).toBe('undecided');
     h.settings.analyticsMetaCapiConsentHeading = 'Updated heading';
-    expect(await recordPublicMetaCapiConsent('workspace', input, request, h.deps)).toMatchObject({ ok: false });
+    expect(await recordPublicMetaCapiConsent('workspace', input, request, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { textVersion: expect.any(Array) } } } });
     const updated = await getMetaCapiConfig('workspace', 'cs_live_purchase', h.deps, locale);
     if (!updated) throw new Error('Missing updated consent config');
     expect(updated.heading).toBe('Updated heading');

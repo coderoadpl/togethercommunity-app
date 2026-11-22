@@ -18,6 +18,7 @@ export const pl: Messages = {
     fieldsBrowser: 'Adres IP, informacje o przeglądarce i identyfikator przeglądarki Meta (_fbp), jeśli istnieje.',
     fieldsAttribution: 'Identyfikator kliknięcia reklamy (fbc), utworzony na podstawie identyfikatora zapisanego przy zamówieniu, jeśli istnieje.',
     decisionError: 'Nie udało się zapisać Twojego wyboru. Nie wpływa to na zakup.',
+    textChanged: 'Treść tej prośby została zmieniona. Spróbuj ponownie, aby zobaczyć aktualną wersję, albo odśwież stronę.',
     withdrawError: 'Nie udało się wycofać zgody. Spróbuj ponownie.',
     saving: 'Zapisujemy Twój wybór…',
     decide: 'Zdecyduj',

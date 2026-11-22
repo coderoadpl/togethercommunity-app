@@ -76,6 +76,18 @@ describe('i18n dictionaries', () => {
     }
   });
 
+  it('keeps the sign-in copy consistent: one link term, one example address, neutral Polish', () => {
+    expect(plainStrings(en.auth).filter((text) => text.includes('e-mail'))).toEqual([]);
+    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => /łeś|łaś/u.test(text))).toEqual([]);
+    for (const messages of Object.values(dictionaries)) {
+      expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
+      expect(messages.auth.signInMethodsChooseMagicLink).toBe(messages.auth.methodMagicLinkTitle);
+      expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
+    }
+    expect(en.auth.methodMagicLinkTitle).toContain('sign-in link');
+    expect(pl.auth.methodMagicLinkTitle).toContain('link do logowania');
+  });
+
   it('labels exactly the e-mail send source kinds in every language', () => {
     const expected = EMAIL_SEND_SOURCE_KINDS
       .map((kind) => kind.replaceAll(/-(?<letter>.)/gu, (_match, letter: string) => letter.toUpperCase()))

@@ -11,6 +11,8 @@ import {
   type AppError,
   type OrderListItem,
   type OrderRefundJobView,
+  type OrderRefundTotals,
+  type OrderStaffRefundView,
   type OrderExportFile,
   type Result,
   type SalesSummary,
@@ -24,8 +26,10 @@ import type {
   OrderDetailRepository,
   OrderRefundJobRepository,
   OrderRepository,
+  OrderStaffRefundRepository,
   InvoiceRepository,
 } from '../ports.js';
+import { orderStaffRefundSummary } from './staff-refunds.js';
 
 export interface OrdersDeps {
   orders: OrderRepository;
@@ -71,11 +75,18 @@ export const listOrders = async (
 export const getOrder = async (
   ctx: Ctx,
   id: string,
-  deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository; refundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'> },
+  deps: {
+    orders: OrderDetailRepository;
+    invoices?: InvoiceRepository;
+    refundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
+    staffRefunds?: Pick<OrderStaffRefundRepository, 'listByOrder'>;
+  },
 ): Promise<Result<{
   order: OrderListItem;
   invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>>;
   refundJob: OrderRefundJobView | null;
+  staffRefunds?: OrderStaffRefundView[];
+  refundTotals?: OrderRefundTotals;
 }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
@@ -85,7 +96,8 @@ export const getOrder = async (
     ? null
     : await deps.invoices.findCurrentByOrder(tenant.value, order.id);
   const refundJob = await deps.refundJobs?.findByOrderId(tenant.value, order.id) ?? null;
-  return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob) });
+  const staff = deps.staffRefunds === undefined ? {} : await orderStaffRefundSummary(tenant.value, order, deps.staffRefunds);
+  return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob), ...staff });
 };
 
 const neutralizeFormula = (value: string): string =>
@@ -131,7 +143,10 @@ const SHIPPING_COLUMN_NAMES = [
   'fulfilment_status',
 ];
 
-const ordersToCsv = (orders: OrderListItem[]): string =>
+const refundedCentsOf = (order: OrderListItem, committedCents: ReadonlyMap<string, number>): number =>
+  order.status === 'refunded' ? order.amountCents : Math.min(committedCents.get(order.id) ?? 0, order.amountCents);
+
+const ordersToCsv = (orders: OrderListItem[], committedCents: ReadonlyMap<string, number>): string =>
   [
     [
       'date',
@@ -161,6 +176,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'client_reference',
       'personalization',
       'cancel_reason',
+      'refunded_amount',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -185,6 +201,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.clientReference ?? '',
         orderPersonalizationSummary(order.lines ?? []),
         order.cancelReason ?? '',
+        String(refundedCentsOf(order, committedCents)),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -194,7 +211,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
 export const exportOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'>,
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'committedCentsByOrder'> },
 ): Promise<Result<OrderExportFile, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:export');
   if (!tenant.ok) return tenant;
@@ -235,12 +252,15 @@ export const exportOrders = async (
     ),
   );
   const orders = [...first.orders, ...remaining.flatMap((page) => page.orders)];
+  const committedCents = deps.staffRefunds === undefined
+    ? new Map<string, number>()
+    : await deps.staffRefunds.committedCentsByOrder(tenant.value, orders.map((order) => order.id));
   const filename = `sales-${ctx.identity.tenantSlug ?? tenant.value}.${parsed.data.format}`;
 
   return ok(
     parsed.data.format === 'csv'
-      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []) }))) },
+      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders, committedCents) }
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []), refundedCents: refundedCentsOf(order, committedCents) }))) },
   );
 };
 

@@ -199,6 +199,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   StorageProviderOptions: 'Object-storage adapter callbacks and probe configuration with no persistence access.',
   StorageResponse: 'External object-storage response boundary.',
   StripePaymentProviderConfig: 'External Stripe client configuration and factory callback.',
+  StaffRefundDeps: 'Use-case refund dispatch callback.',
   SupportMessageDeps: 'Use-case email dispatch callback.',
   TestDatabase: 'Test-only ephemeral database handle with no tenant data.',
   TokenGenerator: 'Token source with no persistence access.',

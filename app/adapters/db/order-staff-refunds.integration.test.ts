@@ -1,0 +1,353 @@
+import { and, asc, eq, sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { outOfStockRefundJob, refundFailure, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
+import {
+  createStaffRefund,
+  dispatchOrderRefundJobs,
+  getOrder,
+  previewStaffRefund,
+  shipRefundedOrderAnyway,
+  type Ctx,
+} from '#core/server/index.js';
+import { createRefundProviderFake, type RefundProviderStep } from '#core/server/testing/refund-provider-fake.js';
+import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
+
+import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
+import { createRefundJobQueue } from './refund-job-queue.js';
+import { createMemberRepository, createOrderRepository } from './repositories.js';
+import {
+  emailEvents,
+  emailOutbox,
+  members,
+  orderChanges,
+  orderRefundJobs,
+  orders,
+  orderStaffRefunds,
+  products,
+  productStock,
+  stockEvents,
+  tenants,
+  user,
+} from './schema.js';
+import { createTestDatabase } from './test-database-name.js';
+
+const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+const start = '2026-11-22T10:00:00.000Z';
+const minutes = (count: number) => new Date(Date.parse(start) + count * 60_000).toISOString();
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+
+const shipping: OrderShipping = {
+  rateId: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 8, carrier: 'other', pickupPoint: null,
+  address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: null,
+};
+
+const staff = (tenantId: string, overrides: Partial<Identity> = {}): Ctx => ({
+  identity: {
+    userId: `staff-${tenantId}`, email: `owner@${tenantId}.example.com`, name: 'Owner', emailVerified: true, tenantAccess: 'staff',
+    tenantId, tenantSlug: tenantId, tenantName: tenantId, staffRole: 'owner', memberId: null, image: null, memberDisplayName: null,
+    memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false, ...overrides,
+  },
+});
+
+const insertOrder = (id: string, over: Partial<typeof orders.$inferInsert> = {}) => database.db.insert(orders).values({
+  id, tenantId: 'tenant-a', memberId: 'member-a', productId: 'book', kind: 'one_time', status: 'paid', amountCents: 4099,
+  currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: `cs_${id}`, paymentIntent: `pi_${id}` }, createdAt: start, ...over,
+});
+
+const handRefund = (amountCents: number): ProviderRefund => ({
+  refundId: 're_hand', paymentIntentId: 'pi_order-1', amountCents, status: 'succeeded', failureReason: null, orderId: null, reason: null,
+});
+
+const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
+  let now = start;
+  let sequence = 0;
+  const logs: string[] = [];
+  const provider = createRefundProviderFake({ chargeAmountCents: 4099, ...(input.steps === undefined ? {} : { steps: input.steps }) });
+  const staffRefunds = createOrderStaffRefundRepository(database.db);
+  const orderDetails = createOrderRepository(database.db);
+  const logger = { warn: (message: string) => { logs.push(message); }, error: (message: string) => { logs.push(message); } };
+  const deps = {
+    orderDetails,
+    staffRefunds,
+    payment: provider.payment,
+    ids: { nextId: () => { sequence += 1; return `refund-${String(sequence)}`; } },
+    clock: { nowIso: () => now },
+    logger,
+  };
+  const dispatchDeps = {
+    refundJobs: createRefundJobQueue(database.db),
+    orderDetails,
+    members: createMemberRepository(database.db),
+    payment: provider.payment,
+    tenants: {
+      findById: async (tenantId: string) => ({ id: tenantId, slug: 'acme', name: 'Acme', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 }),
+      findSettings: async () => null,
+    },
+    tenantAccess: { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@acme.example.com', staffRole: 'owner' as const, language: 'en' as const }] },
+    tenantDomains: createInMemoryTenantDomainRepository(),
+    clock: { nowIso: () => now },
+    logger,
+    dispatchEmail: () => undefined,
+    appBaseUrl: 'https://togethercommunity.app',
+    baseDomain: 'togethercommunity.app',
+    singleTenantMode: false,
+  };
+  const refund = (orderId: string, body: Record<string, unknown>, ctx: Ctx = staff('tenant-a')) => createStaffRefund(ctx, orderId, body, deps);
+  const dispatch = async (at: string) => {
+    now = at;
+    const result = await dispatchOrderRefundJobs(dispatchDeps);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+  const providerTotal = () => provider.created
+    .filter((created) => created.status !== 'failed' && created.status !== 'canceled')
+    .reduce((sum, created) => sum + created.amountCents, 0);
+  return { deps, provider, refund, dispatch, providerTotal, logs };
+};
+
+const refundRows = async (orderId: string) => (await createOrderStaffRefundRepository(database.db).listByOrder('tenant-a', orderId)).toReversed();
+
+const buyerEmails = () => database.db.select({ id: emailOutbox.id, to: emailOutbox.to, payload: emailOutbox.payload }).from(emailOutbox)
+  .where(eq(emailOutbox.kind, 'order-refund-issued')).orderBy(asc(emailOutbox.id));
+
+const alertPayloads = async () => (await database.db.select({ payload: emailOutbox.payload }).from(emailOutbox)
+  .where(eq(emailOutbox.kind, 'order-refund-alert')).orderBy(asc(emailOutbox.id)))
+  .map((row) => row.payload);
+
+const fulfilmentOf = async (orderId: string) =>
+  (await database.db.select({ fulfilmentStatus: orders.fulfilmentStatus }).from(orders).where(eq(orders.id, orderId)))[0]?.fulfilmentStatus;
+
+const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: { message: string } }): T => {
+  if (!result.ok) throw new Error(result.error.message);
+  return result.value;
+};
+
+beforeAll(async () => {
+  database = await createTestDatabase('together_staff_refunds_it', baseDatabaseUrl);
+  await database.db.insert(tenants).values([
+    { id: 'tenant-a', slug: 'tenant-a', name: 'Workspace A', createdAt: start },
+    { id: 'tenant-b', slug: 'tenant-b', name: 'Workspace B', createdAt: start },
+  ]);
+  await database.db.insert(user).values({ id: 'buyer', email: 'buyer@example.org', name: 'Buyer' });
+  await database.db.insert(members).values([
+    { id: 'member-a', tenantId: 'tenant-a', userId: 'buyer', email: 'buyer@example.org', displayName: 'Buyer', language: 'pl', createdAt: start },
+    { id: 'member-b', tenantId: 'tenant-b', userId: 'buyer', email: 'buyer@example.org', displayName: 'Buyer', createdAt: start },
+  ]);
+  await database.db.insert(products).values(['tenant-a', 'tenant-b'].map((tenantId) => ({
+    id: 'book', tenantId, type: 'physical' as const, description: '', slug: 'book', title: 'Book', priceCents: 4099, currency: 'PLN', published: true, createdAt: start,
+  })));
+}, 60_000);
+afterAll(async () => { await database?.close(); });
+beforeEach(async () => {
+  await database.db.delete(emailEvents);
+  await database.db.delete(emailOutbox);
+  await database.db.delete(orderStaffRefunds);
+  await database.db.delete(orderRefundJobs);
+  await database.db.delete(stockEvents);
+  await database.db.delete(productStock);
+  await database.db.delete(orderChanges);
+  await database.db.delete(orders);
+  await insertOrder('order-1', { shipping, fulfilmentStatus: 'to_pack' });
+});
+
+describe('staff refunds against a real database', () => {
+  it('answers a double submit with the same request key with one refund', async () => {
+    const h = harness();
+    const [first, second] = await Promise.all([h.refund('order-1', { requestKey: 'req-1' }), h.refund('order-1', { requestKey: 'req-1' })]);
+
+    expect([unwrap(first).created, unwrap(second).created].toSorted()).toStrictEqual([false, true]);
+    expect(unwrap(first).refund.id).toBe(unwrap(second).refund.id);
+    expect(await refundRows('order-1')).toHaveLength(1);
+    expect(h.logs.filter((line) => line.startsWith('[order-refund] staff refund requested'))).toStrictEqual([
+      `[order-refund] staff refund requested tenant=tenant-a order=order-1 refund=${unwrap(first).refund.id} actor=staff-tenant-a amount=4099 currency=PLN kind=remainder`,
+    ]);
+  });
+
+  it('lets one of two refunds requested at once with different keys win and refuses the other', async () => {
+    const h = harness();
+    const results = await Promise.all([h.refund('order-1', { requestKey: 'req-a' }), h.refund('order-1', { requestKey: 'req-b', amountCents: 1000 })]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.flatMap((result) => (result.ok ? [] : [result.error.code]))).toStrictEqual(['conflict']);
+    expect(await refundRows('order-1')).toHaveLength(1);
+  });
+
+  it('returns the committed refund for a retried request after it settled and refuses the key for another amount', async () => {
+    const h = harness();
+    const first = unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    await database.db.update(orders).set({ status: 'partially_refunded' }).where(eq(orders.id, 'order-1'));
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }))).toMatchObject({
+      created: false, refund: { id: first.refund.id, status: 'succeeded', amountCents: 1000 },
+    });
+    expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 999 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(h.provider.calls).toHaveLength(1);
+  });
+
+  it('never refunds twice when the provider response was lost, and tells the buyer once', async () => {
+    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+
+    expect(await h.dispatch(minutes(0))).toMatchObject({ outcomes: { retrying: 1 } });
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'pending', keyGeneration: 0, providerRefundId: null }]);
+    expect(await buyerEmails()).toStrictEqual([]);
+
+    expect(await h.dispatch(minutes(1))).toMatchObject({ outcomes: { submitted: 1 } });
+    expect(h.provider.calls.map((call) => call.idempotencyKey)).toStrictEqual(['staff-refund-refund-1']);
+    expect(h.provider.calls[0]?.metadata).toStrictEqual({ orderId: 'order-1', reason: 'staff', refundJobId: 'refund-1' });
+    expect(h.providerTotal()).toBe(4099);
+
+    h.provider.setRefundStatus('re_1', 'succeeded');
+    await h.dispatch(minutes(60 * 24 + 1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', providerRefundId: 're_1' }]);
+    expect(await buyerEmails()).toStrictEqual([{
+      id: 'order-refund-issued:refund-1', to: 'buyer@example.org',
+      payload: { kind: 'order-refund-issued', language: 'pl', tenantName: 'Acme', orderId: 'order-1', amountCents: 4099, currency: 'PLN', shopUrl: 'https://acme.togethercommunity.app/' },
+    }]);
+  });
+
+  it('issues partial, partial and then the full remainder, and refuses anything above what is left', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 }));
+    await h.dispatch(minutes(2));
+    expect(await h.refund('order-1', { requestKey: 'req-3', amountCents: 2600 })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 25.99 PLN' },
+    });
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-4' })).refund).toMatchObject({ kind: 'remainder', amountCents: 2599 });
+    await h.dispatch(minutes(3));
+
+    expect(h.provider.calls.map((call) => call.amountCents)).toStrictEqual([1000, 500, 2599]);
+    expect(h.providerTotal()).toBe(4099);
+    expect(await h.refund('order-1', { requestKey: 'req-5', amountCents: 1 })).toMatchObject({ ok: false, error: { code: 'conflict', message: 'Nothing is left to refund on this order' } });
+    expect((await buyerEmails()).map((email) => email.id)).toStrictEqual(['order-refund-issued:refund-1', 'order-refund-issued:refund-2', 'order-refund-issued:refund-4']);
+    const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    expect(detail.refundTotals).toStrictEqual({ paidCents: 4099, refundedCents: 4099, remainingCents: 0, currency: 'PLN' });
+    expect(detail.staffRefunds?.map((refund) => [refund.amountCents, refund.status])).toStrictEqual([[2599, 'succeeded'], [500, 'succeeded'], [1000, 'succeeded']]);
+  });
+
+  it('refunds only what a dashboard refund left of a full refund and names that amount to the buyer', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    h.provider.refundByHand(handRefund(1000));
+    await h.dispatch(minutes(1));
+
+    expect(h.provider.calls.map((call) => call.amountCents)).toStrictEqual([3099]);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', amountCents: 4099 }]);
+    expect((await buyerEmails())[0]?.payload).toMatchObject({ amountCents: 3099 });
+  });
+
+  it('lets the provider refuse a partial refund above what a dashboard refund left on the charge, with a staff alert and no buyer e-mail', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3000 }));
+    h.provider.refundByHand(handRefund(2000));
+    await h.dispatch(minutes(1));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', lastError: 'Refund amount is greater than the unrefunded amount on the charge' }]);
+    expect(h.provider.created).toStrictEqual([]);
+    expect(await buyerEmails()).toStrictEqual([]);
+    expect(await alertPayloads()).toMatchObject([{ alert: 'failed', error: 'Refund amount is greater than the unrefunded amount on the charge This refund was requested by staff.' }]);
+  });
+
+  it('waits on a missing refund permission, refuses a second refund meanwhile and succeeds once the permission is granted', async () => {
+    const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
+    const h = harness({ steps: [{ outcome: 'error', error: permissionMissing }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'blocked_permission', nextAttemptAt: minutes(61) }]);
+    expect(await alertPayloads()).toMatchObject([{ alert: 'blocked_permission', orderId: 'order-1', amountCents: 1000 }]);
+    expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await buyerEmails()).toStrictEqual([]);
+
+    await h.dispatch(minutes(61));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', permissionBlockedAt: null, keyGeneration: 1 }]);
+    expect(h.providerTotal()).toBe(1000);
+    expect(await buyerEmails()).toHaveLength(1);
+  });
+
+  it('returns tracked goods to stock, takes the order off the packing list and puts it back with ship anyway', async () => {
+    const h = harness();
+    await database.db.insert(productStock).values({ tenantId: 'tenant-a', productId: 'book', onHand: 3, reserved: 0, updatedAt: start });
+    await database.db.insert(stockEvents).values({ tenantId: 'tenant-a', productId: 'book', type: 'committed', quantity: -2, reference: { orderId: 'order-1', checkoutSnapshotId: 'snap-1' }, occurredAt: start });
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
+      refundable: true, paidCents: 4099, remainderCents: 4099, remainderSource: 'provider', returnableStock: [{ productId: 'book', quantity: 2 }],
+      onPackingList: true, hasShipment: false, fullRefundOptions: { restockDefault: true, removeFromPackingListDefault: true },
+    });
+
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    expect((await database.db.select().from(productStock).where(eq(productStock.productId, 'book')))[0]?.onHand).toBe(5);
+    expect(await database.db.select({ quantity: stockEvents.quantity, reference: stockEvents.reference, actorUserId: stockEvents.actorUserId }).from(stockEvents).where(eq(stockEvents.type, 'returned')))
+      .toStrictEqual([{ quantity: 2, reference: { orderId: 'order-1', reason: 'staff_refund' }, actorUserId: 'staff-tenant-a' }]);
+    expect(await fulfilmentOf('order-1')).toBeNull();
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps)).returnableStock).toStrictEqual([]);
+
+    await h.dispatch(minutes(1));
+    await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
+    expect(await shipRefundedOrderAnyway(staff('tenant-b'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: true, value: { fulfilmentStatus: 'to_pack', status: 'refunded' } });
+    expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
+  it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {
+    const h = harness();
+    expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000 }));
+    expect(await fulfilmentOf('order-1')).toBe('to_pack');
+  });
+
+  it('claims a sold-out refund job before a staff refund due at the same instant', async () => {
+    const h = harness();
+    await insertOrder('order-sold-out', { cancelReason: 'out_of_stock' });
+    await database.db.insert(orderRefundJobs).values(outOfStockRefundJob(
+      { id: 'order-sold-out', tenantId: 'tenant-a', amountCents: 4099, currency: 'PLN', providerObjectIds: { paymentIntent: 'pi_order-sold-out' } },
+      { id: 'zz-job', now: start },
+    ));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    const queue = createRefundJobQueue(database.db);
+
+    expect(await queue.countDue({ now: start })).toBe(2);
+    const first = await queue.claimDue({ now: start, leaseMs: 600_000 });
+    const second = await queue.claimDue({ now: start, leaseMs: 600_000 });
+    expect([first?.job.id, second?.job.id]).toStrictEqual(['zz-job', 'refund-1']);
+    expect(second?.lease).toStrictEqual({ status: 'running', lockedAt: start, source: 'staff' });
+    expect(await queue.claimDue({ now: start, leaseMs: 600_000 })).toBeNull();
+  });
+
+  it('refuses another workspace, an admin without a verified e-mail, a member and a machine key', async () => {
+    const h = harness();
+    expect(await h.refund('order-1', { requestKey: 'req-1' }, staff('tenant-b'))).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await h.refund('order-1', { requestKey: 'req-1' }, staff('tenant-a', { staffRole: 'admin', emailVerified: false }))).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await h.refund('order-1', { requestKey: 'req-1' }, staff('tenant-a', { staffRole: null, memberId: 'member-a' }))).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await h.refund('order-1', { requestKey: 'req-1' }, { ...staff('tenant-a'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' } }))
+      .toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await refundRows('order-1')).toStrictEqual([]);
+  });
+
+  it('makes a waiting staff refund due at once when the charge is refunded and logs its changes on the order feed', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'pending', nextAttemptAt: minutes(2) }]);
+
+    expect(await h.deps.staffRefunds.noteChargeRefunded('tenant-b', 'order-1', minutes(1))).toStrictEqual([]);
+    expect(await h.deps.staffRefunds.noteChargeRefunded('tenant-a', 'order-1', minutes(1))).toMatchObject([{ status: 'pending', nextAttemptAt: minutes(1) }]);
+    const [changes] = await database.db.select({ count: sql<number>`count(*)::int` }).from(orderChanges)
+      .where(and(eq(orderChanges.tenantId, 'tenant-a'), eq(orderChanges.orderId, 'order-1')));
+    expect(changes?.count).toBeGreaterThanOrEqual(3);
+  });
+
+  it('shows the most recent unsettled staff refund on the orders list and adds the refunded amount to the export', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    const listed = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
+    expect(listed.orders.map((order) => [order.id, order.refundJobStatus])).toStrictEqual([['order-1', 'pending']]);
+    await h.dispatch(minutes(1));
+    const settled = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
+    expect(settled.orders.map((order) => [order.id, order.refundJobStatus])).toStrictEqual([['order-1', undefined]]);
+    expect(await h.deps.staffRefunds.committedCentsByOrder('tenant-a', ['order-1', 'order-x'])).toStrictEqual(new Map([['order-1', 1000]]));
+  });
+});

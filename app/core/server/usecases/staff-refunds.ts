@@ -1,0 +1,248 @@
+import {
+  appError,
+  committedProviderRefundCents,
+  createStaffRefundInputSchema,
+  err,
+  forbidden,
+  newOrderStaffRefund,
+  notFound,
+  ok,
+  orderRefundTotals,
+  orderStaffRefundView,
+  refundableRemainderCents,
+  resolveStaffRefundAmount,
+  resolveStaffRefundChoices,
+  shipAnywayBlocker,
+  staffRefundFulfilmentOptions,
+  staffRefundMatchesRequest,
+  staffRefundOrderBlocker,
+  validation,
+  type AppError,
+  type Order,
+  type OrderRefundTotals,
+  type OrderStaffRefundView,
+  type Result,
+  type StaffRefundFulfilmentOptions,
+  type StripeMode,
+} from '#core/domain/index.js';
+
+import { authorizeTenant } from '../authorize.js';
+import type { Ctx } from '../context.js';
+import { safeLogMessage } from '../log-safety.js';
+import type {
+  Clock,
+  IdGenerator,
+  InvoiceRepository,
+  OrderDetailRepository,
+  OrderStaffRefundRepository,
+  PaymentProvider,
+  StaffRefundCreationState,
+  StaffRefundDecision,
+} from '../ports.js';
+
+const authorizeRefund = (ctx: Ctx): Result<string, AppError> => {
+  if (ctx.machineActor !== undefined) return err(forbidden('order:refund is not permitted for a machine key'));
+  return authorizeTenant(ctx, 'order:refund');
+};
+
+type ProviderCommitted = { cents: number; source: 'provider' } | { cents: null; source: 'platform' };
+
+const providerCommittedCents = async (
+  order: Pick<Order, 'tenantId' | 'mode' | 'provider' | 'providerObjectIds'>,
+  payment: Pick<PaymentProvider, 'listRefunds'>,
+): Promise<ProviderCommitted> => {
+  const paymentIntentId = order.providerObjectIds['paymentIntent'];
+  if (order.provider !== 'stripe' || paymentIntentId === undefined || payment.listRefunds === undefined) return { cents: null, source: 'platform' };
+  const listed = await payment.listRefunds({ mode: order.mode, tenantId: order.tenantId, paymentIntentId });
+  return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider' } : { cents: null, source: 'platform' };
+};
+
+export interface StaffRefundPreview {
+  orderId: string;
+  refundable: boolean;
+  blockedReason: string | null;
+  paidCents: number;
+  refundedCents: number;
+  remainderCents: number;
+  currency: string;
+  mode: StripeMode;
+  remainderSource: 'provider' | 'platform';
+  returnableStock: Array<{ productId: string; quantity: number }>;
+  onPackingList: boolean;
+  hasShipment: boolean;
+  hasInvoice: boolean;
+  fullRefundOptions: StaffRefundFulfilmentOptions;
+  waitingRefundId: string | null;
+}
+
+export interface StaffRefundDeps {
+  orderDetails: OrderDetailRepository;
+  staffRefunds: OrderStaffRefundRepository;
+  payment: Pick<PaymentProvider, 'listRefunds'>;
+  invoices?: Pick<InvoiceRepository, 'findCurrentByOrder'>;
+  ids: IdGenerator;
+  clock: Clock;
+  logger: { warn(message: string): void };
+  dispatchOrderRefunds?(): void;
+}
+
+export const previewStaffRefund = async (
+  ctx: Ctx,
+  orderId: string,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices'>,
+): Promise<Result<StaffRefundPreview, AppError>> => {
+  const tenant = authorizeRefund(ctx);
+  if (!tenant.ok) return tenant;
+  const order = await deps.orderDetails.findById(tenant.value, orderId);
+  if (order === null) return err(notFound('Order was not found'));
+  const [provider, platformCommittedCents, hasLabel, returnableStock, invoice, refunds] = await Promise.all([
+    providerCommittedCents(order, deps.payment),
+    deps.staffRefunds.platformCommittedCents(tenant.value, order.id),
+    deps.staffRefunds.hasLabel(tenant.value, order.id),
+    deps.staffRefunds.returnableStock(tenant.value, order.id),
+    deps.invoices?.findCurrentByOrder(tenant.value, order.id) ?? null,
+    deps.staffRefunds.listByOrder(tenant.value, order.id),
+  ]);
+  const remainderCents = order.status === 'refunded'
+    ? 0
+    : refundableRemainderCents({ paidCents: order.amountCents, providerCommittedCents: provider.cents, platformCommittedCents });
+  const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
+  const blocker = staffRefundOrderBlocker(order)
+    ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
+    ?? (remainderCents <= 0 ? appError('conflict', 'Nothing is left to refund on this order') : null);
+  return ok({
+    orderId: order.id,
+    refundable: blocker === null,
+    blockedReason: blocker?.message ?? null,
+    paidCents: order.amountCents,
+    refundedCents: order.amountCents - remainderCents,
+    remainderCents,
+    currency: order.currency,
+    mode: order.mode,
+    remainderSource: provider.source,
+    returnableStock,
+    onPackingList: order.fulfilmentStatus === 'to_pack',
+    hasShipment: order.shipment != null || hasLabel,
+    hasInvoice: invoice !== null,
+    fullRefundOptions: staffRefundFulfilmentOptions(order, { kind: 'remainder', hasLabel }),
+    waitingRefundId: waiting?.id ?? null,
+  });
+};
+
+export const decideStaffRefund = (
+  state: StaffRefundCreationState,
+  request: {
+    tenantId: string;
+    refundId: string;
+    requestKey: string;
+    amountCents?: number | undefined;
+    reason?: string | undefined;
+    restock?: boolean | undefined;
+    removeFromPackingList?: boolean | undefined;
+    providerCommittedCents: number | null;
+    actor: { userId: string; email: string };
+    now: string;
+  },
+): Result<StaffRefundDecision, AppError> => {
+  if (state.sameRequest !== null) {
+    return staffRefundMatchesRequest(state.sameRequest, { orderId: state.order.id, ...request })
+      ? ok({ kind: 'existing', refund: state.sameRequest })
+      : err(appError('conflict', 'This request key was already used for a different refund'));
+  }
+  const blocker = staffRefundOrderBlocker(state.order);
+  if (blocker !== null) return err(blocker);
+  if (state.waiting !== null) return err(appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed'));
+  const remainderCents = refundableRemainderCents({
+    paidCents: state.order.amountCents,
+    providerCommittedCents: request.providerCommittedCents,
+    platformCommittedCents: state.platformCommittedCents,
+  });
+  const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, remainderCents, currency: state.order.currency });
+  if (!amount.ok) return amount;
+  const choices = resolveStaffRefundChoices(
+    staffRefundFulfilmentOptions(state.order, { kind: amount.value.kind, hasLabel: state.hasLabel }),
+    request,
+  );
+  if (!choices.ok) return choices;
+  const paymentIntentId = state.order.providerObjectIds['paymentIntent'];
+  if (paymentIntentId === undefined) return err(validation('The order has no payment to refund'));
+  return ok({
+    kind: 'create',
+    refund: newOrderStaffRefund({
+      id: request.refundId,
+      tenantId: request.tenantId,
+      orderId: state.order.id,
+      paymentIntentId,
+      currency: state.order.currency,
+      kind: amount.value.kind,
+      amountCents: amount.value.amountCents,
+      requestKey: request.requestKey,
+      requestedByUserId: request.actor.userId,
+      requestedByEmail: request.actor.email,
+      note: request.reason ?? null,
+      restocked: choices.value.restock,
+      removedFromPackingList: choices.value.removeFromPackingList,
+      now: request.now,
+    }),
+  });
+};
+
+export const createStaffRefund = async (
+  ctx: Ctx,
+  orderId: string,
+  input: unknown,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'ids' | 'clock' | 'logger' | 'dispatchOrderRefunds'>,
+): Promise<Result<{ refund: OrderStaffRefundView; created: boolean }, AppError>> => {
+  const tenant = authorizeRefund(ctx);
+  if (!tenant.ok) return tenant;
+  const parsed = createStaffRefundInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid refund request', parsed.error.flatten()));
+  const order = await deps.orderDetails.findById(tenant.value, orderId);
+  if (order === null) return err(notFound('Order was not found'));
+  const provider = await providerCommittedCents(order, deps.payment);
+  const now = deps.clock.nowIso();
+  const created = await deps.staffRefunds.create(tenant.value, {
+    orderId: order.id,
+    requestKey: parsed.data.requestKey,
+    actorUserId: ctx.identity.userId,
+    now,
+    decide: (state) => decideStaffRefund(state, {
+      ...parsed.data,
+      tenantId: tenant.value,
+      refundId: deps.ids.nextId(),
+      providerCommittedCents: provider.cents,
+      actor: { userId: ctx.identity.userId, email: ctx.identity.email },
+      now,
+    }),
+  });
+  if (!created.ok) return created;
+  const { refund } = created.value;
+  if (created.value.created) {
+    deps.logger.warn(safeLogMessage(`[order-refund] staff refund requested tenant=${tenant.value} order=${order.id} refund=${refund.id} actor=${ctx.identity.userId} amount=${String(refund.amountCents)} currency=${refund.currency} kind=${refund.kind}`));
+    deps.dispatchOrderRefunds?.();
+  }
+  return ok({ refund: orderStaffRefundView(refund), created: created.value.created });
+};
+
+export const shipRefundedOrderAnyway = async (
+  ctx: Ctx,
+  orderId: string,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds'>,
+): Promise<Result<Order, AppError>> => {
+  const tenant = authorizeRefund(ctx);
+  if (!tenant.ok) return tenant;
+  const order = await deps.orderDetails.findById(tenant.value, orderId);
+  if (order === null) return err(notFound('Order was not found'));
+  const blocker = shipAnywayBlocker(order);
+  if (blocker !== null) return err(blocker);
+  return deps.staffRefunds.shipAnyway(tenant.value, order.id);
+};
+
+export const orderStaffRefundSummary = async (
+  tenantId: string,
+  order: Pick<Order, 'id' | 'status' | 'amountCents' | 'currency'>,
+  staffRefunds: Pick<OrderStaffRefundRepository, 'listByOrder'>,
+): Promise<{ staffRefunds: OrderStaffRefundView[]; refundTotals: OrderRefundTotals }> => {
+  const refunds = await staffRefunds.listByOrder(tenantId, order.id);
+  return { staffRefunds: refunds.map(orderStaffRefundView), refundTotals: orderRefundTotals(order, refunds) };
+};

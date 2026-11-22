@@ -202,10 +202,10 @@ describe('exportOrders — CSV', () => {
     const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
     if (!csv.ok) throw new Error('export failed');
     const [header, first, second, third] = csv.value.content.split('\n');
-    expect(header?.split(',').at(-2)).toBe('personalization');
-    expect(first).toMatch(/,"Printed book: For Alex; Mug: -Sam",""$/u);
-    expect(second).toMatch(/,"",""$/u);
-    expect(third).toMatch(/,"'@Printed book: Hi",""$/u);
+    expect(header?.split(',').at(-3)).toBe('personalization');
+    expect(first).toMatch(/,"Printed book: For Alex; Mug: -Sam","","0"$/u);
+    expect(second).toMatch(/,"","","0"$/u);
+    expect(third).toMatch(/,"'@Printed book: Hi","","0"$/u);
     const json = await exportOrders({ identity: identity('owner') }, { format: 'json' }, h.deps);
     if (!json.ok) throw new Error('export failed');
     expect(JSON.parse(json.value.content)).toMatchObject([
@@ -225,24 +225,37 @@ describe('exportOrders — CSV', () => {
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
     expect(lines[0]).toBe(
-      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status,client_reference,personalization,cancel_reason',
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country,utm_source,utm_medium,utm_campaign,utm_content,utm_term,fbclid,gclid,shipping_rate,shipping_point,shipping_name,shipping_phone,shipping_address,shipping_postal_code,shipping_city,shipping_country,fulfilment_status,client_reference,personalization,cancel_reason,refunded_amount',
     );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');
     expect(lines[2]).toContain('"Course, Deluxe"');
   });
 
-  it('appends the cancel reason as the last column, empty for an order that was not cancelled, and keeps the status', async () => {
+  it('appends the cancel reason before the refunded amount, empty for an order that was not cancelled, and keeps the status', async () => {
     const h = harness([orderItem('cancelled', { cancelReason: 'out_of_stock' }), orderItem('kept')]);
     const result = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
     if (!result.ok) throw new Error(result.error.message);
     const [header, cancelled, kept] = result.value.content.split('\n');
-    expect(header?.split(',').at(-1)).toBe('cancel_reason');
+    expect(header?.split(',').at(-2)).toBe('cancel_reason');
     expect(header?.split(',').indexOf('status')).toBe(7);
-    expect(cancelled).toMatch(/,"out_of_stock"$/u);
+    expect(cancelled).toMatch(/,"out_of_stock","0"$/u);
     expect(cancelled?.split(',')[7]).toBe('"paid"');
     expect(kept?.split(',')).toHaveLength(header?.split(',').length ?? 0);
-    expect(kept?.split(',').at(-1)).toBe('""');
+    expect(kept?.split(',').at(-2)).toBe('""');
+  });
+
+  it('exports the refunded amount the platform recorded, or the whole amount of a refunded order, as the last column and a JSON field', async () => {
+    const h = harness([orderItem('partly'), orderItem('refunded', { status: 'refunded' }), orderItem('untouched')]);
+    const staffRefunds = { committedCentsByOrder: async () => new Map([['partly', 1200], ['refunded', 300]]) };
+    const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, { ...h.deps, staffRefunds });
+    if (!csv.ok) throw new Error(csv.error.message);
+    const rows = csv.value.content.split('\n');
+    expect(rows[0]?.split(',').at(-1)).toBe('refunded_amount');
+    expect(rows.slice(1).map((row) => row.split(',').at(-1))).toStrictEqual(['"1200"', `"${String(orderItem('refunded').amountCents)}"`, '"0"']);
+    const json = await exportOrders({ identity: identity('owner') }, { format: 'json' }, { ...h.deps, staffRefunds });
+    if (!json.ok) throw new Error(json.error.message);
+    expect(JSON.parse(json.value.content)).toMatchObject([{ refundedCents: 1200 }, { refundedCents: orderItem('refunded').amountCents }, { refundedCents: 0 }]);
   });
 
   it('exports the immutable billing snapshot in CSV and JSON', async () => {
@@ -363,7 +376,7 @@ it('exports all seven attribution columns in CSV and JSON with empty absent valu
   const h = harness([orderItem('attributed', { attribution }), orderItem('unattributed')]);
   const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
   expect(csv.ok && csv.value.content).toContain('"meta","paid","launch","\'@creative","term","meta-click","google-click"');
-  expect(csv.ok && csv.value.content.split('\n')[2]).toMatch(/,"","","","","","",""$/);
+  expect(csv.ok && csv.value.content.split('\n')[2]).toMatch(/,"","","","","","","","0"$/);
   const json = await exportOrders({ identity: identity('owner') }, { format: 'json', source: 'meta' }, h.deps);
   expect(h.queries.at(-1)?.source).toBe('meta');
   if (!json.ok) throw new Error('Expected JSON export');

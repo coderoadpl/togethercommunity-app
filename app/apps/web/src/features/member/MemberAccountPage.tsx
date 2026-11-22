@@ -671,19 +671,8 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
-          <AccountSupportForm initiallyOpen={search['support'] === 'open'} success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
-        ) : null}
-
-        {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (
-          <Button
-            component="a"
-            href={tenantSettings.data.settings.supportUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t.support.externalLink}
-          </Button>
+        {selectedTab === 'profile' && tenantSettings.data !== undefined ? (
+          <AccountSupportForm configured={tenantSettings.data.settings.supportConfigured} externalUrl={tenantSettings.data.settings.supportUrl} initiallyOpen={search['support'] === 'open'} success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
         ) : null}
 
         {selectedTab === 'profile' ? <AccountErasureCard

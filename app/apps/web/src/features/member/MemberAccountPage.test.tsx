@@ -872,7 +872,29 @@ describe('MemberAccountPage', () => {
     const link = await screen.findByRole('link', { name: en.support.externalLink });
     expect(link).toHaveAttribute('href', 'https://example.test/help');
     expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.getByTestId('account-support')).toContainElement(link);
     expect(screen.queryByTestId('account-support-open')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-support-not-configured')).not.toBeInTheDocument();
+  });
+
+  it('keeps the support form and the external link in one support card', async () => {
+    server.use(stubMe(), stubSettings(null, true, false, false, 'https://example.test/help'), stubBillingOrders());
+    await renderAccount();
+
+    const card = await screen.findByTestId('account-support');
+    expect(within(card).getByTestId('account-support-open')).toBeVisible();
+    expect(within(card).getByRole('link', { name: en.support.externalLink })).toHaveAttribute('href', 'https://example.test/help');
+    expect(screen.getAllByTestId('account-support')).toHaveLength(1);
+  });
+
+  it('states that support is not configured instead of leaving the profile without a support card', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+
+    const card = await screen.findByTestId('account-support');
+    expect(within(card).getByTestId('account-support-not-configured')).toHaveTextContent(en.support.notConfigured);
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('opens the support form straight away when the link from an e-mail asks for it', async () => {

@@ -2348,7 +2348,6 @@ export const pl: Messages = {
     offersSection: 'Oferta',
     offerBuyCta: 'Kup teraz',
     guestHeading: 'Dla gości',
-    joinOfferCta: 'Dołącz do społeczności — zobacz ofertę',
     readOnlyBanner:
       'Przeglądasz jako gość — możesz czytać. Pisanie i reakcje są dla uczestników społeczności.',
     emptyFeed: 'Twórca jeszcze nic tu nie opublikował.',

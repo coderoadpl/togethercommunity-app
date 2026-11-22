@@ -2327,7 +2327,6 @@ export const en: Messages = {
     offersSection: 'Offer',
     offerBuyCta: 'Buy now',
     guestHeading: 'For visitors',
-    joinOfferCta: 'Join the community — see the offer',
     readOnlyBanner:
       'You are browsing as a visitor: reading is open, posting and reactions are for community members.',
     emptyFeed: 'The creator has not published anything here yet.',

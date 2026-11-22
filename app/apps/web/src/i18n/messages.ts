@@ -2068,7 +2068,6 @@ export interface Messages {
     offersSection: string;
     offerBuyCta: string;
     guestHeading: string;
-    joinOfferCta: string;
     readOnlyBanner: string;
     emptyFeed: string;
     lockedCourseHint: string;

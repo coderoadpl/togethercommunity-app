@@ -1,4 +1,4 @@
-import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -12,7 +12,8 @@ import { ThreadHeadline } from '../../theme.js';
 import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicThreadView } from './PublicFeed.js';
-import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
+import { anonHomePath } from './shell/member-nav.js';
+import { useVisitorJoin, VisitorContactLinks, VisitorJoinButton } from './visitor-actions.js';
 
 const isNotFound = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'not_found';
@@ -32,6 +33,7 @@ export const PublicSpaceThreadPage = ({
   const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
   const thread = useQuery(actions.publicSpaceThread({ spaceId, postId }));
+  const join = useVisitorJoin(spaceId);
 
   if (navigation.isPending) {
     return (
@@ -130,14 +132,11 @@ export const PublicSpaceThreadPage = ({
           <PublicThreadView root={root} />
         )}
         <Box>
-          <Button
-            component={Link}
-            {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
-            variant="contained"
-            data-testid="anon-join-cta"
-          >
-            {t.anon.joinOfferCta}
-          </Button>
+          {join.target.kind === 'none' ? (
+            <VisitorContactLinks supportUrl={join.supportUrl} signedIn={join.signedIn} />
+          ) : (
+            <VisitorJoinButton target={join.target} />
+          )}
         </Box>
       </Stack>
     </MemberSurface>

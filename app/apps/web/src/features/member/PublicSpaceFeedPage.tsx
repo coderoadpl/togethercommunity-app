@@ -1,4 +1,4 @@
-import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -12,9 +12,9 @@ import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
 import { PublicFeedList } from './PublicFeed.js';
-import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
+import { anonHomePath } from './shell/member-nav.js';
 import { LockClosed } from './tree-icons.js';
-import { usePublicOfferPrice } from './visitor-actions.js';
+import { usePublicOfferPrice, useVisitorJoin, VisitorContactLinks, VisitorJoinButton } from './visitor-actions.js';
 
 type LockedSpace = PublicNavigation['lockedSpaces'][number];
 
@@ -69,6 +69,7 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
   const feed = useQuery(actions.publicSpaceFeed({ spaceId }));
+  const join = useVisitorJoin(spaceId);
 
   if (navigation.isPending) {
     return (
@@ -133,15 +134,11 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const notice = (
     <QuietNotice variant="outlined" data-testid="anon-guest-notice">
       <span data-testid="anon-read-only">{t.anon.readOnlyBanner}</span>
-      <Button
-        component={Link}
-        {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
-        variant="contained"
-        data-testid="anon-join-cta"
-        sx={{ minHeight: '44px' }}
-      >
-        {t.anon.joinOfferCta}
-      </Button>
+      {join.target.kind === 'none' ? (
+        <VisitorContactLinks supportUrl={join.supportUrl} signedIn={join.signedIn} />
+      ) : (
+        <VisitorJoinButton target={join.target} sx={{ minHeight: '44px' }} />
+      )}
     </QuietNotice>
   );
 

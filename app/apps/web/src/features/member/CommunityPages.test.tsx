@@ -28,6 +28,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { MemberShell } from './shell/MemberShell.js';
+import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
@@ -995,7 +996,7 @@ describe('community pages', () => {
     expect(screen.getByTestId('anon-read-only')).toHaveTextContent(en.anon.readOnlyBanner);
     const cta = screen.getByTestId('anon-join-cta');
     expect(cta).toHaveAttribute('href', '/#offer');
-    expect(cta).toHaveTextContent(en.anon.joinOfferCta);
+    expect(cta).toHaveTextContent(en.anon.salesCta);
     expect(cta).toHaveStyle({ minHeight: '44px' });
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
@@ -1030,7 +1031,7 @@ describe('community pages', () => {
     expect(description.nextElementSibling).toContainElement(screen.getByTestId('public-feed-post-p1'));
   });
 
-  it('sends a guest to the plain home page when the space is not the visitors start space', async () => {
+  it('sends a guest to the offer section from a space that is not the visitors start space', async () => {
     server.use(
       anonMe(),
       okPublicNavigation(publicNavigation({ defaultHomeSpaceId: null })),
@@ -1039,7 +1040,95 @@ describe('community pages', () => {
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('anon-join-cta')).toHaveAttribute('href', '/');
+    const cta = await screen.findByTestId('anon-join-cta');
+    expect(cta).toHaveAttribute('href', '/#offer');
+    expect(cta).toHaveTextContent(en.anon.salesCta);
+    expect(screen.queryByRole('link', { name: /register/iu })).not.toBeInTheDocument();
+  });
+
+  it('sends a guest straight to checkout from a product space sold by exactly one product', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [{
+          id: 's1', slug: 's1', name: 'General', description: null, position: 0,
+          visibility: 'product', publicReadOnly: true, products: [{ id: 'p7', title: 'Club pass' }],
+        }],
+      })),
+      okPublicFeed('s1', []),
+      okOffer({ products: [offerProduct('p7', 'Club pass')] }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const cta = await screen.findByTestId('anon-join-cta');
+    expect(cta).toHaveAttribute('href', '/checkout/p7');
+    expect(cta).toHaveTextContent(en.anon.unlockCta);
+  });
+
+  it('sends a guest to the offer section from a product space sold by several products', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [{
+          id: 's1', slug: 's1', name: 'General', description: null, position: 0,
+          visibility: 'product', publicReadOnly: true,
+          products: [{ id: 'p7', title: 'Club pass' }, { id: 'p8', title: 'Annual pass' }],
+        }],
+      })),
+      okPublicFeed('s1', []),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
+  });
+
+  it('offers sign-in with the way back and the creator contact when the workspace sells nothing', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okPublicFeed('s1', []),
+      okOffer({ supportUrl: 'https://studio.example.org/contact' }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const notice = await screen.findByTestId('anon-guest-notice');
+    expect(await within(notice).findByTestId('anon-visitor-sign-in')).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fcommunity%2Fs1',
+    );
+    expect(within(notice).getByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'https://studio.example.org/contact',
+    );
+    expect(notice).toHaveTextContent(en.anon.readOnlyBanner);
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /register/iu })).not.toBeInTheDocument();
+  });
+
+  it('keeps only the creator contact for a signed-in visitor when the workspace sells nothing', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u9', email: 'visitor@acme.example', name: 'Visitor', emailVerified: true,
+            tenantAccess: 'none', tenant: null, impersonation: null,
+          },
+        })),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okPublicFeed('s1', []),
+      okOffer({ supportUrl: 'mailto:hello@studio.example.org' }),
+    );
+
+    await renderPage(() => <PublicSpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const contact = await screen.findByTestId('anon-visitor-contact');
+    expect(contact).toHaveAttribute('href', 'mailto:hello@studio.example.org');
+    expect(contact).not.toHaveAttribute('target');
+    await waitFor(() => expect(screen.queryByTestId('anon-visitor-sign-in')).not.toBeInTheDocument());
   });
 
   it('renders the space description under the public heading', async () => {

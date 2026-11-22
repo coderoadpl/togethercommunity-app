@@ -310,6 +310,24 @@ describe('stock repository on Postgres', () => {
     expect(await level(productId)).toMatchObject({ onHand: 1, reserved: 0 });
   });
 
+  it('lets a payment that lands after the expiry sweep pass the stock check and commit late exactly once', async () => {
+    const productId = await productFor('workspace', 49);
+    const repo = createStockRepository(database.db);
+    await repo.reserve('workspace', { checkoutSnapshotId: 'swept-late', items: [{ productId, quantity: 1 }], expiresAt: now, now });
+    expect(await repo.releaseExpired(later, 100, 'workspace')).toBeGreaterThanOrEqual(1);
+    expect(await reservationStatuses(productId)).toEqual(['released']);
+    expect(await level(productId)).toMatchObject({ onHand: 49, reserved: 0 });
+    expect(await repo.lockForCommit('workspace', { checkoutSnapshotId: 'swept-late', items: [{ productId, quantity: 1 }] }))
+      .toEqual({ trackedProductIds: [productId], shortProductIds: [] });
+    const [effect] = await repo.commit('workspace', { checkoutSnapshotId: 'swept-late', orderId: 'order-swept-late', items: [{ productId, quantity: 1 }], now: later });
+    expect(effect).toMatchObject({ outcome: 'committed_late', onHandBefore: 49, onHandAfter: 48, reservedAfter: 0, oversold: false });
+    expect(await repo.commit('workspace', { checkoutSnapshotId: 'swept-late', orderId: 'order-swept-late', items: [{ productId, quantity: 1 }], now: later }))
+      .toEqual([expect.objectContaining({ outcome: 'unchanged', onHandAfter: 48, reservedAfter: 0 })]);
+    expect(await level(productId)).toMatchObject({ onHand: 48, reserved: 0 });
+    expect(await reservationStatuses(productId)).toEqual(['committed']);
+    expect(await eventTypes(productId)).toEqual(['tracking_enabled', 'reserved', 'released', 'committed_late']);
+  });
+
   it('sweeps only expired active reservations in expiry order within the batch limit', async () => {
     const productId = await productFor('workspace', 5);
     const repo = createStockRepository(database.db);

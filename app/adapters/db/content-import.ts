@@ -6,6 +6,7 @@ import {
   courseModuleSchema,
   courseSchema,
   productSchema,
+  storedProductCompliance,
 } from '#core/domain/index.js';
 import type { ImportContentMutation, ImportContentRepository } from '#core/server/index.js';
 
@@ -54,6 +55,7 @@ const createResource = async (
   const product = productSchema.parse(mutation.resource);
   await executor.insert(products).values({
     ...product,
+    compliance: storedProductCompliance(product.compliance),
     tenantId,
     checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
   });
@@ -113,7 +115,7 @@ const updateResource = async (
     vatRate: product.vatRate ?? null,
     vatExemptionBasis: product.vatExemptionBasis ?? null,
     currency: product.currency,
-    compliance: product.compliance ?? null,
+    compliance: storedProductCompliance(product.compliance),
     variantGroup: product.variantGroup ?? null,
     variantLabel: product.variantLabel ?? null,
     salesChannel: product.salesChannel,

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
-import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { appBarClasses, Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
@@ -45,19 +45,36 @@ const useGuestOffer = (course: CourseStructureWithAccess): GuestOffer => {
   return { purchasable: Boolean(product) || Boolean(salesUrl), price, cta, contact };
 };
 
-const useScrolledPast = (node: HTMLElement | null): boolean => {
+const stickyHeaderBottom = (): number => {
+  const header = document.querySelector(`.${appBarClasses.positionSticky}`);
+  return header === null ? 0 : Math.max(0, header.getBoundingClientRect().bottom);
+};
+
+const useScrolledPastHeader = (node: HTMLElement | null): boolean => {
   const [scrolledPast, setScrolledPast] = useState(false);
   useEffect(() => {
-    if (node === null || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        setScrolledPast(!entry.isIntersecting && entry.boundingClientRect.top < 0);
-      }
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
+    if (node === null) return;
+    let frame: number | null = null;
+    const measure = () => {
+      frame = null;
+      const rect = node.getBoundingClientRect();
+      const laidOut = rect.width > 0 || rect.height > 0;
+      setScrolledPast(laidOut && rect.bottom <= stickyHeaderBottom());
+    };
+    const schedule = () => {
+      if (frame === null) frame = window.requestAnimationFrame(measure);
+    };
+    const options = { capture: true, passive: true } as const;
+    schedule();
+    window.addEventListener('scroll', schedule, options);
+    window.addEventListener('resize', schedule, options);
+    return () => {
+      window.removeEventListener('scroll', schedule, options);
+      window.removeEventListener('resize', schedule, options);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, [node]);
-  return scrolledPast;
+  return node !== null && scrolledPast;
 };
 
 const useReservedScrollPadding = (node: HTMLElement | null, active: boolean) => {
@@ -106,7 +123,7 @@ export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess
   const { price, cta, contact } = useGuestOffer(course);
   const [cardCta, setCardCta] = useState<HTMLElement | null>(null);
   const [bar, setBar] = useState<HTMLElement | null>(null);
-  const barShown = useScrolledPast(cardCta);
+  const barShown = useScrolledPastHeader(cardCta);
   useReservedScrollPadding(bar, barShown);
   const cardButton = cta('public-course-unlock-cta');
   const barButton = cta('public-course-unlock-cta-mobile');

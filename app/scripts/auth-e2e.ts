@@ -93,6 +93,8 @@ const devEmailSchema = z.object({
   data: z.object({ email: z.object({ text: z.string() }).nullable() }),
 });
 
+const searchKeys = (url: URL): string => [...url.searchParams.keys()].sort().join(',');
+
 const runPasswordResetPath = async (
   transport: AuthE2eTransport,
   webBaseUrl: string,
@@ -100,6 +102,7 @@ const runPasswordResetPath = async (
   const email = 'password-reset-e2e@together.dev';
   const oldPassword = passwordFixture('old-password');
   const newPassword = passwordFixture('new-password');
+  const returnTo = '/my/courses/course-acme/lessons/lesson-acme-intro?tab=notes&page=2';
   const auth = createAuthE2eClient(transport);
   const signUp = await auth.signUpEmail({ name: 'Password Reset E2E', email, password: oldPassword });
   assert(signUp.status < 400, `reset sign-up failed (HTTP ${signUp.status}): ${JSON.stringify(signUp.json)}`);
@@ -116,7 +119,7 @@ const runPasswordResetPath = async (
     const context = await browser.newContext();
     await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
-    await page.goto(`${webBaseUrl}/forgot-password`, { waitUntil: 'networkidle' });
+    await page.goto(`${webBaseUrl}/forgot-password?${new URLSearchParams({ returnTo }).toString()}`, { waitUntil: 'networkidle' });
     await page.getByTestId('forgot-password-email').fill(email);
     await page.getByTestId('forgot-password-submit').click();
     await page.getByTestId('forgot-password-success').waitFor({ state: 'visible', timeout: 15000 });
@@ -139,12 +142,48 @@ const runPasswordResetPath = async (
     }
     assert(actionUrl !== '', 'reset email did not reach the dev sink');
     assert(new URL(actionUrl).host === new URL(webBaseUrl).host, 'reset provider callback used the wrong host');
+    const emailedToken = new URL(actionUrl).pathname.split('/').at(-1) ?? '';
+    const emailedCallback = new URL(actionUrl).searchParams.get('callbackURL');
+    assert(emailedCallback !== null, 'reset email link carried no callbackURL');
+    const callbackTarget = new URL(emailedCallback, webBaseUrl);
+    assert(
+      callbackTarget.origin === new URL(webBaseUrl).origin && callbackTarget.pathname === '/reset-password',
+      `reset callback pointed at ${callbackTarget.origin}${callbackTarget.pathname}`,
+    );
+    assert(
+      searchKeys(callbackTarget) === 'returnTo' && callbackTarget.searchParams.get('returnTo') === returnTo,
+      `reset callback returnTo was ${callbackTarget.searchParams.getAll('returnTo').join(' | ')} (params: ${searchKeys(callbackTarget)})`,
+    );
 
     await page.goto(actionUrl, { waitUntil: 'networkidle' });
+    const landing = new URL(page.url());
+    assert(landing.pathname === '/reset-password', `reset link landed on ${landing.pathname}`);
+    assert(searchKeys(landing) === 'returnTo,token', `reset landing carried params ${searchKeys(landing)}`);
+    assert(
+      landing.searchParams.getAll('token').length === 1 && landing.searchParams.get('token') === emailedToken,
+      'reset landing token differs from the emailed token',
+    );
+    assert(
+      landing.searchParams.get('returnTo') === returnTo,
+      `reset landing returnTo was ${landing.searchParams.getAll('returnTo').join(' | ')}`,
+    );
     await page.getByTestId('reset-password').fill(newPassword);
     await page.getByTestId('reset-password-confirm').fill(newPassword);
     await page.getByTestId('reset-submit').click();
     await page.getByTestId('reset-success').waitFor({ state: 'visible', timeout: 15000 });
+    const signInLink = page.getByTestId('reset-success').getByRole('link');
+    const signInHref = await signInLink.getAttribute('href');
+    assert(signInHref !== null, 'reset success state had no sign-in link');
+    const signInTarget = new URL(signInHref, webBaseUrl);
+    assert(
+      signInTarget.pathname === '/login' && searchKeys(signInTarget) === 'returnTo' && signInTarget.searchParams.get('returnTo') === returnTo,
+      `reset success sign-in link was ${signInTarget.pathname} with params ${searchKeys(signInTarget)}`,
+    );
+    await signInLink.click();
+    await page.waitForURL(
+      (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === returnTo,
+      { timeout: 15000 },
+    );
     await context.close();
   } finally {
     if (browser) await browser.close();

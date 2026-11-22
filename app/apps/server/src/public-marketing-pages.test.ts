@@ -567,7 +567,7 @@ describe('sign-up pages', () => {
     expect(html).toContain('data-testid="marketing-signup-thanks"');
     expect(html).toContain('<h1>One more step: confirm your e-mail</h1>');
     expect(html).toContain('status-cue--info');
-    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the e-mail, check your spam or promotions folder.</p><p class="fine">Welcome &lt;aboard&gt;.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a>');
+    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the e-mail, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
     expect(html).toContain('<a href="/marketing/forms/newsletter/thanks?lang=pl"');
     expect(html).not.toContain('Thank you for signing up');
   });
@@ -680,11 +680,12 @@ describe('sign-up pages', () => {
     expect(subscribed).toContain('<p class="lede">Welcome aboard.</p>');
     expect(subscribed).toContain('status-cue--success');
     expect(subscribed).not.toContain('Sign up again');
+    expect(subscribed).not.toContain('<p class="fine status-after">');
     const pending = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: true });
     expect(pending).toContain(`<h1>${publicMarketingMessagesPl.signupPendingTitle}</h1>`);
     expect(pending).toContain(`<p class="lede">${publicMarketingMessagesPl.signupPending}</p>`);
     expect(pending).toContain(`<a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
-    expect(pending).toContain('<p class="fine">Witamy.</p>');
+    expect(pending).toContain('</div><p class="fine status-after">Witamy.</p></div>');
   });
 });
 

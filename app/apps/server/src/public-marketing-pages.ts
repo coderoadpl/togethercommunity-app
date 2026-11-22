@@ -298,6 +298,7 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .status{margin-top:1rem}
 .status .lede,.status .fine{max-width:36rem}
 .status .lede{color:var(--ink)}
+.status .status-after{margin-top:1.25rem}
 .status-cue{display:flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin:0 0 1rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent)}
 .status-cue--error{background:color-mix(in srgb,var(--danger) 12%,var(--surface));color:var(--danger)}
 .status-cue svg{width:1.25rem;height:1.25rem}
@@ -421,6 +422,7 @@ export const renderStatusPage = (input: {
   testId: string;
   cue?: StatusCue;
   links?: readonly StatusLink[];
+  afterActions?: readonly string[];
 }): string => {
   const t = messages[input.language];
   const [summary, ...details] = input.lines;
@@ -429,7 +431,9 @@ export const renderStatusPage = (input: {
     .join('');
   const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${details
     .map((line) => `<p class="fine">${escapeHtml(line)}</p>`)
-    .join('')}<div class="actions">${links}</div></div>`;
+    .join('')}<div class="actions">${links}</div>${(input.afterActions ?? [])
+    .map((line) => `<p class="fine status-after">${escapeHtml(line)}</p>`)
+    .join('')}</div>`;
   return renderPage({
     nonce: input.nonce,
     brand: input.brand,
@@ -674,10 +678,11 @@ export const renderSignupFormPage = (input: {
       path: `${path}/thanks`,
       eyebrow: t.signupEyebrow,
       title: input.doubleOptIn ? t.signupPendingTitle : t.signupThanks,
-      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam, successText] : [successText],
+      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam] : [successText],
       testId: 'marketing-signup-thanks',
       cue: input.doubleOptIn ? 'info' : 'success',
       links: input.doubleOptIn ? [{ label: t.signupAgain, href: `${path}?lang=${input.language}` }] : [],
+      afterActions: input.doubleOptIn ? [successText] : [],
     });
   }
   const consent = renderSignupConsent({ t, tenant, wording: input.wording, doubleOptIn: input.doubleOptIn, document: input.consentDocument ?? null });

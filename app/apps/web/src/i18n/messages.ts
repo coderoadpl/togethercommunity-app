@@ -2661,6 +2661,8 @@ export interface Messages {
     dataExportPreparing: string;
     erasureHeading: string;
     erasureIntro: string;
+    erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
+    erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;

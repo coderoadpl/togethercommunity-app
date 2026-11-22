@@ -2997,7 +2997,15 @@ export const pl: Messages = {
     dataExportButton: 'Pobierz moje dane',
     dataExportPreparing: 'Przygotowywanie…',
     erasureHeading: 'Poproś o usunięcie konta',
-    erasureIntro: 'Wyślij wniosek o usunięcie konta — zespół go zweryfikuje, a jego status zobaczysz tutaj. Jeśli potrzebujesz kopii swoich danych, pobierz ją wcześniej.',
+    erasureIntro: 'Poproś zespół o usunięcie Twoich danych w tej społeczności. Po realizacji wniosku:',
+    erasureEffects: {
+      profile: 'Profil, zdjęcie i adresy dostawy zostaną usunięte.',
+      posts: 'Wpisy pozostaną, podpisane jako „Konto usunięte”.',
+      access: 'Dostęp do kupionych treści wygaśnie, a subskrypcje zostaną zakończone.',
+      signIn: 'Konto logowania również zostanie usunięte, chyba że nadal jest powiązane z inną społecznością lub rolą w zespole.',
+    },
+    erasureDialogBody: ({ days }) =>
+      `Wysłanie wniosku jeszcze niczego nie usuwa. Zespół go rozpatrzy i może go zrealizować albo odrzucić; termin odpowiedzi to ${days} ${plural(days, 'dzień', 'dni', 'dni')}. Otwarty wniosek można anulować. Jeśli potrzebujesz kopii danych, pobierz ją wcześniej.`,
     erasureConfirmLabel: 'Wpisz ponownie swój adres e-mail',
     erasureRequestButton: 'Wyślij wniosek',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Wniosek otwarty · termin do ${dueAt}`,

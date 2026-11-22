@@ -2943,7 +2943,15 @@ export const en: Messages = {
     dataExportButton: 'Download my data',
     dataExportPreparing: 'Preparing…',
     erasureHeading: 'Request account erasure',
-    erasureIntro: 'Send a tracked request for staff review. Export your data first if you need a copy.',
+    erasureIntro: 'Ask the team to erase your data in this workspace. Once the team completes the request:',
+    erasureEffects: {
+      profile: 'Your profile, picture and delivery addresses are removed.',
+      posts: 'Your posts stay, signed as “Deleted account”.',
+      access: 'Your access to purchased content and your subscriptions end.',
+      signIn: 'Your sign-in account is deleted too, unless it is still linked to another workspace or a team role.',
+    },
+    erasureDialogBody: ({ days }) =>
+      `Sending the request removes nothing yet. The team reviews it and can complete or decline it; a response is due within ${days} ${plural(days, 'day', 'days')}. You can cancel the request while it is open. Download your data first if you want a copy.`,
     erasureConfirmLabel: 'Retype your e-mail address',
     erasureRequestButton: 'Request erasure',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Request open · due by ${dueAt}`,

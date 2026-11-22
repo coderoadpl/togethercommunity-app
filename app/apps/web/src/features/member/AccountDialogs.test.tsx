@@ -7,6 +7,7 @@ import { ToastProvider } from '../../components/ui/Toast.js';
 import { AuthenticationMethods, type AuthenticationMethodsProps } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { AccountNameFields } from './AccountNameFields.js';
+import { ERASURE_REQUEST_RESPONSE_DAYS } from '#core/domain/index.js';
 import { AccountErasureCard } from './AccountErasureCard.js';
 import { AccountSupportForm } from './AccountSupportForm.js';
 
@@ -314,5 +315,25 @@ describe('Account dialogs', () => {
     await userEvent.click(screen.getByTestId('account-erasure-create'));
     expect(props.onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'demo@example.com' });
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
+  });
+
+  it('states the erasure scope on the card and the review process in the dialog without repeating the intro', async () => {
+    render(<LanguageProvider><AccountErasureCard
+      request={null} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail=""
+      onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>);
+    const effects = within(screen.getByTestId('account-erasure-effects')).getAllByRole('listitem').map((item) => item.textContent);
+    expect(effects).toEqual([
+      en.account.erasureEffects.profile,
+      en.account.erasureEffects.posts,
+      en.account.erasureEffects.access,
+      en.account.erasureEffects.signIn,
+    ]);
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent(en.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS }));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent('within 30 days');
+    expect(dialog.queryByText(en.account.erasureIntro)).not.toBeInTheDocument();
   });
 });

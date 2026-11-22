@@ -47,5 +47,7 @@ export type MemberErasureRequestWithMember = z.output<
   typeof memberErasureRequestWithMemberSchema
 >;
 
+export const ERASURE_REQUEST_RESPONSE_DAYS = 30;
+
 export const erasureRequestDueAt = (requestedAt: string): string =>
-  new Date(Date.parse(requestedAt) + 30 * 24 * 60 * 60 * 1000).toISOString();
+  new Date(Date.parse(requestedAt) + ERASURE_REQUEST_RESPONSE_DAYS * 24 * 60 * 60 * 1000).toISOString();

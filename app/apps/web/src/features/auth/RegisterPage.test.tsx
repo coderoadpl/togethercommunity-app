@@ -116,6 +116,44 @@ describe('RegisterPage', () => {
     expect(screen.getByLabelText(en.auth.passwordLabel)).toHaveAttribute('aria-describedby', hint.id);
   });
 
+  it('reveals and hides the password with a pressed toggle that keeps the value and never submits', async () => {
+    let requested = false;
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
+
+    await renderRegisterPage();
+    const password = screen.getByLabelText(en.auth.passwordLabel);
+    const toggle = screen.getByRole('button', { name: en.auth.showPassword });
+    await userEvent.type(password, VALID_PASSWORD);
+    expect(password).toHaveAttribute('type', 'password');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', password.id);
+    expect(toggle).toHaveAttribute('type', 'button');
+
+    await userEvent.click(toggle);
+
+    expect(password).toHaveAttribute('type', 'text');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveAccessibleName(en.auth.showPassword);
+    expect(password).toHaveValue(VALID_PASSWORD);
+    expect(password).toHaveAttribute('autocomplete', 'new-password');
+
+    await userEvent.click(toggle);
+
+    expect(password).toHaveAttribute('type', 'password');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(password).toHaveValue(VALID_PASSWORD);
+    expect(password).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.queryByText(en.auth.nameRequired)).not.toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
     server.use(

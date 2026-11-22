@@ -48,6 +48,40 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-describedby', hint.id);
   });
 
+  it.each(['reset-password', 'reset-password-confirm'])(
+    'reveals and hides %s with a pressed toggle that keeps the value and never submits',
+    async (testId) => {
+      let requested = false;
+      server.use(http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ status: true });
+      }));
+      await renderResetPage('?token=valid-token');
+      const field = screen.getByTestId(testId);
+      const toggle = screen.getByTestId(`${field.id}-reveal`);
+      await userEvent.type(field, VALID_PASSWORD);
+      expect(toggle).toHaveAccessibleName(en.auth.showPassword);
+      expect(toggle).toHaveAttribute('aria-controls', field.id);
+
+      await userEvent.click(toggle);
+
+      expect(field).toHaveAttribute('type', 'text');
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(field).toHaveValue(VALID_PASSWORD);
+      expect(field).toHaveAttribute('autocomplete', 'new-password');
+
+      await userEvent.click(toggle);
+
+      expect(field).toHaveAttribute('type', 'password');
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      expect(field).toHaveValue(VALID_PASSWORD);
+      expect(field).toHaveAttribute('autocomplete', 'new-password');
+      expect(screen.queryByTestId('reset-password-confirm-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('reset-success')).not.toBeInTheDocument();
+      expect(requested).toBe(false);
+    },
+  );
+
   it('resets the password and shows a success state on the happy path', async () => {
     let body: unknown;
     server.use(http.post('*', async ({ request }) => {

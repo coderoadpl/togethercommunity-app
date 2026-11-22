@@ -414,6 +414,7 @@ export const en: Messages = {
     emailInvalid: 'Enter a valid email address, e.g. name@example.com.',
     emailRequired: 'Enter your email address.',
     passwordLabel: 'Password',
+    showPassword: 'Show password',
     passwordTooShort: ({ min }) => format('Password must be at least {min} characters.', { min }),
     passwordRequired: 'Enter a password.',
     nameLabel: 'Name',

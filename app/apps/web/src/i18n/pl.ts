@@ -421,6 +421,7 @@ export const pl: Messages = {
     emailInvalid: 'Podaj poprawny adres e-mail, np. imie@przyklad.pl.',
     emailRequired: 'Wpisz adres e-mail.',
     passwordLabel: 'Hasło',
+    showPassword: 'Pokaż hasło',
     passwordTooShort: ({ min }) => format('Hasło musi mieć co najmniej {min} znaków.', { min }),
     passwordRequired: 'Wpisz hasło.',
     nameLabel: 'Imię i nazwisko',

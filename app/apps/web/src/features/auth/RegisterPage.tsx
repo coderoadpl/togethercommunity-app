@@ -23,6 +23,7 @@ import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../l
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
+import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
@@ -193,9 +194,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           </FormControl>
           <FormControl fullWidth error={fieldErrors.password !== null}>
             <FormLabel htmlFor="register-password">{t.auth.passwordLabel}</FormLabel>
-            <AuthInput
+            <AuthPasswordInput
               id="register-password"
-              type="password"
               value={password}
               onChange={(event) => {
                 setPassword(event.target.value);

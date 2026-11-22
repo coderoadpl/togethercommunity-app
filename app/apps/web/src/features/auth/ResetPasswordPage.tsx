@@ -18,8 +18,9 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { FinePrint } from '../../theme.js';
-import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthLead, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
+import { AuthPasswordInput } from './auth-password-input.js';
 import { AuthShell } from './AuthShell.js';
 
 const PASSWORD_HINT_ID = 'reset-password-minimum';
@@ -104,9 +105,8 @@ export const ResetPasswordPage = () => {
             <Stack component="form" noValidate onSubmit={submit} useFlexGap spacing="1rem">
               <FormControl fullWidth error={passwordError !== null}>
                 <FormLabel htmlFor="reset-password">{t.resetPassword.newPasswordLabel}</FormLabel>
-                <AuthInput
+                <AuthPasswordInput
                   id="reset-password"
-                  type="password"
                   value={password}
                   onChange={(event) => {
                     setPassword(event.target.value);
@@ -125,9 +125,8 @@ export const ResetPasswordPage = () => {
               </FormControl>
               <FormControl fullWidth error={confirmError !== null}>
                 <FormLabel htmlFor="reset-password-confirm">{t.resetPassword.confirmPasswordLabel}</FormLabel>
-                <AuthInput
+                <AuthPasswordInput
                   id="reset-password-confirm"
-                  type="password"
                   value={confirm}
                   onChange={(event) => {
                     setConfirm(event.target.value);

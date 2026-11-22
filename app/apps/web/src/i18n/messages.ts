@@ -424,6 +424,7 @@ export interface Messages {
     emailInvalid: string;
     emailRequired: string;
     passwordLabel: string;
+    showPassword: string;
     passwordTooShort: (params: { min: number }) => string;
     passwordRequired: string;
     nameLabel: string;

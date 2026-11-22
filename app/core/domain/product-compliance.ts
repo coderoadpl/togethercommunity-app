@@ -43,6 +43,15 @@ export const productComplianceSchema = productComplianceObjectSchema.superRefine
 
 export type ProductCompliance = z.output<typeof productComplianceSchema>;
 
+export type StoredProductCompliance = z.input<typeof productComplianceObjectSchema>;
+
+export const storedProductCompliance = (compliance: ProductCompliance | null | undefined): StoredProductCompliance | null => {
+  if (compliance == null) return null;
+  const { manufacturerOutsideEu, responsiblePersonName, responsiblePersonAddress, responsiblePersonEmail, ...manufacturer } = compliance;
+  const responsiblePersonGiven = responsiblePersonName != null || responsiblePersonAddress != null || responsiblePersonEmail != null;
+  return manufacturerOutsideEu || responsiblePersonGiven ? compliance : manufacturer;
+};
+
 export const publicProductComplianceSchema = productComplianceObjectSchema.extend({ safetyWarningsHtml: z.string() });
 
 export type PublicProductCompliance = z.output<typeof publicProductComplianceSchema>;

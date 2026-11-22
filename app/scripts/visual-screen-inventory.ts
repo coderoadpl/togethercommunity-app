@@ -500,7 +500,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-variables-2',
     ready: async (page) => {
       await page.getByTestId('locked-lesson-upsell').waitFor(visible);
-      await page.getByTestId('locked-product-price').waitFor(visible);
+      await page.getByTestId('unlock-lesson-cta').waitFor(visible);
     },
   },
   {

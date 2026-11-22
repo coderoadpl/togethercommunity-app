@@ -8,7 +8,22 @@ import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createTenantSecretRepository } from '#adapters/db/repositories.js';
-import { changeProposalEvents, emailOutbox, entityVersions, productPrices, products, productStock, salesLinks, stockEvents, tenantAdmins, tenants } from '#adapters/db/schema.js';
+import {
+  changeProposalDownloadFiles,
+  changeProposalEvents,
+  emailOutbox,
+  entityVersions,
+  members,
+  productDownloadAssets,
+  productGrants,
+  productPrices,
+  products,
+  productStock,
+  salesLinks,
+  stockEvents,
+  tenantAdmins,
+  tenants,
+} from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createShopManagementClient, isProposedChange, type ShopManagementClient } from '#core/client/index.js';
 import {
@@ -16,9 +31,11 @@ import {
   API_ROUTES,
   apiKeysShopManagementCreateOutputSchema,
   changeProposalApproveOutputSchema,
+  changeProposalFileOutputSchema,
   changeProposalGroupOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
+  myProductsOutputSchema,
   SHOP_CATALOG_ROUTES,
   shopCatalogContracts,
   type ChangeProposalProposedOutput,
@@ -97,6 +114,7 @@ const liveState = async () => {
     versions: ofWorkspace(await database.db.select().from(entityVersions)),
     outbox: ofWorkspace(await database.db.select().from(emailOutbox)),
     salesLinks: ofWorkspace(await database.db.select().from(salesLinks)),
+    files: ofWorkspace(await database.db.select().from(productDownloadAssets)),
   });
 };
 
@@ -405,6 +423,120 @@ describe('change proposal image replay', () => {
     const target = await publicTarget(uploaded.url);
     expect(target === null || !storage.objects.has(target)).toBe(true);
     expect((await database.db.select().from(products)).find((row) => row.id === productId)?.coverUrl).toBeNull();
+  });
+});
+
+const WORKBOOK = new TextEncoder().encode('%PDF-1.7\nfield workbook\n%%EOF\n');
+
+describe('change proposal download file replay', () => {
+  const stageWorkbook = async (agent: ShopManagementClient, fileName: string) =>
+    unwrapped(await agent.stageProductDownload({ fileName, contentType: 'application/pdf', sizeBytes: WORKBOOK.byteLength, body: new Uint8Array(WORKBOOK) })).file;
+
+  const liveDigitalProduct = async (title: string): Promise<string> => {
+    const writer = await issueKey('direct', `${title} writer`);
+    const live = await workspaceFetch(`${baseUrl}${SHOP_CATALOG_ROUTES.createProduct.path}`, {
+      method: 'POST', headers: { 'x-api-key': writer.secret, 'content-type': 'application/json' },
+      body: JSON.stringify({ title, type: 'digital_download', priceCents: 1900 }),
+    });
+    expect(live.status).toBe(200);
+    return envelope(shopCatalogContracts.createProduct.output).parse(await live.json()).data.product.id;
+  };
+
+  const buyerOf = async (productId: string): Promise<() => Promise<string[]>> => {
+    const buyerEmail = `download-buyer-${productId}@example.test`;
+    const signup = await app.request(`${baseUrl}${BETTER_AUTH_SIGN_UP_PATH}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl },
+      body: JSON.stringify({ name: 'Download Buyer', email: buyerEmail, password }),
+    });
+    expect(signup.status).toBe(200);
+    const buyerId = z.object({ user: z.object({ id: z.string() }) }).parse(await signup.json()).user.id;
+    await database.db.execute(`update "user" set email_verified = true where id = '${buyerId}'`);
+    await database.db.insert(members).values({ id: `member-${productId}`, tenantId: 'acme', userId: buyerId, email: buyerEmail, createdAt: now });
+    await database.db.insert(productGrants).values({
+      id: `grant-${productId}`, tenantId: 'acme', memberId: `member-${productId}`, productId, source: 'manual', startsAt: '2026-11-01T00:00:00.000Z', createdAt: now,
+    });
+    const signin = await app.request(`${baseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl },
+      body: JSON.stringify({ email: buyerEmail, password }),
+    });
+    const token = z.object({ token: z.string() }).parse(await signin.json()).token;
+    return async () => {
+      const listed = await app.request(`${baseUrl}${API_PATHS.myProducts}`, { headers: { host: workspaceHost, authorization: `Bearer ${token}` } });
+      expect(listed.status).toBe(200);
+      const product = envelope(myProductsOutputSchema).parse(await listed.json()).data.products.find((entry) => entry.id === productId);
+      return product?.downloads.map((download) => download.id) ?? [];
+    };
+  };
+
+  it('a propose-mode key stages a workbook and proposes it; the owner downloads the very bytes, approves, and buyers then find the file', async () => {
+    const productId = await liveDigitalProduct('Field workbook');
+    const key = await issueKey('propose', 'Workbook agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const before = await liveState();
+    const staged = await stageWorkbook(agent, 'workbook.pdf');
+    const attach = proposed(await agent.addProductDownload({ productId, stagedFileId: staged.id, versionNote: 'First edition' }));
+    expect(attach).toMatchObject({ operation: 'download.add', status: 'pending', target: { kind: 'product', id: productId } });
+    expect(await liveState()).toBe(before);
+    const buyerDownloads = await buyerOf(productId);
+    expect(await buyerDownloads()).toEqual([]);
+
+    const effect = await shownEffect(attach.id);
+    expect(JSON.stringify(effect['files'])).toContain(staged.id);
+    const link = await ownerRequest('GET', API_PATHS.changeProposalFile.replace(':id', attach.id).replace(':fileId', staged.id));
+    expect(link.status).toBe(200);
+    const { download } = envelope(changeProposalFileOutputSchema).parse(await link.json()).data;
+    expect(storage.objects.get(storageKeyOf(download.url))?.bytes).toEqual(WORKBOOK);
+
+    const applied = await approve(attach.id);
+    expect(applied).toMatchObject({ status: 'applied', appliedResourceId: staged.id });
+    const files = unwrapped(await agent.listProductDownloads(productId)).assets;
+    expect(files.map((file) => [file.id, file.fileName, file.versionNote, file.status])).toEqual([[staged.id, 'workbook.pdf', 'First edition', 'ready']]);
+    expect((await database.db.select().from(productDownloadAssets)).find((row) => row.id === staged.id)?.storageKey).toBe(storageKeyOf(download.url));
+    expect((await database.db.select().from(changeProposalDownloadFiles)).find((row) => row.id === staged.id)).toBeUndefined();
+    expect(await buyerDownloads()).toEqual([staged.id]);
+  });
+
+  it('a group creates a digital product, attaches a workbook, prices and publishes it; the owner approves it as one and it is live with its file', async () => {
+    const key = await issueKey('propose', 'Workbook launch agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const staged = await stageWorkbook(agent, 'launch-workbook.pdf');
+    const empty = await liveState();
+    const group = unwrapped(await agent.createProposalGroup({ title: 'Launch the workbook' })).group;
+    const inGroup = { groupId: group.id };
+    const product = proposed(await agent.createProduct({ title: 'Launch workbook', slug: 'launch-workbook', type: 'digital_download', priceCents: 2900, currency: 'PLN' }, undefined, inGroup));
+    const productRef = changeProposalReference(product.id);
+    proposed(await agent.addProductDownload({ productId: productRef, stagedFileId: staged.id }, undefined, inGroup));
+    proposed(await agent.createProductPrice({ productId: productRef, kind: 'one_time', amountCents: 2900, currency: 'PLN' }, undefined, inGroup));
+    proposed(await agent.publishProduct({ id: productRef }, undefined, inGroup));
+    expect(await liveState()).toBe(empty);
+
+    const shown = await ownerGroup(group.id);
+    expect(shown.items.map((item) => item.operation)).toEqual(['product.create', 'download.add', 'price.create', 'product.publish']);
+    expect(shown.items[3]?.effect).toEqual({ published: { before: false, after: true } });
+    const decided = await approveGroup(group.id, shown.items.map((item) => item.id));
+    expect(decided.status).toBe('applied');
+    expect(decided.items.map((item) => item.effect)).toEqual(shown.items.map((item) => item.effect));
+    const productId = decided.items[0]?.appliedResourceId ?? '';
+    expect(decided.items[1]?.appliedResourceId).toBe(staged.id);
+    expect(unwrappedProduct(await agent.listProducts(), productId).published).toBe(true);
+    expect(unwrapped(await agent.listProductDownloads(productId)).assets.map((file) => file.id)).toEqual([staged.id]);
+  });
+
+  it('a rejected file proposal changes nothing and releases its staged file at once', async () => {
+    const productId = await liveDigitalProduct('Rejected workbook');
+    const key = await issueKey('propose', 'Rejected workbook agent');
+    const agent = createShopManagementClient({ baseUrl, apiKey: key.secret, fetchImpl: workspaceFetch });
+    const staged = await stageWorkbook(agent, 'rejected.pdf');
+    const attach = proposed(await agent.addProductDownload({ productId, stagedFileId: staged.id }));
+    expect(storage.keysUnder(`acme/product-downloads/key-files/${key.apiKey.id}/${staged.id}/`)).toHaveLength(1);
+    const before = await liveState();
+    const rejected = await ownerRequest('POST', API_PATHS.changeProposalReject.replace(':id', attach.id), { note: 'Not this edition' });
+    expect(rejected.status).toBe(200);
+    expect(await liveState()).toBe(before);
+    expect(storage.keysUnder(`acme/product-downloads/key-files/${key.apiKey.id}/`)).toEqual([]);
+    expect((await database.db.select().from(changeProposalDownloadFiles)).filter((row) => row.apiKeyId === key.apiKey.id)).toEqual([]);
+    expect(unwrapped(await agent.listStagedDownloads()).files).toEqual([]);
+    expect((await ownerRequest('GET', API_PATHS.changeProposalFile.replace(':id', attach.id).replace(':fileId', staged.id))).status).toBe(404);
   });
 });
 

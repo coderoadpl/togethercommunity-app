@@ -583,6 +583,11 @@ export const ThreadDiscussion = ({
     if (id !== editingId && update.isError) update.reset();
     setEditingId(id);
   };
+  const switchView = (subthreadId: string | null) => {
+    changeReplyTarget(null);
+    changeEditTarget(null);
+    setSubthreadRootId(subthreadId);
+  };
 
   const topComposerOpen = subthreadRoot === null;
   const createErrorOwned = create.isError && (create.variables.parentPostId === undefined
@@ -633,7 +638,7 @@ export const ThreadDiscussion = ({
       );
     },
     requestDelete: setDeleting,
-    openSubthread: setSubthreadRootId,
+    openSubthread: switchView,
     replyBusy: create.isPending,
     editBusy: update.isPending,
     writeDisabled: banned || impersonating,
@@ -647,11 +652,13 @@ export const ThreadDiscussion = ({
 
   const goBack = () => {
     if (focus === undefined) {
-      setSubthreadRootId(null);
+      switchView(null);
     } else if (subthreadRootId === focus.rootPostId) {
+      changeReplyTarget(null);
+      changeEditTarget(null);
       focus.onExit();
     } else {
-      setSubthreadRootId(focus.rootPostId);
+      switchView(focus.rootPostId);
     }
   };
   const backLabel =

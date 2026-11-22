@@ -684,6 +684,77 @@ describe('DiscussionSection', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('shows a reply that fails after the member opened a sub-thread in that view', async () => {
+    let releasePost: ((value: undefined) => void) | undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    const chain = (id: string, parentPostId: string, replies: DiscussionPost[] = []) =>
+      asThread(post({ id, parentPostId, rootPostId: 'r1', body: `Level ${id}` }), replies);
+    const c4 = chain('c4', 'c3', [chain('c5', 'c4', [chain('c6', 'c5')])]);
+    const root = asThread(post({ id: 'r1', body: 'First level' }), [chain('c2', 'r1', [chain('c3', 'c2', [c4])])]);
+    server.use(
+      okMe(),
+      okDiscussion([root]),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<LessonDiscussion courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-c4'));
+    await user.type(screen.getByTestId('reply-composer-c4-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-c4-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('continue-thread-c5'));
+    const subthread = screen.getByTestId('discussion-subthread-c5');
+    releasePost?.(undefined);
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(subthread).not.toContainElement(error);
+    expect(screen.getByTestId('back-to-discussion').compareDocumentPosition(error)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('shows an edit that fails after the member left the sub-thread in the main view', async () => {
+    let releaseUpdate: ((value: undefined) => void) | undefined;
+    const updateResponse = new Promise<undefined>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    const chain = (id: string, parentPostId: string, replies: DiscussionPost[] = [], isOwn = false) =>
+      asThread(post({ id, parentPostId, rootPostId: 'r1', body: `Level ${id}`, bodyFormat: 'plain', isOwn }), replies);
+    const c5 = chain('c5', 'c4', [chain('c6', 'c5', [], true)]);
+    const root = asThread(post({ id: 'r1', body: 'First level' }), [chain('c2', 'r1', [chain('c3', 'c2', [chain('c4', 'c3', [c5])])])]);
+    server.use(
+      okMe(),
+      okDiscussion([root]),
+      http.post('/api/posts/update', async () => {
+        await updateResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<LessonDiscussion courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('continue-thread-c5'));
+    await user.click(screen.getByTestId('edit-button-c6'));
+    await user.type(screen.getByTestId('edit-composer-c6-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-c6-submit'));
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    expect(await screen.findByTestId('discussion-composer')).toBeInTheDocument();
+    releaseUpdate?.(undefined);
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.errors.messageInternal);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('hides a childless deleted reply from members and counts only the replies on screen', async () => {
     const deletedAt = '2026-07-15T09:00:00.000Z';
     server.use(okMe(), okDiscussion([{

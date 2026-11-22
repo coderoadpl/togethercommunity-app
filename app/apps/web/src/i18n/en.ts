@@ -481,6 +481,7 @@ export const en: Messages = {
     alreadyHaveAccount: 'Already have an account?',
     signInLink: 'Sign in',
     registeredTitle: 'Account created',
+    signUpConfirmationSent: ({ email }) => format('We sent a confirmation link to {email}.', { email }),
     registeredOnTenantBody: ({ host }) =>
       `${host} is another creator's workspace — your new account does not have access to any course here yet.`,
     registeredCreateOwnCta: 'Go to the home page to create your own workspace',

@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
+import { ToastProvider } from '../../components/ui/Toast.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, memberMe, server } from '../../test/server.js';
@@ -35,15 +36,22 @@ const renderRegisterPage = async (hostname?: string, initialEntry = '/register')
     component: () =>
       hostname === undefined ? <RegisterPage /> : <RegisterPage hostname={hostname} />,
   });
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    component: () => <div>Lesson target</div>,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, registerRoute]),
+    routeTree: rootRoute.addChildren([indexRoute, registerRoute, lessonRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return {
     ...renderWithProviders(
       <ThemeModeProvider>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </ThemeModeProvider>,
     ),
     router,
@@ -286,6 +294,26 @@ describe('RegisterPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
+  it('tells the new member once, outside the address bar, where the confirmation link went', async () => {
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
+    );
+
+    const view = await renderRegisterPage();
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), ' new@together.dev ');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+    const notice = en.auth.signUpConfirmationSent({ email: 'new@together.dev' });
+    expect(within(screen.getByTestId('toast-stack')).getAllByText(notice)).toHaveLength(1);
+    expect(view.router.state.location.href).not.toContain('together.dev');
+    expect(view.router.state.location.state).not.toHaveProperty('email');
+  });
+
   it('accepts configured documents and lands on home when a tenant offer resolves on the bare host', async () => {
     server.use(
       anonymousMe(),
@@ -311,7 +339,33 @@ describe('RegisterPage', () => {
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
   });
 
-  it('preserves returnTo for verification and back-to-login links', async () => {
+  it.each(['https://evil.example/x', '//evil.example/x', '/\\evil.example/x', '\\\\evil.example/x'])(
+    'drops the unsafe returnTo %s and lands on home after sign-up',
+    async (returnTo) => {
+      const signupBodies: unknown[] = [];
+      server.use(
+        anonymousMe(),
+        noTenantOffer,
+        http.post('*', async ({ request }) => {
+          signupBodies.push(await request.json());
+          return HttpResponse.json({ user: { id: 'u1' } });
+        }),
+      );
+
+      const view = await renderRegisterPage(undefined, `/register?${new URLSearchParams({ returnTo }).toString()}`);
+      expect(screen.getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+      await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+      await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+      await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+      await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+      expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+      expect(view.router.state.location.href).toBe('/');
+      expect(signupBodies).toMatchObject([{ callbackURL: 'http://localhost:3000/login?verification=verified' }]);
+    },
+  );
+
+  it('preserves returnTo for verification and back-to-login links and lands on it', async () => {
     const signupBodies: unknown[] = [];
     server.use(
       anonymousMe(),
@@ -322,7 +376,7 @@ describe('RegisterPage', () => {
       }),
     );
 
-    await renderRegisterPage(
+    const view = await renderRegisterPage(
       undefined,
       '/register?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
     );
@@ -336,7 +390,8 @@ describe('RegisterPage', () => {
     await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
-    expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+    expect(await screen.findByText('Lesson target')).toBeInTheDocument();
+    expect(view.router.state.location.href).toBe('/my/courses/course-1/lessons/lesson-1?thread=t1');
     expect(signupBodies).toEqual([
       {
         name: 'New Creator',
@@ -399,6 +454,9 @@ describe('RegisterPage', () => {
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(await screen.findByText(en.auth.registeredTitle)).toBeInTheDocument();
+    expect(screen.getByTestId('register-confirmation-sent')).toHaveTextContent(
+      en.auth.signUpConfirmationSent({ email: 'member@together.dev' }),
+    );
     expect(signupBodies).toEqual([
       {
         name: 'New Member',

@@ -490,6 +490,7 @@ export interface Messages {
     alreadyHaveAccount: string;
     signInLink: string;
     registeredTitle: string;
+    signUpConfirmationSent: (params: { email: string }) => string;
     registeredOnTenantBody: (params: { host: string }) => string;
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;

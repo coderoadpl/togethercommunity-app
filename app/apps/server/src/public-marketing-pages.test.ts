@@ -19,6 +19,7 @@ import {
   renderPreferenceResultPage,
   renderPreferencesPage,
   renderSignupFormPage,
+  renderSignupUnavailablePage,
   renderStatusPage,
   type PublicBrand,
 } from './public-marketing-pages.js';
@@ -567,6 +568,52 @@ describe('sign-up pages', () => {
     expect(success).toContain(`<a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a>`);
   });
 
+  it('marks the submit button as pending with a nonce-bound script while the form still posts without script', async () => {
+    const html = renderSignupFormPage({ nonce: 'nonce"<x>', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false });
+    expect(html).toContain('<form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=en" data-pending-label="Signing up…">');
+    expect(html).toContain('<button type="submit">Sign up</button>');
+    expect(html).not.toMatch(/\son[a-z]+=/i);
+    expect(html.match(/<script/g)).toHaveLength(1);
+    const script = /<script nonce="nonce&quot;&lt;x&gt;">([^<]*)<\/script><\/body>/.exec(html)?.[1];
+    if (script === undefined) throw new Error('Missing pending script');
+    const listeners = new Map<string, (event: { persisted?: boolean; defaultPrevented?: boolean; preventDefault: () => void }) => void>();
+    const attributes = new Map<string, string>();
+    const button = {
+      textContent: 'Sign up', disabled: false,
+      setAttribute: (name: string, value: string) => { attributes.set(name, value); },
+      removeAttribute: (name: string) => { attributes.delete(name); },
+    };
+    const dataset: Record<string, string | undefined> = { pendingLabel: 'Signing up…' };
+    const form = {
+      dataset,
+      querySelector: () => button,
+      addEventListener: (type: string, listener: (event: { preventDefault: () => void }) => void) => { listeners.set(`form:${type}`, listener); },
+    };
+    const window = { addEventListener: (type: string, listener: (event: { persisted?: boolean; preventDefault: () => void }) => void) => { listeners.set(`window:${type}`, listener); } };
+    new Function('document', 'window', script)({ querySelector: () => form }, window);
+    const submit = () => {
+      const event = { defaultPrevented: false, preventDefault: () => { event.defaultPrevented = true; } };
+      listeners.get('form:submit')?.(event);
+      return event;
+    };
+    expect(submit().defaultPrevented).toBe(false);
+    expect(button.textContent).toBe('Signing up…');
+    expect(attributes.get('aria-busy')).toBe('true');
+    expect(submit().defaultPrevented).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(button.disabled).toBe(true);
+    listeners.get('window:pageshow')?.({ persisted: true, preventDefault: () => undefined });
+    expect([button.disabled, button.textContent, attributes.has('aria-busy')]).toEqual([false, 'Sign up', false]);
+    expect(submit().defaultPrevented).toBe(false);
+  });
+
+  it('renders no script without a nonce and none on the thanks and unavailable pages', () => {
+    expect(renderSignupFormPage({ nonce: '', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false })).not.toContain('<script');
+    expect(renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: true })).not.toContain('<script');
+    expect(renderSignupUnavailablePage({ nonce: 'test-nonce', brand, language: 'en', path: null })).not.toContain('<script');
+    expect(renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false })).toContain(`data-pending-label="${publicMarketingMessagesPl.signupSubmitPending}"`);
+  });
+
   it('keeps the thank-you heading without double opt-in and localizes the pending page in Polish', () => {
     const subscribed = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: false, thanks: true });
     expect(subscribed).toContain('<h1>Thank you for signing up</h1>');
@@ -699,7 +746,7 @@ describe('public signup persistence and confirmation', () => {
       });
       expect(stale.status).toBe(400);
       const html = await stale.text();
-      expect(html).toContain(`<p class="signup-alert" id="signup-error" role="alert">${publicMarketingMessagesPl.signupFailed}</p><form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=pl" aria-describedby="signup-error">`);
+      expect(html).toContain(`<p class="signup-alert" id="signup-error" role="alert">${publicMarketingMessagesPl.signupFailed}</p><form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=pl" data-pending-label="${publicMarketingMessagesPl.signupSubmitPending}" aria-describedby="signup-error">`);
       expect(html).toContain('value="new@example.org"');
       expect(html).toContain('value="New Reader"');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
@@ -750,6 +797,15 @@ describe('public signup persistence and confirmation', () => {
       expect(json.headers.get('content-type')).toBe('application/json');
       expect(await json.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
       expect(await fixture.snapshot()).toEqual(before);
+    } finally { await fixture.close(); }
+  });
+  it('binds the pending script to the nonce of the page content security policy', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const response = await fixture.request('/marketing/forms/newsletter?lang=en');
+      const nonce = /<script nonce="([^"]+)">/.exec(await response.text())?.[1];
+      if (nonce === undefined) throw new Error('Missing script nonce');
+      expect(response.headers.get('content-security-policy')).toContain(`script-src 'self' 'nonce-${nonce}'`);
     } finally { await fixture.close(); }
   });
   it('answers a missing or archived form with a localized page that links the workspace home', async () => {

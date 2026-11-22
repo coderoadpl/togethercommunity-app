@@ -10,6 +10,7 @@ export const publicMarketingMessagesEn = {
   signupConsentUnsubscribe: 'You can unsubscribe at any time.',
   signupConsentDocument: 'More information:',
   signupSubmit: 'Sign up',
+  signupSubmitPending: 'Signing up…',
   signupEmailInvalid: 'Enter a complete e-mail address, for example name@example.com.',
   signupFailed: 'We could not sign you up. Check your details and try again.',
   signupRateLimited: 'Too many sign-up attempts. Wait a few minutes and try again.',

@@ -367,6 +367,7 @@ const renderPage = (input: {
   body: string;
   testId: string;
   cue?: StatusCue;
+  script?: string;
 }): string => {
   const t = messages[input.language];
   const settings = input.brand.settings;
@@ -398,7 +399,8 @@ const renderPage = (input: {
     : `<nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav>`;
   const cue = input.cue === undefined ? '' : renderStatusCue(input.cue);
   const contact = supportLink(settings, t);
-  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main></body></html>`;
+  const script = input.script === undefined || input.nonce === '' ? '' : `<script nonce="${escapeHtml(input.nonce)}">${input.script}</script>`;
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main>${script}</body></html>`;
 };
 
 interface StatusLink {
@@ -628,6 +630,8 @@ export interface SignupFormValues {
   displayName: string;
 }
 
+const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
+
 const valueAttribute = (value: string): string => value === '' ? '' : ` value="${escapeHtml(value)}"`;
 
 export const renderSignupUnavailablePage = (input: {
@@ -676,6 +680,6 @@ export const renderSignupFormPage = (input: {
   const nameField = input.form.collectName
     ? `<div class="signup-field"><label for="signup-name">${escapeHtml(t.signupName)}</label><input id="signup-name" name="displayName" autocomplete="name" maxlength="120"${valueAttribute(values.displayName)}></div>`
     : '';
-  const body = `${alert}<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"${formError === null ? '' : ' aria-describedby="signup-error"'}>${emailField}${nameField}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: 'marketing-signup-form' });
+  const body = `${alert}<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}" data-pending-label="${escapeHtml(t.signupSubmitPending)}"${formError === null ? '' : ' aria-describedby="signup-error"'}>${emailField}${nameField}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: 'marketing-signup-form', script: submitPendingScript });
 };

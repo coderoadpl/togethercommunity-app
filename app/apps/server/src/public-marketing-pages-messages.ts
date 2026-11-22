@@ -8,6 +8,7 @@ export interface PublicMarketingMessages {
   signupConsentUnsubscribe: string;
   signupConsentDocument: string;
   signupSubmit: string;
+  signupSubmitPending: string;
   signupEmailInvalid: string;
   signupFailed: string;
   signupRateLimited: string;

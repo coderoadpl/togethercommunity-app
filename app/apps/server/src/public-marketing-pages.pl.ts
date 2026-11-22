@@ -10,6 +10,7 @@ export const publicMarketingMessagesPl = {
   signupConsentUnsubscribe: 'W każdej chwili możesz się wypisać.',
   signupConsentDocument: 'Więcej informacji:',
   signupSubmit: 'Zapisuję się',
+  signupSubmitPending: 'Zapisuję…',
   signupEmailInvalid: 'Wpisz pełny adres e-mail, na przykład imie@example.com.',
   signupFailed: 'Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.',
   signupRateLimited: 'Zbyt wiele prób zapisu. Odczekaj kilka minut i spróbuj ponownie.',

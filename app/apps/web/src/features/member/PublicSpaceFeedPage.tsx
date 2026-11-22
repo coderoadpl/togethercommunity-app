@@ -1,4 +1,5 @@
-import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -17,6 +18,21 @@ import { LockClosed } from './tree-icons.js';
 import { usePublicOfferPrice, useVisitorJoin, VisitorContactLinks, VisitorJoinButton } from './visitor-actions.js';
 
 type LockedSpace = PublicNavigation['lockedSpaces'][number];
+
+const FEED_PAGE_SIZE = 20;
+const FEED_MAX_LIMIT = 100;
+
+const usePublicSpaceFeed = (spaceId: string) => {
+  const [paging, setPaging] = useState({ spaceId, limit: FEED_PAGE_SIZE });
+  const limit = paging.spaceId === spaceId ? paging.limit : FEED_PAGE_SIZE;
+  const feed = useQuery({
+    ...actions.publicSpaceFeed(limit === FEED_PAGE_SIZE ? { spaceId } : { spaceId, limit }),
+    placeholderData: (previous) => (previous?.feed.spaceId === spaceId ? previous : undefined),
+  });
+  const canLoadMore = (feed.data?.feed.nextCursor ?? null) !== null && limit < FEED_MAX_LIMIT;
+  const loadMore = () => setPaging({ spaceId, limit: Math.min(limit + FEED_PAGE_SIZE, FEED_MAX_LIMIT) });
+  return { feed, canLoadMore, loadMore };
+};
 
 const LockedSpaceAccess = ({ locked }: { locked: LockedSpace }) => {
   const t = useTranslations();
@@ -68,7 +84,7 @@ const LockedSpaceAccess = ({ locked }: { locked: LockedSpace }) => {
 export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
-  const feed = useQuery(actions.publicSpaceFeed({ spaceId }));
+  const { feed, canLoadMore, loadMore } = usePublicSpaceFeed(spaceId);
   const join = useVisitorJoin(spaceId);
 
   if (navigation.isPending) {
@@ -170,7 +186,21 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             }}
           />
         ) : (
-          <PublicFeedList spaceId={spaceId} feed={feed.data.feed} />
+          <Stack useFlexGap sx={{ rowGap: '1rem' }}>
+            <PublicFeedList spaceId={spaceId} feed={feed.data.feed} />
+            {canLoadMore ? (
+              <Box>
+                <Button
+                  variant="outlined"
+                  data-testid="public-feed-load-more"
+                  disabled={feed.isFetching}
+                  onClick={loadMore}
+                >
+                  {t.discussion.loadMore}
+                </Button>
+              </Box>
+            ) : null}
+          </Stack>
         )}
       </Stack>
     </MemberSurface>

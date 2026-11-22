@@ -1047,6 +1047,35 @@ describe('community pages', () => {
     expect(screen.getByTestId('public-feed-post-pin1').compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('loads more public posts by growing the page while the feed has a next cursor', async () => {
+    const limits: (string | null)[] = [];
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/feed', ({ request }) => {
+        const limit = new URL(request.url).searchParams.get('limit');
+        limits.push(limit);
+        const items = limit === null
+          ? [feedItem({ id: 'p1', body: 'Newest post' })]
+          : [feedItem({ id: 'p1', body: 'Newest post' }), feedItem({ id: 'p0', body: 'Older post' })];
+        return HttpResponse.json({
+          ok: true,
+          data: { feed: { spaceId: 's1', items, pinned: [], nextCursor: limit === null ? 'cursor-1' : null, isFollowing: false } },
+        });
+      }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const loadMore = await screen.findByRole('button', { name: en.discussion.loadMore });
+    await userEvent.click(loadMore);
+
+    expect(await screen.findByTestId('public-feed-post-p0')).toHaveTextContent('Older post');
+    expect(screen.getByTestId('public-feed-post-p1')).toBeInTheDocument();
+    expect(limits).toEqual([null, '40']);
+    expect(screen.queryByTestId('public-feed-load-more')).not.toBeInTheDocument();
+  });
+
   it('leaves the latest heading out when the public feed has no pinned posts', async () => {
     server.use(anonMe(), okPublicNavigation(), okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]));
 

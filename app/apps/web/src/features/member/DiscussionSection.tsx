@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Box, Stack, TextField, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { createLink } from '@tanstack/react-router';
 
 import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
@@ -13,7 +14,39 @@ import { ThreadDiscussion } from './ThreadDiscussion.js';
 
 const MIN_SEARCH_LENGTH = 2;
 
-const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
+const RouterLink = createLink(MuiLink);
+
+interface LessonPlace {
+  courseId: string;
+  lessonId: string;
+  editionNumber?: string | undefined;
+}
+
+const ThreadHitLink = ({ place, rootPostId, testId, children }: { place: LessonPlace; rootPostId: string; testId: string; children: string }) => {
+  const { courseId, lessonId, editionNumber } = place;
+  return editionNumber === undefined ? (
+    <RouterLink
+      to="/my/courses/$courseId/lessons/$lessonId"
+      params={{ courseId, lessonId }}
+      search={{ thread: rootPostId }}
+      data-testid={testId}
+    >
+      {children}
+    </RouterLink>
+  ) : (
+    <RouterLink
+      to="/my/courses/$courseId/lessons/$lessonId/editions/$number"
+      params={{ courseId, lessonId, number: editionNumber }}
+      search={{ thread: rootPostId }}
+      data-testid={testId}
+    >
+      {children}
+    </RouterLink>
+  );
+};
+
+const LessonDiscussionSearch = ({ place }: { place: LessonPlace }) => {
+  const { lessonId } = place;
   const t = useTranslations();
   const [term, setTerm] = useState('');
   const debounced = useDebouncedValue(term).trim();
@@ -33,9 +66,6 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
         onChange={(event) => setTerm(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': 'discussion-search-input' } }}
       />
-      <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
-        {t.discussion.searchHint}
-      </Typography>
       {enabled && (
         <Box data-testid="discussion-search-results">
           {search.isPending ? (
@@ -45,15 +75,19 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
           ) : search.data.hits.length === 0 ? (
             <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="discussion-search-empty">
               <Typography variant="body2">{t.discussion.searchEmpty}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {t.search.stemHint}
+              <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
+                {t.discussion.searchHint} {t.search.stemHint}
               </Typography>
             </Stack>
           ) : (
             <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
               {search.data.hits.map((hit) => (
                 <DiscussionThread key={hit.post.id} sx={{ p: '0.6rem 0.9rem' }} data-testid={`search-hit-${hit.post.id}`}>
-                  <PostAuthorName component="span">{translateDeletedContent(hit.post.authorDisplay, t)}</PostAuthorName>
+                  <PostAuthorName component="span">
+                    <ThreadHitLink place={place} rootPostId={hit.post.rootPostId} testId={`search-hit-link-${hit.post.id}`}>
+                      {translateDeletedContent(hit.post.authorDisplay, t)}
+                    </ThreadHitLink>
+                  </PostAuthorName>
                   <DiscussionHitSnippet variant="body2" component="p">
                     <Highlighted text={hit.snippet} query={debounced} />
                   </DiscussionHitSnippet>
@@ -68,10 +102,14 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
 };
 
 export const DiscussionSection = ({
+  courseId,
   lessonId,
+  editionNumber,
   focusThread,
 }: {
+  courseId: string;
   lessonId: string;
+  editionNumber?: string | undefined;
   focusThread?: { rootPostId: string; onExit: () => void };
 }) => {
   const t = useTranslations();
@@ -80,7 +118,7 @@ export const DiscussionSection = ({
       context={{ contextKind: 'lesson', contextId: lessonId }}
       heading={t.discussion.heading}
       eyebrow={t.discussion.eyebrow}
-      search={<LessonDiscussionSearch lessonId={lessonId} />}
+      search={<LessonDiscussionSearch place={{ courseId, lessonId, editionNumber }} />}
       {...(focusThread === undefined
         ? {}
         : { focus: { ...focusThread, exitLabel: t.discussion.backToAll } })}

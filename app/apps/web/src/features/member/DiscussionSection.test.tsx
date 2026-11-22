@@ -1,9 +1,11 @@
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { createPostInputSchema, updatePostInputSchema, type DiscussionPost, type PublicPost } from '#core/domain/index.js';
+import type { ReactNode } from 'react';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -91,10 +93,25 @@ const okDiscussion = (
     }),
   );
 
+const renderInRouter = async (node: ReactNode) => {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => node }),
+    history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
+const okSearch = (hits: { post: PublicPost; lessonId: string; snippet: string }[], requestedUrls: string[] = []) =>
+  http.get('/api/posts/search', ({ request }) => {
+    requestedUrls.push(request.url);
+    return HttpResponse.json({ ok: true, data: { hits } });
+  });
+
 describe('DiscussionSection', () => {
   it('labels moderator tombstones and keeps their replies readable without write actions', async () => {
     server.use(okMe('owner'), okDiscussion([asThread(post({ id: 'deleted', deletedAt: '2026-07-15T09:00:00.000Z', deletedBy: 'moderator' }), [asThread(post({ id: 'reply', parentPostId: 'deleted', rootPostId: 'deleted' }))])]));
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
     expect(await screen.findByTestId('deleted-post-deleted')).toHaveTextContent(en.discussion.moderatorDeletedPost);
     expect(screen.getByTestId('post-body-reply')).toBeInTheDocument();
     expect(screen.queryByTestId('delete-button-deleted')).not.toBeInTheDocument();
@@ -110,7 +127,7 @@ describe('DiscussionSection', () => {
         asThread(post({ id: 'reply', body: 'See www.courses.example.org/notes.', bodyHtml: `See <a href="https://www.courses.example.org/notes" target="_blank" rel="noopener noreferrer nofollow ugc">www.courses.example.org/notes</a>.`, parentPostId: 'root', rootPostId: 'root' })),
       ]),
     ]));
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     const root = await screen.findByTestId('post-body-root');
     expect(root.textContent).toBe(body.replace('\n', ''));
@@ -146,7 +163,7 @@ describe('DiscussionSection', () => {
       }),
     );
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     const error = await screen.findByTestId('discussion-error');
     expect(error).toHaveTextContent(en.discussion.errorTitle);
@@ -168,7 +185,7 @@ describe('DiscussionSection', () => {
       ),
     );
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-locked-note')).toHaveTextContent(
       en.discussion.lockedNote,
@@ -180,7 +197,7 @@ describe('DiscussionSection', () => {
   it('shows the composer and empty state when the discussion is accessible', async () => {
     server.use(okMe(), okDiscussion([]));
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect((await screen.findByTestId('discussion-composer-input')).querySelector('p'))
       .toHaveAttribute('data-placeholder', en.discussion.composerPlaceholder);
@@ -211,7 +228,7 @@ describe('DiscussionSection', () => {
         });
       }),
     );
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     await userEvent.click(await screen.findByTestId('edit-button-r1'));
     const input = screen.getByTestId('edit-composer-r1-input');
@@ -227,7 +244,7 @@ describe('DiscussionSection', () => {
     server.use(okMe(), okDiscussion([]));
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     await user.click(await screen.findByTestId('discussion-composer-input'));
 
@@ -243,7 +260,7 @@ describe('DiscussionSection', () => {
   it('leaves no empty composer card and no invitation to write while viewing as a member', async () => {
     server.use(impersonatedMe(), okDiscussion([]));
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(
       en.discussion.emptyReadOnly,
@@ -261,7 +278,7 @@ describe('DiscussionSection', () => {
       okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'My post' }))]),
     );
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('reply-button-r1')).toBeDisabled();
     expect(screen.getByTestId('edit-button-r1')).toBeDisabled();
@@ -297,7 +314,7 @@ describe('DiscussionSection', () => {
     );
     server.use(okMe(), okDiscussion([root]));
 
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('First level');
     expect(screen.getByTestId('author-chip-r1')).toHaveTextContent(en.discussion.authorChip);
@@ -356,7 +373,7 @@ describe('DiscussionSection', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('post-body-c5')).toHaveTextContent('Fifth level');
     expect(screen.queryByTestId('post-body-c6')).not.toBeInTheDocument();
@@ -425,7 +442,7 @@ describe('DiscussionSection', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     await user.click(await screen.findByTestId('reply-button-r1'));
     await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
@@ -462,7 +479,7 @@ describe('DiscussionSection', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     const followedToggle = await screen.findByTestId('follow-toggle-r1');
     expect(followedToggle).toHaveTextContent(en.discussion.following);
@@ -514,7 +531,7 @@ describe('DiscussionSection', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
     await user.click(await screen.findByTestId('delete-button-r1'));
     expect(await screen.findByText(en.discussion.deleteConfirmTitle)).toBeInTheDocument();
@@ -527,40 +544,68 @@ describe('DiscussionSection', () => {
     );
   });
 
-  it('searches within this lesson and highlights matches', async () => {
+  it('searches within this lesson, highlights matches and links each hit to its thread', async () => {
     const requestedUrls: string[] = [];
     const root = asThread(post({ id: 'r1', body: 'Base thread' }));
     server.use(
       okMe(),
       okDiscussion([root]),
-      http.get('/api/posts/search', ({ request }) => {
-        requestedUrls.push(request.url);
-        return HttpResponse.json({
-          ok: true,
-          data: {
-            hits: [
-              { post: post({ id: 'h1', body: 'The engine runs full throttle' }), lessonId: 'l1', snippet: 'The engine runs full throttle' },
-            ],
-          },
-        });
-      }),
+      okSearch([
+        { post: post({ id: 'h1', rootPostId: 'r1', parentPostId: 'r1', body: 'The engine runs full throttle' }), lessonId: 'l1', snippet: 'The engine runs full throttle' },
+      ], requestedUrls),
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<DiscussionSection lessonId="l1" />);
+    await renderInRouter(<DiscussionSection courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('discussion-search-hint')).toHaveTextContent(
-      en.discussion.searchHint,
-    );
     await user.type(await screen.findByTestId('discussion-search-input'), 'engine');
 
     const hit = await screen.findByTestId('search-hit-h1');
     expect(hit).toHaveTextContent('The engine runs full throttle');
     expect(within(hit).getByText('engine').tagName).toBe('MARK');
+    expect(within(hit).getByRole('link', { name: 'Olivia Author' })).toHaveAttribute('href', '/my/courses/course-1/lessons/l1?thread=r1');
+    expect(screen.queryByTestId('discussion-search-hint')).not.toBeInTheDocument();
 
     const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
     expect(url.searchParams.get('query')).toBe('engine');
     expect(url.searchParams.getAll('lessonId')).toEqual(['l1']);
+  });
+
+  it('keeps the edition in a search hit link on an older edition', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([]),
+      okSearch([{ post: post({ id: 'h1', rootPostId: 'r7', body: 'Engine notes' }), lessonId: 'l1', snippet: 'Engine notes' }]),
+    );
+    const user = userEvent.setup();
+    await renderInRouter(<DiscussionSection courseId="course-1" lessonId="l1" editionNumber="2" />);
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'engine');
+
+    expect(await screen.findByTestId('search-hit-link-h1')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1/editions/2?thread=r7');
+  });
+
+  it('shows the search hint only with an empty result', async () => {
+    server.use(okMe(), okDiscussion([]), okSearch([]));
+    const user = userEvent.setup();
+    await renderInRouter(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'xyz');
+    expect(screen.queryByTestId('discussion-search-hint')).not.toBeInTheDocument();
+
+    const empty = await screen.findByTestId('discussion-search-empty');
+    expect(within(empty).getByTestId('discussion-search-hint')).toHaveTextContent(`${en.discussion.searchHint} ${en.search.stemHint}`);
+  });
+
+  it('places the search field below the composer and above the thread list', async () => {
+    server.use(okMe(), okDiscussion([asThread(post({ id: 'r1', body: 'Base thread' }))]));
+    await renderInRouter(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    const thread = await screen.findByTestId('discussion-thread-r1');
+    const search = screen.getByTestId('discussion-search-input');
+    const composer = screen.getByTestId('discussion-composer');
+    expect(composer.compareDocumentPosition(search)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(search.compareDocumentPosition(thread)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
 
@@ -569,7 +614,7 @@ it.each(['owner', null] as const)('shows tombstone menus on roots and replies on
   server.use(okMe(role), okDiscussion([asThread(post({ id: 'root', deletedAt }), [
     asThread(post({ id: 'reply', rootPostId: 'root', parentPostId: 'root', deletedAt })),
   ])]));
-  renderWithProviders(<DiscussionSection lessonId="l1" />);
+  renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
   await screen.findByTestId('deleted-post-reply');
   if (role === null) {
     expect(screen.queryByTestId('post-menu-root')).not.toBeInTheDocument();

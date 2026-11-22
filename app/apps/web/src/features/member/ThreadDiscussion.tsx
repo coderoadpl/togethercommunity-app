@@ -662,8 +662,6 @@ export const ThreadDiscussion = ({
         </Stack>
       ) : (
         <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
-          {search}
-
           {viewer !== null && (
             <PostComposer
               label={t.discussion.composerLabel}
@@ -682,6 +680,8 @@ export const ThreadDiscussion = ({
               testId="discussion-composer"
             />
           )}
+
+          {search}
 
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
 

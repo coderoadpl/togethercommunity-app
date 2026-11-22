@@ -470,7 +470,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
-        images: product.images ?? [],
+        ...(product.images === undefined ? {} : { images: product.images }),
         visibility: product.visibility,
         ...(product.salesChannel === undefined ? {} : { salesChannel: product.salesChannel }),
         deliveryMethod: product.deliveryMethod,

@@ -376,6 +376,10 @@ describe('product repository', () => {
     const reordered = [...gallery].reverse();
     expect(await repo.update(GLOBEX, { ...stored, images: reordered }, version)).toMatchObject({ images: reordered });
     expect(await repo.findById(GLOBEX, 'prod-globex-gallery')).toMatchObject({ images: reordered });
+    const withoutGallery = { ...stored, title: 'Renamed' };
+    delete withoutGallery.images;
+    expect(await repo.update(GLOBEX, withoutGallery, { ...version, id: 'version-gallery-keep' }))
+      .toMatchObject({ title: 'Renamed', images: reordered });
     expect(await repo.update(GLOBEX, { ...stored, images: [] }, { ...version, id: 'version-gallery-2' })).toMatchObject({ images: [] });
     expect(await repo.findById(ACME, 'prod-globex-gallery')).toBeNull();
   });

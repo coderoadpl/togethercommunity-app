@@ -1096,7 +1096,13 @@ on the `stale` event of the item that attaches it (its group siblings carry the
 usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
-public already and needs nothing.
+public already and needs nothing. Every storage request of an approval, of a
+publication withdrawal and of the owner's image preview (the read of the
+quarantined copy, the check and the write of the public copy, a delete) gives up
+after 5 seconds without an answer, the bound a statement of an approval has, and
+counts as a failed storage request: the approval answers
+`503 integration_unavailable` and the proposal stays `pending`, so no storage
+request holds the workspace's approval lock longer.
 
 Before the approval transaction opens, the approval asks the storage, for each
 attached image, whether its public object
@@ -1133,7 +1139,8 @@ stays, and the minute sweep retries it: it removes every record older than 10
 minutes under the same lock, always deleting its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
-remove for the next run. Every public object written by an approval that did
+remove for the next run, with the time of that attempt, so it moves behind the
+other records. Every public object written by an approval that did
 not end applied is therefore removed without anyone's help once the storage
 answers, unless a live field shows its address or an applied proposal carries
 it.
@@ -1158,10 +1165,18 @@ out in the database query itself, so they never fill a batch and an image
 behind them is never starved; the query reads the image fields of each
 operation from the stored input exactly as the application does. The same
 sweep removes expired upload candidates (see Upload) and unfinished publication
-records (see above). It runs on the existing minute tick
-(the `/api/internal/dispatch-email` cron route and the Node ticker), at most
-once every 50 seconds per server process, and a failing sweep is logged and
-never stops the tick. The
+records (see above). Workspaces, images, upload candidates and publication
+records are each taken longest waiting first, by the time of their last failed
+removal (recorded in `sweep_attempted_at`) or else their creation or start,
+so rows whose removal keeps failing move behind the others, inside a workspace
+and across workspaces. It runs on the existing minute tick
+(the `/api/internal/dispatch-email` cron route, after e-mail and refund
+dispatch, and the Node ticker, beside them), at most once every 50 seconds per
+server process, independently of the [download file
+sweep](storage.md#download-file-prefixes): each has its own failure and its own
+budget of 10 seconds, every storage delete gets at most what is left of it, and
+on the cron route both stop at the latest 55 seconds after the tick started. A
+failing sweep is logged and never stops the tick or the other sweep. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
@@ -1174,8 +1189,11 @@ index on `started_at`. Each `CREATE INDEX` locks only its new, empty table; the
 foreign key of each table to `tenants` takes a `SHARE ROW EXCLUSIVE` lock on
 `tenants`, which blocks writes to `tenants` (not reads) until the migration
 transaction commits, a moment since nothing is scanned.
-A release before it ignores the three tables, and its image routes refuse a
-propose-mode key. Such a release serves only random-id file names from
+Migration `0170_key_download_files` adds a nullable `sweep_attempted_at`
+column without a default to each of the three tables (constant time; each
+table's `ACCESS EXCLUSIVE` lock is held until the migration commits); a release
+before it ignores that column. A release before 0169 ignores the three tables,
+and its image routes refuse a propose-mode key. Such a release serves only random-id file names from
 `/api/public/assets`, so an image published under its digest, and any copy a
 publication record still points at, is not served there until rolling forward
 again; quarantined and candidate objects stay private, and the sweep removes

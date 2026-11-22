@@ -535,20 +535,35 @@ scopes on every shop key.
   `key-uploads/`, signed for the declared size, and a key duplicates a file only through
   `POST /api/m2m/shop/downloads/copy`, a copy the storage makes, which the key
   never downloads. A staged copy shows the key only its name, type, size and
-  source (product, file and version), never a fingerprint or any other fact
-  derived from the bytes. Completion copies an upload on the server to a
+  source (product, file and version), never a fingerprint, and once the source
+  row was found every failure of the copy answers one refusal without details
+  (a missing, larger, smaller or mistyped stored object, or an unanswered
+  storage request alike), so the key learns from the bytes only whether the
+  copy was staged. Completion copies an upload on the server to a
   staged object only the server writes, with its metadata replaced
   (`application/octet-stream`, `attachment`, `no-store`), hashes that copy
   while streaming it and checks its size and its first bytes against the
   declared type, one of an allow-list of eight; a second `PUT` through the
   still valid URL changes nothing staged. Exactly one request completes an
   upload: completion first claims its record in a committed transaction, and a
-  concurrent completion answers `409`. A key attaches only files it staged
-  itself, and no route takes a storage key as input. Per-file, per-key,
-  per-workspace and per-window limits are reserved from database rows when an
-  upload or copy starts, under the workspace's staging lock and then the key's;
-  every path that deletes a staged or upload object holds the row that owns it
-  until the storage answers, and owed deletions are retried by the minute sweep
+  concurrent completion answers `409`; a new claim takes an upload over only
+  after the previous attempt's 10-minute lease has ended. A copy whose storage
+  outcome is unknown (no answer in time, a server error, a copy answer without
+  a copy result) deletes nothing and keeps its destination owned and counted
+  until the minute sweep deletes it after that lease, because the storage may
+  still write it. A key attaches only files it staged itself, and no route
+  takes a storage key as input. Per-file, per-key, per-workspace and per-window
+  limits are reserved from database rows, counted in one statement, when an
+  upload or copy starts, under the workspace's staging lock and then the
+  key's. Owed deletions count against the key whose prefix holds the object;
+  removing an attached file is never refused, so that debt can exceed a limit
+  only by what the key attached before, and it blocks the key's new uploads and
+  copies until the storage confirms the delete. Completions, copies, the key's
+  discard and removal, and the minute sweep hold the row that owns a staged or
+  upload object until the storage answers; an owner's removal or draft
+  deletion deletes an attached object once after its commit without that row,
+  and the minute sweep, which has its own time budget and never holds back
+  e-mail or refund dispatch, retries owed deletions
   ([Download file prefixes](storage.md#download-file-prefixes)). A propose-mode
   key is refused on every download file route except the product file list in
   this release (route class `refuse`, reason `not-in-release`), so it can

@@ -46,7 +46,7 @@ Product files live under the workspace's private download prefix:
 | Prefix | Holds | Served |
 |---|---|---|
 | `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
-| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. Completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old, a second `PUT` through a still valid URL included |
+| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included |
 | `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never while staged; an attached file is served like any other product file |
 
 A key writes only its own `key-uploads/` object, through the presigned `PUT`
@@ -60,30 +60,68 @@ sent with its upload survives.
 
 Who deletes them:
 
-- a `key-uploads/` object: the completion that copied it, also when its
-  checks fail, and the minute sweep once its upload record is 20 minutes old;
-- a `key-files/` object that is still staged: the completion or copy that wrote
-  it when that attempt fails, the key's discard, and the minute sweep 7 days
-  after staging or once the key is revoked, expired or purged;
+- a `key-uploads/` object: a completion that staged it or that failed for a
+  definite reason (nothing uploaded, a wrong size or type, a copy the storage
+  refused), and the minute sweep once its upload record is 20 minutes old and
+  the lease of its last completion attempt (10 minutes) has ended;
+- a `key-files/` object that is still staged: a completion or copy that wrote
+  it and then failed for a definite reason, the key's discard, and the minute
+  sweep 7 days after staging or once the key is revoked, expired or purged;
+- the destination of a completion or copy whose storage outcome is unknown (a
+  copy or read the storage did not answer in time, a connection error, a server
+  error, a copy answer without a copy result): only the minute sweep, once its
+  record is 20 minutes old and the attempt's lease has ended, because a copy
+  the storage still runs may land after any earlier delete. Until then the
+  record keeps the upload object and the destination, and both count against
+  the key's limits;
 - a `key-files/` object that is attached: removing that file version (by a key
   or in the product editor) or deleting the draft product.
 
-Every staged or upload object is owned by a database row (an upload or copy
-record, a staged file, or an owed deletion), and every path that deletes one
-holds that row until the storage answers, so an attach that takes the object
-over in the meantime is never undone. Removing a file version or deleting a
-draft product whose file object is under `key-files/`, and discarding a staged
-file, record the object's deletion in `change_proposal_download_deletions` in
-the same transaction. After a key's removal or discard the deletion that
-follows removes that row; after a removal in the product editor or a draft
-deletion the object is deleted once after its row as before, and the minute
-sweep deletes it once more and removes the row. The sweep retries what a
-failed storage delete left, longest waiting first. The storage orphan report
-counts the objects these rows name (staged objects, the upload object and the
-planned staged object of an open record, owed deletions) as pending, and
-classifies an attached object like any other product file. Files uploaded in
-the product editor are deleted as before: the object is deleted once after its
-row.
+Every staged or upload object is owned by a database row: an upload or copy
+record (its upload object, and its destination until a completion hands it to a
+staged row), a staged file, or an owed deletion. Completions, copies, the
+key's discard and file removal, and the minute sweep hold that row until the
+storage answers, so an attach that takes the object over in the meantime is
+never undone. Removing a file version or deleting a draft product whose file
+object is under `key-files/`, and discarding a staged file, record the
+object's deletion in `change_proposal_download_deletions` in the same
+transaction, owed by the key whose `key-files/` prefix holds the object,
+whoever removed the file; the owed bytes count against that key's and the
+workspace's staging limits until the storage confirms the delete
+([Download files](shop-management-keys.md#download-files)). After a key's
+removal or discard the deletion that follows holds and removes that row; after
+a removal in the product editor or a draft deletion the object is deleted once
+after its row as before, without the owed row, and the minute sweep deletes it
+once more and removes the row. That delete cannot remove a newer file, because
+no path writes to a `key-files/` address again once its file was attached.
+
+The minute sweep never holds back e-mail and refund dispatch: the cron route
+runs it after them and stops it at the latest 55 seconds after the tick
+started, and the Node ticker runs it beside them. It has a budget of 10 seconds
+of its own, and every storage delete gets at most what is left of it. It
+serves workspaces, and inside a workspace one queue of upload and copy
+records, staged files and owed deletions, longest waiting first, by the time of
+a row's last failed delete or else its creation; a failed delete records its
+attempt, so rows whose deletion keeps failing move behind the others. A row
+another request holds is tried again on the next run. Each state change of an
+upload or copy record is appended, in the same transaction, to
+`change_proposal_download_upload_events` (the record, the key, the attempt, the
+kind of change and a short machine reason), which the sweep deletes 30 days
+after each event. The storage orphan report counts the objects these rows name
+(staged objects, the upload object and the destination of an open record, owed
+deletions) as pending, and classifies an attached object like any other
+product file. Files uploaded in the product editor are deleted as before: the
+object is deleted once after its row.
+
+A file a key staged is stored as `application/octet-stream` with a bare
+`attachment` disposition, and a buyer's signed link asks the storage for the
+file's type and name instead (`response-content-type`,
+`response-content-disposition`). The storage probe that runs when storage is
+configured or tested signs such a read of its scratch object and reports
+`signedResponseOverrides: "honoured"` or `"ignored"` in its diagnostic; an
+ignoring provider does not fail the configuration. With a provider that ignores the overrides, a buyer receives
+such a file as an `application/octet-stream` download named after the last
+segment of its stored object, the file's sanitised name.
 
 ## File versions
 

@@ -597,15 +597,40 @@ answers `{ "file": … }`, the staged file: `id`, `fileName`, `contentType`,
 (7 days after staging). Bytes written to the upload URL after completion
 change nothing staged.
 
-Completing an upload that is already completed answers the same staged file
-again. Completion answers `409 conflict` while another completion of the same
-upload runs, after the 15 minutes and after a failed completion (start a new
-upload); `400 validation` when nothing was uploaded, when the object is
-smaller than declared or when its first bytes are not of the declared type;
-`503 integration_unavailable` when the storage does not answer in time or the
-object is larger than declared, which the signed `PUT` does not accept; and
-`404` for an upload of another key. A failed completion deletes the upload and
-its staged copy.
+Completing an upload whose completion already staged its file answers that
+staged file again while it is staged and the minute sweep has not settled the
+upload; once the file was attached or discarded completion answers
+`409 conflict`, as it does once the sweep settled the upload (at the earliest
+20 minutes after it started), and `404` once the sweep purged it, a day after
+it started. Completion also answers:
+
+- `409 conflict` while another completion of the same upload runs, after the
+  15 minutes, and after a completion that failed for a definite reason (start a
+  new upload);
+- `400 validation` when nothing was uploaded, when the stored object does not
+  have the declared size (the signed `PUT` accepts no other) or when its first
+  bytes are not of the declared type, and the upload is closed (start a new
+  upload);
+- `503 unavailable` with `Retry-After` when the storage did not answer in time
+  or gave no definite answer: nothing was staged, the upload keeps its upload
+  object, and a completion sent after the time in the message, when the failed
+  attempt's 10-minute lease has ended, completes it, while the upload's 15
+  minutes have not passed;
+- `503 integration_unavailable` when that lease ends after the 15 minutes, and
+  when the storage refused to copy the upload (start a new upload);
+- `503 unavailable` with `Retry-After: 1` when the upload is held by another
+  request beyond the bound of its lock wait (retry the request; when the wait
+  ran out as a completion was finishing, the retry answers `409 conflict` until
+  that completion's 10-minute lease has ended, and completes the upload after
+  it while the upload's 15 minutes have not passed);
+- `404` for an upload of another key.
+
+A completion that fails for a definite reason deletes the upload object and its
+staged copy when the storage confirms the deletes; what it cannot delete stays
+owned by the upload, counts against the limits, and is deleted by the minute
+sweep. A completion whose storage outcome is unknown deletes nothing, because a
+copy the storage still runs may land later: the minute sweep deletes both
+objects once the upload is 20 minutes old and the attempt's lease has ended.
 
 **Types, names and size.** The type is one of `application/pdf` (the file
 starts with `%PDF-`), `application/epub+zip` (a ZIP whose first entry is the
@@ -618,13 +643,19 @@ product editor keeps its 1 GiB), so that one completion can copy and hash it
 within a single request.
 
 **Copy.** `downloads/copy` stages a copy of a ready file of a product of the
-same workspace, made by the storage; the bytes never pass through the server or
+same workspace, made by the storage; the server then streams the copy through
+SHA-256 to check its size and first bytes, and the bytes never pass through
 the key. A file of another product or workspace, or one that is not ready,
 answers `404`; a source above 256 MiB, or with a type or name a key could not
 upload, answers `400`; nothing is staged then. The copy counts against the
-same limits as an upload. Its staged file shows the key the name, type, size
-and `copiedFrom` (`productId`, `assetId`, `versionNumber`), and `sha256` is
-`null`: a key never receives a fingerprint of an existing file.
+same limits as an upload. Once the source was found and the copy reserved,
+every failure answers the same `400 validation` `This file cannot be copied by
+a key; nothing was staged`, without details, whether the stored object is
+missing, larger or smaller than its file row says, of another type, or the
+storage did not answer: the cause is logged for the operator. Its staged file
+shows the key the name, type, size and `copiedFrom` (`productId`, `assetId`,
+`versionNumber`), and `sha256` is `null`: a key never receives a fingerprint of
+an existing file. What a key learns is whether the copy was staged.
 
 **Attach.** The new product file's id is the staged file's id and its object
 is the staged object; nothing is copied again. The product must be a digital
@@ -634,7 +665,10 @@ most 100 file rows (`409`, cap `product_files`). With `replacesAssetId`, which
 must be a ready file of the product, the file joins that file's lineage as its
 next version and supersedes the previous latest version. An attached file is no
 longer listed as staged. The answer is `{ "asset": … }`, the same file
-metadata as the product file list.
+metadata as the product file list. Attaching again a staged file this key
+already attached to the same product answers that file the same way, so a
+retry after a lost answer adds nothing; any other staged file that is gone
+answers `404`.
 
 **Remove.** Removing deletes one version of any file of the product, a file the
 owner uploaded included, and promotes the newest remaining ready version of its
@@ -642,11 +676,20 @@ lineage; buyers can no longer download the removed version. The answer is
 `{ "deleted": true }`. When the file's object was staged by a key, its deletion
 is recorded in the same transaction and the minute sweep retries a storage
 delete that failed ([Download file prefixes](storage.md#download-file-prefixes)).
+A removal is never refused for the limits below: what a failed delete owes
+counts against the key that staged the file until the storage confirms the
+delete, and blocks that key's new uploads and copies while it lasts.
 
-**Staged files.** A staged file that is not attached is deleted 7 days after it
-was staged, and once its key is revoked, expires or is purged; discarding it
-deletes it at once. An upload that is never completed is deleted by the same
-minute sweep 20 minutes after it started.
+**Staged files.** A staged file that is not attached becomes due for the minute
+sweep 7 days after it was staged, and once its key is revoked, expires or is
+purged. Discarding it removes it from the staged list at once and deletes its
+object, or, when that delete fails, owes the deletion, which the sweep
+retries; the discard answers success either way. An upload that is never
+completed becomes due for the same sweep 20 minutes after it started, and one
+whose last completion attempt is still inside its 10-minute lease once that
+lease has ended. The sweep serves the longest-waiting rows first within its own
+time budget, so a due row may wait for a later run
+([Download file prefixes](storage.md#download-file-prefixes)).
 
 **Limits.** Checked when an upload or a copy starts, under a workspace-wide
 lock taken before the key's own, so two keys cannot both take the last share.
@@ -655,20 +698,32 @@ A refusal answers `409 conflict` with the cap in
 
 | Limit | Value | Cap |
 |---|---|---|
-| Staged files plus uploads and copies not completed yet, per key | 20 | `key_staged_files` |
+| Objects a key's rows still own: staged files, owed deletions, and uploads and copies not completed that still own an object, per key | 20 | `key_staged_files` |
 | Staged bytes per key | 2 GiB | `key_staged_bytes` |
 | Staged bytes per workspace, all keys together | 10 GiB | `workspace_staged_bytes` |
 | Uploads and copies started per key in 15 minutes | 20 | `key_file_uploads` |
 | Bytes of uploads and copies started per key in 24 hours | 10 GiB | `key_file_bytes_daily` |
 | File rows per product, checked when a file is attached | 100 | `product_files` |
 
-The byte limits count staged files, objects whose deletion is still owed, and
-the objects an upload or a copy may still own (its upload object and its
-staged copy, each at the declared size) until the minute sweep settles it, at
-the earliest 20 minutes after it started. The 24-hour limit counts every
-upload and copy started in the window, whatever became of it. When the
-workspace's staging lock is not free within its bound, the start answers
-`503 unavailable` with `Retry-After: 1` and reserves nothing.
+The limits are counted from rows in one database statement, so an object
+whose ownership moves from an upload to a staged file while a start is
+checked is counted once. The byte limits count staged files, objects whose
+deletion is still owed, and each object an upload or a copy still owns at its
+declared size: the upload object of an upload until the minute sweep settles
+it, at the earliest 20 minutes after it started (a still valid upload URL can
+write it again until then), and the staged copy of an upload or a copy until a
+completion hands it to a staged file or a failed attempt's delete is
+confirmed. A completed upload's file counts once, as its staged file, its
+owed deletion or the product file it became. The file count adds owed
+deletions and the uploads and copies, failed ones included, that still own an
+object, without counting a completed upload again. Removing an attached file
+is never refused: when its delete fails, what it owes counts against the key
+that staged it, so it can exceed a limit only by what that key legitimately
+attached before, and it blocks that key's new uploads and copies until the
+storage confirms the delete. The 24-hour limit counts every upload and copy
+started in the window, whatever became of it. When the workspace's staging lock
+is not free within its bound, the start answers `503 unavailable` with
+`Retry-After: 1` and reserves nothing.
 
 ```bash
 curl -s -H "$KEY" -H "$JSON" -d '{"fileName":"workbook.pdf","contentType":"application/pdf","sizeBytes":<bytes>}' "$SHOP/downloads/upload" > file-upload.json
@@ -1090,8 +1145,8 @@ or use `createShopManagementClient`, which does that and returns a
 | 422 | `shipx_rejected` | InPost refused the shipment data | 29 | Correct the sender or order data |
 | 429 | `rate_limited` | Per-key minute or day limit reached | 12 | Wait `Retry-After` seconds |
 | 502 | `integration_auth` | A provider rejected the stored credentials | 9 | Reconfigure the provider |
-| 503 | `integration_unavailable`, `shipx_unavailable` | A provider could not be reached, or a storage probe failed | 11, 28 | Retry later with backoff |
-| 503 | `unavailable` | The key history row of an accepted `POST`, `PUT`, `PATCH` or `DELETE` could not be written, or the workspace's download file staging is busy; the handler did not run or nothing changed | 20 | Wait `Retry-After` seconds, then retry the same request |
+| 503 | `integration_unavailable`, `shipx_unavailable` | A provider could not be reached, or a storage probe failed; for a download file completion, the upload can no longer be completed (the message says to start a new upload) | 11, 28 | Retry later with backoff; for a file completion, start a new upload instead |
+| 503 | `unavailable` | The key history row of an accepted `POST`, `PUT`, `PATCH` or `DELETE` could not be written, the workspace's download file staging or an upload is busy, or the storage did not confirm a download file completion; the handler did not run or nothing changed | 20 | Wait `Retry-After` seconds, then retry the same request |
 | 500 | `internal` | Unexpected server failure | 10 | Retry later with backoff; report if it persists |
 
 The CLI exit codes come from `EXIT_CODE_BY_ERROR_CODE` in
@@ -1577,21 +1632,26 @@ them to the release with only the catalog routes needs no data step either.
 
 A retreat to a release that predates migration `0170_key_download_files` needs
 no data step either. The migration only adds
-`change_proposal_download_files`, `change_proposal_download_uploads` and
-`change_proposal_download_deletions` with their indexes, and the nullable
-column `sha256` on `product_download_assets`. Each new table's foreign key to
-`tenants` takes a `SHARE ROW EXCLUSIVE` lock on `tenants`, which blocks writes
-to `tenants` (not reads) until the migration transaction commits; each
-`CREATE INDEX` locks only its new, empty table; the `ADD COLUMN` takes an
-`ACCESS EXCLUSIVE` lock on `product_download_assets`, a change of the catalog
-only (no default, no rewrite, no scan), so file lists and buyer downloads wait
-until the migration commits. No constraint and no backfill touch an existing
-table. A release without this code has no download file routes (`404`),
-ignores the three tables and the column, and never deletes a staged or upload
-object, which stays under the private download prefix; the minute sweep of
-this release removes them after rolling forward. A file a key attached is an
-ordinary product file row there, served and deleted by its stored object key
-like any other file.
+`change_proposal_download_files`, `change_proposal_download_uploads`,
+`change_proposal_download_deletions` and
+`change_proposal_download_upload_events` with their indexes, the nullable
+column `sha256` on `product_download_assets`, and the nullable column
+`sweep_attempted_at` on `change_proposal_images`,
+`change_proposal_image_uploads` and `change_proposal_image_publications`.
+Each new table's foreign key to `tenants` takes a `SHARE ROW EXCLUSIVE` lock
+on `tenants`, which blocks writes to `tenants` (not reads) until the migration
+transaction commits; each `CREATE INDEX` locks only its new, empty table; each
+`ADD COLUMN` takes an `ACCESS EXCLUSIVE` lock on its table, a change of the
+catalog only (no default, no rewrite, no scan), so file lists, buyer downloads
+and quarantined image work wait until the migration commits. No constraint and
+no backfill touch an existing table. A release without this code has no shop
+key download file routes (`404`); the owner's file routes and buyer downloads
+answer as before. It ignores the four tables and the columns, never sweeps the
+staging rows and never deletes a staged or upload object, which stays under the
+private download prefix while its row stays. After rolling forward, the minute
+sweep of this release removes them, as far as the rows that own them still
+exist. A file a key attached is an ordinary product file row there, served and
+deleted by its stored object key like any other file.
 
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and

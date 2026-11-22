@@ -2804,6 +2804,7 @@ export const en: Messages = {
     successBody: 'You can now sign in with your new password.',
     goToLogin: 'Go to sign in',
     requestNewLink: 'Request a new reset link',
+    backToLogin: 'Back to sign in',
   },
   support: {
     heading: 'Contact the creator',

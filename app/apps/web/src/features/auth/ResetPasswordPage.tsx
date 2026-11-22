@@ -14,7 +14,6 @@ import { Link } from '@tanstack/react-router';
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { AuthAccentLink, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
@@ -69,28 +68,26 @@ export const ResetPasswordPage = () => {
   };
 
   const linkUnusable = !token || invalidToken || providerRejectedToken;
-  const footer = linkUnusable || resetPassword.isSuccess ? null : (
+  const footer = resetPassword.isSuccess && !linkUnusable ? null : (
     <AuthSecondaryAction component="p">
-      <AuthAccentLink standalone component={Link} to="/login">{t.resetPassword.goToLogin}</AuthAccentLink>
+      <AuthAccentLink standalone component={Link} to="/login">
+        {linkUnusable ? t.resetPassword.backToLogin : t.resetPassword.goToLogin}
+      </AuthAccentLink>
     </AuthSecondaryAction>
   );
 
   return (
     <AuthShell title={t.resetPassword.title} footer={footer}>
         {linkUnusable ? (
-          <StatusView
-            state={{
-              kind: 'not-found',
-              title: t.resetPassword.missingTokenTitle,
-              body: t.resetPassword.missingToken,
-              action: (
-                <Button component={Link} to="/forgot-password" variant="contained">
-                  {t.resetPassword.requestNewLink}
-                </Button>
-              ),
-            }}
-            data-testid="reset-invalid-token"
-          />
+          <Stack useFlexGap spacing="1rem" data-testid="reset-invalid-token">
+            <Box>
+              <AuthTitle variant="h1">{t.resetPassword.missingTokenTitle}</AuthTitle>
+              <AuthLead component="p">{t.resetPassword.missingToken}</AuthLead>
+            </Box>
+            <Button component={Link} to="/forgot-password" variant="contained" fullWidth>
+              {t.resetPassword.requestNewLink}
+            </Button>
+          </Stack>
         ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="1rem" data-testid="reset-success">
             <Box>

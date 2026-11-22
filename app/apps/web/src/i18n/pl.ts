@@ -2827,6 +2827,7 @@ export const pl: Messages = {
     successBody: 'Możesz teraz zalogować się nowym hasłem.',
     goToLogin: 'Przejdź do logowania',
     requestNewLink: 'Poproś o nowy link',
+    backToLogin: 'Wróć do logowania',
   },
   support: {
     heading: 'Skontaktuj się z twórcą',

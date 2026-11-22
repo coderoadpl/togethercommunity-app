@@ -192,6 +192,18 @@ describe('ResetPasswordPage', () => {
     );
   });
 
+  it('builds the invalid-link state like the other recovery states, with a way back to sign in', async () => {
+    await renderResetPage('?error=INVALID_TOKEN');
+
+    expect(await screen.findByRole('heading', { level: 1, name: en.resetPassword.missingTokenTitle })).toBeInTheDocument();
+    expect(screen.getByTestId('reset-invalid-token')).not.toHaveAttribute('data-state');
+    expect(screen.getByTestId('reset-invalid-token').closest('.MuiPaper-root')).toBeNull();
+    const back = screen.getByRole('link', { name: en.resetPassword.backToLogin });
+    expect(back).toHaveAttribute('href', '/login');
+    expectSecondaryLink(back);
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveClass('MuiButton-fullWidth');
+  });
+
   it('handles a consumed token returned by the provider', async () => {
     server.use(http.post('*', () => HttpResponse.json(
       { code: 'INVALID_TOKEN', message: 'Invalid token' },

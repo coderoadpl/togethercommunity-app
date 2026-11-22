@@ -2509,6 +2509,7 @@ export interface Messages {
     successBody: string;
     goToLogin: string;
     requestNewLink: string;
+    backToLogin: string;
   };
   support: {
     heading: string;

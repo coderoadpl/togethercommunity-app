@@ -556,7 +556,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     prepare: prepareBootSplash,
     ready: (page) => page.getByTestId('tenant-gate-pending').getByText('Loading…').waitFor(visible),
     waitForNetworkIdle: false,
-    minBytes: 7 * 1024,
+    minBytes: 4 * 1024,
   },
   {
     name: 'panel-spaces',

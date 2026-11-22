@@ -9,7 +9,7 @@ import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-f
 
 import type { AppVars } from './app-vars.js';
 import { registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
-import { publicRateLimitMiddleware, selectPublicRateLimitPolicies } from './public-rate-limit.js';
+import { publicRateLimitMiddleware, selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { publicRouteManifestEntry } from './public-route-manifest.js';
 import { requestOriginPolicy } from './request-origin-policy.js';
 
@@ -31,7 +31,7 @@ const countingBuckets = (): PublicRateLimitRepository & { claims: string[] } => 
   };
 };
 
-const harness = (rates: ShippingRate[] = [lockerRate]) => {
+const harness = (rates: ShippingRate[] = [lockerRate], policies: Partial<PublicRateLimitPolicies> = {}, authTrustedProxyHeader: string | null = null) => {
   const tenant = tenantSchema.parse({ id: 'workspace', slug: 'workspace', name: 'Workspace', status: 'active', plan: 'hosted', contentVersion: 1 });
   const settings = tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: rates });
   const tenants: TenantRepository = { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
@@ -40,12 +40,13 @@ const harness = (rates: ShippingRate[] = [lockerRate]) => {
   const lookup = vi.fn(fake.lookup);
   const buckets = countingBuckets();
   const deps = { tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,
-    singleTenantMode: true, authTrustedProxyHeader: null, pickupPoints: { lookup } };
+    singleTenantMode: true, authTrustedProxyHeader, pickupPoints: { lookup } };
   const app = new Hono<AppVars>();
   app.use('*', publicRateLimitMiddleware({ ...deps, clock: { nowIso: () => '2026-11-22T10:00:00.000Z' },
-    publicRateLimitPolicies: selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), rateLimitBuckets: buckets }));
+    publicRateLimitPolicies: { ...selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), ...policies }, rateLimitBuckets: buckets }));
   registerPublicParcelLockerRoutes(app, deps);
-  const get = (code: string) => app.request(`https://workspace.example.org/api/public/parcel-lockers/${code}`);
+  const get = (code: string, clientIp?: string) => app.request(`https://workspace.example.org/api/public/parcel-lockers/${code}`,
+    clientIp === undefined ? {} : { headers: { 'x-client-ip': clientIp } });
   return { get, lookup, buckets };
 };
 
@@ -104,7 +105,16 @@ describe('public parcel locker lookup route', () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).not.toBeNull();
     expect(h.lookup).toHaveBeenCalledTimes(30);
-    expect(new Set(h.buckets.claims)).toEqual(new Set(['parcel-locker:ip', 'parcel-locker:tenant']));
+    expect(new Set(h.buckets.claims)).toEqual(new Set(['parcel-locker:ip', 'parcel-locker:tenant', 'parcel-locker:global']));
+  });
+
+  it('caps carrier lookups across every client address and workspace with one platform bucket', async () => {
+    const h = harness([lockerRate], { parcelLockerLookupsGlobal: { limit: 3, windowMs: 60_000 } }, 'x-client-ip');
+    for (const clientIp of ['192.0.2.1', '192.0.2.2', '192.0.2.3']) expect((await h.get('WAW01M', clientIp)).status).toBe(200);
+    const limited = await h.get('WAW01M', '192.0.2.4');
+    expect(limited.status).toBe(429);
+    expect(h.lookup).toHaveBeenCalledTimes(3);
+    expect(h.buckets.claims.at(-1)).toBe('parcel-locker:global');
   });
 
   it('is listed as a read-only, same-origin GET in the public route manifest and needs no origin policy', () => {

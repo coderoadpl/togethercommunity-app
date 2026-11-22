@@ -40,6 +40,7 @@ export interface PublicRateLimitPolicies {
   signupsPerEmail: RateLimitWindow;
   parcelLockerLookupsPerIp: RateLimitWindow;
   parcelLockerLookupsPerTenant: RateLimitWindow;
+  parcelLockerLookupsGlobal: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -67,6 +68,7 @@ const PRODUCTION_LIMITS = {
   signupsPerEmail: 3,
   parcelLockerLookupsPerIp: 30,
   parcelLockerLookupsPerTenant: 600,
+  parcelLockerLookupsGlobal: 1_200,
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
@@ -83,6 +85,7 @@ const DEVELOPMENT_LIMITS = {
   signupsPerEmail: 100,
   parcelLockerLookupsPerIp: 3_000,
   parcelLockerLookupsPerTenant: 60_000,
+  parcelLockerLookupsGlobal: 120_000,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -152,6 +155,7 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
     },
     parcelLockerLookupsPerIp: { limit: fallback.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
     parcelLockerLookupsPerTenant: { limit: fallback.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
+    parcelLockerLookupsGlobal: { limit: fallback.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
   };
 };
 
@@ -163,6 +167,8 @@ const AUTH_LINK_PATHS = new Set<string>([
 ]);
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
+
+const PLATFORM_BUCKET_KEY = 'platform';
 
 const PARCEL_LOCKER_PATH_PATTERN = /^\/api\/public\/parcel-lockers\/[^/]+$/;
 
@@ -252,7 +258,12 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
       { scope: 'parcel-locker:tenant', key: tenant.value.tenant.id, window: policies.parcelLockerLookupsPerTenant },
       limiter,
     );
-    return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
+    if (!perTenant.ok) return rateLimitedResponse(perTenant.error);
+    const global = await claimRateLimitWindow(
+      { scope: 'parcel-locker:global', key: PLATFORM_BUCKET_KEY, window: policies.parcelLockerLookupsGlobal },
+      limiter,
+    );
+    return global.ok ? null : rateLimitedResponse(global.error);
   }
   if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;

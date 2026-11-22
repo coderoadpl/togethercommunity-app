@@ -318,7 +318,8 @@ otherwise returns `{ status: 'found', code, name, address, usable, reason }`,
 `{ status: 'not_found' }` or `{ status: 'unavailable' }` with
 `Cache-Control: no-store`. It never forwards a query string or another path. It
 is same-origin only (no open CORS) and limited per client address (30 per
-minute in production) and per workspace (600 per minute), see
+minute in production), per workspace (600 per minute) and across the platform
+(1,200 per minute), see
 [Security](security.md#parcel-locker-lookup).
 
 In development, end-to-end runs and the smoke gate (`PAYMENT_PROVIDER=fake`)

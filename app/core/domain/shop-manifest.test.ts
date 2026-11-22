@@ -24,6 +24,7 @@ describe('shop manifest v1', () => {
     { ...manifest, company: { settings: { stripeSecretKey: 'forbidden' } } },
     { ...manifest, shops: [{ ...manifest.shops[0], provisioning: {} }] },
     { ...manifest, shops: [{ workspace: 'acme', products: [{ ...productInput, price: { ...productInput.price, token: 'forbidden' } }] }] },
+    { ...manifest, shops: [{ workspace: 'acme', products: [{ ...productInput, images: [{ url: 'https://cdn.example.test/front.jpg', alt: '', token: 'forbidden' }] }] }] },
     { ...manifest, company: { settings: { checkoutAppearance: { password: 'forbidden' } } } },
     { ...manifest, company: { settings: { socialLinks: [{ label: 'Acme', url: 'https://togethercommunity.app', token: 'forbidden' }] } } },
     { ...manifest, company: { settings: { shippingRates: [{ id: 'courier', label: 'Courier', amountCents: 1000, carrier: 'other', pickupPoint: 'none', active: true, token: 'forbidden' }] } } },
@@ -98,6 +99,8 @@ describe('shop manifest v1', () => {
     expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [front, side] }), withGallery).product).toBe('unchanged');
     expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [side, front] }), withGallery)).toMatchObject({ product: 'update', fields: ['images'] });
     expect(shopManifestProductSchema.safeParse({ ...productInput, images: [front, front] }).success).toBe(false);
+    expect(shopManifestProductSchema.safeParse({ ...productInput, images: [{ ...front, caption: 'Front' }] }).error?.issues)
+      .toEqual([expect.objectContaining({ code: 'unrecognized_keys', keys: ['caption'], path: ['images', 0] })]);
   });
 
   it('keeps one matching active non-imported price and retires alternatives', () => {

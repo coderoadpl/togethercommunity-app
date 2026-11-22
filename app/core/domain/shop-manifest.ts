@@ -4,7 +4,7 @@ import { provisionTenantInputSchema } from './operator-tenant.js';
 import { stripeModeSchema } from './integration.js';
 import { DEFAULT_PARCEL_TEMPLATE, SHIPX_ENVIRONMENTS, shipxSenderSchema } from './shipx.js';
 import type { ProductPrice } from './commerce.js';
-import { newProductSchema, productSlugSchema, type Product } from './product.js';
+import { newProductSchema, productImageSchema, productImagesSchema, productSlugSchema, type Product } from './product.js';
 import { shippingRateSchema, SHIPPING_RATES_MAX } from './shipping.js';
 import { MAX_STOCK_QUANTITY, type ProductStock } from './stock.js';
 import { isReservedTenantSlug, SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema, updateTenantSettingsInputSchema } from './tenant.js';
@@ -41,7 +41,7 @@ export const shopManifestProductSchema = newProductSchema.omit({
   salesChannel: newProductSchema.shape.salesChannel.removeDefault().optional(),
   personalization: newProductSchema.shape.personalization.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
-  images: newProductSchema.shape.images.removeDefault().optional(),
+  images: z.array(productImageSchema.strict()).pipe(productImagesSchema).optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),
   published: z.boolean(),

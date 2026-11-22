@@ -252,6 +252,19 @@ describe('staff refunds against a real database', () => {
     expect(await alertPayloads()).toMatchObject([{ alert: 'failed', error: 'Refund amount is greater than the unrefunded amount on the charge This refund was requested by staff.' }]);
   });
 
+  it('skips a partial refund of a charge the dashboard already refunded in full, without telling the buyer', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    h.provider.refundByHand(handRefund(4099));
+    await h.dispatch(minutes(1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: null }]);
+
+    await h.dispatch(minutes(60 * 24 + 1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'skipped_refunded', nextAttemptAt: null }]);
+    expect(h.provider.created).toStrictEqual([]);
+    expect(await buyerEmails()).toStrictEqual([]);
+  });
+
   it('waits on a missing refund permission, refuses a second refund meanwhile and succeeds once the permission is granted', async () => {
     const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
     const h = harness({ steps: [{ outcome: 'error', error: permissionMissing }] });

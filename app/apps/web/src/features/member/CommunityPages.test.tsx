@@ -1408,10 +1408,49 @@ describe('community pages', () => {
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 
-  it('tells a visitor a missing thread is gone and links back to the space instead of offering a retry', async () => {
+  it('keeps a thread without replies to the header join button alone', async () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
+      okOffer({ products: [offerProduct('p1', 'Premium access')] }),
+      okPublicThread([{ ...feedItem({ id: 'p1', body: 'Lonely thread' }), replies: [], replyCount: 0 }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Lonely thread');
+    expect(await screen.findByTestId('anon-join-cta-header')).toHaveAttribute('href', '/#offer');
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+  });
+
+  it('keeps the creator contact under a thread without replies when the workspace sells nothing', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okOffer({ supportUrl: 'https://studio.example.org/contact' }),
+      okPublicThread([{ ...feedItem({ id: 'p1', body: 'Lonely thread' }), replies: [], replyCount: 0 }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'https://studio.example.org/contact',
+    );
+    expect(screen.getByTestId('anon-visitor-sign-in')).toHaveAttribute('href', '/login?returnTo=%2Fcommunity%2Fs1%2Fposts%2Fp1');
+    expect(screen.queryByTestId('anon-join-cta-header')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+  });
+
+  it('tells a visitor a missing thread is gone and links back to the space instead of offering a retry', async () => {
+    const served = { offer: false };
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/offer', () => {
+        served.offer = true;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 });
+      }),
       http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
         HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Post not found' } }, { status: 404 }),
       ),
@@ -1424,6 +1463,13 @@ describe('community pages', () => {
     expect(missing).toHaveTextContent(en.community.threadNotFoundBody);
     expect(within(missing).getByTestId('public-thread-back')).toHaveAttribute('href', '/community/s1');
     expect(screen.queryByRole('button', { name: en.discussion.retry })).not.toBeInTheDocument();
+    await waitFor(() => expect(served.offer).toBe(true));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(screen.queryByTestId('anon-join-cta-header')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-visitor-links')).not.toBeInTheDocument();
   });
 
   it('keeps the retry for a public thread that failed to load', async () => {

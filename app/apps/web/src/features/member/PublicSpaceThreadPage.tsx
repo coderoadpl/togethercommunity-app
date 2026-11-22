@@ -89,7 +89,7 @@ export const PublicSpaceThreadPage = ({
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"
-      actions={join.target.kind === 'none' || join.target.kind === 'pending' ? undefined : (
+      actions={missing || join.target.kind === 'none' || join.target.kind === 'pending' ? undefined : (
         <VisitorJoinButton target={join.target} testId="anon-join-cta-header" />
       )}
       breadcrumbs={anonCrumbs(
@@ -132,15 +132,19 @@ export const PublicSpaceThreadPage = ({
             }}
           />
         ) : (
-          <PublicThreadView root={root} />
+          <>
+            <PublicThreadView root={root} />
+            {join.target.kind === 'none' ? (
+              <Box>
+                <VisitorContactLinks supportUrl={join.supportUrl} signedIn={join.signedIn} />
+              </Box>
+            ) : root.replies.length > 0 ? (
+              <Box>
+                <VisitorJoinButton target={join.target} />
+              </Box>
+            ) : null}
+          </>
         )}
-        <Box>
-          {join.target.kind === 'none' ? (
-            <VisitorContactLinks supportUrl={join.supportUrl} signedIn={join.signedIn} />
-          ) : (
-            <VisitorJoinButton target={join.target} />
-          )}
-        </Box>
       </Stack>
     </MemberSurface>
   );

@@ -96,7 +96,7 @@ describe('i18n dictionaries', () => {
   });
 
   it.each([1, 2, 5, 22])('keeps the Polish course progress line grammatical for %i completed lessons', (done) => {
-    expect(pl.courseOverview.completedOf({ done, total: 25 })).toBe(`Ukończono ${String(done)} z 25 lekcji`);
+    expect(pl.courseOverview.completedOf({ done, total: 25 })).toBe(`Uko\u0144czono ${String(done)} z 25 lekcji`);
   });
 
   it('names the course program and the discussion search the same way in English as in the UI around them', () => {

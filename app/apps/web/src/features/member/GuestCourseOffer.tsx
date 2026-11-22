@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { appBarClasses, Box, Paper, Stack, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatOfferPrice } from '../../lib/format.js';
@@ -46,6 +48,8 @@ const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
 const CourseNotOnSale = ({ supportUrl }: { supportUrl: string | null }) => {
   const t = useTranslations();
   const loginLink = useLoginLinkWithReturn();
+  const me = useQuery(actions.me);
+  const signedIn = me.data?.tenantAccess === 'none';
   const external = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
   return (
     <Stack useFlexGap sx={{ rowGap: '0.75rem' }} data-testid="guest-course-not-on-sale">
@@ -64,13 +68,15 @@ const CourseNotOnSale = ({ supportUrl }: { supportUrl: string | null }) => {
           {t.anon.contactCreator}
         </EmberCtaLink>
       )}
-      <RouterTextLink
-        {...loginLink}
-        sx={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
-        data-testid="public-course-sign-in"
-      >
-        {t.anon.courseHaveAccessSignIn}
-      </RouterTextLink>
+      {signedIn ? null : (
+        <RouterTextLink
+          {...loginLink}
+          sx={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+          data-testid="public-course-sign-in"
+        >
+          {t.anon.courseHaveAccessSignIn}
+        </RouterTextLink>
+      )}
     </Stack>
   );
 };

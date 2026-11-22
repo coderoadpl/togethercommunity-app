@@ -829,6 +829,25 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('guest-course-offer-repeat')).not.toBeInTheDocument();
   });
 
+  it('drops the have-access sign-in for a signed-in visitor on a course with nothing to buy', async () => {
+    anonCoursePage(null, { ...anonOffer, product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact' });
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u9', email: 'visitor@acme.example', emailVerified: true, name: 'Visitor',
+            tenantAccess: 'none', tenant: null, impersonation: null,
+          },
+        })),
+    );
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const notOnSale = await screen.findByTestId('guest-course-not-on-sale');
+    expect(within(notOnSale).getByTestId('public-course-contact')).toHaveAttribute('href', 'https://courses.example.org/contact');
+    expect(within(notOnSale).queryByTestId('public-course-sign-in')).not.toBeInTheDocument();
+  });
+
   it('opens only preview rows after expanding a guest module', async () => {
     anonCoursePage(null);
     await renderPage(<CourseStructurePage courseId="course-1" />);

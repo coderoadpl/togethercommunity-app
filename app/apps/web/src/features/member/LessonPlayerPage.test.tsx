@@ -1506,6 +1506,7 @@ describe('LessonPlayerPage', () => {
     expect(previous.parentElement).toHaveAttribute('data-slot', 'compact');
     expect(next).toHaveAttribute('data-slot', 'compact');
     expect(complete).toHaveAttribute('data-slot', 'compact');
+    expect(stylesAt(complete, 390)).not.toHaveProperty('flex-basis');
     expect(primary).toHaveAttribute('data-slot', 'primary');
     for (const icon of screen.getAllByTestId('lesson-nav-icon')) {
       expect(stylesAt(icon, 900)).toMatchObject({ display: 'none' });
@@ -1706,7 +1707,12 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(label, 390)).not.toMatchObject({ position: 'absolute' });
     const markComplete = screen.getByTestId('mark-complete');
     expect(markComplete).toHaveClass('MuiButton-outlined');
-    expect(markComplete).toHaveAttribute('data-slot', 'compact');
+    expect(markComplete).toHaveAttribute('data-slot', 'wide');
+    expect(markComplete).toHaveTextContent(en.lesson.markCompleted);
+    expect(within(markComplete).queryByTestId('lesson-nav-icon')).not.toBeInTheDocument();
+    expect(stylesAt(markComplete, 390)).toMatchObject({ order: '-1', 'flex-basis': '100%' });
+    expect(stylesAt(markComplete, 900)).toMatchObject({ order: '0', 'flex-basis': 'auto' });
+    expect(stylesAt(nextLocked, 390)).not.toMatchObject({ 'flex-basis': '100%' });
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
     expect(screen.queryByTestId('locked-lessons-skipped')).not.toBeInTheDocument();

@@ -576,7 +576,7 @@ export const LessonPlayerPage = ({
   const previousLesson = neighbours?.previous ?? null;
   const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
   const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.next : null;
-  const compactCompletion = nextHref !== null || nextLockedLesson !== null;
+  const completionSlot = nextHref !== null ? 'compact' : nextLockedLesson !== null ? 'wide' : 'fill';
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
@@ -760,13 +760,13 @@ export const LessonPlayerPage = ({
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
-                variant={compactCompletion ? 'outlined' : 'contained'}
+                variant={completionSlot === 'fill' ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
+                data-slot={completionSlot}
                 onClick={() => complete.mutate({ lessonId })}
                 disabled={complete.isPending}
               >
-                {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
+                {completionSlot === 'compact' ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
               </Button>
             )}
             {continuing ? (

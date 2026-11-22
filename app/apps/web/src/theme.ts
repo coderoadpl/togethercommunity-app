@@ -4217,9 +4217,11 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
   borderTop: theme.headerRule ?? `1px solid ${theme.palette.divider}`,
   '& .MuiButton-root': { width: '100%', minHeight: 48, minWidth: 44 },
+  '& [data-slot="wide"]': { order: -1, flexBasis: '100%' },
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& [data-slot="wide"]': { order: 0, flexBasis: 'auto' },
   },
   [theme.breakpoints.down('md')]: {
     marginInline: '-1.25rem',

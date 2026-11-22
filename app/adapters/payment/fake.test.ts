@@ -5,6 +5,17 @@ import { describe, expect, it } from 'vitest';
 import { ok } from '#core/domain/index.js';
 
 import { createFakePaymentProvider } from './fake.js';
+import oldApiAddressPaid from './fixtures/checkout-completed-2020-03-02-address-paid.json' with { type: 'json' };
+import oldApiLockerFree from './fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
+import cloverAddressPaid from './fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
+import cloverLockerFree from './fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
+
+const recordedCheckouts: Record<string, unknown> = {
+  '2020-03-02-locker-free': oldApiLockerFree,
+  '2020-03-02-address-paid': oldApiAddressPaid,
+  '2025-09-30-locker-free': cloverLockerFree,
+  '2025-09-30-address-paid': cloverAddressPaid,
+};
 
 const secret = 'whsec_known_test_secret';
 const provider = createFakePaymentProvider({ resolve: async () => ok(secret) });
@@ -124,6 +135,19 @@ describe('fake Stripe webhook verification', () => {
       shippingCostCents: 1499,
       shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
     } } });
+  });
+
+  it.each([
+    ['2020-03-02-locker-free', 8800, 0, { name: 'Test Buyer', phone: '+48500100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } }],
+    ['2020-03-02-address-paid', 9519, 1599, { name: 'Test Buyer', phone: '+48500100300', address: { line1: 'Market Square 1', line2: 'Flat 2', postalCode: '31-001', city: 'Cracow', country: 'PL', state: null } }],
+    ['2025-09-30-locker-free', 8800, 0, { name: 'Test Buyer', phone: '+48500100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } }],
+    ['2025-09-30-address-paid', 9519, 1599, { name: 'Test Buyer', phone: '+48500100300', address: { line1: 'Market Square 1', line2: 'Flat 2', postalCode: '31-001', city: 'Cracow', country: 'PL', state: null } }],
+  ])('reads the delivery and its cost from the recorded %s checkout session', async (fixture, amountTotalCents, shippingCostCents, shipping) => {
+    const recorded = JSON.stringify(recordedCheckouts[fixture]);
+    const result = await provider.verifyWebhookEvent({
+      tenantId: 'tenant-a', mode: 'live', payloadRaw: recorded, signatureHeader: signature(recorded), webhookSecret: secret,
+    });
+    expect(result).toMatchObject({ ok: true, value: { checkoutSession: { email: 'test.buyer@example.com', amountTotalCents, shippingCostCents, shipping } } });
   });
 
   it('maps refund and dispute provider identifiers', async () => {

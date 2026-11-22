@@ -698,6 +698,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       config.ok
         ? ok({ ...config.value, analytics, canTest, testConfigured: canTest && testConfig.ok && testConfig.value.stripeConfigured,
           testEnabled: canTest && hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps), simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments,
+          checkoutReturnOrigins: settings?.checkoutReturnOrigins ?? [],
           shippingRates: publicShippingRates(settings?.shippingRates),
           inpostGeowidgetToken: geowidgetWithheld ? null : geowidgetToken, inpostGeowidgetWithheld: geowidgetWithheld })
         : config,

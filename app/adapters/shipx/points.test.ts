@@ -28,10 +28,10 @@ describe('InPost points directory', () => {
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
     expect(lookup).toEqual({ kind: 'found', point: {
       name: 'KRA14A', status: 'Operating', types: ['parcel_locker'], functions: expect.arrayContaining(['parcel_collect']),
-      locationDescription: 'Przy markecie Kaufland', address: { line1: 'os. Kombatantów 16', line2: '31-630 Kraków' },
+      locationDescription: 'Przy markecie Kaufland', address: { line1: 'os. Kombatant\u00f3w 16', line2: '31-630 Krak\u00f3w' },
     } });
     expect(parcelLockerLookupView(lookup)).toEqual({
-      status: 'found', code: 'KRA14A', name: 'Przy markecie Kaufland', address: 'os. Kombatantów 16, 31-630 Kraków', usable: true, reason: null,
+      status: 'found', code: 'KRA14A', name: 'Przy markecie Kaufland', address: 'os. Kombatant\u00f3w 16, 31-630 Krak\u00f3w', usable: true, reason: null,
     });
   });
 

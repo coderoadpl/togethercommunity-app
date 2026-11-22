@@ -395,6 +395,18 @@ export const fileRemoveProposal = fileProposal('proposal-workbook-removal', '202
   effect: { files: { before: [{ ...workbookFirst, latest: false }, workbookSecond], after: [workbookFirst] } },
 });
 
+const SKETCH_PACK_ID = 'product-studio-sketch-pack';
+
+const sketchPack = productFile({ id: 'file-sketch-pack-1', lineageId: 'file-sketch-pack-1', versionNumber: 1, latest: true, fileName: 'sketch-pack.zip', contentType: 'application/zip', sizeBytes: 48_210_775 });
+
+export const fileLastRemoveProposal = fileProposal('proposal-sketch-pack-removal', '2026-11-21T09:20:00.000Z', {
+  operation: 'download.remove',
+  target: { kind: 'product' as const, id: SKETCH_PACK_ID },
+  targetLabel: 'Sketch Pack (digital)',
+  input: { productId: SKETCH_PACK_ID, assetId: sketchPack.id },
+  effect: { files: { before: [sketchPack], after: [] } },
+});
+
 export const FILE_GROUP_ID = 'proposal-group-field-guide-digital';
 
 const fileGroupProduct = '$proposal:proposal-field-guide-digital-product';

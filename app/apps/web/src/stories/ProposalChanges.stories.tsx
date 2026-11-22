@@ -9,6 +9,7 @@ import {
   fileAddProposal,
   fileAddProposalOf,
   fileCopyProposal,
+  fileLastRemoveProposal,
   fileRemoveProposal,
   fileReplaceProposal,
 } from '../test/change-proposal-fixtures.js';
@@ -117,6 +118,8 @@ export const ProposedFileVersion: Story = { render: () => <Rows proposal={fileRe
 export const ProposedFileVersionPolishMobile: Story = { ...ProposedFileVersion, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const ProposedFileRemoval: Story = { render: () => <Rows proposal={fileRemoveProposal} pendingProposalId={fileRemoveProposal.id} /> };
 export const ProposedFileRemovalPolishMobile: Story = { ...ProposedFileRemoval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileLastRemoval: Story = { render: () => <Rows proposal={fileLastRemoveProposal} pendingProposalId={fileLastRemoveProposal.id} /> };
+export const ProposedFileLastRemovalPolishMobile: Story = { ...ProposedFileLastRemoval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const ProposedFileGone: Story = {
   render: () => <Rows proposal={goneFile} pendingProposalId={goneFile.id} />,
   play: async ({ canvasElement }) => {

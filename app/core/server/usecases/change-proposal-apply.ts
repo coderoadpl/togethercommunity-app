@@ -11,6 +11,7 @@ import {
   registeredChangeProposalOperation,
   resolveChangeProposalReferences,
   unknownChangeProposalOperationNote,
+  validation,
   type AppError,
   type ChangeProposal,
   type ChangeProposalEffect,
@@ -79,7 +80,11 @@ export const previewChangeProposal = async (
   if (!ran.ok) return ran;
   recordCreated(group, ran.value);
   const after = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, ran.value ?? operation.target.id));
-  return ok(operation.effect(before, after));
+  const effect = operation.effect(before, after);
+  if (operation.refusesEmptyEffect && Object.keys(effect).length === 0) {
+    return err(validation(`${operation.invalidInputMessage}: it would change nothing the owner can see`));
+  }
+  return ok(effect);
 };
 
 interface GroupContext {

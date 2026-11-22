@@ -201,6 +201,7 @@ export type KeyDownloadAttachment =
 
 type KeyDownloadAssetRemoval =
   | { kind: 'removed'; asset: ProductDownloadAsset; owedDeletion: KeyDownloadPendingDeletion | null }
+  | { kind: 'not_ready' }
   | { kind: 'not_found' };
 
 /**
@@ -225,6 +226,9 @@ export interface KeyDownloadAttachRepository {
     versionNote: string | null;
     now: string;
   }): Promise<KeyDownloadAttachment>;
-  /** Deletes a file version, promotes the newest remaining ready version, and owes the deletion of a staged object. */
-  remove(tenantId: string, input: { productId: string; assetId: string; now: string }): Promise<KeyDownloadAssetRemoval>;
+  /**
+   * Deletes a file version, promotes the newest remaining ready version, and owes the deletion of a staged object; with
+   * `readyOnly`, a file that is not ready is left in place and answered `not_ready`.
+   */
+  remove(tenantId: string, input: { productId: string; assetId: string; readyOnly: boolean; now: string }): Promise<KeyDownloadAssetRemoval>;
 }

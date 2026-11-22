@@ -695,9 +695,13 @@ export const createKeyDownloadAttachRepository = (executor: Db): KeyDownloadAtta
   }),
   remove: (tenantId, input) => executor.transaction(async (tx) => {
     if (await lockProductFiles(tx, tenantId, input.productId) === null) return { kind: 'not_found' };
+    const target = and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.assetId));
     const [deleted] = await tx.delete(productDownloadAssets)
-      .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.assetId))).returning();
-    if (deleted === undefined) return { kind: 'not_found' };
+      .where(input.readyOnly ? and(target, eq(productDownloadAssets.status, 'ready')) : target).returning();
+    if (deleted === undefined) {
+      const [kept] = input.readyOnly ? await tx.select({ id: productDownloadAssets.id }).from(productDownloadAssets).where(target) : [];
+      return kept === undefined ? { kind: 'not_found' } : { kind: 'not_ready' };
+    }
     if (deleted.status === 'ready' && deleted.supersededAt === null) {
       const [latest] = await tx.select({ id: productDownloadAssets.id }).from(productDownloadAssets).where(and(
         assetsOfProduct(tenantId, input.productId),

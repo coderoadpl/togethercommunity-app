@@ -62,6 +62,9 @@ export interface PreparedChangeProposalOperation {
   /** Orders the snapshot's unordered collections by the id each entry finally carries, so it must run after any id replacement. */
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
+  /** Set when a run that changes nothing can only mean the input names what the snapshot does not show. */
+  refusesEmptyEffect: boolean;
+  invalidInputMessage: string;
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
 }
 
@@ -82,6 +85,7 @@ interface ChangeProposalOperationDefinition<I> {
   lockPurpose?: ChangeProposalTargetLockPurpose;
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, input: I, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   unorderedById?: readonly string[];
+  refusesEmptyEffect?: true;
   effect?(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
 }
@@ -319,6 +323,8 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
     canonical: (snapshot) => sortedById(snapshot, definition.unorderedById ?? []),
     effect: definition.effect ?? changeProposalFieldDiff,
+    refusesEmptyEffect: definition.refusesEmptyEffect === true,
+    invalidInputMessage: definition.invalidInputMessage,
     run: (ctx, scope, deps, proposer) => definition.run(ctx, input, scope, deps, proposer),
   });
 };
@@ -475,6 +481,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     lockPurpose: 'files',
     snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
     unorderedById: ['files'],
+    refusesEmptyEffect: true,
     run: async (ctx, input, scope, deps, proposer) => resourceIdOf(await attachStagedProductDownload(ctx, input, fileAttachDeps(scope, deps, proposer))),
   }),
   'download.replace': entry('download.replace', {
@@ -484,6 +491,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     lockPurpose: 'files',
     snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
     unorderedById: ['files'],
+    refusesEmptyEffect: true,
     run: async (ctx, input, scope, deps, proposer) => resourceIdOf(await attachStagedProductDownload(ctx, input, fileAttachDeps(scope, deps, proposer))),
   }),
   'download.remove': entry('download.remove', {
@@ -493,6 +501,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     lockPurpose: 'files',
     snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
     unorderedById: ['files'],
+    refusesEmptyEffect: true,
     run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await removeProductDownloadFile(ctx, input, {
       keyDownloadAttach: scope.repositories.keyDownloadAttach,
       keyDownloadFiles: owedDeletionsLeftToTheSweep,
@@ -500,6 +509,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
       secretResolver: scope.secretResolver,
       clock: deps.clock,
       logger: deps.logger,
+      readyOnly: true,
     })),
   }),
 };

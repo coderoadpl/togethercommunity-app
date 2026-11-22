@@ -2733,7 +2733,7 @@ describe('marketing HTTP surfaces', () => {
       expect(page).toContain('data-testid="hosted-legal-not-found"');
       expect(page).toContain('Document not found');
       expect(page).toContain('This document does not exist or has been withdrawn.');
-      expect(page).toContain('href="/"');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
       expect(page).not.toContain('class="languages"');
     }
   });

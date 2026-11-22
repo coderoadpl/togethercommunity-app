@@ -48,7 +48,7 @@ const createRejectionStore = () => {
   return { rows, repository };
 };
 
-const paidCheckout = (overrides: Partial<PaymentWebhookEvent> = {}, paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' = 'paid'): PaymentWebhookEvent => ({
+const paidCheckout = (overrides: Partial<PaymentWebhookEvent> = {}, paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' | null = 'paid'): PaymentWebhookEvent => ({
   id: 'evt_paid',
   type: 'checkout.session.completed',
   objectId: 'cs_paid',
@@ -220,17 +220,13 @@ describe('recordStripeWebhookOutcome', () => {
     expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', resolvedAt: '2026-11-21T09:00:00.000Z' }]);
   });
 
-  it('records a refused session that needed no payment and a completed event without session data', async () => {
+  it('records a refused asynchronous payment that succeeded', async () => {
     const { deps, store } = setup();
 
-    await recordStripeWebhookOutcome(tenant, paidCheckout({ id: 'evt_free' }, 'no_payment_required'), refused, deps);
     await recordStripeWebhookOutcome(tenant, paidCheckout({ id: 'evt_async', type: 'checkout.session.async_payment_succeeded' }), refused, deps);
-    await recordStripeWebhookOutcome(tenant, paidCheckout({ id: 'evt_bare', checkoutSession: null }), err(validation('Stripe checkout event is missing session data')), deps);
 
     expect([...store.rows.values()].map((row) => [row.eventId, row.eventType])).toEqual([
-      ['evt_free', 'checkout.session.completed'],
       ['evt_async', 'checkout.session.async_payment_succeeded'],
-      ['evt_bare', 'checkout.session.completed'],
     ]);
   });
 
@@ -259,6 +255,9 @@ describe('recordStripeWebhookOutcome', () => {
 
   it.each<[string, PaymentWebhookEvent, Outcome]>([
     ['an unpaid session', paidCheckout({}, 'unpaid'), refused],
+    ['a session that needed no payment', paidCheckout({}, 'no_payment_required'), refused],
+    ['a session without a payment status', paidCheckout({}, null), refused],
+    ['a completed event without session data', paidCheckout({ checkoutSession: null }), err(validation('Stripe checkout event is missing session data'))],
     ['a test-mode session', paidCheckout({ id: 'test:evt_paid', mode: 'test', livemode: false }), refused],
     ['a live event delivered with livemode false', paidCheckout({ livemode: false }), refused],
     ['a foreign-tenant event', paidCheckout({ foreignTenant: true }), refused],

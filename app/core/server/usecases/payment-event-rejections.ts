@@ -48,7 +48,7 @@ const isLivePaidCheckout = (event: PaymentWebhookEvent): boolean =>
   event.foreignTenant !== true &&
   (event.mode ?? 'live') === 'live' &&
   event.livemode !== false &&
-  event.checkoutSession?.paymentStatus !== 'unpaid';
+  event.checkoutSession?.paymentStatus === 'paid';
 
 const CONSTANT_CHECKOUT_REFUSALS = new Set<string>([
   'Payment event is missing its object id',

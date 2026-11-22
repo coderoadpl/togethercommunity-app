@@ -2231,6 +2231,8 @@ export interface Messages {
     lockedSkipped: (params: { count: number }) => string;
     notForSaleTitle: string;
     notForSaleBody: string;
+    notForSaleBodyNoContact: string;
+    contactCreator: string;
     undoCompletion: string;
   };
   discussion: {

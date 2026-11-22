@@ -1840,7 +1840,9 @@ describe('LessonPlayerPage', () => {
     const card = await screen.findByTestId('locked-lesson-upsell');
     await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
     expect(within(card).getByRole('heading', { name: en.lesson.notForSaleTitle })).toBeInTheDocument();
-    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    expect(within(card).getByText(en.lesson.notForSaleBodyNoContact)).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.notForSaleBody)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('locked-contact-creator')).not.toBeInTheDocument();
     expect(within(card).getByTestId('locked-lesson-lock')).toBeInTheDocument();
     expect(within(card).queryByText(en.lesson.lockedInProduct)).not.toBeInTheDocument();
     expect(within(card).queryByText(en.lesson.contentLocked)).not.toBeInTheDocument();
@@ -1849,6 +1851,49 @@ describe('LessonPlayerPage', () => {
     expect(backLinks).toHaveLength(1);
     expect(backLinks[0]).toHaveAttribute('href', '/my/courses/course-1');
     expect(backLinks[0]).toHaveAttribute('data-testid', 'locked-back-to-course');
+  });
+
+  it.each([
+    ['https://help.studio.togethercommunity.app/contact', true],
+    ['mailto:help@studio.togethercommunity.app', false],
+  ] as const)('offers to contact the course creator at %s when the workspace has a support address', async (supportUrl, opensNewTab) => {
+    server.use(
+      forbiddenLesson(),
+      okStructure(),
+      okProgress(),
+      http.get('/api/member/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              billingPortalUrl: null,
+              supportUrl, supportConfigured: true,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    const contact = within(card).getByTestId('locked-contact-creator');
+    expect(contact).toHaveAttribute('href', supportUrl);
+    expect(contact).toHaveTextContent(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    if (opensNewTab) {
+      expect(contact).toHaveAttribute('target', '_blank');
+      expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(contact).toHaveAccessibleName(`${en.lesson.contactCreator} ${en.lesson.newTabHint}`);
+    } else {
+      expect(contact).not.toHaveAttribute('target');
+      expect(contact).toHaveAccessibleName(`${en.lesson.contactCreator} ${en.lesson.mailHint}`);
+    }
+    expect(within(card).getByTestId('locked-back-to-course').compareDocumentPosition(contact))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it('shows a skeleton card instead of the fallback copy while the course structure loads', async () => {

@@ -2496,6 +2496,8 @@ export const en: Messages = {
     lockedSkipped: ({ count }) => format(plural(count, '{count} locked lesson skipped — unlock', '{count} locked lessons skipped — unlock'), { count }),
     notForSaleTitle: 'This lesson is not for sale',
     notForSaleBody: 'No offer includes it right now. If you think you should have access, contact the course creator.',
+    notForSaleBodyNoContact: 'No offer includes it right now.',
+    contactCreator: 'Contact the course creator',
     undoCompletion: 'Undo',
   },
   discussion: {

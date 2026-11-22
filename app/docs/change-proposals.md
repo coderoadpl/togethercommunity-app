@@ -20,7 +20,9 @@ exactly the effect the owner saw, or applies nothing.
 | Withdrawal of pending proposals when their key is revoked or purged | Available |
 | Typed client outcomes and CLI commands | Available |
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
-| Images (product covers, branding), owner panel | Not yet available |
+| Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
+| Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
+| Images (product covers, branding) | Not yet available |
 
 ## What a proposal is
 
@@ -234,7 +236,9 @@ read scope: a propose-mode key learns nothing from a refused or accepted
 proposal that it could not read with its read scope. The owner view is
 separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
-`expired`, `revoked`, `purged`), the decision and the event history.
+`expired`, `revoked`, `purged`), the issuer's state, a live label of the
+target, the decision with the deciding account and the event history (see
+[Owner view](#owner-view)).
 
 The typed client returns a discriminated result for the ten catalogue
 mutations and for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
@@ -261,14 +265,20 @@ as a member, not an admin, never with an API key):
 
 | Route | Answer |
 |---|---|
-| `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor }`, newest first |
+| `GET /api/change-proposals?status=&groupId=&cursor=&limit=` | `{ proposals: ownerView[], nextCursor, hasMore }`, newest first |
+| `GET /api/change-proposals/summary` | `{ pending, pendingGroups, hasProposals }`: the pending, unexpired proposals of the workspace (grouped items included), the groups they belong to, and whether the workspace holds any proposal at all, whatever its status |
 | `GET /api/change-proposals/:id` | `{ proposal: ownerView + events }` |
 | `POST /api/change-proposals/:id/approve` with `{}` | `{ proposal: ownerView }` with status `applied`, `stale` or `failed`; a settled or expired proposal is `409` |
 | `POST /api/change-proposals/:id/reject` with `{ "note"?: string }` | `{ proposal: ownerView }` with status `rejected`; a settled proposal is `409` |
 
-`status` is one of the statuses below, `groupId` keeps only the items of one
+`status` is one of the statuses below or `decided`, which keeps every
+proposal that is no longer waiting for the owner (any status but `pending`,
+an expired one included); `groupId` keeps only the items of one
 [group](#groups), `limit` is 1–100 (default 50) and `cursor` is the id of the
-last proposal of the previous page. A proposal of another workspace is `404`.
+last proposal of the previous page. `hasMore` says whether a next page exists
+(`nextCursor` is then its cursor); the server reads one row past the page to
+know it. The key-side list takes the same `status` values. A proposal of
+another workspace is `404`.
 The group routes are listed under [Groups](#groups).
 
 CLI: the owner runs `proposals list [--status] [--group] [--cursor] [--limit]`,
@@ -278,6 +288,211 @@ CLI: the owner runs `proposals list [--status] [--group] [--cursor] [--limit]`,
 `shop proposals list|show|withdraw` and `shop proposals group create|show|withdraw`
 with the key in the environment variable named by `--api-key-env` (default
 `TOGETHER_SHOP_KEY`), and adds `--group <id>` to any proposing command.
+
+## Owner view
+
+Every owner list item, proposal and group item carries what a card needs, so
+the panel reads one page and makes no further call per item:
+
+| Field | Meaning |
+|---|---|
+| `operation`, `target` | what the proposal changes, with the target kind and id (a `$proposal:` reference inside a group) |
+| `targetLabel` | the target's title read from live state at read time: the product title, the product title of a price, the sales link title; for a creation, the created resource once applied (for an applied `price.create`, the product of the created price, also when the product was a `$proposal:` reference in a group); `null` when the target does not exist (yet) and always `null` for a settings change, which the page names in the viewer's language |
+| `targetPrice` | for a price target, and for an applied `price.create`, the live terms of that price as data: `kind`, `interval`, `intervalCount`, `amountCents`, `currency`, so a card tells a monthly from a yearly price of the same product; `null` otherwise |
+| `effect`, `input` | the stored before/after and command |
+| `groupId`, `groupTitle`, `groupPosition` | the group, when the proposal belongs to one |
+| `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail`, `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) and `issuerIsFormerTeamMember` |
+| `createdAt`, `expiresAt`, `status` | the times and the derived status |
+| `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
+
+An e-mail (`issuerEmail`, `decidedByEmail`) is returned only for an account
+that still holds a staff grant in this workspace, direct or derived from the
+organisation that manages it. For any other account, a removed team member or
+a deleted account, the e-mail is `null` and `issuerIsFormerTeamMember` or
+`decidedByIsFormerTeamMember` is `true`, so the page can say "former team
+member" without disclosing the address. Ownership follows the same effective
+grant as the owner session: an owner derived from the organisation counts as
+an owner. The accounts and grants of every person on a page are read in one
+query, whatever the page size.
+
+The group owner view carries the same `issuerEmail`, `issuerIsVerifiedOwner`
+and `issuerIsFormerTeamMember` on its `proposedBy`. The label and the price
+are for display only: approval never reads them, and they can differ from the
+effect's "before" when the live state moved, which is exactly what a stale
+approval reports. None of these fields is ever part of a key receipt.
+
+**Owner notification.** When a propose-mode key submits a proposal, every
+owner of the workspace gets an in-app notification of kind `change-proposal`:
+the direct owners and the owners derived from the active organisation that
+manages the workspace, by the same effective grant the owner session checks.
+`authorDisplay` holds the key name, and for a group `contextId` holds the
+group id and `snippet` its title. There is at most one unread notification per
+owner and key: the notification's source key is `change-proposal:<key id>`,
+and the unique source key per recipient makes the insert atomic, so a second
+proposal while it is unread adds nothing; once the owner read it, the next
+proposal makes it unread again with the new time and a new notification id.
+The new id makes every occurrence its own: a late "mark read" of the earlier
+occurrence (from another tab or device) finds no row and cannot clear the new
+one. A group makes a read notification unread again only when its first item
+is stored, never for later items.
+
+Every stored proposal, every group item included, sends each owner a realtime
+event of kind `change-proposal`, also when nothing was written because the
+owner's notification for that key is still unread (or, for a later group item,
+already read): the event then names that existing notification, which stays as
+it is. So an open panel refreshes its badge, its list and a group card for
+every new proposal without a second unread notification. The notification
+stream's `notification` frame carries the id and the kind, live and on a
+`Last-Event-ID` replay (`{"id":"…","kind":"change-proposal"}`), so the page
+can refresh its pending count on that kind alone.
+
+It is written right after the proposal committed, not in the proposal
+transaction, in one short transaction of its own that looks up the owners and
+writes or reads their notifications. That transaction keeps a
+transaction-local `lock_timeout` and `statement_timeout` of 500 ms (the
+`notificationMs` bound, injectable like the other proposal bounds) on each of
+its statements. The key's `202` waits for the notification at most that bound
+in all, the wait for a database connection included: past it, the submission
+logs that the notification passed its deadline and answers, and the bell entry
+is not signalled live (no realtime event is published for it). The entry is
+not dropped: the notification transaction is not cancelled, its own bounds end
+it soon after, and when its write completes the entry appears on the owner's
+next bell refresh. A bound that runs out
+inside the transaction rolls the notification back and is logged; a failure to
+write it is logged too, also when it comes after the deadline. None of these
+ever fails or changes the submission, which always answers its committed
+receipt. No migration is needed: the kind lives in the existing text
+column and the existing unique index carries the de-duplication.
+
+## Owner panel
+
+The workspace owner reviews and decides every proposal on one page,
+`/panel/proposals`, reached from **Proposals** in the Offer group of the panel
+navigation and from the bell notification of kind `change-proposal`. The
+address always works for the owner, whether or not the workspace has
+proposals. The navigation entry is shown to the owner when the
+[summary](#routes) says the workspace has proposals (`hasProposals`, any status,
+a decided or expired one included), and while the page itself is open; a
+workspace that has never received a proposal shows no entry. Its badge shows
+the number of pending changes and appears only when something is pending. The
+panel remembers the last `hasProposals` answer per workspace in the browser
+(`together-has-proposals-<workspace id>` in local storage) and renders the
+entry from it until the summary answers and when the summary fails, so the
+entry does not appear late and shift the navigation on every page view; when
+storage is unavailable the entry follows the summary alone. An admin never sees
+the entry; one who opens the address sees an "owner only" page, and the panel
+never sends them the owner routes. When the notification stream delivers a
+`notification` frame of kind `change-proposal`, the panel refreshes the pending
+summary and the proposal lists, so the entry appears when the first proposal
+arrives. When the stream is unavailable and the bell falls back to polling, the
+summary is polled at the same 30-second interval, and a change in its counts
+refreshes the proposal lists.
+
+The page follows the server's gate. An owner whose e-mail is not verified sees
+"verify your e-mail to decide" with a link to the account page, and an owner
+viewing the community as a member sees "leave the member view"; neither gets a
+Retry that cannot succeed, and the summary is not requested for either, so
+their navigation entry follows the remembered answer alone.
+
+**Waiting for you** lists the pending proposals oldest first: one card per
+group and one card per single proposal. A card names the change in plain words
+("New product", "Stock: add or remove pieces", "Shop settings"), the live label
+of what it touches, the proposing key, when it was proposed and when it
+expires, and a warning line when the key is revoked, purged or expired, when
+the account that issued it is no longer a verified owner, or when that account
+is no longer on the team. A price target says which price it is, from the
+structured price facts ("Studio Club: PLN 49.00 per month"), on the card, in the
+confirmation and in history. A target that no longer exists says so; "not
+created yet" is kept for a target that is still to be created or is a
+reference inside a group. A group title is the key's text: it is shown under a
+line that attributes it to the key and never appears in a sentence the
+application speaks in its own voice (the headings, the confirmation, the
+settled notice, history), which use the count and fixed wording instead.
+Every piece of text written by a key or a person that the page shows (the group
+title, the key name, product titles and references inside sentences, a stock
+reason, a decision comment, field values) sits in its own `<bdi>` element, so
+quotes or right-to-left control characters in it cannot reorder the sentence
+around it.
+
+Every changed field of an existing record is one row with a readable label and
+the value now and after approval, stacked under the label on narrow screens;
+the rows share the component of the course version preview. A new record (a new
+product, sales link or price) is one framed definition list under a single
+caption, "Will be created with:", with label and value side by side on wide
+screens and stacked on narrow ones; a new price shows its terms there as one
+line ("PLN 490.00 per year"), on its own card and as a group step; a deleted
+record shows only the current value. Money is formatted with its currency, booleans as words, lists as
+lists, and every enumerated value (product type, visibility, sales channel,
+delivery method, parcel size, price kind and interval, VAT rate and mode,
+exemption basis, invoicing provider, KSeF submission mode, invoicing scope,
+default language) by the label the products, prices and settings screens use;
+an unknown value falls back to its raw text. Long text is collapsed behind
+"Show more", except when the collapsed beginnings of the two sides are the
+same, where it starts expanded so the difference is visible. An empty value
+says so. A stock adjustment shows the delta ("+50 pieces"), its reason (a
+return is named as such) and the balance on hand now as context, never a final
+balance. An image address is shown as an image only when it is a same-origin
+public asset path (`/api/public/assets/…`); any other address is text, and an
+image that fails to load is replaced by its address and a "could not be shown"
+note. Inside a group, a `$proposal:` reference is shown as "the product from
+step 1" with that step's title. A field the page does not know is shown with
+its raw name and its value as text, and a proposal of an operation the page
+does not know is shown but cannot be approved from the page.
+
+A single proposal has **Approve** and **Reject**; a group has **Approve all N
+changes** ("Approve the change" for a group of one) and **Reject group**.
+Approve asks for one confirmation that repeats what will happen, built from
+the same data as the card: the target and the essence ("Creator Workbook
+(print): 50 pieces will be added to stock.", "The product “Field Guide (print)”
+will be published.", "3 fields of “Field Guide (print)” will change.", "Stock of
+“Field Guide (print)” will be tracked from now on, starting at 40 pieces on
+hand, with the low-stock alert level at 5."). "Nothing else changes." follows
+only a sentence that names every changed field of the proposal; when the
+sentence leaves fields unnamed, the confirmation says how many other fields
+change instead ("2 other fields will change too."). A group's confirmation
+reads "All 5 changes will be applied together, or none.". Reject opens a
+dialog with an optional comment that is shown to the proposer.
+
+The group card reads the group itself (`GET /api/change-proposals/groups/:id`).
+When the approve dialog opens, the card saves the ordered item ids rendered at
+that moment (by position, whatever order the server served them in) and the
+approval sends exactly that saved list. While the group is refetching, the
+confirm button is disabled. Whenever a refetch (window focus, a list refresh, a
+realtime notification) changes the id list compared with what the owner last
+acknowledged, the dialog closes and approving needs a fresh click. The card
+says "this group changed in the meantime and nothing was applied" when a
+dialog was open or the server answered that the items changed (nothing is
+applied then), and only "this group changed while you were looking at it" when
+no dialog was open, since nothing was attempted. An open dialog also closes
+when a refetch shows the group is no longer open (expired, withdrawn or
+decided elsewhere); the card then shows that status without the buttons. A single
+proposal needs no such step: its effect is fixed when it is proposed, so a
+refetch cannot change what the owner approves.
+
+While a request runs the buttons are disabled, and a busy answer (`503`) tells
+the owner to try again in a moment without changing anything. After a decision
+a toast reports the outcome and the lists refresh; a `stale` or `failed`
+approval stays on the page as an explained notice until it is dismissed, and
+the proposal moves to **History**. "Show more proposals" appends the next page
+to the same list (settled notices and open dialogs stay) and moves focus to the
+first new card. The full-page error appears only when nothing has loaded yet: a
+next page that fails keeps the list and shows an inline error with a Retry of
+that page, and a background refresh that fails keeps the list, the open dialog
+and the notices as they were.
+
+**History** asks the server for the `decided` proposals, 50 per page, with
+their status, who decided and when (or "a former team member"), the decision
+comment and, on expand, the same field rows and the event timeline; an empty
+page shows the empty state, and "Show details" sits on the title row. Nothing
+on the page updates live data optimistically: every change on screen comes
+from a server answer. Headings inside cards follow the page outline without
+skipped levels, and the application sets `<html lang>` to the active language.
+
+The page is in Storybook as `Pages/PanelProposals` (a group of five items, a
+stock delta and a settings change) and `Pages/PanelProposalsHistory`, and its
+field rows as `Panel/ProposalChanges`. Storybook serves a small cover image at
+the same-origin asset path the fixtures use. These stories have no committed
+golden.
 
 ## Approval
 
@@ -304,8 +519,26 @@ transaction:
    database (such as an object storage delete of a removed draft) runs after
    the commit;
 7. if the effect differs, roll back the savepoint: the proposal is `stale`;
-8. if the live use-case refuses the command, roll back the savepoint: the
-   proposal is `failed`, with the error code and message stored.
+8. if the live use-case refuses the command itself, roll back the savepoint:
+   the proposal is `failed`, with the error code and message stored;
+9. if the live use-case answers any other error, roll back the whole
+   transaction: the proposal stays `pending` and the approval is answered with
+   that error.
+
+A refusal of the command itself is an error whose code describes the request
+against the current state: `not_found`, `validation`, `conflict`,
+`slug_reserved`, `invoice_exemption_basis_missing`, `shipping_required`,
+`sold_out`, `fulfilment_conflict`, `shipx_rejected`, `workspace_quota_exceeded`,
+`organization_managed`, `feed_cursor_reset`, `not_consented`, `suppressed`,
+`unsubscribed` and `pending_confirmation`. Every other code describes the
+caller, the configuration or the infrastructure (`internal`, `unavailable`,
+`rate_limited`, `integration_unavailable`, `integration_auth`,
+`integration_not_configured`, `shipx_unavailable`, `ses_not_configured`,
+`broadcasts_disabled`, `transactional_platform_cap_reached`, `unauthorized`,
+`invalid_credentials`, `forbidden`, `banned`, `impersonation_read_only`,
+`tenant_not_found`) and can pass, so it never settles a proposal. The
+classification is `describesTheRequest` in `core/domain/errors.ts`; a new error
+code cannot be added without classifying it.
 
 The decision time recorded on the proposal and its event is the time read
 after the target lock, not the time the request arrived.
@@ -314,7 +547,8 @@ The status change and its event (`applied`, `stale` or `apply_failed`) commit
 in the same transaction as the live change, so the owner sees exactly one of
 three outcomes and nothing in between. An infrastructure failure (a lost
 connection, a database error) rolls everything back and leaves the proposal
-`pending`; the owner can retry. So does any lock wait that runs out (see
+`pending`; the owner can retry. So does an error of the live use-case that is
+not a refusal of the command (step 9), and any lock wait that runs out (see
 [Lock waits](#lock-waits)), answered `503 unavailable`. A repeated or concurrent approve, or an
 approve after a reject or a withdrawal, finds no pending row and answers
 `409 conflict` with the current status in `error.details.changeProposalStatus`.
@@ -363,10 +597,15 @@ key's scopes, and no key can approve anything.
 Every transition appends an event (`proposed`, `applied`, `stale`,
 `apply_failed`, `rejected`, `withdrawn`, `expired`) in the transaction that
 changes the status. A read never writes: the `expired` event is recorded when
-an approve, a reject or a withdrawal meets an expired proposal. Revoking or purging a key withdraws its pending,
+an approve, a reject or a withdrawal meets an expired proposal. A reject and a
+withdrawal lock the proposal row first and only then read the clock, exactly
+like an approval: a proposal that expired while they waited for the lock is
+not decided, its expiry is recorded and the answer is `409` with status
+`expired`; otherwise the decision time is the time read after the lock. Revoking or purging a key withdraws its pending,
 unexpired proposals and deletes its empty groups in the same transaction as
 the key change; a proposal already past its expiry stays `expired`. A key that simply expires leaves its
-proposals decidable; the owner view shows the key state.
+proposals decidable; the owner view shows the key state and whether the
+issuing account is still a verified owner.
 
 ## Limits
 
@@ -408,6 +647,11 @@ routes and on the owner approve and reject routes alike. Nothing is stored or
 applied, and a proposal being decided stays `pending`. A deadlock that the
 database detects inside the transaction is answered the same way, busy, like a
 lock wait that ran out.
+
+The owner notification that follows a stored proposal has its own, shorter
+bound (500 ms for each lock wait and statement, and 500 ms in all for the
+submission's wait, see [Owner view](#owner-view)); running out of it never
+answers busy, because the proposal is already stored.
 
 **Statement time.** A dry run and an approval also bound the time of each
 statement with a transaction-local `statement_timeout`: 2 seconds in a dry run
@@ -530,7 +774,9 @@ A `409` at submit with `changeProposalGroupItem` in `error.details` means an
 **earlier** item no longer applies to the live state: someone changed a field
 it changes since it was proposed, so the group can no longer be applied as
 recorded and nothing is stored. The key withdraws the group and proposes it
-again from the current state. A `409` with `changeProposalGroupStatus` means
+again from the current state. An earlier item whose replay meets an error that
+is not a refusal of that item answers that error instead, and the key may
+retry. A `409` with `changeProposalGroupStatus` means
 the group is no longer open (decided, withdrawn or expired), and one with
 `changeProposalCap` names a limit. The dry run leaves no row, event, outbox
 message or content version behind, and object storage deletes wait for a
@@ -592,6 +838,7 @@ the effect comparison.
 | every item matches | `applied` | all `applied`, each with its `appliedResourceId` | changed exactly as the effects showed; post-commit effects run afterwards |
 | one item is stale | `stale` | that item `stale`, every other item `stale` with a note naming it | unchanged |
 | one item is refused by the live use-case | `failed` | that item `failed` with its failure code and message, every other item `stale` with a note naming it | unchanged |
+| the live use-case answers an error that is not a refusal of the item (see [Approval](#approval)) | `open` | all still `pending` | unchanged; answered with that error |
 | a lock wait or a statement runs out of time, a deadlock | `open` | all still `pending` | unchanged; `503` with `retry-after` |
 | an infrastructure failure (a lost connection, a database error) | `open` | all still `pending` | unchanged; `500 internal`, the owner can retry |
 
@@ -642,7 +889,7 @@ withdraw record the `expired` event on every item of an expired group.
 The key's group receipt has the id, title, derived status, creation and
 expiry times and the ordered item receipts, which never contain an effect, a
 before value or the deciding account. The owner view adds the key name, id,
-issuer and state, and every item with its effect and events; the owner
+issuer, issuer state and key state, and every item with its effect and events; the owner
 proposal list carries `groupId`, `groupTitle` and `groupPosition` on every
 item. The derived group status is one of `open`, `expired`, `applied`,
 `rejected`, `withdrawn`, `stale`, `failed`. The group routes refuse the same
@@ -674,8 +921,6 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 - **Images.** The product cover and branding image routes refuse a
   propose-mode key. Images will be uploaded to a private quarantine and
   published only on approval.
-- **Owner panel.** The owner decides through the session routes and the CLI;
-  no panel page exists yet.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.
 

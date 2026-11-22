@@ -1,9 +1,42 @@
-import { useEffect } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+
+import { notificationKindSchema } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { connectNotificationsStream, streamlessPollInterval } from './notifications-stream.js';
 import { useNotificationsTransport } from './notifications-transport.js';
+
+export const refreshForNotificationKind = (queryClient: QueryClient, kind: string): Promise<void> =>
+  kind === notificationKindSchema.enum['change-proposal']
+    ? queryClient.invalidateQueries(actions.changeProposalsInvalidates())
+    : Promise.resolve();
+
+const SUMMARY_KEY = JSON.stringify(actions.changeProposalSummary.queryKey);
+
+/** Without the stream nothing announces a new proposal, so the polled count is the signal to reload the lists. */
+export const useChangeProposalSummary = (enabled: boolean) => {
+  const queryClient = useQueryClient();
+  const { streamless } = useNotificationsTransport();
+  const pollInterval = streamlessPollInterval(streamless);
+  const summary = useQuery({ ...actions.changeProposalSummary, enabled, refetchInterval: pollInterval });
+  const counted = summary.data === undefined ? null : `${String(summary.data.pending)}/${String(summary.data.pendingGroups)}`;
+  const lastCounted = useRef<string | null>(null);
+  const polled = pollInterval !== false;
+
+  useEffect(() => {
+    if (counted === null) return;
+    const previous = lastCounted.current;
+    lastCounted.current = counted;
+    if (!polled || previous === null || previous === counted) return;
+    void queryClient.invalidateQueries({
+      ...actions.changeProposalsInvalidates(),
+      predicate: (query) => JSON.stringify(query.queryKey) !== SUMMARY_KEY,
+    });
+  }, [counted, polled, queryClient]);
+
+  return summary;
+};
 
 /**
  * The bell owns the stream (`stream: true`); every other surface reads the same
@@ -24,6 +57,7 @@ export const useNotifications = ({
         void queryClient.invalidateQueries(actions.notificationsInvalidates());
         void queryClient.invalidateQueries(actions.messagesInvalidates());
       },
+      onNotificationKind: (kind) => void refreshForNotificationKind(queryClient, kind),
       onFallback: reportStreamless,
       onStreaming: reportStreaming,
     });

@@ -10,7 +10,13 @@ import { marketingContactDeps } from '#core/server/testing/marketing-contact-fak
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
-import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '#core/server/testing/change-proposal-fakes.js';
+import {
+  changeProposalOwnerViewFakes,
+  createChangeProposalStoreFake,
+  createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
+  emptyCatalogState,
+} from '#core/server/testing/change-proposal-fakes.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
@@ -387,6 +393,8 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    ...changeProposalOwnerViewFakes(emptyCatalogState()),
+    changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
       commit: async () => 'saved',
     },
@@ -5597,7 +5605,7 @@ describe('notifications stream route', () => {
     expect(await readChunks(response, 3)).toEqual([
       'retry: 1000\n\n',
       'event: unread\ndata: {"unread":0}\n\n',
-      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed"}\n\n',
+      'id: 1998-07-12T00:00:01.000Z|n-missed\nevent: notification\ndata: {"id":"n-missed","kind":"thread-reply"}\n\n',
     ]);
     expect(scopes).toEqual([{ tenantId: acme.id, recipientUserId: 'user-1' }]);
   });
@@ -11874,7 +11882,7 @@ describe('direct public sales-link checkout', () => {
     expect(item.checkoutConsentDefinitionIds ?? []).toEqual([]);
     item.compliance = {
       manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
-      modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
+      manufacturerOutsideEu: false, modelIdentifier: 'M-1', safetyWarnings: 'Keep away from fire.',
     };
     h.app.get('/offer/:slug', (c) => c.html('<main>Existing checkout</main>'));
     const response = await h.app.request('/offer/bundle?utm_source=meta', { headers: { host: 'acme.localhost' } });

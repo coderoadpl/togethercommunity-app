@@ -142,6 +142,33 @@ describe('notification event stream', () => {
     await reader.cancel();
   });
 
+  it('streams every change proposal signal, also when it points at the notification the owner already has', async () => {
+    const { bus } = recordingBus();
+    const stream = createNotificationEventStream({
+      tenantId: 't1',
+      recipientUserId: 'u1',
+      bus,
+      unreadCount: async () => 1,
+      heartbeatMs: 60_000,
+      lifetimeMs: 60_000,
+    });
+    const reader = stream.getReader();
+    await readChunk(reader);
+    await readChunk(reader);
+
+    for (const createdAt of ['2026-07-15T10:00:01.000Z', '2026-07-15T10:00:02.000Z']) {
+      bus.publish({ kind: 'notification', tenantId: 't1', recipientUserId: 'u1', notificationId: 'n-proposals', notificationKind: 'change-proposal', createdAt });
+    }
+
+    expect(await readChunk(reader)).toBe(
+      'id: 2026-07-15T10:00:01.000Z|n-proposals\nevent: notification\ndata: {"id":"n-proposals","kind":"change-proposal"}\n\n',
+    );
+    expect(await readChunk(reader)).toBe(
+      'id: 2026-07-15T10:00:02.000Z|n-proposals\nevent: notification\ndata: {"id":"n-proposals","kind":"change-proposal"}\n\n',
+    );
+    await reader.cancel();
+  });
+
   it('sends a lightweight dm event so an open conversation refetches', async () => {
     const { bus } = recordingBus();
     const stream = createNotificationEventStream({
@@ -219,7 +246,7 @@ describe('notification event stream', () => {
     });
 
     expect(await readChunk(reader)).toBe(
-      'id: 2026-07-15T10:00:05.000Z|n-visible\nevent: notification\ndata: {"id":"n-visible"}\n\n',
+      'id: 2026-07-15T10:00:05.000Z|n-visible\nevent: notification\ndata: {"id":"n-visible","kind":"space-post"}\n\n',
     );
 
     await reader.cancel();
@@ -465,6 +492,7 @@ describe('last-event-id replay', () => {
         tenantId: 't1',
         recipientUserId: 'u1',
         notificationId: 'n2',
+        notificationKind: 'thread-reply',
         createdAt: '2026-07-15T10:00:05.000Z',
       },
     ]);

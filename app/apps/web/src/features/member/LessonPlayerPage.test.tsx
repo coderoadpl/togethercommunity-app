@@ -36,6 +36,7 @@ import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
+import { readLessonTextAutoExpand } from './lesson-reading-preference.js';
 
 const entry = (
   lessonId: string,
@@ -918,6 +919,7 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
+        { type: 'embed', embedUrl: 'https://example.com/embed' },
         { type: 'html', html: '<h2>First section</h2><p>First body.</p>' },
         { type: 'html', html: '<h2>Second section</h2><p>Second body.</p>' },
       ]),
@@ -931,6 +933,27 @@ describe('LessonPlayerPage', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     await waitFor(() => expect(collapsedWhenScrolled).toEqual(['false', 'false']));
     expect(previews[0]).toHaveAttribute('data-collapsed', 'false');
+  });
+
+  it('starts a text-first lesson expanded and keeps later long text collapsed', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200);
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'html', html: '<h2>Opening</h2><p>Opening body.</p>' },
+        { type: 'embed', embedUrl: 'https://example.com/embed' },
+        { type: 'html', html: '<h2>Later</h2><p>Later body.</p>' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByRole('heading', { name: 'Later' });
+    const previews = screen.getAllByTestId('lesson-reading-preview');
+    expect(previews[0]).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByRole('button', { name: en.lesson.collapseText })).toHaveAttribute('aria-controls', previews[0]?.id);
+    expect(previews[1]).toHaveAttribute('data-collapsed', 'true');
+    expect(readLessonTextAutoExpand()).toBe(false);
   });
 
   it('scrolls to the hash after authenticated lesson content mounts', async () => {

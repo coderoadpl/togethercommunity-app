@@ -112,7 +112,7 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
   return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
 };
 
-const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber, leading }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -173,13 +173,13 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumb
     return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
-  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} />;
+  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} startExpanded={leading} />;
 };
 
-const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber, leading }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />;
+      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={leading} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -686,7 +686,7 @@ export const LessonPlayerPage = ({
                 >
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />
+                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={index === 0} />
               </Paper>
               );
             })

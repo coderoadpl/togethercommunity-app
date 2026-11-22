@@ -994,12 +994,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:217` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1295` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1297` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1319` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1333` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1863` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1291` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1293` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1315` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1329` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1859` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1859` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

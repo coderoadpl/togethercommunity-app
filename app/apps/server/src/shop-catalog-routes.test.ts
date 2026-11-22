@@ -324,6 +324,27 @@ describe('shop catalog routes with a shop management key', () => {
     expect(envelope(shopCatalogContracts.listProductPrices.output).parse(await prices.json()).data.prices).toEqual([]);
   });
 
+  it('stores and returns the responsible person of a manufacturer outside the EU and refuses it missing', async () => {
+    const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    const compliance = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'lamps@example.test',
+      manufacturerOutsideEu: true, modelIdentifier: 'LAMP-2',
+    };
+    const responsiblePerson = { responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Main Street 2, Warsaw', responsiblePersonEmail: 'eu-rep@example.test' };
+    const refused = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Imported lamp', type: 'physical', priceCents: 900, compliance });
+    expect(refused.status).toBe(400);
+    expect((await errorOf(refused)).code).toBe('validation');
+    const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, {
+      title: 'Imported lamp', type: 'physical', priceCents: 900, compliance: { ...compliance, ...responsiblePerson },
+    });
+    expect(created.status).toBe(200);
+    const { product } = envelope(shopCatalogContracts.createProduct.output).parse(await created.json()).data;
+    expect(product.compliance).toEqual({ ...compliance, ...responsiblePerson, safetyWarnings: '' });
+    const listed = envelope(shopCatalogContracts.listProducts.output)
+      .parse(await (await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json()).data.products;
+    expect(listed.find((entry) => entry.id === product.id)?.compliance).toEqual({ ...compliance, ...responsiblePerson, safetyWarnings: '' });
+  });
+
   it('stores and changes the product sales channel, keeps it when an update omits it and refuses an unknown channel', async () => {
     const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
     const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, {

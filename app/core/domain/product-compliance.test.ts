@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { productComplianceSchema, productVariants, publicProductVariantSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
+import { productComplianceSchema, productVariants, shownResponsiblePerson, publicProductVariantSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 
 const compliance = {
   manufacturerName: 'Example Workshop',
@@ -8,10 +8,15 @@ const compliance = {
   manufacturerEmail: 'safety@example.com',
   modelIdentifier: 'STAND-1',
 };
+const responsiblePerson = {
+  responsiblePersonName: ' Example EU Representative ',
+  responsiblePersonAddress: 'Example Avenue 2, 10115 Berlin, Germany',
+  responsiblePersonEmail: 'eu-rep@example.com',
+};
 
 describe('product safety information', () => {
   it('accepts the required manufacturer fields and defaults the optional ones', () => {
-    expect(productComplianceSchema.parse(compliance)).toEqual({ ...compliance, safetyWarnings: '' });
+    expect(productComplianceSchema.parse(compliance)).toEqual({ ...compliance, manufacturerOutsideEu: false, safetyWarnings: '' });
   });
 
   it('accepts the optional batch, warnings and HTTPS instructions', () => {
@@ -35,8 +40,36 @@ describe('product safety information', () => {
     ['warnings over 5000 characters', { safetyWarnings: 'x'.repeat(5001) }],
     ['an HTTP instructions URL', { instructionsUrl: 'http://example.com/manual.pdf' }],
     ['an unknown field', { notes: 'x' }],
+    ['an empty responsible person name', { ...responsiblePerson, responsiblePersonName: ' ' }],
+    ['a responsible person name over 200 characters', { ...responsiblePerson, responsiblePersonName: 'x'.repeat(201) }],
+    ['a responsible person address over 300 characters', { ...responsiblePerson, responsiblePersonAddress: 'x'.repeat(301) }],
+    ['an invalid responsible person e-mail', { ...responsiblePerson, responsiblePersonEmail: 'not-an-email' }],
+    ['a non-boolean outside-the-EU flag', { manufacturerOutsideEu: 'yes' }],
   ])('rejects %s', (_label, change) => {
     expect(productComplianceSchema.safeParse({ ...compliance, ...change }).success).toBe(false);
+  });
+
+  it('requires the responsible person when the manufacturer is outside the EU', () => {
+    const outside = productComplianceSchema.safeParse({ ...compliance, manufacturerOutsideEu: true });
+    expect(outside.success).toBe(false);
+    expect(outside.success ? [] : outside.error.issues.map((issue) => issue.path.join('.'))).toEqual(['responsiblePersonName', 'responsiblePersonAddress', 'responsiblePersonEmail']);
+    expect(outside.success ? '' : outside.error.issues[0]?.message).toBe('Responsible person name is required when the manufacturer is outside the EU');
+    expect(productComplianceSchema.parse({ ...compliance, ...responsiblePerson, manufacturerOutsideEu: true }))
+      .toEqual({ ...compliance, ...responsiblePerson, responsiblePersonName: 'Example EU Representative', manufacturerOutsideEu: true, safetyWarnings: '' });
+  });
+
+  it('keeps the responsible person optional for a manufacturer in the EU but complete when given', () => {
+    expect(productComplianceSchema.parse({ ...compliance, ...responsiblePerson }).manufacturerOutsideEu).toBe(false);
+    expect(productComplianceSchema.safeParse({ ...compliance, responsiblePersonName: null, responsiblePersonAddress: null, responsiblePersonEmail: null }).success).toBe(true);
+    const partial = productComplianceSchema.safeParse({ ...compliance, responsiblePersonName: 'Example EU Representative' });
+    expect(partial.success ? [] : partial.error.issues.map((issue) => issue.path.join('.'))).toEqual(['responsiblePersonAddress', 'responsiblePersonEmail']);
+  });
+
+  it('shows the responsible person only for a manufacturer outside the EU', () => {
+    const inside = productComplianceSchema.parse({ ...compliance, ...responsiblePerson });
+    expect(shownResponsiblePerson(inside)).toBeNull();
+    expect(shownResponsiblePerson({ ...inside, manufacturerOutsideEu: true }))
+      .toEqual({ name: 'Example EU Representative', address: responsiblePerson.responsiblePersonAddress, email: responsiblePerson.responsiblePersonEmail });
   });
 
   it('requires every manufacturer field', () => {

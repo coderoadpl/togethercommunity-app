@@ -1,5 +1,13 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "hasProposals": false,
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getMarketingCampaign:[\"campaign-studio-launch-wave\"]": {
       "ok": true,
       "value": {

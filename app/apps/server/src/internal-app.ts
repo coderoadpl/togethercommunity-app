@@ -809,13 +809,32 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
-const sweepQuarantinedProposalImages = async (deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'logger'>): Promise<void> => {
+// The cron function stops at 60 seconds; both sweeps end five seconds before that, whatever ran ahead of them.
+const STAGING_SWEEP_TICK_END_MS = 55_000;
+
+const runStagingSweep = async (
+  failure: string,
+  sweep: () => Promise<Result<unknown, AppError>>,
+  logger: AppDeps['logger'],
+): Promise<void> => {
   try {
-    const swept = await deps.sweepQuarantinedImages();
-    if (!swept.ok) deps.logger.error(`[change-proposal] quarantined image sweep failed: ${swept.error.message}`);
+    const swept = await sweep();
+    if (!swept.ok) logger.error(`${failure}: ${swept.error.message}`);
   } catch (error) {
-    deps.logger.error(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}`);
+    logger.error(`${failure}: ${safeErrorMessage(error)}`);
   }
+};
+
+/** Runs after e-mail and refund dispatch, and the two sweeps side by side, so a sweep that uses its budget delays neither. */
+const sweepStagedObjects = async (
+  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger'>,
+  tickStartedAt: number,
+): Promise<void> => {
+  const tick = { deadlineAt: tickStartedAt + STAGING_SWEEP_TICK_END_MS };
+  await Promise.all([
+    runStagingSweep('[change-proposal] quarantined image sweep failed', () => deps.sweepQuarantinedImages(tick), deps.logger),
+    runStagingSweep('[key-download] staged download file sweep failed', () => deps.sweepKeyDownloadFiles(tick), deps.logger),
+  ]);
 };
 
 const dispatchDueOrderRefunds = async (
@@ -846,9 +865,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('manual');
     await dispatchDueOrderRefunds(deps, tickStartedAt);
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 
@@ -859,10 +878,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('cron');
     await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 

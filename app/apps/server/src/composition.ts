@@ -485,6 +485,11 @@ interface ShipxIntegrationDeps {
   wait(milliseconds: number): Promise<void>;
 }
 
+/** An absolute end for one sweep run, in epoch milliseconds, which the sweep's own budget never exceeds. */
+export interface SweepTick {
+  deadlineAt?: number;
+}
+
 export interface AppDeps {
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
@@ -693,7 +698,8 @@ export interface AppDeps {
   checkoutSnapshots?: CheckoutSnapshotRepository;
   stock: StockRepository;
   releaseExpiredStockReservations(): Promise<Result<{ released: number }, AppError>>;
-  sweepQuarantinedImages(): Promise<Result<{ tenants: number; removed: number }, AppError>>;
+  sweepQuarantinedImages(tick?: SweepTick): Promise<Result<{ tenants: number; removed: number }, AppError>>;
+  sweepKeyDownloadFiles(tick?: SweepTick): Promise<Result<{ tenants: number; removed: number }, AppError>>;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -973,19 +979,19 @@ export const selectDeploymentIdentity = (
   databaseFingerprint: databaseHostFingerprint(env.DATABASE_URL),
 });
 
-const QUARANTINED_IMAGE_SWEEP_INTERVAL_MS = 50_000;
+const CHANGE_PROPOSAL_SWEEP_INTERVAL_MS = 50_000;
 
-/** The Node ticker fires every second; the sweep needs at most one run per minute tick. */
+/** The Node ticker fires every second; each sweep needs at most one run per minute tick. */
 const throttledSweep = <T extends { tenants: number; removed: number }>(
   clock: Clock,
-  sweep: () => Promise<Result<T, AppError>>,
-): () => Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+  sweep: (tick: SweepTick) => Promise<Result<T, AppError>>,
+): (tick?: SweepTick) => Promise<Result<{ tenants: number; removed: number }, AppError>> => {
   let lastRunAt = Number.NEGATIVE_INFINITY;
-  return async () => {
+  return async (tick = {}) => {
     const now = Date.parse(clock.nowIso());
-    if (now - lastRunAt < QUARANTINED_IMAGE_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0 });
+    if (now - lastRunAt < CHANGE_PROPOSAL_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0 });
     lastRunAt = now;
-    return sweep();
+    return sweep(tick);
   };
 };
 
@@ -1001,6 +1007,7 @@ export const createDeps = (
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
     changeProposalBounds?: ChangeProposalBoundOptions;
+    storage?: StorageProvider;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -1442,7 +1449,7 @@ export const createDeps = (
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
-  const storage = createS3StorageProvider(secretResolver, {
+  const storage = options.storage ?? createS3StorageProvider(secretResolver, {
     corsOrigin: env.APP_BASE_URL,
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
@@ -1809,13 +1816,9 @@ export const createDeps = (
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     stock,
     releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
-    sweepQuarantinedImages: throttledSweep(clock, async () => {
-      const images = await sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock });
-      const files = await sweepKeyDownloadFiles({ keyDownloadFiles, storage, secretResolver, logger, clock });
-      if (!images.ok) return images;
-      if (!files.ok) return files;
-      return ok({ tenants: images.value.tenants + files.value.tenants, removed: images.value.removed + files.value.removed });
-    }),
+    sweepQuarantinedImages: throttledSweep(clock, (tick) =>
+      sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock, ...tick })),
+    sweepKeyDownloadFiles: throttledSweep(clock, (tick) => sweepKeyDownloadFiles({ keyDownloadFiles, storage, secretResolver, logger, clock, ...tick })),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

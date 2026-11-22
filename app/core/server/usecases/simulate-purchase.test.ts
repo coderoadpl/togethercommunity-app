@@ -14,7 +14,8 @@ import type {
 import type { AuthPort, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
 import { createPickupPointDirectoryFake } from '../testing/pickup-point-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
-import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
+import { validateCheckoutSelection } from './checkout.js';
+import { simulatePurchase, simulateValidatedPurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
 const product = (id: string, tenantId: string, published: boolean): Product => ({
   id,
@@ -444,6 +445,18 @@ describe('simulated shipped purchase', () => {
       },
     });
     expect(h.grants.size).toBe(0);
+  });
+
+  it('executes an already validated selection without asking the carrier again', async () => {
+    const h = shippedHarness();
+    const directory = createPickupPointDirectoryFake();
+    h.deps.pickupPoints = directory;
+    const input = { email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code: 'waw01m' } } };
+    const selection = await validateCheckoutSelection('t-acme', input, h.deps);
+    if (!selection.ok) throw new Error('Expected a valid selection');
+    expect(await simulateValidatedPurchase('t-acme', input, selection.value, h.deps)).toMatchObject({ ok: true });
+    expect(directory.lookups).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ shipping: { pickupPoint: { code: 'WAW01M' } } });
   });
 
   it('requires a delivery choice for a shipped product', async () => {

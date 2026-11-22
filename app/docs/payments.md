@@ -317,7 +317,10 @@ terms acceptance from the page. A coupon without a per-member limit no longer
 needs an email before a paid order. A workspace with only one legal URL, or none,
 keeps the earlier behaviour: the page asks for the terms when one URL is set, and
 a sales link still refuses to start without both. The cart checkout
-(`/checkout/cart/pay`) keeps the terms and the email on its page.
+(`/checkout/cart/pay`) keeps the terms and the email on its page. Both the cart
+and standard single-product checkouts accept `?return=` for a shop address on an
+allowed origin and retain it when Stripe sends the buyer back after cancellation.
+See [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses).
 
 ### Stripe accounts without a Dashboard terms URL
 

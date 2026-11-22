@@ -321,7 +321,7 @@ const buyerNotice = async (
   deps: DispatchOrderRefundJobsDeps,
 ): Promise<EmailOutboxEnqueueInput | undefined> => {
   const status = settlement.update.status;
-  if (job.source !== 'staff' || job.buyerNotifiedAt !== null || order === null || settlement.ownRefund === undefined) return undefined;
+  if (job.source !== 'staff' || job.buyerNotifiedAt !== null || order === null || order.mode === 'test' || settlement.ownRefund === undefined) return undefined;
   if (status !== 'submitted' && status !== 'succeeded') return undefined;
   const tenant = await deps.tenants.findById(job.tenantId);
   if (tenant === null) return undefined;

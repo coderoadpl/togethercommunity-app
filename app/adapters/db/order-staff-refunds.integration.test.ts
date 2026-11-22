@@ -208,6 +208,17 @@ describe('staff refunds against a real database', () => {
     }]);
   });
 
+  it('refunds a test-mode order in test mode without a buyer e-mail', async () => {
+    await database.db.update(orders).set({ mode: 'test' }).where(eq(orders.id, 'order-1'));
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+
+    expect(await h.dispatch(minutes(1))).toMatchObject({ outcomes: { refunded: 1 } });
+    expect(h.provider.calls).toHaveLength(1);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', buyerNotifiedAt: null }]);
+    expect(await buyerEmails()).toStrictEqual([]);
+  });
+
   it('issues partial, partial and then the full remainder, and refuses anything above what is left', async () => {
     const h = harness();
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));

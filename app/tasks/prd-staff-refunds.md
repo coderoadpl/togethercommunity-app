@@ -301,4 +301,6 @@ guard against refunding more than the charge.
   D11 → amount in the feed".
 - D12. Orders without a payment intent, simulated orders and sold-out orders are not refundable
   from Studio. Revert: "undo D12 → refund by charge".
+- D14. A test-mode order is refunded in test mode without a buyer e-mail; restock returns
+  nothing because a test checkout never commits stock. Revert: "undo D14 → e-mail in test mode".
 - D13. Migration placeholder `0168`; the deployments thread assigns the final number.

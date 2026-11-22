@@ -1703,7 +1703,9 @@ preview says so, and Stripe still refuses anything above the charge.
   Stripe's acceptance, in the language and branding of the sold-out e-mail. It
   names the amount of the platform's own Stripe refund, the short order
   reference and the usual arrival time; never a provider id or the staff note.
-  A refund that never reached Stripe or failed sends none.
+  A refund that never reached Stripe or failed sends none, and neither does a
+  test-mode order, whose checkout sent no buyer e-mail either. A test-mode
+  order never took stock, so restocking it returns nothing.
 - **Audit**: each row keeps who requested it (`requested_by_user_id`,
   `requested_by_email`), the amount, the staff-only note (at most 500
   characters) and the time. The server logs one line per new request with the

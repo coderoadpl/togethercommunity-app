@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { productComplianceSchema, productVariants, shownResponsiblePerson, publicProductVariantSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
+import { productComplianceSchema, productVariants, shownResponsiblePerson, publicProductVariantSchema, storedProductCompliance, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 
 const compliance = {
   manufacturerName: 'Example Workshop',
@@ -70,6 +70,18 @@ describe('product safety information', () => {
     expect(shownResponsiblePerson(inside)).toBeNull();
     expect(shownResponsiblePerson({ ...inside, manufacturerOutsideEu: true }))
       .toEqual({ name: 'Example EU Representative', address: responsiblePerson.responsiblePersonAddress, email: responsiblePerson.responsiblePersonEmail });
+  });
+
+  it('stores the switch and the responsible person only when the switch is on or a responsible person field is given', () => {
+    const inside = productComplianceSchema.parse(compliance);
+    expect(storedProductCompliance(inside)).toEqual({ ...compliance, safetyWarnings: '' });
+    expect(storedProductCompliance({ ...inside, responsiblePersonName: null, responsiblePersonAddress: null, responsiblePersonEmail: null })).toEqual({ ...compliance, safetyWarnings: '' });
+    const insideWithPerson = productComplianceSchema.parse({ ...compliance, ...responsiblePerson });
+    expect(storedProductCompliance(insideWithPerson)).toEqual(insideWithPerson);
+    const outside = productComplianceSchema.parse({ ...compliance, ...responsiblePerson, manufacturerOutsideEu: true });
+    expect(storedProductCompliance(outside)).toEqual(outside);
+    expect(storedProductCompliance(null)).toBeNull();
+    expect(storedProductCompliance(undefined)).toBeNull();
   });
 
   it('requires every manufacturer field', () => {

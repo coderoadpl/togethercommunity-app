@@ -27,6 +27,17 @@ const anonMe = () =>
     ),
   );
 
+const signedInWithoutAccessMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u9', email: 'visitor@acme.example', name: 'Visitor', emailVerified: true,
+        tenantAccess: 'none', tenant: null, impersonation: null,
+      },
+    }),
+  );
+
 const navigation = (): PublicNavigation => ({
   defaultHomeSpaceId: 's1',
   spaces: [{ id: 's1', slug: 's1', name: 'General', description: 'Camper discussions.', position: 0 }],
@@ -260,6 +271,53 @@ describe('public event surface', () => {
     expect(contact).toHaveAttribute('target', '_blank');
     expect(contact).toHaveTextContent(en.anon.contactCreator);
     expect(within(details).getByTestId('public-event-sign-in')).toHaveClass('MuiButton-contained');
+  });
+
+  it('gives a signed-in account without access the join button alone', async () => {
+    server.use(signedInWithoutAccessMe(), okPublicNavigation(), okPublicEvent(), okPublicThread());
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    expect(await within(details).findByTestId('public-event-join')).toHaveAttribute('href', '/#offer');
+    expect(within(details).queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(within(details).queryByTestId('anon-visitor-contact')).not.toBeInTheDocument();
+  });
+
+  it('gives a signed-in account without access only the creator contact when the workspace sells nothing', async () => {
+    server.use(
+      signedInWithoutAccessMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      okOffer('mailto:hello@studio.example.org'),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    expect(await within(details).findByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'mailto:hello@studio.example.org',
+    );
+    expect(within(details).queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(within(details).queryByTestId('public-event-join')).not.toBeInTheDocument();
+  });
+
+  it('leaves the event actions out for a signed-in account without access when nothing is for sale or to contact', async () => {
+    server.use(
+      signedInWithoutAccessMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      okOffer(null),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    await waitFor(() => expect(screen.queryByTestId('public-event-actions-pending')).not.toBeInTheDocument());
+    expect(details.querySelector('a, button')).toBeNull();
   });
 
   it('holds the event actions until the offer settles so the sign-in button never changes style', async () => {

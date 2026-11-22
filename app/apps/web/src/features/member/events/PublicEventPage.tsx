@@ -83,16 +83,18 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
             {t.events.signInToRsvp}
           </Button>
         </Box>
-      ) : (
+      ) : join.signedIn && join.target.kind === 'none' && join.supportUrl === null ? null : (
         <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
           <VisitorJoinButton target={join.target} testId="public-event-join" />
-          <RouterButton
-            {...loginLink}
-            variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
-            data-testid="public-event-sign-in"
-          >
-            {t.events.signInToRsvp}
-          </RouterButton>
+          {join.signedIn ? null : (
+            <RouterButton
+              {...loginLink}
+              variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
+              data-testid="public-event-sign-in"
+            >
+              {t.events.signInToRsvp}
+            </RouterButton>
+          )}
           {join.target.kind === 'none' && join.supportUrl !== null ? (
             <VisitorContactLink supportUrl={join.supportUrl} />
           ) : null}

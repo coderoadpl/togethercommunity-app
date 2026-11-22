@@ -2,7 +2,7 @@ import { Box, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 
-import { communitySpacePath } from '#core/contract/index.js';
+import { communitySpacePath, PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
@@ -14,7 +14,14 @@ import { BrandLink, NavRow, type ShellLinkProps, type ShellVariant } from './she
 import { CourseOverviewIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
 
+const GroupHeading = ({ children }: { children: string }) => (
+  <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
+    {children}
+  </Typography>
+);
+
 const AnonNavigationList = ({ active }: { active: MemberNavEntry | null }) => {
+  const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
 
   if (navigation.isPending) return <SidebarLoading />;
@@ -26,44 +33,57 @@ const AnonNavigationList = ({ active }: { active: MemberNavEntry | null }) => {
   const { spaces, courses, lockedSpaces } = navigation.data.navigation;
 
   return (
-    <List component="div" disablePadding>
-      {spaces.map((space) => (
-        <LinkRow
-          key={space.id}
-          to={communitySpacePath(space.id)}
-          label={space.name}
-          icon={<SpaceIcon />}
-          active={active?.kind === 'space' && active.spaceId === space.id}
-          testId={`anon-sidebar-space-${space.id}`}
-        />
-      ))}
-      {courses.map((course) => (
-        <LinkRow
-          key={course.id}
-          to={`/my/courses/${encodeURIComponent(course.id)}`}
-          label={course.name}
-          icon={<CourseOverviewIcon />}
-          active={active?.kind === 'course' && active.courseId === course.id}
-          testId={`anon-sidebar-course-${course.id}`}
-        />
-      ))}
-      {lockedSpaces.map((space) => {
-        const productId = space.productIds[0];
-        const linkProps: ShellLinkProps & { disabled?: boolean } = productId === undefined
-          ? { component: 'div', disabled: true }
-          : { component: Link, to: `/checkout/${encodeURIComponent(productId)}` };
-        return (
-          <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
-            <NavRow {...linkProps} data-testid={`anon-sidebar-locked-${space.id}`}>
-              <ListItemIcon>
-                <LockClosed />
-              </ListItemIcon>
-              <ListItemText primary={space.name} slotProps={{ primary: { noWrap: true } }} />
-            </NavRow>
-          </Tooltip>
-        );
-      })}
-    </List>
+    <>
+      {spaces.length + lockedSpaces.length === 0 ? null : (
+        <>
+          <GroupHeading>{t.shell.spacesSection}</GroupHeading>
+          <List component="div" disablePadding data-testid="anon-sidebar-spaces">
+            {spaces.map((space) => (
+              <LinkRow
+                key={space.id}
+                to={communitySpacePath(space.id)}
+                label={space.name}
+                icon={<SpaceIcon />}
+                active={active?.kind === 'space' && active.spaceId === space.id}
+                testId={`anon-sidebar-space-${space.id}`}
+              />
+            ))}
+            {lockedSpaces.map((space) => {
+              const linkProps: ShellLinkProps & { disabled?: boolean } = space.productIds[0] === undefined
+                ? { component: 'div', disabled: true }
+                : { component: Link, to: anonHomePath(), hash: PUBLIC_OFFER_ANCHOR };
+              return (
+                <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
+                  <NavRow {...linkProps} data-testid={`anon-sidebar-locked-${space.id}`}>
+                    <ListItemIcon>
+                      <LockClosed />
+                    </ListItemIcon>
+                    <ListItemText primary={space.name} slotProps={{ primary: { noWrap: true } }} />
+                  </NavRow>
+                </Tooltip>
+              );
+            })}
+          </List>
+        </>
+      )}
+      {courses.length === 0 ? null : (
+        <>
+          <GroupHeading>{t.anon.coursesSection}</GroupHeading>
+          <List component="div" disablePadding data-testid="anon-sidebar-courses">
+            {courses.map((course) => (
+              <LinkRow
+                key={course.id}
+                to={`/my/courses/${encodeURIComponent(course.id)}`}
+                label={course.name}
+                icon={<CourseOverviewIcon />}
+                active={active?.kind === 'course' && active.courseId === course.id}
+                testId={`anon-sidebar-course-${course.id}`}
+              />
+            ))}
+          </List>
+        </>
+      )}
+    </>
   );
 };
 
@@ -107,9 +127,6 @@ export const AnonSidebar = ({ variant }: { variant: ShellVariant }) => {
             testId="anon-sidebar-start"
           />
         </List>
-        <Typography variant="overline" component="p" sx={{ px: '0.6rem', pt: '0.75rem' }}>
-          {t.shell.spacesSection}
-        </Typography>
         <AnonNavigationList active={active} />
       </Box>
     </Box>

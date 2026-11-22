@@ -1314,7 +1314,7 @@ describe('MemberShell', () => {
     expect(screen.getByTestId('color-scheme-cycle')).toBeVisible();
   });
 
-  it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {
+  it('lists public spaces, public courses and locked rows that lead to the home offer for a visitor', async () => {
     stubViewport(true);
     server.use(
       okMe({ tenant: null }),
@@ -1346,15 +1346,33 @@ describe('MemberShell', () => {
       '/my/courses/c1',
     );
     const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
-    expect(locked).toHaveAttribute(
-      'href',
-      '/checkout/p1',
-    );
+    expect(locked).toHaveAttribute('href', '/#offer');
+    expect(within(screen.getByTestId('anon-sidebar-spaces')).getByTestId('anon-sidebar-locked-s9')).toBe(locked);
+    expect(within(screen.getByTestId('anon-sidebar-courses')).getByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
+    expect(within(nav).getByText(en.shell.spacesSection)).toBeInTheDocument();
+    expect(within(nav).getByText(en.anon.coursesSection)).toBeInTheDocument();
     await user.hover(locked);
     expect(await screen.findByText(en.shell.lockedSpaceHint)).toBeInTheDocument();
     expect(await screen.findByText(en.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.getAllByRole('link', { name: en.auth.signInLink })).toHaveLength(1);
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
+  });
+
+  it('renders a sidebar group heading only when the group has rows', async () => {
+    stubViewport(true);
+    server.use(
+      okMe({ tenant: null }),
+      okOffer(),
+      okPublicNavigation(publicNavigation({ spaces: [], lockedSpaces: [] })),
+    );
+
+    await renderShell('/my');
+
+    const nav = await screen.findByTestId('anon-sidebar');
+    expect(await within(nav).findByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
+    expect(within(nav).getByText(en.anon.coursesSection)).toBeInTheDocument();
+    expect(within(nav).queryByText(en.shell.spacesSection)).not.toBeInTheDocument();
+    expect(within(nav).queryByTestId('anon-sidebar-spaces')).not.toBeInTheDocument();
   });
 });

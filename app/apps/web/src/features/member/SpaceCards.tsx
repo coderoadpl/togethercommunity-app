@@ -212,7 +212,7 @@ export const LockedSpaceCard = ({
             width: '100%',
           }}
         >
-          <Box sx={{ flex: '1 1 14rem', minWidth: 0 }}>
+          <Box sx={{ flex: '1 1 18rem', minWidth: 0 }}>
             <Typography variant="h3" component="h3" color="text.primary">
               {space.name}
             </Typography>
@@ -242,6 +242,7 @@ export const LockedSpaceCard = ({
               sx={{
                 flexShrink: 0,
                 flexBasis: { xs: '100%', sm: 'auto' },
+                maxWidth: '100%',
                 alignSelf: 'center',
                 px: '0.7rem',
                 py: '0.32rem',

@@ -28,6 +28,7 @@ export interface ProviderRefund {
   failureReason: string | null;
   orderId: string | null;
   reason: string | null;
+  refundJobId?: string;
 }
 
 const refundFailureKindSchema = z.enum([

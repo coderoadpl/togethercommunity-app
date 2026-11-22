@@ -173,6 +173,8 @@ import type {
   ProviderRefund,
   OrderRefundJob,
   ClaimedOrderRefundJob,
+  ClaimedRefundJob,
+  OrderStaffRefund,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -1285,7 +1287,7 @@ export interface PaymentProvider {
     paymentIntentId: string;
     amountCents: number;
     idempotencyKey: string;
-    metadata: { orderId: string; reason: 'out_of_stock' };
+    metadata: { orderId: string; reason: 'out_of_stock' } | { orderId: string; reason: 'staff'; refundJobId: string };
   }): Promise<Result<ProviderRefund, AppError>>;
   getRefund?(input: {
     mode: 'live' | 'test';
@@ -1449,6 +1451,57 @@ export interface OrderRefundJobRepository {
     staffAlerts?: readonly EmailOutboxEnqueueInput[],
   ): Promise<OrderRefundJob | null>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
+}
+
+/** The queue the refund dispatcher drains: sold-out refund jobs and staff refunds, claimed in due order. */
+export interface RefundJobQueue {
+  claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedRefundJob | null>;
+  countDue(input: { now: string }): Promise<number>;
+  release(
+    tenantId: string,
+    jobId: string,
+    lease: ClaimedRefundJob['lease'],
+    update: OrderRefundJobUpdate & { now: string },
+    staffAlerts?: readonly EmailOutboxEnqueueInput[],
+    buyerNotice?: EmailOutboxEnqueueInput,
+  ): Promise<OrderRefundJob | OrderStaffRefund | null>;
+}
+
+export interface StaffRefundCreationState {
+  order: Order;
+  platformCommittedCents: number;
+  sameRequest: OrderStaffRefund | null;
+  waiting: OrderStaffRefund | null;
+  hasLabel: boolean;
+}
+
+export type StaffRefundDecision =
+  | { kind: 'existing'; refund: OrderStaffRefund }
+  | { kind: 'create'; refund: OrderStaffRefund };
+
+export interface StaffRefundCreated {
+  refund: OrderStaffRefund;
+  created: boolean;
+  returnedToStock: Array<{ productId: string; quantity: number }>;
+}
+
+export interface OrderStaffRefundRepository {
+  /** Locks the order row, hands the locked state to `decide` and applies its decision in the same transaction. */
+  create(
+    tenantId: string,
+    input: {
+      orderId: string;
+      requestKey: string;
+      actorUserId: string;
+      now: string;
+      decide(state: StaffRefundCreationState): Result<StaffRefundDecision, AppError>;
+    },
+  ): Promise<Result<StaffRefundCreated, AppError>>;
+  listByOrder(tenantId: string, orderId: string): Promise<OrderStaffRefund[]>;
+  platformCommittedCents(tenantId: string, orderId: string): Promise<number>;
+  hasLabel(tenantId: string, orderId: string): Promise<boolean>;
+  noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
+  shipAnyway(tenantId: string, orderId: string): Promise<Result<Order, AppError>>;
 }
 
 export interface KsefCredentials {

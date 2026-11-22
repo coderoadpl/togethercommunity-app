@@ -7,6 +7,7 @@ import {
   notFound,
   ok,
   renderEmailOutboxPayload,
+  tenantSettingsSchema,
   validation,
   type AppError,
   type Identity,
@@ -70,7 +71,11 @@ const liveOrder: Order = {
   couponId: null, discountCents: 0, createdAt: '2026-11-20T09:00:00.000Z',
 };
 
-const setup = (options: { order?: Order | null; staff?: Array<{ userId: string; email: string; staffRole: StaffRole; language: 'en' | 'pl' | null }> } = {}) => {
+const setup = (options: {
+  order?: Order | null;
+  staff?: Array<{ userId: string; email: string; staffRole: StaffRole; language: 'en' | 'pl' | null }>;
+  supportEmail?: string;
+} = {}) => {
   const store = createRejectionStore();
   const outbox = new Map<string, EmailOutboxEnqueueInput>();
   let now = '2026-11-20T10:00:00.000Z';
@@ -87,7 +92,12 @@ const setup = (options: { order?: Order | null; staff?: Array<{ userId: string; 
         { userId: 'admin-1', email: 'admin@togethercommunity.app', staffRole: 'admin', language: 'en' },
       ] : [],
     },
-    tenants: { findSettings: async () => null },
+    tenants: {
+      findSettings: async () => options.supportEmail === undefined ? null : tenantSettingsSchema.parse({
+        name: 'Acme', billingPortalUrl: null, bunnyStreamLibraryId: null, bunnyStreamCdnHostname: null,
+        supportEmail: options.supportEmail, defaultLanguage: 'pl',
+      }),
+    },
     tenantDomains: { listByTenant: async () => [] },
     appBaseUrl: 'https://togethercommunity.app',
     baseDomain: 'togethercommunity.app',
@@ -114,7 +124,7 @@ type Outcome = Result<{ processed: boolean }, AppError>;
 const refused: Outcome = err(validation('Checkout snapshot not found'));
 
 describe('recordStripeWebhookOutcome', () => {
-  it('records a refused paid checkout session, logs the operator marker and e-mails the owners', async () => {
+  it('records a refused paid checkout session, logs the operator marker and e-mails the workspace staff', async () => {
     const { deps, store, outbox, logger, dispatchEmail } = setup();
 
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
@@ -134,9 +144,12 @@ describe('recordStripeWebhookOutcome', () => {
     expect(logger.error).toHaveBeenCalledExactlyOnceWith(
       `[payment-webhook-rejected] tenant=${tenant.id} event=evt_paid type=checkout.session.completed reason=validation`,
     );
-    expect([...outbox.keys()]).toEqual([`payment-event-rejected:${tenant.id}:evt_paid:owner-1`]);
+    expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
+      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'admin@togethercommunity.app'],
+    ]);
     const [queued] = [...outbox.values()];
-    expect(queued).toMatchObject({ tenantId: tenant.id, to: 'owner@togethercommunity.app', onConflict: 'keep-existing' });
+    expect(queued).toMatchObject({ tenantId: tenant.id, onConflict: 'keep-existing' });
     expect(queued?.payload).toEqual({
       kind: 'payment-event-rejected',
       language: 'pl',
@@ -167,7 +180,7 @@ describe('recordStripeWebhookOutcome', () => {
     }]);
   });
 
-  it('queues the owner e-mails only on the first refusal of an event', async () => {
+  it('queues the staff e-mails only on the first refusal of an event', async () => {
     const { deps, outbox, dispatchEmail } = setup({ staff: [
       { userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: null },
       { userId: 'owner-2', email: 'second-owner@togethercommunity.app', staffRole: 'owner', language: 'en' },
@@ -183,9 +196,31 @@ describe('recordStripeWebhookOutcome', () => {
     expect(staffLookup).toHaveBeenCalledTimes(1);
     expect(dispatchEmail).toHaveBeenCalledTimes(1);
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:owner-1`, 'owner@togethercommunity.app'],
-      [`payment-event-rejected:${tenant.id}:evt_paid:owner-2`, 'second-owner@togethercommunity.app'],
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
+      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'second-owner@togethercommunity.app'],
     ]);
+  });
+
+  it('sends the alert to the workspace support address when one is set', async () => {
+    const { deps, outbox } = setup({ supportEmail: 'support@togethercommunity.app' });
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...outbox.values()].map((input) => [input.id, input.to, input.payload])).toEqual([
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', expect.objectContaining({ language: 'pl' })],
+    ]);
+  });
+
+  it('reaches the admins of a workspace without a direct owner, once per address', async () => {
+    const { deps, outbox } = setup({ staff: [
+      { userId: 'admin-1', email: 'admin@togethercommunity.app', staffRole: 'admin', language: 'en' },
+      { userId: 'admin-2', email: 'admin@togethercommunity.app', staffRole: 'admin', language: 'pl' },
+      { userId: 'admin-3', email: 'second-admin@togethercommunity.app', staffRole: 'admin', language: null },
+    ] });
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...outbox.values()].map((input) => input.to)).toEqual(['admin@togethercommunity.app', 'second-admin@togethercommunity.app']);
   });
 
   it('marks the record resolved when a later delivery of the same event succeeds', async () => {
@@ -249,7 +284,7 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), err(error), deps);
 
     expect([...store.rows.values()]).toMatchObject([{ reasonCode: error.code, reasonMessage: reason }]);
-    expect([...outbox.values()].map((input) => input.payload)).toMatchObject([{ reasonMessage: reason }]);
+    expect([...outbox.values()].map((input) => input.payload)).toMatchObject([{ reasonMessage: reason }, { reasonMessage: reason }]);
     expect(JSON.stringify([...store.rows.values(), ...outbox.values()])).not.toContain('buyer@togethercommunity.app');
   });
 

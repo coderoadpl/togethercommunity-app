@@ -2,7 +2,6 @@ import {
   err,
   ok,
   paymentEventRejectionListQuerySchema,
-  resolveEmailLanguage,
   validation,
   type AppError,
   type ErrorCode,
@@ -25,6 +24,7 @@ import type {
   TenantRepository,
 } from '../ports.js';
 import { resolveTenantOrigin, type TenantUrlDeps } from '../tenant-url.js';
+import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 
 export type PaymentEventRejectionDeps = TenantUrlDeps & {
   paymentEventRejections: PaymentEventRejectionRepository;
@@ -82,26 +82,25 @@ const storedReason = (error: AppError): string =>
     ? error.message
     : FIXED_REASONS[error.code] ?? 'The payment could not be processed';
 
-const notifyOwners = async (
+const notifyStaff = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   rejection: PaymentEventRejection,
   deps: PaymentEventRejectionDeps,
 ): Promise<boolean> => {
-  const owners = deps.tenantAccess === undefined
+  const recipients = deps.tenantAccess === undefined
     ? []
-    : (await deps.tenantAccess.listStaffForTenant(tenant.id)).filter((staff) => staff.staffRole === 'owner');
-  if (owners.length === 0) return false;
-  const settings = await deps.tenants.findSettings(tenant.id);
+    : await tenantStaffRecipients(tenant.id, { tenants: deps.tenants, tenantAccess: deps.tenantAccess });
+  if (recipients.length === 0) return false;
   const studioUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/sales`;
   let queuedAny = false;
-  for (const owner of owners) {
+  for (const [index, recipient] of recipients.entries()) {
     const queued = await deps.emailOutbox.enqueue({
-      id: `payment-event-rejected:${tenant.id}:${rejection.eventId}:${owner.userId}`,
+      id: `payment-event-rejected:${tenant.id}:${rejection.eventId}:${String(index)}`,
       tenantId: tenant.id,
-      to: owner.email,
+      to: recipient.email,
       payload: {
         kind: 'payment-event-rejected',
-        language: resolveEmailLanguage(owner.language, settings?.defaultLanguage),
+        language: recipient.language,
         tenantName: tenant.name,
         eventId: rejection.eventId,
         eventType: rejection.eventType,
@@ -115,7 +114,7 @@ const notifyOwners = async (
       onConflict: 'keep-existing',
     });
     if (queued.ok) queuedAny = true;
-    else deps.logger.error(`[payment-webhook-rejected] owner e-mail not queued tenant=${tenant.id} event=${rejection.eventId} error=${queued.error.code}`);
+    else deps.logger.error(`[payment-webhook-rejected] staff e-mail not queued tenant=${tenant.id} event=${rejection.eventId} error=${queued.error.code}`);
   }
   return queuedAny;
 };
@@ -165,7 +164,7 @@ export const recordStripeWebhookOutcome = async (
       await deps.paymentEventRejections.resolve(tenant.id, event.id, deps.clock.nowIso());
       return;
     }
-    if (recorded.attempts === 1 && await notifyOwners(tenant, recorded, deps)) deps.dispatchEmail();
+    if (recorded.attempts === 1 && await notifyStaff(tenant, recorded, deps)) deps.dispatchEmail();
   });
 };
 

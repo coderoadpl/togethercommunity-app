@@ -8887,7 +8887,7 @@ describe('checkout consent ordering', () => {
       return { response, record, resolve, enqueue, error };
     };
 
-    it('keeps the refusal for Stripe, records the event and queues the owner e-mail when the signature verifies', async () => {
+    it('keeps the refusal for Stripe, records the event and queues the staff e-mail when the signature verifies', async () => {
       const { response, record, enqueue, error } = await deliver(signed('plaintext'));
 
       expect(response.status).toBe(400);
@@ -8896,7 +8896,7 @@ describe('checkout consent ordering', () => {
         eventId: 'evt_refused_paid', checkoutSessionId: 'cs_refused_paid', reasonCode: 'validation',
       }));
       expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
-        id: `payment-event-rejected:${acme.id}:evt_refused_paid:owner-1`, to: 'owner@togethercommunity.app',
+        id: `payment-event-rejected:${acme.id}:evt_refused_paid:0`, to: 'owner@togethercommunity.app',
       }));
       expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);
     });

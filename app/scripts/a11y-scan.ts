@@ -105,7 +105,7 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
-    name: 'login-resolve-unavailable',
+    name: 'login-rate-limited',
     auth: 'public',
     path: '/login',
     viewports: memberViewports,

@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -206,5 +207,45 @@ describe('TenantGate', () => {
     expect(screen.getByText(en.tenantNotFound.title)).toBeInTheDocument();
     expect(screen.queryByText('APP')).not.toBeInTheDocument();
     expect(en.tenantNotFound.title).not.toBe(pl.tenantNotFound.title);
+  });
+
+  it('labels the not-found card in words and offers one way out to the start host', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
+      ),
+    );
+    renderWithProviders(<TenantGate hostname="ghost.localhost">{children}</TenantGate>);
+
+    const card = await screen.findByTestId('tenant-not-found');
+    expect(card).toHaveTextContent(en.tenantNotFound.eyebrow);
+    expect(card).not.toHaveTextContent('404');
+    expect(screen.getByRole('heading', { level: 1, name: en.errors.headingTenantNotFound })).toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: en.tenantNotFound.startCta })).toHaveAttribute(
+      'href',
+      expect.stringContaining('//start.localhost'),
+    );
+  });
+
+  it('shows an offer failure in a headed focus card with one retry', async () => {
+    let calls = 0;
+    server.use(
+      http.get('/api/public/offer', () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
+          : HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<TenantGate hostname="acme.localhost">{children}</TenantGate>);
+
+    const card = await screen.findByTestId('tenant-gate-error');
+    expect(within(card).getByRole('heading', { level: 1, name: en.errors.headingGeneric })).toBeInTheDocument();
+    expect(within(card).getByRole('alert')).toHaveTextContent(en.errors.messageInternal);
+    expect(within(card).getAllByRole('button')).toHaveLength(1);
+    await user.click(within(card).getByRole('button', { name: en.common.retry }));
+    expect(await screen.findByText('APP')).toBeInTheDocument();
   });
 });

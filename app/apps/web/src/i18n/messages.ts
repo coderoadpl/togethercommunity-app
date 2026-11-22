@@ -361,6 +361,8 @@ export interface Messages {
     headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
+    bootEyebrow: string;
+    backToStart: string;
     headingValidation: string;
     headingConflict: string;
     headingSlugReserved: string;
@@ -1037,9 +1039,11 @@ export interface Messages {
     nextPage: string;
   };
   tenantNotFound: {
+    eyebrow: string;
     title: string;
     body: string;
     hint: string;
+    startCta: string;
   };
   panel: {
     navigation: string;

@@ -101,6 +101,19 @@ describe('TenantHomePage dispatcher', () => {
     expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
   });
 
+  it('shows a session failure in a headed focus card with one retry', async () => {
+    server.use(http.get('/api/me', () =>
+      HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })));
+
+    await renderHome();
+
+    const card = await screen.findByTestId('tenant-home-error');
+    expect(screen.getByRole('heading', { level: 1, name: en.errors.headingGeneric })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.errors.messageInternal);
+    expect(card.querySelectorAll('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: en.common.retry })).toBeInTheDocument();
+  });
+
   it('redirects a staff member to their start page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })));
     await renderHome();

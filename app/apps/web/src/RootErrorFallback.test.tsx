@@ -17,6 +17,22 @@ describe('renderRootErrorFallback', () => {
     expect(alert).not.toHaveTextContent('Your session expired');
   });
 
+  it('offers sign-in as the primary action once the session has ended', () => {
+    render(renderRootErrorFallback(new ApiError(unauthorized('Your session expired'))));
+
+    expect(screen.getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+    expect(screen.queryByRole('button', { name: en.common.reload })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.errors.backToStart })).toHaveAttribute('href', '/');
+  });
+
+  it('keeps reload as the primary action with a way back to start for other failures', () => {
+    render(renderRootErrorFallback(new Error('boom')));
+
+    expect(screen.getByRole('button', { name: en.common.reload })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.errors.backToStart })).toHaveAttribute('href', '/');
+  });
+
   it('falls back to a generic heading for a non-ApiError throw', () => {
     render(renderRootErrorFallback(new Error('boom')));
 

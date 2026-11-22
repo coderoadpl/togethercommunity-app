@@ -1,4 +1,4 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
+import { Box, Button, Link, Paper, Typography } from '@mui/material';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -69,6 +69,9 @@ interface RootErrorFallbackProps {
  * message and, whenever tracing is active, the trace id so a user can paste it
  * into a support request; it is simply absent when tracing is not configured.
  */
+const isUnauthorized = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
 export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) => {
   const t = useTranslations();
   return (
@@ -89,9 +92,20 @@ export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) =>
             {t.errors.traceId} <code>{traceId}</code>
           </Typography>
         )}
-        <Button variant="contained" fullWidth onClick={() => window.location.reload()}>
-          {t.common.reload}
-        </Button>
+        {isUnauthorized(error) ? (
+          <Button variant="contained" fullWidth href="/login" data-testid="root-error-sign-in">
+            {t.auth.signInLink}
+          </Button>
+        ) : (
+          <Button variant="contained" fullWidth onClick={() => window.location.reload()}>
+            {t.common.reload}
+          </Button>
+        )}
+        <Box sx={{ mt: '1rem', display: 'flex', justifyContent: 'center' }}>
+          <Link href="/" variant="body2" data-testid="root-error-start">
+            {t.errors.backToStart}
+          </Link>
+        </Box>
       </Paper>
     </Box>
   );

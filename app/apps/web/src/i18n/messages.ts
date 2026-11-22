@@ -1413,6 +1413,7 @@ export interface Messages {
     sessionsSummary: ({ count }: { count: number }) => string;
     passkeyCount: ({ count }: { count: number }) => string;
     continueSetup: string;
+    wizardBack: string;
     disableTwoFactorConfirm: string;
     wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
     twoFactorStatusUnknown: string;
@@ -1427,6 +1428,10 @@ export interface Messages {
     backupCodesCopied: string;
     downloadBackupCodes: string;
     backupCodesSaved: string;
+    leaveWithoutCodesTitle: string;
+    leaveWithoutCodesBody: string;
+    leaveWithoutCodesConfirm: string;
+    leaveWithoutCodesCancel: string;
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;

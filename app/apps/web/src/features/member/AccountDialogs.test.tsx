@@ -230,8 +230,57 @@ describe('Account dialogs', () => {
     view.rerender(tree({ ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, success: true } }));
     await screen.findByTestId('backup-codes');
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    expect(refresh).not.toHaveBeenCalled();
+    await userEvent.click(within(await screen.findByTestId('two-factor-leave-dialog')).getByTestId('two-factor-leave-confirm'));
     expect(refresh).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+  it('asks before leaving unsaved backup codes by Close or Escape and stays on Stay', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    const enabled = { ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } };
+    view.rerender(tree(enabled));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '123456');
+    view.rerender(tree({ ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, success: true } }));
+    await screen.findByTestId('backup-codes');
+
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    const leave = await screen.findByTestId('two-factor-leave-dialog');
+    expect(within(leave).getByRole('heading', { name: en.security.leaveWithoutCodesTitle })).toBeVisible();
+    expect(leave).not.toHaveTextContent('demo-code');
+    await userEvent.click(within(leave).getByRole('button', { name: en.security.leaveWithoutCodesCancel }));
+    await waitFor(() => expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument());
+    expect(screen.getByTestId('backup-codes')).toHaveTextContent('demo-code');
+
+    await userEvent.keyboard('{Escape}');
+    expect(await screen.findByTestId('two-factor-leave-dialog')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: en.security.leaveWithoutCodesCancel }));
+    await waitFor(() => expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByLabelText(en.security.backupCodesSaved));
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument();
+  });
+  it('goes back from verification to the QR code', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    view.rerender(tree({ ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } }));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '12');
+    await userEvent.click(screen.getByTestId('two-factor-back'));
+    expect(screen.getByTestId('two-factor-step')).toHaveTextContent(en.security.wizardSteps.qr);
+    expect(screen.getByTestId('two-factor-qr-code')).toBeVisible();
+    await userEvent.click(screen.getByTestId('two-factor-next'));
+    expect(screen.getByTestId('verify-totp-code')).toHaveValue('');
+    expect(props.verifyTotp.run).not.toHaveBeenCalled();
   });
   it('provides a finish path when enrollment returns no backup codes', async () => {
     const refresh = vi.fn();

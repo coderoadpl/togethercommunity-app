@@ -12,10 +12,22 @@ import { TileSection } from './StartPage.js';
 type OfferProduct = PublicOfferOutput['products'][number];
 type OfferSalesLink = PublicOfferOutput['salesLinks'][number];
 
-const offerProductPrices = (product: OfferProduct): OfferPriceTerms[] =>
+export const offerProductPrices = (product: OfferProduct): OfferPriceTerms[] =>
   product.prices.length > 0
     ? product.prices
     : [{ kind: 'one_time', interval: null, amountCents: product.priceCents, currency: product.currency }];
+
+export const useOfferPriceFormatter = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const labels = {
+    free: t.common.free,
+    oneTime: t.common.priceOneTime,
+    monthly: t.common.priceMonthly,
+    yearly: t.common.priceYearly,
+  };
+  return (price: OfferPriceTerms) => formatOfferPriceTerms(price, language, labels);
+};
 
 export const uniqueOfferProducts = (products: readonly OfferProduct[]): OfferProduct[] => {
   const seen = new Set<string>();
@@ -59,20 +71,14 @@ const OfferCard = ({
 
 const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const formatTerms = useOfferPriceFormatter();
   const prices = offerProductPrices(product);
-  const labels = {
-    free: t.common.free,
-    oneTime: t.common.priceOneTime,
-    monthly: t.common.priceMonthly,
-    yearly: t.common.priceYearly,
-  };
   const free = prices.every((price) => price.amountCents === 0);
   return (
     <OfferCard
       testId={`offer-product-${product.id}`}
       heading={product.title}
-      price={prices.map((price) => formatOfferPriceTerms(price, language, labels)).join(' · ')}
+      price={prices.map(formatTerms).join(' · ')}
       action={(
         <EmberCtaLink
           component={Link}

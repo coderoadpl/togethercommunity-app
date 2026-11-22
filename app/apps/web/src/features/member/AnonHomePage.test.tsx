@@ -86,11 +86,16 @@ type OfferSalesLinkInput = { id: string; slug: string; heading: string; descript
 const okOffer = ({
   products = [],
   salesLinks = [],
-}: { products?: ReturnType<typeof offerProduct>[]; salesLinks?: OfferSalesLinkInput[] } = {}) =>
+  previewLessons = [],
+}: {
+  products?: ReturnType<typeof offerProduct>[];
+  salesLinks?: OfferSalesLinkInput[];
+  previewLessons?: { id: string; name: string; courseId: string }[];
+} = {}) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
-      data: { tenant: { slug: 'acme', name: 'Acme Academy' }, contentVersion: 1, products, salesLinks },
+      data: { tenant: { slug: 'acme', name: 'Acme Academy' }, contentVersion: 1, products, salesLinks, previewLessons },
     }));
 
 const renderPage = async (initialEntry = '/') => {
@@ -300,6 +305,45 @@ describe('AnonHomePage', () => {
     const banner = await screen.findByTestId('anon-read-only-banner');
     expect(within(banner).getByRole('link', { name: en.anon.salesCta })).toHaveAttribute('href', '/#offer');
     expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('names the product price on a locked-space button and keeps the plain label without one', async () => {
+    server.use(
+      okNavigation(navigation({
+        lockedSpaces: [
+          { id: 's9', slug: 'premium', name: 'Premium', description: null, productIds: ['p1'] },
+          { id: 's8', slug: 'vip', name: 'VIP', description: null, productIds: ['p-unlisted'] },
+        ],
+      })),
+      okFeed([]),
+      okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }),
+    );
+
+    await renderPage();
+
+    const priced = await screen.findByTestId('locked-space-cta-s9');
+    await waitFor(() => expect(priced.textContent).toMatch(/^Unlock access — .*199/));
+    expect(priced).toHaveAttribute('href', '/checkout/p1');
+    expect(screen.getByTestId('locked-space-cta-s8')).toHaveTextContent(en.courseTree.unlockAccess);
+    expect(screen.getByTestId('locked-space-cta-s8').textContent).not.toContain('—');
+  });
+
+  it('marks a course card with the preview chip when one of its lessons is a free preview', async () => {
+    server.use(
+      okNavigation(navigation({
+        courses: [
+          { id: 'c1', name: 'JavaScript from scratch', description: 'Starter course.', imageUrl: null },
+          { id: 'c2', name: 'TypeScript', description: '', imageUrl: null },
+        ],
+      })),
+      okFeed([]),
+      okOffer({ previewLessons: [{ id: 'l1', name: 'Variables', courseId: 'c1' }] }),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByTestId('course-preview-c1')).toHaveTextContent(en.anon.previewChip);
+    expect(screen.queryByTestId('course-preview-c2')).not.toBeInTheDocument();
   });
 
   it('scrolls to the offer section when the page opens on the offer anchor', async () => {

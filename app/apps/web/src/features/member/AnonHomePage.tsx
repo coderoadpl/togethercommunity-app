@@ -9,7 +9,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { QuietNotice } from '../../theme.js';
-import { AnonOfferSection, uniqueOfferProducts } from './AnonOfferSection.js';
+import { AnonOfferSection, offerProductPrices, uniqueOfferProducts, useOfferPriceFormatter } from './AnonOfferSection.js';
 import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
@@ -60,6 +60,13 @@ export const AnonHomePage = () => {
   const salesLinks = offer.data?.salesLinks ?? [];
   const offerProducts = uniqueOfferProducts(offer.data?.products ?? []);
   const title = offer.data?.tenant.name ?? t.anon.homeTitle;
+  const formatTerms = useOfferPriceFormatter();
+  const previewCourseIds = new Set((offer.data?.previewLessons ?? []).map((lesson) => lesson.courseId));
+  const lockedPrice = (productIds: readonly string[]): string | null => {
+    const product = offer.data?.products.find((candidate) => candidate.id === productIds[0]);
+    const lead = product === undefined ? undefined : offerProductPrices(product)[0];
+    return lead === undefined ? null : formatTerms(lead);
+  };
   const navigation = useQuery(actions.publicNavigation);
   useScrollToOfferAnchor(navigation.isSuccess);
 
@@ -163,14 +170,14 @@ export const AnonHomePage = () => {
         {courses.length === 0 ? null : (
           <TileSection title={t.anon.coursesSection} id={anchorFor('courses')} testId="anon-courses">
             {courses.map((course) => (
-              <CourseCard key={course.id} course={course} />
+              <CourseCard key={course.id} course={course} preview={previewCourseIds.has(course.id)} />
             ))}
           </TileSection>
         )}
         {lockedSpaces.length === 0 ? null : (
           <TileSection title={t.start.lockedSection} id={anchorFor('locked')} testId="anon-locked">
             {lockedSpaces.map((space) => (
-              <LockedSpaceCard key={space.id} space={space} />
+              <LockedSpaceCard key={space.id} space={space} price={lockedPrice(space.productIds)} />
             ))}
           </TileSection>
         )}

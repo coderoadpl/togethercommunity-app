@@ -176,7 +176,7 @@ export const SpaceCard = ({ space }: { space: SpaceCardSpace }) => {
   );
 };
 
-export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
+export const LockedSpaceCard = ({ space, price }: { space: LockedSpaceCardSpace; price?: string | null | undefined }) => {
   const t = useTranslations();
   const productId = space.productIds[0];
   return (
@@ -199,7 +199,7 @@ export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
             width: '100%',
           }}
         >
-          <LockedSpaceMark>
+          <LockedSpaceMark sx={{ display: { xs: 'none', sm: 'grid' } }} data-testid={`locked-space-mark-${space.id}`}>
             <LockClosed />
           </LockedSpaceMark>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -231,13 +231,13 @@ export const LockedSpaceCard = ({ space }: { space: LockedSpaceCardSpace }) => {
               data-testid={`locked-space-cta-${space.id}`}
               sx={{
                 flexShrink: 0,
+                flexBasis: { xs: '100%', sm: 'auto' },
                 alignSelf: 'center',
                 px: '0.7rem',
                 py: '0.32rem',
-                ml: { xs: 'auto', sm: 0 },
               }}
             >
-              {t.courseTree.unlockAccess}
+              {price === undefined || price === null ? t.courseTree.unlockAccess : t.courseTree.unlockAccessWithPrice({ price })}
             </EmberCtaLink>
           )}
         </Box>

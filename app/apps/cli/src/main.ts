@@ -83,7 +83,7 @@ import { emit, orderStatusLabel } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
-import { changeProposalAppliedLine } from './change-proposal-output.js';
+import { changeProposalAppliedLine, changeProposalNoteText, changeProposalStaleReason } from './change-proposal-output.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -4221,7 +4221,7 @@ const changeProposalFileState = (pending: boolean, available: boolean): string =
   return available ? ': held by this proposal' : ': no longer available; approving changes nothing';
 };
 
-const changeProposalFileLines = (proposal: ChangeProposalOwnerView): string[] => (proposal.proposedFiles ?? []).flatMap((file) => [
+const changeProposalFileLines = (proposal: Pick<ChangeProposalOwnerView, 'id' | 'status' | 'proposedFiles'>): string[] => (proposal.proposedFiles ?? []).flatMap((file) => [
   `  ${file.id}${changeProposalFileState(proposal.status === 'pending', file.available)}${file.copiedFrom === null
     ? ''
     : `; copy of version ${String(file.copiedFrom.versionNumber)} of ${file.copiedFrom.productTitle ?? 'a deleted product'} (${file.copiedFrom.productId})`}`,
@@ -4275,7 +4275,7 @@ changeProposals
       emit(await ctx.api.getChangeProposal({ id }), ctx.json, (data) => [
         ...changeProposalDetail(data.proposal),
         'history:',
-        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
+        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${changeProposalNoteText(event.note)}`}`),
       ].join('\n'));
     }),
   );
@@ -4307,12 +4307,14 @@ changeProposals
     }),
   );
 
-const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView, gone: string | null): string => {
   switch (proposal.status) {
     case 'applied':
       return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
     case 'stale':
-      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+      return gone === null
+        ? 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.'
+        : `stale: ${gone}`;
     case 'failed':
       return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
     case 'pending':
@@ -4329,7 +4331,9 @@ changeProposals
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       const result = await ctx.api.approveChangeProposal({ id });
-      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      const shown = result.ok && result.value.proposal.status === 'stale' && !ctx.json ? await ctx.api.getChangeProposal({ id }) : null;
+      const gone = shown?.ok === true ? changeProposalStaleReason(shown.value.proposal.events) : null;
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal, gone), ...changeProposalDetail(data.proposal)].join('\n'));
       if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
     }),
   );
@@ -4346,17 +4350,25 @@ const changeProposalGroupItemLines = (group: ChangeProposalGroupOwnerView): stri
   group.items.flatMap((item) => [
     `item ${String(item.groupPosition ?? 0)}: ${item.operation} [${item.status}] ${item.target.kind}${item.target.id === null ? ' (new)' : ` ${item.target.id}`} (${item.id})`,
     ...changeProposalEffectLines(item.effect),
+    ...(item.proposedFiles === undefined ? [] : ['  files:', ...changeProposalFileLines(item).map((line) => `  ${line}`)]),
     ...(item.status === 'applied' ? [`  ${changeProposalAppliedLine(item.operation, item.appliedResourceId)}`] : []),
     ...(item.status === 'failed' ? [`  failed: ${item.failureCode ?? 'error'}: ${item.failureMessage ?? ''}`] : []),
-    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${event.note ?? ''}`),
+    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${changeProposalNoteText(event.note ?? '')}`),
   ]);
 
 const changeProposalGroupOutcomeLine = (group: ChangeProposalGroupOwnerView): string => {
   switch (group.status) {
     case 'applied':
       return `applied: all ${String(group.items.length)} items of the group`;
-    case 'stale':
-      return 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.';
+    case 'stale': {
+      const gone = group.items.flatMap((item) => {
+        const reason = changeProposalStaleReason(item.events);
+        return reason === null ? [] : [`item ${String(item.groupPosition ?? 0)}: ${reason}`];
+      })[0];
+      return gone === undefined
+        ? 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.'
+        : `stale: ${gone}; nothing in the group was applied`;
+    }
     case 'failed':
       return 'failed: an item was refused by the live rules; nothing in the group was applied';
     case 'open':

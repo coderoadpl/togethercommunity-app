@@ -2769,6 +2769,22 @@ describe('owner change proposal commands', () => {
     expect(soleJson()).toMatchObject({ ok: true, data: { proposal: fields } });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
+  it.each([
+    ['file', 'file_unavailable: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed'],
+    ['image', 'image_unavailable: The proposed image /proposal-images/logo.png is no longer available, so the proposal cannot be applied; nothing was changed'],
+  ] as const)('prints why an approval ended stale when its %s is gone, without the note code', async (_kind, note) => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'stale' } }));
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'stale', events: [
+      { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'shop-key', note: null, at: '1998-08-01T00:00:00.000Z' },
+      { sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note, at: '1998-08-02T00:00:00.000Z' },
+    ] } }));
+    await run('proposals', 'approve', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')[0]).toBe(`stale: ${note.slice(note.indexOf(': ') + 2)}`);
+    expect(printed).not.toContain('_unavailable');
+    expect(printed).not.toContain('the live state changed');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
   it('answers a repeated approve with the conflict error and its exit code', async () => {
     h.approveChangeProposal.mockReset().mockResolvedValue(err(appError('conflict', 'This change proposal is no longer pending', { changeProposalStatus: 'applied' })));
     await run('--json', 'proposals', 'approve', 'proposal-1');
@@ -2842,6 +2858,46 @@ describe('owner change proposal group commands', () => {
         error: { code: 'conflict', details: { changeProposalGroupItemIds: ['proposal-1', 'proposal-2', 'proposal-3'], itemsDigest: grownDigest } },
       });
     }
+  });
+
+  const withFile = ownerGroup('open', [
+    pending.items[0] ?? groupItem(1),
+    groupItem(2, { operation: 'download.add', input: { productId: '$proposal:proposal-1', stagedFileId: 'staged-1' }, effect: { files: { before: [], after: [{ id: 'staged-1' }] } },
+      proposedFiles: [{ id: 'staged-1', available: true, copiedFrom: { productId: 'product-2', productTitle: 'Field guide', versionNumber: 2 } }] }),
+  ]);
+  const fileLines = [
+    '  files:',
+    '    staged-1: held by this proposal; copy of version 2 of Field guide (product-2)',
+    '      download it with: together proposals file proposal-2 staged-1 --out <path>',
+  ];
+
+  it('shows, before the group is approved, which staged file an item attaches, that it is a copy and how to download it', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: withFile }));
+    await run('proposals', 'group', 'show', 'group-1');
+    const shown = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    const item = shown.indexOf('item 2: download.add [pending] product product-1 (proposal-2)');
+    expect(shown.slice(item + 2, item + 5)).toEqual(fileLines);
+
+    logSpy.mockClear();
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('applied', [groupItem(1, { status: 'applied' }), groupItem(2, { status: 'applied' })]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    const approving = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(approving[0]).toBe('approving:');
+    expect(approving).toEqual(expect.arrayContaining(fileLines));
+  });
+
+  it('prints the item whose file is gone as the reason a group approval ended stale, without the note code', async () => {
+    const note = 'file_unavailable: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed';
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: withFile }));
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('stale', [
+      groupItem(1, { status: 'stale', events: [{ sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note: 'Not applied: item 2 (proposal-2) of this group could not be applied, so nothing in the group was changed', at: '1998-08-02T00:00:00.000Z' }] }),
+      groupItem(2, { status: 'stale', events: [{ sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note, at: '1998-08-02T00:00:00.000Z' }] }),
+    ]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    const outcome = String(logSpy.mock.calls[1]?.[0]);
+    expect(outcome.split('\n')[0]).toBe('stale: item 2: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed; nothing in the group was applied');
+    expect(outcome).not.toContain('file_unavailable');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 
   it('refuses an approval without a well-formed items digest before reading the group', async () => {

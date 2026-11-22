@@ -178,7 +178,7 @@ const withDeadline = async <T>(
   }
 };
 
-export const xmlRootName = (xml: string): string | null => {
+const xmlRootName = (xml: string): string | null => {
   const body = xml.replace(/^\uFEFF/u, '').replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>/gu, '').trimStart();
   const root = /^<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)[\s/>]/u.exec(body);
   return root?.[1] ?? null;

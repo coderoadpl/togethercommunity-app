@@ -486,7 +486,7 @@ interface ShipxIntegrationDeps {
 }
 
 /** An absolute end for one sweep run, in epoch milliseconds, which the sweep's own budget never exceeds. */
-export interface SweepTick {
+interface SweepTick {
   deadlineAt?: number;
 }
 

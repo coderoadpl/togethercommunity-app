@@ -334,12 +334,13 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
       },
     });
   };
+  const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
   const lockerHold = useLockerHold({
     state: checkoutState,
     delivery,
     checkLocker,
     ready: !couponResolving && delivery.status !== 'incomplete' && allReady && currency !== null,
-    requestKey: JSON.stringify(checkoutRequest()),
+    requestKey: JSON.stringify({ payableCents, currency, testEnabled, stripeConfigured, request: checkoutRequest() }),
     proceed: startCheckout,
   });
 
@@ -382,7 +383,6 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
 
   if (items.length === 0) return <CartNotice title={t.checkout.cartEmptyTitle} body={t.checkout.cartEmptyBody} />;
 
-  const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
   const cartSummary = (summaryCurrency: string) => {
     const money = (cents: number) => formatPrice(cents, summaryCurrency, language);
     return {

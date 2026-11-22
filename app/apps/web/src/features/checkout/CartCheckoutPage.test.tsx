@@ -879,5 +879,32 @@ describe('hosted cart checkout', () => {
         expect(bodies).toEqual([]);
       }
     });
+
+    it('does not start the cart payment when the price changes while the submit-time check runs', async () => {
+      const bodies: unknown[] = [];
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', async () => {
+        await gate;
+        return HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } });
+      }));
+      const { queryClient } = renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      const pay = screen.getByTestId('checkout-pay-cta');
+      await userEvent.click(pay);
+      await waitFor(() => expect(pay).toHaveTextContent(en.checkout.payPending));
+      serve({ onSession: (body) => bodies.push(body), overrides: { [poster]: {
+        priceCents: 3900, prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3900, currency: 'PLN' }],
+      } } });
+      await act(() => queryClient.refetchQueries({ type: 'active' }));
+      await waitFor(() => expect(summaryAmount('total')).toHaveTextContent(exact(pln(3900 + 1499))));
+      release?.();
+      await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+      expect(bodies).toEqual([]);
+    });
   });
 });

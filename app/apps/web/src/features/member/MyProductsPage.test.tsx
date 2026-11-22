@@ -81,6 +81,35 @@ describe('my products cards', () => {
     expect(await card.findByRole('link', { name: en.student.openCourse })).toHaveAttribute('href', '/my/courses/course-js');
   });
 
+  it('waits for the course list before choosing a course target', async () => {
+    let releaseCourses: () => void = () => undefined;
+    const coursesReady = new Promise<void>((resolve) => { releaseCourses = resolve; });
+    mockProducts([product]);
+    server.use(http.get('/api/student/courses', async () => {
+      await coursesReady;
+      return HttpResponse.json({ ok: true, data: { courses: [course('course-js', 'JavaScript')] } });
+    }));
+
+    await renderMyProducts();
+
+    const card = within(await screen.findByTestId('my-product-product-single'));
+    expect(card.queryByTestId('open-course-product-single')).not.toBeInTheDocument();
+    releaseCourses();
+    expect(await card.findByRole('link', { name: en.student.openCourse })).toHaveAttribute('href', '/my/courses/course-js');
+  });
+
+  it('sends the member to the product page when the course list fails to load', async () => {
+    mockProducts([product]);
+    server.use(http.get('/api/student/courses', () => HttpResponse.json(
+      { ok: false, error: { code: 'internal', message: 'Course list unavailable' } }, { status: 500 },
+    )));
+
+    await renderMyProducts();
+
+    const card = within(await screen.findByTestId('my-product-product-single'));
+    expect(await card.findByRole('link', { name: en.student.viewCourses })).toHaveAttribute('href', '/my/course/product-single');
+  });
+
   it('shows no open-course action for download-only, expired or physical products', async () => {
     mockProducts([
       { ...product, id: 'product-download', type: 'digital_download', accessItems: [] },
@@ -195,18 +224,19 @@ describe('my products download failures', () => {
 
     const alert = await screen.findByTestId('download-failure-product-guide');
     expect(alert).toHaveTextContent(en.student.downloadFailures.no_access);
-    await userEvent.click(within(alert).getByRole('button', { name: en.common.retry }));
+    expect(within(alert).queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole('button', { name: en.common.close }));
     expect(screen.queryByTestId('download-failure-product-guide')).not.toBeInTheDocument();
   });
 
-  it('shows the error above the list when the product is not listed and clears it on Retry', async () => {
+  it('shows the error above the list when the product is not listed and clears it on Close', async () => {
     mockProducts([product]);
 
     await renderMyProducts('/my/products?downloadError=not_found&product=product-gone');
 
     const alert = await screen.findByTestId('download-failure');
     expect(alert).toHaveTextContent(en.student.downloadFailures.not_found);
-    await userEvent.click(within(alert).getByRole('button', { name: en.common.retry }));
+    await userEvent.click(within(alert).getByRole('button', { name: en.common.close }));
     expect(screen.queryByTestId('download-failure')).not.toBeInTheDocument();
   });
 

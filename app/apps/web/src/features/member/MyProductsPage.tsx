@@ -101,35 +101,40 @@ const statusLabel = (t: Messages, product: GrantedProductRow, language: string):
 
 type CourseTarget = { kind: 'open' | 'view'; to: string };
 
+type AccessibleCourses = ReadonlySet<string> | 'loading' | 'failed';
+
 const courseTarget = (
   product: GrantedProductRow,
-  accessibleCourseIds: ReadonlySet<string> | null,
+  accessibleCourses: AccessibleCourses,
 ): CourseTarget | null => {
   if (product.type === 'physical' || product.grantStatus !== 'active') return null;
   const granted = [...new Set(product.accessItems.map((item) => item.courseId))];
-  const courseIds = accessibleCourseIds === null ? granted : granted.filter((id) => accessibleCourseIds.has(id));
+  if (granted.length === 0 || accessibleCourses === 'loading') return null;
+  const productPage: CourseTarget = { kind: 'view', to: `/my/course/${encodeURIComponent(product.id)}` };
+  if (accessibleCourses === 'failed') return productPage;
+  const courseIds = granted.filter((id) => accessibleCourses.has(id));
   const [onlyCourseId] = courseIds;
   if (onlyCourseId === undefined) return null;
   return courseIds.length === 1
     ? { kind: 'open', to: `/my/courses/${encodeURIComponent(onlyCourseId)}` }
-    : { kind: 'view', to: `/my/course/${encodeURIComponent(product.id)}` };
+    : productPage;
 };
 
 const ProductRow = ({
   product,
   billingPortalUrl,
-  accessibleCourseIds,
+  accessibleCourses,
   downloadFailure,
 }: {
   product: GrantedProductRow;
   billingPortalUrl: string | null;
-  accessibleCourseIds: ReadonlySet<string> | null;
+  accessibleCourses: AccessibleCourses;
   downloadFailure: DownloadFailureNotice | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const inactive = product.grantStatus !== 'active';
-  const target = courseTarget(product, accessibleCourseIds);
+  const target = courseTarget(product, accessibleCourses);
   const portalUrl = product.subscription === null ? null : billingPortalUrl;
   const subscription = product.subscription;
   const subscriptionEnds = subscription?.status === 'canceled' || subscription?.cancelAtPeriodEnd;
@@ -307,8 +312,9 @@ export const MyProductsPage = () => {
 
   const offers = publicOffer.data?.salesLinks ?? [];
   const onlyOffer = offers.length === 1 ? offers[0] : undefined;
-  const accessibleCourseIds = courses.data === undefined
-    ? null
+  const failedOrLoading = courses.isError ? 'failed' : 'loading';
+  const accessibleCourses: AccessibleCourses = courses.data === undefined
+    ? failedOrLoading
     : new Set(courses.data.courses.map((course) => course.id));
   const failureNotice: DownloadFailureNotice | null = downloadFailure === null ? null : {
     code: downloadFailure.code,
@@ -350,7 +356,7 @@ export const MyProductsPage = () => {
                 key={product.id}
                 product={product}
                 billingPortalUrl={tenantSettings.data?.settings.billingPortalUrl ?? null}
-                accessibleCourseIds={accessibleCourseIds}
+                accessibleCourses={accessibleCourses}
                 downloadFailure={product.id === downloadFailure?.productId ? failureNotice : null}
               />
             ))}

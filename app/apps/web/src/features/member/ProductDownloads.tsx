@@ -116,7 +116,7 @@ export const DownloadFailureAlert = ({ failure, retryPath, 'data-testid': testId
       severity="error"
       data-testid={testId}
       action={retryPath === null ? (
-        <Button color="inherit" size="small" onClick={failure.onRetry}>{t.common.retry}</Button>
+        <Button color="inherit" size="small" onClick={failure.onRetry}>{t.common.close}</Button>
       ) : (
         <Button color="inherit" size="small" component="a" href={retryPath} onClick={failure.onRetry}>{t.common.retry}</Button>
       )}

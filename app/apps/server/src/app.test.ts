@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
+import { unusedKeyDownloadRepositories } from '#core/server/testing/key-download-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import {
   changeProposalOwnerViewFakes,
@@ -394,6 +395,7 @@ const deps = (input: {
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
+    ...unusedKeyDownloadRepositories(),
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {

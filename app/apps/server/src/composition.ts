@@ -63,7 +63,7 @@ import {
 } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createQuarantinedImageRepository } from '#adapters/db/change-proposal-images.js';
-import { createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
+import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import type {
   ChangeProposalEventRepository,
@@ -73,6 +73,8 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalOwnerNotifier,
   ChangeProposalPeopleReader,
+  KeyDownloadAttachRepository,
+  KeyDownloadFileRepository,
   QuarantinedImageRepository,
 } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
@@ -590,6 +592,8 @@ export interface AppDeps {
   changeProposalPeople: ChangeProposalPeopleReader;
   changeProposalTransaction: ChangeProposalTransaction;
   quarantinedImages: QuarantinedImageRepository;
+  keyDownloadFiles: KeyDownloadFileRepository;
+  keyDownloadAttach: KeyDownloadAttachRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -1688,6 +1692,8 @@ export const createDeps = (
     changeProposalPeople: createChangeProposalPeopleReader(db),
     changeProposalTransaction,
     quarantinedImages,
+    keyDownloadFiles,
+    keyDownloadAttach: createKeyDownloadAttachRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,

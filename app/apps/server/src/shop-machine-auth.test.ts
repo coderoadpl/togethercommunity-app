@@ -29,6 +29,7 @@ import {
   API_ROUTES,
   SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
+  SHOP_DOWNLOAD_ROUTES,
   SHOP_INTEGRATION_ROUTES,
   SHOP_ORDER_ROUTES,
   SHOP_PROPOSAL_ROUTES,
@@ -214,11 +215,11 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([SHOP_CATALOG_ROUTES.listProducts])).not.toThrow();
   });
 
-  it('registers only the catalog, order, settings, asset, integration and proposal routes under the shop management prefix', () => {
+  it('registers only the catalog, order, settings, asset, download file, integration and proposal routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)].map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 

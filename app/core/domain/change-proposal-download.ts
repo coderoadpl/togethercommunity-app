@@ -30,8 +30,8 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
 export const KEY_DOWNLOAD_STORAGE_DEADLINES = {
   headMs: 5_000,
   deleteMs: 10_000,
-  copyMs: 120_000,
-  digestMs: 240_000,
+  copyMs: 20_000,
+  digestMs: 30_000,
 } as const;
 
 export const KEY_DOWNLOAD_CONTENT_TYPES = [
@@ -48,6 +48,20 @@ export const KEY_DOWNLOAD_CONTENT_TYPES = [
 export const keyDownloadContentTypeSchema = z.enum(KEY_DOWNLOAD_CONTENT_TYPES);
 
 export type KeyDownloadContentType = z.output<typeof keyDownloadContentTypeSchema>;
+
+export const KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION: Readonly<Record<string, KeyDownloadContentType>> = {
+  pdf: 'application/pdf',
+  epub: 'application/epub+zip',
+  zip: 'application/zip',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  m4b: 'audio/mp4',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+};
 
 const startsWith = (head: Uint8Array, offset: number, expected: readonly number[]): boolean =>
   head.byteLength >= offset + expected.length && expected.every((byte, index) => head[offset + index] === byte);
@@ -125,6 +139,10 @@ export const keyDownloadAttachInputSchema = z.object({
 
 export type KeyDownloadAttachInput = z.input<typeof keyDownloadAttachInputSchema>;
 
+export const keyDownloadAddInputSchema = keyDownloadAttachInputSchema.omit({ replacesAssetId: true });
+
+export const keyDownloadReplaceInputSchema = keyDownloadAttachInputSchema.extend({ replacesAssetId: z.string().min(1).max(200) });
+
 export const keyDownloadRemoveInputSchema = z.object({
   productId: z.string().min(1).max(200),
   assetId: z.string().min(1).max(200),
@@ -149,8 +167,6 @@ const keyDownloadCopySourceSchema = z.object({
   assetId: z.string().min(1),
   versionNumber: z.number().int().positive(),
 }).strict();
-
-type KeyDownloadCopySource = z.output<typeof keyDownloadCopySourceSchema>;
 
 export const keyDownloadStagedFileSchema = z.object({
   tenantId: z.string().min(1),
@@ -223,16 +239,19 @@ export const keyDownloadObjectOwner = (tenantId: string, objectKey: string): str
   return owner === undefined || owner.length === 0 ? null : owner;
 };
 
-export interface KeyDownloadStagedFileView {
-  id: string;
-  fileName: string;
-  contentType: KeyDownloadContentType;
-  sizeBytes: number;
-  sha256: string | null;
-  copiedFrom: KeyDownloadCopySource | null;
-  createdAt: string;
-  expiresAt: string;
-}
+export const keyDownloadStagedFileViewSchema = keyDownloadStagedFileSchema.pick({
+  id: true,
+  fileName: true,
+  contentType: true,
+  sizeBytes: true,
+  copiedFrom: true,
+  createdAt: true,
+}).extend({
+  sha256: sha256Schema.nullable(),
+  expiresAt: isoMilliseconds,
+}).strip();
+
+export type KeyDownloadStagedFileView = z.output<typeof keyDownloadStagedFileViewSchema>;
 
 /** A copy of an existing product file never shows the key a fact derived from the original bytes. */
 export const keyDownloadStagedFileView = (file: KeyDownloadStagedFile): KeyDownloadStagedFileView => ({

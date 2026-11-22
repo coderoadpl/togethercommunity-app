@@ -25,17 +25,17 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(50);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(59);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(50);
+    expect(shopRoutes).toHaveLength(59);
     for (const row of shopRoutes) {
       const principals = row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
-        : row.subject.startsWith('GET ')
+        : row.subject.startsWith('GET ') && !row.subject.includes(' /api/m2m/shop/downloads/')
           ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
           : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
       expect(row, row.subject).toMatchObject({ before: principals, after: principals });

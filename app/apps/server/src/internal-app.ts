@@ -195,7 +195,6 @@ import {
   type LessonAttachmentMetadata,
   type LessonAttachmentView,
   type ProductDownloadAsset,
-  type ProductDownloadAssetMetadata,
   type ProductDownloadAssetView,
   type MemberCourseProgress,
   type ProgressView,
@@ -492,7 +491,9 @@ import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
 import { shopOrderRoutes } from './shop-order-routes.js';
+import { productDownloadMetadata } from './product-download-metadata.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
+import { shopDownloadRoutes } from './shop-download-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
@@ -587,21 +588,6 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
   downloadPath: API_PATHS.studentLessonAttachmentDownload
     .replace(':lessonId', encodeURIComponent(attachment.lessonId))
     .replace(':attachmentId', encodeURIComponent(attachment.id)),
-});
-
-const productDownloadMetadata = (asset: ProductDownloadAsset, personalisationMaxBytes: number): ProductDownloadAssetMetadata => ({
-  lineageId: asset.lineageId,
-  versionNumber: asset.versionNumber,
-  versionNote: asset.versionNote,
-  supersededAt: asset.supersededAt,
-  id: asset.id,
-  productId: asset.productId,
-  fileName: asset.fileName,
-  contentType: asset.contentType,
-  sizeBytes: asset.sizeBytes,
-  status: asset.status,
-  createdAt: asset.createdAt,
-  personalisationSizeExceeded: asset.sizeBytes > personalisationMaxBytes,
 });
 
 const productDownloadView = (
@@ -1354,7 +1340,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

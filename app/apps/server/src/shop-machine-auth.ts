@@ -59,12 +59,14 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementK
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-type ShopMachineRefusalReason = 'secret' | 'side-effect';
+type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
 
 type ShopMachineProposeMode =
   | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
   | { kind: 'refuse'; reason: ShopMachineRefusalReason }
   | { kind: 'direct'; reason: string };
+
+type ShopMachineReadRefusal = Extract<ShopMachineProposeMode, { kind: 'refuse' }>;
 
 type ShopMachineMutationMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -76,7 +78,7 @@ interface ShopMachineRouteFields {
 }
 
 export type ShopMachineRoute = ShopMachineRouteFields & (
-  | { method: 'GET'; scope: ShopManagementScope; proposeMode?: undefined }
+  | { method: 'GET'; scope: ShopManagementScope; proposeMode?: ShopMachineReadRefusal | undefined }
   | { method: ShopMachineMutationMethod; scope: ShopManagementScope; proposeMode: ShopMachineProposeMode }
   | { method: 'GET' | ShopMachineMutationMethod; scope: null; proposeMode: { kind: 'proposal-management' } }
 );
@@ -146,8 +148,12 @@ const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: 
   );
 };
 
+const REFUSAL_DETAILS: Partial<Record<ShopMachineRefusalReason, string>> = {
+  'not-in-release': ': product download files are not available to a propose-mode key yet',
+};
+
 const proposeModeRefusal = (reason: ShopMachineRefusalReason): AppError =>
-  forbidden(`A propose-mode shop management key cannot call this route (${reason})`);
+  forbidden(`A propose-mode shop management key cannot call this route (${reason})${REFUSAL_DETAILS[reason] ?? ''}`);
 
 const proposalManagementRefusal = (): AppError =>
   forbidden('Only a propose-mode shop management key manages change proposals');
@@ -155,6 +161,8 @@ const proposalManagementRefusal = (): AppError =>
 const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'direct';
 
 export const isProposeModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'propose';
+
+export const NOT_IN_RELEASE = { kind: 'refuse', reason: 'not-in-release' } as const satisfies ShopMachineProposeMode;
 
 export const PROPOSED_IMAGE_UPLOAD = {
   kind: 'direct',
@@ -213,9 +221,22 @@ const proposeChange = async (
     : respond(submitted, { headers: retryAfterHeaders(submitted.error) });
 };
 
+const dispatchRead = (
+  c: Context<AppVars>,
+  route: Extract<ShopMachineRoute, { method: 'GET' }> | Extract<ShopMachineRoute, { scope: null }>,
+  request: ShopMachineRequest,
+): Response | Promise<Response> => {
+  const { proposeMode } = route;
+  if (proposeMode === undefined) return route.handler(c, request);
+  if (proposeMode.kind === 'proposal-management') {
+    return isDirectModeKey(request) ? respond(err(proposalManagementRefusal())) : route.handler(c, request);
+  }
+  return isDirectModeKey(request) ? route.handler(c, request) : respond(err(proposeModeRefusal(proposeMode.reason)));
+};
+
 const dispatchMutation = (
   c: Context<AppVars>,
-  route: Exclude<ShopMachineRoute, { method: 'GET'; proposeMode?: undefined }>,
+  route: Exclude<ShopMachineRoute, { method: 'GET' }>,
   request: ShopMachineRequest,
   deps: ShopMachineDeps,
 ): Response | Promise<Response> => {
@@ -260,10 +281,7 @@ export const registerShopMachineRoute = (
     c.set('apiKeyAttribution', attribution);
     if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
     c.set('identity', result.value.ctx.identity);
-    if (route.method === 'GET' && route.proposeMode === undefined) return route.handler(c, result.value);
-    if (route.method === 'GET') {
-      return isDirectModeKey(result.value) ? respond(err(proposalManagementRefusal())) : route.handler(c, result.value);
-    }
+    if (route.method === 'GET') return dispatchRead(c, route, result.value);
     const recorded = await recordShopManagementKeyRequest(result.value.tenant.id, {
       apiKeyId: result.value.apiKey.id,
       actorUserId: result.value.ctx.identity.userId,

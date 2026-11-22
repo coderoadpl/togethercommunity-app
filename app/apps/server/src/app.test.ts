@@ -6793,11 +6793,23 @@ describe('public checkout session-status route', () => {
 });
 
 describe('public payment-config route', () => {
-  it('returns null analytics when no tag is configured', async () => {
+  it('returns null analytics and an empty return-origin list when unconfigured', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
       headers: { [TENANT_HEADER]: 'acme' },
     });
-    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: null } });
+    expect(await response.json()).toMatchObject({ ok: true, data: { analytics: null, checkoutReturnOrigins: [] } });
+  });
+
+  it('returns the workspace checkout return origins through the public payment config', async () => {
+    const checkoutReturnOrigins = ['https://shop.example.test', 'https://store.example.test:8443'];
+    const base = deps();
+    const app = buildApp({ ...base, tenants: { ...base.tenants, findSettings: async (tenantId) => {
+      const settings = await base.tenants.findSettings(tenantId);
+      return settings === null ? null : { ...settings, checkoutReturnOrigins };
+    } } });
+    const response = await app.request(API_PATHS.publicPaymentConfig, { headers: { [TENANT_HEADER]: 'acme' } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { checkoutReturnOrigins } });
   });
 
   it.each([
@@ -6816,7 +6828,7 @@ describe('public payment-config route', () => {
       stripeConfigured: false, simulatedPaymentsEnabled: false,
       canTest: false, testConfigured: false, testEnabled: false,
       analytics: { cookieScope: 'host', tagId, metaPixelId, consentCookieName: 'consent', consentCookieValue: 'analytics:true', loadWithoutConsent: false },
-      shippingRates: [], inpostGeowidgetToken: null, inpostGeowidgetWithheld: false,
+      checkoutReturnOrigins: [], shippingRates: [], inpostGeowidgetToken: null, inpostGeowidgetWithheld: false,
     } });
   });
 

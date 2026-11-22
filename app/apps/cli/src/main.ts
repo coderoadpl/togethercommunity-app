@@ -646,6 +646,10 @@ const spaceReplyOptionsSchema = spacePostOptionsSchema.extend({
 const spaceIdOptionsSchema = z.object({
   space: z.string().min(1),
 });
+const spaceThreadOptionsSchema = z.object({
+  space: z.string().min(1),
+  post: z.string().min(1),
+});
 const positiveIntegerOptionSchema = z
   .string()
   .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
@@ -1595,7 +1599,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
-  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'offer no buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
@@ -1715,7 +1719,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
-  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'remove the buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
@@ -3195,6 +3199,24 @@ space
                   return `- ${item.authorDisplay}: ${item.body} (${item.id.slice(0, 8)}, ${item.replyCount} replies${reactions.length > 0 ? `, ${reactions}` : ''})`;
                 })
                 .join('\n'),
+      );
+    }),
+  );
+
+space
+  .command('thread')
+  .description('Show one space thread with its replies')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--post <rootPostId>')
+  .action(
+    withInput(z.tuple([spaceThreadOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.discussionThread({ contextKind: 'space', contextId: options.space, postId: options.post }),
+        ctx.json,
+        (data) =>
+          data.discussion.threads
+            .map((post) => `- ${post.authorDisplay}: ${post.body} (${post.id.slice(0, 8)}, ${post.replyCount} replies)`)
+            .join('\n'),
       );
     }),
   );

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { POST_BODY_MAX_LENGTH, type DiscussionPost, type PostBodyFormat, type PostContextKind, type ThreadSubscriptionState } from '#core/domain/index.js';
@@ -32,11 +33,14 @@ import { DeletePostDialog } from './DeletePostDialog.js';
 import { usePostMutations } from './usePostMutations.js';
 import { useImpersonation } from './viewer.js';
 
-export const PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
 
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 const ThreadSubscriptionToggle = ({
   rootPostId,
@@ -76,6 +80,7 @@ interface ThreadFocus {
   rootPostId: string;
   onExit: () => void;
   exitLabel: ReactNode;
+  exitHref?: string;
 }
 
 interface Viewer {
@@ -428,10 +433,20 @@ export const ThreadDiscussion = ({
 
   const me = useQuery(actions.me);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const discussion = useQuery({
+  const listQuery = useQuery({
     ...actions.discussion({ contextKind: context.contextKind, contextId: context.contextId, limit }),
     placeholderData: (previous) => previous,
+    enabled: focus === undefined,
   });
+  const threadQuery = useQuery({
+    ...actions.discussionThread({
+      contextKind: context.contextKind,
+      contextId: context.contextId,
+      postId: focus?.rootPostId ?? '',
+    }),
+    enabled: focus !== undefined,
+  });
+  const discussion = focus === undefined ? listQuery : threadQuery;
 
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -594,6 +609,24 @@ export const ThreadDiscussion = ({
         </Paper>
       ) : discussion.isPending ? (
         <Typography variant="body2">{t.discussion.loading}</Typography>
+      ) : focus !== undefined && (isNotFound(discussion.error) || (discussion.isSuccess && subthreadRoot === null)) ? (
+        <StatusView
+          data-testid="thread-not-found"
+          state={{
+            kind: 'not-found',
+            title: t.community.threadNotFoundTitle,
+            body: t.community.threadNotFoundBody,
+            action: focus.exitHref === undefined ? (
+              <Button variant="text" onClick={focus.onExit}>
+                {focus.exitLabel}
+              </Button>
+            ) : (
+              <MuiLink component={Link} to={focus.exitHref}>
+                {focus.exitLabel}
+              </MuiLink>
+            ),
+          }}
+        />
       ) : discussion.isError ? (
         <StatusView
           data-testid="discussion-error"
@@ -603,15 +636,6 @@ export const ThreadDiscussion = ({
             retry: { label: discussion.isFetching ? t.discussion.retrying : t.discussion.retry, onRetry: () => void discussion.refetch() },
           }}
         />
-      ) : focus !== undefined && subthreadRoot === null ? (
-        <Stack useFlexGap sx={{ rowGap: '1rem' }} data-testid="thread-not-found">
-          <Typography variant="body1">{t.discussion.deletedPost}</Typography>
-          <Box>
-            <Button variant="text" onClick={focus.onExit}>
-              {focus.exitLabel}
-            </Button>
-          </Box>
-        </Stack>
       ) : subthreadRoot !== null ? (
         <Stack useFlexGap sx={{ rowGap: '1rem' }}>
           <Box>

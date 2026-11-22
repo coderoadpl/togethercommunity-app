@@ -32,6 +32,7 @@ import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
+import { usePublicOfferPrice } from './visitor-actions.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -1277,11 +1278,21 @@ describe('community pages', () => {
   });
 
   it('leaves the price out of the access card when the offer does not list the product', async () => {
-    server.use(anonMe(), okPublicNavigation(), okOffer());
+    server.use(anonMe(), okPublicNavigation(), okOffer({ products: [offerProduct('other', 'Other course')] }));
+    const OfferProbe = () => {
+      const priceFor = usePublicOfferPrice();
+      return <span data-testid="offer-probe">{priceFor('other')}</span>;
+    };
 
-    await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
+    await renderPage(() => (
+      <>
+        <SpaceFeedPage spaceId="gated" />
+        <OfferProbe />
+      </>
+    ), '/community/gated');
 
     expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
+    await waitFor(() => expect(screen.getByTestId('offer-probe')).toHaveTextContent('199'));
     expect(screen.queryByTestId('anon-locked-space-price')).not.toBeInTheDocument();
     expect(screen.queryByTestId('anon-locked-space-description')).not.toBeInTheDocument();
   });

@@ -298,7 +298,7 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .status{margin-top:1rem}
 .status .lede,.status .fine{max-width:36rem}
 .status .lede{color:var(--ink)}
-.status-cue{display:inline-flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin:0 0 1rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent)}
+.status-cue{display:flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin:0 0 1rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent)}
 .status-cue--error{background:color-mix(in srgb,var(--danger) 12%,var(--surface));color:var(--danger)}
 .status-cue svg{width:1.25rem;height:1.25rem}
 .button-link{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.7rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:.875rem;font-weight:500;line-height:1.45;text-decoration:none}

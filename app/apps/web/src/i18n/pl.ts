@@ -3016,14 +3016,11 @@ export const pl: Messages = {
     erasureRequestButton: 'Wyślij wniosek',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Wniosek otwarty · termin do ${dueAt}`,
     erasureCancelButton: 'Anuluj wniosek',
-    erasureRequestStatus: {
-      open: 'Otwarty',
-      cancelled: 'Anulowany',
-      rejected: 'Odrzucony',
-      completed: 'Zakończony',
+    erasureClosed: {
+      cancelled: ({ date }) => `Wniosek anulowany przez Ciebie ${date}.`,
+      rejected: ({ date }) => `Zespół odrzucił wniosek ${date}.`,
+      completed: ({ date }) => `Zespół zrealizował wniosek ${date}.`,
     },
-    erasureResolved: ({ status, resolvedAt }: { status: string; resolvedAt: string }) =>
-      `Status wniosku: ${status} · rozstrzygnięto ${resolvedAt}`,
     menuAccount: 'Konto',
     title: 'Konto',
     signedInAs: 'Zalogowano jako',

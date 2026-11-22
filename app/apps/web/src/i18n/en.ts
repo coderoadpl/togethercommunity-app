@@ -2948,12 +2948,12 @@ export const en: Messages = {
     dataExportButton: 'Download my data',
     dataExportPreparing: 'Preparing…',
     erasureHeading: 'Request account erasure',
-    erasureIntro: 'Ask the team to erase your data in this workspace. Once the team completes the request:',
+    erasureIntro: 'Ask the team to erase your data in this community. Once the team completes the request:',
     erasureEffects: {
       profile: 'Your name, email and picture are removed from your profile; your name, street and phone are erased from past orders.',
       posts: 'Your posts stay, signed as “Deleted account”.',
       access: 'Your access to purchased content ends, and the team cancels your subscriptions with the payment provider.',
-      signIn: 'Your sign-in account is deleted too, unless it is still linked to another workspace or a team role.',
+      signIn: 'Your sign-in account is deleted too, unless it is still linked to another community or a team role.',
     },
     erasureDialogBody: ({ days }) =>
       `Sending the request removes nothing yet. The team reviews it and can complete or decline it; a response is due within ${days} ${plural(days, 'day', 'days')}. You can cancel the request while it is open. Download your data first if you want a copy.`,
@@ -2962,14 +2962,11 @@ export const en: Messages = {
     erasureRequestButton: 'Request erasure',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Request open · due by ${dueAt}`,
     erasureCancelButton: 'Cancel request',
-    erasureRequestStatus: {
-      open: 'Open',
-      cancelled: 'Cancelled',
-      rejected: 'Rejected',
-      completed: 'Completed',
+    erasureClosed: {
+      cancelled: ({ date }) => `You cancelled this request on ${date}.`,
+      rejected: ({ date }) => `The team declined this request on ${date}.`,
+      completed: ({ date }) => `The team completed this request on ${date}.`,
     },
-    erasureResolved: ({ status, resolvedAt }: { status: string; resolvedAt: string }) =>
-      `Request status: ${status} · resolved ${resolvedAt}`,
     menuAccount: 'Account',
     title: 'Account',
     signedInAs: 'Signed in as',

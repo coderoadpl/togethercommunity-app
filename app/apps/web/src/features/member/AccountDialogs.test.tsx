@@ -451,7 +451,7 @@ describe('Account dialogs', () => {
       cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail="demo@example.com"
       onConfirmEmailChange={vi.fn()} onCreate={onCreate} onCancel={vi.fn()} onRetry={vi.fn()}
     /></LanguageProvider>);
-    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureRequestStatus[status]);
+    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureClosed[status]({ date: new Date('2026-06-30T12:00:00.000Z').toLocaleDateString('en') }));
     expect(screen.queryByTestId('account-erasure-cancel')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('account-erasure-open'));
     await userEvent.click(within(screen.getByRole('dialog')).getByTestId('account-erasure-create'));
@@ -510,7 +510,7 @@ describe('Account dialogs', () => {
       cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail=""
       onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
     /></LanguageProvider>);
-    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureRequestStatus.completed);
+    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureClosed.completed({ date: new Date('2026-06-30T12:00:00.000Z').toLocaleDateString('en') }));
     expect(screen.queryByTestId('account-erasure-open')).not.toBeInTheDocument();
   });
 

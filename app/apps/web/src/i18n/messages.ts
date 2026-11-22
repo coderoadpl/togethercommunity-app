@@ -2675,8 +2675,7 @@ export interface Messages {
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;
-    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
-    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
+    erasureClosed: Record<'cancelled' | 'rejected' | 'completed', (input: { date: string }) => string>;
   };
   changePassword: {
     minimumHint: ({ min }: { min: number }) => string;

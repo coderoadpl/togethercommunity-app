@@ -34,6 +34,11 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
     onConfirmEmailChange('');
   };
   const confirm = () => onCreate({ confirmEmail: erasureConfirmEmail });
+  const closedStatus = request === null || request.status === 'open'
+    ? null
+    : t.account.erasureClosed[request.status]({
+        date: request.resolvedAt === null ? '—' : new Date(request.resolvedAt).toLocaleDateString(language),
+      });
   return (
 <Box data-account-wide data-account-danger><SectionCard icon={<TriangleAlertIcon />}
           title={t.account.erasureHeading}
@@ -71,20 +76,8 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
             </>
           ) : (
             <>
-              {request === null ? null : (
-                <Typography data-testid="account-erasure-status">
-                  {t.account.erasureResolved({
-                    status: t.account.erasureRequestStatus[
-                      request.status
-                    ],
-                    resolvedAt:
-                      request.resolvedAt === null
-                        ? '—'
-                        : new Date(
-                            request.resolvedAt,
-                          ).toLocaleDateString(language),
-                  })}
-                </Typography>
+              {closedStatus === null ? null : (
+                <Typography data-testid="account-erasure-status">{closedStatus}</Typography>
               )}
               {request === null || request.status === 'cancelled' || request.status === 'rejected' ? <>
               <Box><Button color="error" variant="outlined" data-testid="account-erasure-open" onClick={() => setOpen(true)}>{t.account.erasureRequestButton}</Button></Box>

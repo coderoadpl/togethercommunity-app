@@ -540,7 +540,18 @@ limits. The page reads product IDs in lower case, as the platform issues them,
 so an upper-case ID finds its product and two IDs that differ only in case are
 a duplicate. The page lets the buyer change the quantities within the limits or
 remove a line, and collects delivery, billing, consents and a coupon as the
-single-product page does. A malformed or empty `lines` parameter shows an error
+single-product page does. Each line's limit is the lower of its type rule and the
+offer's `maxQuantity`; when the stock is the lower one the line says how many
+pieces are left, even with one left, and that the quantity was lowered when the
+link asked for more. A line whose limit is 1 shows no quantity picker. A
+sold-out line asks to be removed before paying, as an unavailable one does, and
+its Remove button names the product. On a `sold_out` refusal the page reloads
+the offers and names the product. A discount counts only for the lines it was
+checked for: once a reload changes them, the summary and the pay button drop it
+until the code is checked again, which a code from the link does by itself. One
+summary above the pay button lists the products, the discount of an applied
+code, the delivery (with a placeholder until an option is chosen, when the cart
+ships) and the total to pay. A malformed or empty `lines` parameter shows an error
 and sends no request. The page picks each line's price by the session route's
 rule, so a product with one one-time and one recurring price is sold at its
 one-time price, while a membership or a product without exactly one active

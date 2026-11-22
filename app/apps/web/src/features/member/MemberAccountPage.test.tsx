@@ -208,7 +208,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.profile }));
     expect(screen.queryByTestId('account-security-methods')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.security }));
-    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.notifications }));
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.preferences }));
     await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.security }));
     expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
 
@@ -338,6 +338,17 @@ describe('MemberAccountPage', () => {
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'account-tab-profile');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0');
     expect(screen.queryByRole('heading', { name: en.security.heading })).not.toBeInTheDocument();
+  });
+
+  it('names the third tab Preferences and keeps the notifications deep link working', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount('/account?tab=notifications');
+
+    const preferencesTab = await screen.findByRole('tab', { name: en.account.tabs.preferences });
+    expect(preferencesTab).toHaveAttribute('aria-selected', 'true');
+    expect(preferencesTab).toHaveAttribute('id', 'account-tab-notifications');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'account-panel-notifications');
+    expect(screen.getByRole('heading', { name: en.account.languageHeading })).toBeInTheDocument();
   });
 
   it('keeps the identity card above page-level fetch errors', async () => {
@@ -525,7 +536,7 @@ describe('MemberAccountPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByText('Ada')).toBeVisible();
     expect(screen.queryByText('Discarded name')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.notifications }));
+    await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.preferences }));
     await userEvent.click(screen.getByRole('tab', { name: en.account.tabs.profile }));
     await userEvent.click(screen.getByTestId('account-name-open'));
     expect(screen.getByLabelText(en.account.displayNameLabel)).toHaveValue('Ada');

@@ -2621,7 +2621,7 @@ export interface Messages {
     back: string;
     profileHeading: string;
     tabsLabel: string;
-    tabs: { profile: string; security: string; notifications: string; playback: string };
+    tabs: { profile: string; security: string; preferences: string; playback: string };
     displayNameLabel: string;
     displayNameNotSet: string;
     displayNameHint: string;

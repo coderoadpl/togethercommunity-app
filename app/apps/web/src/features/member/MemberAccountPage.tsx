@@ -1,5 +1,5 @@
 import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
-import { BellIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
+import { LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, SlidersHorizontalIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -331,7 +331,7 @@ export const MemberAccountPage = () => {
         {impersonating ? null : (
           <Tab icon={<ShieldCheckIcon />} iconPosition="start" id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
         )}
-        <Tab icon={<BellIcon />} iconPosition="start" id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
+        <Tab icon={<SlidersHorizontalIcon />} iconPosition="start" id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.preferences} />
         {me.data.tenant?.memberId == null ? null : (
           <Tab icon={<PlayIcon />} iconPosition="start" id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
         )}

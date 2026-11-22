@@ -2974,7 +2974,7 @@ export const en: Messages = {
     tabs: {
       profile: 'Profile',
       security: 'Security',
-      notifications: 'Notifications',
+      preferences: 'Preferences',
       playback: 'Playback',
     },
     displayNameLabel: 'Display name',

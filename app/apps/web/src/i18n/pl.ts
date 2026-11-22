@@ -3028,7 +3028,7 @@ export const pl: Messages = {
     tabs: {
       profile: 'Profil',
       security: 'Bezpieczeństwo',
-      notifications: 'Powiadomienia',
+      preferences: 'Preferencje',
       playback: 'Odtwarzanie',
     },
     displayNameLabel: 'Wyświetlana nazwa',

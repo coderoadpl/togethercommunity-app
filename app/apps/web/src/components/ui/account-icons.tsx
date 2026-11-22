@@ -14,6 +14,16 @@ export const ShieldCheckIcon = () => (<Glyph><path d="M20 13c0 5-3.5 7.5-7.66 8.
 export const BellIcon = () => (<Glyph><path d="M10.268 21a2 2 0 0 0 3.464 0" />
   <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></Glyph>);
 
+export const SlidersHorizontalIcon = () => (<Glyph><line x1="21" x2="14" y1="4" y2="4" />
+  <line x1="10" x2="3" y1="4" y2="4" />
+  <line x1="21" x2="12" y1="12" y2="12" />
+  <line x1="8" x2="3" y1="12" y2="12" />
+  <line x1="21" x2="16" y1="20" y2="20" />
+  <line x1="12" x2="3" y1="20" y2="20" />
+  <line x1="14" x2="14" y1="2" y2="6" />
+  <line x1="8" x2="8" y1="10" y2="14" />
+  <line x1="16" x2="16" y1="18" y2="22" /></Glyph>);
+
 export const PlayIcon = () => (<Glyph><polygon points="6 3 20 12 6 21 6 3" /></Glyph>);
 
 export const MailCheckIcon = () => (<Glyph><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />

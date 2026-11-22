@@ -1703,18 +1703,38 @@ export interface StorageProvider {
     region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
+  /** `deadlineMs` bounds the whole request; without it the adapter's default deadline applies. */
   delete(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
+    deadlineMs?: number;
   }): Promise<Result<{ deleted: true }, AppError>>;
   head(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
+    deadlineMs?: number;
   }): Promise<Result<{ sizeBytes: number }, AppError>>;
+  /**
+   * A server-side copy of `sourceKey` to `key` in the configured bucket; no byte passes through the server. The copy's
+   * metadata is replaced with the server's own (octet-stream, attachment, no-store), so nothing a writer of the source
+   * set survives. `not_found` only when the source does not exist.
+   */
+  copyObject(input: { configuration: StorageConfiguration; sourceKey: string; key: string; deadlineMs: number }): Promise<Result<void, AppError>>;
+  /**
+   * Streams the object through SHA-256 without buffering it, refusing one larger than `maxBytes`, and answers its
+   * digest, its size and its first `headBytes` bytes.
+   */
+  digestObject(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+    deadlineMs: number;
+  }, options: { maxBytes: number; headBytes: number }): Promise<Result<{ sha256: string; sizeBytes: number; head: Uint8Array }, AppError>>;
   healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
   test(input: {
     tenantId: string;

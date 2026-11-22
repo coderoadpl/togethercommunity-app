@@ -19,17 +19,27 @@ interface StoredObject {
 export interface FakeObjectStorage {
   storage: StorageProvider;
   objects: Map<string, StoredObject>;
-  calls: Array<{ method: 'head' | 'getObject' | 'putObject' | 'delete' | 'presignPut' | 'presignGet'; key: string }>;
+  calls: Array<{ method: 'head' | 'getObject' | 'putObject' | 'delete' | 'presignPut' | 'presignGet' | 'copyObject' | 'digestObject'; key: string }>;
   signedLengths: Map<string, number>;
   failPuts: (key: string) => boolean;
   failReads: (key: string) => boolean;
   failDeletes: (key: string) => boolean;
+  failCopies: (key: string) => boolean;
+  /** Runs before a copy writes its destination, so a test can interleave work with a copy in flight. */
+  beforeCopy: (key: string) => Promise<void>;
   keysUnder(prefix: string): string[];
 }
 
+const placeholderDigest = (bytes: Uint8Array): string => {
+  let state = 0x811c9dc5;
+  for (const byte of bytes) state = Math.imul(state ^ byte, 0x01000193) >>> 0;
+  return state.toString(16).padStart(8, '0').repeat(8);
+};
+
 const keyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
 
-export const createObjectStorageFake = (): FakeObjectStorage => {
+export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) => string } = {}): FakeObjectStorage => {
+  const digest = options.sha256 ?? placeholderDigest;
   const objects = new Map<string, StoredObject>();
   const calls: FakeObjectStorage['calls'] = [];
   const missing = (key: string) => err(notFound(`No stored object at ${key}`));
@@ -42,6 +52,8 @@ export const createObjectStorageFake = (): FakeObjectStorage => {
     failPuts: () => false,
     failReads: () => false,
     failDeletes: () => false,
+    failCopies: () => false,
+    beforeCopy: async () => undefined,
     keysUnder: (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)).sort(),
     storage: {
       objectUrl: (_configuration, key) => new URL(`${FAKE_STORAGE_ORIGIN}/${key}`),
@@ -74,6 +86,24 @@ export const createObjectStorageFake = (): FakeObjectStorage => {
         if (fake.failDeletes(key)) return unreachable(key);
         objects.delete(key);
         return ok({ deleted: true });
+      },
+      copyObject: async ({ sourceKey, key }) => {
+        calls.push({ method: 'copyObject', key });
+        if (fake.failCopies(key)) return unreachable(key);
+        const found = objects.get(sourceKey);
+        if (found === undefined) return missing(sourceKey);
+        await fake.beforeCopy(key);
+        objects.set(key, { bytes: found.bytes.slice(), contentType: 'application/octet-stream' });
+        return ok(undefined);
+      },
+      digestObject: async (input, { maxBytes, headBytes }) => {
+        const key = keyOf(input.url);
+        calls.push({ method: 'digestObject', key });
+        if (fake.failReads(key)) return unreachable(key);
+        const found = objects.get(key);
+        if (found === undefined) return missing(key);
+        if (found.bytes.byteLength > maxBytes) return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        return ok({ sha256: digest(found.bytes), sizeBytes: found.bytes.byteLength, head: found.bytes.slice(0, headBytes) });
       },
       presignPut: (input) => {
         calls.push({ method: 'presignPut', key: keyOf(input.url) });

@@ -34,6 +34,8 @@ const CORS_PROBE_TIMEOUT_MS = 5_000;
 const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 const PROBE_REQUEST_TIMEOUT_MS = 10_000;
 const PROBE_ERROR_BODY_MAX_BYTES = 8 * 1024;
+const HEAD_DEADLINE_MS = 5_000;
+const DELETE_DEADLINE_MS = 10_000;
 
 const rfc3986 = (value: string): string =>
   encodeURIComponent(value).replace(
@@ -154,6 +156,26 @@ const abortable = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =>
     if (signal.aborted) onAbort();
     void promise.then(resolve, reject).finally(() => { signal.removeEventListener('abort', onAbort); });
   });
+
+const withDeadline = async <T>(
+  deadlineMs: number,
+  work: (signal: AbortSignal) => Promise<Result<T, AppError>>,
+  failure: string,
+): Promise<Result<T, AppError>> => {
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1) return err(validation('Invalid storage request deadline'));
+  const deadline = new AbortController();
+  const timer = setTimeout(() => { deadline.abort(); }, deadlineMs);
+  try {
+    return await work(deadline.signal);
+  } catch {
+    return err(integrationUnavailable(deadline.signal.aborted ? `${failure}: the storage request deadline passed` : failure));
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const copySource = (bucket: string, key: string): string =>
+  `/${rfc3986(bucket)}/${key.split('/').map(rfc3986).join('/')}`;
 
 const unreadableProbeResponse = (): AppError =>
   probeError('storage.unavailable', 'The storage endpoint response could not be read.');
@@ -554,19 +576,98 @@ export const createS3StorageProvider = (
   const sendObjectRequest = async (
     url: string,
     method: 'DELETE' | 'HEAD',
-  ): Promise<Result<StorageResponse, AppError>> => {
-    const safeTarget = await validateProbeEndpoint(new URL(url).origin, allowPrivateEndpoints, lookupAddresses);
+    deadlineMs: number,
+  ): Promise<Result<StorageResponse, AppError>> => withDeadline(deadlineMs, async (signal) => {
+    const safeTarget = await abortable(validateProbeEndpoint(new URL(url).origin, allowPrivateEndpoints, lookupAddresses), signal);
     if (!safeTarget.ok) return safeTarget;
     const dispatcher = pinnedDispatcher(safeTarget.value);
     try {
-      const response = await fetchStorage(url, { method, dispatcher, redirect: 'error' });
-      await discardStorageResponseBody(response);
+      const response = await abortable(fetchStorage(url, { method, dispatcher, redirect: 'error', signal }), signal);
+      await abortable(discardStorageResponseBody(response), signal);
       return ok(response);
-    } catch {
-      return err(integrationUnavailable('Could not reach S3.'));
     } finally {
       await dispatcher.destroy();
     }
+  }, 'Could not reach S3.');
+  const copyObject: StorageProvider['copyObject'] = async ({ configuration, sourceKey, key, deadlineMs }) => {
+    const target = objectUrl(configuration, key);
+    const headers = {
+      'cache-control': 'no-store',
+      'content-disposition': 'attachment',
+      'content-type': 'application/octet-stream',
+      'x-amz-copy-source': copySource(configuration.bucket, sourceKey),
+      'x-amz-metadata-directive': 'REPLACE',
+    };
+    const signed = signObjectUrl('PUT', target, { ...configuration, expiresInSeconds: 60 }, now, headers);
+    return withDeadline(deadlineMs, async (signal) => {
+      const safeTarget = await abortable(validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses), signal);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await abortable(fetchStorage(signed, { method: 'PUT', dispatcher, redirect: 'error', signal, headers }), signal);
+        const body = await readProbeBody(response, PROBE_ERROR_BODY_MAX_BYTES, signal);
+        if (response.status === 404) return err(notFound('No storage object at the copy source'));
+        // A copy can fail after S3 has already answered 200, and then the error is in the body.
+        if (!response.ok || !body.ok || /<Error>/u.test(body.value)) {
+          return err(integrationUnavailable(`S3 rejected the copy request with status ${String(response.status)}`));
+        }
+        return ok(undefined);
+      } finally {
+        await dispatcher.destroy();
+      }
+    }, 'Could not copy the storage object');
+  };
+  const digestObject: StorageProvider['digestObject'] = async (input, { maxBytes, headBytes }) => {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || !Number.isSafeInteger(headBytes) || headBytes < 0) {
+      return err(validation('Invalid object byte ceiling'));
+    }
+    const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
+    if (!signed.ok) return signed;
+    return withDeadline(input.deadlineMs, async (signal) => {
+      const safeTarget = await abortable(validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses), signal);
+      if (!safeTarget.ok) return safeTarget;
+      const dispatcher = pinnedDispatcher(safeTarget.value);
+      try {
+        const response = await abortable(fetchStorage(signed.value, {
+          method: 'GET', dispatcher, redirect: 'error', signal, headers: { 'Accept-Encoding': 'identity' },
+        }), signal);
+        if (response.status === 404) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(notFound('No storage object at this key'));
+        }
+        const length = response.headers.get('content-length');
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
+          (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        }
+        const reader = response.body.getReader();
+        try {
+          const hash = createHash('sha256');
+          const head = new Uint8Array(Math.min(headBytes, size));
+          let offset = 0;
+          for (;;) {
+            const chunk = await abortable(reader.read(), signal);
+            if (chunk.done) break;
+            if (chunk.value === undefined || offset + chunk.value.byteLength > size) {
+              void reader.cancel().catch(() => undefined);
+              return err(integrationUnavailable('Object exceeds its declared size'));
+            }
+            if (offset < head.byteLength) head.set(chunk.value.subarray(0, head.byteLength - offset), offset);
+            hash.update(chunk.value);
+            offset += chunk.value.byteLength;
+          }
+          return offset === size
+            ? ok({ sha256: hash.digest('hex'), sizeBytes: size, head })
+            : err(integrationUnavailable('Object size does not match its metadata'));
+        } finally {
+          reader.releaseLock();
+        }
+      } finally {
+        await dispatcher.destroy();
+      }
+    }, 'Could not read the storage object');
   };
   const probeOrigins = (corsOrigins: string[] | undefined): string[] =>
     corsOrigins === undefined || corsOrigins.length === 0
@@ -674,10 +775,12 @@ export const createS3StorageProvider = (
     probeCors,
     presignPut: (input) => presign('PUT', input, now),
     presignGet: (input) => presign('GET', input, now),
+    copyObject,
+    digestObject,
     delete: async (input) => {
       const signed = presign('DELETE', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const response = await sendObjectRequest(signed.value, 'DELETE');
+      const response = await sendObjectRequest(signed.value, 'DELETE', input.deadlineMs ?? DELETE_DEADLINE_MS);
       if (!response.ok) return response;
       return response.value.ok
         ? ok({ deleted: true })
@@ -686,7 +789,7 @@ export const createS3StorageProvider = (
     head: async (input) => {
       const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const response = await sendObjectRequest(signed.value, 'HEAD');
+      const response = await sendObjectRequest(signed.value, 'HEAD', input.deadlineMs ?? HEAD_DEADLINE_MS);
       if (!response.ok) return response;
       if (response.value.status === 404) return err(notFound('No storage object at this key'));
       if (!response.value.ok) {

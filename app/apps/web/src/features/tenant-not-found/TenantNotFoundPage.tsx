@@ -47,8 +47,6 @@ const useSettledOnce = (pending: boolean): boolean => {
  * Probes the public offer at SPA boot. On a tenant subdomain that fails to
  * resolve (`tenant_not_found`), a friendly 404 replaces the app instead of the
  * misleading login page; the apex picker and valid tenants render normally.
- * The session (and the home's public navigation) load alongside the offer under
- * one splash, so a visitor sees one loader instead of a chain of them.
  */
 export const TenantGate = ({
   children,
@@ -64,6 +62,10 @@ export const TenantGate = ({
   const queryClient = useQueryClient();
   const onTenantHost = isTenantHost(hostname);
   const onHomePath = pathname === '/';
+  useState(() => {
+    // Later session observers must reuse the gate's anonymous 401 instead of refetching it behind a second splash.
+    if (onTenantHost) queryClient.setQueryDefaults(actions.me.queryKey, { retryOnMount: false });
+  });
   const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
   const session = useQuery({ ...actions.me, enabled: onTenantHost });
   const sessionSettled = useSettledOnce(session.isPending);

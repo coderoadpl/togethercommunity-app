@@ -59,6 +59,9 @@ const headingFor = (error: unknown, t: Messages): string => {
 const detailFor = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.errors.detailGeneric;
 
+const isUnauthorized = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
 interface RootErrorFallbackProps {
   error: unknown;
   traceId: string | undefined;
@@ -69,9 +72,6 @@ interface RootErrorFallbackProps {
  * message and, whenever tracing is active, the trace id so a user can paste it
  * into a support request; it is simply absent when tracing is not configured.
  */
-const isUnauthorized = (error: unknown): boolean =>
-  error instanceof ApiError && error.appError.code === 'unauthorized';
-
 export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) => {
   const t = useTranslations();
   return (

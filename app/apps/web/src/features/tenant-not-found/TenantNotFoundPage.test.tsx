@@ -1,8 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
 import {
@@ -235,6 +237,25 @@ describe('TenantGate', () => {
     expect(screen.getByTestId('tenant-gate-pending')).toBeInTheDocument();
     offerHeld.release();
     expect(await screen.findByText('APP')).toBeInTheDocument();
+  });
+
+  it('lets session observers on other routes reuse the anonymous answer without a second request', async () => {
+    const me = vi.fn(() =>
+      HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }));
+    server.use(okOffer(), http.get('/api/me', me));
+    const RouteSession = () => {
+      const session = useQuery(actions.me);
+      return <div>{session.isError ? 'ROUTE SIGNED OUT' : 'ROUTE PENDING'}</div>;
+    };
+
+    renderWithProviders(
+      <TenantGate hostname="acme.localhost" pathname="/community/s1">
+        <RouteSession />
+      </TenantGate>,
+    );
+
+    expect(await screen.findByText('ROUTE SIGNED OUT')).toBeInTheDocument();
+    expect(me).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the public navigation alone outside the home path', async () => {

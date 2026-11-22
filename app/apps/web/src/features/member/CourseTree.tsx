@@ -185,13 +185,14 @@ const filterModules = (
   modules
     .map((module) => {
       const moduleMatches = needle !== '' && matchesName(module.name, needle);
+      const singleChapter = module.chapters.length === 1;
       return {
         ...module,
-        singleChapter: module.chapters.length === 1,
+        singleChapter,
         allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
         chapters: module.chapters
           .map((chapter) => {
-            const keepAll = moduleMatches || matchesName(chapter.name, needle);
+            const keepAll = moduleMatches || (!singleChapter && matchesName(chapter.name, needle));
             return {
               ...chapter,
               allLessons: chapter.lessons,

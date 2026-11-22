@@ -506,6 +506,19 @@ describe('CourseTree', () => {
     expect(within(screen.getByTestId('chapter-toggle-c1')).getByText('Getting').tagName).toBe('MARK');
   });
 
+  it('skips the hidden chapter title of a single-chapter module, so every kept lesson shows its match', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'chapter');
+
+    await waitFor(() => expect(screen.queryByTestId('module-toggle-m2')).not.toBeInTheDocument());
+    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(within(screen.getByTestId('chapter-toggle-c2')).getByText('chapter').tagName).toBe('MARK');
+  });
+
   it('uses the shared search field with a placeholder that matches the hint', async () => {
     await renderTree();
 

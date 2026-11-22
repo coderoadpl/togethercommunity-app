@@ -122,7 +122,7 @@ const ReadOnlyNotice = ({ showOfferJump, showSignIn }: { showOfferJump: boolean;
               variant="outlined"
               size="small"
               data-testid="anon-offer-jump"
-              sx={{ minHeight: 44, ml: 0 }}
+              sx={{ minHeight: 44, '&&': { ml: 0 } }}
             >
               {t.anon.salesCta}
             </Button>

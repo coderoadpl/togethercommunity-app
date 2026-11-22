@@ -401,6 +401,7 @@ describe('AnonHomePage', () => {
     const button = await screen.findByTestId('anon-offer-jump');
     expect(button).toHaveClass('MuiButton-outlined');
     expect(getComputedStyle(button).minHeight).toBe('44px');
+    expect(getComputedStyle(button).marginLeft).toBe('0px');
     expect(within(screen.getByTestId('anon-read-only-banner')).getByRole('link', { name: en.auth.signInLink })).not.toHaveClass('MuiButton-root');
     compact.unmount();
 
@@ -501,6 +502,7 @@ describe('AnonHomePage', () => {
     const priced = await screen.findByTestId('locked-space-cta-s9');
     await waitFor(() => expect(priced.textContent).toMatch(/^Unlock access — .*199/));
     expect(priced).toHaveAttribute('href', '/checkout/p1');
+    expect(priced).toHaveStyle({ maxWidth: '100%' });
     expect(screen.getByTestId('locked-space-cta-s8')).toHaveTextContent(en.courseTree.unlockAccess);
     expect(screen.getByTestId('locked-space-cta-s8').textContent).not.toContain('—');
     expect(screen.queryByTestId('locked-space-mark-s9')).not.toBeInTheDocument();

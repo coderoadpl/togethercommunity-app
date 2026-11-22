@@ -2244,6 +2244,7 @@ export const pl: Messages = {
       chapters: 'Rozdziały',
       blocks: 'Bloki treści',
       price: 'Cena',
+      images: 'Galeria',
     },
     versionBlockType: {
       video: 'Wideo',

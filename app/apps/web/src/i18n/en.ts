@@ -2199,6 +2199,7 @@ export const en: Messages = {
       chapters: 'Chapters',
       blocks: 'Content blocks',
       price: 'Price',
+      images: 'Gallery',
     },
     versionBlockType: {
       video: 'Video',

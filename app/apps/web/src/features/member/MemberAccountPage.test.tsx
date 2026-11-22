@@ -136,11 +136,17 @@ afterEach(() => {
 });
 
 describe('MemberAccountPage', () => {
-  it('drops tab icons and narrows the tabs on phones while the scroll edge fades instead of showing chevrons', async () => {
+  it('marks every tab svg as the tab icon so the phone rule hides it, narrows the tabs and fades the scroll edge instead of showing chevrons', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=notifications');
     const tabs = await screen.findAllByRole('tab');
     expect(tabs.map((tab) => tab.id)).toEqual(['account-tab-profile', 'account-tab-security', 'account-tab-notifications', 'account-tab-playback']);
+    for (const tab of tabs) {
+      const icons = tab.querySelectorAll('svg');
+      expect(icons).toHaveLength(1);
+      expect(icons[0]).toHaveClass('MuiTab-icon');
+      expect(getComputedStyle(icons[0] ?? tab).marginRight).toBe('0px');
+    }
     const rootClass = tabs[0]?.closest('.MuiTabs-root')?.className.split(' ').find((name) => name.startsWith('css-'));
     expect(rootClass).toBeDefined();
     const phoneRules = Array.from(document.styleSheets)

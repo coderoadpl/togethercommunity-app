@@ -16,8 +16,21 @@ import {
 
 import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { TenantRepository } from '../ports.js';
+import { claimRateLimitWindow, type PublicRateLimitDeps, type RateLimitWindow } from './public-rate-limit.js';
 
 const UNAVAILABLE: PickupPointLookup = { kind: 'unavailable' };
+
+export const PICKUP_POINT_LOOKUP_BUDGET_SCOPE = 'parcel-locker:global';
+
+export const withPickupPointLookupBudget = (
+  directory: PickupPointDirectory,
+  budget: PublicRateLimitDeps & { window: RateLimitWindow },
+): PickupPointDirectory => ({
+  lookup: async (code) => {
+    const claimed = await claimRateLimitWindow({ scope: PICKUP_POINT_LOOKUP_BUDGET_SCOPE, key: 'platform', window: budget.window }, budget);
+    return claimed.ok ? directory.lookup(code) : UNAVAILABLE;
+  },
+});
 
 const lookUp = async (code: string, directory: PickupPointDirectory | undefined): Promise<PickupPointLookup> =>
   directory === undefined ? UNAVAILABLE : directory.lookup(code);

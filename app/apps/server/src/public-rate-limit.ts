@@ -168,8 +168,6 @@ const AUTH_LINK_PATHS = new Set<string>([
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
 
-const PLATFORM_BUCKET_KEY = 'platform';
-
 const PARCEL_LOCKER_PATH_PATTERN = /^\/api\/public\/parcel-lockers\/[^/]+$/;
 
 export const claimCouponPreview = async (c: Context, tenantId: string, deps: PublicRateLimitMiddlewareDeps): Promise<boolean> => {
@@ -258,12 +256,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
       { scope: 'parcel-locker:tenant', key: tenant.value.tenant.id, window: policies.parcelLockerLookupsPerTenant },
       limiter,
     );
-    if (!perTenant.ok) return rateLimitedResponse(perTenant.error);
-    const global = await claimRateLimitWindow(
-      { scope: 'parcel-locker:global', key: PLATFORM_BUCKET_KEY, window: policies.parcelLockerLookupsGlobal },
-      limiter,
-    );
-    return global.ok ? null : rateLimitedResponse(global.error);
+    return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
   }
   if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;

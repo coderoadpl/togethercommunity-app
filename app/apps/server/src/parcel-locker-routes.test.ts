@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createFakePickupPointDirectory, FAKE_PICKUP_POINT_CODES } from '#adapters/shipx/fake.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { tenantSchema, tenantSettingsSchema, type ShippingRate } from '#core/domain/index.js';
-import type { PublicRateLimitRepository, TenantRepository } from '#core/server/index.js';
+import { withPickupPointLookupBudget, type PublicRateLimitRepository, type TenantRepository } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import type { AppVars } from './app-vars.js';
@@ -39,11 +39,13 @@ const harness = (rates: ShippingRate[] = [lockerRate], policies: Partial<PublicR
   const fake = createFakePickupPointDirectory();
   const lookup = vi.fn(fake.lookup);
   const buckets = countingBuckets();
+  const clock = { nowIso: () => '2026-11-22T10:00:00.000Z' };
+  const publicRateLimitPolicies = { ...selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), ...policies };
+  const pickupPoints = withPickupPointLookupBudget({ lookup }, { buckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal });
   const deps = { tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,
-    singleTenantMode: true, authTrustedProxyHeader, pickupPoints: { lookup } };
+    singleTenantMode: true, authTrustedProxyHeader, pickupPoints };
   const app = new Hono<AppVars>();
-  app.use('*', publicRateLimitMiddleware({ ...deps, clock: { nowIso: () => '2026-11-22T10:00:00.000Z' },
-    publicRateLimitPolicies: { ...selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), ...policies }, rateLimitBuckets: buckets }));
+  app.use('*', publicRateLimitMiddleware({ ...deps, clock, publicRateLimitPolicies, rateLimitBuckets: buckets }));
   registerPublicParcelLockerRoutes(app, deps);
   const get = (code: string, clientIp?: string) => app.request(`https://workspace.example.org/api/public/parcel-lockers/${code}`,
     clientIp === undefined ? {} : { headers: { 'x-client-ip': clientIp } });
@@ -80,6 +82,7 @@ describe('public parcel locker lookup route', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.lookup).not.toHaveBeenCalled();
+    expect(h.buckets.claims).not.toContain('parcel-locker:global');
   });
 
   it('never forwards extra path segments or a query string', async () => {
@@ -96,6 +99,7 @@ describe('public parcel locker lookup route', () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.lookup).not.toHaveBeenCalled();
+    expect(h.buckets.claims).not.toContain('parcel-locker:global');
   });
 
   it('limits lookups per client address before the carrier is asked', async () => {
@@ -105,14 +109,16 @@ describe('public parcel locker lookup route', () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).not.toBeNull();
     expect(h.lookup).toHaveBeenCalledTimes(30);
-    expect(new Set(h.buckets.claims)).toEqual(new Set(['parcel-locker:ip', 'parcel-locker:tenant', 'parcel-locker:global']));
+    expect(h.buckets.claims.filter((scope) => scope === 'parcel-locker:global')).toHaveLength(30);
+    expect(h.buckets.claims.at(-1)).toBe('parcel-locker:ip');
   });
 
-  it('caps carrier lookups across every client address and workspace with one platform bucket', async () => {
+  it('answers unavailable without asking the carrier once the platform-wide budget is spent', async () => {
     const h = harness([lockerRate], { parcelLockerLookupsGlobal: { limit: 3, windowMs: 60_000 } }, 'x-client-ip');
     for (const clientIp of ['192.0.2.1', '192.0.2.2', '192.0.2.3']) expect((await h.get('WAW01M', clientIp)).status).toBe(200);
-    const limited = await h.get('WAW01M', '192.0.2.4');
-    expect(limited.status).toBe(429);
+    const spent = await h.get('WAW01M', '192.0.2.4');
+    expect(spent.status).toBe(200);
+    expect(await spent.json()).toEqual({ ok: true, data: { status: 'unavailable' } });
     expect(h.lookup).toHaveBeenCalledTimes(3);
     expect(h.buckets.claims.at(-1)).toBe('parcel-locker:global');
   });

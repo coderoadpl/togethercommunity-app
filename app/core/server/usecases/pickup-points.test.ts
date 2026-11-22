@@ -2,15 +2,32 @@ import { describe, expect, it } from 'vitest';
 
 import { tenantSettingsSchema, type ShippingRate } from '#core/domain/index.js';
 
+import type { PublicRateLimitRepository } from '../ports.js';
 import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '../testing/pickup-point-fake.js';
-import { lookupParcelLocker } from './pickup-points.js';
+import { lookupParcelLocker, PICKUP_POINT_LOOKUP_BUDGET_SCOPE, withPickupPointLookupBudget } from './pickup-points.js';
 
 const lockerRate: ShippingRate = { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true };
 
-const harness = (rates: ShippingRate[] = [lockerRate]) => {
-  const pickupPoints = createPickupPointDirectoryFake();
+const countingBuckets = (): PublicRateLimitRepository & { claims: string[] } => {
+  const claims: string[] = [];
+  return {
+    claims,
+    claim: async (input) => {
+      claims.push(`${input.scope}:${input.key}`);
+      return claims.filter((claim) => claim === `${input.scope}:${input.key}`).length <= input.limit;
+    },
+    purgeExpired: async () => 0,
+  };
+};
+
+const harness = (rates: ShippingRate[] = [lockerRate], budget = 10) => {
+  const directory = createPickupPointDirectoryFake();
+  const buckets = countingBuckets();
+  const pickupPoints = withPickupPointLookupBudget(directory, {
+    buckets, clock: { nowIso: () => '2026-11-22T10:00:00.000Z' }, window: { limit: budget, windowMs: 60_000 },
+  });
   const settings = tenantSettingsSchema.parse({ name: 'Alpha', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: rates });
-  return { pickupPoints, deps: { tenants: { findSettings: async () => settings }, pickupPoints } };
+  return { pickupPoints: directory, buckets, deps: { tenants: { findSettings: async () => settings }, pickupPoints } };
 };
 
 describe('parcel locker lookup', () => {
@@ -35,12 +52,23 @@ describe('parcel locker lookup', () => {
     const h = harness();
     expect(await lookupParcelLocker('tenant-a', { code }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.pickupPoints.lookups).toEqual([]);
+    expect(h.buckets.claims).toEqual([]);
   });
 
   it('answers not found without asking the carrier when the workspace offers no active locker rate', async () => {
     const h = harness([{ ...lockerRate, active: false }, { ...lockerRate, id: 'courier', pickupPoint: 'none' }]);
     expect(await lookupParcelLocker('tenant-a', { code: 'WAW01M' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.pickupPoints.lookups).toEqual([]);
+    expect(h.buckets.claims).toEqual([]);
+  });
+
+  it('draws every carrier call from one platform-wide budget and answers unavailable once it is spent', async () => {
+    const h = harness([lockerRate], 2);
+    expect(await lookupParcelLocker('tenant-a', { code: 'WAW01M' }, h.deps)).toMatchObject({ ok: true, value: { status: 'found' } });
+    expect(await lookupParcelLocker('tenant-b', { code: 'WAW01M' }, h.deps)).toMatchObject({ ok: true, value: { status: 'found' } });
+    expect(await lookupParcelLocker('tenant-a', { code: 'WAW01M' }, h.deps)).toEqual({ ok: true, value: { status: 'unavailable' } });
+    expect(h.pickupPoints.lookups).toEqual(['WAW01M', 'WAW01M']);
+    expect(h.buckets.claims).toEqual(Array.from({ length: 3 }, () => `${PICKUP_POINT_LOOKUP_BUDGET_SCOPE}:platform`));
   });
 
   it('answers unavailable when no carrier directory is configured', async () => {

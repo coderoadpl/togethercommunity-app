@@ -36,7 +36,7 @@ import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
 import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, withPickupPointLookupBudget, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -991,6 +991,7 @@ export const createDeps = (
     env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
   const notificationRepository = createNotificationRepository(db);
   const publicRateLimitBuckets = createPublicRateLimitRepository(db);
+  const publicRateLimitPolicies = selectPublicRateLimitPolicies(env);
   const tenantRepositoryOptions = singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
@@ -1632,7 +1633,10 @@ export const createDeps = (
       shipxSettings: createShipxSettingsRepository(db),
       wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
-    pickupPoints: env.PAYMENT_PROVIDER === 'stripe' ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
+    pickupPoints: withPickupPointLookupBudget(
+      env.PAYMENT_PROVIDER === 'stripe' ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
+      { buckets: publicRateLimitBuckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
+    ),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
@@ -1676,7 +1680,7 @@ export const createDeps = (
     importHourlyValidationRecordLimit: env.IMPORT_HOURLY_VALIDATION_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
-    publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
+    publicRateLimitPolicies,
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
       perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,

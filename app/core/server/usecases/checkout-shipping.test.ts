@@ -13,7 +13,7 @@ import {
   type TenantSecret,
   type TenantSettings,
 } from '#core/domain/index.js';
-import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
+import type { CheckoutDeps, PaymentProvider, PublicRateLimitRepository } from '#core/server/index.js';
 
 import { createCheckoutSession, startCheckoutSession, validateCheckoutSelection } from './checkout.js';
 import { validateCartSelection } from './checkout-cart.js';
@@ -21,6 +21,7 @@ import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '../testing/p
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
 import { createDirectSalesLinkCheckout } from './direct-sales-link-checkout.js';
+import { PICKUP_POINT_LOOKUP_BUDGET_SCOPE, withPickupPointLookupBudget } from './pickup-points.js';
 
 const now = '2026-11-05T12:00:00.000Z';
 const tenant: Tenant = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active', plan: 'hosted', contentVersion: 1 };
@@ -409,5 +410,36 @@ describe('parcel locker lookup on every checkout path', () => {
       provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw',
     });
     expect(h.pickupPoints.lookups).toEqual(['MISSING1', 'WAW01M']);
+  });
+
+  const budgeted = (h: ReturnType<typeof harness>, limit: number) => {
+    const claims: string[] = [];
+    const buckets: PublicRateLimitRepository = {
+      claim: async (input) => { claims.push(input.scope); return claims.length <= input.limit; },
+      purgeExpired: async () => 0,
+    };
+    h.deps.pickupPoints = withPickupPointLookupBudget(h.pickupPoints, { buckets, clock: { nowIso: () => now }, window: { limit, windowMs: 60_000 } });
+    return claims;
+  };
+
+  it.each(Object.entries(paths))('%s draws on the platform-wide lookup budget and accepts the code unverified once it is spent', async (_path, select) => {
+    const h = harness([accessory, course, cartAccessory], [course.id, accessory.id]);
+    const claims = budgeted(h, 1);
+    const verified = await select(h, 'WAW01M');
+    expect(verified.ok && verified.value.shipping?.pickupPoint).toEqual({
+      provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw',
+    });
+    const unverified = await select(h, 'WAW01M');
+    expect(unverified.ok && unverified.value.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });
+    expect(claims).toEqual([PICKUP_POINT_LOOKUP_BUDGET_SCOPE, PICKUP_POINT_LOOKUP_BUDGET_SCOPE]);
+    expect(h.pickupPoints.lookups).toEqual(['WAW01M']);
+  });
+
+  it('does not draw on the lookup budget for a selection refused before the carrier is asked', async () => {
+    const h = harness();
+    const claims = budgeted(h, 1);
+    expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: locker('WAW-01') }, h.deps)).toMatchObject({ ok: false });
+    expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: { rateId: 'courier' } }, h.deps)).toMatchObject({ ok: true });
+    expect(claims).toEqual([]);
   });
 });

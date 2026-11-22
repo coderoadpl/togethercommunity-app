@@ -147,8 +147,9 @@ was exhausted. Public checkout session-status polling uses a separate per-IP
 (60,000 in development and staging), so several buyers behind one NAT can poll
 without consuming checkout-start or coupon-validation capacity. The public
 parcel locker lookup has its own `parcel-locker:ip` (30 per minute in
-production), `parcel-locker:tenant` (600 per minute) and platform-wide
-`parcel-locker:global` (1,200 per minute) buckets, see
+production) and `parcel-locker:tenant` (600 per minute) buckets, and every
+call to the carrier, from that route or from checkout, draws on the
+platform-wide `parcel-locker:global` budget (1,200 per minute), see
 [Parcel locker lookup](#parcel-locker-lookup). Expired windows
 are deleted by the hourly KSeF dispatch run.
 
@@ -861,15 +862,21 @@ server call a third party on an anonymous request. Its limits:
   `not_found` error otherwise, with no carrier call), is same-origin only (no
   open CORS), returns `Cache-Control: no-store` and is limited per client
   address (`parcel-locker:ip`, 30 per minute in production, 3,000 in
-  development and staging), per workspace (`parcel-locker:tenant`, 600 per
-  minute, 60,000 in development and staging) and across all workspaces
-  (`parcel-locker:global`, 1,200 per minute, 120,000 in development and
-  staging) before the carrier is asked, so lookups from many addresses and
-  workspaces cannot add up at the carrier from the platform's one egress
-  address. The per-address bucket keys a single address, also for IPv6.
+  development and staging) and per workspace (`parcel-locker:tenant`, 600 per
+  minute, 60,000 in development and staging). The per-address bucket keys a
+  single address, also for IPv6.
+- Every call to the carrier, from the public route and from checkout session
+  creation alike, first claims the platform-wide `parcel-locker:global` budget
+  (1,200 per minute, 120,000 in development and staging) in a wrapper around
+  the adapter, so lookups from many addresses, workspaces and checkouts cannot
+  add up at the carrier from the platform's one egress address. A lookup
+  refused before the carrier would be asked (malformed code, no parcel locker
+  option, a per-address or per-workspace limit) does not use the budget. When
+  the budget is spent the lookup answers `unavailable` without asking the
+  carrier, so checkout stores the code as unverified.
 
-Checkout session creation asks the carrier through the same adapter, within the
-existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).
+Checkout session creation asks the carrier through the same adapter, also
+within the existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).
 
 ## InPost ShipX credentials
 

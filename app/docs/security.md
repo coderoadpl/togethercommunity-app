@@ -583,9 +583,13 @@ scopes on every shop key.
   `download.replace` and `download.remove` proposals that only an owner
   approval applies. A staged file is held by at most one pending proposal,
   checked before the dry run and again under the staged row's lock in the
-  transaction that stores the proposal. The approval asks the storage about
-  each attached object before its transaction, never under the workspace's
-  approval lock, then locks the staged row and checks it is the same file
+  transaction that stores the proposal; a removal may name only a ready file,
+  and a file proposal whose dry run changes nothing is refused. The approval
+  asks the storage about each attached object before its transaction, at most
+  4 at a time within one 25-second budget that leaves the rest of the
+  60-second server function to the transaction, so none of these file checks
+  waits under the workspace's approval lock, then locks the staged row and
+  checks it is the same file
   (key, object, size, SHA-256, held by that proposal); a gone file ends the
   proposal or its whole group `stale` and nothing is attached. Because only the
   server writes the staged object and the row stays locked until the commit,
@@ -619,8 +623,11 @@ scopes on every shop key.
   routes, the settings update and the three product file write routes store a
   [change proposal](change-proposals.md) instead of running their handler,
   the four product cover and branding image routes and the four download file
-  staging routes (class `direct`) upload into the key's private quarantine or
-  staging, every other write route (fulfilment, integrations) answers `403`,
+  staging routes (class `direct`) run their handler: the image routes upload
+  into the key's private quarantine, the upload, completion and copy routes
+  stage a file in the key's private staging, and
+  `DELETE /api/m2m/shop/downloads/staged/:id` discards one of the key's staged
+  files and deletes its object; every other write route (fulfilment, integrations) answers `403`,
   and a test drives a propose-mode key over every registered shop route and
   asserts that no live row changed, no product file appeared and no object
   appeared under the public image prefix. A quarantined image is stored under

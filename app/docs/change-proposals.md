@@ -324,6 +324,15 @@ the panel reads one page and makes no further call per item:
 | `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
 | `proposedFiles` | only on a `download.add` or `download.replace`, absent on every other proposal: `[{ id, available, copiedFrom }]` for the staged file it attaches, read at read time: `available` says whether the proposal still holds that staged file, and `copiedFrom` is `{ productId, productTitle, versionNumber }` for a server-side copy (`productTitle` `null` when that product is gone), `null` for an upload or once the staged file is gone ([Download files](#download-files)) |
 
+`proposedFiles` is a key that a panel page or a CLI built from a release before
+this one does not know, and those clients parse these answers with a strict
+schema: once a file proposal exists, a list page that holds it, its show and
+the group that holds it fail to parse there. A panel tab loaded before the
+deploy shows its error state until it is reloaded, and an earlier CLI reports
+the parse failure until it is updated; the server and the stored data are not
+affected. This is accepted and not worked around
+([Rolling back](#download-files) under Download files).
+
 An e-mail (`issuerEmail`, `decidedByEmail`) is returned only for an account
 that still holds a staff grant in this workspace, direct or derived from the
 organisation that manages it. For any other account, a removed team member or
@@ -466,10 +475,14 @@ download instead (see [Images](#images)). Inside a group, a `$proposal:` referen
 step 1" with that step's title. A field the page does not know is shown with
 its raw name and its value as text, and a proposal of an operation the page
 does not know is shown but cannot be approved from the page. The page of this
-release does not know the three download file operations: it shows such a
-proposal, and a group that holds one, as a change of an unknown kind that can
-only be rejected there, and the owner approves it with the CLI
-([Download files](#download-files)).
+release does not know the three download file operations. A single
+`download.add`, `download.replace` or `download.remove` proposal shows the
+unknown-operation notice ("This version of the app cannot apply this kind of
+change, so it can only be rejected here.") with **Approve** disabled, so only
+**Reject** works there. A group that holds one shows its other items as usual,
+that notice on the file item only, and **Approve all N changes** disabled;
+**Reject group** works. The owner approves either with `proposals approve` or
+`proposals group approve` ([Download files](#download-files)).
 
 A single proposal has **Approve** and **Reject**; a group has **Approve all N
 changes** ("Approve the change" for a group of one) and **Reject group**.
@@ -1290,9 +1303,21 @@ editor) and `versionNote`, sorted by id and without timestamps. The new file's
 id is the staged file's id, so the dry run and the approval create the same
 file and their effects compare equal. The dry run attaches or removes the file
 in its rolled-back transaction and makes no storage request; a removal's
-storage delete is dropped with the rollback. A file list that changed after the
-proposal in any way (another file uploaded, attached, replaced or removed,
-live or by another approval) makes the approval `stale`.
+storage delete is dropped with the rollback. A removal may name only a `ready`
+file of the product: a file the owner is still uploading in the product editor
+(`pending`) is in no snapshot, so its removal would show no effect, and it is
+refused at submit, alone or in a group, with `400 validation` "Only a ready file
+can be removed by a proposal" (the key's file list already shows that file as
+`pending`); an approval's replay refuses it the same way, and the owner's own
+delete and a direct-mode key's live removal keep removing any file. A dry run of
+one of the three file operations whose effect is empty is refused with
+`400 validation` as well, so no file proposal with an empty effect is stored;
+the other operations store an empty effect, and its approval applies the
+command, which changes nothing. Every stored file proposal therefore compares
+the product's ready file list, and a list that changed after the proposal in
+any way (another file attached, replaced or removed, or an upload of the
+product editor completed, live or by another approval) makes the approval
+`stale`.
 
 Before the dry run, the submission checks read-only that the staged file is
 one this key staged and that no pending, unexpired proposal holds it; the
@@ -1323,20 +1348,35 @@ another workspace, a decided or expired proposal, a file the proposal does not
 attach or no longer holds, and an object the storage reports missing get
 `404`; a malformed id is `400`; any other storage failure is answered with its
 error. With the CLI, `proposals file <id> <file id> --out <path>` streams the
-file to disk through this link, never prints the link, refuses to overwrite an
-existing file without `--force`, and removes what it wrote when the download
-breaks off or its size differs from `sizeBytes`; `proposals show <id>` lists the
-files a proposal attaches and the command that downloads each one while the
-proposal is pending ([CLI](cli.md)).
+file through this link, never printing the link, into a new temporary file next
+to `--out`, writes every byte, and moves it onto `--out` only when the bytes
+written are `sizeBytes`; it refuses an existing `--out` without `--force`, and a
+download that breaks off or has another size removes only the temporary file,
+so an existing `--out` is never truncated or removed. `proposals show <id>` and
+`proposals group show <id>` list the files a proposal or each item attaches and
+the command that downloads each one while it is pending ([CLI](cli.md)).
 
 **Approval.** Before the approval transaction opens, the approval reads each
 staged file the proposal (or every item of the group) attaches and, when the
 proposal still holds it, asks the storage whether its object exists and has the
-recorded size, within 5 seconds; no storage request is made under the
-workspace's approval lock. A row that is gone or no longer held by the
-proposal, an object the storage reports missing and a different size count as
-gone; any other storage failure, an answer that does not come within the 5
-seconds included, is answered with its error and the proposal stays
+recorded size. These file checks run at most 4 at a time
+(`CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.concurrency`), each storage request
+within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and all of them
+within one wall-clock budget of 25 seconds: a group holds at most as many file
+items as its key may have staged files (20), and 20 checks 4 at a time are 5
+rounds of at most 5 seconds. The other 35 seconds of the 60-second server
+function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
+left to the transaction and the answer. None of these file checks runs under
+the workspace's approval lock; an image a proposal attaches, alone or in a
+mixed group, is still read and written under that lock, each storage request
+within its own 5 seconds ([Images](#images)). A row that is gone or no longer
+held by the proposal, an object the storage reports missing and a different
+size count as gone. A check that cannot start with at least 1 second of the
+budget left, or a storage request the budget cut short that did not answer,
+ends the checks with `503 unavailable` and `Retry-After: 5`; any other storage
+failure, an answer that does not come within the 5 seconds included, is
+answered with its error, the first in the order of the items when several
+fail. Either way nothing is decided and the proposal or group stays
 `pending`. Inside the transaction, before any target lock, the
 approval locks each attached staged row of the proposing key and checks that
 it is the file the storage confirmed (id, key, object key, size, SHA-256, held
@@ -1345,10 +1385,18 @@ by this proposal). A file that is gone makes the proposal `stale` with the note
 so the proposal cannot be applied; nothing was changed` on its `stale` event,
 and nothing is applied; in a group every file is checked before any item
 applies, and one gone file makes the whole group `stale`, with that note on
-the item that attaches it and the usual note on the others. The staged row
-stays locked until the commit, and every path that deletes a staged object
-holds the same row lock until the storage answers, so the object cannot be
-swept or discarded between the check and the attach. The attach makes no
+the item that attaches it and the usual note on the others (the first such
+item in group order). The approval holds each staged row until it commits.
+The minute sweep locks a staged row and holds it until the storage answered
+its delete. The key's discard and the release after a decision lock the staged
+row, delete it and record an owed deletion of its object in one transaction,
+and delete the object after that commit while holding only the owed-deletion
+row. Every one of these paths must lock the staged row to remove it, so it
+waits for an approval that holds the row: after the approval commits the row
+is gone (attached) and there is nothing to discard or sweep, and a path that
+removed the row first leaves the approval nothing to lock, so it ends `stale`.
+The object therefore cannot disappear between the check and the attach. The
+attach makes no
 storage request: the new product file points at the staged object, and the
 staged row is deleted in the same transaction. A removal's storage delete runs
 after the commit; for an object under `key-files/` its owed deletion stays
@@ -1373,29 +1421,78 @@ pending, unexpired proposal holds, even after its 7 days; it also removes a
 file still linked to a rejected, withdrawn or expired proposal, in case the
 release after that decision did not finish.
 
-**Rolling back.** This release adds no migration: the link from a staged file
-to its proposal is a column of migration `0170_key_download_files`. A release
-that has that migration but not this code refuses a propose-mode key on every
-download file route except the product file list (`403`), lists a pending
-`download.*` proposal and shows it to its key, and marks it `stale` on approval
-as an [unknown operation](#approval); a rejection there does not release the
-file, which the minute sweep of that release removes like any other staged
-file once no pending, unexpired proposal holds it. Staged objects stay private throughout, and a
-file an approval attached is an ordinary product file there. Before such a
-rollback, count the proposals it can no longer apply:
+**Rolling back.** The release on production when these operations were added,
+`8141fd15`, predates migrations `0168` to `0170`, so a rollback to it also
+retreats past `0170_key_download_files`; the tables and columns it then
+ignores are listed under the [key rollback](shop-management-keys.md#rollback).
+What that release does with what this release stores is proven by
+`scripts/change-proposal-download-rollback-8141fd15.test.ts`, which holds
+literal copies of that release's schemas and parsing steps:
+
+- A `download.add`, `download.replace` or `download.remove` proposal, alone or
+  as a group item, passes that release's stored-operation shape check, its
+  input is a JSON record and its `files` effect a before/after change, so the
+  owner list, show and summary, the key's list, show and withdrawal, a
+  rejection and a key revocation read it as before. Its panel shows the
+  proposal with the unknown-operation notice and **Approve** disabled, the same
+  as the page of this release ([Owner panel](#owner-panel)). Its approval ends
+  `stale` with the note `This release does not know the operation
+  "download.add", so the proposal cannot be applied; nothing was changed` before
+  any target lock, and nothing is applied; in a group that item halts the group
+  and nothing of it applies.
+- That release has no download file route for a key (`404`); the owner's file
+  routes and buyer downloads answer as before. It never releases or sweeps a
+  staged file: a rejection or withdrawal there leaves the staged row linked to
+  its proposal and the object in place, private; an approval there leaves the
+  row linked to a proposal that is now `stale`. After rolling forward, the
+  minute sweep of this release removes a file linked to a rejected, withdrawn
+  or expired proposal, and any other staged file 7 days after staging or once
+  its key is revoked, expired or purged; a file linked to a proposal that ended
+  `stale` is free for its key to propose again until then.
+- A `stale` event note `file_unavailable: …` reads as any note within its 500
+  characters.
+- A product file an approval attached is a `ready` file row there, served and
+  deleted by its stored object key like any other file; that release neither
+  selects nor parses the `sha256` column.
+- The storage probe's `signedResponseOverrides` is part of an answer only and
+  never stored; that release's diagnostic schema drops it.
+- This release adds no notification kind: a file proposal raises the
+  `change-proposal` notification that `8141fd15` already knows.
+
+A panel tab or a CLI of that release talking to this release's server meets
+the [`proposedFiles`](#owner-view) key and fails to parse the answers that carry
+it until it is reloaded or updated; after a rollback the server no longer sends
+it. Before the rollback, count the proposals it can no longer apply:
 
 ```sql
 select count(*) from change_proposals
 where status = 'pending' and operation like 'download.%';
 ```
 
+**Rolling back past `8141fd15`.** The notification kind `change-proposal`
+first shipped in `8141fd15`; its parent release `b6a8634a` and every earlier
+release have a closed list of notification kinds without it and parse every
+notification row they read against that list. Before rolling back to such a
+release, delete those rows:
+
+```sql
+delete from notifications where kind = 'change-proposal';
+```
+
+If this step is skipped, that release throws on such a row: listing
+notifications and marking one read answer `500` for every owner who has one,
+until the rows are deleted or the release rolls forward. The rows only point
+the owner to the proposals, which stay listed under
+[Change proposals](#owner-panel) after rolling forward.
+
 ## Not yet available
 
 - **Download files in the owner panel.** The panel of this release shows a
-  `download.add`, `download.replace` or `download.remove` proposal, and a group
-  that holds one, as a change of an unknown kind that can only be rejected
-  there; the owner approves it with `proposals approve` or
-  `proposals group approve` and downloads the proposed file with
+  `download.add`, `download.replace` or `download.remove` proposal with the
+  unknown-operation notice and **Approve** disabled, and in a group that notice
+  on the file item and **Approve all N changes** disabled
+  ([Owner panel](#owner-panel)); the owner approves it with `proposals approve`
+  or `proposals group approve` and downloads the proposed file with
   `proposals file` ([CLI](cli.md)). Renaming and reordering files and changing
   what a product grants cannot be proposed.
 - **Other images.** Images other than product covers and branding (course

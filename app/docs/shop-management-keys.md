@@ -564,8 +564,11 @@ then **attaches** it live, as a new file of a product or as the next version of
 one of its files. It also removes file versions. Buyers with access to the
 product get an attached file on their next download, personalised like any
 other file ([File versions](storage.md#file-versions)). No key reads a file's
-bytes: no route answers a key a download link, a storage address or file
-content, and duplicating a file is a copy made by the storage itself.
+bytes: no route answers a key a download link, a signed read address or any
+other address of a staged or attached file, or file content, and duplicating
+a file is a copy made by the storage itself. The only storage address a
+download file route gives a key is the presigned `PUT` of its own upload, which
+writes that upload object and reads nothing.
 
 A propose-mode key with `shop:catalog:write` stages files through the same
 routes and under the same limits, and the attach, replace and remove routes
@@ -701,8 +704,11 @@ conflict` and changes nothing, and any other staged file that is gone answers
 `404`.
 
 **Remove.** Removing deletes one version of any file of the product, a file the
-owner uploaded included, and promotes the newest remaining ready version of its
-lineage; buyers can no longer download the removed version. The answer is
+owner uploaded included, also one still uploading, and promotes the newest
+remaining ready version of its lineage; buyers can no longer download the
+removed version. A propose-mode key's removal proposes only the removal of a
+ready file: a file still uploading answers `400 validation` and nothing is
+stored ([Download files](change-proposals.md#download-files)). The answer is
 `{ "deleted": true }`. When the file's object was staged by a key, its deletion
 is recorded in the same transaction and the minute sweep retries a storage
 delete that failed ([Download file prefixes](storage.md#download-file-prefixes)).
@@ -714,7 +720,11 @@ delete, and blocks that key's new uploads and copies while it lasts.
 sweep 7 days after it was staged, and once its key is revoked, expires or is
 purged, unless a pending, unexpired proposal holds it; a rejection, a
 withdrawal or a recorded expiry of that proposal discards it at once
-([Release on decisions](change-proposals.md#download-files)). Discarding it removes it from the staged list at once and deletes its
+([Release on decisions](change-proposals.md#download-files)). After a
+propose-mode upload or copy, the CLI prints such a file as `kept while the
+proposal is pending` instead of its 7-day expiry. The key may discard a file
+a pending proposal holds; an approval of that proposal then ends `stale`.
+Discarding it removes it from the staged list at once and deletes its
 object, or, when that delete fails, owes the deletion, which the sweep
 retries; the discard answers success either way. An upload that is never
 completed becomes due for the same sweep 20 minutes after it started, and one
@@ -1699,7 +1709,29 @@ staging rows and never deletes a staged or upload object, which stays under the
 private download prefix while its row stays. After rolling forward, the minute
 sweep of this release removes them, as far as the rows that own them still
 exist. A file a key attached is an ordinary product file row there, served and
-deleted by its stored object key like any other file.
+deleted by its stored object key like any other file; that release neither
+selects nor parses the `sha256` column.
+
+The release on production when download file proposals were added,
+`8141fd15`, is such a release (it also predates `0168` and `0169`).
+`scripts/change-proposal-download-rollback-8141fd15.test.ts` holds literal
+copies of its schemas and parsing steps and proves what it does with what this
+release stores. It lists and shows a pending `download.add`,
+`download.replace` or `download.remove` proposal, alone or in a group, to the
+owner and to its key, lets the key withdraw it and the owner reject it, and
+ends its approval `stale` with the unknown-operation note before any target
+lock, applying nothing (a group with such an item applies none of its items).
+It reads the `stale` event note `file_unavailable: …` like any other note, and
+the storage probe's new `signedResponseOverrides` is never stored. It never
+releases a staged file, so a file of a proposal it rejected or withdrew stays
+staged and private until the minute sweep of this release removes it after
+rolling forward. A panel tab or CLI of that release that talks to this
+release's server fails to parse an owner answer carrying `proposedFiles`
+until it is reloaded or updated. Before the retreat, count the pending
+download file proposals and, before retreating further than `8141fd15`,
+delete its `change-proposal` notifications, as
+[Rolling back](change-proposals.md#download-files) under Download files
+shows.
 
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and

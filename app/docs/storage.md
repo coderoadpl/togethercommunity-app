@@ -65,12 +65,14 @@ Who deletes them:
   refused), and the minute sweep once its upload record is 20 minutes old and
   the lease of its last completion attempt (10 minutes) has ended;
 - a `key-files/` object that is still staged: a completion or copy that wrote
-  it and then failed for a definite reason, the key's discard, the release
-  after a rejection, withdrawal or recorded expiry of the change proposal that
-  held it or the revocation of its propose-mode key, and the minute sweep 7
-  days after staging, once the key is revoked, expired or purged, or once the
-  proposal that held it was rejected, withdrawn or expired; never while a
-  pending, unexpired proposal holds it;
+  it and then failed for a definite reason; the key's discard, also of a file a
+  pending proposal holds (an approval of that proposal then ends `stale`);
+  the release after a rejection, withdrawal or recorded expiry of the change
+  proposal that held it, or after the revocation or purge of its key; and the
+  minute sweep 7 days after staging, once the key is revoked, expired or purged,
+  or once the proposal that held it was rejected, withdrawn or expired. The
+  release and the sweep never delete a file a pending, unexpired proposal
+  holds;
 - the destination of a completion or copy whose storage outcome is unknown (a
   copy or read the storage did not answer in time, a connection error, a server
   error, a copy answer without a copy result): only the minute sweep, once its

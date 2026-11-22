@@ -146,9 +146,10 @@ copies a ready file on the server and attaches the copy to the other product;
 `shop files staged` and `shop files discard <id>` list a product's files, remove
 a version, and list or discard the key's staged files. With a propose-mode key
 `shop files upload` and `shop files copy` stage the file the same way and
-propose attaching it, printing the receipt, the staged file and that it stays
+propose attaching it, printing the receipt, the staged file (with `kept while
+the proposal is pending` in place of its 7-day staging expiry) and that it stays
 private until the owner approves, and `shop files remove` proposes the
-removal; all three accept `--group <id>`, and with it `upload` and `copy` do
+removal of a ready file; all three accept `--group <id>`, and with it `upload` and `copy` do
 not check a `'$proposal:<id>'` product first; see
 [Download files](shop-management-keys.md#download-files).
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
@@ -159,14 +160,22 @@ before/after effect, approve it or reject it. `proposals show` also lists the
 staged file a download file proposal attaches, where a copy comes from and,
 while the proposal is pending, whether it still holds the file and the command
 that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
-server for a 60-second link and streams the file from the storage to `--out`
-without printing the link, refuses to overwrite an existing file without
-`--force`, and removes what it wrote when the download breaks off or its size
-is not the announced one. `proposals approve` prints the
+server for a 60-second link and streams the file from the storage, without
+printing the link, into a new temporary file next to `--out`
+(`.<name>.partial-<random>`, opened exclusively), writing every byte of each
+chunk and counting the bytes written. Only when that count is the announced
+size does it move the file onto `--out`: without `--force` an `--out` that
+exists, also one that appeared during the download, is refused and left as it
+is; with `--force` it is replaced in one rename. A download that breaks off, a
+write that makes no progress and a size that is not the announced one remove
+only the temporary file, so an existing `--out` is never truncated or removed.
+`proposals approve` prints the
 outcome first: `applied` exits `0` and names the resource by the operation
 (`applied: price <id>` for a new price, `applied: sales link <id>`,
 `applied: file <id>` for an attached file, `applied: settings`); `stale` (the live state changed since the
-proposal was made, or an image or file it attaches is no longer available) and `failed` (the live use-case refused the stored change,
+proposal was made, or an image or file it attaches is no longer available, in
+which case it prints that reason from the proposal's history without its code,
+`stale: The proposed file <id> is no longer available, …`) and `failed` (the live use-case refused the stored change,
 with its error code and message) apply nothing and exit `6`, the conflict exit
 code, as does approving a proposal that is no longer pending.
 Proposals that depend on each other go into a
@@ -180,14 +189,18 @@ creates something: a product, a price or a sales link), quoted so the shell
 leaves the `$` alone, for
 example `shop prices add --product '$proposal:<id>' --kind one_time --price 49 --group <group id>`.
 The owner runs `proposals group show <id>` (the items in order with their
-effects, the items digest and the exact approve command; `itemsDigest` and
+effects and, for an item that attaches a staged file, the same file lines as
+`proposals show`: the file, whether it is a copy of a version of another
+product, whether the item still holds it and the `proposals file` command; then
+the items digest and the exact approve command; `itemsDigest` and
 `approveCommand` with `--json`),
 `proposals group approve <id> --items-digest <digest>` (the digest that `show`
 printed is required; the command reads the group again and, when its items
 changed since, prints the current items with their new digest and exits `6`
-without sending anything; otherwise it approves exactly those items: `0` when
-every item was applied, `6` when the group ends `stale` or `failed`, as for a
-single approval) and
+without sending anything; otherwise it prints those items with the same file
+lines and approves exactly them: `0` when every item was applied, `6` when the
+group ends `stale` or `failed`, as for a single approval, with
+`stale: item <n>: <reason>` when an item's file or image is gone) and
 `proposals group reject <id> [--note <text>]`; `proposals list --group <id>`
 lists one group and `proposals list` shows the group and position of each
 grouped item. A grouped item cannot be approved, rejected or withdrawn alone.

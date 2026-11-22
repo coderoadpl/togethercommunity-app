@@ -89,6 +89,27 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
 
+## Staff refunds
+
+`order refund-preview <orderId>` prints the paid, refunded and remaining amounts,
+whether the remainder was read from Stripe, the stock a full refund can return
+and the packing, shipment and invoice consequences. `order refund <orderId>`
+refunds the whole remainder; `--amount <decimal>` refunds part of it in the
+order's currency (whole numbers for zero-decimal currencies). `--reason <text>`
+keeps a staff-only note, `--no-restock` and `--keep-on-packing-list` turn off
+the full-refund defaults, and `--request-key <key>` makes a retry safe: the same
+key never refunds twice. Without one the CLI generates a key and prints it. The
+refund cannot be undone, so the command refuses without `--yes` and prints what
+it would refund. `order ship-anyway <orderId>` puts a refunded order that was
+taken off the packing list back on it. Each command prints one envelope with
+`--json`; exit codes follow `EXIT_CODE_BY_ERROR_CODE`. The rules are in
+[the shop guide](shop.md#staff-refunds).
+
+```bash
+pnpm --silent run cli --tenant acme order refund-preview order-id
+pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --reason 'Damaged cover' --yes
+```
+
 ## CLI parity inventory
 
 Run `pnpm run cli-parity` to list every method in the `core/client` API client

@@ -318,6 +318,27 @@ session cookie is valid on every workspace subdomain. Every other document
 keeps the same-origin script policy, except the checkout form documents, which
 also list the InPost parcel locker map origin as described above.
 
+## Staff refunds
+
+Refunding money is the `order:refund` capability, held by the workspace
+`owner` and `admin` only and only with a verified e-mail address. It is not an
+impersonation read capability, so every refund route, the preview included, is
+refused while staff view the workspace as a member, and no tenant API key or
+shop management key scope grants it: a shop key never refunds and a
+propose-mode key never refunds (the use-cases also refuse a machine actor
+explicitly). The three routes (`GET /api/orders/:orderId/refund-preview`,
+`POST /api/orders/:orderId/refunds`, `POST /api/orders/:orderId/packing-list`)
+take session credentials only, are classified `session` in the origin policy
+and answer `404 not_found` for an order of another workspace. They are
+rate-limited per staff member and per workspace with the shared rate buckets.
+
+Money guards: the request locks the order row, re-reads the committed refunds,
+refuses an amount above the remainder and allows one refund waiting to reach
+Stripe per order; the request key and the Stripe idempotency key generations
+make retries and lost responses safe, and Stripe refuses an amount above the
+charge. Each refund row keeps the requesting user's id and e-mail address
+after the account is removed, as audit evidence of who moved money.
+
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` blocks merges through `check` only

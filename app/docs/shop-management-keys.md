@@ -32,7 +32,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
 | Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
-| Invoices and refunds | Not offered with a shop key; staff session routes only |
+| Invoices and refunds | Not offered with a shop key; staff session routes only. A shop key never refunds; a propose-mode key never refunds |
 
 ## Backend only
 
@@ -528,7 +528,9 @@ action that changes an order needs `shop:fulfilment:write`, and a warehouse
 integration usually carries both. An order id from another workspace answers
 `404 not_found`. Shipments, line issues and ShipX events are recorded under the
 issuing owner's account. Invoices and refunds are not available with a shop
-management key; they stay on the staff session routes.
+management key; they stay on the staff session routes. A shop key never
+refunds; a propose-mode key never refunds: no scope grants `order:refund`, and
+the [staff refund routes](shop.md#staff-refunds) answer a key `401`.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|

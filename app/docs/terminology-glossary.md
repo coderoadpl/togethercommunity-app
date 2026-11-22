@@ -51,6 +51,10 @@ add it here before using it in either dictionary.
 | Internal bookkeeping document | dokument wewnętrzny (WEW) | internal document (WEW) | Prepared by the accountant from the sales summary; the summary is not a tax document. |
 | Consumer sales with no issued invoice | sprzedaż konsumencka bez faktury | uninvoiced consumer sales | Paid consumer orders without a NIP, excluding all refunds and issued, in-flight, accepted, or ambiguous invoices. |
 | Sales ledger entry | zamówienie | order | Statuses: paid, pending, failed, refunded; lowercase in tables. |
+| Money returned to the buyer by staff | zwrot | refund | Staff refund from Studio or the CLI; distinct from the automatic refund of a sold-out order. Verb: zwrócić pieniądze / refund. |
+| Refund of part of the paid amount | zwrot częściowy | partial refund | Changes no stock, packing list or access. |
+| Amount still refundable | pozostało do zwrotu | remaining | Shown with Paid / Refunded on the order page. |
+| Put a refunded order back to pack | wyślij mimo to | ship anyway | Only for an order taken off the packing list. |
 | Access entitlement | dostęp | grant | Long form: przyznany dostęp. Verb: przyznać / grant. States include active, expired, and perpetual. |
 | Withdraw an entitlement | cofnąć dostęp | revoke | Keep distinct from claiming free access. Do not use odbierz for revocation. |
 | Free checkout action | odbierz za darmo | get it for free | Checkout call to action. |

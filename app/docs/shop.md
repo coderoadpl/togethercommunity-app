@@ -1643,8 +1643,100 @@ dispatch. It releases at most 100 expired `active` reservations per run, oldest
 first, each in its own transaction, and logs one line when it released any. A
 failing sweep is logged and never stops that tick's e-mail dispatch.
 
-Refunds never change stock. Staff put goods back with an adjustment whose
+Refunds never change stock, except a full staff refund with stock return (see
+Staff refunds below). Staff put goods back with an adjustment whose
 reason is `returned` (recorded as a `returned` event).
+
+#### Staff refunds
+
+An owner or admin can refund a paid order from Studio or the CLI, in full or in
+part, through the workspace's own Stripe key of the order's mode. The refund
+runs through the same dispatcher, idempotency keys, retries, permission
+handling, staff alerts and status reads as the sold-out refund above; there is
+no second refund path. Staff refunds are stored in their own table,
+`order_staff_refunds`, which the previous release never reads, so a rollback
+cannot stop the sold-out refunds; staff refunds waiting to reach Stripe then
+wait until the release is back.
+
+An order can be refunded by staff when it is `paid` or `partially_refunded`,
+was paid through Stripe with a payment intent, was paid more than zero, was not
+cancelled because its goods sold out (its own job refunds it) and something is
+left to refund. Anything else is refused with `conflict` or `validation` and a
+sentence naming the reason. The refundable remainder is the paid amount minus
+the larger of the refunds Stripe lists for the payment (not `failed` or
+`canceled`) and the staff refunds the platform recorded that may still move
+money; when Stripe's list cannot be read, the platform's records decide and the
+preview says so, and Stripe still refuses anything above the charge.
+
+- **Full refund** (no amount, or an amount equal to the remainder): stored as a
+  remainder refund. The dispatcher applies the sold-out coverage rule with the
+  paid amount as the target, so a refund made in the Stripe Dashboard in the
+  meantime is never paid twice.
+- **Partial refund**: stored as an amount refund and issued exactly once. Its
+  own Stripe refund is the one whose metadata `refundJobId` names the staff
+  refund, or whose id was stored; a dashboard refund of the whole charge ends it
+  `skipped_refunded`. Partial refunds may follow each other.
+- **One at a time**: at most one staff refund of an order may wait to reach
+  Stripe (`pending`, `running`, `blocked_permission`); a second one is refused
+  with `conflict` until the first is accepted or failed. Every request carries
+  a `requestKey`: the same key for the same order returns the existing refund
+  when the amount and choices match, and `conflict` otherwise, so a double
+  click or a retried request never refunds twice.
+- **Stock and packing**: a full refund of an order that is `to_pack` without a
+  shipment or label returns its committed stock (a `returned` stock event per
+  product with `reference = { orderId, reason: "staff_refund" }`) and takes the
+  order off the packing list by default; staff may untick either. With a
+  shipment or bought label, stock return defaults to off and the label is not
+  cancelled; a `shipped` order is never moved. A partial refund changes no
+  stock, packing or access, and sending either choice with it is refused. Both
+  choices apply when the refund is requested; a refund that later fails leaves
+  them as chosen and the staff alert says so. "Ship anyway"
+  (`POST /api/orders/:orderId/packing-list`, `order ship-anyway`) puts an order
+  without fulfilment status back to `to_pack`.
+- **Access**: the existing `charge.refunded` handler marks a fully refunded
+  order `refunded` and revokes the grants of its products unless another
+  purchase keeps them; a partial refund changes no grant. The handler also
+  makes the order's waiting staff refunds due at once, so Studio shows the
+  outcome within a minute.
+- **Buyer e-mail**: one `order-refund-issued` e-mail per staff refund (outbox id
+  `order-refund-issued:<refundId>`), queued in the transaction that records
+  Stripe's acceptance, in the language and branding of the sold-out e-mail. It
+  names the amount of the platform's own Stripe refund, the short order
+  reference and the usual arrival time; never a provider id or the staff note.
+  A refund that never reached Stripe or failed sends none.
+- **Audit**: each row keeps who requested it (`requested_by_user_id`,
+  `requested_by_email`), the amount, the staff-only note (at most 500
+  characters) and the time. The server logs one line per new request with the
+  workspace, order, refund id, actor id and amount, without e-mail addresses or
+  Stripe ids. Stripe metadata carries `tenantId`, `orderId`, `reason: staff` and
+  `refundJobId` only.
+
+Routes (session only, `order:refund`, see [the route table](route-table.md)):
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/orders/:orderId/refund-preview` | Paid, refunded and remaining amounts, currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, the default choices and any refund still waiting |
+| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, reason?, restock?, removeFromPackingList? }` → `{ refund, created }` |
+| `POST /api/orders/:orderId/packing-list` | Ship anyway |
+
+The routes follow the origin and CSRF policy of other Studio writes and are
+rate-limited with the shared limiter per staff member and per workspace: 10 and
+60 requests a minute for refunds and ship anyway, 60 and 300 for previews; a
+refused request answers `429 rate_limited` with `Retry-After`. The order detail
+(`GET /api/orders/:orderId`) carries `staffRefunds` (newest first) and
+`refundTotals` (paid, refunded, remaining); the orders list shows the state of
+the latest staff refund while it is unsettled. The orders export gains a
+trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
+the platform-recorded refunds, or the paid amount for a `refunded` order. The
+shop integration order feed is unchanged. An invoiced order gets no automatic
+correcting invoice; the preview says the order has one.
+
+```bash
+pnpm --silent run cli --tenant acme order refund-preview <orderId>
+pnpm --silent run cli --tenant acme order refund <orderId> --yes
+pnpm --silent run cli --tenant acme order refund <orderId> --amount 12.50 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme order ship-anyway <orderId>
+```
 
 ### Low-stock e-mail
 

@@ -626,13 +626,28 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
 
+## Staff refunds
+
+Owners and admins refund a paid order from Studio or `order refund` with the
+workspace's restricted key of the order's mode; see
+[the shop guide](shop.md#staff-refunds). The key needs Charges and Refunds
+(write), which the permission check above confirms. Without it a staff refund
+waits as `blocked_permission`, staff get the existing alert e-mail and the
+dispatcher retries hourly for 72 hours, as for the sold-out refund. Stripe
+refund metadata carries `tenantId`, `orderId`, `reason: staff` and
+`refundJobId`; never personal data or the staff note. A refund made in the
+Stripe Dashboard still reaches the platform through `charge.refunded`, counts
+against the refundable remainder and makes waiting staff refunds of that order
+due at once.
+
 ## Order and subscription e-mail subjects
 
 Order e-mails to buyers lead with the outcome and the workspace and carry a short
 order reference, the first eight characters of the order id upper-cased with a
 `#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
 <workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
-<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+<workspace> (#AB12CD34)" (or "nothing charged") and "Refund of <amount> on its
+way — <workspace> (#AB12CD34)", with Polish equivalents. The
 body keeps the full order id on the order-number line so the seller can match
 it. The payment-failed, direct-message and community notification subjects end
 with " — <workspace>".

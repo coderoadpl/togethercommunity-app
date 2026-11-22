@@ -19,7 +19,7 @@ import type { AppDeps } from './composition.js';
 import { productDownloadMetadata } from './product-download-metadata.js';
 import { readJson } from './read-json.js';
 import { respond, retryAfterHeaders } from './respond.js';
-import { NOT_IN_RELEASE, type ShopMachineRoute } from './shop-machine-auth.js';
+import { notInRelease, type ShopMachineRoute } from './shop-machine-auth.js';
 
 const bodyOf = async <S extends z.ZodTypeAny>(c: Context<AppVars>, schema: S, message: string): Promise<Result<z.output<S>, AppError>> => {
   const parsed = schema.safeParse(await readJson(c.req.raw));
@@ -29,6 +29,8 @@ const bodyOf = async <S extends z.ZodTypeAny>(c: Context<AppVars>, schema: S, me
 const respondWithRetry = <T>(result: Result<T, AppError>): Response =>
   respond(result, result.ok ? {} : { headers: retryAfterHeaders(result.error) });
 
+const DOWNLOAD_FILES_NOT_IN_RELEASE = notInRelease('product download files');
+
 export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => {
   const routes = SHOP_DOWNLOAD_ROUTES;
   const contracts = shopDownloadContracts;
@@ -37,7 +39,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
   return [
     {
       ...routes.uploadStagedDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.uploadStagedDownload.input, 'Invalid download file upload');
         return input.ok ? respondWithRetry(await beginKeyDownloadUpload(ctx, input.value, deps)) : respond(input);
@@ -45,7 +47,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.completeStagedDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.completeStagedDownload.input, 'Invalid download file completion');
         return input.ok ? respondWithRetry(await completeKeyDownloadUpload(ctx, input.value, deps)) : respond(input);
@@ -53,7 +55,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.copyStagedDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.copyStagedDownload.input, 'Invalid download file copy');
         return input.ok ? respondWithRetry(await copyKeyDownloadFile(ctx, input.value, deps)) : respond(input);
@@ -61,12 +63,12 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.listStagedDownloads,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (_c, { ctx }) => respond(await listKeyDownloadFiles(ctx, deps)),
     },
     {
       ...routes.discardStagedDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => respond(await discardKeyDownloadFile(ctx, { id: c.req.param('id') ?? '' }, deps)),
     },
     {
@@ -83,7 +85,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.addProductDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.addProductDownload.input, 'Invalid product file attachment');
         return input.ok ? assetAnswer(await attachStagedProductDownload(ctx, input.value, deps)) : respond(input);
@@ -91,7 +93,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.replaceProductDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.replaceProductDownload.input, 'Invalid product file replacement');
         return input.ok ? assetAnswer(await attachStagedProductDownload(ctx, input.value, deps)) : respond(input);
@@ -99,7 +101,7 @@ export const shopDownloadRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =
     },
     {
       ...routes.removeProductDownload,
-      proposeMode: NOT_IN_RELEASE,
+      proposeMode: DOWNLOAD_FILES_NOT_IN_RELEASE,
       handler: async (c, { ctx }) => {
         const input = await bodyOf(c, contracts.removeProductDownload.input, 'Invalid product file removal');
         return input.ok ? respond(await removeProductDownloadFile(ctx, input.value, deps)) : respond(input);

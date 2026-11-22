@@ -59,14 +59,14 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementK
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-type ShopMachineRefusalReason = 'secret' | 'side-effect' | 'not-in-release';
+type ShopMachineRefusal =
+  | { kind: 'refuse'; reason: 'secret' | 'side-effect' }
+  | { kind: 'refuse'; reason: 'not-in-release'; feature: string };
 
 type ShopMachineProposeMode =
   | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
-  | { kind: 'refuse'; reason: ShopMachineRefusalReason }
+  | ShopMachineRefusal
   | { kind: 'direct'; reason: string };
-
-type ShopMachineReadRefusal = Extract<ShopMachineProposeMode, { kind: 'refuse' }>;
 
 type ShopMachineMutationMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -78,7 +78,7 @@ interface ShopMachineRouteFields {
 }
 
 export type ShopMachineRoute = ShopMachineRouteFields & (
-  | { method: 'GET'; scope: ShopManagementScope; proposeMode?: ShopMachineReadRefusal | undefined }
+  | { method: 'GET'; scope: ShopManagementScope; proposeMode?: ShopMachineRefusal | undefined }
   | { method: ShopMachineMutationMethod; scope: ShopManagementScope; proposeMode: ShopMachineProposeMode }
   | { method: 'GET' | ShopMachineMutationMethod; scope: null; proposeMode: { kind: 'proposal-management' } }
 );
@@ -148,12 +148,9 @@ const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: 
   );
 };
 
-const REFUSAL_DETAILS: Partial<Record<ShopMachineRefusalReason, string>> = {
-  'not-in-release': ': product download files are not available to a propose-mode key yet',
-};
-
-const proposeModeRefusal = (reason: ShopMachineRefusalReason): AppError =>
-  forbidden(`A propose-mode shop management key cannot call this route (${reason})${REFUSAL_DETAILS[reason] ?? ''}`);
+const proposeModeRefusal = (refusal: ShopMachineRefusal): AppError => forbidden(refusal.reason === 'not-in-release'
+  ? `A propose-mode shop management key cannot call this route (${refusal.reason}): ${refusal.feature} are not available to a propose-mode key yet`
+  : `A propose-mode shop management key cannot call this route (${refusal.reason})`);
 
 const proposalManagementRefusal = (): AppError =>
   forbidden('Only a propose-mode shop management key manages change proposals');
@@ -162,7 +159,7 @@ const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey
 
 export const isProposeModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'propose';
 
-export const NOT_IN_RELEASE = { kind: 'refuse', reason: 'not-in-release' } as const satisfies ShopMachineProposeMode;
+export const notInRelease = (feature: string): ShopMachineRefusal => ({ kind: 'refuse', reason: 'not-in-release', feature });
 
 export const PROPOSED_IMAGE_UPLOAD = {
   kind: 'direct',
@@ -231,7 +228,7 @@ const dispatchRead = (
   if (proposeMode.kind === 'proposal-management') {
     return isDirectModeKey(request) ? respond(err(proposalManagementRefusal())) : route.handler(c, request);
   }
-  return isDirectModeKey(request) ? route.handler(c, request) : respond(err(proposeModeRefusal(proposeMode.reason)));
+  return isDirectModeKey(request) ? route.handler(c, request) : respond(err(proposeModeRefusal(proposeMode)));
 };
 
 const dispatchMutation = (
@@ -249,7 +246,7 @@ const dispatchMutation = (
     case 'direct':
       return route.handler(c, request);
     case 'refuse':
-      return respond(err(proposeModeRefusal(proposeMode.reason)));
+      return respond(err(proposeModeRefusal(proposeMode)));
     case 'proposal':
       return proposeChange(c, request, proposeMode, deps);
   }

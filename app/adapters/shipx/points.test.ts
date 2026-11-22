@@ -64,6 +64,39 @@ describe('InPost points directory', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('stops reading an oversized body at 64 KiB and cancels the rest of the stream', async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const chunk = new TextEncoder().encode(`{"name":"${'\u0105'.repeat(8 * 1024)}`);
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+      cancel: () => { cancelled = true; },
+    });
+    expect(await directory(answering(() => new Response(endless, { status: 200 }))).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(Math.ceil((64 * 1024) / chunk.byteLength) + 2);
+  });
+
+  it('refuses a body whose declared length is above the cap before reading it', async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        pulled += 1;
+        controller.enqueue(new TextEncoder().encode(fixture('point-operating.json')));
+        controller.close();
+      },
+      cancel: () => { cancelled = true; },
+    });
+    const response = new Response(body, { status: 200, headers: { 'content-length': String(64 * 1024 + 1) } });
+    expect(await directory(answering(() => response)).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(1);
+  });
+
   it('answers unavailable for a network error without retrying', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => { throw new TypeError('fetch failed'); });
     expect(await directory(fetchImpl).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
@@ -93,8 +126,11 @@ describe('fake pickup point directory', () => {
   };
   const outcome = async (code: string) => applyPickupPointLookup({ ...selection, pickupPoint: { ...selection.pickupPoint, code } }, await fake.lookup(code));
 
-  it('knows one operating locker, one unknown code, one closed locker, one send-only point and one outage', async () => {
+  it('knows three operating lockers, one unknown code, one closed locker, one send-only point and one outage', async () => {
     expect(await outcome(FAKE_PICKUP_POINT_CODES.operating)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW01M', name: 'Next to the main entrance' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.operatingNorth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW02M', name: 'By the north gate', address: 'North Street 2, 00-002 Warsaw' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.operatingSouth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW03M', address: 'South Street 3' } } });
+    expect((await outcome('WAW04M')).ok).toBe(false);
     expect(await outcome(FAKE_PICKUP_POINT_CODES.notFound)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_found' } } });
     expect(await outcome(FAKE_PICKUP_POINT_CODES.notOperating)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_operating' } } });
     expect(await outcome(FAKE_PICKUP_POINT_CODES.wrongType)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_usable' } } });

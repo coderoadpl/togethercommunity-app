@@ -7,7 +7,7 @@ const INPOST_POINTS_URL = 'https://api-shipx-pl.easypack24.net/v1/points/';
 
 const INPOST_POINTS_TIMEOUT_MS = 3000;
 
-const BODY_MAX_LENGTH = 64 * 1024;
+const BODY_MAX_BYTES = 64 * 1024;
 
 const wirePointSchema = z.object({
   name: z.string().refine(pickupPointCodeValid),
@@ -34,6 +34,27 @@ const parseJson = (text: string): unknown => {
   } catch {
     return undefined;
   }
+};
+
+const readBoundedText = async (response: Response): Promise<string | null> => {
+  if (Number(response.headers.get('content-length')) > BODY_MAX_BYTES) {
+    await response.body?.cancel();
+    return null;
+  }
+  if (response.body === null) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    size += chunk.value.byteLength;
+    if (size > BODY_MAX_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+  return text + decoder.decode();
 };
 
 const readPoint = (code: string, body: unknown): PickupPointLookup => {
@@ -77,8 +98,8 @@ export const createInpostPointsDirectory = (options: InpostPointsDirectoryOption
           await response.body?.cancel();
           return UNAVAILABLE;
         }
-        const text = await response.text();
-        return text.length > BODY_MAX_LENGTH ? UNAVAILABLE : readPoint(code, parseJson(text));
+        const text = await readBoundedText(response);
+        return text === null ? UNAVAILABLE : readPoint(code, parseJson(text));
       } catch {
         return UNAVAILABLE;
       } finally {

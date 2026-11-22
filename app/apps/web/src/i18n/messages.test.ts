@@ -75,7 +75,7 @@ describe('i18n dictionaries', () => {
 
   it('keeps the sign-in copy consistent: one link term, one example address, neutral Polish', () => {
     expect(plainStrings(en.auth).filter((text) => text.includes('e-mail'))).toEqual([]);
-    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => /łeś|łaś/u.test(text))).toEqual([]);
+    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => /\u0142e\u015b|\u0142a\u015b/u.test(text))).toEqual([]);
     for (const messages of Object.values(dictionaries)) {
       expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
       expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);

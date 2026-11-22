@@ -68,6 +68,7 @@ const stripeNullableText = z.string().nullable().optional().transform((value) =>
 
 const stripeShippingDetailsSchema = z.object({
   name: stripeNullableText,
+  phone: stripeNullableText,
   address: z.object({
     line1: stripeNullableText,
     line2: stripeNullableText,
@@ -84,37 +85,51 @@ const stripeCollectedInformationSchema = z.object({
 
 const stripeShippingCostSchema = z.object({ amount_total: z.number().int() }).nullable().optional();
 
-export const stripeCheckoutShippingSchema = z.object({
+const stripeTotalDetailsSchema = z.object({
+  amount_discount: z.number().int().nullable().optional(),
+  amount_shipping: z.number().int().nullable().optional(),
+}).nullable().optional();
+
+const stripeCheckoutShippingSchema = z.object({
   collected_information: stripeCollectedInformationSchema,
   shipping_details: stripeShippingDetailsSchema,
+  shipping: stripeShippingDetailsSchema,
   customer_details: z.object({ phone: stripeNullableText }).nullable().optional(),
   shipping_cost: stripeShippingCostSchema,
+  total_details: stripeTotalDetailsSchema,
 });
 
 /**
- * Stripe API versions before 2025-03-31.basil put the delivery address in the
- * session's top-level `shipping_details`; tenant webhook endpoints are not
- * pinned to an API version, so both locations have to be read.
+ * Tenant webhook endpoints registered before the API version was pinned render
+ * events with the account's default version, so a Checkout Session can carry
+ * its delivery in any of three places: `collected_information.shipping_details`
+ * (2025-03-31.basil and later), `shipping_details` (2022-08-01 to basil) or
+ * `shipping` (before 2022-08-01). `shipping_cost` replaced the `shipping_rate`
+ * id in 2022-08-01; `total_details.amount_shipping` is present in every version
+ * and stands in for it once a delivery address was collected.
  */
-export const collectedShippingFromStripe = (
-  session: {
-    collected_information?: z.output<typeof stripeCollectedInformationSchema>;
-    shipping_details?: z.output<typeof stripeShippingDetailsSchema>;
-  },
-  phone: string | null,
-): CollectedShipping | null => {
-  const details = session.collected_information?.shipping_details ?? session.shipping_details ?? null;
-  return details === null ? null : {
-    name: details.name,
-    phone,
-    address: {
-      line1: details.address.line1,
-      line2: details.address.line2,
-      postalCode: details.address.postal_code,
-      city: details.address.city,
-      country: details.address.country,
-      state: details.address.state,
+export const checkoutShippingFromStripe = (
+  session: unknown,
+): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
+  const parsed = stripeCheckoutShippingSchema.safeParse(session);
+  if (!parsed.success) return { shipping: null, shippingCostCents: null };
+  const details = parsed.data.collected_information?.shipping_details ?? parsed.data.shipping_details ?? parsed.data.shipping ?? null;
+  const shippingCostCents = parsed.data.shipping_cost?.amount_total ?? null;
+  if (details === null) return { shipping: null, shippingCostCents };
+  return {
+    shipping: {
+      name: details.name,
+      phone: parsed.data.customer_details?.phone ?? details.phone,
+      address: {
+        line1: details.address.line1,
+        line2: details.address.line2,
+        postalCode: details.address.postal_code,
+        city: details.address.city,
+        country: details.address.country,
+        state: details.address.state,
+      },
     },
+    shippingCostCents: shippingCostCents ?? parsed.data.total_details?.amount_shipping ?? null,
   };
 };
 
@@ -125,11 +140,12 @@ export const stripeWebhookPayloadSchema = z.object({
   data: z.object({
     object: z.object({
       id: z.string().min(1),
+      collected_information: z.unknown().optional(),
+      shipping_details: z.unknown().optional(),
+      shipping: z.unknown().optional(),
+      shipping_cost: z.unknown().optional(),
       customer_email: z.string().email().nullable().optional(),
       customer_details: z.object({ email: z.string().email().nullable(), phone: stripeNullableText }).nullable().optional(),
-      collected_information: stripeCollectedInformationSchema,
-      shipping_details: stripeShippingDetailsSchema,
-      shipping_cost: stripeShippingCostSchema,
       metadata: z.record(z.string()).nullable().optional(),
       subscription: z.string().nullable().optional(),
       invoice: z.string().nullable().optional(),
@@ -140,10 +156,7 @@ export const stripeWebhookPayloadSchema = z.object({
       amount_refunded: z.number().int().nullable().optional(),
       refunded: z.boolean().nullable().optional(),
       payment_status: z.enum(['paid', 'unpaid', 'no_payment_required']).nullable().optional(),
-      total_details: z
-        .object({ amount_discount: z.number().int().nullable().optional() })
-        .nullable()
-        .optional(),
+      total_details: stripeTotalDetailsSchema,
       currency: z.string().nullable().optional(),
       period_end: z.number().nullable().optional(),
       cancel_at_period_end: z.boolean().optional(),

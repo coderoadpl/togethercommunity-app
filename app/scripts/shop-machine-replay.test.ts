@@ -245,12 +245,13 @@ describe('shop management key replay on a clean workspace', () => {
     expect(unwrapped(await catalog.getProductStock(draft.id)).stock).toMatchObject({ onHand: 20, reserved: 1 });
 
     const payload = JSON.stringify({
-      id: 'evt_replay_paid', type: 'checkout.session.completed', livemode: true, created: Math.floor(Date.parse(now) / 1000),
+      id: 'evt_replay_paid', type: 'checkout.session.completed', api_version: '2020-03-02', livemode: true, created: Math.floor(Date.parse(now) / 1000),
       data: { object: {
         id: checkout.sessionId, payment_status: 'paid', amount_total: 6400, payment_intent: 'pi_replay_paid',
-        customer_details: { email: buyerEmail, phone: '+48500000000' },
-        collected_information: { shipping_details: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } } },
-        shipping_cost: { amount_total: 1500 },
+        customer_details: { email: buyerEmail, phone: '+48500000000', tax_exempt: 'none', tax_ids: [] },
+        shipping: { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } },
+        shipping_rate: 'shr_replay_courier',
+        total_details: { amount_discount: 0, amount_shipping: 1500, amount_tax: 0 },
         metadata: {
           tenantId: 'acme', productId: draft.id, priceId: price.id, memberEmail: buyerEmail, language: 'en',
           checkoutSnapshotId: checkout.input.checkoutSnapshotId ?? '', checkoutConsentCaptureId: checkout.input.checkoutConsentCaptureId ?? '',

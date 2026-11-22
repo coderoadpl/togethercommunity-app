@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
   allocateOrderLineGross,
-  collectedShippingFromStripe,
+  checkoutShippingFromStripe,
   err,
   internal,
   ok,
@@ -3856,19 +3856,23 @@ describe('shipped checkout fulfilment', () => {
     expect(h.warnings).toHaveLength(1);
   });
 
-  it('records the same delivery data from a pre-basil and a basil checkout session', async () => {
+  it('records the same delivery data from a pre-2022-08-01, a pre-basil and a basil checkout session', async () => {
     const stripeAddress = { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } };
     const recorded = await Promise.all([
-      { collected_information: { shipping_details: stripeAddress } },
-      { shipping_details: stripeAddress },
+      { collected_information: { shipping_details: stripeAddress }, shipping_cost: { amount_total: 1499 } },
+      { shipping_details: stripeAddress, shipping_cost: { amount_total: 1499 } },
+      { shipping: stripeAddress, shipping_rate: 'shr_1', total_details: { amount_discount: 0, amount_shipping: 1499, amount_tax: 0 } },
     ].map(async (session) => {
       const h = shippedPayment();
-      h.session.shipping = collectedShippingFromStripe(session, '+48600100200');
+      const delivery = checkoutShippingFromStripe({ ...session, customer_details: { phone: '+48600100200' } });
+      h.session.shipping = delivery.shipping;
+      h.session.shippingCostCents = delivery.shippingCostCents;
       expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
       return h.orders[0]?.shipping;
     }));
     expect(recorded[0]).toMatchObject({ address: { name: 'Jane Buyer', line1: 'Garden Street 5', postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: '+48600100200' });
     expect(recorded[1]).toEqual(recorded[0]);
+    expect(recorded[2]).toEqual(recorded[0]);
   });
 
   it('never revokes a grant for the shipping line after a full refund', async () => {

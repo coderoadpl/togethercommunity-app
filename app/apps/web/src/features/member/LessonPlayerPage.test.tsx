@@ -194,6 +194,60 @@ const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = fa
   return renderWithProviders(page);
 };
 
+const discussionPost = (id: string, body: string): DiscussionPost => ({
+  id,
+  tenantId: 't1',
+  contextKind: 'lesson',
+  contextId: 'l1',
+  parentPostId: null,
+  rootPostId: id,
+  isOwn: false,
+  authorDisplay: 'Olivia Author',
+  authorIsStaff: false,
+  authorAvatarUrl: null,
+  body,
+  bodyFormat: 'plain',
+  bodyHtml: body,
+  bodyPlainText: body,
+  createdAt: '2026-08-15T08:00:00.000Z',
+  editedAt: null,
+  deletedAt: null,
+  pinnedAt: null,
+  replies: [],
+  replyCount: 0,
+});
+
+const renderLessonRoute = async (initialEntry: string) => {
+  const rootRoute = createRootRoute();
+  const LessonRouteComponent = () => {
+    const params = useParams({ strict: false });
+    const { thread } = useSearch({ strict: false });
+    return (
+      <LessonPlayerPage
+        courseId={params.courseId ?? ''}
+        lessonId={params.lessonId ?? ''}
+        threadRootPostId={thread ?? null}
+      />
+    );
+  };
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    validateSearch: (search: Record<string, unknown>): { thread?: string } =>
+      typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
+    component: LessonRouteComponent,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([lessonRoute]),
+    history: createMemoryHistory({
+      initialEntries: [initialEntry],
+    }),
+  });
+  await router.load();
+  renderWithProviders(<RouterProvider router={router} />);
+  return router;
+};
+
 describe('LessonPlayerPage', () => {
   afterEach(() => {
     window.history.replaceState(null, '', '/');
@@ -2533,28 +2587,6 @@ describe('LessonPlayerPage', () => {
   });
   it('focuses the thread named by the search param and clears it on exit', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const post = (id: string, body: string): DiscussionPost => ({
-      id,
-      tenantId: 't1',
-      contextKind: 'lesson',
-      contextId: 'l1',
-      parentPostId: null,
-      rootPostId: id,
-      isOwn: false,
-      authorDisplay: 'Olivia Author',
-      authorIsStaff: false,
-      authorAvatarUrl: null,
-      body,
-      bodyFormat: 'plain',
-      bodyHtml: body,
-      bodyPlainText: body,
-      createdAt: '2026-08-15T08:00:00.000Z',
-      editedAt: null,
-      deletedAt: null,
-      pinnedAt: null,
-      replies: [],
-      replyCount: 0,
-    });
     server.use(
       okLesson(allBlocks),
       okStructure(),
@@ -2564,7 +2596,7 @@ describe('LessonPlayerPage', () => {
           ok: true,
           data: {
             discussion: {
-              threads: [post('t1', 'Question about hammocks'), post('t2', 'Question about panels')],
+              threads: [discussionPost('t1', 'Question about hammocks'), discussionPost('t2', 'Question about panels')],
               nextCursor: null,
               viewerSubscriptions: {},
             },
@@ -2574,38 +2606,12 @@ describe('LessonPlayerPage', () => {
       http.get('/api/discussion/threads/:postId', ({ params, request }) => {
         expect(new URL(request.url).searchParams.get('contextKind')).toBe('lesson');
         return params.postId === 't1'
-          ? HttpResponse.json({ ok: true, data: { discussion: { threads: [post('t1', 'Question about hammocks')], nextCursor: null, viewerSubscriptions: {} } } })
+          ? HttpResponse.json({ ok: true, data: { discussion: { threads: [discussionPost('t1', 'Question about hammocks')], nextCursor: null, viewerSubscriptions: {} } } })
           : HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 });
       }),
     );
 
-    const rootRoute = createRootRoute();
-    const LessonRouteComponent = () => {
-      const params = useParams({ strict: false });
-      const { thread } = useSearch({ strict: false });
-      return (
-        <LessonPlayerPage
-          courseId={params.courseId ?? ''}
-          lessonId={params.lessonId ?? ''}
-          threadRootPostId={thread ?? null}
-        />
-      );
-    };
-    const lessonRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: '/my/courses/$courseId/lessons/$lessonId',
-      validateSearch: (search: Record<string, unknown>): { thread?: string } =>
-        typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
-      component: LessonRouteComponent,
-    });
-    const router = createRouter({
-      routeTree: rootRoute.addChildren([lessonRoute]),
-      history: createMemoryHistory({
-        initialEntries: ['/my/courses/course-1/lessons/l1?thread=t1'],
-      }),
-    });
-    await router.load();
-    renderWithProviders(<RouterProvider router={router} />);
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
 
     const subthread = await screen.findByTestId('discussion-subthread-t1');
     expect(subthread).toHaveTextContent('Question about hammocks');
@@ -2621,5 +2627,44 @@ describe('LessonPlayerPage', () => {
       'Question about panels',
     );
     await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+  });
+
+  it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
+    const thread = discussionPost('t1', 'Question about hammocks');
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/discussion/threads/:postId', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/posts/search', () =>
+        HttpResponse.json({ ok: true, data: { hits: [{ post: thread, lessonId: 'l1', snippet: 'Question about hammocks' }] } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1');
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'hammocks');
+    await user.click(await screen.findByTestId('search-hit-link-t1'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe('?thread=t1'));
+    expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('search-hit-link-t1'));
+    expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
+    router.history.back();
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+
+    await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
+    await waitFor(() => expect(screen.getByTestId('discussion-search-input')).toHaveValue(''));
   });
 });

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Box, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { createLink } from '@tanstack/react-router';
@@ -53,10 +53,9 @@ const ThreadHitLink = ({ place, rootPostId, testId, label, children }: { place: 
   );
 };
 
-const LessonDiscussionSearch = ({ place }: { place: LessonPlace }) => {
+const LessonDiscussionSearch = ({ place, term, onTermChange }: { place: LessonPlace; term: string; onTermChange: (term: string) => void }) => {
   const { lessonId } = place;
   const t = useTranslations();
-  const [term, setTerm] = useState('');
   const debounced = useDebouncedValue(term).trim();
   const enabled = debounced.length >= MIN_SEARCH_LENGTH;
   const search = useQuery({
@@ -71,7 +70,7 @@ const LessonDiscussionSearch = ({ place }: { place: LessonPlace }) => {
         size="small"
         label={t.discussion.searchLabel}
         value={term}
-        onChange={(event) => setTerm(event.target.value)}
+        onChange={(event) => onTermChange(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': 'discussion-search-input' } }}
       />
       {enabled && (
@@ -117,11 +116,15 @@ export const DiscussionSection = ({
   courseId,
   lessonId,
   editionNumber,
+  searchTerm,
+  onSearchTermChange,
   focusThread,
 }: {
   courseId: string;
   lessonId: string;
   editionNumber?: string | undefined;
+  searchTerm: string;
+  onSearchTermChange: (term: string) => void;
   focusThread?: { rootPostId: string; onExit: () => void };
 }) => {
   const t = useTranslations();
@@ -130,7 +133,7 @@ export const DiscussionSection = ({
       context={{ contextKind: 'lesson', contextId: lessonId }}
       heading={t.discussion.heading}
       eyebrow={t.discussion.eyebrow}
-      search={<LessonDiscussionSearch place={{ courseId, lessonId, editionNumber }} />}
+      search={<LessonDiscussionSearch place={{ courseId, lessonId, editionNumber }} term={searchTerm} onTermChange={onSearchTermChange} />}
       {...(focusThread === undefined
         ? {}
         : { focus: { ...focusThread, exitLabel: t.discussion.backToAll } })}

@@ -505,6 +505,10 @@ export const LessonPlayerPage = ({
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
+  const discussionScope = editionNumber === undefined ? lessonId : `${lessonId}/${editionNumber}`;
+  const [discussionSearch, setDiscussionSearch] = useState({ scope: discussionScope, term: '' });
+  const discussionSearchTerm = discussionSearch.scope === discussionScope ? discussionSearch.term : '';
+
   const [continuing, setContinuing] = useState(false);
   const [completionIntent, setCompletionIntent] = useState<'mark' | 'continue' | 'unmark'>('mark');
   const footerBarRef = useRef<HTMLElement | null>(null);
@@ -963,6 +967,8 @@ export const LessonPlayerPage = ({
             courseId={courseId}
             lessonId={lessonId}
             editionNumber={editionNumber}
+            searchTerm={discussionSearchTerm}
+            onSearchTermChange={(term) => setDiscussionSearch({ scope: discussionScope, term })}
             {...(threadRootPostId === null
               ? {}
               : {

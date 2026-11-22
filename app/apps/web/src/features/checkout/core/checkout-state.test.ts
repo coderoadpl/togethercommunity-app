@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicShippingRate } from '#core/domain/index.js';
 
-import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerCheckFrom, lockerRefusal, parseGeowidgetPoint, pickedPickupPoint, reduceCheckoutState, selectDelivery, typedLockerCheck } from './checkout-state.js';
+import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerCheckFrom, lockerRefusal, lockerRejection, parseGeowidgetPoint, pickedPickupPoint, reduceCheckoutState, selectDelivery, submitLockerCheckDue, typedLockerCheck } from './checkout-state.js';
 
 const rates: PublicShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
@@ -139,6 +139,43 @@ describe('typed locker code check', () => {
   it('ignores a verdict for a code the buyer has already replaced', () => {
     const state = typed('waw01m');
     expect(reduceCheckoutState(state, { type: 'lockerCheckChanged', check: { status: 'unavailable', code: 'KRA14A' } })).toBe(state);
+  });
+
+  it('drops a check in progress once the code changes, so retyping the code shows no stale checking line', () => {
+    const checking = reduceCheckoutState(typed('waw01m'), { type: 'lockerCheckChanged', check: { status: 'checking', code: 'WAW01M' } });
+    const edited = reduceCheckoutState(checking, { type: 'pickupPointCodeChanged', code: 'waw01' });
+    expect(edited.lockerCheck).toBeNull();
+    const retyped = reduceCheckoutState(edited, { type: 'pickupPointCodeChanged', code: 'waw01m' });
+    expect(typedLockerCheck(retyped)).toBeNull();
+    const answered = reduceCheckoutState(retyped, { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', {
+      status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null,
+    }) });
+    expect(typedLockerCheck(answered)).toMatchObject({ status: 'found', code: 'WAW01M' });
+  });
+
+  it('honours a server refusal of a map choice until the buyer chooses another point', () => {
+    const point = { code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' };
+    const picked = reduceCheckoutState(typed(''), { type: 'pickupPointSelected', point });
+    expect(lockerCheckDue(picked)).toBeNull();
+    const refusal = lockerRefusal('KRA010', { pickupPointReason: 'not_operating' });
+    if (refusal === null) throw new Error('Expected a refusal');
+    const refused = reduceCheckoutState(picked, { type: 'lockerCheckChanged', check: refusal });
+    expect(typedLockerCheck(refused)).toBeNull();
+    expect(lockerRejection(refused)).toMatchObject({ code: 'KRA010', reason: 'not_operating' });
+    expect(selectDelivery(refused, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'pickup_point_rejected' });
+    expect(selectDelivery(reduceCheckoutState(refused, { type: 'pickupPointSelected', point }), { required: true, rates }))
+      .toEqual({ status: 'incomplete', missing: 'pickup_point_rejected' });
+    const changed = reduceCheckoutState(refused, { type: 'pickupPointSelected', point: { code: 'KRA011', name: null, address: null } });
+    expect(lockerRejection(changed)).toBeNull();
+    expect(selectDelivery(changed, { required: true, rates })).toMatchObject({ status: 'ready' });
+  });
+
+  it('runs a submit-time check only when the chosen delivery needs a locker', () => {
+    const checking = reduceCheckoutState(typed('missing1'), { type: 'lockerCheckChanged', check: { status: 'checking', code: 'MISSING1' } });
+    expect(submitLockerCheckDue(checking, selectDelivery(checking, { required: true, rates }))).toBe('MISSING1');
+    const courier = reduceCheckoutState(checking, { type: 'shippingRateSelected', rateId: 'courier' });
+    expect(lockerCheckDue(courier)).toBe('MISSING1');
+    expect(submitLockerCheckDue(courier, selectDelivery(courier, { required: true, rates }))).toBeNull();
   });
 
   it('turns an unusable point and a server refusal into a refusal reason', () => {

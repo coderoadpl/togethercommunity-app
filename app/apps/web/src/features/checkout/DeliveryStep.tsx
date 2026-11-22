@@ -27,6 +27,7 @@ import {
   acceptsPoint,
   closedLockerPicker,
   lockerEntry,
+  lockerRejection,
   pickedPickupPoint,
   reduceLockerPicker,
   typedLockerCheck,
@@ -55,6 +56,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   const check = typedLockerCheck(state);
   const codeRejected = !codeInvalid && check?.status === 'rejected';
   const picked = pickedPickupPoint(state);
+  const pickedRejection = picked === null ? null : lockerRejection(state);
   const [picker, sendPicker] = useReducer(reduceLockerPicker, closedLockerPicker);
   const [codeShown, setCodeShown] = useState(() => state.pickupPointCode !== '' && picked === null);
   const entry = lockerEntry(geowidget, picker);
@@ -143,9 +145,12 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   ) : (
     <CheckoutLockerChosen>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
-        <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
+        <CheckoutLockerChosenCaption variant="caption" color="text.secondary">{pickedRejection === null ? <CheckIcon /> : null}{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
         <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
+        {pickedRejection === null ? null : (
+          <Typography variant="body2" color="error" data-testid="checkout-pickup-point-selected-rejected">{t.shipping.lockerRejected[pickedRejection.reason]}</Typography>
+        )}
       </Box>
       <Button
         ref={opener}

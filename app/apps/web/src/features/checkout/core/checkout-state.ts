@@ -31,6 +31,9 @@ export const createCheckoutState = (couponCode: string): CheckoutState => ({
   lockerCheck: null,
 });
 
+const lockerCheckFor = (check: LockerCheck | null, code: string): LockerCheck | null =>
+  check !== null && check.code === normalizePickupPointCode(code) ? check : null;
+
 export const reduceCheckoutState = (
   state: CheckoutState,
   event: CheckoutEvent,
@@ -45,9 +48,9 @@ export const reduceCheckoutState = (
     case 'shippingRateSelected':
       return { ...state, shippingRateId: event.rateId };
     case 'pickupPointCodeChanged':
-      return { ...state, pickupPointCode: event.code.toUpperCase() };
+      return { ...state, pickupPointCode: event.code.toUpperCase(), lockerCheck: lockerCheckFor(state.lockerCheck, event.code) };
     case 'pickupPointSelected':
-      return { ...state, pickupPointCode: event.point.code, pickupPoint: event.point };
+      return { ...state, pickupPointCode: event.point.code, pickupPoint: event.point, lockerCheck: lockerCheckFor(state.lockerCheck, event.point.code) };
     case 'lockerCheckChanged':
       return event.check.code === normalizePickupPointCode(state.pickupPointCode) ? { ...state, lockerCheck: event.check } : state;
   }
@@ -60,6 +63,9 @@ export const typedLockerCheck = (state: CheckoutState): LockerCheck | null =>
   pickedPickupPoint(state) === null && state.lockerCheck !== null && state.lockerCheck.code === normalizePickupPointCode(state.pickupPointCode)
     ? state.lockerCheck
     : null;
+
+export const lockerRejection = (state: CheckoutState): Extract<LockerCheck, { status: 'rejected' }> | null =>
+  state.lockerCheck?.status === 'rejected' && state.lockerCheck.code === normalizePickupPointCode(state.pickupPointCode) ? state.lockerCheck : null;
 
 export const lockerCheckDue = (state: CheckoutState): string | null => {
   if (pickedPickupPoint(state) !== null || !pickupPointCodeValid(state.pickupPointCode)) return null;
@@ -95,7 +101,7 @@ export const selectDelivery = (
   if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
   const code = normalizePickupPointCode(state.pickupPointCode);
   const picked = pickedPickupPoint(state);
-  if (typedLockerCheck(state)?.status === 'rejected') return { status: 'incomplete', missing: 'pickup_point_rejected' };
+  if (lockerRejection(state) !== null) return { status: 'incomplete', missing: 'pickup_point_rejected' };
   return {
     status: 'ready',
     shipping: {
@@ -109,6 +115,12 @@ export const selectDelivery = (
     },
   };
 };
+
+export const deliveryPickupPointCode = (delivery: DeliverySelection): string | null =>
+  delivery.status === 'ready' ? delivery.shipping.pickupPoint?.code ?? null : null;
+
+export const submitLockerCheckDue = (state: CheckoutState, delivery: DeliverySelection): string | null =>
+  deliveryPickupPointCode(delivery) === null ? null : lockerCheckDue(state);
 
 export const parseGeowidgetPoint = (detail: unknown): PickedPickupPoint | null => {
   const parsed = inpostGeowidgetPointSchema.safeParse(detail);

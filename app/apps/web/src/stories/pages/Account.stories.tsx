@@ -38,7 +38,10 @@ const scenarioStory = (scenario: string, colorScheme: 'light' | 'dark', viewport
   globals: { viewport: { value: viewport } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    if (scenario === 'SecuritySessionsExpanded') await userEvent.click(await canvas.findByTestId('active-sessions-disclosure'));
+    if (scenario === 'SecuritySessionsExpanded') {
+      const disclosure = await canvas.findByTestId('active-sessions-disclosure');
+      if (disclosure.getAttribute('aria-expanded') !== 'true') await userEvent.click(disclosure);
+    }
     if (scenario === 'SecurityTwoFactorSetup') {
       await userEvent.click(await canvas.findByTestId('enable-2fa-open'));
       const dialog = within(canvasElement.ownerDocument.body);

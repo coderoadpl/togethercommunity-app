@@ -4,7 +4,8 @@ A change proposal is a write that a machine asked for and the workspace owner
 has not yet decided on. It comes from a [shop management key](shop-management-keys.md)
 created in **propose mode**: such a key reads what its read scopes allow, and
 every catalogue, sales-link and settings write it sends is stored as a
-proposal instead of changing the live shop. The owner reads each proposal with
+proposal instead of changing the live shop (download files aside: it cannot
+write those yet). The owner reads each proposal with
 a field-level before/after and approves or rejects it. An approval applies
 exactly the effect the owner saw, or applies nothing.
 
@@ -50,7 +51,7 @@ A proposal stores two things:
 
 The dry run executes the live use-case with the rights of the owner who issued
 the key, inside a transaction that always rolls back. What a key may propose is
-bounded by the operations registry (the ten operations below) and the
+bounded by the operations registry (the fourteen operations below) and the
 [route classes](#route-classes), not by the context of the dry run, which
 carries the owner's identity and no capability list of the key.
 
@@ -183,7 +184,8 @@ treats it as described under [Unknown operation](#approval).
 Every shop route that writes declares one class for a propose-mode key in
 `apps/server/src/shop-machine-auth.ts`; the server refuses to start when a
 shop write route declares none, and a test pins the class of every registered
-shop route. A direct-mode key is unaffected on every route.
+shop route. A read route may declare the class `refuse` as well. A direct-mode
+key is unaffected on every route.
 
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
@@ -191,9 +193,13 @@ shop route. A direct-mode key is unaffected on every route.
 | `direct` | branding and product cover image upload and completion | the handler runs and keeps the image private until approval ([Images](#images)) |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
+| `refuse`, reason `not-in-release` | the [download file](shop-management-keys.md#download-files) routes: upload, completion, copy, the staged file list and discard (`/api/m2m/shop/downloads/*`), and the attach, replace and remove routes (`POST /api/m2m/shop/products/downloads`, `…/replace`, `…/remove`) | `403 forbidden`, with the message that product download files are not available to a propose-mode key yet |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
 
-Reads (`GET`) behave as before for both modes. The order on a write route is
+Reads (`GET`) behave as before for both modes, except the staged download file
+list (`GET /api/m2m/shop/downloads/staged`, class `refuse`); a product's file
+list (`GET /api/m2m/shop/products/:productId/downloads`) is an ordinary read.
+The order on a write route is
 unchanged: authenticate the key and its issuer, apply the rate limit and the
 scope, write the key history `request` row, then dispatch by class. A proposal
 therefore leaves a `request` row in the [key history](shop-management-keys.md#key-history)
@@ -1184,8 +1190,13 @@ where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{
 
 ## Not yet available
 
-- **Other files.** Download files of digital products and images other than
-  product covers and branding (course covers, avatars) cannot be proposed.
+- **Download files.** Download files of digital products cannot be proposed:
+  every [download file route](shop-management-keys.md#download-files) except
+  the product file list refuses a propose-mode key with `403` (class `refuse`,
+  reason `not-in-release`), and only a direct-mode key stages and attaches
+  files, live.
+- **Other images.** Images other than product covers and branding (course
+  covers, avatars) cannot be proposed.
 - **Checkout appearance images.** A propose-mode key cannot propose a new
   `checkoutAppearance.logoUrl` or `checkoutAppearance.iconUrl`: a
   `settings.update` that sets either to an address other than the live one is

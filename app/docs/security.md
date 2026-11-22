@@ -522,6 +522,38 @@ scopes on every shop key.
   `shop_management_key_rate_limit_buckets` whose rows go with their key. A request refused by the minute
   bucket does not consume the day bucket, and a day refusal returns its minute
   unit.
+- **Download files.** A direct-mode `shop:catalog:write` key holds
+  `product:write`, the capability every download file write checks, so every
+  existing direct-mode key with that scope now also reaches the files of every
+  digital product of its workspace: it stages files and attaches, replaces and
+  removes file versions live, files the owner uploaded included, and buyers
+  with access receive an attached file on their next download. Its capability
+  list did not change, and a key still lives at most 30 days. No key reads
+  original bytes, in either mode: no shop route answers a signed `GET`, a
+  storage address or file content of a download file, the only presigned
+  request a key receives for one is the `PUT` to its own upload object under
+  `key-uploads/`, signed for the declared size, and a key duplicates a file only through
+  `POST /api/m2m/shop/downloads/copy`, a copy the storage makes, which the key
+  never downloads. A staged copy shows the key only its name, type, size and
+  source (product, file and version), never a fingerprint or any other fact
+  derived from the bytes. Completion copies an upload on the server to a
+  staged object only the server writes, with its metadata replaced
+  (`application/octet-stream`, `attachment`, `no-store`), hashes that copy
+  while streaming it and checks its size and its first bytes against the
+  declared type, one of an allow-list of eight; a second `PUT` through the
+  still valid URL changes nothing staged. Exactly one request completes an
+  upload: completion first claims its record in a committed transaction, and a
+  concurrent completion answers `409`. A key attaches only files it staged
+  itself, and no route takes a storage key as input. Per-file, per-key,
+  per-workspace and per-window limits are reserved from database rows when an
+  upload or copy starts, under the workspace's staging lock and then the key's;
+  every path that deletes a staged or upload object holds the row that owns it
+  until the storage answers, and owed deletions are retried by the minute sweep
+  ([Download file prefixes](storage.md#download-file-prefixes)). A propose-mode
+  key is refused on every download file route except the product file list in
+  this release (route class `refuse`, reason `not-in-release`), so it can
+  neither stage bytes nor change a file. See
+  [Download files](shop-management-keys.md#download-files).
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
   `proposal:submit:settings`, each with `proposal:asset:upload` for images
@@ -542,7 +574,8 @@ scopes on every shop key.
   [change proposal](change-proposals.md) instead of running their handler,
   the four product cover and branding image routes (class `direct`) upload
   into the key's private quarantine, every other write route (fulfilment,
-  integrations) answers `403`, and a test drives a propose-mode key over every
+  integrations, the download file routes) and the staged download file list
+  answer `403`, and a test drives a propose-mode key over every
   registered shop route and asserts that no live row changed and no object
   appeared under the public image prefix. A quarantined image is stored under
   `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
@@ -855,6 +888,8 @@ checks recorded size before fetching, enforces the storage Content-Length
 ceiling before reading a body, and writes the registry before sending a file
 or signed redirect. Personalised files are private, `no-store` responses.
 Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).
+A shop management key never reaches this path, which needs a member, and no
+shop route answers a signed link or the content of a product file.
 
 ## InPost ShipX credentials
 

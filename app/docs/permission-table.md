@@ -30,7 +30,9 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key. The four upload use-cases of `change-proposal-images.ts` authorize `proposal:asset:upload` with the submission capability of their family, `proposal:submit:catalog` for a product cover and `proposal:submit:settings` for a branding image; the table lists the first. They write only a private quarantined copy, which an owner approval publishes. `change-proposal-images.ts#getChangeProposalImage` needs `proposal:read` and applies the same owner-session guard.
 
-Closed capability count: 144. Route rows: 537. Exported `Ctx` use-case rows: 406.
+The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key would need `proposal:asset:upload` with `proposal:submit:catalog`. In this release every `/api/m2m/shop/downloads` route refuses a propose-mode key before its handler, so the table lists `product:write` and the direct-mode key alone. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read`. The attach and removal use-cases of `product-download-files.ts` need `product:write` and are reached only through the direct-mode shop routes; the attach also refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which no route does in this release.
+
+Closed capability count: 144. Route rows: 546. Exported `Ctx` use-case rows: 413.
 
 ## Human-readable diff
 
@@ -227,6 +229,15 @@ no changes
 | `POST /api/m2m/shop/sales-links` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/sales-links/:id` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `DELETE /api/m2m/shop/sales-links/:id` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/downloads/upload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/downloads/complete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/downloads/copy` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/downloads/staged` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `DELETE /api/m2m/shop/downloads/staged/:id` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `GET /api/m2m/shop/products/:productId/downloads` | product:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/downloads` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/downloads/replace` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/downloads/remove` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `GET /api/m2m/shop/integrations/secrets` | tenant:secret:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/integrations/secrets` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `DELETE /api/m2m/shop/integrations/secrets/:key` | tenant:secret:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
@@ -712,6 +723,11 @@ no changes
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
+| `key-download-files.ts#beginKeyDownloadUpload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/key-download-files.ts authorization call |
+| `key-download-files.ts#completeKeyDownloadUpload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/key-download-files.ts authorization call |
+| `key-download-files.ts#copyKeyDownloadFile` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/key-download-files.ts authorization call |
+| `key-download-files.ts#listKeyDownloadFiles` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/key-download-files.ts authorization call |
+| `key-download-files.ts#discardKeyDownloadFile` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/key-download-files.ts authorization call |
 | `lesson-attachments.ts#beginLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-attachments.ts#completeLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-attachments.ts#listLessonAttachments` | course:read | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
@@ -885,6 +901,8 @@ no changes
 | `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
 | `probe-stripe-permissions.ts#probeStripePermissions` | tenant:secret:write | owner | owner | yes | core/server/usecases/probe-stripe-permissions.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
+| `product-download-files.ts#attachStagedProductDownload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/product-download-files.ts authorization call |
+| `product-download-files.ts#removeProductDownloadFile` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | core/server/usecases/product-download-files.ts authorization call |
 | `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
@@ -996,13 +1014,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1304` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1306` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:215` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1290` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1292` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1314` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
 | api-key | `apps/server/src/internal-app.ts:1328` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1342` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1872` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1872` | `(identity.staffRole \|\| identity.memberId)` |
+| staff-role | `apps/server/src/internal-app.ts:1858` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1858` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1013,7 +1031,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:679` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:114` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:116` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |

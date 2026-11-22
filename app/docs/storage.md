@@ -49,16 +49,41 @@ Product files live under the workspace's private download prefix:
 | `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. Completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old, a second `PUT` through a still valid URL included |
 | `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never while staged; an attached file is served like any other product file |
 
-The server-side copy into `key-files/` replaces the object metadata with
+A key writes only its own `key-uploads/` object, through the presigned `PUT`
+of its upload ([Download files](shop-management-keys.md#download-files)).
+Only the server writes under `key-files/`: the completion of an upload and a
+key's copy of a ready product file write the staged object with the
+workspace's storage credentials, which no key ever receives. The server-side
+copy into `key-files/` replaces the object metadata with
 `application/octet-stream`, `attachment` and `no-store`, so no header the key
-sent with its upload survives. Every staged object is owned by a database row
-(an upload or copy record, a staged file, or an owed deletion); the minute
-sweep deletes what those rows give up, and the storage orphan report counts
-the objects they name as pending. Deleting a file version or a draft product whose
-file object is under `key-files/`, or discarding a staged file, records the
-object's deletion in the same transaction, and the sweep retries a storage
-delete that failed. Files uploaded in the product
-editor are deleted as before: the object is deleted once after its row.
+sent with its upload survives.
+
+Who deletes them:
+
+- a `key-uploads/` object: the completion that copied it, also when its
+  checks fail, and the minute sweep once its upload record is 20 minutes old;
+- a `key-files/` object that is still staged: the completion or copy that wrote
+  it when that attempt fails, the key's discard, and the minute sweep 7 days
+  after staging or once the key is revoked, expired or purged;
+- a `key-files/` object that is attached: removing that file version (by a key
+  or in the product editor) or deleting the draft product.
+
+Every staged or upload object is owned by a database row (an upload or copy
+record, a staged file, or an owed deletion), and every path that deletes one
+holds that row until the storage answers, so an attach that takes the object
+over in the meantime is never undone. Removing a file version or deleting a
+draft product whose file object is under `key-files/`, and discarding a staged
+file, record the object's deletion in `change_proposal_download_deletions` in
+the same transaction. After a key's removal or discard the deletion that
+follows removes that row; after a removal in the product editor or a draft
+deletion the object is deleted once after its row as before, and the minute
+sweep deletes it once more and removes the row. The sweep retries what a
+failed storage delete left, longest waiting first. The storage orphan report
+counts the objects these rows name (staged objects, the upload object and the
+planned staged object of an open record, owed deletions) as pending, and
+classifies an attached object like any other product file. Files uploaded in
+the product editor are deleted as before: the object is deleted once after its
+row.
 
 ## File versions
 
@@ -83,7 +108,7 @@ published but has no downloadable file until another upload completes. A new
 publication still requires a ready file or another supported delivery method.
 
 New versions do not automatically email buyers. The publisher can send a
-campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI currently has no product-file upload command.
+campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI has no product-file upload command for an owner session; a direct-mode shop management key uploads and attaches files with `shop files upload` ([Download files](shop-management-keys.md#download-files)).
 
 The additive migration backfills existing files as version 1 in their own
 lineages. Pending replacements retain their target until completion; retries of

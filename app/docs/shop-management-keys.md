@@ -28,6 +28,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
 | Product cover image and sales-link routes (below) | Available |
+| Download files of digital products: staging, server-side copy and live attach, replace and remove for a direct-mode key ([below](#download-files)); refused to a propose-mode key in this release | Available |
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
@@ -66,7 +67,7 @@ access.
 | Scope | Grants on the shop routes |
 |---|---|
 | `shop:catalog:read` | Read products, prices, stock and sales links |
-| `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices, stock, covers and sales links |
+| `shop:catalog:write` | Create, edit, publish and delete product drafts; manage prices, stock, covers and sales links; stage download files and attach, replace and remove the files of digital products |
 | `shop:orders:read` | Read and export orders |
 | `shop:fulfilment:write` | Fulfil orders, including creating carrier shipments (a paid action at the carrier) |
 | `shop:settings:read` | Read shop settings |
@@ -159,7 +160,9 @@ A key is created in one of two modes, fixed for its lifetime:
   The four product cover and branding image upload and completion routes run
   for it too, but keep the image in a private quarantine until an approval
   publishes it (below). Every other write route (order fulfilment,
-  integrations) answers `403`. Reads behave as on a direct key.
+  integrations, the [download file](#download-files) routes) answers `403`.
+  Reads behave as on a direct key, except the list of staged download files,
+  which also answers `403`.
 
 ```bash
 pnpm --silent run cli api-key shop-management create Catalogue agent \
@@ -548,6 +551,168 @@ commands accept `--json-file -` for stdin. As with the other shop commands,
 `--api-key-env <name>` selects the environment variable holding the key; a
 stored session is never used.
 
+## Download files
+
+A direct-mode key with `shop:catalog:write` puts files on a digital-download
+product without an owner session, in two steps: it **stages** a file, by
+uploading it or by copying a ready file of another product on the server, and
+then **attaches** it live, as a new file of a product or as the next version of
+one of its files. It also removes file versions. Buyers with access to the
+product get an attached file on their next download, personalised like any
+other file ([File versions](storage.md#file-versions)). No key reads a file's
+bytes: no route answers a download link, a storage address or file content,
+and duplicating a file is a copy made by the storage itself.
+
+A propose-mode key is refused with `403` on every route of this section except
+the product file list, before the route's handler runs, with the message `A
+propose-mode shop management key cannot call this route (not-in-release):
+product download files are not available to a propose-mode key yet`. Download
+files cannot be proposed in this release
+([Not yet available](change-proposals.md#not-yet-available)).
+
+| Method and path | Scope | What it does |
+|---|---|---|
+| `GET /api/m2m/shop/products/:productId/downloads` | `shop:catalog:read` | lists the product's files as `GET /api/products/:productId/downloads` lists them to the owner |
+| `POST /api/m2m/shop/downloads/upload` | `shop:catalog:write` | starts an upload: `{ fileName, contentType, sizeBytes }` |
+| `POST /api/m2m/shop/downloads/complete` | `shop:catalog:write` | completes it: `{ uploadId }` |
+| `POST /api/m2m/shop/downloads/copy` | `shop:catalog:write`, and `shop:catalog:read` | stages a server-side copy of a ready file: `{ productId, assetId }` |
+| `GET /api/m2m/shop/downloads/staged` | `shop:catalog:write` | lists the key's staged files, oldest first |
+| `DELETE /api/m2m/shop/downloads/staged/:id` | `shop:catalog:write` | discards a staged file and deletes its object |
+| `POST /api/m2m/shop/products/downloads` | `shop:catalog:write` | attaches a staged file as a new file: `{ productId, stagedFileId, versionNote? }` |
+| `POST /api/m2m/shop/products/downloads/replace` | `shop:catalog:write` | attaches a staged file as the next version of a ready file: `{ productId, replacesAssetId, stagedFileId, versionNote? }` |
+| `POST /api/m2m/shop/products/downloads/remove` | `shop:catalog:write` | removes one file version: `{ productId, assetId }` |
+
+**Upload.** The start checks the name, the type and the size, reserves the
+file's share of the limits (below) and answers
+`{ "upload": { "id", "url", "headers", "expiresAt" } }`: a presigned `PUT`,
+valid for 15 minutes and signed for exactly `sizeBytes`, to a private object
+only this upload uses. Send the bytes there with exactly the given `headers`
+(`content-type` and `content-length`) and without the key, then complete
+within the same 15 minutes. Completion copies the object on the server to a
+staged object that only the server writes, streams that copy through SHA-256,
+checks that its size is the declared size and that its first bytes match the
+declared type, records the staged file and deletes the upload object. It
+answers `{ "file": … }`, the staged file: `id`, `fileName`, `contentType`,
+`sizeBytes`, `sha256`, `copiedFrom` (`null`), `createdAt` and `expiresAt`
+(7 days after staging). Bytes written to the upload URL after completion
+change nothing staged.
+
+Completing an upload that is already completed answers the same staged file
+again. Completion answers `409 conflict` while another completion of the same
+upload runs, after the 15 minutes and after a failed completion (start a new
+upload); `400 validation` when nothing was uploaded, when the object is
+smaller than declared or when its first bytes are not of the declared type;
+`503 integration_unavailable` when the storage does not answer in time or the
+object is larger than declared, which the signed `PUT` does not accept; and
+`404` for an upload of another key. A failed completion deletes the upload and
+its staged copy.
+
+**Types, names and size.** The type is one of `application/pdf` (the file
+starts with `%PDF-`), `application/epub+zip` (a ZIP whose first entry is the
+stored `mimetype` naming `application/epub+zip`), `application/zip`,
+`audio/mpeg` (an ID3 tag or an MPEG audio frame), `audio/mp4` and `video/mp4`
+(`ftyp` at offset 4), `image/png` and `image/jpeg`; any other type is refused
+with `400`. A file name has 1 to 255 characters after trimming and no control
+or bidirectional formatting characters. A key's file is at most 256 MiB (the
+product editor keeps its 1 GiB), so that one completion can copy and hash it
+within a single request.
+
+**Copy.** `downloads/copy` stages a copy of a ready file of a product of the
+same workspace, made by the storage; the bytes never pass through the server or
+the key. A file of another product or workspace, or one that is not ready,
+answers `404`; a source above 256 MiB, or with a type or name a key could not
+upload, answers `400`; nothing is staged then. The copy counts against the
+same limits as an upload. Its staged file shows the key the name, type, size
+and `copiedFrom` (`productId`, `assetId`, `versionNumber`), and `sha256` is
+`null`: a key never receives a fingerprint of an existing file.
+
+**Attach.** The new product file's id is the staged file's id and its object
+is the staged object; nothing is copied again. The product must be a digital
+download (`400` otherwise) of the key's workspace (`404`), the staged file must
+be one this key staged (`404` for another key's), and the product holds at
+most 100 file rows (`409`, cap `product_files`). With `replacesAssetId`, which
+must be a ready file of the product, the file joins that file's lineage as its
+next version and supersedes the previous latest version. An attached file is no
+longer listed as staged. The answer is `{ "asset": … }`, the same file
+metadata as the product file list.
+
+**Remove.** Removing deletes one version of any file of the product, a file the
+owner uploaded included, and promotes the newest remaining ready version of its
+lineage; buyers can no longer download the removed version. The answer is
+`{ "deleted": true }`. When the file's object was staged by a key, its deletion
+is recorded in the same transaction and the minute sweep retries a storage
+delete that failed ([Download file prefixes](storage.md#download-file-prefixes)).
+
+**Staged files.** A staged file that is not attached is deleted 7 days after it
+was staged, and once its key is revoked, expires or is purged; discarding it
+deletes it at once. An upload that is never completed is deleted by the same
+minute sweep 20 minutes after it started.
+
+**Limits.** Checked when an upload or a copy starts, under a workspace-wide
+lock taken before the key's own, so two keys cannot both take the last share.
+A refusal answers `409 conflict` with the cap in
+`error.details.changeProposalCap`:
+
+| Limit | Value | Cap |
+|---|---|---|
+| Staged files plus uploads and copies not completed yet, per key | 20 | `key_staged_files` |
+| Staged bytes per key | 2 GiB | `key_staged_bytes` |
+| Staged bytes per workspace, all keys together | 10 GiB | `workspace_staged_bytes` |
+| Uploads and copies started per key in 15 minutes | 20 | `key_file_uploads` |
+| Bytes of uploads and copies started per key in 24 hours | 10 GiB | `key_file_bytes_daily` |
+| File rows per product, checked when a file is attached | 100 | `product_files` |
+
+The byte limits count staged files, objects whose deletion is still owed, and
+the objects an upload or a copy may still own (its upload object and its
+staged copy, each at the declared size) until the minute sweep settles it, at
+the earliest 20 minutes after it started. The 24-hour limit counts every
+upload and copy started in the window, whatever became of it. When the
+workspace's staging lock is not free within its bound, the start answers
+`503 unavailable` with `Retry-After: 1` and reserves nothing.
+
+```bash
+curl -s -H "$KEY" -H "$JSON" -d '{"fileName":"workbook.pdf","contentType":"application/pdf","sizeBytes":<bytes>}' "$SHOP/downloads/upload" > file-upload.json
+curl -s -X PUT -H 'content-type: application/pdf' --data-binary @workbook.pdf "<upload url from file-upload.json>"
+curl -s -H "$KEY" -H "$JSON" -d '{"uploadId":"<upload id>"}' "$SHOP/downloads/complete"
+curl -s -H "$KEY" -H "$JSON" -d '{"productId":"<product-id>","stagedFileId":"<staged file id>"}' "$SHOP/products/downloads"
+curl -s -H "$KEY" "$SHOP/products/<product-id>/downloads"
+```
+
+The CLI runs the same steps:
+
+```bash
+pnpm --silent run cli --tenant acme shop files list <product-id>
+pnpm --silent run cli --tenant acme shop files upload <product-id> ./workbook.pdf
+pnpm --silent run cli --tenant acme shop files upload <product-id> ./workbook.pdf --replaces <asset-id> --note 'Second edition'
+pnpm --silent run cli --tenant acme shop files copy <source-product-id> <asset-id> <product-id>
+pnpm --silent run cli --tenant acme shop files remove <product-id> <asset-id>
+pnpm --silent run cli --tenant acme shop files staged
+pnpm --silent run cli --tenant acme shop files discard <staged-file-id>
+```
+
+`shop files upload` reads the product's file list first, so its key needs
+`shop:catalog:read` as well; an unknown product or one that is not a digital
+download fails before anything is uploaded. It takes the type from the file
+extension (`.pdf`, `.epub`, `.zip`, `.mp3`, `.m4a`, `.m4b`, `.mp4`, `.m4v`,
+`.png`, `.jpg`, `.jpeg`), streams the file from disk, completes the upload and
+attaches it; a failed upload or completion attaches nothing. When the attach
+itself is refused, the staged file stays and the error message names it and
+the command that discards it. `shop files copy` checks the target product the
+same way, copies on the server and attaches the copy to the target; both
+commands take `--note`. A cap refusal adds what to do next: discard staged
+files, wait for the window, or remove a file of the product. With a
+propose-mode key every `shop files` command except `list` prints the refusal;
+`upload` and `copy` print it after their product check, before anything is
+staged.
+
+The typed client exposes `listProductDownloads`, `stageProductDownload` (start,
+the storage `PUT` with the signed headers, completion; only the two API
+requests carry the key, and a `Blob` body such as one from `fs.openAsBlob` is
+streamed, not read into memory), `copyProductDownload`, `listStagedDownloads`,
+`discardStagedDownload`, `addProductDownload`, `replaceProductDownload` and
+`removeProductDownload`. They resolve to the live answers; none of them has a
+proposed outcome in this release.
+
 ## Order and fulfilment routes
 
 Each route reuses the query or body, response, validation and use-case of its
@@ -905,7 +1070,8 @@ Every JSON route answers the same envelope. A success is
 creation); a failure is `{ "ok": false, "error": { "code", "message",
 "details"? } }` with the status of its code. Parse `data` with the contract
 schemas in `core/contract` (`shopCatalogContracts`, `shopOrderContracts`,
-`shopSettingsContracts`, `shopAssetsContracts`, `shopIntegrationContracts`),
+`shopSettingsContracts`, `shopAssetsContracts`, `shopDownloadContracts`,
+`shopIntegrationContracts`),
 or use `createShopManagementClient`, which does that and returns a
 `Result`. Every JSON response carries `cache-control: no-store`.
 
@@ -913,10 +1079,10 @@ or use `createShopManagementClient`, which does that and returns a
 |---|---|---|---|---|
 | 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode | 2 | Fix the request; never retry unchanged |
 | 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a key whose issuer is no longer a verified owner; a cookie or `Authorization` header on the request | 3 | Stop and alert; ask a current owner for a new key |
-| 403 | `forbidden` | The key lacks the route's scope | 4 | Stop and alert; issue a key with the needed scope |
-| 404 | `not_found` | The product, price, order, sales link or candidate upload does not exist in this workspace | 5 | Treat as gone |
+| 403 | `forbidden` | The key lacks the route's scope, or a propose-mode key calls a route its mode refuses | 4 | Stop and alert; issue a key with the needed scope or mode |
+| 404 | `not_found` | The product, price, order, sales link, candidate upload, download file, file upload or staged file does not exist in this workspace or for this key | 5 | Treat as gone |
 | 404 | `tenant_not_found` | The host or `x-tenant` selects no workspace | 7 | Fix the base URL or workspace slug |
-| 409 | `conflict` | Stale sales-link revision, order line already issued | 6 | Re-read, then decide |
+| 409 | `conflict` | Stale sales-link revision, order line already issued, a download file limit (`error.details.changeProposalCap`), a file upload that is being completed, expired or failed | 6 | Re-read, then decide |
 | 409 | `fulfilment_conflict` | Order already shipped, or another request is creating its InPost shipment | 27 | Re-read the order; shipped means done |
 | 409 | `sold_out` | Public checkout of a product without available stock | 26 | Show the product as sold out |
 | 412 | `integration_not_configured` | A provider the route needs is not set up | 8 | Run provisioning first |
@@ -925,7 +1091,7 @@ or use `createShopManagementClient`, which does that and returns a
 | 429 | `rate_limited` | Per-key minute or day limit reached | 12 | Wait `Retry-After` seconds |
 | 502 | `integration_auth` | A provider rejected the stored credentials | 9 | Reconfigure the provider |
 | 503 | `integration_unavailable`, `shipx_unavailable` | A provider could not be reached, or a storage probe failed | 11, 28 | Retry later with backoff |
-| 503 | `unavailable` | The key history row of an accepted `POST`, `PUT`, `PATCH` or `DELETE` could not be written; the handler did not run and nothing changed | 20 | Wait `Retry-After` seconds, then retry the same request |
+| 503 | `unavailable` | The key history row of an accepted `POST`, `PUT`, `PATCH` or `DELETE` could not be written, or the workspace's download file staging is busy; the handler did not run or nothing changed | 20 | Wait `Retry-After` seconds, then retry the same request |
 | 500 | `internal` | Unexpected server failure | 10 | Retry later with backoff; report if it persists |
 
 The CLI exit codes come from `EXIT_CODE_BY_ERROR_CODE` in
@@ -1265,6 +1431,14 @@ storage, and no network:
 
 Run it with `pnpm exec vitest run scripts/shop-machine-replay.test.ts`.
 
+`scripts/key-download-replay.test.ts` replays the [download file](#download-files)
+flow of a direct-mode key the same way, through the typed client: it uploads a
+file with a streamed `PUT` the fake storage accepts only at the signed length,
+attaches it, lists it, uploads and attaches a second version, removes that
+version, and copies the first file to a second product, reading the file rows,
+the staged files, the upload records, the owed deletions and the stored objects
+back after each step.
+
 ## CLI-first evidence
 
 The same flow through the CLI, in replay order, against a local server
@@ -1400,6 +1574,24 @@ of the kept migration, no longer matches the schema fingerprint that release
 was built with. This is expected while the newer schema remains. The order,
 settings, asset and integration routes add no migration, so a retreat from
 them to the release with only the catalog routes needs no data step either.
+
+A retreat to a release that predates migration `0170_key_download_files` needs
+no data step either. The migration only adds
+`change_proposal_download_files`, `change_proposal_download_uploads` and
+`change_proposal_download_deletions` with their indexes, and the nullable
+column `sha256` on `product_download_assets`. Each new table's foreign key to
+`tenants` takes a `SHARE ROW EXCLUSIVE` lock on `tenants`, which blocks writes
+to `tenants` (not reads) until the migration transaction commits; each
+`CREATE INDEX` locks only its new, empty table; the `ADD COLUMN` takes an
+`ACCESS EXCLUSIVE` lock on `product_download_assets`, a change of the catalog
+only (no default, no rewrite, no scan), so file lists and buyer downloads wait
+until the migration commits. No constraint and no backfill touch an existing
+table. A release without this code has no download file routes (`404`),
+ignores the three tables and the column, and never deletes a staged or upload
+object, which stays under the private download prefix; the minute sweep of
+this release removes them after rolling forward. A file a key attached is an
+ordinary product file row there, served and deleted by its stored object key
+like any other file.
 
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and

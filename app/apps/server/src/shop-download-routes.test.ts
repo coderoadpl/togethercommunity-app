@@ -1,3 +1,4 @@
+import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -22,12 +23,14 @@ import {
   shopCatalogContracts,
   shopDownloadContracts,
 } from '#core/contract/index.js';
-import type { TenantSecretResolver } from '#core/server/index.js';
+import { sweepKeyDownloadFiles, type TenantSecretResolver } from '#core/server/index.js';
 import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
+import type { AppVars } from './app-vars.js';
 import { buildApp } from './app.js';
-import { createDeps } from './composition.js';
+import { createDeps, type AppDeps } from './composition.js';
 import { envSchema } from './env.js';
+import { notInRelease, registerShopMachineRoute } from './shop-machine-auth.js';
 
 const baseUrl = 'http://localhost:48731';
 const acmeHost = 'acme.localhost:48731';
@@ -43,9 +46,11 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0
 const STORAGE_ORIGIN = 'https://storage.example.test/';
 const routes = SHOP_DOWNLOAD_ROUTES;
 const contracts = shopDownloadContracts;
+const LOCK_WAIT_MS = 100;
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let app: ReturnType<typeof buildApp>;
+let appDeps: AppDeps;
 let storage: FakeObjectStorage;
 let ownerToken: string;
 
@@ -155,14 +160,15 @@ beforeAll(async () => {
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'shop-download-routes-test-secret-at-least-32-characters',
   });
-  const created = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  const created = createDeps(env, { db: database.db, clock: { nowIso: () => now }, changeProposalBounds: { lockWaitMs: LOCK_WAIT_MS } });
   storage = createObjectStorageFake();
   const resolver: TenantSecretResolver = created.secretResolver;
-  app = buildApp({
+  appDeps = {
     ...created,
     storage: storage.storage,
     secretResolver: { resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key) },
-  });
+  };
+  app = buildApp(appDeps);
   const owner = await signUp('shop-download-owner@example.test', 'Download Owner');
   for (const tenantId of ['acme', 'studio']) {
     await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Workspace', createdAt: now });
@@ -299,12 +305,81 @@ describe('a direct-mode key on the download file routes', () => {
     expect(await errorOf(refused)).toMatchObject({ code: 'conflict', details: { changeProposalCap: 'key_file_uploads' } });
   });
 
-  it('records every download write in the key history', async () => {
-    const before = (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.apiKeyId === direct.apiKey.id && event.route === routes.copyStagedDownload.path).length;
-    await keyed(direct.secret, 'POST', routes.copyStagedDownload.path, { productId: digital, assetId: 'unknown-asset' });
-    const after = (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.apiKeyId === direct.apiKey.id && event.route === routes.copyStagedDownload.path);
-    expect(after).toHaveLength(before + 1);
-    expect(after.at(-1)?.resourceId).toBe(digital);
+  it('records one key history row for each download write and none for the staged list', async () => {
+    const historian = await createShopKey(WRITE_SCOPES, 'direct');
+    const requests: Array<[string, string, string, unknown, string | null]> = [
+      ['POST', routes.uploadStagedDownload.path, routes.uploadStagedDownload.path, { fileName: 'history.pdf', contentType: 'application/pdf', sizeBytes: 10 }, null],
+      ['POST', routes.completeStagedDownload.path, routes.completeStagedDownload.path, { uploadId: 'unknown-upload' }, null],
+      ['POST', routes.copyStagedDownload.path, routes.copyStagedDownload.path, { productId: digital, assetId: 'unknown-asset' }, digital],
+      ['GET', routes.listStagedDownloads.path, routes.listStagedDownloads.path, undefined, null],
+      ['DELETE', routes.discardStagedDownload.path, routes.discardStagedDownload.path.replace(':id', 'unknown-staged'), undefined, 'unknown-staged'],
+      ['POST', routes.addProductDownload.path, routes.addProductDownload.path, { productId: digital, stagedFileId: 'unknown-staged' }, digital],
+      ['POST', routes.replaceProductDownload.path, routes.replaceProductDownload.path, { productId: digital, replacesAssetId: ownerAsset.id, stagedFileId: 'unknown-staged' }, digital],
+      ['POST', routes.removeProductDownload.path, routes.removeProductDownload.path, { productId: digital, assetId: 'unknown-asset' }, digital],
+    ];
+    expect(requests.map(([method, route]) => `${method} ${route}`).sort())
+      .toEqual(Object.values(routes).filter((route) => route.scope === 'shop:catalog:write').map((route) => `${route.method} ${route.path}`).sort());
+    const historyOf = async () => (await database.db.select().from(shopManagementKeyEvents)).filter((event) => event.apiKeyId === historian.apiKey.id);
+    for (const [method, route, path, body, resourceId] of requests) {
+      const before = await historyOf();
+      await keyed(historian.secret, method, path, body);
+      const added = (await historyOf()).filter((event) => !before.some((known) => known.id === event.id));
+      expect(added.map((event) => [event.kind, event.method, event.route, event.resourceId]), `${method} ${route}`)
+        .toEqual(method === 'GET' ? [] : [['request', method, route, resourceId]]);
+    }
+  });
+
+  it('answers a start with 503 and Retry-After while the workspace staging lock is held, and reserves nothing', async () => {
+    const waiting = await createShopKey(WRITE_SCOPES, 'direct');
+    const response = await database.db.transaction(async (tx) => {
+      await tx.execute("select pg_advisory_xact_lock(hashtextextended('key-download-files:acme', 0))");
+      return keyed(waiting.secret, 'POST', routes.uploadStagedDownload.path, { fileName: 'busy.pdf', contentType: 'application/pdf', sizeBytes: 10 });
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('1');
+    expect(await errorOf(response)).toMatchObject({ code: 'unavailable' });
+    expect((await database.db.select().from(changeProposalDownloadUploads)).filter((row) => row.apiKeyId === waiting.apiKey.id)).toEqual([]);
+    expect((await keyed(waiting.secret, 'POST', routes.uploadStagedDownload.path, { fileName: 'free.pdf', contentType: 'application/pdf', sizeBytes: 10 })).status).toBe(200);
+  });
+
+  it('answers 409 to a completion sent again after the file was attached, and after the sweep settled the upload', async () => {
+    const finisher = await createShopKey(WRITE_SCOPES, 'direct');
+    const upload = await startUpload(finisher.secret, { fileName: 'settled.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength });
+    storage.objects.set(storageKeyOf(upload.url), { bytes: PDF, contentType: 'application/pdf' });
+    const completed = await keyed(finisher.secret, 'POST', routes.completeStagedDownload.path, { uploadId: upload.id });
+    const staged = envelope(contracts.completeStagedDownload.output).parse(await completed.json()).data.file;
+    expect((await keyed(finisher.secret, 'POST', routes.addProductDownload.path, { productId: secondDigital, stagedFileId: staged.id })).status).toBe(200);
+    const afterAttach = await keyed(finisher.secret, 'POST', routes.completeStagedDownload.path, { uploadId: upload.id });
+    expect(afterAttach.status).toBe(409);
+    expect((await errorOf(afterAttach)).message).toBe('This upload was completed and its file is no longer staged');
+    const current = now;
+    now = new Date(Date.parse(current) + 21 * 60_000).toISOString();
+    try {
+      const swept = await sweepKeyDownloadFiles({
+        keyDownloadFiles: appDeps.keyDownloadFiles, storage: appDeps.storage, secretResolver: appDeps.secretResolver, clock: appDeps.clock, logger: { error: () => undefined },
+      });
+      expect(swept.ok).toBe(true);
+      expect((await database.db.select().from(changeProposalDownloadUploads)).find((row) => row.id === upload.id)?.state).toBe('settled');
+      const afterSweep = await keyed(finisher.secret, 'POST', routes.completeStagedDownload.path, { uploadId: upload.id });
+      expect(afterSweep.status).toBe(409);
+      expect((await errorOf(afterSweep)).message).toBe('This upload can no longer be completed; start a new upload');
+    } finally {
+      now = current;
+    }
+    expect((await database.db.select().from(productDownloadAssets)).find((row) => row.id === staged.id)?.productId).toBe(secondDigital);
+  });
+
+  it('refuses the copy of a key with catalogue write and without catalogue read, and stages nothing', async () => {
+    const writer = await createShopKey(['shop:catalog:write'], 'direct');
+    const response = await keyed(writer.secret, 'POST', routes.copyStagedDownload.path, { productId: digital, assetId: ownerAsset.id });
+    expect(response.status).toBe(403);
+    expect((await database.db.select().from(changeProposalDownloadUploads)).filter((row) => row.apiKeyId === writer.apiKey.id)).toEqual([]);
+  });
+
+  it('refuses the discard of a staged file id longer than 200 characters before any lookup', async () => {
+    const response = await keyed(direct.secret, 'DELETE', routes.discardStagedDownload.path.replace(':id', 'x'.repeat(201)));
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).message).toBe('Invalid staged file discard');
   });
 });
 
@@ -332,6 +407,24 @@ describe('a propose-mode key on the download file routes', () => {
     expect(await fileState()).toBe(before);
     expect(storage.calls.filter((call) => call.method === 'presignPut')).toHaveLength(presigns);
     expect(storage.keysUnder(`acme/product-downloads/key-uploads/${proposer.apiKey.id}/`)).toEqual([]);
+  });
+
+  it('names the feature its route class carries in the refusal, so another route refused for this release names its own', async () => {
+    const path = '/api/m2m/shop/test-not-in-release';
+    const probe = new Hono<AppVars>();
+    registerShopMachineRoute(probe, appDeps, {
+      method: 'POST', path, scope: 'shop:catalog:write', proposeMode: notInRelease('product access items'), handler: (c) => c.json({ ok: true }),
+    });
+    const response = await probe.request(`${baseUrl}${path}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': proposer.secret, 'content-type': 'application/json' }, body: '{}',
+    });
+    expect(response.status).toBe(403);
+    expect((await errorOf(response)).message)
+      .toBe('A propose-mode shop management key cannot call this route (not-in-release): product access items are not available to a propose-mode key yet');
+    const allowed = await probe.request(`${baseUrl}${path}`, {
+      method: 'POST', headers: { host: acmeHost, 'x-api-key': direct.secret, 'content-type': 'application/json' }, body: '{}',
+    });
+    expect(allowed.status).toBe(200);
   });
 
   it('still reads the file list of a product', async () => {
@@ -369,28 +462,44 @@ describe('the download file routes across keys and workspaces', () => {
     expect((await keyed(direct.secret, 'DELETE', routes.discardStagedDownload.path.replace(':id', staged.id))).status).toBe(200);
   });
 
-  it('refuses a session, a request without a key, a revoked key and an expired key', async () => {
-    const path = routes.uploadStagedDownload.path;
-    const body = { fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength };
-    expect((await sessionRequest('POST', path, body)).status).toBe(401);
-    expect((await sessionRequest('GET', routes.listProductDownloads.path.replace(':productId', digital))).status).toBe(401);
-    expect((await keyed(null, 'POST', path, body)).status).toBe(401);
+  const everyRoute = (): Array<[string, string, unknown]> => [
+    ['POST', routes.uploadStagedDownload.path, { fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength }],
+    ['POST', routes.completeStagedDownload.path, { uploadId: 'unknown-upload' }],
+    ['POST', routes.copyStagedDownload.path, { productId: digital, assetId: ownerAsset.id }],
+    ['GET', routes.listStagedDownloads.path, undefined],
+    ['DELETE', routes.discardStagedDownload.path.replace(':id', 'unknown-staged'), undefined],
+    ['GET', routes.listProductDownloads.path.replace(':productId', digital), undefined],
+    ['POST', routes.addProductDownload.path, { productId: digital, stagedFileId: 'unknown-staged' }],
+    ['POST', routes.replaceProductDownload.path, { productId: digital, replacesAssetId: ownerAsset.id, stagedFileId: 'unknown-staged' }],
+    ['POST', routes.removeProductDownload.path, { productId: digital, assetId: 'unknown-asset' }],
+  ];
+
+  it('refuses a session, a request without a key, a revoked key and an expired key on every download file route', async () => {
+    expect(everyRoute()).toHaveLength(Object.keys(routes).length);
     const revoked = await createShopKey(WRITE_SCOPES, 'direct');
     const revoke = await sessionRequest(API_ROUTES.apiKeysShopManagementRevoke.method, API_PATHS.apiKeysShopManagementRevoke.replace(':id', revoked.apiKey.id));
     expect(revoke.status).toBe(200);
-    expect((await keyed(revoked.secret, 'POST', path, body)).status).toBe(401);
     const expiring = await createShopKey(WRITE_SCOPES, 'direct', acmeHost, new Date(Date.parse(now) + 60 * 60_000).toISOString());
     expect((await keyed(expiring.secret, 'GET', routes.listStagedDownloads.path)).status).toBe(200);
+    const before = await fileState();
+    for (const [method, path, body] of everyRoute()) {
+      expect((await sessionRequest(method, path, body)).status, `session ${method} ${path}`).toBe(401);
+      expect((await keyed(null, method, path, body)).status, `no key ${method} ${path}`).toBe(401);
+      expect((await keyed(revoked.secret, method, path, body)).status, `revoked ${method} ${path}`).toBe(401);
+    }
     const current = now;
     now = new Date(Date.parse(current) + 2 * 60 * 60_000).toISOString();
     try {
-      expect((await keyed(expiring.secret, 'POST', path, body)).status).toBe(401);
-      expect((await keyed(expiring.secret, 'GET', routes.listStagedDownloads.path)).status).toBe(401);
+      for (const [method, path, body] of everyRoute()) {
+        expect((await keyed(expiring.secret, method, path, body)).status, `expired ${method} ${path}`).toBe(401);
+      }
     } finally {
       now = current;
     }
-    const uploads = (await database.db.select().from(changeProposalDownloadUploads)).filter((row) => row.apiKeyId === revoked.apiKey.id || row.apiKeyId === expiring.apiKey.id);
-    expect(uploads).toEqual([]);
+    expect(await fileState()).toBe(before);
+    const history = (await database.db.select().from(shopManagementKeyEvents))
+      .filter((event) => event.kind === 'request' && (event.apiKeyId === revoked.apiKey.id || event.apiKeyId === expiring.apiKey.id));
+    expect(history).toEqual([]);
   });
 
   it('never gives a key a signed read of any stored object', async () => {

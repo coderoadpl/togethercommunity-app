@@ -1,5 +1,6 @@
 import {
   appError,
+  CHANGE_PROPOSAL_DECIDED_FILTER,
   CHANGE_PROPOSAL_EVENT_KIND_BY_STATUS,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   CHANGE_PROPOSAL_LIMITS,
@@ -9,33 +10,43 @@ import {
   notFound,
   ok,
   validation,
+  type AppError,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
   type ChangeProposalEventKind,
   type ChangeProposalGroup,
   type ChangeProposalTarget,
+  type ChangeProposalTargetPrice,
+  type Notification,
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
   type SalesLink,
   type ShopManagementKey,
+  type StaffRole,
   type StockLevel,
   type TenantSettings,
 } from '#core/domain/index.js';
 
+import type { ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
   ChangeProposalGroupRepository,
   ChangeProposalGroupWithItems,
   ChangeProposalListQuery,
+  ChangeProposalOwnerNotice,
+  ChangeProposalOwnerNotifier,
   ChangeProposalPage,
+  ChangeProposalPeopleReader,
   ChangeProposalRepositories,
   ChangeProposalRepository,
+  ChangeProposalTargetLabelReader,
   ChangeProposalTransaction,
   ChangeProposalTransactionScope,
   ChangeProposalTransitionGuard,
+  RealtimeEvent,
   SalesLinkRepository,
   TenantSecretResolver,
 } from '../ports.js';
@@ -288,6 +299,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
     if (query.groupId !== undefined && proposal.groupId !== query.groupId) return false;
     if (query.status === undefined) return true;
     if (query.status === 'pending') return pendingAt(proposal, query.now);
+    if (query.status === CHANGE_PROPOSAL_DECIDED_FILTER) return !pendingAt(proposal, query.now);
     if (query.status === 'expired') return proposal.status === 'pending' && proposal.expiresAt <= query.now;
     return proposal.status === query.status;
   };
@@ -372,7 +384,25 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
       const found = pendingRow(tenantId, id, guard);
       return { kind: 'written', value: found === null ? null : transitionRow(found, transition) };
     },
+    decide: async (tenantId, id, guard, decide) => {
+      const found = proposals.find((proposal) => proposal.tenantId === tenantId && proposal.id === id
+        && (guard.keyId === undefined || proposal.proposedByKeyId === guard.keyId));
+      if (found === undefined) return { kind: 'not_found' };
+      const decision = decide({ ...found });
+      if (decision.kind === 'refuse') return { kind: 'decided', decision, proposal: { ...found } };
+      if (decision.kind === 'record_expiry') {
+        recordExpiry(tenantId, id, decision.event);
+        return { kind: 'decided', decision, proposal: { ...found } };
+      }
+      if (found.status !== 'pending') throw new Error('A decision moved a proposal that is no longer pending');
+      return { kind: 'decided', decision, proposal: transitionRow(found, decision.transition) };
+    },
     recordExpiry: async (tenantId, id, event) => ({ kind: 'written', value: recordExpiry(tenantId, id, event) }),
+    countPending: async (tenantId, now) => {
+      const pending = proposals.filter((proposal) => proposal.tenantId === tenantId && pendingAt(proposal, now));
+      return { proposals: pending.length, groups: new Set(pending.flatMap((proposal) => proposal.groupId === null ? [] : [proposal.groupId])).size };
+    },
+    hasAny: async (tenantId) => proposals.some((proposal) => proposal.tenantId === tenantId),
   };
   const groupRows: ChangeProposalGroup[] = [];
   const itemsOf = (tenantId: string, groupId: string): ChangeProposal[] =>
@@ -470,6 +500,117 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
   };
   return { repository, events, groups, proposals, eventRows, groupRows, keys, seed: (proposal) => { proposals.push({ ...proposal }); } };
 };
+
+export interface FakeProposalAccount {
+  userId: string;
+  email: string;
+  emailVerified?: boolean;
+  ownerOf?: string[];
+  adminOf?: string[];
+}
+
+const fakeStaffRole = (account: FakeProposalAccount, tenantId: string): StaffRole | null => {
+  if ((account.ownerOf ?? []).includes(tenantId)) return 'owner';
+  return (account.adminOf ?? []).includes(tenantId) ? 'admin' : null;
+};
+
+export interface FakeChangeProposalPeople extends ChangeProposalPeopleReader {
+  reads: Array<readonly string[]>;
+}
+
+const createChangeProposalPeopleFake = (accounts: readonly FakeProposalAccount[]): FakeChangeProposalPeople => {
+  const reads: Array<readonly string[]> = [];
+  return {
+    reads,
+    read: async (tenantId, userIds) => {
+      reads.push([...userIds]);
+      return accounts.filter((account) => userIds.includes(account.userId)).map((account) => ({
+        userId: account.userId,
+        email: account.email,
+        emailVerified: account.emailVerified ?? true,
+        staffRole: fakeStaffRole(account, tenantId),
+      }));
+    },
+  };
+};
+
+const priceTermsOf = (price: ProductPrice): ChangeProposalTargetPrice => ({
+  kind: price.kind, interval: price.interval, intervalCount: price.intervalCount ?? 1, amountCents: price.amountCents, currency: price.currency,
+});
+
+type FakeTargetLabel = Awaited<ReturnType<ChangeProposalTargetLabelReader['labels']>>[number];
+
+export const changeProposalOwnerViewFakes = (
+  state: FakeCatalogState,
+  accounts: readonly FakeProposalAccount[] = [],
+): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & { changeProposalPeople: FakeChangeProposalPeople } => ({
+  changeProposalTargetLabels: {
+    labels: async (tenantId, targets) => targets.flatMap((target): FakeTargetLabel[] => {
+      const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;
+      if (target.kind === 'price') {
+        const price = state.prices.find((candidate) => candidate.tenantId === tenantId && candidate.id === target.id);
+        const label = price === undefined ? undefined : titleOf(price.productId);
+        return price === undefined || label === undefined ? [] : [{ ...target, label, price: priceTermsOf(price) }];
+      }
+      const label = target.kind === 'product'
+        ? titleOf(target.id)
+        : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
+      return label === undefined ? [] : [{ ...target, label, price: null }];
+    }),
+  },
+  changeProposalPeople: createChangeProposalPeopleFake(accounts),
+});
+
+const FAKE_NOTIFICATION_DEADLINE_MS = 1_000;
+
+export interface FakeUnreadNotifications {
+  changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
+  realtimeBus: { publish(event: RealtimeEvent): void };
+  rows: Notification[];
+  published: RealtimeEvent[];
+}
+
+export const createUnreadNotificationsFake = (accounts: readonly FakeProposalAccount[] = []): FakeUnreadNotifications => {
+  const rows: Notification[] = [];
+  const published: RealtimeEvent[] = [];
+  const ownerNotice = (tenantId: string, notification: Notification, notice: ChangeProposalOwnerNotice): Notification => {
+    const existing = rows.find((row) => row.tenantId === tenantId && row.recipientUserId === notification.recipientUserId
+      && row.sourceKey === notification.sourceKey);
+    if (existing === undefined) {
+      rows.push({ ...notification, tenantId });
+      return { ...notification, tenantId };
+    }
+    if (existing.readAt === null || notice === 'signal') return { ...existing };
+    Object.assign(existing, { id: notification.id, kind: notification.kind, payload: notification.payload, readAt: null, createdAt: notification.createdAt });
+    return { ...existing };
+  };
+  return {
+    rows,
+    published,
+    realtimeBus: { publish: (event) => { published.push(event); } },
+    changeProposalOwnerNotifier: {
+      deadlineMs: FAKE_NOTIFICATION_DEADLINE_MS,
+      raiseForOwners: async (tenantId, build, notice) => ({
+        kind: 'written',
+        value: accounts
+          .filter((account) => fakeStaffRole(account, tenantId) === 'owner')
+          .map((account) => ownerNotice(tenantId, build(account.userId), notice)),
+      }),
+    },
+  };
+};
+
+const withSalesLinkSaveError = (scope: ChangeProposalTransactionScope, error: AppError): ChangeProposalTransactionScope => ({
+  ...scope,
+  repositories: { ...scope.repositories, salesLinks: { ...scope.repositories.salesLinks, save: async () => err(error) } },
+  savepoint: (operation) => scope.savepoint((nested) => operation(withSalesLinkSaveError(nested, error))),
+});
+
+export const failingSalesLinkSaves = (transaction: ChangeProposalTransaction, error: AppError): ChangeProposalTransaction => ({
+  ...transaction,
+  run: (tenantId, operation) => transaction.run(tenantId, (scope) => operation(withSalesLinkSaveError(scope, error))),
+  dryRun: (tenantId, operation, options) => transaction.dryRun(tenantId, (scope) => operation(withSalesLinkSaveError(scope, error)), options),
+});
 
 export interface FakeChangeProposalTransaction extends ChangeProposalTransaction {
   calls: Array<'run' | 'dryRun'>;

@@ -25,18 +25,24 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
+import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
 import {
   createChangeProposalStoreFake,
+  changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createUnreadNotificationsFake,
+  type FakeChangeProposalPeople,
   emptyCatalogState,
   type FakeCatalogState,
   type FakeChangeProposalStore,
+  type FakeProposalAccount,
+  type FakeUnreadNotifications,
   type FakeChangeProposalTransaction,
 } from '../testing/change-proposal-fakes.js';
 import { shopManagementKeyCapabilities } from './shop-machine-auth.js';
 import {
   getChangeProposal,
+  getChangeProposalSummary,
   getOwnChangeProposal,
   listChangeProposals,
   listOwnChangeProposals,
@@ -47,6 +53,7 @@ import {
   type ChangeProposalKeyDeps,
   type ChangeProposalOwnerReadDeps,
   type ChangeProposalSubmitDeps,
+  type ChangeProposalSummaryDeps,
 } from './change-proposals.js';
 import { deleteProductDraft } from './product-drafts.js';
 import { createProduct, publishProduct } from './products.js';
@@ -58,6 +65,7 @@ const OWNER = 'user-owner';
 const NOW = '2026-03-01T10:00:00.000Z';
 const KEY_ID = 'key-propose';
 const OTHER_KEY_ID = 'key-propose-other';
+const OWNER_ACCOUNTS: FakeProposalAccount[] = [{ userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] }];
 
 const identity = (overrides: Partial<Identity> = {}): Identity => ({
   userId: OWNER, email: 'owner@example.test', name: 'Owner', emailVerified: true, tenantAccess: 'staff',
@@ -184,12 +192,13 @@ interface Harness {
   storageCalls: string[];
   submitDeps: ChangeProposalSubmitDeps;
   keyDeps: ChangeProposalKeyDeps;
-  ownerDeps: ChangeProposalOwnerReadDeps;
+  ownerDeps: ChangeProposalOwnerReadDeps & ChangeProposalSummaryDeps & { changeProposalPeople: FakeChangeProposalPeople };
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
+  notifications: FakeUnreadNotifications;
 }
 
-const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
+const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposalAccount[] = OWNER_ACCOUNTS): Harness => {
   const state = emptyCatalogState();
   state.products.push(
     product(),
@@ -215,7 +224,10 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
   const ids = { nextId: () => `generated-${String(++sequence)}` };
   const clockPort = { nowIso: () => clock.now };
   const shopManagementKeys = { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) };
+  const ownerViews = changeProposalOwnerViewFakes(state, accounts);
+  const notifications = createUnreadNotificationsFake(accounts);
   return {
+    notifications,
     state,
     store,
     transaction,
@@ -225,18 +237,31 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
       changeProposalTransaction: transaction,
       changeProposals: store.repository,
       shopManagementKeys,
+      changeProposalOwnerNotifier: notifications.changeProposalOwnerNotifier,
+      realtimeBus: notifications.realtimeBus,
       storage,
       logger: { error: vi.fn<(message: string) => void>() },
       ids,
       clock: clockPort,
     },
     keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
-    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, clock: clockPort },
-    decisionDeps: { changeProposals: store.repository, shopManagementKeys, ids, clock: clockPort },
+    ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, clock: clockPort },
+    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ids, clock: clockPort },
   };
 };
 
 const liveState = (state: FakeCatalogState) => structuredClone(state);
+
+const whileWaiting = (h: Harness, meanwhile: () => void): ChangeProposalRepository['decide'] => (tenantId, id, guard, decide) => {
+  meanwhile();
+  return h.store.repository.decide(tenantId, id, guard, decide);
+};
+
+const withdrawSeeded = (h: Harness, id: string): void => {
+  const found = h.store.proposals.find((proposal) => proposal.id === id);
+  if (found === undefined) throw new Error(`No seeded proposal ${id}`);
+  found.status = 'withdrawn';
+};
 
 const OPERATION_INPUTS: Record<ChangeProposalOperation, unknown> = {
   'product.create': { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 },
@@ -675,6 +700,12 @@ describe('owner-side proposal review', () => {
     expect(next).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-active' }], nextCursor: null } });
     const expired = await listChangeProposals(ownerSession, { status: 'expired' }, h.ownerDeps);
     expect(expired).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-stale', status: 'expired' }] } });
+    expect(pending).toMatchObject({ value: { hasMore: true } });
+    expect(next).toMatchObject({ value: { hasMore: false } });
+    const decided = await listChangeProposals(ownerSession, { status: 'decided', limit: 1 }, h.ownerDeps);
+    expect(decided).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-expired-key', status: 'withdrawn' }], nextCursor: 'p-expired-key', hasMore: true } });
+    const decidedRest = await listChangeProposals(ownerSession, { status: 'decided', limit: 1, cursor: 'p-expired-key' }, h.ownerDeps);
+    expect(decidedRest).toMatchObject({ ok: true, value: { proposals: [{ id: 'p-stale', status: 'expired' }], nextCursor: null, hasMore: false } });
     expect(await listChangeProposals(ownerSession, { limit: 0 }, h.ownerDeps)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
@@ -691,6 +722,75 @@ describe('owner-side proposal review', () => {
       events: [{ sequence: 1, kind: 'proposed', apiKeyId: KEY_ID }],
     });
     expect(await getChangeProposal(ownerSession, { id: 'missing' }, h.ownerDeps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('gives every listed card the live target label, the issuer state and the deciding account without changing the stored proposal', async () => {
+    const h = harness(ownerKeys(), [
+      { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+      { userId: 'user-former', email: 'former@example.test', ownerOf: [NEIGHBOUR] },
+      { userId: 'user-demoted', email: 'demoted@example.test', adminOf: [TENANT] },
+      { userId: 'user-unverified', email: 'unverified@example.test', emailVerified: false, ownerOf: [TENANT] },
+    ]);
+    h.store.seed(storedProposal({ id: 'p-product', createdAt: '2026-02-28T09:00:00.000Z' }));
+    h.store.seed(storedProposal({ id: 'p-price', createdAt: '2026-02-28T09:01:00.000Z', operation: 'price.deactivate', input: { id: 'price-live' }, target: { kind: 'price', id: 'price-live' }, effect: {} }));
+    h.store.seed(storedProposal({ id: 'p-link', createdAt: '2026-02-28T09:02:00.000Z', operation: 'sales-link.delete', input: { id: 'link-spring' }, target: { kind: 'sales-link', id: 'link-spring' }, effect: {} }));
+    h.store.seed(storedProposal({ id: 'p-settings', createdAt: '2026-02-28T09:03:00.000Z', operation: 'settings.update', input: { name: 'Acme shop' }, target: { kind: 'settings', id: null }, effect: {}, proposedByIssuerUserId: 'user-former' }));
+    h.store.seed(storedProposal({ id: 'p-create', createdAt: '2026-02-28T09:04:00.000Z', operation: 'product.create', input: { title: 'Teapot' }, target: { kind: 'product', id: null }, effect: {}, proposedByIssuerUserId: 'user-unverified' }));
+    h.store.seed(storedProposal({
+      id: 'p-applied-create', createdAt: '2026-02-28T09:05:00.000Z', operation: 'product.create', input: { title: 'Draft guide' }, target: { kind: 'product', id: null },
+      effect: {}, status: 'applied', appliedResourceId: 'product-draft', decidedByUserId: OWNER, decidedAt: NOW,
+    }));
+    h.store.seed(storedProposal({ id: 'p-gone', createdAt: '2026-02-28T09:06:00.000Z', target: { kind: 'product', id: 'product-deleted' }, input: { id: 'product-deleted', title: 'Gone' }, proposedByIssuerUserId: 'user-deleted' }));
+    h.store.seed(storedProposal({ id: 'p-neighbour-target', createdAt: '2026-02-28T09:07:00.000Z', target: { kind: 'product', id: 'product-neighbour' }, input: { id: 'product-neighbour', title: 'Other' } }));
+    h.store.seed(storedProposal({
+      id: 'p-applied-price', createdAt: '2026-02-28T09:08:00.000Z', operation: 'price.create', input: { productId: '$proposal:p-earlier', kind: 'one_time', amountCents: 2500, currency: 'EUR' },
+      target: { kind: 'product', id: '$proposal:p-earlier' }, effect: {}, status: 'applied', appliedResourceId: 'price-live', decidedByUserId: 'user-former', decidedAt: NOW,
+      proposedByIssuerUserId: 'user-demoted',
+    }));
+    const liveProduct = h.state.products.find(({ id }) => id === 'product-mug');
+    if (liveProduct === undefined) throw new Error('product missing');
+    liveProduct.title = 'Mug, renamed live';
+    const stored = structuredClone(h.store.proposals);
+
+    const listed = await listChangeProposals(ownerSession, {}, h.ownerDeps);
+
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(changeProposalOwnerPageSchema.parse(listed.value)).toEqual(listed.value);
+    const cards = Object.fromEntries(listed.value.proposals.map((card) => [card.id, card]));
+    expect(Object.fromEntries(Object.entries(cards).map(([id, card]) => [id, card.targetLabel]))).toEqual({
+      'p-product': 'Mug, renamed live', 'p-price': 'Live mug', 'p-link': 'Spring', 'p-settings': null,
+      'p-create': null, 'p-applied-create': 'Draft guide', 'p-gone': null, 'p-neighbour-target': null, 'p-applied-price': 'Live mug',
+    });
+    const livePrice = { kind: 'one_time', interval: null, intervalCount: 1, amountCents: 1500, currency: 'EUR' };
+    expect(Object.fromEntries(Object.entries(cards).map(([id, card]) => [id, card.targetPrice]))).toEqual({
+      'p-product': null, 'p-price': livePrice, 'p-link': null, 'p-settings': null,
+      'p-create': null, 'p-applied-create': null, 'p-gone': null, 'p-neighbour-target': null, 'p-applied-price': livePrice,
+    });
+    expect(cards['p-product']?.proposedBy).toEqual({
+      keyId: KEY_ID, keyName: 'Catalogue agent', keyState: 'active', issuerUserId: OWNER, issuerEmail: 'owner@example.test', issuerIsVerifiedOwner: true,
+      issuerIsFormerTeamMember: false,
+    });
+    expect(cards['p-settings']?.proposedBy).toMatchObject({ issuerUserId: 'user-former', issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+    expect(cards['p-applied-price']?.proposedBy).toMatchObject({ issuerEmail: 'demoted@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+    expect(cards['p-create']?.proposedBy).toMatchObject({ issuerEmail: 'unverified@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false });
+    expect(cards['p-gone']?.proposedBy).toMatchObject({ issuerEmail: null, issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: true });
+    expect(cards['p-applied-create']).toMatchObject({
+      status: 'applied', decidedByUserId: OWNER, decidedByEmail: 'owner@example.test', decidedByIsFormerTeamMember: false, decidedAt: NOW,
+    });
+    expect(cards['p-applied-price']).toMatchObject({ decidedByUserId: 'user-former', decidedByEmail: null, decidedByIsFormerTeamMember: true });
+    expect(cards['p-product']).toMatchObject({
+      decidedByEmail: null, decidedByIsFormerTeamMember: false, createdAt: '2026-02-28T09:00:00.000Z', groupId: null, groupTitle: null, groupPosition: null,
+    });
+    expect(h.store.proposals).toEqual(stored);
+  });
+
+  it('keeps the live label and the issuer state off the key receipts', async () => {
+    const h = harness(ownerKeys());
+    h.store.seed(storedProposal({ id: 'p-own' }));
+    const receipt = await getOwnChangeProposal(keyCtx(), { id: 'p-own' }, h.keyDeps);
+    if (!receipt.ok) throw new Error(receipt.error.message);
+    const text = JSON.stringify(receipt.value);
+    for (const hidden of ['targetLabel', 'issuer', 'owner@example.test', 'decidedBy']) expect(text).not.toContain(hidden);
   });
 
   it('never reads another workspace\'s proposal', async () => {
@@ -741,19 +841,53 @@ describe('owner-side proposal review', () => {
     expect(h.store.proposals.find(({ id }) => id === 'p-stale')?.status).toBe('pending');
   });
 
-  it('answers conflict when the proposal leaves pending between the read and the transition', async () => {
+  it('answers conflict when the proposal leaves pending between the read and the lock', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
-    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'written' as const, value: null }) } };
+    const raced = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { withdrawSeeded(h, 'p-active'); }) } };
     expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, raced))
-      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'pending' } } });
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'withdrawn' } } });
     expect(h.store.eventRows).toEqual([]);
+  });
+
+  it('records the expiry instead of rejecting a proposal that expired while the reject waited for its lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const expiresAt = h.store.proposals.find(({ id }) => id === 'p-active')?.expiresAt ?? '';
+    const waiting = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = expiresAt; }) } };
+
+    expect(await rejectChangeProposal(ownerSession, { id: 'p-active', note: 'Too late' }, waiting))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    expect(h.store.proposals.find(({ id }) => id === 'p-active')).toMatchObject({ status: 'pending', decidedAt: null, decisionNote: null });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ proposalId: 'p-active', kind: 'expired', actorUserId: OWNER, at: expiresAt })]);
+  });
+
+  it('records the expiry instead of withdrawing a proposal that expired while the withdrawal waited for its lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const expiresAt = h.store.proposals.find(({ id }) => id === 'p-active')?.expiresAt ?? '';
+    const waiting = { ...h.keyDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = expiresAt; }) } };
+
+    expect(await withdrawOwnChangeProposal(keyCtx(), { id: 'p-active' }, waiting))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalStatus: 'expired' } } });
+    expect(h.store.proposals.find(({ id }) => id === 'p-active')).toMatchObject({ status: 'pending', decidedAt: null });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ proposalId: 'p-active', kind: 'expired', apiKeyId: KEY_ID, at: expiresAt })]);
+  });
+
+  it('stamps a reject with the time read after the lock', async () => {
+    const h = harness(ownerKeys());
+    seedForOwner(h);
+    const later = '2026-03-01T10:00:07.000Z';
+    const waiting = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: whileWaiting(h, () => { h.clock.now = later; }) } };
+
+    expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, waiting)).toMatchObject({ ok: true, value: { status: 'rejected', decidedAt: later } });
+    expect(h.store.eventRows).toEqual([expect.objectContaining({ kind: 'rejected', at: later })]);
   });
 
   it('answers busy and records nothing when the reject runs out of lock wait', async () => {
     const h = harness(ownerKeys());
     seedForOwner(h);
-    const busy = { ...h.decisionDeps, changeProposals: { ...h.store.repository, transition: async () => ({ kind: 'busy' as const }) } };
+    const busy = { ...h.decisionDeps, changeProposals: { ...h.store.repository, decide: async () => ({ kind: 'busy' as const }) } };
     expect(await rejectChangeProposal(ownerSession, { id: 'p-active' }, busy))
       .toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: 5 } } });
     expect(h.store.eventRows).toEqual([]);
@@ -772,5 +906,151 @@ describe('owner-side proposal review', () => {
     }
     expect(h.store.proposals.find(({ id }) => id === 'p-active')?.status).toBe('pending');
     expect(h.store.eventRows).toEqual([]);
+  });
+});
+
+describe('the owner summary', () => {
+  const summaryOf = (h: Harness, ctx: Ctx = ownerSession) => getChangeProposalSummary(ctx, h.ownerDeps);
+
+  it('says the workspace has no proposals when it has none, whatever another workspace holds', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-neighbour', tenantId: NEIGHBOUR }));
+    h.store.seed(storedProposal({ id: 'p-neighbour-applied', tenantId: NEIGHBOUR, status: 'applied', decidedByUserId: OWNER, decidedAt: NOW }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 0, pendingGroups: 0, hasProposals: false } });
+  });
+
+  it('says the workspace has proposals when it holds only pending ones', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-pending' }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 1, pendingGroups: 0, hasProposals: true } });
+  });
+
+  it('says the workspace has proposals when every one of them is decided or expired', async () => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-rejected', status: 'rejected', decidedByUserId: OWNER, decidedAt: NOW }));
+    h.store.seed(storedProposal({ id: 'p-withdrawn', status: 'withdrawn' }));
+    h.store.seed(storedProposal({ id: 'p-stale', createdAt: '2026-01-01T00:00:00.000Z' }));
+    expect(await summaryOf(h)).toEqual({ ok: true, value: { pending: 0, pendingGroups: 0, hasProposals: true } });
+  });
+
+  it.each(privilegeConfusion)('refuses %s', async (_label, ctx) => {
+    const h = harness();
+    h.store.seed(storedProposal({ id: 'p-pending' }));
+    const refused = await summaryOf(h, ctx);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(['forbidden', 'impersonation_read_only']).toContain(refused.error.code);
+  });
+});
+
+describe('the owner notification of a submitted proposal', () => {
+  const twoOwners: FakeProposalAccount[] = [
+    { userId: OWNER, email: 'owner@example.test', ownerOf: [TENANT] },
+    { userId: 'user-second-owner', email: 'second@example.test', ownerOf: [TENANT] },
+    { userId: 'user-neighbour-owner', email: 'neighbour@example.test', ownerOf: [NEIGHBOUR] },
+  ];
+  const submit = (h: Harness, title: string) =>
+    submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title } }, h.submitDeps);
+
+  it('tells every owner of the workspace once per key until they read it, and again after they did', async () => {
+    const h = harness([shopKey()], twoOwners);
+    expect((await submit(h, 'First')).ok).toBe(true);
+    expect((await submit(h, 'Second')).ok).toBe(true);
+
+    expect(h.notifications.rows.map(({ recipientUserId, kind, sourceKey, readAt, tenantId }) => ({ recipientUserId, kind, sourceKey, readAt, tenantId }))).toEqual([
+      { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
+      { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
+    ]);
+    expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
+    const rowIds = h.notifications.rows.map((row) => row.id);
+    expect(h.notifications.published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : event.kind)).toEqual([
+      [OWNER, rowIds[0], 'change-proposal'],
+      ['user-second-owner', rowIds[1], 'change-proposal'],
+      [OWNER, rowIds[0], 'change-proposal'],
+      ['user-second-owner', rowIds[1], 'change-proposal'],
+    ]);
+
+    const unread = h.notifications.rows[0];
+    if (unread === undefined) throw new Error('notification missing');
+    const first = { ...unread };
+    unread.readAt = NOW;
+    h.clock.now = '2026-03-01T11:00:00.000Z';
+    expect((await submit(h, 'Third')).ok).toBe(true);
+
+    expect(h.notifications.rows).toHaveLength(2);
+    expect(h.notifications.rows[0]).toMatchObject({ readAt: null, createdAt: '2026-03-01T11:00:00.000Z' });
+    expect(h.notifications.rows[0]?.id).not.toBe(first.id);
+    expect(h.notifications.published.map((event) => event.recipientUserId)).toEqual([OWNER, 'user-second-owner', OWNER, 'user-second-owner', OWNER, 'user-second-owner']);
+    expect(h.notifications.published.at(-2)).toMatchObject({ notificationId: h.notifications.rows[0]?.id, createdAt: '2026-03-01T11:00:00.000Z' });
+  });
+
+  it('tells nobody about a refused submission', async () => {
+    const h = harness([shopKey()], twoOwners);
+    expect((await submitChangeProposal(keyCtx(), { operation: 'stock.adjust', input: { productId: 'product-live', delta: -500, reason: 'Count' } }, h.submitDeps)).ok).toBe(false);
+    expect(h.notifications.rows).toEqual([]);
+  });
+
+  it('stores the proposal and logs when the notification cannot be written', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const failing = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: () => Promise.reject(new Error('lock timeout')) } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Logged' } }, failing);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.store.proposals).toHaveLength(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification failed tenant=tenant-acme'));
+  });
+
+  it('stores the proposal, publishes nothing and logs when the notification runs out of time', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    const timedOut = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 1_000, raiseForOwners: async () => ({ kind: 'busy' as const }) } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Timed out' } }, timedOut);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.notifications.published).toEqual([]);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification timed out tenant=tenant-acme'));
+  });
+
+  it('answers the stored proposal once the notification passes its deadline, and logs a failure that comes later', async () => {
+    const h = harness([shopKey()], twoOwners);
+    const logger = { error: vi.fn<(message: string) => void>() };
+    let failLate: (cause: Error) => void = () => undefined;
+    const held = new Promise<never>((_resolve, reject) => { failLate = reject; });
+    const slow = { ...h.submitDeps, logger, changeProposalOwnerNotifier: { deadlineMs: 5, raiseForOwners: () => held } };
+
+    const submitted = await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', title: 'Held' } }, slow);
+
+    expect(submitted).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.notifications.published).toEqual([]);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] owner notification passed its 5 ms deadline tenant=tenant-acme'));
+    failLate(new Error('connection lost'));
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('owner notification failed tenant=tenant-acme')));
+  });
+});
+
+describe('the owner identities of a proposal page', () => {
+  it('reads every distinct issuer and decider of a 100-item page in one call of the people reader', async () => {
+    const people: FakeProposalAccount[] = Array.from({ length: 200 }, (_, index) => ({
+      userId: `user-${String(index)}`, email: `person-${String(index)}@example.test`, ownerOf: index % 2 === 0 ? [TENANT] : [], adminOf: [TENANT],
+    }));
+    const h = harness([shopKey()], people);
+    for (let index = 0; index < 100; index += 1) {
+      h.store.seed(storedProposal({
+        id: `p-${String(index).padStart(3, '0')}`, createdAt: `2026-02-28T09:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        proposedByIssuerUserId: `user-${String(index * 2)}`, status: 'rejected', decidedByUserId: `user-${String(index * 2 + 1)}`, decidedAt: NOW,
+      }));
+    }
+    const reads = h.ownerDeps.changeProposalPeople.reads;
+    reads.length = 0;
+
+    const listed = await listChangeProposals(ownerSession, { limit: 100 }, h.ownerDeps);
+
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value.proposals).toHaveLength(100);
+    expect(reads).toHaveLength(1);
+    expect(new Set(reads[0])).toEqual(new Set(people.map((person) => person.userId)));
+    expect(listed.value.proposals.every((card) => card.proposedBy.issuerIsVerifiedOwner && card.decidedByEmail !== null)).toBe(true);
   });
 });

@@ -252,6 +252,7 @@ const publicSurfaceScopes = {
   courseStructure: (courseId: string) => ['public-course-structure', courseId] as const,
   spaceFeed: (spaceId: string, limit?: number) =>
     ['public-space-feed', spaceId, limit ?? null] as const,
+  spaceFeedPages: (spaceId: string) => ['public-space-feed-pages', spaceId] as const,
   spaceThread: (spaceId: string, postId: string) =>
     ['public-space-thread', spaceId, postId] as const,
   spaceEvents: (spaceId: string, scope?: string) =>
@@ -653,6 +654,15 @@ export const publicSpaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =
   defineQuery({
     queryKey: publicSurfaceScopes.spaceFeed(input.spaceId, input.limit),
     call: ({ signal }) => api.publicSpaceFeed(input, signal),
+  });
+
+export const publicSpaceFeedPagesQuery = (api: ApiClient, spaceId: string) =>
+  defineCursorQuery({
+    queryKey: publicSurfaceScopes.spaceFeedPages(spaceId),
+    call: ({ signal, pageParam }) => api.publicSpaceFeed({
+      spaceId, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => page.feed.nextCursor,
   });
 
 export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadGetInput) =>

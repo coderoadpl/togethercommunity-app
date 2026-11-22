@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { PublicNavigation } from '#core/domain/index.js';
+import type { PublicNavigation, SpaceFeed } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
@@ -19,19 +19,35 @@ import { usePublicOfferPrice, useVisitorJoin, VisitorContactLinks, VisitorJoinBu
 
 type LockedSpace = PublicNavigation['lockedSpaces'][number];
 
-const FEED_PAGE_SIZE = 20;
-const FEED_MAX_LIMIT = 100;
+type FeedPages = InfiniteData<{ feed: SpaceFeed }, string | undefined>;
+
+const mergeFeedPages = (pages: FeedPages['pages']): SpaceFeed | undefined => {
+  const [first] = pages;
+  if (first === undefined) return undefined;
+  const seen = new Set<string>();
+  const items = pages.flatMap((page) => page.feed.items).filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  return { ...first.feed, items };
+};
+
+const firstPageOnly = (data: FeedPages | undefined): FeedPages | undefined =>
+  data === undefined || data.pages.length <= 1
+    ? data
+    : { pages: data.pages.slice(0, 1), pageParams: data.pageParams.slice(0, 1) };
 
 const usePublicSpaceFeed = (spaceId: string) => {
-  const [paging, setPaging] = useState({ spaceId, limit: FEED_PAGE_SIZE });
-  const limit = paging.spaceId === spaceId ? paging.limit : FEED_PAGE_SIZE;
-  const feed = useQuery({
-    ...actions.publicSpaceFeed(limit === FEED_PAGE_SIZE ? { spaceId } : { spaceId, limit }),
-    placeholderData: (previous) => (previous?.feed.spaceId === spaceId ? previous : undefined),
-  });
-  const canLoadMore = (feed.data?.feed.nextCursor ?? null) !== null && limit < FEED_MAX_LIMIT;
-  const loadMore = () => setPaging({ spaceId, limit: Math.min(limit + FEED_PAGE_SIZE, FEED_MAX_LIMIT) });
-  return { feed, canLoadMore, loadMore };
+  const queryClient = useQueryClient();
+  const feed = useInfiniteQuery(actions.publicSpaceFeedPages(spaceId));
+  useEffect(
+    () => () => {
+      queryClient.setQueryData<FeedPages>(actions.publicSpaceFeedPages(spaceId).queryKey, firstPageOnly);
+    },
+    [queryClient, spaceId],
+  );
+  return feed;
 };
 
 const LockedSpaceAccess = ({ locked }: { locked: LockedSpace }) => {
@@ -84,7 +100,8 @@ const LockedSpaceAccess = ({ locked }: { locked: LockedSpace }) => {
 export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
-  const { feed, canLoadMore, loadMore } = usePublicSpaceFeed(spaceId);
+  const feed = usePublicSpaceFeed(spaceId);
+  const feedData = feed.data === undefined ? undefined : mergeFeedPages(feed.data.pages);
   const join = useVisitorJoin(spaceId);
 
   if (navigation.isPending) {
@@ -174,27 +191,29 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             {space.description}
           </PostBody>
         )}
-        {feed.isPending ? (
-          <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
-        ) : feed.isError ? (
-          <StatusView
-            surface={false}
-            state={{
-              kind: 'error',
-              message: localizeError(feed.error, t),
-              retry: { label: t.discussion.retry, onRetry: () => void feed.refetch() },
-            }}
-          />
+        {feedData === undefined ? (
+          feed.isError ? (
+            <StatusView
+              surface={false}
+              state={{
+                kind: 'error',
+                message: localizeError(feed.error, t),
+                retry: { label: t.discussion.retry, onRetry: () => void feed.refetch() },
+              }}
+            />
+          ) : (
+            <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
+          )
         ) : (
           <Stack useFlexGap sx={{ rowGap: '1rem' }}>
-            <PublicFeedList spaceId={spaceId} feed={feed.data.feed} />
-            {canLoadMore ? (
+            <PublicFeedList spaceId={spaceId} feed={feedData} />
+            {feed.hasNextPage ? (
               <Box>
                 <Button
                   variant="outlined"
                   data-testid="public-feed-load-more"
                   disabled={feed.isFetching}
-                  onClick={loadMore}
+                  onClick={() => void feed.fetchNextPage()}
                 >
                   {t.discussion.loadMore}
                 </Button>

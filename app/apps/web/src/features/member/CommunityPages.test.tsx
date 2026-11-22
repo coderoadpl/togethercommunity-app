@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -5,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { useState, type ReactNode } from 'react';
@@ -102,6 +103,32 @@ const okPublicFeed = (spaceId: string, items: SpaceFeedItem[]) =>
       data: { feed: { spaceId, items, pinned: [], nextCursor: null, isFollowing: false } },
     }),
   );
+
+const PUBLIC_FEED_PAGE_SIZE = 20;
+
+const pagedPublicFeed = (totals: Record<string, number>, requests: string[] = []) =>
+  http.get('/api/public/spaces/:spaceId/feed', ({ params, request }) => {
+    const spaceId = String(params.spaceId);
+    const search = new URL(request.url).searchParams;
+    const cursor = search.get('cursor');
+    requests.push(`${spaceId} cursor=${cursor ?? '-'} limit=${search.get('limit') ?? '-'}`);
+    const start = cursor === null ? 0 : Number(cursor);
+    const end = Math.min(start + PUBLIC_FEED_PAGE_SIZE, totals[spaceId] ?? 0);
+    const items = Array.from({ length: end - start }, (_, index) =>
+      feedItem({ id: `${spaceId}-post-${String(start + index)}`, contextId: spaceId }));
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        feed: {
+          spaceId,
+          items,
+          pinned: [],
+          nextCursor: end < (totals[spaceId] ?? 0) ? String(end) : null,
+          isFollowing: false,
+        },
+      },
+    });
+  });
 
 const okPublicThread = (threads: DiscussionPost[]) =>
   http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
@@ -1055,33 +1082,83 @@ describe('community pages', () => {
     expect(screen.getByTestId('public-feed-post-pin1').compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('loads more public posts by growing the page while the feed has a next cursor', async () => {
-    const limits: (string | null)[] = [];
-    server.use(
-      anonMe(),
-      okPublicNavigation(),
-      http.get('/api/public/spaces/:spaceId/feed', ({ request }) => {
-        const limit = new URL(request.url).searchParams.get('limit');
-        limits.push(limit);
-        const items = limit === null
-          ? [feedItem({ id: 'p1', body: 'Newest post' })]
-          : [feedItem({ id: 'p1', body: 'Newest post' }), feedItem({ id: 'p0', body: 'Older post' })];
-        return HttpResponse.json({
-          ok: true,
-          data: { feed: { spaceId: 's1', items, pinned: [], nextCursor: limit === null ? 'cursor-1' : null, isFollowing: false } },
-        });
-      }),
-    );
+  it('loads older public posts page by page with the cursor while keeping the earlier ones', async () => {
+    const requests: string[] = [];
+    server.use(anonMe(), okPublicNavigation(), pagedPublicFeed({ s1: 25 }, requests));
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    const loadMore = await screen.findByRole('button', { name: en.discussion.loadMore });
-    await userEvent.click(loadMore);
+    await userEvent.click(await screen.findByRole('button', { name: en.discussion.loadMore }));
 
-    expect(await screen.findByTestId('public-feed-post-p0')).toHaveTextContent('Older post');
-    expect(screen.getByTestId('public-feed-post-p1')).toBeInTheDocument();
-    expect(limits).toEqual([null, '40']);
+    expect(await screen.findByTestId('public-feed-post-s1-post-24')).toBeInTheDocument();
+    expect(screen.getByTestId('public-feed-post-s1-post-0')).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(25);
+    expect(requests).toEqual(['s1 cursor=- limit=-', 's1 cursor=20 limit=-']);
     expect(screen.queryByTestId('public-feed-load-more')).not.toBeInTheDocument();
+  });
+
+  it('keeps loading older public posts past a hundred until the cursor runs out', async () => {
+    const requests: string[] = [];
+    server.use(anonMe(), okPublicNavigation(), pagedPublicFeed({ s1: 130 }, requests));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-s1-post-19');
+    for (let page = 1; page < 7; page += 1) {
+      const loadMore = await screen.findByTestId('public-feed-load-more');
+      await waitFor(() => expect(loadMore).toBeEnabled());
+      await userEvent.click(loadMore);
+      await screen.findByTestId(`public-feed-post-s1-post-${String(Math.min(page * 20 + 19, 129))}`);
+    }
+
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(130);
+    expect(screen.queryByTestId('public-feed-load-more')).not.toBeInTheDocument();
+    expect(requests.at(-1)).toBe('s1 cursor=120 limit=-');
+  });
+
+  it('starts a public space again from its first page after visiting another space', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [
+          { id: 'a', slug: 'a', name: 'Alpha', description: null, position: 0 },
+          { id: 'b', slug: 'b', name: 'Beta', description: null, position: 1 },
+        ],
+      })),
+      pagedPublicFeed({ a: 60, b: 5 }),
+    );
+    const Switcher = () => {
+      const [spaceId, setSpaceId] = useState('a');
+      return (
+        <>
+          <button type="button" onClick={() => setSpaceId('a')}>Alpha</button>
+          <button type="button" onClick={() => setSpaceId('b')}>Beta</button>
+          <PublicSpaceFeedPage spaceId={spaceId} />
+        </>
+      );
+    };
+    const rootRoute = createRootRoute({ component: Switcher });
+    const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/community/a'] }) });
+    await router.load();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 300_000 } } })}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: en.discussion.loadMore }));
+    await screen.findByTestId('public-feed-post-a-post-39');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(40);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Beta' }));
+    await screen.findByTestId('public-feed-post-b-post-4');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(5);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    await screen.findByTestId('public-feed-post-a-post-0');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(20);
+    expect(screen.queryByTestId('public-feed-post-a-post-20')).not.toBeInTheDocument();
+    expect(screen.getByTestId('public-feed-load-more')).toBeInTheDocument();
   });
 
   it('leaves the latest heading out when the public feed has no pinned posts', async () => {

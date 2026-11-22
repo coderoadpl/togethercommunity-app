@@ -23,6 +23,7 @@ import {
   stockLowEmail,
   orderOutOfStockEmail,
   orderRefundAlertEmail,
+  orderRefundIssuedEmail,
   orderSoldOutRefundEmail,
   subscriptionEnded,
   orderShipped,
@@ -584,6 +585,9 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 4099, currency: 'PLN',
       productTitles: ['Printed poster'], shopUrl: 'https://acme.test/',
     })],
+    ['order-refund-issued', (language) => orderRefundIssuedEmail(language, {
+      tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 1500, currency: 'PLN', shopUrl: 'https://acme.test/',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -764,6 +768,39 @@ describe('order refund alert email', () => {
 
   it('renders the Polish alert with a Polish amount', () => {
     expect(orderRefundAlertEmail('pl', { ...input, alert: 'failed' })).toEqual(expectedTransactionalEmailPl.orderRefundAlertEmail);
+  });
+});
+
+describe('order refund issued email', () => {
+  const input = { tenantName: 'Acme <Shop>', orderId: 'order-<1>', amountCents: 1500, currency: 'PLN', shopUrl: 'https://acme.example.com/' };
+
+  it('names the amount, the short order reference and the usual arrival time without a promised date', () => {
+    const message = orderRefundIssuedEmail('en', input);
+    expect(message.subject).toBe('Refund of PLN\u00a015.00 on its way — Acme <Shop> (#ORDER-<1)');
+    expect(message.text).toBe([
+      'Hello!',
+      '',
+      'A refund of PLN\u00a015.00 for order #ORDER-<1 on Acme <Shop> has been issued to the payment method you used. You do not need to do anything.',
+      '',
+      'When the money comes back:',
+      '- Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it usually appears as a separate credit after about 5–10 business days, depending on your bank.',
+      '- Other payment methods: the time usually depends on the payment method and your bank.',
+      '',
+      'Visit the shop: https://acme.example.com/',
+    ].join('\n'));
+    expect(message.html).toContain('order #ORDER-&lt;1 on Acme &lt;Shop&gt;');
+    expect(message.html).toContain('<a href="https://acme.example.com/">Visit the shop</a>');
+    expect(message.text).not.toContain('order-<1>');
+  });
+
+  it('renders the Polish message with a Polish amount', () => {
+    expect(orderRefundIssuedEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderRefundIssuedEmail);
+  });
+
+  it('round-trips through the outbox payload and refuses a zero amount', () => {
+    const payload = emailOutboxPayloadSchema.parse({ kind: 'order-refund-issued', language: 'pl', ...input });
+    expect(renderEmailOutboxPayload(payload)).toMatchObject({ success: true, data: { subject: expectedTransactionalEmailPl.orderRefundIssuedEmail?.subject } });
+    expect(emailOutboxPayloadSchema.safeParse({ kind: 'order-refund-issued', language: 'pl', ...input, amountCents: 0 }).success).toBe(false);
   });
 });
 

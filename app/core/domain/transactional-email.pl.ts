@@ -226,6 +226,20 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       };
     },
   },
+  orderRefundIssuedEmail: {
+    shopLabel: 'Przejdź do sklepu',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, amount, amountHtml, shopUrl, shopLink }) => {
+      const timing = [
+        'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie zwykle pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych, zależnie od banku.',
+        'Inne metody płatności: czas zwykle zależy od metody płatności i banku.',
+      ];
+      return {
+        subject: `Zwrot ${amount} w drodze — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Cześć!</p><p>Zwrot ${amountHtml} za zamówienie ${orderReferenceHtml} na platformie ${tenantNameHtml} został zlecony na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nZwrot ${amount} za zamówienie ${orderReference} na platformie ${tenantName} został zlecony na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n${timing.map((line) => `- ${line}`).join('\n')}\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

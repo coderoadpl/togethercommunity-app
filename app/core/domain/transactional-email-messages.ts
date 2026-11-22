@@ -285,6 +285,19 @@ export interface TransactionalEmailMessages {
       shopLink: string;
     }) => TransactionalEmailMessageContent;
   };
+  orderRefundIssuedEmail: {
+    shopLabel: string;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderReference: string;
+      orderReferenceHtml: string;
+      amount: string;
+      amountHtml: string;
+      shopUrl: string;
+      shopLink: string;
+    }) => TransactionalEmailMessageContent;
+  };
   orderRefundAlertEmail: {
     render: (input: {
       tenantName: string;

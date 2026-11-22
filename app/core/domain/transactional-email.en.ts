@@ -226,6 +226,20 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       };
     },
   },
+  orderRefundIssuedEmail: {
+    shopLabel: 'Visit the shop',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, amount, amountHtml, shopUrl, shopLink }) => {
+      const timing = [
+        'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it usually appears as a separate credit after about 5–10 business days, depending on your bank.',
+        'Other payment methods: the time usually depends on the payment method and your bank.',
+      ];
+      return {
+        subject: `Refund of ${amount} on its way — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Hello!</p><p>A refund of ${amountHtml} for order ${orderReferenceHtml} on ${tenantNameHtml} has been issued to the payment method you used. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nA refund of ${amount} for order ${orderReference} on ${tenantName} has been issued to the payment method you used. You do not need to do anything.\n\nWhen the money comes back:\n${timing.map((line) => `- ${line}`).join('\n')}\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

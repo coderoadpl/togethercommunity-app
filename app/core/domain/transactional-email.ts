@@ -767,6 +767,36 @@ export const orderSoldOutRefundEmail = (
   }));
 };
 
+export const orderRefundIssuedEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    shopUrl: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
+  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
+    .format(input.amountCents / 100);
+  const orderReference = shortOrderReference(input.orderId);
+  return emailMessageSchema.parse(messages.orderRefundIssuedEmail.render({
+    header: brandHeader(input.branding),
+    socialLinks: brandSocialLinks(input.branding),
+    tenantName: input.tenantName,
+    tenantNameHtml: escapeHtml(input.tenantName),
+    orderReference,
+    orderReferenceHtml: escapeHtml(orderReference),
+    amount,
+    amountHtml: escapeHtml(amount),
+    shopUrl: input.shopUrl,
+    shopLink: link(input.shopUrl, messages.orderRefundIssuedEmail.shopLabel),
+  }));
+};
+
 export const orderRefundAlertEmail = (
   language: string,
   input: {

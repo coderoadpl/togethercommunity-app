@@ -674,6 +674,7 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.activeElement?.getAttribute('type')).not.toBe('password');
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
 
     await userEvent.click(passwordCard);
 
@@ -751,6 +752,7 @@ describe('LoginPage', () => {
       await userEvent.type(screen.getByTestId('login-email'), email);
       await userEvent.click(screen.getByTestId('login-continue'));
       await screen.findByTestId('use-password');
+      await waitFor(() => expect(document.activeElement?.tagName).toBe('H1'));
       const content = screen.getByTestId('sign-in-content');
       const layout = [...content.querySelectorAll('*')].map((element) => [
         element.tagName,
@@ -771,6 +773,7 @@ describe('LoginPage', () => {
 
     expect(unknown).toEqual(known);
     expect(known.layout.some(([, testId]) => testId === 'login-password')).toBe(false);
+    expect(known.focused).toBe('H1');
   });
 
   it('offers password when reported, with the link card first', async () => {
@@ -1004,6 +1007,7 @@ describe('LoginPage', () => {
 
     expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {

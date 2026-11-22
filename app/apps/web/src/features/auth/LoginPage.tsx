@@ -223,6 +223,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
+  const methodTitleRef = useRef<HTMLHeadingElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -241,6 +242,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   useEffect(() => {
     if (resolveFailure !== null) rateLimitedTitleRef.current?.focus();
   }, [resolveFailure]);
+
+  const methodChosen = method !== null;
+  useEffect(() => {
+    if (methodChosen) methodTitleRef.current?.focus();
+  }, [methodChosen]);
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -822,7 +828,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     <>
       {identityChip}
       <Box sx={{ mb: '1.5rem' }}>
-        <AuthTitle variant="h1">{t.auth.methodTitle}</AuthTitle>
+        <AuthTitle variant="h1" ref={methodTitleRef} tabIndex={-1}>
+          {t.auth.methodTitle}
+        </AuthTitle>
         <AuthLead component="p">{t.auth.methodLead}</AuthLead>
       </Box>
       {magicLinkExpired ? (

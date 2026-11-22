@@ -134,7 +134,8 @@ describe('retryAfterSecondsOf', () => {
   it('reads only a positive whole retry delay from the error details', () => {
     const withDelay = (retryAfterSeconds: unknown) => ({ appError: { code: 'rate_limited', details: { retryAfterSeconds } } });
     expect(retryAfterSecondsOf(withDelay(42))).toBe(42);
-    expect([0, -3, 1.5, '42', null].map((value) => retryAfterSecondsOf(withDelay(value)))).toEqual([null, null, null, null, null]);
+    expect(retryAfterSecondsOf(withDelay(600))).toBe(600);
+    expect([0, -3, 1.5, '42', null, 601, 1e21].map((value) => retryAfterSecondsOf(withDelay(value)))).toEqual([null, null, null, null, null, null, null]);
     expect(retryAfterSecondsOf({ appError: { code: 'rate_limited' } })).toBeNull();
     expect(retryAfterSecondsOf(null)).toBeNull();
   });

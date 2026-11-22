@@ -39,10 +39,11 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
-import type { KeyDownloadFileRepository, KeyDownloadSweepCutoffs } from '../key-download-ports.js';
+import type { KeyDownloadFileRepository, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt, storageFileName } from './storage-assets.js';
+import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
 
 export interface KeyDownloadStagingDeps {
   keyDownloadFiles: KeyDownloadFileRepository;
@@ -84,14 +85,14 @@ const deleteObjects = (
   tenantId: string,
   configuration: StorageConfiguration,
   deps: Pick<KeyDownloadStagingDeps, 'storage' | 'logger'>,
-  deadlineMs: () => number = () => KEY_DOWNLOAD_STORAGE_DEADLINES.deleteMs,
+  budget: SweepBudget = UNBOUNDED,
 ) => async (objectKeys: readonly string[]): Promise<boolean> => {
   let removed = true;
-  for (const objectKey of objectKeys) {
+  for (const [index, objectKey] of objectKeys.entries()) {
     const deleted = await deps.storage.delete({
       url: deps.storage.objectUrl(configuration, objectKey).toString(),
       ...credentialsOf(configuration),
-      deadlineMs: deadlineMs(),
+      deadlineMs: sweepDeleteDeadline(budget, KEY_DOWNLOAD_STORAGE_DEADLINES.deleteMs, objectKeys.length - index - 1),
     });
     if (!deleted.ok) {
       logFailure(deps, tenantId, 'could not delete a staged download object', deleted.error.message);
@@ -184,7 +185,7 @@ const leaseEnd = (attemptAt: string): string => new Date(Date.parse(attemptAt) +
 const uploadExpiresAt = (record: Pick<KeyDownloadUploadRecord, 'createdAt'>): string =>
   storageAssetExpiresAt(record.createdAt, KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds);
 
-/** A takeover is allowed only once the attempt's lease ended, so a storage write it left in flight has landed by then. */
+/** A takeover waits for the lease to end only so that two attempts of one upload never run at once; it writes a destination of its own. */
 const completeAgainLater = (until: string, reclaimable: boolean, now: string): AppError => reclaimable
   ? appError('unavailable', `The storage did not confirm this completion; nothing was staged. Complete this upload again after ${until}`, {
     retryAfterSeconds: Math.max(1, Math.ceil((Date.parse(until) - Date.parse(now)) / 1000)),
@@ -237,8 +238,12 @@ const stageAttempt = async (
   }, { maxBytes: record.declaredBytes, headBytes: KEY_DOWNLOAD_FILE_LIMITS.headBytes });
   const sizeMismatch = uploadRefusal(record, validation(`The uploaded file does not have the declared ${String(record.declaredBytes)} bytes; start a new upload`), 'size_mismatch');
   if (!digest.ok) return storageFailure('digest', digest.error, sizeMismatch);
-  if (digest.value.sizeBytes !== record.declaredBytes) return fail(sizeMismatch);
+  if (digest.value.sizeBytes !== record.declaredBytes) {
+    logFailure(deps, tenantId, `stored bytes of record ${record.id} refused`, `size_mismatch: ${String(digest.value.sizeBytes)} bytes stored, ${String(record.declaredBytes)} declared`);
+    return fail(sizeMismatch);
+  }
   if (!keyDownloadBytesMatch(record.contentType, digest.value.head)) {
+    logFailure(deps, tenantId, `stored bytes of record ${record.id} refused`, `type_mismatch: the first bytes are not ${record.contentType}`);
     return fail(uploadRefusal(record, keyDownloadTypeMismatch(record.contentType), 'type_mismatch'));
   }
   const now = deps.clock.nowIso();
@@ -292,7 +297,7 @@ export const completeKeyDownloadUpload = async (
   if (!configuration.ok) return configuration;
   const attemptId = deps.ids.nextId();
   const now = deps.clock.nowIso();
-  const claim = await deps.keyDownloadFiles.claimCompletion(tenantId, keyId, parsed.data.uploadId, attemptId, now);
+  const claim = await deps.keyDownloadFiles.claimCompletion(tenantId, keyId, parsed.data.uploadId, attemptId, now, () => deps.ids.nextId());
   switch (claim.kind) {
     case 'not_found':
       return err(notFound(`No upload "${parsed.data.uploadId}" of this key`));
@@ -430,13 +435,20 @@ const keyDownloadSweepCutoffs = (now: string): KeyDownloadSweepCutoffs => ({
 
 export interface KeyDownloadSweepDeps extends Pick<KeyDownloadStagingDeps, 'keyDownloadFiles' | 'storage' | 'secretResolver' | 'clock' | 'logger'> {
   batch?: { tenants: number; rows: number };
-  /** Wall-clock milliseconds one run may take, checked between workspaces and rows; each storage delete gets what is left. */
+  /**
+   * Wall-clock milliseconds one run may take. A row starts only when what is left covers a lock wait and each of its
+   * storage deletes; its lock wait and every delete, endpoint lookup included, come out of what is left.
+   */
   budgetMs?: number;
   /** An absolute end the caller sets, in epoch milliseconds; the run stops at the earlier of this and its own budget. */
   deadlineAt?: number;
 }
 
-const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, rows: number, left: () => number, deps: KeyDownloadSweepDeps): Promise<number> => {
+const objectsOf = (row: KeyDownloadSweepRow): number => row.kind === 'record'
+  ? Math.max(1, (row.record.candidateKey === null ? 0 : 1) + (row.record.stagedKey === null ? 0 : 1))
+  : 1;
+
+const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, rows: number, left: SweepBudget, deps: KeyDownloadSweepDeps): Promise<number> => {
   const files = deps.keyDownloadFiles;
   await files.purgeSettled(tenantId, cutoffs);
   const batch = await files.listToSweep(tenantId, cutoffs, rows);
@@ -447,15 +459,16 @@ const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, r
     await files.markAttempted(tenantId, batch, cutoffs.now);
     return 0;
   }
-  const remove = deleteObjects(tenantId, configuration.value, deps, () => Math.max(1, Math.min(KEY_DOWNLOAD_STORAGE_DEADLINES.deleteMs, left())));
+  const remove = deleteObjects(tenantId, configuration.value, deps, left);
   let removed = 0;
   for (const row of batch.rows) {
-    if (left() < KEY_DOWNLOAD_FILE_LIMITS.sweepMinimumDeleteMs) break;
+    const wait = sweepLockWait(left, objectsOf(row));
+    if (wait === null) continue;
     const outcome = row.kind === 'record'
-      ? await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove)
+      ? await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove, wait)
       : row.kind === 'staged'
-        ? await files.sweepStaged(tenantId, row.file.id, cutoffs, () => remove([row.file.objectKey]))
-        : await files.finishDeletion(tenantId, row.deletion.objectKey, cutoffs.now, () => remove([row.deletion.objectKey]));
+        ? await files.sweepStaged(tenantId, row.file.id, cutoffs, () => remove([row.file.objectKey]), wait)
+        : await files.finishDeletion(tenantId, row.deletion.objectKey, cutoffs.now, () => remove([row.deletion.objectKey]), wait);
     if (outcome === 'removed') removed += 1;
   }
   return removed;
@@ -466,13 +479,13 @@ export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise
   const now = deps.clock.nowIso();
   const cutoffs = keyDownloadSweepCutoffs(now);
   const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? KEY_DOWNLOAD_FILE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
-  const left = (): number => endsAt - Date.parse(deps.clock.nowIso());
+  const left: SweepBudget = () => endsAt - Date.parse(deps.clock.nowIso());
   const batch = deps.batch ?? { tenants: KEY_DOWNLOAD_FILE_LIMITS.sweepTenantsPerRun, rows: KEY_DOWNLOAD_FILE_LIMITS.sweepRowsPerTenant };
   const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants);
   let removed = 0;
   let visited = 0;
   for (const tenantId of tenants) {
-    if (left() < KEY_DOWNLOAD_FILE_LIMITS.sweepMinimumDeleteMs) break;
+    if (sweepLockWait(left, 1) === null) break;
     visited += 1;
     try {
       removed += await sweepTenant(tenantId, cutoffs, batch.rows, left, deps);

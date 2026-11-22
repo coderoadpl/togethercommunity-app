@@ -1,4 +1,5 @@
 import {
+  appError,
   err,
   forbidden,
   keyDownloadAttachInputSchema,
@@ -60,6 +61,8 @@ export const attachStagedProductDownload = async (
       return err(validation('Files can only be attached to digital-download products'));
     case 'staged_not_found':
       return err(notFound(`No staged file "${parsed.data.stagedFileId}" of this key`));
+    case 'applied_otherwise':
+      return err(appError('conflict', 'This staged file was already attached with another replacement or version note; nothing was changed'));
     case 'replacement_not_found':
       return err(notFound('Replacement file not found'));
     case 'replacement_not_ready':

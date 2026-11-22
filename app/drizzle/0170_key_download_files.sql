@@ -63,6 +63,7 @@ CREATE TABLE "change_proposal_download_deletions" (
   "size_bytes" integer NOT NULL CONSTRAINT "change_proposal_download_deletions_size_check" CHECK ("size_bytes" BETWEEN 1 AND 268435456),
   "created_at" text NOT NULL CONSTRAINT "change_proposal_download_deletions_created_at_check" CHECK ("created_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
   "sweep_attempted_at" text CONSTRAINT "change_proposal_download_deletions_sweep_attempted_at_check" CHECK ("sweep_attempted_at" IS NULL OR "sweep_attempted_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
+  "not_before" text CONSTRAINT "change_proposal_download_deletions_not_before_check" CHECK ("not_before" IS NULL OR "not_before" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
   CONSTRAINT "change_proposal_download_deletions_pkey" PRIMARY KEY ("tenant_id", "object_key")
 );
 --> statement-breakpoint

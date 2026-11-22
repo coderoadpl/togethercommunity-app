@@ -69,9 +69,19 @@ export interface KeyDownloadFileRepository {
   /**
    * In a short transaction of its own, holding the record row: moves a started upload of the key to completing under
    * `attemptId`, so exactly one request performs its storage requests. A completing or interrupted upload is taken over
-   * the same way once its attempt's lease ended, while the upload is open and still owns its upload object.
+   * once its attempt's lease ended, while the upload is open and still owns its upload object: the new attempt gets a
+   * fresh file id from `nextFileId` and its own destination, and the superseded destination becomes an owed deletion
+   * due 30 minutes after the superseded attempt started, so a copy of that attempt that lands late is never staged and
+   * is still counted and deleted.
    */
-  claimCompletion(tenantId: string, apiKeyId: string, uploadId: string, attemptId: string, now: string): Promise<KeyDownloadClaim>;
+  claimCompletion(
+    tenantId: string,
+    apiKeyId: string,
+    uploadId: string,
+    attemptId: string,
+    now: string,
+    nextFileId: () => string,
+  ): Promise<KeyDownloadClaim>;
   /**
    * Holding the record row: when the record is still completing under `attemptId` within its lease, inserts the staged
    * row, which takes ownership of the staged object, and closes the record in the same transaction. Past the lease it
@@ -82,13 +92,15 @@ export interface KeyDownloadFileRepository {
    * Holding the record row until `remove` answered, deletes what the record still owns: its candidate, and its staged
    * destination only while no staged row and no product file row points at it. An `attempt` acts only for the attempt
    * that claimed the record and marks a completing record failed with `reason`; a `sweep` acts only on a record it
-   * still selects and settles it. A failed `remove` keeps the keys for the sweep.
+   * still selects and settles it. A failed `remove` keeps the keys for the sweep. `lockWaitMs` shortens the row lock wait
+   * below the repository's own bound.
    */
   releaseRecord(
     tenantId: string,
     uploadId: string,
     selection: { kind: 'attempt'; attemptId: string; destination: string; reason: string; now: string } | { kind: 'sweep'; cutoffs: KeyDownloadSweepCutoffs },
     remove: (objectKeys: readonly string[]) => Promise<boolean>,
+    lockWaitMs?: number,
   ): Promise<KeyDownloadObjectRemoval>;
   /**
    * Holding the record row: an attempt whose storage outcome is unknown leaves the record interrupted, still owning its
@@ -101,18 +113,27 @@ export interface KeyDownloadFileRepository {
   listStaged(tenantId: string, apiKeyId: string): Promise<KeyDownloadStagedFile[]>;
   /** Moves the key's staged file to the owed deletions in one transaction; null when the key has no such file. */
   discard(tenantId: string, apiKeyId: string, id: string, now: string): Promise<KeyDownloadPendingDeletion | null>;
-  /** Holding the owed deletion's row until `remove` answered: deletes the row once `remove` answers true. */
-  finishDeletion(tenantId: string, objectKey: string, now: string, remove: () => Promise<boolean>): Promise<KeyDownloadObjectRemoval>;
+  /**
+   * Holding the owed deletion's row until `remove` answered: deletes the row once `remove` answers true. A deletion whose
+   * not-before time is later than `now` is kept without a storage request.
+   */
+  finishDeletion(tenantId: string, objectKey: string, now: string, remove: () => Promise<boolean>, lockWaitMs?: number): Promise<KeyDownloadObjectRemoval>;
   /**
    * Holding the staged row until `remove` answered: when the file is still past its age or of a revoked or deleted key,
    * and no pending, unexpired proposal attaches it, deletes the row once `remove` answers true.
    */
-  sweepStaged(tenantId: string, id: string, cutoffs: KeyDownloadSweepCutoffs, remove: () => Promise<boolean>): Promise<KeyDownloadObjectRemoval>;
+  sweepStaged(
+    tenantId: string,
+    id: string,
+    cutoffs: KeyDownloadSweepCutoffs,
+    remove: () => Promise<boolean>,
+    lockWaitMs?: number,
+  ): Promise<KeyDownloadObjectRemoval>;
   /** Workspaces with rows the sweep selects, the one waiting longest first, by the attempt time or else the creation time. */
   listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<string[]>;
   /**
-   * The rows of one workspace the sweep selects, up to `limit` of each kind, in one queue ordered by the attempt time or
-   * else the creation time, longest waiting first.
+   * The rows of one workspace the sweep selects (an owed deletion only once its not-before time passed), up to `limit`
+   * of each kind, in one queue ordered by the attempt time or else the creation time, longest waiting first.
    */
   listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<KeyDownloadSweepBatch>;
   /** Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others. */
@@ -126,6 +147,7 @@ export type KeyDownloadAttachment =
   | { kind: 'product_not_found' }
   | { kind: 'not_digital' }
   | { kind: 'staged_not_found' }
+  | { kind: 'applied_otherwise' }
   | { kind: 'replacement_not_found' }
   | { kind: 'replacement_not_ready' }
   | { kind: 'cap_exceeded'; cap: KeyDownloadFileCap };
@@ -144,7 +166,9 @@ export interface KeyDownloadAttachRepository {
   /**
    * Inserts a ready file whose id is the staged file's id and whose object is the staged object, as a new file or as the
    * next version of `replacesAssetId`, and deletes the staged row; only a staged file of `apiKeyId` is attached. A retry
-   * of an attach that already applied finds no staged row and answers the product file it made.
+   * of an attach that already applied finds no staged row and answers the product file it made when it asks for what
+   * was applied (no replacement and a lineage of its own, or a replacement in the same lineage, and the same version
+   * note); any other retry answers `applied_otherwise`.
    */
   attach(tenantId: string, input: {
     productId: string;

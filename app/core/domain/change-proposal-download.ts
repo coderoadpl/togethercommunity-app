@@ -22,6 +22,7 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
   filesPerProduct: 100,
   uploadTtlSeconds: 15 * 60,
   completionDeadlineMs: 10 * MINUTE_MS,
+  supersededDestinationDeleteAfterMs: 30 * MINUTE_MS,
   recordSweepAfterMs: 20 * MINUTE_MS,
   recordRetentionMs: DAY_MS,
   recordEventRetentionMs: 30 * DAY_MS,
@@ -29,7 +30,6 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
   sweepTenantsPerRun: 50,
   sweepRowsPerTenant: 50,
   sweepBudgetMs: 10_000,
-  sweepMinimumDeleteMs: 1_000,
   headBytes: 4096,
 } as const;
 
@@ -271,6 +271,7 @@ export const keyDownloadPendingDeletionSchema = z.object({
   objectKey: keyFileObjectSchema,
   sizeBytes: z.number().int().min(1).max(2147483647),
   createdAt: isoMilliseconds,
+  notBefore: isoMilliseconds.nullable(),
 }).strict();
 
 export type KeyDownloadPendingDeletion = z.output<typeof keyDownloadPendingDeletionSchema>;
@@ -280,6 +281,15 @@ export const keyDownloadCandidateKey = (tenantId: string, apiKeyId: string, uplo
 
 export const keyDownloadStagedKey = (tenantId: string, apiKeyId: string, fileId: string, safeName: string): string =>
   `${tenantId}${KEY_FILES_SEGMENT}${apiKeyId}/${fileId}/${safeName}`;
+
+export const keyDownloadDestinationForFile = (stagedKey: string, apiKeyId: string, fileId: string): string | null => {
+  const marker = `${KEY_FILES_SEGMENT}${apiKeyId}/`;
+  const at = stagedKey.indexOf(marker);
+  if (at < 0) return null;
+  const rest = stagedKey.slice(at + marker.length);
+  const slash = rest.indexOf('/');
+  return slash < 1 ? null : `${stagedKey.slice(0, at + marker.length)}${fileId}${rest.slice(slash)}`;
+};
 
 export const keyDownloadObjectOwner = (tenantId: string, objectKey: string): string | null => {
   const prefix = `${tenantId}${KEY_FILES_SEGMENT}`;

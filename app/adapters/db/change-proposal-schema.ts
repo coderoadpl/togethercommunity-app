@@ -246,6 +246,7 @@ export const changeProposalDownloadDeletions = pgTable('change_proposal_download
   sizeBytes: integer('size_bytes').notNull(),
   createdAt: text('created_at').notNull(),
   sweepAttemptedAt: text('sweep_attempted_at'),
+  notBefore: text('not_before'),
 }, (table) => [
   primaryKey({ name: 'change_proposal_download_deletions_pkey', columns: [table.tenantId, table.objectKey] }),
   index('change_proposal_download_deletions_created_idx').on(table.createdAt),
@@ -253,6 +254,7 @@ export const changeProposalDownloadDeletions = pgTable('change_proposal_download
   check('change_proposal_download_deletions_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 268435456`),
   check('change_proposal_download_deletions_created_at_check', isoMillisecondTimestamp(table.createdAt)),
   check('change_proposal_download_deletions_sweep_attempted_at_check', sql`${table.sweepAttemptedAt} IS NULL OR ${isoMillisecondTimestamp(table.sweepAttemptedAt)}`),
+  check('change_proposal_download_deletions_not_before_check', sql`${table.notBefore} IS NULL OR ${isoMillisecondTimestamp(table.notBefore)}`),
 ]);
 
 export const changeProposalDownloadUploadEvents = pgTable('change_proposal_download_upload_events', {

@@ -2114,7 +2114,10 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadProductBody: string;
     downloadsHeading: string;
-    downloadFile: (params: { name: string }) => string;
+    downloadButton: string;
+    downloadFileVersion: (params: { name: string; number: number }) => string;
+    downloadsGroupLabel: (params: { title: string }) => string;
+    downloadVersionShort: (params: { number: number }) => string;
   };
   downloadCopies: {
     showMore: string;

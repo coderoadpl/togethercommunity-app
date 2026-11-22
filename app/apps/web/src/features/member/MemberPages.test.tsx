@@ -203,7 +203,7 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'workbook.pdf' })} · ${en.products.fileVersion({ number: 2 })}` }))
+    expect(await screen.findByRole('link', { name: en.student.downloadFileVersion({ name: 'workbook.pdf', number: 2 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
     expect(screen.getByText('Corrected diagram')).toBeVisible();
     expect(screen.getByText('First edition')).not.toBeVisible();
@@ -282,11 +282,11 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'large-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(await screen.findByRole('link', { name: en.student.downloadFileVersion({ name: 'large-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
-    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'equal-limit-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(screen.getByRole('link', { name: en.student.downloadFileVersion({ name: 'equal-limit-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-2');
-    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'regular-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(screen.getByRole('link', { name: en.student.downloadFileVersion({ name: 'regular-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-3');
     expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
   });

@@ -81,7 +81,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
       <MemberSurface title={product.title} eyebrow={t.student.downloadsHeading}>
         {product.description ? <RichTextContent html={product.description} /> : null}
         <Typography>{t.student.downloadProductBody}</Typography>
-        <ProductDownloads productId={product.id} downloads={product.downloads} />
+        <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
       </MemberSurface>
     );
   }
@@ -121,7 +121,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
           </Stack>
         </SectionCard>
       )}
-      <ProductDownloads productId={product.id} downloads={product.downloads} />
+      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
     </MemberSurface>
   );
 };

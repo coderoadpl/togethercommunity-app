@@ -2377,7 +2377,10 @@ export const en: Messages = {
       'Already have a product? Check its access status in your products — if it has expired, you can renew it there.',
     downloadProductBody: 'This product contains files to download. When a new version is published, it will appear below.',
     downloadsHeading: 'Downloads',
-    downloadFile: ({ name }) => `Download ${name}`,
+    downloadButton: 'Download',
+    downloadFileVersion: ({ name, number }) => format('Download {name}, version {number}', { name, number }),
+    downloadsGroupLabel: ({ title }) => `Downloads: ${title}`,
+    downloadVersionShort: ({ number }) => `v${number}`,
   },
   downloadCopies: {
     showMore: 'Show more copies',

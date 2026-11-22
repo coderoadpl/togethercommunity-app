@@ -159,7 +159,7 @@ const ProductRow = ({
         <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
       </Typography>
       {product.description ? <RichTextContent html={product.description} /> : null}
-      <ProductDownloads productId={product.id} downloads={product.downloads} />
+      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
       {product.grantStatus === 'upcoming' ? (
         <Typography variant="caption" color="text.secondary">
           {t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) })}

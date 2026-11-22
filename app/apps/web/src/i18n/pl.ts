@@ -2398,7 +2398,10 @@ export const pl: Messages = {
       'Masz już produkt? Sprawdź status dostępu w sekcji „Moje produkty” — jeśli wygasł, możesz go tam odnowić.',
     downloadProductBody: 'Ten produkt zawiera pliki do pobrania. Gdy pojawi się nowa wersja, znajdziesz ją poniżej.',
     downloadsHeading: 'Pliki do pobrania',
-    downloadFile: ({ name }) => `Pobierz ${name}`,
+    downloadButton: 'Pobierz',
+    downloadFileVersion: ({ name, number }) => format('Pobierz {name}, wersja {number}', { name, number }),
+    downloadsGroupLabel: ({ title }) => `Pliki do pobrania: ${title}`,
+    downloadVersionShort: ({ number }) => `v${number}`,
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

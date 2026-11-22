@@ -55,19 +55,140 @@ products with purchase consent checkboxes: it keeps the Together page at
 `?checkout=together`, and `POST /api/public/sales-links/<slug>/checkout` refuses
 the link.
 
-The checkout page renders a **Delivery** step above the pay button with the
-active options and their prices. For a parcel locker option it shows a
-**Parcel locker code** input (upper-cased, 4–12 letters or digits) and the
-InPost map under the rule in
-[Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map).
-Choosing a locker on the map fills the code and shows the locker name and
-address. The pay button stays disabled until an option, and a valid code when
-the option needs one, is chosen.
+The checkout page renders a **Delivery** section with the active options and
+their prices directly under the order summary, the variant chips and the price
+choice, before the personalisation, the invoice and discount code rows and the
+pay button. For a parcel locker option it shows, under the chosen option, a filled
+**Choose a parcel locker** button with a map pin that opens the
+[parcel locker picker](#parcel-locker-picker) with the InPost map (under the
+rule in
+[Content security policy for the parcel locker map](#content-security-policy-for-the-parcel-locker-map)),
+and a small **I know the code** toggle with a chevron that reveals the
+**Parcel locker code** input (upper-cased, 4–12 letters or digits). Once a
+locker is chosen on the map the option shows a check with **Selected parcel
+locker**, the code, name and address and a **Change** button that reopens the
+picker, and the typed-code field closes. Without a map (no Geowidget token, a staff session or test mode, or
+a map that failed to load) the option shows the code input directly, with one
+short reason when there is one. The pay button stays disabled until an option,
+and a valid code when the option needs one, is chosen, and a line under the
+button says which of the two is missing.
+
+### Parcel locker picker
+
+The map never sits inside the checkout page. `LockerPicker` in
+`apps/web/src/features/checkout/` is shared by the product checkout, the sales
+link checkout and the hosted cart page through `DeliveryStep`:
+
+- On a phone or a short screen (narrower than the `md` breakpoint or lower than
+  600 px) it is a full-screen view of `100dvh` that respects the safe-area
+  insets; on a desktop it is a large dialog. The page behind it does not scroll
+  and is hidden from assistive technology.
+- A fixed header holds the title, one line of guidance (**Tap a point, then
+  the yellow “Select” button.**), an **I know the code** action and the way
+  out. In the full-screen view the way out is a **Back** control with an arrow
+  on the left, away from the map's own close buttons at the top right; the
+  desktop dialog keeps a close button. On a phone narrower than the `sm`
+  breakpoint the header has two rows, **Back** and **I know the code** above
+  the guidance line, and the title stays in the page only as the dialog's
+  heading for assistive technology; wider screens show **Back**, the title
+  with the guidance line and **I know the code** in one row. The map fills all
+  the remaining space down to the bottom edge, without a scrolling container
+  around it and without a footer, and the full-screen view has no rounded
+  corners or border.
+- **I know the code** in the header closes the picker the same way as
+  **Back**, opens the **Parcel locker code** field on the page and moves focus
+  into it.
+- One tap chooses the locker. InPost's map reports a point only when the buyer
+  taps the map's own yellow select button in the point's card or details
+  panel; tapping a marker, a list item or the map's details link only shows
+  the point. The picker therefore commits the reported point at once,
+  closes, returns focus to **Change** and announces the chosen locker in a
+  polite live region on the page ("Parcel locker WAW01M chosen: Example
+  Street 5, 00-001 Warsaw."). There is no second confirm button: it would mean
+  the same as the map's own select button, and the map shows no feedback
+  after it, so our page closing is the feedback.
+- Reopening the picker with a locker already chosen asks the map to show that
+  locker (`showPoint` on the handle from `inpost.geowidget.init`). The call is
+  guarded: a missing handle, a missing method, a thrown error or a rejected
+  promise is ignored, and the map then starts at its own default spot. InPost
+  ignores such calls silently until the token is registered for the exact
+  domain.
+- **Back**, the close button, Escape (also from inside the map, which reports it with the
+  `inpost.geowidget.escape` event, on the map element or on the document) and
+  the phone's back gesture close the picker and keep the previous choice.
+- Opening the picker adds one browser history entry for the same address, so
+  the back gesture closes the picker instead of leaving the checkout; closing
+  it in any other way, or choosing a locker, removes that entry again without
+  leaving the page.
+- Focus moves to the picker title when it opens, stays inside it, and returns to
+  **Choose a parcel locker** or **Change** when it closes (to the code input
+  after **I know the code**, **Type the code** or a map failure). The guidance
+  line describes the dialog and is a polite live region, so a map failure is
+  read out. Enter inside the picker never submits the checkout.
+- The map element is created only while the picker is open and removed when it
+  closes. When the map script fails to load (for example a content security
+  policy kept from an in-app navigation), the picker says so and offers
+  **Try again** and **Type the code**. **Try again** clears the failure, moves
+  focus to the picker title and mounts the map again with a fresh script.
+  After **Type the code** (or **I know the code**) the option shows the code
+  input with the reason for the rest of the page's life. A script that fails
+  while the picker is closed is removed, so the next opening loads it again.
+  A token InPost rejects (for example one issued for another domain) loads the
+  map with InPost's own red access-denied banner, a watermark and no points;
+  the page cannot detect that inside the cross-origin frame, so the buyer uses
+  **I know the code** in the picker header.
+
+### Layout of the Together checkout page
+
+`/checkout/<productRef>` and `/offer/<slug>?checkout=together` show one short
+step before Stripe and keep only what Stripe Checkout does not show:
+
+1. A step indicator, `1 Delivery · 2 Details and payment`, or `1 Your order`
+   when nothing is shipped. It is shown only when the order continues to
+   Stripe.
+2. The offer title and one summary row, `N items · total`, with the total after
+   the discount code and the delivery fee. **Details and VAT** opens the cover,
+   the description and, for a sales link, the per-line net amount, VAT rate,
+   VAT amount and gross amount.
+3. The variant chips, the price choice when a product has several prices, the
+   delivery options with the parcel locker picker under the locker option, and
+   the personalisation rows.
+4. Two collapsed rows: **I need an invoice** (the invoice data stays on the
+   page because Stripe's tax ID form does not guarantee an address for the
+   invoice) and **I have a discount code** (the coupon rules and the lowest
+   price in the last 30 days are shown before payment).
+5. The workspace purchase consents, the staff test-mode switch for staff, and
+   the compact [product safety line](#product-safety-information-gpsr).
+6. The pay button with the total, `Go to payment · PLN 159.00`, sticky at the
+   bottom of the screen, a line that names what Stripe asks for next (email,
+   delivery address, terms) and, when the button is disabled, the reason under
+   it.
+
+The email and the terms acceptance move to Stripe when the workspace has both a
+terms URL and a privacy URL (see
+[Payments](payments.md#terms-acceptance-on-the-together-checkout-page)). The page
+asks for the email only for a discount code with a per-person limit (the field
+appears inside the code row after the server asks for it), and for the email and
+the terms for an order with nothing to pay, which never reaches Stripe. A
+signed-in buyer is never asked for the email: the account email is sent with the
+request. A workspace without both legal URLs, and the development simulated
+payment, keep the email field and, when a URL is set, the terms checkbox on the
+page. When the workspace's Stripe account has no terms URL in its Dashboard public
+details, Stripe refuses to collect the terms; the page then shows the email field
+and the terms checkbox itself, keeps everything the buyer chose and asks once to
+accept the terms there (see
+[Payments](payments.md#stripe-accounts-without-a-dashboard-terms-url)). Expandable parts are buttons with `aria-expanded` and `aria-controls`;
+their panels open below the button, so nothing above them moves.
+
+The shared parts (`CheckoutSteps`, `CheckoutSummaryRow`, `CheckoutDisclosureRow`
+and `CheckoutPayBar` in `apps/web/src/components/ui/CheckoutStepParts.tsx`, and
+`ProductSafetySummary` in `apps/web/src/features/checkout/`) take plain props so
+the cart checkout can adopt them; the cart page keeps its current layout.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
-keeps that page's content security policy, the map does not load, and the code
-input remains the way to choose a locker.
+keeps that page's content security policy, the map does not load, the picker
+says so, and the code input remains the way to choose a locker.
 
 The checkout request carries
 `shipping: { rateId, pickupPoint?: { provider: 'inpost', code, name?, address? } }`.
@@ -698,14 +819,43 @@ content; the platform only validates the shape.
 The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
-images are escaped or dropped). The Together checkout page shows the section
-**Product safety information** directly under the description and renders the
-warnings through the product description sanitiser. For physical products the
-section is always expanded; for other product types it is collapsed until
-opened. Public sales-link offers carry `compliance` on each line the same way,
-and the sales-link checkout shows one section per product with safety
-information, titled with the product name when the link sells more than one
-product. A sales link with any product that carries safety information never
+images are escaped or dropped). Public sales-link offers carry `compliance` and
+the product `coverUrl` on each line the same way.
+
+Regulation (EU) 2023/988 art. 19 says an online offer "shall clearly and
+visibly indicate at least":
+
+- (a) the manufacturer's name, registered trade name or trade mark, with its
+  postal and electronic address;
+- (b) where the manufacturer is not established in the Union, the name, postal
+  and electronic address of the responsible person;
+- (c) "information allowing the identification of the product, including a
+  picture of it, its type and any other product identifier";
+- (d) "any warning or safety information" to be affixed to the product or its
+  packaging or included in an accompanying document, in a language consumers
+  can easily understand.
+
+The Together checkout page shows a compact **Product safety information**
+section above the pay button, for every product type with `compliance`. Without
+a click it shows, per manufacturer, the name, the postal address, the contact
+e-mail and, when the offer sells more than one product, `applies to N products`
+(a); then, for each product of that manufacturer, a 40 px picture from the
+product cover with the product title as its alternative text when the product
+has a cover, the product title when the offer sells more than one product, the
+model identifier (c), and the safety warnings as plain text when the workspace
+entered any (d). A warning longer than 280 characters shows its first three
+lines with **Show more**, which extends the same text; screen readers read the
+whole warning either way. Products without warnings show no warning line.
+Products whose manufacturer name, address and e-mail are identical share one
+manufacturer line.
+
+**Details** on a manufacturer line holds only what goes beyond that minimum: per
+product (titled when the offer sells more than one product) the batch and the
+instructions link. A manufacturer whose products have neither shows no
+**Details**. The product data has no separate responsible-person field, so the
+page shows no line of its own for (b). The cart checkout keeps one section per
+product, expanded for physical products.
+A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,
 so the section is shown before payment, and
@@ -728,8 +878,8 @@ every product.
 The public offer returns `variants: [{ productId, slug, label, soldOut, available }]` for a
 product whose group has at least two published products, including the product
 itself, in creation order; otherwise the list is empty. A variant without a
-label uses its title. The checkout page renders the variants as chips above the
-price: the current product is selected, the others link to their own checkout
+label uses its title. The checkout page renders the variants as chips under the
+order summary row: the current product is selected, the others link to their own checkout
 page (campaign parameters are kept), and a sold-out variant is disabled with
 "Sold out". The sold-out flag and the `available` count are the public stock
 of the sibling: a tracked variant without an available piece is sold out, an
@@ -912,8 +1062,9 @@ Following the owner decision of 2026-11-05, the page injects
 `https://geowidget.inpost.pl/inpost-geowidget.js` (with `defer`) and
 `https://geowidget.inpost.pl/inpost-geowidget.css` on demand, only when all of
 these hold: the workspace has a Geowidget token, the buyer has chosen a parcel
-locker option, the checkout runs in live mode (the Stripe test-mode switch is
-off), and the viewer holds no staff session (owner or admin) for the workspace.
+locker option and opened the parcel locker picker, the checkout runs in live
+mode (the Stripe test-mode switch is off), and the viewer holds no staff session
+(owner or admin) for the workspace.
 The page learns the last two from `GET /api/public/payment-config`: `canTest`
 is true for a signed-in owner or admin of the workspace, and `testEnabled` for
 the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
@@ -938,7 +1089,7 @@ document keeps its base value, `'self' https:` on `/checkout/*` documents and in
 the static hosting headers, and `'self' https://*.sentry.io` on `/offer/*`
 server responses. On a server-rendered `/offer/*` form document the map may
 therefore fail to reach InPost's API; the buyer then enters the locker code in
-the typed input, which the delivery step always shows. `img-src` already allows
+the typed input, which the delivery step always offers. `img-src` already allows
 `https:`. Success documents keep the
 analytics policy described in [Security](security.md) and never allow the map
 origin. No other document allows it; `vercel.json` keeps its policy entries
@@ -948,8 +1099,12 @@ document.
 The injected script cannot be unloaded, so once the map has been shown, leaving
 the form document by an in-app link, programmatic navigation or browser history
 step becomes a full document navigation (the same guard as the analytics success
-document). The guard stays in place after the buyer switches to another
-delivery option, so the map code never runs in sign-in or signed-in views.
+document). The guard stays in place after the buyer closes the picker or
+switches to another delivery option, so the map code never runs in sign-in or
+signed-in views. The page keeps one such guard however often the picker is
+opened. The history entry the open picker adds keeps the same address,
+so the back gesture that closes the picker is not a navigation away from the
+form document.
 
 Follow-up: a browser check on staging lists the exact origins the map calls;
 any `connect-src` change for them needs a separate owner decision.

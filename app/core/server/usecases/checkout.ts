@@ -41,6 +41,7 @@ import type {
   ProductRepository,
   SalesLinkRepository,
   SecretCrypto,
+  StripeTermsCollection,
   TenantSecretRepository,
   TenantRepository,
 } from '../ports.js';
@@ -72,6 +73,8 @@ export interface CheckoutDeps {
 }
 
 export type { CheckoutSelection } from './checkout-selection.js';
+
+const TERMS_REQUIRED_MESSAGE = 'Accepting the terms and privacy policy is required';
 
 export const getPaymentConfig = async (
   tenantId: string,
@@ -212,6 +215,7 @@ export const startCheckoutSession = async (
   deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
   testSession?: { mode: 'test'; memberId: string },
+  stripeTerms?: StripeTermsCollection,
 ): Promise<Result<{
   url: string;
   coupon?: CouponCheckoutBreakdown;
@@ -269,11 +273,13 @@ export const startCheckoutSession = async (
       amountCents: totalCents, currency,
     }, selection, deps);
     if (!validated.ok) return validated;
-    if (input.email === undefined) return err(validation('An email is required to use a coupon'));
-    const capturedCoupon = await captureCouponCheckout(tenant.id, { ...validated.value, memberEmail: input.email }, selection, deps);
+    const freeCoupon = validated.value.breakdown.finalCents === 0 && shippingCents === 0 && price?.kind !== 'recurring';
+    if (input.email === undefined && (stripeTerms === undefined || freeCoupon)) return err(validation('An email is required to use a coupon'));
+    if (freeCoupon && stripeTerms !== undefined && input.termsAccepted !== true) return err(validation(TERMS_REQUIRED_MESSAGE));
+    const capturedCoupon = await captureCouponCheckout(tenant.id, { ...validated.value, memberEmail: input.email ?? null }, selection, deps);
     if (!capturedCoupon.ok) return capturedCoupon;
     const checkoutSessionId = capturedCoupon.value;
-    if (validated.value.breakdown.finalCents === 0 && shippingCents === 0 && price?.kind !== 'recurring') {
+    if (freeCoupon) {
       if (shipping !== undefined) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
       const freeHold = await reserveStock();
       if (!freeHold.ok) return freeHold;
@@ -296,6 +302,7 @@ export const startCheckoutSession = async (
   if (totalCents === 0 && shippingCents === 0 && price?.kind !== 'recurring') {
     if (shipping !== undefined) return err(validation(FREE_ORDER_DELIVERY_UNAVAILABLE));
     if (input.email === undefined) return err(validation('An email is required for free checkout'));
+    if (stripeTerms !== undefined && input.termsAccepted !== true) return err(validation(TERMS_REQUIRED_MESSAGE));
     const freeHold = await reserveStock();
     if (!freeHold.ok) return freeHold;
     return ok({ url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`, free: true, ...(checkoutSnapshotId === undefined ? {} : { checkoutSnapshotId }) });
@@ -304,6 +311,9 @@ export const startCheckoutSession = async (
     const configured = await getPaymentConfig(tenant.id, deps, mode);
     if (!configured.ok) return configured;
     if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
+  }
+  if (stripeTerms !== undefined && stripeTerms.termsAcceptanceMessage.length > 1200) {
+    return err(validation('Checkout terms acceptance text exceeds 1200 characters'));
   }
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
@@ -343,6 +353,7 @@ export const startCheckoutSession = async (
       ? { recurringInterval: price.interval }
       : {}),
     ...(checkoutConsentCaptureId === undefined ? {} : { checkoutConsentCaptureId }),
+    ...(stripeTerms === undefined ? {} : { stripeTerms }),
     ...(applied === undefined
       ? {}
       : {

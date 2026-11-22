@@ -111,8 +111,16 @@ try {
     !(await page.getByTestId('checkout-coupon-input').isVisible()),
     'coupon input was visible before reveal',
   );
+  assert(
+    (await page.getByTestId('checkout-coupon-reveal').getAttribute('aria-expanded')) === 'false',
+    'the discount code row did not start collapsed',
+  );
   await page.getByTestId('checkout-coupon-reveal').click();
   await page.getByTestId('checkout-coupon-input').waitFor({ state: 'visible', timeout: 15000 });
+  assert(
+    (await page.getByTestId('checkout-coupon-reveal').getAttribute('aria-expanded')) === 'true',
+    'the discount code row did not report itself expanded',
+  );
 
   await page.getByTestId('checkout-coupon-input').fill('DOES-NOT-EXIST');
   await page.getByTestId('checkout-coupon-apply').click();
@@ -134,7 +142,11 @@ try {
     'valid coupon did not render the 39.80 discount',
   );
   assert(
-    await page.locator('button[type="submit"]').isVisible(),
+    (await page.getByTestId('checkout-summary-total').textContent())?.includes('159.20') === true,
+    'the order summary row did not show the discounted total',
+  );
+  assert(
+    await page.getByTestId('checkout-pay-cta').isVisible(),
     'discounted checkout did not keep the payment affordance visible',
   );
 

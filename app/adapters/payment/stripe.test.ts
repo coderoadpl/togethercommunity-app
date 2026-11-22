@@ -1,7 +1,7 @@
 import { configureStripe, probeStripePermissions } from '#core/server/index.js';
 import { createTenantSecretRepositoryFake } from '#core/server/testing/tenant-secret-fake.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
-import { err, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
+import { err, isStripeTermsUrlMissing, stripeTermsUrlMissing, validation, ok, tenantSettingsSchema } from '#core/domain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
@@ -1255,7 +1255,14 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
         if (request.method === 'GET') return stripeJson({ object: 'list', data: [], has_more: false });
         if (path === '/v1/coupons') return stripeJson({ id: 'coupon_probe', object: 'coupon' });
         if (path === '/v1/promotion_codes') return stripeJson({ id: 'promo_probe', object: 'promotion_code' });
-        if (path === '/v1/checkout/sessions') return stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        if (path === '/v1/checkout/sessions') {
+          const body = new URLSearchParams(await request.clone().text());
+          const belowPlnMinimum = body.get('line_items[0][price_data][currency]') === 'pln'
+            && Number(body.get('line_items[0][price_data][unit_amount]')) < 200;
+          return belowPlnMinimum
+            ? stripeJson({ error: { type: 'invalid_request_error', message: "The Checkout Session's total amount due must add up to at least PLN 2.00" } }, 400)
+            : stripeJson({ id: 'cs_probe', object: 'checkout.session' });
+        }
         if (path.startsWith('/v1/refunds/')) return stripeJson({ error: { type: 'invalid_request_error', code: 'resource_missing', message: 'No such refund' } }, 404);
         return stripeJson({ id: 'probe_cleanup' });
       }),
@@ -1340,10 +1347,23 @@ describe('probeStripePermissions with an injected Stripe client', () => {
       'branding_settings[display_name]': 'Store', 'branding_settings[logo][type]': 'url',
       'branding_settings[logo][url]': 'https://acme.example.test/logo.png',
       'branding_settings[button_color]': '#112233', 'branding_settings[background_color]': '#ffffff',
-      'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '100',
+      'line_items[0][price_data][currency]': 'pln', 'line_items[0][price_data][unit_amount]': '1000',
       'line_items[0][price_data][product_data][name]': 'Together permission probe', 'line_items[0][quantity]': '1',
       'metadata[togetherProbe]': '1', 'metadata[tenantId]': 'tenant-1',
     });
+  });
+
+  it('creates the probe checkout at or above the provider minimum charge for PLN', async () => {
+    const h = permissionProbeHarness();
+    const result = await h.run();
+    expect(result).toMatchObject({ ok: true, value: { checks: expect.arrayContaining([
+      { resource: 'Checkout Sessions', permission: 'write', status: 'ok' },
+    ]) } });
+    const request = h.requests.find((candidate) => new URL(candidate.url).pathname === '/v1/checkout/sessions');
+    if (request === undefined) throw new Error('Checkout probe request missing');
+    const body = new URLSearchParams(await request.text());
+    expect(body.get('line_items[0][price_data][currency]')).toBe('pln');
+    expect(Number(body.get('line_items[0][price_data][unit_amount]'))).toBeGreaterThanOrEqual(200);
   });
 
   it('reports a coupon 403, skips promotion codes and still probes checkout', async () => {
@@ -1465,6 +1485,52 @@ it('maps customer details, Polish VAT ID and accepted consent directly from a si
     billing: { companyName: 'Example Company', address: 'Main 1', postalCode: '00-001', city: 'Warsaw', country: 'PL', nip: '5260250274' },
     metadata: { directCheckout: true, termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy' },
   } } });
+});
+
+it.each([undefined, 'month'] as const)('lets Stripe collect the terms for a workspace checkout (%s) without tax IDs, coupons or a prefilled email', (recurringInterval) => {
+  const message = 'I accept the [Terms](https://example.com/terms) and the [Privacy policy](https://example.com/privacy).';
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', language: 'en', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    ...(recurringInterval === undefined ? {} : { recurringInterval }),
+    checkoutConsentCaptureId: 'capture-1',
+    stripeTerms: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: message },
+  });
+  expect(params.consent_collection).toEqual({ terms_of_service: 'required' });
+  expect(params.custom_text).toEqual({ terms_of_service_acceptance: { message } });
+  expect(params.mode).toBe(recurringInterval === undefined ? 'payment' : 'subscription');
+  expect(params).not.toHaveProperty('customer_email');
+  expect(params).not.toHaveProperty('tax_id_collection');
+  expect(params).not.toHaveProperty('allow_promotion_codes');
+  expect(params.metadata).toEqual({ tenantId: 'tenant-a', productId: 'product-1', priceId: '', memberEmail: '', language: 'en',
+    stripeTerms: 'true', termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', checkoutConsentCaptureId: 'capture-1' });
+});
+
+it('prefills a known buyer email on a workspace checkout that collects the terms in Stripe', () => {
+  const params = stripeCheckoutSessionParams({
+    tenantId: 'tenant-a', productId: 'product-1', productName: 'Course One', priceCents: 4900,
+    currency: 'PLN', successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/',
+    customerEmail: 'member@example.test',
+    stripeTerms: { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' },
+  });
+  expect(params).toMatchObject({ customer_email: 'member@example.test', consent_collection: { terms_of_service: 'required' },
+    metadata: { memberEmail: 'member@example.test', stripeTerms: 'true' } });
+});
+
+it.each([['accepted', true], [null, false]] as const)('maps the Stripe terms evidence of a workspace checkout (%s)', async (consent, termsAccepted) => {
+  const result = await verify(JSON.stringify({
+    id: 'evt_workspace', type: 'checkout.session.completed', data: { object: {
+      id: 'cs_workspace', customer_details: { email: 'buyer@example.test', name: 'Buyer' },
+      consent: { terms_of_service: consent }, metadata: { tenantId: 'tenant-a', productId: 'product-1',
+        stripeTerms: 'true', termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', checkoutConsentCaptureId: 'capture-1' },
+    } },
+  }));
+  expect(result).toMatchObject({ ok: true, value: { checkoutSession: {
+    email: 'buyer@example.test', termsAccepted, billing: null,
+    metadata: { stripeTerms: true, termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', checkoutConsentCaptureId: 'capture-1' },
+  } } });
+  if (!result.ok) throw new Error('Expected a parsed event');
+  expect(result.value.checkoutSession?.metadata).not.toHaveProperty('directCheckout');
 });
 
 it.each([
@@ -1607,6 +1673,48 @@ it.each([
   expect(body.get('allow_promotion_codes')).toBe(checkout === 'direct' ? 'false' : null);
   expect(body.get('discounts[0][promotion_code]')).toBe(checkout === 'direct-coupon' ? 'promo-1' : null);
   expect(body.has('billing_address_collection')).toBe(false);
+});
+
+const STRIPE_TERMS_URL_REFUSAL = 'You cannot collect consent to your terms of service unless a URL is set in the Stripe Dashboard. Update your public business details in the Dashboard https://dashboard.stripe.com/settings/public with a Terms of service URL to collect terms of service consent.';
+
+const refusingCheckoutProvider = (error: { type: string; message: string; param?: string }) => createStripePaymentProvider({
+  resolver: { resolve: async () => ok('rk_live_unused') },
+  clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () => stripeJson({ error }, 400)) }),
+});
+
+const termsCheckout = {
+  tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 4900, currency: 'PLN',
+  successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
+};
+const legal = { termsUrl: 'https://example.com/terms', privacyUrl: 'https://example.com/privacy', termsAcceptanceMessage: 'I accept the terms.' };
+
+it.each([
+  ['workspace', { stripeTerms: legal }],
+  ['direct', { directCheckout: legal }],
+])('maps the Stripe refusal of a %s terms checkout without a Dashboard terms URL to a typed error', async (_case, terms) => {
+  const result = await refusingCheckoutProvider({ type: 'invalid_request_error', message: STRIPE_TERMS_URL_REFUSAL })
+    .createCheckoutSession({ ...termsCheckout, ...terms });
+  expect(result).toEqual(err(stripeTermsUrlMissing()));
+  if (result.ok) throw new Error('Expected a refusal');
+  expect(isStripeTermsUrlMissing(result.error)).toBe(true);
+});
+
+it('maps a terms refusal that names the consent parameter', async () => {
+  const result = await refusingCheckoutProvider({ type: 'invalid_request_error', param: 'consent_collection[terms_of_service]', message: 'A terms of service URL is required.' })
+    .createCheckoutSession({ ...termsCheckout, stripeTerms: legal });
+  expect(result).toEqual(err(stripeTermsUrlMissing()));
+});
+
+it.each([
+  ['another invalid request', { type: 'invalid_request_error', param: 'custom_text[terms_of_service_acceptance][message]', message: 'custom_text[terms_of_service_acceptance] can only be set when consent_collection[terms_of_service] is required.' }, { stripeTerms: legal }],
+  ['an invalid currency', { type: 'invalid_request_error', param: 'line_items[0][price_data][currency]', message: 'Invalid currency: xyz' }, { stripeTerms: legal }],
+  ['an API error with the same wording', { type: 'api_error', message: STRIPE_TERMS_URL_REFUSAL }, { stripeTerms: legal }],
+  ['the same wording on a checkout that asked for no terms', { type: 'invalid_request_error', message: STRIPE_TERMS_URL_REFUSAL }, {}],
+])('keeps %s as a plain Stripe diagnostic', async (_case, error, terms) => {
+  const result = await refusingCheckoutProvider(error).createCheckoutSession({ ...termsCheckout, ...terms });
+  expect(result).toEqual(err(validation(`Stripe rejected the checkout request: ${error.message}`)));
+  if (result.ok) throw new Error('Expected a refusal');
+  expect(isStripeTermsUrlMissing(result.error)).toBe(false);
 });
 
 it('pins the Stripe SDK to the Clover API release or later for native checkout branding', () => {

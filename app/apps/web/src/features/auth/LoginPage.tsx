@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
   SvgIcon,
 } from '@mui/material';
@@ -32,6 +31,7 @@ import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-retur
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
+  AuthAccentLink,
   AuthNotice,
   AuthDivider,
   AuthHelp,
@@ -438,24 +438,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   };
 
   const changeIdentifierLink = (label: string) => (
-    <MuiLink
+    <AuthAccentLink
+      standalone
       component="button"
       type="button"
-      underline="always"
       data-testid="login-change-email"
       onClick={editIdentifier}
-      sx={{
-        textUnderlineOffset: '0.15em',
-        minHeight: 44,
-        minWidth: 44,
-        flexShrink: 0,
-        display: 'inline-flex',
-        alignItems: 'center',
-      }}
+      sx={{ flexShrink: 0 }}
     >
       {label}{' '}
       <VisuallyHidden>{t.auth.changeIdentifierSuffix}</VisuallyHidden>
-    </MuiLink>
+    </AuthAccentLink>
   );
 
   const identityChip = (
@@ -486,9 +479,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     requestedMagicEmail === '';
 
   const accessPrompt = platformSurface ? (
-    <FinePrint key="access" variant="caption" component="p" data-testid="login-register-prompt">
-      {t.auth.registerPrompt} <MuiLink component={Link} to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registerLink}</MuiLink>
-    </FinePrint>
+    <AuthHelp key="access" component="p" data-testid="login-register-prompt">
+      {t.auth.registerPrompt}{' '}
+      <AuthAccentLink
+        standalone
+        component={Link}
+        to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}
+        data-testid="register-link"
+      >
+        {t.auth.registerLink}
+      </AuthAccentLink>
+    </AuthHelp>
   ) : null;
 
   const notices =
@@ -652,16 +653,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         >
           {backupMode ? t.auth.twoFactorUseAppCode : t.auth.twoFactorUseBackupCode}
         </Button>
-        <FinePrint variant="caption" component="p">
-          <MuiLink
+        <AuthHelp component="p">
+          <AuthAccentLink
+            standalone
             component="button"
             type="button"
             data-testid="two-factor-cancel"
             onClick={cancelTwoFactor}
           >
             {t.auth.twoFactorBackToLogin}
-          </MuiLink>
-        </FinePrint>
+          </AuthAccentLink>
+        </AuthHelp>
       </Stack>,
       null,
     );
@@ -871,11 +873,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                         {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
                       </Button>
                     </Stack>
-                    <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
-                      <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`} data-testid="forgot-password">
+                    <AuthHelp component="p" sx={{ mt: '0.5rem' }}>
+                      <AuthAccentLink
+                        standalone
+                        component={Link}
+                        to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`}
+                        data-testid="forgot-password"
+                      >
                         {t.auth.forgotPassword}
-                      </MuiLink>
-                    </FinePrint>
+                      </AuthAccentLink>
+                    </AuthHelp>
                   </>
                 ),
               }

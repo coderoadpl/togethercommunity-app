@@ -765,6 +765,27 @@ describe('LoginPage', () => {
     expect(change.firstChild?.textContent).toBe(t.auth.changeIdentifierShort);
   });
 
+  it('sizes every recovery link as a 14px underlined 44px target', async () => {
+    server.use(http.post('*', ({ request }) => new URL(request.url).pathname.endsWith('/sign-in/email')
+      ? HttpResponse.json({ twoFactorRedirect: true })
+      : undefined));
+    const expectRecoveryLink = (link: HTMLElement) => {
+      const style = window.getComputedStyle(link);
+      expect([link.dataset['testid'], style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
+        link.dataset['testid'], '0.875rem', 'underline', '44px', '44px',
+      ]);
+    };
+    await renderLoginPage();
+
+    expectRecoveryLink(screen.getByRole('link', { name: en.auth.registerLink }));
+    await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
+    expectRecoveryLink(await screen.findByRole('link', { name: en.auth.forgotPassword }));
+    await userEvent.type(screen.getByTestId('login-password'), 'demo-password-15');
+    await userEvent.click(screen.getByTestId('signin-submit'));
+    expectRecoveryLink(await screen.findByRole('button', { name: en.auth.twoFactorBackToLogin }));
+  });
+
   it('returns to the identifier step with the address ready to edit', async () => {
     await renderLoginPage();
     await continueWithEmail();

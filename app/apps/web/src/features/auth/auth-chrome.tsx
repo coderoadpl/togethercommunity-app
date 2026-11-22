@@ -297,7 +297,17 @@ export const AuthPoweredByLogo = styled('img')({
   maxWidth: '100%',
 });
 
-export const AuthAccentLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => {
+const standaloneLinkTarget: CSSObject = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+  minWidth: 44,
+  fontSize: '0.875rem',
+};
+
+export const AuthAccentLink = styled(MuiLink, {
+  shouldForwardProp: (prop) => prop !== 'standalone',
+})<{ component?: ElementType; to?: string; standalone?: boolean }>(({ theme, standalone }) => {
   const ink = authInk(theme);
   return {
     color: ink,
@@ -305,6 +315,7 @@ export const AuthAccentLink = styled(MuiLink)<{ component?: ElementType; to?: st
     textDecorationColor: alpha(ink, 0.4),
     textUnderlineOffset: '0.15em',
     '&:hover': { textDecorationColor: 'currentColor' },
+    ...(standalone === true ? standaloneLinkTarget : {}),
   };
 });
 

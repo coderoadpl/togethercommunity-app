@@ -2017,6 +2017,40 @@ describe('LessonPlayerPage', () => {
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it('links the previous lesson and the next unlocked lesson from the locked page footer', async () => {
+    stubMobileViewport();
+    const locked = (lessonId: string, name: string): CourseStructureLesson => ({ ...entry(lessonId, name, false), unlockProductId: 'prod-full' });
+    server.use(
+      forbiddenLesson(),
+      okStructureOf(structureOf([
+        entry('l1', 'Intro to Variables'),
+        locked('l2', 'Advanced Variables'),
+        locked('l3', 'Closures'),
+        entry('l4', 'Scopes'),
+      ])),
+      okOffer(),
+      okProgress(),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    const footer = await screen.findByTestId('locked-lesson-footer');
+    expect(footer.tagName).toBe('FOOTER');
+    expect(within(footer).getByTestId('prev-lesson')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    const next = within(footer).getByRole('link', { name: en.lesson.next({ name: 'Scopes' }) });
+    expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l4');
+    expect(next).toHaveClass('MuiButton-outlined');
+    expect(within(next).getByText('Scopes')).toBeInTheDocument();
+    expect(screen.getByTestId('locked-lesson-upsell').compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('leaves the footer off a locked first lesson with no unlocked lesson after it', async () => {
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer(), okProgress());
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('unlock-lesson-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lesson-footer')).not.toBeInTheDocument();
+  });
+
   it('shows a skeleton card instead of the fallback copy while the course structure loads', async () => {
     let releaseStructure: () => void = () => undefined;
     const structureGate = new Promise<void>((resolve) => { releaseStructure = resolve; });

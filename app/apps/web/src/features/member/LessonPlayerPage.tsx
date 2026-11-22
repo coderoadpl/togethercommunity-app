@@ -54,7 +54,7 @@ import {
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
-import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
+import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson, type LessonNeighbours } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
@@ -229,6 +229,57 @@ const LockedLead = ({ children, heading = false }: { children: string; heading?:
   </Stack>
 );
 
+const NextLessonName = ({ name }: { name: string }) => {
+  const t = useTranslations();
+  return (
+    <LessonActionLabel>
+      <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
+      <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
+    </LessonActionLabel>
+  );
+};
+
+const PreviousLessonLink = ({ courseId, lessonId }: { courseId: string; lessonId: string }) => {
+  const t = useTranslations();
+  return (
+    <Button
+      component={Link}
+      to={lessonPath(courseId, lessonId)}
+      variant="outlined"
+      data-testid="prev-lesson"
+      data-slot="compact"
+    >
+      <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
+    </Button>
+  );
+};
+
+const LockedFooter = ({ courseId, neighbours }: { courseId: string; neighbours: LessonNeighbours }) => {
+  const t = useTranslations();
+  const { previous, nextUnlocked } = neighbours;
+  if (previous === null && nextUnlocked === null) return null;
+  return (
+    <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }} data-testid="locked-lesson-footer">
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', gap: { xs: '0.5rem', md: '0.75rem' } }}>
+        {previous === null ? null : <PreviousLessonLink courseId={courseId} lessonId={previous.lessonId} />}
+        <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        {nextUnlocked === null ? null : (
+          <Button
+            component={Link}
+            to={lessonPath(courseId, nextUnlocked.lessonId)}
+            variant="outlined"
+            data-testid="next-lesson"
+            data-slot="primary"
+            aria-label={t.lesson.next({ name: nextUnlocked.name })}
+          >
+            <NextLessonName name={nextUnlocked.name} />
+          </Button>
+        )}
+      </Stack>
+    </LessonFooterBar>
+  );
+};
+
 const LockedCardSkeleton = () => {
   const t = useTranslations();
   return (
@@ -246,12 +297,14 @@ const LockedView = ({
   unlockProductId,
   pending,
   supportUrl,
+  neighbours,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   unlockProductId?: string;
   pending: boolean;
   supportUrl: string | null | undefined;
+  neighbours: LessonNeighbours | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -348,6 +401,7 @@ const LockedView = ({
         </Paper>
         {!loading && unlockProductId === undefined ? null : <MuiLink component={Link} to={courseHref}>{t.lesson.backToCourse}</MuiLink>}
       </Stack>
+      {neighbours === null ? null : <LockedFooter courseId={courseId} neighbours={neighbours} />}
     </MemberSurface>
   );
 };
@@ -564,6 +618,7 @@ export const LessonPlayerPage = ({
           lessonName={lockedRow?.name}
           pending={structure.isPending}
           supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
+          neighbours={neighbours}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -777,15 +832,7 @@ export const LessonPlayerPage = ({
                   </Box>
                 </Tooltip>
               ) : (
-                <Button
-                  component={Link}
-                  to={lessonPath(courseId, previousLesson.lessonId)}
-                  variant="outlined"
-                  data-testid="prev-lesson"
-                  data-slot="compact"
-                >
-                  <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
-                </Button>
+                <PreviousLessonLink courseId={courseId} lessonId={previousLesson.lessonId} />
               )
             )}
             {!continuing && !completed && nextLesson !== null && (
@@ -853,10 +900,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonActionLabel>
-                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name: nextLesson.name })}</Box>
-                  <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{nextLesson.name}</Box>
-                </LessonActionLabel>
+                <NextLessonName name={nextLesson.name} />
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (

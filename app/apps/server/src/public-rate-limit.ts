@@ -20,6 +20,7 @@ import {
   type ResolveTenantDeps,
 } from '#core/server/index.js';
 
+import type { AppVars } from './app-vars.js';
 import { trustedClientIp } from './auth-network.js';
 import { isPublicFormPath, isMarketingSignupSubmissionPath, isSurveySubmissionPath } from './body-limits.js';
 import { type Env } from './env.js';
@@ -218,7 +219,22 @@ const rateLimitedResponse = (error: AppError): Response => {
   });
 };
 
-const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
+const isFormEncoded = (c: Context): boolean =>
+  (c.req.header('content-type') ?? '').split(';')[0]?.trim().toLowerCase() === 'application/x-www-form-urlencoded';
+
+const claimSignupRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps, clientIp: string): Promise<AppError | null> => {
+  const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
+  const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp, window: deps.publicRateLimitPolicies.signupsPerIp }, limiter);
+  if (!ip.ok) return ip.error;
+  const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
+  const email = await requestEmail(c);
+  if (!tenant.ok || tenant.value === null || email === null) return null;
+  const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
+  const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: deps.publicRateLimitPolicies.signupsPerEmail }, limiter);
+  return claimed.ok ? null : claimed.error;
+};
+
+const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
   const policies = deps.publicRateLimitPolicies;
   const clientIp = (): string =>
@@ -240,14 +256,14 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   }
   if (c.req.method !== 'POST') return null;
   if (isMarketingSignupSubmissionPath(c.req.path)) {
-    const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp(), window: policies.signupsPerIp }, limiter);
-    if (!ip.ok) return rateLimitedResponse(ip.error);
-    const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
-    const email = await requestEmail(c);
-    if (!tenant.ok || tenant.value === null || email === null) return null;
-    const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
-    const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: policies.signupsPerEmail }, limiter);
-    return claimed.ok ? null : rateLimitedResponse(claimed.error);
+    const limited = await claimSignupRateLimit(c, deps, clientIp());
+    if (limited === null) return null;
+    // The submit handler answers an HTML form post with the form page itself, so it needs the error instead of a JSON response.
+    if (isFormEncoded(c)) {
+      c.set('signupRateLimit', limited);
+      return null;
+    }
+    return rateLimitedResponse(limited);
   }
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;
@@ -289,7 +305,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
 };
 
-export const publicRateLimitMiddleware = (deps: PublicRateLimitMiddlewareDeps): MiddlewareHandler =>
+export const publicRateLimitMiddleware = (deps: PublicRateLimitMiddlewareDeps): MiddlewareHandler<AppVars> =>
   async (c, next) => {
     const limited = await enforcePublicRateLimit(c, deps);
     if (limited !== null) return limited;

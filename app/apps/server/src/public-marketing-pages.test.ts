@@ -517,7 +517,7 @@ describe('sign-up pages', () => {
     expect(html).toContain(`<h1>${publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })}</h1>`);
     expect(html).toContain(`<p class="signup-consent">${publicMarketingMessagesPl.signupConsent({ tenant: 'Studio Demo', wording: 'newsletter' })} ${publicMarketingMessagesPl.signupConsentUnsubscribe}</p>`);
     expect(html).not.toContain(publicMarketingMessagesPl.signupConsentConfirm);
-    expect(html).toContain(`${publicMarketingMessagesPl.signupName}<input id="signup-name"`);
+    expect(html).toContain(`<label for="signup-name">${publicMarketingMessagesPl.signupName}</label><input id="signup-name"`);
     expect(publicMarketingMessagesPl.signupName).toBe('Imię (opcjonalnie)');
   });
 
@@ -665,6 +665,119 @@ describe('public signup persistence and confirmation', () => {
       const archived = await (await fixture.request(`/marketing/confirm/${token}?lang=en`)).text();
       expect(archived).not.toContain('button-link--primary"');
       expect(archived).toContain('<a class="button-link" href="/">Go to the home page</a>');
+    } finally { await fixture.close(); }
+  });
+  it('re-renders a rejected form post as the form page with escaped typed values, a field error and a fresh token', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const before = await fixture.snapshot();
+      const started = performance.now();
+      const response = await fixture.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ email: 'bad"<b>@nowhere', displayName: '<script>alert(1)</script>', token: fixture.form.token, website: '' }),
+      });
+      expect(performance.now() - started).toBeGreaterThanOrEqual(490);
+      expect(response.status).toBe(400);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const html = await response.text();
+      expect(html).toContain('data-testid="marketing-signup-form"');
+      expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="bad&quot;&lt;b&gt;@nowhere" aria-invalid="true" aria-describedby="signup-email-error" autofocus><p class="field-error" id="signup-email-error" role="alert">Enter a complete e-mail address, for example name@example.com.</p>');
+      expect(html).toContain('value="&lt;script&gt;alert(1)&lt;/script&gt;"');
+      expect(html).not.toContain('<script>alert(1)</script>');
+      expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
+      expect(html).not.toContain('class="signup-alert"');
+      expect(await fixture.snapshot()).toEqual(before);
+    } finally { await fixture.close(); }
+  });
+  it('answers a stale form token with a generic alert and the current token while JSON posts keep their envelope', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const before = await fixture.snapshot();
+      const stale = await fixture.request('/api/public/marketing/forms/newsletter/submit?lang=pl', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ email: 'new@example.org', displayName: 'New Reader', token: 'stale_token_123456789012345' }),
+      });
+      expect(stale.status).toBe(400);
+      const html = await stale.text();
+      expect(html).toContain(`<p class="signup-alert" id="signup-error" role="alert">${publicMarketingMessagesPl.signupFailed}</p><form class="card signup-form" method="post" action="/api/public/marketing/forms/newsletter/submit?lang=pl" aria-describedby="signup-error">`);
+      expect(html).toContain('value="new@example.org"');
+      expect(html).toContain('value="New Reader"');
+      expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
+      expect(html).not.toContain('aria-invalid="true" aria-describedby');
+      const json = await fixture.request('/api/public/marketing/forms/newsletter/submit', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'bad-address', token: fixture.form.token }),
+      });
+      expect(json.status).toBe(400);
+      expect(json.headers.get('content-type')).toBe('application/json');
+      expect(await json.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid signup submission' } });
+      expect(await fixture.snapshot()).toEqual(before);
+    } finally { await fixture.close(); }
+  });
+  it('gives known and unknown addresses the same answer, status and redirect', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const post = (email: string) => fixture.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email, token: fixture.form.token }),
+      });
+      const known = await post(fixture.contact.email);
+      const unknown = await post('first-time@example.org');
+      expect([known.status, unknown.status]).toEqual([303, 303]);
+      expect(known.headers.get('location')).toBe('/marketing/forms/newsletter/thanks?lang=en');
+      expect(unknown.headers.get('location')).toBe(known.headers.get('location'));
+      expect(await known.text()).toBe(await unknown.text());
+    } finally { await fixture.close(); }
+  });
+  it('answers a rate-limited form post with the form page and a message that says nothing about the address', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const limited = buildApp({ ...fixture.deps, publicRateLimitPolicies: { ...fixture.deps.publicRateLimitPolicies, signupsPerEmail: { limit: 1, windowMs: 600_000 } } });
+      const post = (contentType: string, body: string) => limited.request('https://directory-a.example.org/api/public/marketing/forms/newsletter/submit?lang=en', {
+        method: 'POST', headers: { host: 'directory-a.example.org', 'content-type': contentType }, body,
+      });
+      const form = () => post('application/x-www-form-urlencoded', new URLSearchParams({ email: 'limit@example.org', displayName: 'Limit', token: fixture.form.token }).toString());
+      expect((await form()).status).toBe(303);
+      const before = await fixture.snapshot();
+      const response = await form();
+      expect(response.status).toBe(429);
+      expect(response.headers.get('retry-after')).toBeTruthy();
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const html = await response.text();
+      expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert">Too many sign-up attempts. Wait a few minutes and try again.</p>');
+      expect(html).toContain('value="limit@example.org"');
+      expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
+      const json = await post('application/json', JSON.stringify({ email: 'limit@example.org', token: fixture.form.token }));
+      expect(json.status).toBe(429);
+      expect(json.headers.get('content-type')).toBe('application/json');
+      expect(await json.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+      expect(await fixture.snapshot()).toEqual(before);
+    } finally { await fixture.close(); }
+  });
+  it('answers a missing or archived form with a localized page that links the workspace home', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const missing = await fixture.request('/marketing/forms/missing?lang=pl');
+      expect(missing.status).toBe(404);
+      const missingHtml = await missing.text();
+      expect(missingHtml).toContain('data-testid="marketing-signup-unavailable"');
+      expect(missingHtml).toContain(`<h1>${publicMarketingMessagesPl.signupUnavailableTitle}</h1>`);
+      expect(missingHtml).toContain(`<a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a>`);
+      if (fixture.deps.marketingSignup === undefined) throw new Error('Missing signup dependencies');
+      directoryValue(await fixture.deps.marketingSignup.forms.save('directory-a', { ...fixture.form, status: 'archived', revision: fixture.form.revision + 1 }, fixture.form.revision));
+      for (const path of ['/marketing/forms/newsletter?lang=en', '/marketing/forms/newsletter/thanks?lang=en']) {
+        const archived = await fixture.request(path);
+        expect(archived.status).toBe(404);
+        expect(await archived.text()).toContain('<h1>This sign-up form is no longer available</h1>');
+      }
+      const formPost = await fixture.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email: 'late@example.org', token: fixture.form.token }),
+      });
+      expect(formPost.status).toBe(404);
+      expect(await formPost.text()).toContain('data-testid="marketing-signup-unavailable"');
+      const jsonPost = await fixture.request('/api/public/marketing/forms/newsletter/submit', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'late@example.org', token: fixture.form.token }),
+      });
+      expect(jsonPost.status).toBe(404);
+      expect(await jsonPost.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
     } finally { await fixture.close(); }
   });
   it('rolls back token consumption, consent and contact effects when membership fails', async () => {

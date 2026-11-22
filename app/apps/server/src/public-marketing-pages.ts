@@ -323,6 +323,10 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .signup-field{display:grid;gap:.5rem;margin-block:1.25rem}.signup-field:first-child{margin-top:0}.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--input-border);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}.signup-trap{display:none}
 .signup-consent{margin:1.25rem 0 0;color:var(--ink);font-size:.9375rem;overflow-wrap:anywhere}
 .signup-form .actions{margin-top:.75rem}
+.signup-field input[aria-invalid="true"]{border-color:var(--danger)}
+.field-error{margin:0;color:var(--danger);font-size:.875rem;font-weight:500;overflow-wrap:anywhere}
+.signup-alert{margin:1.75rem 0 0;border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--danger) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem;overflow-wrap:anywhere}
+.signup-alert + .card{margin-top:1rem}
 .site-footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.875rem}
 .site-footer-line{margin:0;overflow-wrap:anywhere}
 .site-footer-line a{color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
@@ -617,9 +621,33 @@ const renderSignupConsent = (input: {
   return `<p class="signup-consent">${sentences}${document}</p>`;
 };
 
+export type SignupFormError = 'email' | 'generic' | 'rate_limited';
+
+export interface SignupFormValues {
+  email: string;
+  displayName: string;
+}
+
+const valueAttribute = (value: string): string => value === '' ? '' : ` value="${escapeHtml(value)}"`;
+
+export const renderSignupUnavailablePage = (input: {
+  nonce: string; brand: PublicBrand; language: Language; path: string | null;
+}): string => {
+  const t = messages[input.language];
+  return renderStatusPage({
+    ...input,
+    eyebrow: t.signupEyebrow,
+    title: t.signupUnavailableTitle,
+    lines: [t.signupUnavailableBody],
+    testId: 'marketing-signup-unavailable',
+    cue: 'error',
+  });
+};
+
 export const renderSignupFormPage = (input: {
   nonce: string; brand: PublicBrand; language: Language; form: MarketingSignupForm;
   wording: string; doubleOptIn: boolean; thanks: boolean; consentDocument?: SignupConsentDocument | null;
+  values?: SignupFormValues; error?: SignupFormError;
 }): string => {
   const t = messages[input.language];
   const tenant = input.brand.tenant.name;
@@ -640,6 +668,14 @@ export const renderSignupFormPage = (input: {
     });
   }
   const consent = renderSignupConsent({ t, tenant, wording: input.wording, doubleOptIn: input.doubleOptIn, document: input.consentDocument ?? null });
-  const body = `<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  const values = input.values ?? { email: '', displayName: '' };
+  const emailError = input.error === 'email';
+  const formError = input.error === 'generic' ? t.signupFailed : input.error === 'rate_limited' ? t.signupRateLimited : null;
+  const alert = formError === null ? '' : `<p class="signup-alert" id="signup-error" role="alert">${escapeHtml(formError)}</p>`;
+  const emailField = `<div class="signup-field"><label for="signup-email">${escapeHtml(t.signupEmail)}</label><input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required${valueAttribute(values.email)}${emailError ? ' aria-invalid="true" aria-describedby="signup-email-error" autofocus' : ''}>${emailError ? `<p class="field-error" id="signup-email-error" role="alert">${escapeHtml(t.signupEmailInvalid)}</p>` : ''}</div>`;
+  const nameField = input.form.collectName
+    ? `<div class="signup-field"><label for="signup-name">${escapeHtml(t.signupName)}</label><input id="signup-name" name="displayName" autocomplete="name" maxlength="120"${valueAttribute(values.displayName)}></div>`
+    : '';
+  const body = `${alert}<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"${formError === null ? '' : ' aria-describedby="signup-error"'}>${emailField}${nameField}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
   return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: 'marketing-signup-form' });
 };

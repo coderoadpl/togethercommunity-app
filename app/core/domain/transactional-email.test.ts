@@ -24,6 +24,7 @@ import {
   orderOutOfStockEmail,
   orderRefundAlertEmail,
   orderSoldOutRefundEmail,
+  paymentEventRejectedEmail,
   subscriptionEnded,
   orderShipped,
   subscriptionPaymentFailed,
@@ -584,6 +585,11 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 4099, currency: 'PLN',
       productTitles: ['Printed poster'], shopUrl: 'https://acme.test/',
     })],
+    ['payment-event-rejected', (language) => paymentEventRejectedEmail(language, {
+      tenantName: 'Acme Courses', eventId: 'evt_1', checkoutSessionId: 'cs_1',
+      reasonCode: 'validation', reasonMessage: 'Checkout snapshot not found', firstSeenAt: '1998-08-17T10:00:00.000Z',
+      studioUrl: 'https://acme.test/panel/sales',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -625,6 +631,40 @@ describe('transactional message catalogue', () => {
 
   it.each(catalogue)('falls back to the default locale for %s when the language is unsupported', (_kind, render) => {
     expect(render('de')).toEqual(render('en'));
+  });
+});
+
+describe('payment event rejected email', () => {
+  const input = {
+    tenantName: 'Acme',
+    eventId: 'evt_<1>',
+    checkoutSessionId: 'cs_1',
+    reasonCode: 'validation' as const,
+    reasonMessage: 'Checkout snapshot <not> found',
+    firstSeenAt: '1998-08-17T10:00:00.000Z',
+    studioUrl: 'https://acme.example.com/panel/sales',
+  };
+
+  it('renders the alert in Polish', () => {
+    expect(paymentEventRejectedEmail('pl', input)).toEqual(expectedTransactionalEmailPl.paymentEventRejectedEmail);
+  });
+
+  it('tells the owner the payment succeeded, Stripe retries for three days, not to refund, and the reason', () => {
+    const message = paymentEventRejectedEmail('en', input);
+    expect(message.subject).toBe('[Acme] Payment received but no order recorded: cs_1');
+    expect(message.text).toContain('paid at Stripe, but no order was recorded');
+    expect(message.text).toContain('Stripe retries the delivery automatically for up to three days');
+    expect(message.text).toContain('Do not refund the payment or ask the buyer to pay again before support has checked it.');
+    expect(message.text).toContain('Reason: validation: Checkout snapshot <not> found');
+    expect(message.html).toContain('Reason: validation: Checkout snapshot &lt;not&gt; found');
+    expect(message.html).toContain('Stripe event: evt_&lt;1&gt;');
+    expect(message.html).toContain('href="https://acme.example.com/panel/sales"');
+  });
+
+  it('names the event when the delivery carried no checkout session', () => {
+    const message = paymentEventRejectedEmail('en', { ...input, checkoutSessionId: null });
+    expect(message.subject).toBe('[Acme] Payment received but no order recorded: evt_<1>');
+    expect(message.text).toContain('Checkout session: none');
   });
 });
 

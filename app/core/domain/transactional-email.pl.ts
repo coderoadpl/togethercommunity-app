@@ -258,6 +258,19 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       };
     },
   },
+  paymentEventRejectedEmail: {
+    noCheckoutSession: 'brak',
+    render: ({ tenantName, reference, eventId, eventIdHtml, checkoutSession, checkoutSessionHtml, reason, reasonHtml, firstSeenText, firstSeenHtml, studioUrl, studioUrlHtml }) => {
+      const summary = 'Kupujący zapłacił w Stripe, ale zamówienie nie zostało zapisane, więc ta płatność nie ma jeszcze zamówienia.';
+      const retry = 'Stripe ponawia dostarczenie automatycznie przez maksymalnie trzy dni. Jeśli ponowienie się uda, zamówienie pojawi się w sprzedaży, a płatność zniknie z listy w Studio.';
+      const hold = 'Nie zwracaj płatności ani nie proś kupującego o ponowną zapłatę, zanim wsparcie tego nie sprawdzi.';
+      return {
+        subject: `[${tenantName}] Płatność przyjęta, ale zamówienie nie zostało zapisane: ${reference}`,
+        html: `<p>${summary}</p><p>${retry}</p><p><strong>${hold}</strong></p><p>Powód: ${reasonHtml}<br>Zdarzenie Stripe: ${eventIdHtml}<br>Sesja płatności: ${checkoutSessionHtml}<br>Pierwsze wystąpienie: ${firstSeenHtml}</p><p><a href="${studioUrlHtml}">Otwórz listę w Studio</a></p>`,
+        text: `${summary}\n${retry}\n${hold}\nPowód: ${reason}\nZdarzenie Stripe: ${eventId}\nSesja płatności: ${checkoutSession}\nPierwsze wystąpienie: ${firstSeenText}\n${studioUrl}`,
+      };
+    },
+  },
   stockLowEmail: {
     noThreshold: 'nie ustawiono',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

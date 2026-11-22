@@ -56,6 +56,11 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>member@example.com złożył(a) wniosek o usunięcie konta i danych.</p><p>Złożono: 17 sierpnia 1998<br>Termin realizacji: 16 września 1998</p><p><a href="https://acme.example.com/panel/members/member-1">Otwórz wniosek w panelu</a></p>',
     text: 'member@example.com złożył(a) wniosek o usunięcie konta i danych.\nZłożono: 17 sierpnia 1998\nTermin realizacji: 16 września 1998\nhttps://acme.example.com/panel/members/member-1',
   },
+  paymentEventRejectedEmail: {
+    subject: '[Acme] Płatność przyjęta, ale zamówienie nie zostało zapisane: cs_1',
+    html: '<p>Kupujący zapłacił w Stripe, ale zamówienie nie zostało zapisane, więc ta płatność nie ma jeszcze zamówienia.</p><p>Stripe ponawia dostarczenie automatycznie przez maksymalnie trzy dni. Jeśli ponowienie się uda, zamówienie pojawi się w sprzedaży, a płatność zniknie z listy w Studio.</p><p><strong>Nie zwracaj płatności ani nie proś kupującego o ponowną zapłatę, zanim wsparcie tego nie sprawdzi.</strong></p><p>Powód: validation: Checkout snapshot &lt;not&gt; found<br>Zdarzenie Stripe: evt_&lt;1&gt;<br>Sesja płatności: cs_1<br>Pierwsze wystąpienie: 17 sierpnia 1998</p><p><a href="https://acme.example.com/panel/sales">Otwórz listę w Studio</a></p>',
+    text: 'Kupujący zapłacił w Stripe, ale zamówienie nie zostało zapisane, więc ta płatność nie ma jeszcze zamówienia.\nStripe ponawia dostarczenie automatycznie przez maksymalnie trzy dni. Jeśli ponowienie się uda, zamówienie pojawi się w sprzedaży, a płatność zniknie z listy w Studio.\nNie zwracaj płatności ani nie proś kupującego o ponowną zapłatę, zanim wsparcie tego nie sprawdzi.\nPowód: validation: Checkout snapshot <not> found\nZdarzenie Stripe: evt_<1>\nSesja płatności: cs_1\nPierwsze wystąpienie: 17 sierpnia 1998\nhttps://acme.example.com/panel/sales',
+  },
   stockLowEmail: {
     subject: '[Acme] Niski stan magazynowy: Printed <poster>',
     html: '<p>Kończy się zapas produktu Printed &lt;poster&gt;.</p><p>Dostępne: 1<br>Próg niskiego stanu: 2</p><p><a href="https://acme.example.com/panel/products/product-1">Otwórz produkt</a></p>',

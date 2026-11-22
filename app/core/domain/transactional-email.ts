@@ -703,6 +703,39 @@ export const stockLowEmail = (
   }));
 };
 
+export const paymentEventRejectedEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    eventId: string;
+    checkoutSessionId: string | null;
+    reasonCode: string;
+    reasonMessage: string;
+    firstSeenAt: string;
+    studioUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage];
+  const checkoutSession = input.checkoutSessionId ?? messages.paymentEventRejectedEmail.noCheckoutSession;
+  const reason = `${input.reasonCode}: ${input.reasonMessage}`;
+  const firstSeenText = localizedDate(resolvedLanguage, input.firstSeenAt);
+  return emailMessageSchema.parse(messages.paymentEventRejectedEmail.render({
+    tenantName: input.tenantName,
+    reference: input.checkoutSessionId ?? input.eventId,
+    eventId: input.eventId,
+    eventIdHtml: escapeHtml(input.eventId),
+    checkoutSession,
+    checkoutSessionHtml: escapeHtml(checkoutSession),
+    reason,
+    reasonHtml: escapeHtml(reason),
+    firstSeenText,
+    firstSeenHtml: escapeHtml(firstSeenText),
+    studioUrl: input.studioUrl,
+    studioUrlHtml: escapeHtml(input.studioUrl),
+  }));
+};
+
 export const orderOutOfStockEmail = (
   language: string,
   input: {

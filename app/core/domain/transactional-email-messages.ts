@@ -299,6 +299,23 @@ export interface TransactionalEmailMessages {
       orderUrlHtml: string;
     }) => TransactionalEmailMessageContent;
   };
+  paymentEventRejectedEmail: {
+    noCheckoutSession: string;
+    render: (input: {
+      tenantName: string;
+      reference: string;
+      eventId: string;
+      eventIdHtml: string;
+      checkoutSession: string;
+      checkoutSessionHtml: string;
+      reason: string;
+      reasonHtml: string;
+      firstSeenText: string;
+      firstSeenHtml: string;
+      studioUrl: string;
+      studioUrlHtml: string;
+    }) => TransactionalEmailMessageContent;
+  };
   stockLowEmail: {
     noThreshold: string;
     render: (input: {

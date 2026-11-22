@@ -2338,7 +2338,7 @@ export const pl: Messages = {
   anon: {
     salesCta: 'Zobacz ofertę',
     contactCreator: 'Napisz do twórcy',
-    previewChip: 'Podgląd',
+    previewChip: 'Lekcja próbna',
     monthlyPrice: (params: { price: string }) => `${params.price} / miesiąc`,
     yearlyPrice: (params: { price: string }) => `${params.price} / rok`,
     eyebrow: 'Podgląd dla gości',
@@ -2347,13 +2347,13 @@ export const pl: Messages = {
     spacesSection: 'Przestrzenie',
     offersSection: 'Oferta',
     offerBuyCta: 'Kup teraz',
-    guestHeading: 'Dla odwiedzających',
+    guestHeading: 'Dla gości',
     joinOfferCta: 'Dołącz do społeczności — zobacz ofertę',
     readOnlyBanner:
       'Przeglądasz jako gość — możesz czytać. Pisanie i reakcje są dla uczestników społeczności.',
     emptyFeed: 'Twórca jeszcze nic tu nie opublikował.',
     lockedCourseHint:
-      'Bezpłatne lekcje próbne otworzysz od razu; resztę odblokujesz po zakupie.',
+      'Lekcje oznaczone „Lekcja próbna” otworzysz od razu; resztę odblokujesz po zakupie.',
     unlockCta: 'Odblokuj dostęp',
     emptyTitle: 'Ta społeczność nie ma treści publicznych',
     emptyBody: 'Twórca nie udostępnił gościom żadnej przestrzeni ani kursu.',

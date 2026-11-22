@@ -2357,6 +2357,7 @@ export const pl: Messages = {
     unlockCta: 'Odblokuj dostęp',
     emptyTitle: 'Ta społeczność nie ma treści publicznych',
     emptyBody: 'Twórca nie udostępnił gościom żadnej przestrzeni ani kursu.',
+    courseNotFoundBody: 'Tego kursu nie ma albo nie jest dostępny dla gości.',
   },
   search: {
     title: 'Szukaj',

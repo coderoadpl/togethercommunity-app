@@ -2075,6 +2075,7 @@ export interface Messages {
     unlockCta: string;
     emptyTitle: string;
     emptyBody: string;
+    courseNotFoundBody: string;
   };
   search: {
     title: string;

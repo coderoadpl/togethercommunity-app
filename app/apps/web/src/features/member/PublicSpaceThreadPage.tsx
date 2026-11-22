@@ -2,6 +2,7 @@ import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import { communitySpacePath } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
@@ -12,6 +13,9 @@ import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicThreadView } from './PublicFeed.js';
 import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 const threadHeadline = (body: string): string | null => {
   const condensed = body.replaceAll(/\s+/gu, ' ').trim();
@@ -75,6 +79,7 @@ export const PublicSpaceThreadPage = ({
 
   const root = thread.data?.discussion.threads[0];
   const headline = root === undefined ? null : threadHeadline(root.bodyPlainText);
+  const missing = thread.isError ? isNotFound(thread.error) : thread.isSuccess && root === undefined;
 
   return (
     <MemberSurface
@@ -98,21 +103,27 @@ export const PublicSpaceThreadPage = ({
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         {thread.isPending ? (
           <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
-        ) : thread.isError ? (
+        ) : missing ? (
+          <StatusView
+            state={{
+              kind: 'not-found',
+              title: t.community.threadNotFoundTitle,
+              body: t.community.threadNotFoundBody,
+              action: (
+                <MuiLink component={Link} to={communitySpacePath(spaceId)} data-testid="public-thread-back">
+                  {t.community.backToFeed}
+                </MuiLink>
+              ),
+            }}
+            data-testid="public-thread-not-found"
+          />
+        ) : thread.isError || root === undefined ? (
           <StatusView
             surface={false}
             state={{
               kind: 'error',
               message: localizeError(thread.error, t),
               retry: { label: t.discussion.retry, onRetry: () => void thread.refetch() },
-            }}
-          />
-        ) : root === undefined ? (
-          <StatusView
-            state={{
-              kind: 'not-found',
-              title: t.community.spaceNotFoundTitle,
-              body: t.community.spaceNotFoundBody,
             }}
           />
         ) : (

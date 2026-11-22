@@ -2,6 +2,7 @@ import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import { communitySpacePath } from '#core/contract/index.js';
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
@@ -16,6 +17,9 @@ import { RouterButton } from '../visitor-actions.js';
 import { formatEventRange } from './event-time.js';
 import { EventMedia } from './EventMedia.js';
 
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
+
 const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootPostId: string }) => {
   const t = useTranslations();
   const thread = useQuery(actions.publicSpaceThread({ spaceId, postId: rootPostId }));
@@ -24,7 +28,20 @@ const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootP
   if (thread.isPending) {
     return <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />;
   }
-  if (thread.isError || root === undefined) {
+  if (thread.isError) {
+    return (
+      <StatusView
+        surface={false}
+        state={{
+          kind: 'error',
+          message: localizeError(thread.error, t),
+          retry: { label: t.common.retry, onRetry: () => void thread.refetch() },
+        }}
+        data-testid="public-event-discussion-error"
+      />
+    );
+  }
+  if (root === undefined) {
     return (
       <Typography variant="body2" color="text.secondary" data-testid="public-event-discussion-empty">
         {t.events.discussionEmpty}
@@ -112,6 +129,21 @@ export const PublicEventPage = ({ spaceId, eventId }: { spaceId: string; eventId
         eyebrow={t.anon.eyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.events.loading }}
+      />
+    );
+  }
+
+  if (event.isError && !isNotFound(event.error)) {
+    return (
+      <MemberSurface
+        title={t.events.sectionTitle}
+        eyebrow={t.anon.eyebrow}
+        width="wide"
+        state={{
+          kind: 'error',
+          message: localizeError(event.error, t),
+          retry: { label: t.common.retry, onRetry: () => void event.refetch() },
+        }}
       />
     );
   }

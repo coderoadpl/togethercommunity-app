@@ -1079,6 +1079,39 @@ describe('community pages', () => {
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
   });
 
+  it('tells a visitor a missing thread is gone and links back to the space instead of offering a retry', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Post not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="gone" />, '/community/s1/posts/gone');
+
+    const missing = await screen.findByTestId('public-thread-not-found');
+    expect(missing).toHaveTextContent(en.community.threadNotFoundTitle);
+    expect(missing).toHaveTextContent(en.community.threadNotFoundBody);
+    expect(within(missing).getByTestId('public-thread-back')).toHaveAttribute('href', '/community/s1');
+    expect(screen.queryByRole('button', { name: en.discussion.retry })).not.toBeInTheDocument();
+  });
+
+  it('keeps the retry for a public thread that failed to load', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByRole('button', { name: en.discussion.retry })).toBeInTheDocument();
+    expect(screen.queryByTestId('public-thread-not-found')).not.toBeInTheDocument();
+  });
+
   it('settles an anonymous visitor inside the shell without refetching the identity in a loop', async () => {
     const counter = { calls: 0 };
     server.use(

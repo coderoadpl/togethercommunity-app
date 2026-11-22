@@ -2336,6 +2336,7 @@ export const en: Messages = {
     unlockCta: 'Unlock access',
     emptyTitle: 'This community has no public content',
     emptyBody: 'The creator has not opened any space or course to visitors.',
+    courseNotFoundBody: 'This course does not exist or is not open to visitors.',
   },
   search: {
     title: 'Search',

@@ -233,4 +233,36 @@ describe('public event surface', () => {
     expect((await screen.findAllByText(en.events.notFoundTitle)).length).toBeGreaterThan(0);
     expect(screen.getByText(en.events.notFoundBody)).toBeInTheDocument();
   });
+
+  it('offers a retry instead of a not-found state when the public event fails to load', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/events/:eventId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
+    expect(screen.queryByText(en.events.notFoundTitle)).not.toBeInTheDocument();
+  });
+
+  it('shows a retry when the event discussion fails instead of claiming nobody discussed it', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const failure = await screen.findByTestId('public-event-discussion-error');
+    expect(within(failure).getByRole('button', { name: en.common.retry })).toBeInTheDocument();
+    expect(screen.queryByTestId('public-event-discussion-empty')).not.toBeInTheDocument();
+  });
 });

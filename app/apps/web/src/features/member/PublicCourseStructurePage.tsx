@@ -38,7 +38,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
           ? {
               kind: 'not-found',
               title: t.courseTree.courseNotFound,
-              body: t.courseTree.courseNotInLibrary,
+              body: t.anon.courseNotFoundBody,
               action: <MuiLink component={Link} to={anonHomePath()}>{t.shell.start}</MuiLink>,
             }
           : {

@@ -556,6 +556,20 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
+  it('tells a visitor a missing public course is not open to visitors instead of naming a library', async () => {
+    server.use(
+      anonMe(),
+      http.get('/api/public/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+    await renderPage(<CourseStructurePage courseId="course-9" />);
+
+    expect(await screen.findByText(en.anon.courseNotFoundBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.courseTree.courseNotInLibrary)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.shell.start })).toHaveAttribute('href', '/');
+  });
+
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
     anonCoursePage(null);
 

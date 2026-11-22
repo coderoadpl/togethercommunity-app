@@ -249,11 +249,15 @@ its name, gross, net and VAT split at the option's VAT rate and
 and the allowed countries at checkout start, so later edits to the option do not
 change an order in flight.
 
-When Stripe reports the completed session, the webhook requires the collected
-shipping cost to equal the shipping line and a delivery address in an allowed
-country; otherwise the event is rejected as a validation failure. The total check
-compares `amount_total + amount_discount` with the sum of all snapshot lines,
-shipping included. The paid order stores:
+When Stripe reports the completed session, the webhook requires a shipping fee
+reported by the event (`shipping_cost.amount_total`, or
+`total_details.amount_shipping` in older API versions) to equal the shipping line,
+and a delivery address in an allowed country; otherwise the event is rejected as
+a validation failure. When the event reports no fee, the session is accepted only
+when its total matches every snapshot line, and a session without `amount_total`
+is rejected (see [Webhook API version](payments.md#webhook-api-version)). The
+total check compares `amount_total + amount_discount` with the sum of all
+snapshot lines, shipping included. The paid order stores:
 
 - `orders.lines` with the shipping line last;
 - `orders.shipping`: the frozen option, the pickup point or `null`, the
@@ -925,6 +929,27 @@ snapshots read unchanged because the field is optional. The responsible-person
 fields were added in version 11 (`core/domain/snapshots/product/v11.ts`); older
 snapshots read with `manufacturerOutsideEu: false` and no responsible person.
 The `compliance` column is JSON, so no migration was needed.
+
+Rollback: the release before the responsible-person fields reads `compliance`
+with a strict schema that knows none of `manufacturerOutsideEu`,
+`responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail`, and every product read parses the row with it. Every
+write of a product (Studio, the API, the CLI, the import API, change proposals
+and restores) therefore stores none of the four keys while the switch is off
+and no responsible-person field is given, so that release reads those products
+unchanged; the domain and every API output still carry
+`manufacturerOutsideEu: false`. A product with the switch on, or with a
+responsible-person field, stores the four keys, and that release cannot read
+it: reading that product, and every product list that includes it, fails.
+Before rolling back to that release, find every product whose `compliance`
+holds any of the four keys, whatever their values, and remove them; for a
+product with the switch on, keep the responsible person's details elsewhere
+first. Change proposals record safety information in the same stored form, so
+a pending proposal on a product with the switch off applies under either
+release; one on a product with the switch on is reported as stale after the
+rollback and has to be submitted again. Product content versions written by
+this release are snapshot version 11; that release refuses to open or restore
+them as newer than its version 10 and leaves the rows intact.
 
 ## Product variants
 

@@ -14,9 +14,12 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { languagePreference } from '../../theme-mode.js';
 import { CourseStructurePage } from './CourseStructurePage.js';
 
 const structure: CourseStructureWithAccess = {
@@ -862,6 +865,16 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('lesson-button-l2').closest('[role="treeitem"]')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('lesson-button-l2')).not.toHaveAttribute('href');
     expect(screen.queryByTestId('unlock-lesson-l2')).not.toBeInTheDocument();
+  });
+
+  it('wraps a visitor preview lesson name beside the Polish preview chip instead of truncating it', async () => {
+    languagePreference.save('pl');
+    anonCoursePage(null);
+    await renderPage(<LanguageProvider><CourseStructurePage courseId="course-1" /></LanguageProvider>);
+    await userEvent.setup().click(await screen.findByTestId('module-toggle-m1'));
+
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(pl.anon.previewChip);
+    expect(screen.getByTestId('lesson-name-l1')).not.toHaveClass('MuiTypography-noWrap');
   });
 
   it.each(['month', 'year'] as const)('shows the %s cadence on the offer and mobile bar', async (interval) => {

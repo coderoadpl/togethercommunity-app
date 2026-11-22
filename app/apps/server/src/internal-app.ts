@@ -54,6 +54,7 @@ import {
   courseCreateInputSchema,
   courseUpdateInputSchema,
   discussionGetInputSchema,
+  discussionThreadGetInputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
   emailSendsExportQuerySchema,
   emailSendsQuerySchema,
@@ -331,6 +332,7 @@ import {
   listCouponStats,
   listCourses,
   listDiscussion,
+  getThread,
   listEmailLayouts,
   listEmailSends,
   listGlobalSchedulerRuns,
@@ -3649,6 +3651,17 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     });
     if (!parsed.success) return respond(err(validation('Invalid discussion query', parsed.error.flatten())));
     const result = await listDiscussion(ctxOf(c), parsed.data, deps);
+    return respond(result.ok ? ok({ discussion: result.value }) : result);
+  });
+
+  app.get(API_PATHS.discussionThread, async (c) => {
+    const parsed = discussionThreadGetInputSchema.safeParse({
+      contextKind: c.req.query('contextKind'),
+      contextId: c.req.query('contextId'),
+      postId: c.req.param('postId'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid thread query', parsed.error.flatten())));
+    const result = await getThread(ctxOf(c), parsed.data, deps);
     return respond(result.ok ? ok({ discussion: result.value }) : result);
   });
 

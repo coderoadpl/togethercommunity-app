@@ -2904,7 +2904,19 @@ export const FOCUS_CARD_INLINE_PADDING = 'var(--focus-card-inline-padding, 1.8re
 
 export const CheckoutSummaryText = styled(Typography)<AsElement>({ whiteSpace: 'nowrap' });
 
-export const OfferCellValue = styled(Typography)({ whiteSpace: 'nowrap' });
+export const OfferLineGross = styled(Typography)<AsElement>({ flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' });
+
+export const OfferTaxList = styled('dl')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  columnGap: '0.75rem',
+  rowGap: '0.125rem',
+  margin: '0.25rem 0 0',
+  '& > div': { display: 'flex', columnGap: '0.25rem' },
+  '& dt, & dd': { margin: 0, ...theme.typography.caption, color: theme.palette.text.secondary },
+  '& dt::after': { content: '":"' },
+  '& dd': { fontVariantNumeric: 'tabular-nums' },
+}));
 
 export const CheckoutTitle = styled(CardTitle)({ wordSpacing: '0.12em' });
 

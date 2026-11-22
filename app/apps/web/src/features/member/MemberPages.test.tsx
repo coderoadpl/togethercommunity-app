@@ -347,11 +347,13 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByTestId('product-course-links')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Front-end Course' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Front-end Course/u })).toHaveAttribute(
       'href',
       '/my/courses/c1',
     );
-    expect(screen.queryByRole('link', { name: 'A different product course' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /A different product course/u })).not.toBeInTheDocument();
+    expect(screen.getByText(en.student.productCoursesHint)).toBeVisible();
+    expect(screen.getByText('Start here.')).toBeVisible();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
     expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
     expect(

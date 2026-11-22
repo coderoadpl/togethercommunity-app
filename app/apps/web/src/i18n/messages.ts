@@ -2123,6 +2123,7 @@ export interface Messages {
     viewCourses: string;
     productsOtherEmailHint: string;
     browseOffers: string;
+    continueCourse: string;
   };
   downloadCopies: {
     showMore: string;

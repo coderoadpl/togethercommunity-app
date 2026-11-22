@@ -2357,7 +2357,7 @@ export const en: Messages = {
     productWithoutCoursesBody: 'Courses bundled with this product show up here once the creator releases them.',
     productCoursesHeading: 'Available courses',
     productCoursesHint:
-      'The content you can access lives under My courses. Pick a course to continue.',
+      'Pick a course to open it.',
     courseNotFound: 'Course not found',
     productNotInLibrary: 'This product is not in your library.',
     backToMyProducts: 'Back to my products',
@@ -2386,6 +2386,7 @@ export const en: Messages = {
     viewCourses: 'View courses',
     productsOtherEmailHint: 'Bought with another email? Sign in with that address.',
     browseOffers: 'Browse offers',
+    continueCourse: 'Continue',
   },
   downloadCopies: {
     showMore: 'Show more copies',

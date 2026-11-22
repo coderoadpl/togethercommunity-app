@@ -2378,7 +2378,7 @@ export const pl: Messages = {
     productWithoutCoursesBody: 'Kursy dołączone do tego produktu zobaczysz tutaj, gdy twórca je udostępni.',
     productCoursesHeading: 'Dostępne kursy',
     productCoursesHint:
-      'Treści, do których masz dostęp, znajdziesz w sekcji „Moje kursy”. Wybierz kurs, aby kontynuować.',
+      'Wybierz kurs, aby go otworzyć.',
     courseNotFound: 'Nie znaleziono kursu',
     productNotInLibrary: 'Tego produktu nie ma w Twojej bibliotece.',
     backToMyProducts: 'Wróć do moich produktów',
@@ -2407,6 +2407,7 @@ export const pl: Messages = {
     viewCourses: 'Zobacz kursy',
     productsOtherEmailHint: 'Kupiłeś na inny adres e-mail? Zaloguj się tym adresem.',
     browseOffers: 'Zobacz ofertę',
+    continueCourse: 'Kontynuuj',
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

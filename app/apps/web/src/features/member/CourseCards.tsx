@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 
 import type { Course } from '#core/domain/index.js';
 
+import { ChevronRightIcon } from '../../components/ui/account-icons.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -66,5 +67,29 @@ export const CourseCard = ({ course, counts }: { course: CourseCardCourse; count
       ) : null}
       {counts === undefined ? null : <CourseCardProgress courseId={course.id} counts={counts} />}
     </Box>
+  </CourseCardRoot>
+);
+
+export const CourseRow = ({ course, actionLabel }: { course: Pick<Course, 'id' | 'name'>; actionLabel: string }) => (
+  <CourseCardRoot
+    component={Link}
+    to={`/my/courses/${encodeURIComponent(course.id)}`}
+    data-testid={`course-row-${course.id}`}
+    sx={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: '0.75rem',
+      minHeight: 44,
+      p: '0.75rem 1rem',
+      '&:active': { transform: 'translateY(1px)' },
+    }}
+  >
+    <Typography variant="h3" component="span" sx={{ flex: 1, minWidth: 0 }}>
+      {course.name}
+    </Typography>
+    <Typography variant="body2" component="span" color="primary" sx={{ flexShrink: 0 }}>
+      {actionLabel}
+    </Typography>
+    <ChevronRightIcon />
   </CourseCardRoot>
 );

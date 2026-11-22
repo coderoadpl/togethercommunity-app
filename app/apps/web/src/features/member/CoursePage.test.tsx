@@ -103,12 +103,42 @@ describe('download product page', () => {
 
     const courses = await screen.findByTestId('product-course-links');
     expect(within(screen.getByRole('banner')).getByText(en.student.courseEyebrow)).toBeVisible();
-    expect(within(courses).getByRole('link', { name: 'Field course' })).toHaveAttribute('href', '/my/courses/c1');
+    expect(within(courses).getByRole('link', { name: /Field course/u })).toHaveAttribute('href', '/my/courses/c1');
+    expect(within(courses).getByTestId('course-row-c1')).toHaveTextContent(en.student.openCourse);
+    expect(screen.getByText('A practical companion.').compareDocumentPosition(courses)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const files = screen.getByTestId('product-downloads-download-1');
     expect(within(files).getByRole('heading', { name: en.student.downloadsHeading })).toBeVisible();
     expect(courses.compareDocumentPosition(files)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByTestId('download-asset-1')).toBeVisible();
     expect(screen.queryByText(en.student.downloadProductBody)).not.toBeInTheDocument();
+  });
+
+  it('shows each granted course as a row that says whether it opens or continues the course', async () => {
+    const courseView = (id: string, name: string) => ({
+      id, tenantId: 't1', name, description: '', imageUrl: null, moduleOrder: [], legacyId: null,
+      publiclyVisible: false, createdAt: '2026-07-01T00:00:00.000Z',
+    });
+    server.use(
+      myProducts({ ...product, downloads: [], accessItems: [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }] }),
+      http.get('/api/student/courses', () => HttpResponse.json({ ok: true, data: { courses: [
+        courseView('c1', 'Started course'), courseView('c2', 'New course'),
+      ] } })),
+      http.get('/api/member/navigation', () => HttpResponse.json({ ok: true, data: { navigation: {
+        spaces: [], lockedSpaces: [],
+        courses: [
+          { courseId: 'c1', courseName: 'Started course', completedLessonCount: 2, accessibleLessonCount: 5, lastActivityAt: null },
+          { courseId: 'c2', courseName: 'New course', completedLessonCount: 0, accessibleLessonCount: 3, lastActivityAt: null },
+        ],
+      } } })),
+    );
+
+    await renderProduct();
+
+    const started = await screen.findByTestId('course-row-c1');
+    expect(started).toHaveAttribute('href', '/my/courses/c1');
+    await within(started).findByText(en.student.continueCourse);
+    expect(screen.getByTestId('course-row-c2')).toHaveTextContent(en.student.openCourse);
+    expect(screen.getByText(en.student.productCoursesHint)).toBeVisible();
   });
 
   it('keeps download-only titles linked to the product page in My products', async () => {

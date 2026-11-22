@@ -10,6 +10,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
+import { CourseRow } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { ProductDownloads } from './ProductDownloads.js';
 
@@ -23,6 +24,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
   const courses = useQuery(actions.studentCourses);
+  const navigation = useQuery(actions.memberNavigation);
   const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 
@@ -86,8 +88,15 @@ export const CoursePage = ({ productId }: { productId: string }) => {
     );
   }
 
+  const startedCourseIds = new Set(
+    (navigation.data?.navigation.courses ?? [])
+      .filter((course) => course.completedLessonCount > 0)
+      .map((course) => course.courseId),
+  );
+
   return (
     <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
+      {product.description ? <RichTextContent html={product.description} /> : null}
       {courses.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />
       ) : courses.isError ? (
@@ -112,11 +121,13 @@ export const CoursePage = ({ productId }: { productId: string }) => {
           description={t.student.productCoursesHint}
           data-testid="product-course-links"
         >
-          <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+          <Stack useFlexGap spacing="0.75rem" sx={{ mt: '1rem' }}>
             {accessibleCourses.map((course) => (
-              <MuiLink key={course.id} component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`}>
-                {course.name}
-              </MuiLink>
+              <CourseRow
+                key={course.id}
+                course={course}
+                actionLabel={startedCourseIds.has(course.id) ? t.student.continueCourse : t.student.openCourse}
+              />
             ))}
           </Stack>
         </SectionCard>

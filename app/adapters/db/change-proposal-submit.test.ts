@@ -81,7 +81,7 @@ const refuse = (name: string) => () => {
 const storage: StorageProvider = {
   objectUrl: (_configuration, objectKey) => new URL(`https://storage.example.test/${objectKey}`),
   delete: refuse('delete'), list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'),
-  probe: refuse('probe'), probeCors: refuse('probeCors'), presignPut: refuse('presignPut'), presignGet: refuse('presignGet'),
+  probe: refuse('probe'), copyObject: refuse('copyObject'), digestObject: refuse('digestObject'), probeCors: refuse('probeCors'), presignPut: refuse('presignPut'), presignGet: refuse('presignGet'),
   head: refuse('head'), healthcheck: refuse('healthcheck'), test: refuse('test'),
 };
 

@@ -113,7 +113,7 @@ const reservationError = (reservation: Awaited<ReturnType<KeyDownloadFileReposit
   return null;
 };
 
-/** The presigned write is signed for the declared size and only after the record holding its share of the limits commits. */
+/** The presigned write is signed for the declared size and handed out only once the record holding its share of the limits committed. */
 export const beginKeyDownloadUpload = async (
   ctx: Ctx,
   input: KeyDownloadUploadInput,
@@ -370,7 +370,7 @@ export const finishOwedDeletion = async (
 
 const before = (now: string, ms: number): string => new Date(Date.parse(now) - ms).toISOString();
 
-export const keyDownloadSweepCutoffs = (now: string): KeyDownloadSweepCutoffs => ({
+const keyDownloadSweepCutoffs = (now: string): KeyDownloadSweepCutoffs => ({
   now,
   recordsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordSweepAfterMs),
   attemptsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.completionDeadlineMs),

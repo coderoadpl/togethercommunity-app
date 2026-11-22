@@ -174,7 +174,6 @@ const stagedOf = (tenantId: string, id: string): SQL | undefined => and(eq(stage
 const deletionOf = (tenantId: string, objectKey: string): SQL | undefined =>
   and(eq(deletions.tenantId, tenantId), eq(deletions.objectKey, objectKey));
 
-/** Whether a staged row or a product file row owns the object, so no removal step may delete it. */
 const objectOwned = async (tx: Db, tenantId: string, objectKey: string): Promise<boolean> => {
   const [staged] = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
     .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.objectKey, objectKey))).limit(1);
@@ -204,8 +203,8 @@ const stagedSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => a
   sql`not ${attachedToPendingProposal(cutoffs.now)}`,
 );
 
-const waitingSince = (attempted: SQL | typeof records.sweepAttemptedAt, created: typeof records.createdAt) =>
-  sql<string>`coalesce(${attempted}, ${created})`;
+const waitingSince = (table: typeof records | typeof stagedFiles | typeof deletions): SQL<string> =>
+  sql<string>`coalesce(${table.sweepAttemptedAt}, ${table.createdAt})`;
 
 /** Records an object deletion owed for each staged object among `assets`, in the caller's transaction. */
 export const oweKeyFileDeletions = async (
@@ -359,24 +358,31 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       return 'removed';
     }, 'busy'),
     listTenantIdsToSweep: async (cutoffs, limit) => {
-      const rows = await db.execute<{ tenant_id: string }>(sql`select tenant_id from (
-        select ${records.tenantId} as tenant_id, ${waitingSince(records.sweepAttemptedAt, records.createdAt)} as waiting
-          from ${records} where ${or(recordSweepable(cutoffs), recordPurgeable(cutoffs))}
-        union all
-        select ${stagedFiles.tenantId}, ${waitingSince(stagedFiles.sweepAttemptedAt, stagedFiles.createdAt)}
-          from ${stagedFiles} where ${stagedSweepable(cutoffs)}
-        union all
-        select ${deletions.tenantId}, ${waitingSince(deletions.sweepAttemptedAt, deletions.createdAt)} from ${deletions}
-      ) as waiting_rows group by tenant_id order by min(waiting), tenant_id limit ${limit}`);
-      return rows.rows.map((row) => row.tenant_id);
+      const waiting = new Map<string, string>();
+      const collect = (rows: ReadonlyArray<{ tenantId: string; waiting: string | null }>) => {
+        for (const row of rows) {
+          const known = waiting.get(row.tenantId);
+          if (row.waiting !== null && (known === undefined || row.waiting < known)) waiting.set(row.tenantId, row.waiting);
+        }
+      };
+      collect(await db.select({ tenantId: records.tenantId, waiting: sql<string | null>`min(${waitingSince(records)})` }).from(records)
+        .where(or(recordSweepable(cutoffs), recordPurgeable(cutoffs))).groupBy(records.tenantId));
+      collect(await db.select({ tenantId: stagedFiles.tenantId, waiting: sql<string | null>`min(${waitingSince(stagedFiles)})` }).from(stagedFiles)
+        .where(stagedSweepable(cutoffs)).groupBy(stagedFiles.tenantId));
+      collect(await db.select({ tenantId: deletions.tenantId, waiting: sql<string | null>`min(${waitingSince(deletions)})` }).from(deletions)
+        .groupBy(deletions.tenantId));
+      return [...waiting.entries()]
+        .sort(([leftId, left], [rightId, right]) => left < right ? -1 : left > right ? 1 : leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
+        .slice(0, limit)
+        .map(([tenantId]) => tenantId);
     },
     listToSweep: async (tenantId, cutoffs, limit) => ({
       records: (await db.select().from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
-        .orderBy(asc(waitingSince(records.sweepAttemptedAt, records.createdAt)), asc(records.id)).limit(limit)).map(parseRecord),
+        .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit)).map(parseRecord),
       stagedFiles: (await db.select().from(stagedFiles).where(and(eq(stagedFiles.tenantId, tenantId), stagedSweepable(cutoffs)))
-        .orderBy(asc(waitingSince(stagedFiles.sweepAttemptedAt, stagedFiles.createdAt)), asc(stagedFiles.id)).limit(limit)).map(parseStaged),
+        .orderBy(asc(waitingSince(stagedFiles)), asc(stagedFiles.id)).limit(limit)).map(parseStaged),
       deletions: (await db.select().from(deletions).where(eq(deletions.tenantId, tenantId))
-        .orderBy(asc(waitingSince(deletions.sweepAttemptedAt, deletions.createdAt)), asc(deletions.objectKey)).limit(limit)).map(parseDeletion),
+        .orderBy(asc(waitingSince(deletions)), asc(deletions.objectKey)).limit(limit)).map(parseDeletion),
     }),
     markAttempted: async (tenantId, batch, now) => {
       if (batch.records.length > 0) {

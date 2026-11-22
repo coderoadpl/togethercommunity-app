@@ -88,7 +88,6 @@ const MATCHERS: Readonly<Record<KeyDownloadContentType, (head: Uint8Array) => bo
   'image/jpeg': (head) => startsWith(head, 0, [0xff, 0xd8, 0xff]),
 };
 
-/** Whether the first bytes of a file are those of its declared type. */
 export const keyDownloadBytesMatch = (contentType: KeyDownloadContentType, head: Uint8Array): boolean => MATCHERS[contentType](head);
 
 const FORBIDDEN_NAME_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
@@ -217,7 +216,6 @@ export const keyDownloadCandidateKey = (tenantId: string, apiKeyId: string, uplo
 export const keyDownloadStagedKey = (tenantId: string, apiKeyId: string, fileId: string, safeName: string): string =>
   `${tenantId}${KEY_FILES_SEGMENT}${apiKeyId}/${fileId}/${safeName}`;
 
-/** The key that staged an object under `key-files/`, read from the object key; null for any other object. */
 export const keyDownloadObjectOwner = (tenantId: string, objectKey: string): string | null => {
   const prefix = `${tenantId}${KEY_FILES_SEGMENT}`;
   if (!objectKey.startsWith(prefix)) return null;

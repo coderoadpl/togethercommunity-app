@@ -176,7 +176,7 @@ const storageSpy = () => {
   const storage: StorageProvider = {
     objectUrl: (_configuration, key) => new URL(`https://storage.example.test/${key}`),
     delete: record('delete'), list: record('list'), getObject: record('getObject'), putObject: record('putObject'),
-    probe: record('probe'), probeCors: record('probeCors'), presignPut: record('presignPut'), presignGet: record('presignGet'),
+    probe: record('probe'), copyObject: record('copyObject'), digestObject: record('digestObject'), probeCors: record('probeCors'), presignPut: record('presignPut'), presignGet: record('presignGet'),
     head: record('head'), healthcheck: record('healthcheck'), test: record('test'),
   };
   return { storage, calls };

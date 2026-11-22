@@ -110,7 +110,7 @@ const storage: StorageProvider = (() => {
       storageCalls.push(`delete ${input.url}`);
       return ok({ deleted: true });
     },
-    list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'), probe: refuse('probe'), probeCors: refuse('probeCors'),
+    list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'), probe: refuse('probe'), copyObject: refuse('copyObject'), digestObject: refuse('digestObject'), probeCors: refuse('probeCors'),
     presignPut: refuse('presignPut'), presignGet: refuse('presignGet'), head: refuse('head'), healthcheck: refuse('healthcheck'), test: refuse('test'),
   };
 })();

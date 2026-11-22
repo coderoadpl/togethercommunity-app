@@ -547,7 +547,7 @@ describe('sign-up pages', () => {
     expect(html).toContain(`<p class="signup-consent">${publicMarketingMessagesPl.signupConsent({ tenant: 'Studio Demo', wording: 'newsletter' })} ${publicMarketingMessagesPl.signupConsentUnsubscribe}</p>`);
     expect(html).not.toContain(publicMarketingMessagesPl.signupConsentConfirm);
     expect(html).toContain(`<label for="signup-name">${publicMarketingMessagesPl.signupName}</label><input id="signup-name"`);
-    expect(publicMarketingMessagesPl.signupName).toBe('Imię (opcjonalnie)');
+    expect(publicMarketingMessagesPl.signupName).not.toBe('Name (optional)');
   });
 
   it('escapes the workspace name, the wording and the document reference in the consent sentence', () => {

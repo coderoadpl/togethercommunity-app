@@ -135,6 +135,15 @@ describe('product import records', () => {
     expect(importProductRecordSchema.safeParse(record).success).toBe(true);
   });
 
+  it('accepts the responsible person of a manufacturer outside the EU and requires it there', () => {
+    const responsiblePerson = { responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 2, Warsaw', responsiblePersonEmail: 'eu-rep@example.com' };
+    expect(importProductRecordSchema.parse({ ...record, compliance: { ...compliance, ...responsiblePerson, manufacturerOutsideEu: true } }))
+      .toMatchObject({ compliance: { ...compliance, ...responsiblePerson, manufacturerOutsideEu: true } });
+    const missing = importProductRecordSchema.safeParse({ ...record, compliance: { ...compliance, manufacturerOutsideEu: true } });
+    expect(missing.success ? [] : missing.error.issues.map((issue) => issue.path.join('.')))
+      .toEqual(['compliance.responsiblePersonName', 'compliance.responsiblePersonAddress', 'compliance.responsiblePersonEmail']);
+  });
+
   it('rejects incomplete product safety information and malformed variant groups', () => {
     expect(importProductRecordSchema.safeParse({ ...record, compliance: { manufacturerName: 'Example Workshop' } }).success).toBe(false);
     expect(importProductRecordSchema.safeParse({ ...record, variantGroup: 'Stand Black' }).success).toBe(false);

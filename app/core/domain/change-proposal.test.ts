@@ -212,14 +212,41 @@ describe('change proposal views', () => {
     expect(changeProposalKeyReceiptSchema.safeParse(receipt).success).toBe(true);
   });
 
-  it('gives the owner the full effect, the key state and the ordered events', () => {
-    const detail = toChangeProposalOwnerDetail(proposal(), 'revoked', null, [
+  const facts = {
+    keyState: 'revoked' as const,
+    groupTitle: 'Ignored without a group',
+    issuer: { issuerEmail: 'former-owner@example.test', issuerIsVerifiedOwner: false, issuerIsFormerTeamMember: false },
+    decidedBy: { email: 'owner@example.test', formerTeamMember: false },
+    targetLabel: 'Live title',
+    targetPrice: { kind: 'recurring' as const, interval: 'month' as const, intervalCount: 1, amountCents: 1900, currency: 'EUR' },
+  };
+
+  it('gives the owner the full effect, the key and issuer state, the live label and the ordered events', () => {
+    const detail = toChangeProposalOwnerDetail(proposal(), facts, [
       { id: 'event-1', tenantId: 'tenant-1', proposalId: 'proposal-1', sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: CREATED },
     ], NOW);
 
     expect(detail.effect).toEqual({ title: { before: 'Before', after: 'After' } });
-    expect(detail.proposedBy).toEqual({ keyId: 'key-1', keyName: 'Catalogue agent', issuerUserId: 'owner-1', keyState: 'revoked' });
+    expect(detail.proposedBy).toEqual({
+      keyId: 'key-1', keyName: 'Catalogue agent', keyState: 'revoked', issuerUserId: 'owner-1', issuerEmail: 'former-owner@example.test', issuerIsVerifiedOwner: false,
+      issuerIsFormerTeamMember: false,
+    });
+    expect(detail).toMatchObject({
+      targetLabel: 'Live title', targetPrice: facts.targetPrice, groupTitle: null, decidedByEmail: null, decidedByIsFormerTeamMember: false,
+    });
     expect(detail.events).toEqual([{ sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: CREATED }]);
+  });
+
+  it('names the deciding account only on a decided proposal', () => {
+    const decided = toChangeProposalOwnerDetail({ ...proposal(), status: 'rejected', decidedByUserId: 'owner-2', decidedAt: NOW }, facts, [], NOW);
+    expect(decided).toMatchObject({ decidedByUserId: 'owner-2', decidedByEmail: 'owner@example.test', decidedByIsFormerTeamMember: false });
+    const byFormer = toChangeProposalOwnerDetail(
+      { ...proposal(), status: 'rejected', decidedByUserId: 'owner-3', decidedAt: NOW },
+      { ...facts, decidedBy: { email: null, formerTeamMember: true } },
+      [],
+      NOW,
+    );
+    expect(byFormer).toMatchObject({ decidedByUserId: 'owner-3', decidedByEmail: null, decidedByIsFormerTeamMember: true });
   });
 
   it('derives the key state from the stored key', () => {

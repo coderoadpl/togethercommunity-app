@@ -26,6 +26,7 @@ const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const eur = (cents: number) => formatPrice(cents, 'EUR', 'en');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
+const shopReturnUrl = 'https://shop.example.test/cart?order=88&lang=en';
 const analyticsConfig = { cookieScope: 'host' as const, metaPixelId: '12345678', tagId: 'G-ABC1234', consentCookieName: 'consent', consentCookieValue: null, loadWithoutConsent: true };
 
 const products = {
@@ -33,7 +34,11 @@ const products = {
     id: poster, type: 'physical', deliveryMethod: 'shipping', slug: 'poster', title: 'Poster', description: '', coverUrl: null,
     priceCents: 3500, currency: 'PLN', maxQuantity: 10, prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3500, currency: 'PLN' }],
     marketingConsents: [{ definitionId: 'news', label: 'Send me news', doubleOptIn: false, documentUrl: null }],
-    compliance: { manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null },
+    compliance: {
+      manufacturerName: 'Print House', manufacturerAddress: 'Main Street 1', manufacturerEmail: 'safety@example.org', manufacturerOutsideEu: true,
+      responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 2, Warsaw', responsiblePersonEmail: 'eu-rep@example.org',
+      modelIdentifier: 'P-1', batchIdentifier: null, safetyWarningsHtml: '', instructionsUrl: null,
+    },
   },
   [ebook]: {
     id: ebook, type: 'digital_download', deliveryMethod: 'pickup', slug: 'ebook', title: 'E-book', description: '', coverUrl: null,
@@ -74,6 +79,7 @@ const shippingRates = [
 
 const serve = (input: {
   token?: string | null;
+  checkoutReturnOrigins?: string[];
   canTest?: boolean;
   testEnabled?: boolean;
   missing?: readonly string[];
@@ -101,6 +107,7 @@ const serve = (input: {
       record(request);
       return HttpResponse.json({ ok: true, data: {
         stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, analytics: analyticsConfig,
+        checkoutReturnOrigins: input.checkoutReturnOrigins ?? [],
         inpostGeowidgetToken: input.token ?? null, canTest: input.canTest ?? false,
         testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
       } });
@@ -162,6 +169,32 @@ describe('hosted cart checkout', () => {
     document.getElementById('inpost-geowidget-style')?.remove();
   });
 
+  it.each([
+    [shopReturnUrl, shopReturnUrl],
+    ['https://other.example.test/cart', null],
+  ])('only links and submits the hosted cart return address when allowed: %s', async (requested, accepted) => {
+    const bodies: unknown[] = [];
+    serve({ checkoutReturnOrigins: ['https://shop.example.test'], onSession: (body) => bodies.push(body) });
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1&return=${encodeURIComponent(requested)}`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+
+    const link = screen.queryByRole('link', { name: en.checkout.backToShop });
+    if (accepted === null) {
+      expect(link).not.toBeInTheDocument();
+    } else {
+      expect(link).toBeInstanceOf(HTMLAnchorElement);
+      expect(link).toHaveAttribute('href', accepted);
+    }
+
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    if (accepted === null) expect(bodies[0]).not.toHaveProperty('returnUrl');
+    else expect(bodies[0]).toHaveProperty('returnUrl', accepted);
+    expect(bodies[0]).not.toHaveProperty('cancelUrl');
+  });
+
   it('renders the lines of the query string and posts the cart payload through the client', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
@@ -176,6 +209,8 @@ describe('hosted cart checkout', () => {
     expect(line(ebook).queryByTestId(`cart-quantity-${ebook}`)).not.toBeInTheDocument();
     expect(summaryAmount('products')).toHaveTextContent(exact(pln(9500)));
     expect(screen.getByText(en.productSafety.offerHeadingFor({ title: 'Poster' }))).toBeInTheDocument();
+    expect(screen.getByTestId('product-safety-responsible-person')).toHaveTextContent('Example EU Representative, Example Street 2, Warsaw');
+    expect(within(screen.getByTestId('product-safety-responsible-person')).getByRole('link', { name: 'eu-rep@example.org' })).toHaveAttribute('href', 'mailto:eu-rep@example.org');
     expect(screen.getAllByText('Send me news')).toHaveLength(1);
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
@@ -203,6 +238,27 @@ describe('hosted cart checkout', () => {
       billing: { nip: null, companyName: 'Buyer Ltd', address: 'Main Street 2', postalCode: '00-001', city: 'Warsaw', country: 'PL' },
       shipping: { rateId: 'courier' },
     });
+  });
+
+  it('shows the responsible person in the shape of the manufacturer, each e-mail row closer to its party than to the other party', async () => {
+    serve();
+    renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+    const person = await screen.findByTestId('product-safety-responsible-person');
+    const manufacturer = screen.getByTestId('product-safety-manufacturer');
+    for (const [party, label, nameAndAddress, email] of [
+      [manufacturer, en.productSafety.manufacturer, 'Print House, Main Street 1', 'safety@example.org'],
+      [person, en.productSafety.responsiblePerson, 'Example EU Representative, Example Street 2, Warsaw', 'eu-rep@example.org'],
+    ] as const) {
+      const [identity, contact, ...rest] = [...party.children];
+      expect(rest).toEqual([]);
+      expect(identity).toHaveTextContent(exact(`${label}: ${nameAndAddress}`));
+      expect(contact).toHaveTextContent(exact(`${en.productSafety.contact}: ${email}`));
+      expect(within(party).getByRole('link', { name: email })).toHaveAttribute('href', `mailto:${email}`);
+      expect(party).toHaveStyle({ gap: '0.125rem' });
+    }
+    expect(manufacturer.parentElement).toBe(person.parentElement);
+    expect(manufacturer.nextElementSibling).toBe(person);
+    expect(person.parentElement).toHaveStyle({ gap: '0.5rem' });
   });
 
   it('keeps each stepper within the line limits and posts the changed quantities', async () => {
@@ -611,14 +667,15 @@ describe('hosted cart checkout', () => {
     await waitFor(() => expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(analyticsConfig));
   });
 
-  it('offers the same cart again after a cancelled payment', async () => {
-    serve();
-    renderCart(`${HOSTED_CART_PATH}?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta`);
+  it('offers the same cart and return link again after a cancelled payment', async () => {
+    serve({ checkoutReturnOrigins: ['https://shop.example.test'] });
+    renderCart(`${HOSTED_CART_PATH}?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta&return=${encodeURIComponent(shopReturnUrl)}`);
     expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
-    expect(window.location.search).toBe(`?lines=${poster}.2~${ebook}.1&utm_source=meta&code=CART`);
+    expect(window.location.search).toBe(`?lines=${poster}.2~${ebook}.1&utm_source=meta&code=CART&return=${encodeURIComponent(shopReturnUrl)}`);
+    expect(screen.getByRole('link', { name: en.checkout.backToShop })).toHaveAttribute('href', shopReturnUrl);
     expect(screen.getByTestId('checkout-coupon-input')).toHaveValue('CART');
     expect(analytics.loadGoogleTag).not.toHaveBeenCalled();
   });

@@ -187,8 +187,12 @@ export const getPublicOffer = async (
   });
 };
 
-export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null =>
-  compliance == null ? null : { ...compliance, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
+export const toPublicCompliance = (compliance: ProductCompliance | null | undefined): PublicProductCompliance | null => {
+  if (compliance == null) return null;
+  const { responsiblePersonName, responsiblePersonAddress, responsiblePersonEmail, ...manufacturer } = compliance;
+  const shown = compliance.manufacturerOutsideEu ? { ...manufacturer, responsiblePersonName, responsiblePersonAddress, responsiblePersonEmail } : manufacturer;
+  return { ...shown, safetyWarningsHtml: renderPostContent(compliance.safetyWarnings, 'markdown').html };
+};
 
 export const toPublicPersonalization = (personalization: ProductPersonalization | null | undefined): PublicProductPersonalization | null =>
   personalization == null ? null : {

@@ -2,10 +2,14 @@ import { z } from 'zod';
 
 export const PRODUCT_SAFETY_WARNINGS_MAX_LENGTH = 5000;
 
-export const productComplianceSchema = z.object({
+export const productComplianceObjectSchema = z.object({
   manufacturerName: z.string().trim().min(1, 'Manufacturer name must not be empty').max(200),
   manufacturerAddress: z.string().trim().min(1, 'Manufacturer address must not be empty').max(300),
   manufacturerEmail: z.string().trim().email('Manufacturer e-mail must be a valid address').max(254),
+  manufacturerOutsideEu: z.boolean().default(false),
+  responsiblePersonName: z.string().trim().min(1, 'Responsible person name must not be empty').max(200).nullable().optional(),
+  responsiblePersonAddress: z.string().trim().min(1, 'Responsible person address must not be empty').max(300).nullable().optional(),
+  responsiblePersonEmail: z.string().trim().email('Responsible person e-mail must be a valid address').max(254).nullable().optional(),
   modelIdentifier: z.string().trim().min(1, 'Model identifier must not be empty').max(100),
   batchIdentifier: z.string().trim().min(1).max(100).nullable().optional(),
   safetyWarnings: z.string().max(PRODUCT_SAFETY_WARNINGS_MAX_LENGTH, 'Safety warnings are too long').default(''),
@@ -18,11 +22,46 @@ export const productComplianceSchema = z.object({
     .optional(),
 }).strict();
 
+const RESPONSIBLE_PERSON_FIELDS = [
+  ['responsiblePersonName', 'Responsible person name'],
+  ['responsiblePersonAddress', 'Responsible person address'],
+  ['responsiblePersonEmail', 'Responsible person e-mail'],
+] as const;
+
+type ResponsiblePersonFields = { manufacturerOutsideEu: boolean } & Partial<Record<typeof RESPONSIBLE_PERSON_FIELDS[number][0], string | null | undefined>>;
+
+export const requireResponsiblePerson = (compliance: ResponsiblePersonFields, ctx: z.RefinementCtx): void => {
+  const given = RESPONSIBLE_PERSON_FIELDS.some(([field]) => compliance[field] != null);
+  if (!compliance.manufacturerOutsideEu && !given) return;
+  const reason = compliance.manufacturerOutsideEu ? 'when the manufacturer is outside the EU' : 'when any responsible person field is given';
+  for (const [field, label] of RESPONSIBLE_PERSON_FIELDS) {
+    if (compliance[field] == null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${label} is required ${reason}` });
+  }
+};
+
+export const productComplianceSchema = productComplianceObjectSchema.superRefine(requireResponsiblePerson);
+
 export type ProductCompliance = z.output<typeof productComplianceSchema>;
 
-export const publicProductComplianceSchema = productComplianceSchema.extend({ safetyWarningsHtml: z.string() });
+export type StoredProductCompliance = z.input<typeof productComplianceObjectSchema>;
+
+export const storedProductCompliance = (compliance: ProductCompliance | null | undefined): StoredProductCompliance | null => {
+  if (compliance == null) return null;
+  const { manufacturerOutsideEu, responsiblePersonName, responsiblePersonAddress, responsiblePersonEmail, ...manufacturer } = compliance;
+  const responsiblePersonGiven = responsiblePersonName != null || responsiblePersonAddress != null || responsiblePersonEmail != null;
+  return manufacturerOutsideEu || responsiblePersonGiven ? compliance : manufacturer;
+};
+
+export const publicProductComplianceSchema = productComplianceObjectSchema.extend({ safetyWarningsHtml: z.string() });
 
 export type PublicProductCompliance = z.output<typeof publicProductComplianceSchema>;
+
+export type ResponsiblePerson = { name: string; address: string; email: string };
+
+export const shownResponsiblePerson = (compliance: Pick<ProductCompliance, 'manufacturerOutsideEu' | 'responsiblePersonName' | 'responsiblePersonAddress' | 'responsiblePersonEmail'>): ResponsiblePerson | null => {
+  const { manufacturerOutsideEu, responsiblePersonName: name, responsiblePersonAddress: address, responsiblePersonEmail: email } = compliance;
+  return manufacturerOutsideEu && name != null && address != null && email != null ? { name, address, email } : null;
+};
 
 export const VARIANT_FIELD_MAX_LENGTH = 60;
 

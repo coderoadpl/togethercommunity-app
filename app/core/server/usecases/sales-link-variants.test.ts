@@ -13,7 +13,7 @@ const setup = () => {
   });
   const black = make('black');
   const white = { ...make('white'), title: 'White stand', priceCents: 2160, vatRate: 8 as const,
-    compliance: { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1', manufacturerEmail: 'safety@example.test', modelIdentifier: 'WHITE', safetyWarnings: 'Keep **dry**.' } };
+    compliance: { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1', manufacturerEmail: 'safety@example.test', manufacturerOutsideEu: false, modelIdentifier: 'WHITE', safetyWarnings: 'Keep **dry**.' } };
   const guide = make('guide', null);
   const products: Product[] = [black, white, make('red'), guide];
   const prices: ProductPrice[] = products.map((product) => ({ id: `price-${product.id}`, tenantId: 'workspace', productId: product.id,

@@ -1,6 +1,6 @@
 import { tenantTeamMemberSchema, tenantTeamOrganizationSchema, addTenantAdminInputSchema, removeTenantAdminInputSchema } from '#core/domain/index.js';
 import { createShopManagementKeyInputSchema, shopManagementKeyEventSchema, shopManagementKeyPublicSchema } from '#core/domain/index.js';
-import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema } from '#core/domain/index.js';
+import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema, checkoutReturnOriginsSchema } from '#core/domain/index.js';
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { ORGANIZATION_ROUTES } from './organizations.js';
@@ -501,6 +501,7 @@ export const publicPaymentConfigOutputSchema = z.object({
   testEnabled: z.boolean().default(false),
   stripeConfigured: z.boolean(),
   simulatedPaymentsEnabled: z.boolean(),
+  checkoutReturnOrigins: checkoutReturnOriginsSchema.default([]),
   shippingRates: z.array(publicShippingRateSchema).default([]),
   inpostGeowidgetToken: z.string().nullable().default(null),
   inpostGeowidgetWithheld: z.boolean().default(false),
@@ -1350,6 +1351,11 @@ export type NotificationsListInput = z.input<typeof notificationsListInputSchema
 export const notificationsListOutputSchema = z.object({
   notifications: z.array(notificationSchema),
   nextCursor: z.string().nullable(),
+});
+
+export const notificationStreamFrameSchema = z.object({
+  id: z.string(),
+  kind: z.string().min(1).optional(),
 });
 
 export const notificationReadInputSchema = notificationMarkReadInputSchema;
@@ -2238,6 +2244,7 @@ export const API_ROUTES = {
   apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
   changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposalSummary: { method: 'GET', path: '/api/change-proposals/summary' },
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
@@ -2654,6 +2661,7 @@ export const API_PATHS = {
   apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
   changeProposals: API_ROUTES.changeProposals.path,
+  changeProposalSummary: API_ROUTES.changeProposalSummary.path,
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,

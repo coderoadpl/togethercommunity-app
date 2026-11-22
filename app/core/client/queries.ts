@@ -685,6 +685,12 @@ export const publicPaymentConfigQuery = (api: ApiClient) =>
     call: ({ signal }) => api.publicPaymentConfig(signal),
   });
 
+export const publicParcelLockerQuery = (api: ApiClient, code: string) =>
+  defineQuery({
+    queryKey: ['parcel-locker', code] as const,
+    call: ({ signal }) => api.publicParcelLocker(code, signal),
+  });
+
 export const removeStripeTestModeMutation = (api: ApiClient) =>
   defineMutation({ mutationKey: ['stripe-test-remove'] as const, call: () => api.removeStripeTestMode() });
 

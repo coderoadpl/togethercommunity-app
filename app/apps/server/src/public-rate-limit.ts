@@ -38,6 +38,8 @@ export interface PublicRateLimitPolicies {
   deepHealthPerIp: RateLimitWindow;
   signupsPerIp: RateLimitWindow;
   signupsPerEmail: RateLimitWindow;
+  parcelLockerLookupsPerIp: RateLimitWindow;
+  parcelLockerLookupsPerTenant: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -63,6 +65,8 @@ const PRODUCTION_LIMITS = {
   deepHealthPerIp: 12,
   signupsPerIp: 10,
   signupsPerEmail: 3,
+  parcelLockerLookupsPerIp: 30,
+  parcelLockerLookupsPerTenant: 600,
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
@@ -77,6 +81,8 @@ const DEVELOPMENT_LIMITS = {
   deepHealthPerIp: 1_200,
   signupsPerIp: 1_000,
   signupsPerEmail: 100,
+  parcelLockerLookupsPerIp: 3_000,
+  parcelLockerLookupsPerTenant: 60_000,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -144,6 +150,8 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       limit: env.PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE ?? fallback.deepHealthPerIp,
       windowMs: MINUTE_MS,
     },
+    parcelLockerLookupsPerIp: { limit: fallback.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
+    parcelLockerLookupsPerTenant: { limit: fallback.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
   };
 };
 
@@ -155,6 +163,8 @@ const AUTH_LINK_PATHS = new Set<string>([
 ]);
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
+
+const PARCEL_LOCKER_PATH_PATTERN = /^\/api\/public\/parcel-lockers\/[^/]+$/;
 
 export const claimCouponPreview = async (c: Context, tenantId: string, deps: PublicRateLimitMiddlewareDeps): Promise<boolean> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
@@ -229,6 +239,20 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
       limiter,
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
+  }
+  if (c.req.method === 'GET' && PARCEL_LOCKER_PATH_PATTERN.test(c.req.path)) {
+    const perIp = await claimRateLimitWindow(
+      { scope: 'parcel-locker:ip', key: clientIp(), window: policies.parcelLockerLookupsPerIp },
+      limiter,
+    );
+    if (!perIp.ok) return rateLimitedResponse(perIp.error);
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok || tenant.value === null) return null;
+    const perTenant = await claimRateLimitWindow(
+      { scope: 'parcel-locker:tenant', key: tenant.value.tenant.id, window: policies.parcelLockerLookupsPerTenant },
+      limiter,
+    );
+    return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
   }
   if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;

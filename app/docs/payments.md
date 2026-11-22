@@ -392,14 +392,12 @@ the delivery options and the stored order data.
 A webhook endpoint registered with an `api_version` receives events rendered
 in that version; an endpoint registered without one receives events in the
 account's default API version at the time the event was created, and a retry
-delivers the same payload. Registration in the payment configuration
-creates the endpoint with `api_version` set to the version of the installed
-Stripe library (`2025-09-30.clover` for stripe 19.0.0), so endpoints
-registered from now on receive events in that version. Endpoints registered
-before keep the account default version, which on an older account can be
-years old. The webhook therefore reads every known location of the fields it
-uses (delivery address, phone, shipping fee, invoice subscription and payment
-references, subscription period end) instead of trusting one version.
+delivers the same payload. Registration in the payment configuration creates
+the endpoint without an `api_version`, so every tenant endpoint follows the
+account default version, which on an older account can be years old. The
+webhook therefore reads every known location of the fields it uses (delivery
+address, phone, shipping fee, invoice subscription and payment references,
+subscription period end) instead of trusting one version.
 
 To check an account, open Stripe Dashboard → Developers (Workbench) → Webhooks, select the
 Together endpoint (`/api/webhooks/stripe/<tenantId>`, `?mode=test` for the test
@@ -418,8 +416,7 @@ automatic retries by a re-registration. Do not re-register while a paid event
 is still retrying; let the fixed handler record it first. An event lost this way
 can still be resent from the Dashboard (**Resend**, up to 15 days after the
 event) or with `stripe events resend <event_id> --webhook-endpoint=<endpoint_id>`
-(up to 30 days); a resend to the new endpoint is rendered in the new endpoint's
-version and signed with its secret.
+(up to 30 days).
 
 ## Order campaign attribution
 

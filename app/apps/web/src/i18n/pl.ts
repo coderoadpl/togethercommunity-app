@@ -2701,7 +2701,7 @@ export const pl: Messages = {
     opensInNewTab: '(otwiera się w nowej karcie)',
     openCourse: 'Przejdź do kursu',
     viewCourses: 'Zobacz kursy',
-    productsOtherEmailHint: 'Kupiłeś na inny adres e-mail? Zaloguj się tym adresem.',
+    productsOtherEmailHint: 'Zakup jest przypisany do innego adresu e-mail? Zaloguj się tym adresem.',
     browseOffers: 'Zobacz ofertę',
     continueCourse: 'Kontynuuj',
     downloadPreparing: 'Przygotowujemy plik…',

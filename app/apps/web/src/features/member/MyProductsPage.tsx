@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
+  Box,
   Button,
   Chip,
   Link as MuiLink,
   Paper,
+  Skeleton,
   Stack,
   Typography,
 } from '@mui/material';
@@ -103,13 +105,15 @@ type CourseTarget = { kind: 'open' | 'view'; to: string };
 
 type AccessibleCourses = ReadonlySet<string> | 'loading' | 'failed';
 
+const grantsActiveCourses = (product: GrantedProductRow): boolean =>
+  product.type !== 'physical' && product.grantStatus === 'active' && product.accessItems.length > 0;
+
 const courseTarget = (
   product: GrantedProductRow,
   accessibleCourses: AccessibleCourses,
 ): CourseTarget | null => {
-  if (product.type === 'physical' || product.grantStatus !== 'active') return null;
+  if (!grantsActiveCourses(product) || accessibleCourses === 'loading') return null;
   const granted = [...new Set(product.accessItems.map((item) => item.courseId))];
-  if (granted.length === 0 || accessibleCourses === 'loading') return null;
   const productPage: CourseTarget = { kind: 'view', to: `/my/course/${encodeURIComponent(product.id)}` };
   if (accessibleCourses === 'failed') return productPage;
   const courseIds = granted.filter((id) => accessibleCourses.has(id));
@@ -135,6 +139,7 @@ const ProductRow = ({
   const { language } = useLanguage();
   const inactive = product.grantStatus !== 'active';
   const target = courseTarget(product, accessibleCourses);
+  const targetPending = accessibleCourses === 'loading' && grantsActiveCourses(product);
   const portalUrl = product.subscription === null ? null : billingPortalUrl;
   const subscription = product.subscription;
   const subscriptionEnds = subscription?.status === 'canceled' || subscription?.cancelAtPeriodEnd;
@@ -207,8 +212,16 @@ const ProductRow = ({
             : t.student.subscriptionRenewalDate({ date: subscriptionDate })}
         </Typography>
       ) : null}
-      {target !== null || portalUrl !== null ? (
+      {target !== null || targetPending || portalUrl !== null ? (
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {targetPending ? (
+            <Box component="span" data-testid={`open-course-pending-${product.id}`}>
+              <Skeleton variant="rounded" aria-hidden>
+                <Button variant="contained" size="small" component="span" tabIndex={-1}>{t.student.openCourse}</Button>
+              </Skeleton>
+              <VisuallyHidden>{t.student.loadingCourses}</VisuallyHidden>
+            </Box>
+          ) : null}
           {target === null ? null : (
             <Button
               variant="contained"
@@ -263,6 +276,29 @@ const ProductRow = ({
   );
 };
 
+const offerPath = (slug: string) => `/offer/${encodeURIComponent(slug)}`;
+
+const OfferLinks = ({ offers }: { offers: ReadonlyArray<{ id: string; slug: string; heading: string }> }) => {
+  const t = useTranslations();
+  const labelId = useId();
+  const [onlyOffer] = offers;
+  if (offers.length === 1 && onlyOffer !== undefined) {
+    return <MuiLink href={offerPath(onlyOffer.slug)}>{t.student.browseOffers}</MuiLink>;
+  }
+  return (
+    <Stack useFlexGap spacing="0.25rem">
+      <Typography variant="body2" component="p" id={labelId}>{t.student.browseOffers}</Typography>
+      <Stack component="ul" useFlexGap spacing="0.25rem" aria-labelledby={labelId} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+        {offers.map((offer) => (
+          <li key={offer.id}>
+            <MuiLink href={offerPath(offer.slug)}>{offer.heading}</MuiLink>
+          </li>
+        ))}
+      </Stack>
+    </Stack>
+  );
+};
+
 export const MyProductsPage = () => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
@@ -311,7 +347,6 @@ export const MyProductsPage = () => {
   }
 
   const offers = publicOffer.data?.salesLinks ?? [];
-  const onlyOffer = offers.length === 1 ? offers[0] : undefined;
   const failedOrLoading = courses.isError ? 'failed' : 'loading';
   const accessibleCourses: AccessibleCourses = courses.data === undefined
     ? failedOrLoading
@@ -343,9 +378,7 @@ export const MyProductsPage = () => {
                   <Typography variant="body2" color="text.secondary">{t.student.productsOtherEmailHint}</Typography>
                 </Stack>
               ),
-              ...(onlyOffer === undefined ? {} : {
-                action: <MuiLink href={`/offer/${encodeURIComponent(onlyOffer.slug)}`}>{t.student.browseOffers}</MuiLink>,
-              }),
+              ...(offers.length === 0 ? {} : { action: <OfferLinks offers={offers} /> }),
             }}
             data-testid="my-products-empty-state"
           />

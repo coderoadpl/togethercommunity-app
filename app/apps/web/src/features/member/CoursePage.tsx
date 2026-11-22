@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
-import { Button, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { useEffect, type ReactNode } from 'react';
+import { Button, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import type { ProductDownloadAssetView } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -28,6 +29,26 @@ const productCrumbs = (t: Messages, current: string) => [
   },
   { label: current },
 ];
+
+const ProductPageStack = ({ children }: { children: ReactNode }) => (
+  <Stack useFlexGap spacing="1.5rem">{children}</Stack>
+);
+
+const ProductDownloadsCard = ({ product, description }: {
+  product: { id: string; title: string; downloads: ProductDownloadAssetView[] };
+  description?: string;
+}) => {
+  const t = useTranslations();
+  return (
+    <SectionCard
+      title={t.student.downloadsHeading}
+      description={description}
+      data-testid="product-downloads-card"
+    >
+      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} withHeading={false} />
+    </SectionCard>
+  );
+};
 
 const InactiveAccess = ({ product }: {
   product: { id: string; grantStatus: 'upcoming' | 'expired'; grantStartsAt: string; grantExpiresAt: string | null; purchasable: boolean };
@@ -130,8 +151,10 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   if (product.grantStatus !== 'active') {
     return (
       <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
-        {product.description ? <RichTextContent html={product.description} /> : null}
-        <InactiveAccess product={{ ...product, grantStatus: product.grantStatus }} />
+        <ProductPageStack>
+          {product.description ? <RichTextContent html={product.description} /> : null}
+          <InactiveAccess product={{ ...product, grantStatus: product.grantStatus }} />
+        </ProductPageStack>
       </MemberSurface>
     );
   }
@@ -142,9 +165,10 @@ export const CoursePage = ({ productId }: { productId: string }) => {
   if (grantedCourseIds.size === 0 && product.downloads.length > 0) {
     return (
       <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
-        {product.description ? <RichTextContent html={product.description} /> : null}
-        <Typography>{t.student.downloadProductBody}</Typography>
-        <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
+        <ProductPageStack>
+          {product.description ? <RichTextContent html={product.description} /> : null}
+          <ProductDownloadsCard product={product} description={t.student.downloadProductBody} />
+        </ProductPageStack>
       </MemberSurface>
     );
   }
@@ -157,43 +181,45 @@ export const CoursePage = ({ productId }: { productId: string }) => {
 
   return (
     <MemberSurface title={product.title} eyebrow={t.student.productEyebrow} breadcrumbs={crumbs}>
-      {product.description ? <RichTextContent html={product.description} /> : null}
-      {courses.isPending ? (
-        <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />
-      ) : courses.isError ? (
-        <StatusView
-          state={{
-            kind: 'error',
-            message: localizeError(courses.error, t),
-            retry: { label: t.student.retryCourses, onRetry: () => void courses.refetch() },
-          }}
-        />
-      ) : accessibleCourses.length === 0 ? (
-        <StatusView
-          state={{
-            kind: 'empty',
-            title: t.student.productWithoutCoursesTitle,
-            body: t.student.productWithoutCoursesBody,
-          }}
-        />
-      ) : (
-        <SectionCard
-          title={t.student.productCoursesHeading}
-          description={t.student.productCoursesHint}
-          data-testid="product-course-links"
-        >
-          <Stack useFlexGap spacing="0.75rem" sx={{ mt: '1rem' }}>
-            {accessibleCourses.map((course) => (
-              <CourseRow
-                key={course.id}
-                course={course}
-                actionLabel={startedCourseIds.has(course.id) ? t.student.continueCourse : t.student.openCourse}
-              />
-            ))}
-          </Stack>
-        </SectionCard>
-      )}
-      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
+      <ProductPageStack>
+        {product.description ? <RichTextContent html={product.description} /> : null}
+        {courses.isPending ? (
+          <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />
+        ) : courses.isError ? (
+          <StatusView
+            state={{
+              kind: 'error',
+              message: localizeError(courses.error, t),
+              retry: { label: t.student.retryCourses, onRetry: () => void courses.refetch() },
+            }}
+          />
+        ) : accessibleCourses.length === 0 ? (
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: t.student.productWithoutCoursesTitle,
+              body: t.student.productWithoutCoursesBody,
+            }}
+          />
+        ) : (
+          <SectionCard
+            title={t.student.productCoursesHeading}
+            description={t.student.productCoursesHint}
+            data-testid="product-course-links"
+          >
+            <Stack useFlexGap spacing="0.75rem">
+              {accessibleCourses.map((course) => (
+                <CourseRow
+                  key={course.id}
+                  course={course}
+                  actionLabel={startedCourseIds.has(course.id) ? t.student.continueCourse : t.student.openCourse}
+                />
+              ))}
+            </Stack>
+          </SectionCard>
+        )}
+        {product.downloads.length === 0 ? null : <ProductDownloadsCard product={product} />}
+      </ProductPageStack>
     </MemberSurface>
   );
 };

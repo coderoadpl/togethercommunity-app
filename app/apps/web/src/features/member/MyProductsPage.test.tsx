@@ -1,8 +1,8 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -94,8 +94,21 @@ describe('my products cards', () => {
 
     const card = within(await screen.findByTestId('my-product-product-single'));
     expect(card.queryByTestId('open-course-product-single')).not.toBeInTheDocument();
+    expect(card.getByTestId('open-course-pending-product-single')).toHaveTextContent(en.student.loadingCourses);
+    expect(card.queryByRole('button', { name: en.student.openCourse })).not.toBeInTheDocument();
     releaseCourses();
     expect(await card.findByRole('link', { name: en.student.openCourse })).toHaveAttribute('href', '/my/courses/course-js');
+    expect(card.queryByTestId('open-course-pending-product-single')).not.toBeInTheDocument();
+  });
+
+  it('keeps no course placeholder on products that grant no course while the course list loads', async () => {
+    mockProducts([product, { ...product, id: 'product-download', type: 'digital_download', accessItems: [] }]);
+    server.use(http.get('/api/student/courses', () => new Promise<never>(() => undefined)));
+
+    await renderMyProducts();
+
+    await screen.findByTestId('open-course-pending-product-single');
+    expect(screen.queryByTestId('open-course-pending-product-download')).not.toBeInTheDocument();
   });
 
   it('sends the member to the product page when the course list fails to load', async () => {
@@ -143,7 +156,7 @@ describe('my products cards', () => {
   });
 });
 
-const salesLink = (slug: string) => ({ id: `link-${slug}`, slug, heading: 'Complete bundle', description: '', totalCents: 4200, currency: 'EUR' });
+const salesLink = (slug: string, heading = 'Complete bundle') => ({ id: `link-${slug}`, slug, heading, description: '', totalCents: 4200, currency: 'EUR' });
 
 const mockPublicOffer = (salesLinks: unknown[]) => {
   server.use(http.get('/api/public/offer', () => HttpResponse.json({
@@ -175,21 +188,20 @@ describe('my products empty state', () => {
     expect(await empty.findByRole('link', { name: en.student.browseOffers })).toHaveAttribute('href', '/offer/complete-bundle');
   });
 
-  it('offers no single link when the workspace lists several offers', async () => {
-    let offerRequests = 0;
+  it('lists one link per offer, named after it, when the workspace lists several offers', async () => {
     mockProducts([]);
-    server.use(http.get('/api/public/offer', () => {
-      offerRequests += 1;
-      return HttpResponse.json({
-        ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [], salesLinks: [salesLink('first'), salesLink('second')] },
-      });
-    }));
+    mockPublicOffer([salesLink('starter-kit', 'Starter kit'), salesLink('complete-bundle', 'Complete bundle')]);
 
     await renderMyProducts();
 
     const empty = within(await screen.findByTestId('my-products-empty-state'));
-    await expect.poll(() => offerRequests).toBeGreaterThan(0);
+    const offers = await empty.findByRole('list', { name: en.student.browseOffers });
+    expect(within(offers).getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['Starter kit', '/offer/starter-kit'],
+      ['Complete bundle', '/offer/complete-bundle'],
+    ]);
     expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+    expect(empty.getAllByRole('link').map((link) => link.getAttribute('href'))).not.toContain('/');
   });
 });
 
@@ -238,6 +250,47 @@ describe('my products download failures', () => {
     expect(alert).toHaveTextContent(en.student.downloadFailures.not_found);
     await userEvent.click(within(alert).getByRole('button', { name: en.common.close }));
     expect(screen.queryByTestId('download-failure')).not.toBeInTheDocument();
+  });
+
+  it('scrolls the error on the failed product card into the middle of the view and focuses it', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    mockProducts([product, downloadProduct]);
+
+    try {
+      await renderMyProducts('/my/products?downloadError=failed&product=product-guide&asset=asset-guide');
+
+      const alert = await screen.findByTestId('download-failure-product-guide');
+      await waitFor(() => expect(alert).toHaveFocus());
+      expect(alert).toHaveAttribute('role', 'alert');
+      expect(alert).toHaveAttribute('tabindex', '-1');
+      expect(scrollIntoView.mock.instances).toEqual([alert]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+    }
+  });
+
+  it('scrolls the error above the list into view without smooth scrolling under reduced motion and focuses it', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)', media: query, onchange: null,
+      addListener: () => undefined, removeListener: () => undefined,
+      addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
+    }));
+    mockProducts([product]);
+
+    try {
+      await renderMyProducts('/my/products?downloadError=not_found&product=product-gone');
+
+      const alert = await screen.findByTestId('download-failure');
+      await waitFor(() => expect(alert).toHaveFocus());
+      expect(alert).toHaveAttribute('role', 'alert');
+      expect(scrollIntoView.mock.instances).toEqual([alert]);
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'center' });
+    } finally {
+      scrollIntoView.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('ignores an error code outside the fixed list and still cleans the URL', async () => {

@@ -44,6 +44,16 @@ describe('product downloads', () => {
     expect(within(group).getByRole('heading', { level: 3, name: en.student.downloadsHeading })).toBeVisible();
   });
 
+  it('leaves the heading to the surrounding card when asked to', () => {
+    renderWithProviders(
+      <ProductDownloads productId="product-guide" productTitle="Field guide" downloads={downloads} withHeading={false} />,
+    );
+
+    const group = screen.getByRole('group', { name: en.student.downloadsGroupLabel({ title: 'Field guide' }) });
+    expect(within(group).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(group).getByTestId('download-asset-guide')).toBeVisible();
+  });
+
   it('shows one row per file with a meta line and a Download button named after the file', () => {
     renderDownloads();
 

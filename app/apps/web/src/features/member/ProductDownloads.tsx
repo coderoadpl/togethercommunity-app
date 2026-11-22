@@ -111,9 +111,18 @@ export const DownloadFailureAlert = ({ failure, retryPath, 'data-testid': testId
   'data-testid'?: string;
 }) => {
   const t = useTranslations();
+  const alert = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    alert.current?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    alert.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <Alert
+      ref={alert}
       severity="error"
+      role="alert"
+      tabIndex={-1}
       data-testid={testId}
       action={retryPath === null ? (
         <Button color="inherit" size="small" onClick={failure.onRetry}>{t.common.close}</Button>
@@ -126,11 +135,12 @@ export const DownloadFailureAlert = ({ failure, retryPath, 'data-testid': testId
   );
 };
 
-export const ProductDownloads = ({ productId, productTitle, downloads, failure = null }: {
+export const ProductDownloads = ({ productId, productTitle, downloads, failure = null, withHeading = true }: {
   productId: string;
   productTitle: string;
   downloads: ProductDownloadAssetView[];
   failure?: DownloadFailureNotice | null;
+  withHeading?: boolean;
 }) => {
   const t = useTranslations();
 
@@ -143,8 +153,9 @@ export const ProductDownloads = ({ productId, productTitle, downloads, failure =
       useFlexGap
       spacing="0.75rem"
       data-testid={`product-downloads-${productId}`}
+      sx={{ maxWidth: '40rem' }}
     >
-      {downloads.length === 0 ? null : (
+      {downloads.length === 0 || !withHeading ? null : (
         <Typography variant="overline" component="h3">
           {t.student.downloadsHeading}
         </Typography>

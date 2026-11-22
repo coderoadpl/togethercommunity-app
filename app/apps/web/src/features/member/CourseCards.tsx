@@ -84,7 +84,7 @@ export const CourseRow = ({ course, actionLabel }: { course: Pick<Course, 'id' |
       '&:active': { transform: 'translateY(1px)' },
     }}
   >
-    <Typography variant="h3" component="span" sx={{ flex: 1, minWidth: 0 }}>
+    <Typography variant="h3" component="span" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
       {course.name}
     </Typography>
     <Typography variant="body2" component="span" color="primary" sx={{ flexShrink: 0 }}>

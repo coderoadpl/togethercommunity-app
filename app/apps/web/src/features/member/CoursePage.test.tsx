@@ -61,6 +61,11 @@ describe('download product page', () => {
     const description = screen.getByText('A practical companion.');
     const guidance = screen.getByText(en.student.downloadProductBody);
     const files = screen.getByTestId('product-downloads-download-1');
+    const card = within(screen.getByTestId('product-downloads-card'));
+    expect(card.getByRole('heading', { level: 2, name: en.student.downloadsHeading })).toBeVisible();
+    expect(screen.getAllByRole('heading', { name: en.student.downloadsHeading })).toHaveLength(1);
+    expect(card.getByText(en.student.downloadProductBody)).toBe(guidance);
+    expect(card.getByTestId('product-downloads-download-1')).toBe(files);
     expect(description.compareDocumentPosition(guidance)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(guidance.compareDocumentPosition(files)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.queryByText(en.student.productWithoutCoursesTitle)).not.toBeInTheDocument();
@@ -109,8 +114,11 @@ describe('download product page', () => {
     expect(within(courses).getByTestId('course-row-c1')).toHaveTextContent(en.student.openCourse);
     expect(screen.getByText('A practical companion.').compareDocumentPosition(courses)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const files = screen.getByTestId('product-downloads-download-1');
-    expect(within(files).getByRole('heading', { name: en.student.downloadsHeading })).toBeVisible();
-    expect(courses.compareDocumentPosition(files)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const downloadsCard = screen.getByTestId('product-downloads-card');
+    expect(within(downloadsCard).getByRole('heading', { level: 2, name: en.student.downloadsHeading })).toBeVisible();
+    expect(within(files).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(downloadsCard).getByTestId('product-downloads-download-1')).toBe(files);
+    expect(courses.compareDocumentPosition(downloadsCard)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByTestId('download-asset-1')).toBeVisible();
     expect(screen.queryByText(en.student.downloadProductBody)).not.toBeInTheDocument();
   });
@@ -141,6 +149,7 @@ describe('download product page', () => {
     await within(started).findByText(en.student.continueCourse);
     expect(screen.getByTestId('course-row-c2')).toHaveTextContent(en.student.openCourse);
     expect(screen.getByText(en.student.productCoursesHint)).toBeVisible();
+    expect(screen.queryByTestId('product-downloads-card')).not.toBeInTheDocument();
   });
 
   it('keeps download-only titles linked to the product page in My products', async () => {

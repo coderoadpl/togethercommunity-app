@@ -98,7 +98,7 @@ export const normalizePickupPointCode = (code: string): string => code.trim().to
 export const pickupPointCodeValid = (code: string): boolean =>
   PICKUP_POINT_CODE_PATTERN.test(normalizePickupPointCode(code));
 
-const pickupPointCodeSchema = z
+export const pickupPointCodeSchema = z
   .string()
   .transform(normalizePickupPointCode)
   .pipe(z.string().regex(PICKUP_POINT_CODE_PATTERN, 'Parcel locker code must be 4–12 letters or digits'));
@@ -128,6 +128,7 @@ const storedPickupPointSchema = z.object({
   code: z.string().min(1),
   name: z.string().nullable(),
   address: z.string().nullable(),
+  verified: z.literal(false).optional(),
 });
 
 const shippingSelectionFields = {
@@ -230,6 +231,116 @@ const truncate = (value: string, maxLength: number): string => {
   const cut = value.slice(0, maxLength);
   return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 };
+
+export const PICKUP_POINT_REJECTION_REASONS = ['not_found', 'not_usable', 'not_operating'] as const;
+
+export const pickupPointRejectionReasonSchema = z.enum(PICKUP_POINT_REJECTION_REASONS);
+
+export type PickupPointRejectionReason = z.infer<typeof pickupPointRejectionReasonSchema>;
+
+export const PICKUP_POINT_REJECTION_MESSAGES: Readonly<Record<PickupPointRejectionReason, string>> = {
+  not_found: 'No InPost parcel locker has this code',
+  not_usable: 'This InPost point cannot hold parcels for collection',
+  not_operating: 'This InPost parcel locker is not operating',
+};
+
+export const pickupPointRejected = (reason: PickupPointRejectionReason): AppError =>
+  validation(PICKUP_POINT_REJECTION_MESSAGES[reason], { pickupPointReason: reason });
+
+export interface InpostPoint {
+  name: string;
+  status: string;
+  types: readonly string[];
+  functions: readonly string[];
+  locationDescription: string | null;
+  address: { line1: string | null; line2: string | null } | null;
+}
+
+export type PickupPointLookup =
+  | { kind: 'found'; point: InpostPoint }
+  | { kind: 'not_found' }
+  | { kind: 'unavailable' };
+
+const INPOST_OPERATING_STATUS = 'Operating';
+const INPOST_COLLECT_FUNCTION = 'parcel_collect';
+const INPOST_LOCKER_TYPE = 'parcel_locker';
+
+export const inpostPointRejection = (
+  point: Pick<InpostPoint, 'status' | 'types' | 'functions'>,
+): Exclude<PickupPointRejectionReason, 'not_found'> | null => {
+  if (point.status !== INPOST_OPERATING_STATUS) return 'not_operating';
+  return point.types.includes(INPOST_LOCKER_TYPE) && point.functions.includes(INPOST_COLLECT_FUNCTION) ? null : 'not_usable';
+};
+
+const PICKUP_POINT_NAME_MAX_LENGTH = 200;
+const PICKUP_POINT_ADDRESS_MAX_LENGTH = 300;
+
+const presentText = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim() ?? '';
+  return trimmed === '' ? null : trimmed;
+};
+
+export interface PickupPointDetails {
+  code: string;
+  name: string | null;
+  address: string | null;
+}
+
+export const pickupPointDetails = (point: Pick<InpostPoint, 'name' | 'locationDescription' | 'address'>): PickupPointDetails => {
+  const name = presentText(point.locationDescription);
+  const address = [point.address?.line1, point.address?.line2]
+    .map(presentText)
+    .filter((line): line is string => line !== null)
+    .join(', ');
+  return {
+    code: normalizePickupPointCode(point.name),
+    name: name === null ? null : truncate(name, PICKUP_POINT_NAME_MAX_LENGTH),
+    address: address === '' ? null : truncate(address, PICKUP_POINT_ADDRESS_MAX_LENGTH),
+  };
+};
+
+export const applyPickupPointLookup = (
+  selection: CheckoutShippingSelection,
+  lookup: PickupPointLookup,
+): Result<CheckoutShippingSelection, AppError> => {
+  const requested = selection.pickupPoint;
+  if (requested === null) return ok(selection);
+  switch (lookup.kind) {
+    case 'not_found':
+      return err(pickupPointRejected('not_found'));
+    case 'unavailable':
+      return ok({ ...selection, pickupPoint: { ...requested, verified: false } });
+    case 'found': {
+      const rejection = inpostPointRejection(lookup.point);
+      if (rejection !== null) return err(pickupPointRejected(rejection));
+      return ok({ ...selection, pickupPoint: { provider: 'inpost', ...pickupPointDetails(lookup.point) } });
+    }
+  }
+};
+
+export const parcelLockerLookupSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('found'),
+    code: z.string(),
+    name: z.string().nullable(),
+    address: z.string().nullable(),
+    usable: z.boolean(),
+    reason: pickupPointRejectionReasonSchema.exclude(['not_found']).nullable(),
+  }),
+  z.object({ status: z.literal('not_found') }),
+  z.object({ status: z.literal('unavailable') }),
+]);
+
+export type ParcelLockerLookup = z.infer<typeof parcelLockerLookupSchema>;
+
+export const parcelLockerLookupView = (lookup: PickupPointLookup): ParcelLockerLookup => {
+  if (lookup.kind !== 'found') return { status: lookup.kind };
+  const reason = inpostPointRejection(lookup.point);
+  return { status: 'found', ...pickupPointDetails(lookup.point), usable: reason === null, reason };
+};
+
+export const hasActiveParcelLockerRate = (rates: ShippingRate[] | null | undefined): boolean =>
+  (rates ?? []).some((rate) => rate.active && rate.pickupPoint === 'inpost_locker');
 
 export const orderShippingFrom = (
   snapshot: CheckoutShippingSnapshot,

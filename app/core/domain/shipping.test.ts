@@ -5,6 +5,10 @@ import { newProductSchema, productSchema } from './product.js';
 import type { ProductCompliance } from './product-compliance.js';
 import {
   deliveryMethodAllowed,
+  hasActiveParcelLockerRate,
+  inpostPointRejection,
+  parcelLockerLookupView,
+  pickupPointDetails,
   orderShippingFrom,
   orderShippingSchema,
   pickupPointCodeValid,
@@ -14,6 +18,7 @@ import {
   SHIPPING_ALLOWED_COUNTRIES,
   shippingRateSchema,
   shippingRatesSchema,
+  type InpostPoint,
   type ShippingRate,
 } from './shipping.js';
 
@@ -184,5 +189,46 @@ describe('paid amount allocation with shipping', () => {
     const amounts = allocatePaidOrderLineGross(lines, 1666);
     expect(amounts).toEqual([222, 222, 223, 999]);
     expect(amounts.reduce((sum, amount) => sum + amount, 0)).toBe(1666);
+  });
+});
+
+describe('InPost point verdict', () => {
+  const point = (change: Partial<InpostPoint> = {}): InpostPoint => ({
+    name: 'kra14a', status: 'Operating', types: ['parcel_locker'], functions: ['parcel_send', 'parcel_collect'],
+    locationDescription: ' Next to the market ', address: { line1: ' Market Street 16 ', line2: null }, ...change,
+  });
+
+  it.each([
+    ['an operating locker that holds parcels for collection', point(), null],
+    ['a PaczkoPunkt the map also offers', point({ types: ['parcel_locker', 'parcel_locker_superpop', 'pop'] }), null],
+    ['a removed point', point({ status: 'Removed', types: [] }), 'not_operating'],
+    ['a disabled point', point({ status: 'Disabled' }), 'not_operating'],
+    ['a status the carrier has not documented', point({ status: 'Created' }), 'not_operating'],
+    ['a point of another type', point({ types: ['pop'] }), 'not_usable'],
+    ['a send-only point', point({ functions: ['parcel_send'] }), 'not_usable'],
+  ])('judges %s', (_case, candidate, reason) => {
+    expect(inpostPointRejection(candidate)).toBe(reason);
+  });
+
+  it('builds the stored name and address the way the map choice does', () => {
+    expect(pickupPointDetails(point({ address: { line1: 'Market Street 16', line2: ' 31-630 Krakow ' } }))).toEqual({
+      code: 'KRA14A', name: 'Next to the market', address: 'Market Street 16, 31-630 Krakow',
+    });
+    expect(pickupPointDetails(point({ locationDescription: '  ', address: null }))).toEqual({ code: 'KRA14A', name: null, address: null });
+    expect(pickupPointDetails(point({ locationDescription: 'x'.repeat(250) })).name).toHaveLength(200);
+  });
+
+  it('describes a lookup for the page with the reason a point is refused', () => {
+    expect(parcelLockerLookupView({ kind: 'found', point: point({ status: 'NonOperating' }) })).toEqual({
+      status: 'found', code: 'KRA14A', name: 'Next to the market', address: 'Market Street 16', usable: false, reason: 'not_operating',
+    });
+    expect(parcelLockerLookupView({ kind: 'not_found' })).toEqual({ status: 'not_found' });
+    expect(parcelLockerLookupView({ kind: 'unavailable' })).toEqual({ status: 'unavailable' });
+  });
+
+  it('knows whether a workspace offers an active parcel locker rate', () => {
+    expect(hasActiveParcelLockerRate([rate({ pickupPoint: 'inpost_locker', active: true })])).toBe(true);
+    expect(hasActiveParcelLockerRate([rate({ pickupPoint: 'inpost_locker', active: false }), rate({ pickupPoint: 'none' })])).toBe(false);
+    expect(hasActiveParcelLockerRate(null)).toBe(false);
   });
 });

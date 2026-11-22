@@ -17,6 +17,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, SalesLinkRepository, TenantRepository } from '../ports.js';
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { validateCheckoutSelection } from './checkout.js';
@@ -41,6 +42,7 @@ export interface SimulatePurchaseDeps extends SubscriptionLifecycleDeps, Omit<Co
   tenants: TenantRepository;
   salesLinks?: SalesLinkRepository;
   stock?: StockRepository;
+  pickupPoints?: PickupPointDirectory;
   paymentTransaction?: {
     run<T>(operation: (transaction: Pick<SimulatePurchaseDeps, 'members' | 'orders' | 'grants' | 'stock'> & { emailOutbox: Pick<EmailOutboxRepository, 'enqueue'> }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
   };

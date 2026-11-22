@@ -12,6 +12,7 @@ import type {
 } from '#core/domain/index.js';
 
 import type { AuthPort, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import { createPickupPointDirectoryFake } from '../testing/pickup-point-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
@@ -423,6 +424,7 @@ describe('simulated shipped purchase', () => {
       changeSettings: async () => null, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
     };
     h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
+    h.deps.pickupPoints = createPickupPointDirectoryFake();
     return h;
   };
 
@@ -437,7 +439,7 @@ describe('simulated shipped purchase', () => {
       amountCents: 6399, fulfilmentStatus: 'to_pack',
       lines: [{ productId: 'accessory', productType: 'physical', grossCents: 4900 }, { productId: 'shipping:locker', productType: 'shipping', grossCents: 1499, vatRate: 23, issuedCount: null }],
       shipping: {
-        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' },
         address: { country: 'PL' }, phone: expect.any(String),
       },
     });

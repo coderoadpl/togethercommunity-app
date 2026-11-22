@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
 
 import { productSchema, type Product, type ProductCompliance } from '#core/domain/index.js';
 import type { EntityVersionRecord } from '#core/server/index.js';
@@ -17,21 +16,15 @@ const baseDatabaseUrl =
 
 const TENANT = 'tenant-compliance-rollback';
 
-const previousReleaseComplianceSchema = z.object({
-  manufacturerName: z.string().trim().min(1, 'Manufacturer name must not be empty').max(200),
-  manufacturerAddress: z.string().trim().min(1, 'Manufacturer address must not be empty').max(300),
-  manufacturerEmail: z.string().trim().email('Manufacturer e-mail must be a valid address').max(254),
-  modelIdentifier: z.string().trim().min(1, 'Model identifier must not be empty').max(100),
-  batchIdentifier: z.string().trim().min(1).max(100).nullable().optional(),
-  safetyWarnings: z.string().max(5000, 'Safety warnings are too long').default(''),
-  instructionsUrl: z
-    .string()
-    .trim()
-    .url('Instructions URL must be a valid URL')
-    .regex(/^https:\/\//iu, 'Instructions URL must use HTTPS')
-    .nullable()
-    .optional(),
-}).strict();
+const PREVIOUS_RELEASE_COMPLIANCE_KEYS = [
+  'manufacturerName',
+  'manufacturerAddress',
+  'manufacturerEmail',
+  'modelIdentifier',
+  'batchIdentifier',
+  'safetyWarnings',
+  'instructionsUrl',
+];
 
 const manufacturerInEu = {
   manufacturerName: 'Example Workshop',
@@ -65,6 +58,11 @@ const importEvent = (resourceId: string, id: string, action: 'created' | 'update
   payloadHash: id.repeat(64).slice(0, 64), at: '2026-01-01T00:00:00.000Z',
 });
 
+const keysUnknownToPreviousRelease = (stored: unknown): string[] =>
+  (typeof stored === 'object' && stored !== null ? Object.keys(stored) : [])
+    .filter((key) => !PREVIOUS_RELEASE_COMPLIANCE_KEYS.includes(key))
+    .sort();
+
 describe('stored product safety information read by the previous release', () => {
   let db: Db;
   let close: () => Promise<void>;
@@ -85,31 +83,34 @@ describe('stored product safety information read by the previous release', () =>
     await close();
   });
 
-  it('keeps a product saved with the manufacturer in the EU readable on create and on update', async () => {
+  it('stores only keys the previous release knows for a product with the manufacturer in the EU, on create and on update', async () => {
     const repository = createProductRepository(db);
     const created = product('rollback-created', manufacturerInEu);
     expect(created.compliance?.manufacturerOutsideEu).toBe(false);
 
     expect(await repository.create(TENANT, created)).toBe('created');
-    expect(previousReleaseComplianceSchema.safeParse(await storedCompliance(created.id)).success).toBe(true);
+    expect(await storedCompliance(created.id)).toEqual(manufacturerInEu);
+    expect(keysUnknownToPreviousRelease(await storedCompliance(created.id))).toEqual([]);
 
     const updated = product(created.id, { ...manufacturerInEu, manufacturerOutsideEu: false, safetyWarnings: 'Keep away from fire.' }, 'Stand, updated');
     expect(await repository.update(TENANT, updated, version(updated, 'rollback-version-1'))).toMatchObject({
       compliance: { manufacturerOutsideEu: false, safetyWarnings: 'Keep away from fire.' },
     });
-    expect(previousReleaseComplianceSchema.parse(await storedCompliance(created.id))).toEqual({ ...manufacturerInEu, safetyWarnings: 'Keep away from fire.' });
+    expect(await storedCompliance(created.id)).toEqual({ ...manufacturerInEu, safetyWarnings: 'Keep away from fire.' });
     expect((await repository.findById(TENANT, created.id))?.compliance).toEqual<ProductCompliance>({ ...manufacturerInEu, manufacturerOutsideEu: false, safetyWarnings: 'Keep away from fire.' });
   });
 
-  it('keeps an imported product with the manufacturer in the EU readable on create and on update', async () => {
+  it('stores only keys the previous release knows for an imported product with the manufacturer in the EU, on create and on update', async () => {
     const repository = createImportContentRepository(db);
     const id = 'rollback-imported';
 
     expect(await repository.commit(TENANT, { kind: 'product', action: 'created', resource: product(id, manufacturerInEu), event: importEvent(id, 'a', 'created') })).toBe('saved');
-    expect(previousReleaseComplianceSchema.safeParse(await storedCompliance(id)).success).toBe(true);
+    expect(await storedCompliance(id)).toEqual(manufacturerInEu);
 
-    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product(id, manufacturerInEu, 'Imported, updated'), event: importEvent(id, 'b', 'updated') })).toBe('saved');
-    expect(previousReleaseComplianceSchema.safeParse(await storedCompliance(id)).success).toBe(true);
+    const updated = { ...manufacturerInEu, safetyWarnings: 'Keep away from children.' };
+    expect(await repository.commit(TENANT, { kind: 'product', action: 'updated', resource: product(id, updated, 'Imported, updated'), event: importEvent(id, 'b', 'updated') })).toBe('saved');
+    expect(await storedCompliance(id)).toEqual(updated);
+    expect(keysUnknownToPreviousRelease(await storedCompliance(id))).toEqual([]);
   });
 
   it('stores the switch and the responsible person when the manufacturer is outside the EU, which the previous release cannot read', async () => {
@@ -118,6 +119,8 @@ describe('stored product safety information read by the previous release', () =>
 
     expect(await repository.create(TENANT, outside)).toBe('created');
     expect(await storedCompliance(outside.id)).toEqual(manufacturerOutsideEu);
-    expect(previousReleaseComplianceSchema.safeParse(await storedCompliance(outside.id)).success).toBe(false);
+    expect(keysUnknownToPreviousRelease(await storedCompliance(outside.id))).toEqual([
+      'manufacturerOutsideEu', 'responsiblePersonAddress', 'responsiblePersonEmail', 'responsiblePersonName',
+    ]);
   });
 });

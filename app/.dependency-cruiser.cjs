@@ -7,7 +7,7 @@ const coreServerExternal = 'node_modules/(marked|parse5)(/|$)';
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
 const adapterDbTestExternal =
-  'node_modules/(@neondatabase/serverless|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
+  'node_modules/(@neondatabase/serverless|better-auth|drizzle-orm|pg|vitest)(/|$)';
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
 const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';

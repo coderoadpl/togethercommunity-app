@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { productComplianceSchema, productVariants, shownResponsiblePerson, publicProductVariantSchema, storedProductCompliance, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 
@@ -13,6 +14,22 @@ const responsiblePerson = {
   responsiblePersonAddress: 'Example Avenue 2, 10115 Berlin, Germany',
   responsiblePersonEmail: 'eu-rep@example.com',
 };
+
+const previousReleaseComplianceSchema = z.object({
+  manufacturerName: z.string().trim().min(1, 'Manufacturer name must not be empty').max(200),
+  manufacturerAddress: z.string().trim().min(1, 'Manufacturer address must not be empty').max(300),
+  manufacturerEmail: z.string().trim().email('Manufacturer e-mail must be a valid address').max(254),
+  modelIdentifier: z.string().trim().min(1, 'Model identifier must not be empty').max(100),
+  batchIdentifier: z.string().trim().min(1).max(100).nullable().optional(),
+  safetyWarnings: z.string().max(5000, 'Safety warnings are too long').default(''),
+  instructionsUrl: z
+    .string()
+    .trim()
+    .url('Instructions URL must be a valid URL')
+    .regex(/^https:\/\//iu, 'Instructions URL must use HTTPS')
+    .nullable()
+    .optional(),
+}).strict();
 
 describe('product safety information', () => {
   it('accepts the required manufacturer fields and defaults the optional ones', () => {
@@ -82,6 +99,14 @@ describe('product safety information', () => {
     expect(storedProductCompliance(outside)).toEqual(outside);
     expect(storedProductCompliance(null)).toBeNull();
     expect(storedProductCompliance(undefined)).toBeNull();
+  });
+
+  it('stores a form the previous release reads while the switch is off and no responsible person is given, and only then', () => {
+    const full = productComplianceSchema.parse({ ...compliance, batchIdentifier: 'B-7', safetyWarnings: 'Keep dry.', instructionsUrl: 'https://example.com/manual.pdf' });
+    expect(previousReleaseComplianceSchema.parse(storedProductCompliance(full))).toEqual({ ...compliance, batchIdentifier: 'B-7', safetyWarnings: 'Keep dry.', instructionsUrl: 'https://example.com/manual.pdf' });
+    expect(previousReleaseComplianceSchema.safeParse(storedProductCompliance({ ...full, responsiblePersonName: null, responsiblePersonAddress: null, responsiblePersonEmail: null })).success).toBe(true);
+    expect(previousReleaseComplianceSchema.safeParse(storedProductCompliance(productComplianceSchema.parse({ ...compliance, ...responsiblePerson }))).success).toBe(false);
+    expect(previousReleaseComplianceSchema.safeParse(storedProductCompliance(productComplianceSchema.parse({ ...compliance, ...responsiblePerson, manufacturerOutsideEu: true }))).success).toBe(false);
   });
 
   it('requires every manufacturer field', () => {

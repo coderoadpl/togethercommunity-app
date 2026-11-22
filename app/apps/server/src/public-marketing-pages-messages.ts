@@ -18,7 +18,6 @@ export interface PublicMarketingMessages {
   preferencesTitle: string;
   preferencesEyebrow: string;
   preferencesFor: (input: { email: string }) => string;
-  scopeAll: string;
   unsubscribeTitle: string;
   unsubscribeConsentBody: (input: { label: string }) => string;
   unsubscribeListBody: string;
@@ -38,7 +37,8 @@ export interface PublicMarketingMessages {
   preferencesSavedBody: string;
   preferencesPendingBody: string;
   unsubscribedTitle: string;
-  unsubscribedScopeBody: (input: { scope: string }) => string;
+  unsubscribedConsentBody: (input: { label: string }) => string;
+  unsubscribedListBody: string;
   unsubscribedAllBody: (input: { tenant: string }) => string;
   resubscribeHint: string;
   backToPreferences: string;

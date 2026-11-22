@@ -508,18 +508,23 @@ export const renderPreferenceResultPage = (input: {
 }): string => {
   const t = messages[input.language];
   const path = `/u/${encodeURIComponent(input.token)}`;
-  const saved = input.result === 'saved';
-  const title = saved ? t.preferencesSavedTitle : t.unsubscribedTitle;
-  const summary = input.result === 'saved'
-    ? `${t.preferencesSavedBody}${(input.pendingConfirmations ?? 0) > 0 ? ` ${t.preferencesPendingBody}` : ''}`
+  const lines: [string, ...string[]] = input.result === 'saved'
+    ? [`${t.preferencesSavedBody}${(input.pendingConfirmations ?? 0) > 0 ? ` ${t.preferencesPendingBody}` : ''}`]
     : input.result === 'all_unsubscribed'
-      ? t.unsubscribedAllBody({ tenant: input.brand.tenant.name })
-      : t.unsubscribedScopeBody({ scope: input.scopeLabel ?? t.scopeAll });
-  const hint = input.result === 'scope_unsubscribed'
-    ? `<p class="fine">${escapeHtml(t.resubscribeHint)}</p>`
-    : '';
-  const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${hint}<div class="actions"><a href="${path}?lang=${input.language}">${escapeHtml(t.backToPreferences)}</a></div></div>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preference-result' });
+      ? [t.unsubscribedAllBody({ tenant: input.brand.tenant.name }), t.resubscribeBlocked]
+      : [input.scopeLabel === null ? t.unsubscribedListBody : t.unsubscribedConsentBody({ label: input.scopeLabel }), t.resubscribeHint];
+  return renderStatusPage({
+    nonce: input.nonce,
+    brand: input.brand,
+    language: input.language,
+    path,
+    eyebrow: t.preferencesEyebrow,
+    title: input.result === 'saved' ? t.preferencesSavedTitle : t.unsubscribedTitle,
+    lines,
+    testId: 'marketing-preference-result',
+    cue: 'success',
+    links: [{ label: t.backToPreferences, href: `${path}?lang=${input.language}` }],
+  });
 };
 
 export const renderLegalDocumentPage = (input: {

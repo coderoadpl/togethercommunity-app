@@ -15,6 +15,7 @@ import {
   renderHostedErrorPage,
   renderHostedMarkdown,
   renderLegalDocumentPage,
+  renderPreferenceResultPage,
   renderPreferencesPage,
   renderStatusPage,
   type PublicBrand,
@@ -176,6 +177,47 @@ describe('public marketing pages', () => {
     expect(html).toContain('You are unsubscribed from “News &lt;script&gt;”.');
     expect(html).toContain('from Studio &lt;b&gt;. You cannot undo');
     expect(html).not.toContain('<script>');
+  });
+
+  const resultInput = (overrides: Partial<Parameters<typeof renderPreferenceResultPage>[0]> = {}) => ({
+    nonce: 'test-nonce', brand, language: 'en' as const, token: 'token_1234567890123456789012',
+    result: 'scope_unsubscribed' as const, scopeLabel: 'Product news', ...overrides,
+  });
+
+  it('confirms a scoped unsubscribe with the consent label and the way back', () => {
+    const html = renderPreferenceResultPage(resultInput());
+    expect(html).toContain('data-testid="marketing-preference-result"');
+    expect(html).toContain('<h1>Unsubscribe confirmed</h1>');
+    expect(html).toContain('<p class="lede">You will no longer receive messages sent under the consent “Product news”.</p><p class="fine">If you change your mind, come back here and select the consents again.</p>');
+    expect(html).toContain('<a class="button-link" href="/u/token_1234567890123456789012?lang=en">Back to preferences</a>');
+    expect(html).toContain('status-cue--success');
+    expect(html).not.toContain('all marketing');
+    const polish = renderPreferenceResultPage(resultInput({ language: 'pl' }));
+    expect(polish).toContain('Nie będziesz już otrzymywać wiadomości objętych zgodą „Product news”.');
+    expect(polish).toContain('Jeśli zmienisz zdanie, wróć tutaj i zaznacz zgody ponownie.');
+  });
+
+  it('confirms a scoped unsubscribe without a label as this list', () => {
+    expect(renderPreferenceResultPage(resultInput({ scopeLabel: null })))
+      .toContain('<p class="lede">You will no longer receive messages from this list.</p>');
+    expect(renderPreferenceResultPage(resultInput({ scopeLabel: null, language: 'pl' })))
+      .toContain('<p class="lede">Nie będziesz już otrzymywać wiadomości z tej listy.</p>');
+  });
+
+  it('says that an unsubscribe from everything cannot be reversed from the page', () => {
+    const html = renderPreferenceResultPage(resultInput({ result: 'all_unsubscribed', scopeLabel: null }));
+    expect(html).toContain('<p class="lede">You will no longer receive any marketing messages from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p>');
+    expect(html).not.toContain('If you change your mind');
+    const polish = renderPreferenceResultPage(resultInput({ result: 'all_unsubscribed', scopeLabel: null, language: 'pl' }));
+    expect(polish).toContain('Nie będziesz już otrzymywać żadnych wiadomości marketingowych od nadawcy Studio Demo.');
+    expect(polish).toContain('Na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.');
+  });
+
+  it('confirms saved preferences and announces pending confirmations', () => {
+    expect(renderPreferenceResultPage(resultInput({ result: 'saved', scopeLabel: null, pendingConfirmations: 2 })))
+      .toContain('<p class="lede">Your settings have been updated. We will send a confirmation link for each newly selected consent.</p>');
+    expect(renderPreferenceResultPage(resultInput({ result: 'saved', scopeLabel: null })))
+      .toContain('<p class="lede">Your settings have been updated.</p>');
   });
 
   it('wraps long unbroken text and names each language in its own language', () => {

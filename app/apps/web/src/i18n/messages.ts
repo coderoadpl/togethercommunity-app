@@ -2801,7 +2801,6 @@ export interface Messages {
     couponApplying: string;
     couponOriginal: (params: { price: string }) => string;
     couponDiscount: (params: { price: string }) => string;
-    couponFinal: (params: { price: string }) => string;
     couponAfterDiscount: (params: { price: string }) => string;
     couponEmpty: string;
     couponAppliedRow: (params: { code: string }) => string;
@@ -2877,9 +2876,6 @@ export interface Messages {
     cartRemoveLine: string;
     cartQuantityLimit: (params: { max: number }) => string;
     cartUnitPrice: (params: { price: string }) => string;
-    cartLineTotal: (params: { price: string }) => string;
-    cartSubtotal: (params: { price: string }) => string;
-    cartDelivery: (params: { price: string }) => string;
     cartLineUnavailable: string;
     cartProductMissing: string;
     cartCurrencyMismatch: string;
@@ -2904,6 +2900,12 @@ export interface Messages {
     payBlockedPersonalizationText: string;
     payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;
+    cartStockLimit: (params: { count: number }) => string;
+    cartStockLowered: (params: { count: number }) => string;
+    cartLineSoldOut: string;
+    cartPayBlockedLines: string;
+    cartDeliveryNotChosen: string;
+    cartStockRefusal: (params: { title: string }) => string;
   };
   directory: {
     activeConsent: string;

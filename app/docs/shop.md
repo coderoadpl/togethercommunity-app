@@ -936,11 +936,16 @@ and no responsible-person field is given, so that release reads those products
 unchanged; the domain and every API output still carry
 `manufacturerOutsideEu: false`. A product with the switch on, or with a
 responsible-person field, stores the four keys, and that release cannot read
-it: every product read and list of its workspace fails. Before rolling back to
-that release, remove the four keys from the `compliance` value of such
-products. Product content versions written by this release are snapshot
-version 11; that release refuses to open or restore them as newer than its
-version 10 and leaves the rows intact.
+it: reading that product, and every product list that includes it, fails.
+Before rolling back to that release, find every product whose `compliance`
+holds any of the four keys, whatever their values, and remove them; for a
+product with the switch on, keep the responsible person's details elsewhere
+first. Change proposals record safety information in the same stored form, so
+a pending proposal on a product with the switch off applies under either
+release; one on a product with the switch on is reported as stale after the
+rollback and has to be submitted again. Product content versions written by
+this release are snapshot version 11; that release refuses to open or restore
+them as newer than its version 10 and leaves the rows intact.
 
 ## Product variants
 

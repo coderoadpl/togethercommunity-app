@@ -1180,6 +1180,44 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('signin-error')).not.toHaveTextContent(en.auth.invalidCredentials);
   });
 
+  it('puts a rejected password under the field, the same for an unknown address', async () => {
+    server.use(
+      http.post('*', ({ request }) => new URL(request.url).pathname.endsWith('/sign-in/email')
+        ? HttpResponse.json({ code: 'INVALID_EMAIL_OR_PASSWORD', message: 'Invalid email or password' }, { status: 401 })
+        : undefined),
+    );
+    const outcomeFor = async (email: string) => {
+      const view = await renderLoginPage();
+      await continueWithEmail(email);
+      await userEvent.click(await screen.findByTestId('use-password'));
+      const field = await screen.findByLabelText(en.auth.passwordLabel);
+      await userEvent.type(field, 'wrong-password');
+      await userEvent.click(screen.getByTestId('signin-submit'));
+
+      const error = await screen.findByTestId('signin-error');
+      const panel = screen.getByTestId('use-password').closest('li');
+      expect(panel).toContainElement(error);
+      expect(field.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(error.compareDocumentPosition(screen.getByTestId('signin-submit')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(field).toHaveAttribute('aria-describedby', error.id);
+      expect(field).toHaveAccessibleDescription(en.auth.invalidCredentials);
+      await waitFor(() => expect(field).toHaveFocus());
+      expect(field).toHaveProperty('selectionStart', 0);
+      expect(field).toHaveProperty('selectionEnd', 'wrong-password'.length);
+      const outcome = { text: error.textContent, alerts: screen.getAllByRole('alert').map((alert) => alert.textContent) };
+      view.unmount();
+      return outcome;
+    };
+
+    const known = await outcomeFor('creator@together.dev');
+    window.sessionStorage.clear();
+    const unknown = await outcomeFor('crow.unknown@example.com');
+
+    expect(known.text).toBe(en.auth.invalidCredentials);
+    expect(unknown).toEqual(known);
+  });
+
   it('disables submit while the sign-in mutation is pending', async () => {
     server.use(
       http.post('*', async () => {

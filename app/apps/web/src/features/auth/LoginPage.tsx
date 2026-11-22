@@ -59,6 +59,7 @@ import { AuthShell } from './AuthShell.js';
 const IDENTITY_ID = 'login-identity';
 const EMAIL_ERROR_ID = 'login-email-error';
 const EMAIL_HELPER_ID = 'login-email-helper';
+const PASSWORD_ERROR_ID = 'login-password-error';
 const TWO_FACTOR_ERROR_ID = 'two-factor-error';
 const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
@@ -208,6 +209,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   );
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
+  const passwordRef = useRef<HTMLInputElement>(null);
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
@@ -262,6 +264,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       }
       await queryClient.invalidateQueries();
       await navigate({ href: postLoginTarget });
+    },
+    onError: () => {
+      passwordRef.current?.focus();
+      passwordRef.current?.select();
     },
   });
 
@@ -465,9 +471,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   );
 
   const signInErrorCode = errorCodeOf(signIn.error);
+  const credentialsRejected = signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials';
   const signInErrorMessage = signInErrorCode === 'rate_limited'
     ? <RateLimitMessage error={signIn.error} remaining={signInRetryIn} />
-    : signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials'
+    : credentialsRejected
       ? t.auth.invalidCredentials
       : localizeError(signIn.error, t);
 
@@ -795,11 +802,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           {t.auth.magicLinkExpiredOnStep}
         </Alert>
       ) : null}
-      {signIn.isError ? (
-        <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="signin-error">
-          {signInErrorMessage}
-        </Alert>
-      ) : null}
       {requestMagicLink.isError ? (
         <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="magic-link-error">
           {magicLinkErrorMessage}
@@ -839,7 +841,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                           data-testid="login-identity-email"
                         />
                       </VisuallyHidden>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth error={credentialsRejected}>
                         <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
                         <AuthInput
                           id="login-password"
@@ -848,10 +850,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                           onChange={(event) => setPassword(event.target.value)}
                           autoComplete="current-password"
                           autoFocus
+                          inputRef={passwordRef}
+                          {...(signIn.isError ? { 'aria-describedby': PASSWORD_ERROR_ID } : {})}
                           inputProps={{ 'data-testid': 'login-password' }}
                           required
                         />
                       </FormControl>
+                      {signIn.isError ? (
+                        <Alert severity="error" role="alert" id={PASSWORD_ERROR_ID} data-testid="signin-error">
+                          {signInErrorMessage}
+                        </Alert>
+                      ) : null}
                       <Button
                         type="submit"
                         variant="contained"

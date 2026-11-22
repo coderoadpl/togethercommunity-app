@@ -10,16 +10,32 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     },
   },
   purchase: {
+    heading: 'Dziękujemy za zakup',
+    paymentReceived: (orderReference, tenantName) => `Otrzymaliśmy Twoją płatność za zamówienie ${orderReference} na platformie ${tenantName}.`,
+    collectInPerson: 'Zamówienie odbierzesz osobiście — przy odbiorze pokaż kod QR z tej wiadomości.',
+    nextSteps: {
+      course: 'Kurs czeka na Ciebie na Twoim koncie.',
+      digital_download: 'Pliki są gotowe do pobrania na Twoim koncie.',
+      membership: 'Twoje członkostwo jest aktywne.',
+      physical: 'Napiszemy ponownie, gdy paczka wyruszy w drogę.',
+      unknown: 'Zakup jest dostępny na Twoim koncie.',
+    },
     orderNumber: 'Numer zamówienia',
     lines: 'Zakupione pozycje',
     item: 'Pozycja',
-    amount: 'Kwota',
+    amount: 'Kwota brutto',
     vat: 'VAT',
     exempt: 'zw.',
     total: 'Razem',
-    notInvoice: 'To potwierdzenie zakupu nie jest fakturą. Jeśli potrzebujesz faktury, skontaktuj się z nami.',
-    subject: (orderNumber, tenantName) => `Potwierdzenie zakupu ${orderNumber} — ${tenantName}`,
-    verification: 'Kod weryfikacyjny zamówienia dla sprzedawcy',
+    notInvoice: 'To potwierdzenie nie jest fakturą.',
+    invoiceContact: (contact) => `Jeśli potrzebujesz faktury, ${contact}.`,
+    contactLabel: 'napisz do sklepu',
+    signInValidity: 'Link do logowania działa przez godzinę.',
+    signInLater: (signInPage) => `Później zalogujesz się w każdej chwili na ${signInPage}.`,
+    signInPageLabel: 'stronie logowania',
+    subject: (orderReference, tenantName) => `Potwierdzenie zakupu — ${tenantName} (${orderReference})`,
+    verification: 'Kod QR dla sprzedawcy: pokaż go, jeśli sprzedawca poprosi o potwierdzenie zamówienia.',
+    verificationText: 'Jeśli sprzedawca poprosi o potwierdzenie zamówienia, pokaż kod QR z wersji HTML tej wiadomości.',
     qrAlt: 'Kod QR zamówienia',
     delivery: 'Dostawa',
     pickupPoint: 'Paczkomat',
@@ -31,11 +47,11 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     carrier: 'Przewoźnik',
     trackingNumber: 'Numer przesyłki',
     trackLabel: 'Śledź przesyłkę',
-    carriers: { inpost: 'InPost', other: 'Inny przewoźnik' },
-    render: ({ header, tenantName, tenantNameHtml, orderNumber, orderNumberHtml, items, delivery, tracking, socialLinks }) => ({
-      subject: `Twoje zamówienie ${orderNumber} zostało wysłane — ${tenantName}`,
-      html: `${header}<p>Cześć!</p><p>Twoje zamówienie ${orderNumberHtml} w ${tenantNameHtml} zostało wysłane.</p>${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
-      text: `Cześć!\n\nTwoje zamówienie ${orderNumber} w ${tenantName} zostało wysłane.${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
+    carriers: { inpost: 'InPost' },
+    render: ({ header, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, track, items, delivery, tracking, socialLinks }) => ({
+      subject: `Zamówienie wysłane — ${tenantName} (${orderReference})`,
+      html: `${header}<p>Cześć!</p><p>Twoje zamówienie ${orderReferenceHtml} w ${tenantNameHtml} zostało wysłane.</p>${track.html}${items.html}${delivery.html}${tracking.html}${socialLinks.html}`,
+      text: `Cześć!\n\nTwoje zamówienie ${orderReference} w ${tenantName} zostało wysłane.${track.text}${items.text}${delivery.text}${tracking.text}${socialLinks.text}`,
     }),
   },
   welcomeSignIn: {
@@ -71,7 +87,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   threadReply: {
     actionLabel: 'Otwórz dyskusję',
     render: ({ tenantName, tenantNameHtml, lessonName, lessonNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `Nowa odpowiedź w dyskusji „${lessonName}”`,
+      subject: `Nowa odpowiedź w dyskusji „${lessonName}” — ${tenantName}`,
       html: `<p>Cześć!</p><p>${authorHtml} odpowiedział(a) w dyskusji „${lessonNameHtml}” na platformie ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Cześć!\n\n${authorDisplay} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:\n\n${snippetText}\n\nOtwórz dyskusję: ${url}${footer.text}`,
     }),
@@ -79,7 +95,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   lessonQuestion: {
     actionLabel: 'Otwórz pytanie',
     render: ({ tenantName, tenantNameHtml, lessonName, lessonNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `Nowe pytanie pod lekcją „${lessonName}”`,
+      subject: `Nowe pytanie pod lekcją „${lessonName}” — ${tenantName}`,
       html: `<p>Cześć!</p><p>${authorHtml} zadał(a) pytanie pod lekcją „${lessonNameHtml}” na platformie ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Cześć!\n\n${authorDisplay} zadał(a) pytanie pod lekcją „${lessonName}” na platformie ${tenantName}:\n\n${snippetText}\n\nOtwórz pytanie: ${url}${footer.text}`,
     }),
@@ -87,7 +103,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   spacePost: {
     actionLabel: 'Otwórz przestrzeń',
     render: ({ tenantName, tenantNameHtml, spaceName, spaceNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `Nowy wpis w przestrzeni „${spaceName}”`,
+      subject: `Nowy wpis w przestrzeni „${spaceName}” — ${tenantName}`,
       html: `<p>Cześć!</p><p>${authorHtml} dodał(a) nowy wpis w przestrzeni „${spaceNameHtml}” na platformie ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Cześć!\n\n${authorDisplay} dodał(a) nowy wpis w przestrzeni „${spaceName}” na platformie ${tenantName}:\n\n${snippetText}\n\nOtwórz przestrzeń: ${url}${footer.text}`,
     }),
@@ -95,7 +111,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   spaceEvent: {
     actionLabel: 'Otwórz wydarzenie',
     render: ({ tenantName, tenantNameHtml, spaceName, spaceNameHtml, authorDisplay, authorHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `Nowe wydarzenie w przestrzeni „${spaceName}”`,
+      subject: `Nowe wydarzenie w przestrzeni „${spaceName}” — ${tenantName}`,
       html: `<p>Cześć!</p><p>${authorHtml} zaplanował(a) wydarzenie w przestrzeni „${spaceNameHtml}” na platformie ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Cześć!\n\n${authorDisplay} zaplanował(a) wydarzenie w przestrzeni „${spaceName}” na platformie ${tenantName}:\n\n${snippetText}\n\nOtwórz wydarzenie: ${url}${footer.text}`,
     }),
@@ -103,7 +119,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   directMessage: {
     actionLabel: 'Otwórz rozmowę',
     render: ({ tenantName, tenantNameHtml, senderDisplay, senderHtml, snippetText, snippetHtml, url, actionLink, footer }) => ({
-      subject: `Nowa wiadomość od ${senderDisplay}`,
+      subject: `Nowa wiadomość od ${senderDisplay} — ${tenantName}`,
       html: `<p>Cześć!</p><p>${senderHtml} wysłał(a) Ci wiadomość na platformie ${tenantNameHtml}:</p><blockquote>${snippetHtml}</blockquote><p>${actionLink}</p>${footer.html}`,
       text: `Cześć!\n\n${senderDisplay} wysłał(a) Ci wiadomość na platformie ${tenantName}:\n\n${snippetText}\n\nOtwórz rozmowę: ${url}${footer.text}`,
     }),
@@ -118,11 +134,25 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   },
   subscriptionPaymentFailed: {
     billingPortalLabel: 'Zaktualizuj dane płatności',
-    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, socialLinks }) => ({
-      subject: `Nie udało się pobrać płatności za „${productTitle}”`,
-      html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitleHtml}” na platformie ${tenantNameHtml}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtHtml}.</p>${portal}${socialLinks.html}`,
-      text: `Cześć!\n\nNie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtText}.${billingPortalUrl === null ? '' : `\n\nZaktualizuj dane płatności: ${billingPortalUrl}`}${socialLinks.text}`,
-    }),
+    contactLabel: 'Napisz do obsługi',
+    workspaceLabel: (tenantName) => `Otwórz stronę platformy ${tenantName}`,
+    render: ({ header, tenantName, tenantNameHtml, productTitle, productTitleHtml, accessEndsAtText, accessEndsAtHtml, billingPortalUrl, portal, contactUrl, contactLink, workspaceUrl, workspaceLink, socialLinks }) => {
+      const settle = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantName} i opłać subskrypcję.`;
+      const settleHtml = `Aby zachować dostęp, skontaktuj się z obsługą platformy ${tenantNameHtml} i opłać subskrypcję.`;
+      const fallbackLink = contactLink ?? workspaceLink;
+      const actionHtml = billingPortalUrl !== null ? portal : `<p>${settleHtml}</p>${fallbackLink === null ? '' : `<p>${fallbackLink}</p>`}`;
+      const fallbackText = contactUrl !== null
+        ? `\n\nNapisz do obsługi: ${contactUrl}`
+        : workspaceUrl === null ? '' : `\n\nOtwórz stronę platformy ${tenantName}: ${workspaceUrl}`;
+      const actionText = billingPortalUrl !== null
+        ? `\n\nZaktualizuj dane płatności: ${billingPortalUrl}`
+        : `\n\n${settle}${fallbackText}`;
+      return {
+        subject: `Nie udało się pobrać płatności za „${productTitle}” — ${tenantName}`,
+        html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za „${productTitleHtml}” na platformie ${tenantNameHtml}.</p><p>Bez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtHtml}.</p>${actionHtml}${socialLinks.html}`,
+        text: `Cześć!\n\nNie udało się pobrać płatności za „${productTitle}” na platformie ${tenantName}.\n\nBez opłacenia subskrypcji dostęp wygaśnie ${accessEndsAtText}.${actionText}${socialLinks.text}`,
+      };
+    },
   },
   subscriptionEnded: {
     offerLabel: 'Zobacz ofertę',
@@ -176,7 +206,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
   },
   orderSoldOutRefundEmail: {
     shopLabel: 'Przejdź do sklepu',
-    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderId, orderIdHtml, orderReference, orderReferenceHtml, productTitles, productTitlesHtml, refund, shopUrl, shopLink }) => {
       const timing = [
         'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.',
         'BLIK: zwrot trwa około 120 minut.',
@@ -190,9 +220,9 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
         ? '<p>Nie pobraliśmy żadnej opłaty, więc nie ma czego zwracać.</p>'
         : `<p>Automatycznie zleciliśmy zwrot całej kwoty ${refund.amountHtml} na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul>`;
       return {
-        subject: `Zamówienie ${orderId} anulowane: towar wyprzedany, ${refund === null ? 'bez opłaty' : 'zwracamy całą kwotę'}`,
-        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderIdHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
-        text: `Cześć!\n\nPłatność za zamówienie ${orderId} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+        subject: `Zamówienie anulowane, ${refund === null ? 'bez opłaty' : 'zwracamy całą kwotę'} — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Cześć!</p><p>Płatność za zamówienie ${orderReferenceHtml} na platformie ${tenantNameHtml} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Numer zamówienia: ${orderIdHtml}<br>Wyprzedane: ${productTitlesHtml}</p>${refundHtml}<p>Przepraszamy za kłopot.</p><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nPłatność za zamówienie ${orderReference} na platformie ${tenantName} wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nNumer zamówienia: ${orderId}\nWyprzedane: ${productTitles}\n\n${refundText}\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
       };
     },
   },

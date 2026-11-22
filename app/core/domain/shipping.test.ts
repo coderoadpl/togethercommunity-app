@@ -88,7 +88,7 @@ describe('delivery method', () => {
   it('routes products with product safety information to the workspace checkout page', () => {
     const compliance = {
       manufacturerName: 'Maker', manufacturerAddress: 'Main Street 1, Warsaw', manufacturerEmail: 'maker@example.com',
-      modelIdentifier: 'M-1', safetyWarnings: '',
+      manufacturerOutsideEu: false, modelIdentifier: 'M-1', safetyWarnings: '',
     };
     expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', compliance })).toBe(true);
     expect(requiresWorkspaceCheckout({ deliveryMethod: 'pickup', compliance: null })).toBe(false);

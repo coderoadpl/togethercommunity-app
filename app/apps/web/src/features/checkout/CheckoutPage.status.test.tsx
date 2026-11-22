@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -23,6 +23,11 @@ const renderReturn = async (query: string) => {
   return rendered;
 };
 
+const offerWithSupport = (url: string | null) =>
+  http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: {
+    tenant: { slug: 'acme', name: 'Acme School', support: { url } }, contentVersion: 1, products: [],
+  } }));
+
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
@@ -33,13 +38,16 @@ it('shows the pending card before the first status response', async () => {
   await renderReturn('&session_id=cs_live_example');
 
   expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.successPendingEyebrow)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPaidEyebrow)).toBeNull();
   expect(screen.getByText(en.checkout.successPendingBody)).toBeVisible();
   expect(screen.getByRole('progressbar', { name: en.checkout.successPendingTitle })).toBeVisible();
   await act(async () => {
     resolveResponse(HttpResponse.json({ ok: true, data: { status: 'paid' } }));
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(within(screen.getByRole('status')).getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
 });
 
 it('renders pending immediately, follows confirmation, and stops polling once paid', async () => {
@@ -71,11 +79,12 @@ it('renders pending immediately, follows confirmation, and stops polling once pa
   expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
 });
 
-it('shows the timeout guidance after three minutes and stops polling', async () => {
+it('gives the timed-out card its own title and a check-again action that restarts polling', async () => {
   let requests = 0;
-  server.use(http.get('/api/public/checkout/session-status', () => {
+  let paid = false;
+  server.use(offerWithSupport(null), http.get('/api/public/checkout/session-status', () => {
     requests += 1;
-    return HttpResponse.json({ ok: true, data: { status: 'pending' } });
+    return HttpResponse.json({ ok: true, data: { status: paid ? 'paid' : 'pending' } });
   }));
   await renderReturn('&session_id=cs_test_example');
   expect(screen.getByText(en.checkout.successPendingBody)).toBeVisible();
@@ -83,23 +92,154 @@ it('shows the timeout guidance after three minutes and stops polling', async () 
   await act(() => vi.advanceTimersByTimeAsync(179_998));
   expect(screen.queryByText(en.checkout.successPendingTimeout)).toBeNull();
   await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByRole('heading', { name: en.checkout.successTimedOutTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.successPendingEyebrow)).toBeVisible();
   expect(screen.getByText(en.checkout.successPendingTimeout)).toBeVisible();
-  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPendingContact)).toBeNull();
+  expect(screen.queryByRole('link', { name: en.checkout.contactSeller })).toBeNull();
+  expect(screen.queryByRole('progressbar')).toBeNull();
   const requestsAtTimeout = requests;
   expect(requestsAtTimeout).toBeGreaterThan(1);
   await act(() => vi.advanceTimersByTimeAsync(30_000));
   expect(requests).toBe(requestsAtTimeout);
+
+  paid = true;
+  await act(async () => {
+    screen.getByRole('button', { name: en.checkout.checkAgain }).click();
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(requests).toBe(requestsAtTimeout + 1);
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toHaveFocus();
+  for (const line of [en.checkout.successBody, `${en.checkout.successWhere} ${en.checkout.successShipping}`, en.checkout.successSpam]) {
+    expect(screen.getByText(line)).toBeVisible();
+  }
+});
+
+it('keeps polling after a check again and times out again three minutes later', async () => {
+  let requests = 0;
+  server.use(offerWithSupport('https://help.example.test/contact'), http.get('/api/public/checkout/session-status', () => {
+    requests += 1;
+    return HttpResponse.json({ ok: true, data: { status: 'pending' } });
+  }));
+  await renderReturn('&session_id=cs_live_example');
+  await act(() => vi.advanceTimersByTimeAsync(180_000));
+  expect(screen.getByText(en.checkout.successPendingContact)).toBeVisible();
+  expect(screen.getByRole('link', { name: en.checkout.contactSeller })).toHaveAttribute('href', 'https://help.example.test/contact');
+  expect(screen.getByRole('link', { name: en.checkout.contactSeller })).toHaveAttribute('target', '_blank');
+
+  await act(async () => {
+    screen.getByRole('button', { name: en.checkout.checkAgain }).click();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+  expect(screen.getByRole('progressbar', { name: en.checkout.successPendingTitle })).toBeVisible();
+  const afterCheck = requests;
+  await act(() => vi.advanceTimersByTimeAsync(3001));
+  expect(requests).toBe(afterCheck + 1);
+  await act(() => vi.advanceTimersByTimeAsync(180_000));
+  expect(screen.getByRole('heading', { name: en.checkout.successTimedOutTitle })).toBeVisible();
+});
+
+it('shows an inline error after two failed requests, stops polling, and recovers on check again with focus on the heading', async () => {
+  let failing = true;
+  let requests = 0;
+  server.use(http.get('/api/public/checkout/session-status', () => {
+    requests += 1;
+    return failing
+      ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
+      : HttpResponse.json({ ok: true, data: { status: 'paid' } });
+  }));
+  await renderReturn('&session_id=cs_live_example');
+  expect(screen.queryByText(en.checkout.statusErrorTitle)).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(1001));
+
+  expect(screen.getByRole('heading', { name: en.checkout.statusErrorTitle })).toBeVisible();
+  expect(screen.getByTestId('checkout-return-error')).toHaveTextContent(en.checkout.statusErrorBody);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText(en.checkout.successPendingBody)).toBeNull();
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  const requestsAtFailure = requests;
+  expect(requestsAtFailure).toBe(2);
+  await act(() => vi.advanceTimersByTimeAsync(30_000));
+  expect(requests).toBe(requestsAtFailure);
+  expect(screen.getByRole('button', { name: en.checkout.checkAgain })).toBeEnabled();
+
+  failing = false;
+  await act(async () => {
+    screen.getByRole('button', { name: en.checkout.checkAgain }).click();
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toHaveFocus();
+});
+
+it('keeps the waiting card when a single poll fails after a pending answer', async () => {
+  let requests = 0;
+  server.use(http.get('/api/public/checkout/session-status', () => {
+    requests += 1;
+    return requests === 2
+      ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
+      : HttpResponse.json({ ok: true, data: { status: 'pending' } });
+  }));
+  await renderReturn('&session_id=cs_live_example');
+  await act(() => vi.advanceTimersByTimeAsync(3001));
+  expect(screen.queryByText(en.checkout.statusErrorTitle)).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(1001));
+  expect(requests).toBe(3);
+  expect(screen.getByRole('heading', { name: en.checkout.successPendingTitle })).toBeVisible();
+  expect(screen.queryByText(en.checkout.statusErrorTitle)).toBeNull();
+});
+
+it('adds the seller contact to the failed card once the three-minute window has passed', async () => {
+  server.use(offerWithSupport('mailto:help@example.test'), http.get('/api/public/checkout/session-status', () =>
+    HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })));
+  await renderReturn('&session_id=cs_live_example');
+  await act(() => vi.advanceTimersByTimeAsync(1001));
+  expect(screen.queryByText(en.checkout.successPendingContact)).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(180_000));
+  expect(screen.getByRole('heading', { name: en.checkout.statusErrorTitle })).toBeVisible();
+  expect(screen.getByText(en.checkout.successPendingContact)).toBeVisible();
+  const contact = screen.getByRole('link', { name: en.checkout.contactSeller });
+  expect(contact).toHaveAttribute('href', 'mailto:help@example.test');
+  expect(contact).not.toHaveAttribute('target');
+});
+
+it('offers the workspace shop and its contact on the sold-out card, with the refund in three short lines', async () => {
+  server.use(offerWithSupport('https://help.example.test/contact'), http.get('/api/public/checkout/session-status', () =>
+    HttpResponse.json({ ok: true, data: { status: 'cancelled' } })));
+  await renderReturn('&session_id=cs_live_example');
+  await act(() => vi.advanceTimersByTimeAsync(1));
+
+  expect(screen.getByRole('heading', { name: en.checkout.soldOutRefundTitle })).toBeVisible();
+  for (const line of [en.checkout.soldOutRefundBody, en.checkout.soldOutRefundStarted, en.checkout.soldOutRefundTiming]) {
+    expect(screen.getByText(line)).toBeVisible();
+  }
+  expect(screen.getByRole('link', { name: en.checkout.backToShop })).toHaveAttribute('href', '/');
+  expect(screen.getByRole('link', { name: en.checkout.contactSeller })).toHaveAttribute('href', 'https://help.example.test/contact');
+  expect(screen.queryByRole('link', { name: en.checkout.goToLogin })).toBeNull();
+});
+
+it('keeps the sold-out card without a contact link when the workspace has no support address', async () => {
+  server.use(offerWithSupport(null), http.get('/api/public/checkout/session-status', () =>
+    HttpResponse.json({ ok: true, data: { status: 'cancelled', charged: false } })));
+  await renderReturn('&session_id=cs_live_example');
+  await act(() => vi.advanceTimersByTimeAsync(1));
+
+  expect(screen.getByText(en.checkout.soldOutNothingChargedBody)).toBeVisible();
+  expect(screen.getByRole('link', { name: en.checkout.backToShop })).toHaveAttribute('href', '/');
+  expect(screen.queryByRole('link', { name: en.checkout.contactSeller })).toBeNull();
 });
 
 it.each([
-  ['shows the paid card without polling when session_id is absent', '&purchase_kind=one_time'],
-  ['does not poll for an empty session_id (shows the paid card)', '&purchase_kind=one_time&session_id='],
+  ['confirms the order without claiming a payment and without polling when session_id is absent', '&purchase_kind=one_time'],
+  ['does not poll for an empty session_id and confirms the order', '&purchase_kind=one_time&session_id='],
 ])('%s', async (_name, query) => {
   const statusRequest = vi.fn(() => HttpResponse.json({ ok: true, data: { status: 'paid' } }));
   server.use(http.get('/api/public/checkout/session-status', statusRequest));
   await renderReturn(query);
   expect(screen.getByRole('heading', { name: en.checkout.successTitle })).toBeVisible();
-  expect(screen.getByText(en.checkout.successPaidEyebrow)).toBeVisible();
+  expect(screen.getByText(en.checkout.successConfirmedEyebrow)).toBeVisible();
+  expect(screen.queryByText(en.checkout.successPaidEyebrow)).toBeNull();
   expect(screen.getByText(en.checkout.successBody)).toBeVisible();
   expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveClass('MuiButton-contained');
   expect(screen.queryByRole('progressbar')).toBeNull();

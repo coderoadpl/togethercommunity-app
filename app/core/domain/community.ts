@@ -82,6 +82,12 @@ export const listDiscussionInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 
+export const getThreadInputSchema = z.object({
+  contextKind: postContextKindSchema,
+  contextId: z.string().min(1),
+  postId: z.string().min(1),
+});
+
 export const subscribeThreadInputSchema = z.object({
   rootPostId: z.string().min(1),
 });

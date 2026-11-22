@@ -93,6 +93,7 @@ import {
   productDownloadAssetViewSchema,
   productDownloadUploadInputSchema,
   listDiscussionInputSchema,
+  getThreadInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
@@ -1221,6 +1222,10 @@ export const discussionGetInputSchema = listDiscussionInputSchema;
 
 export type DiscussionGetInput = z.input<typeof discussionGetInputSchema>;
 
+export const discussionThreadGetInputSchema = getThreadInputSchema;
+
+export type DiscussionThreadGetInput = z.input<typeof discussionThreadGetInputSchema>;
+
 export const discussionOutputSchema = z.object({
   discussion: discussionSchema,
 });
@@ -2158,6 +2163,7 @@ export const API_ROUTES = {
   postsPurge: { method: 'DELETE', path: '/api/posts/:postId/permanent' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
+  discussionThread: { method: 'GET', path: '/api/discussion/threads/:postId' },
   threadSubscribe: { method: 'POST', path: '/api/discussion/subscribe' },
   threadMute: { method: 'POST', path: '/api/discussion/mute' },
   postsSearch: { method: 'GET', path: '/api/posts/search' },
@@ -2580,6 +2586,7 @@ export const API_PATHS = {
   postsPurge: API_ROUTES.postsPurge.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
+  discussionThread: API_ROUTES.discussionThread.path,
   threadSubscribe: API_ROUTES.threadSubscribe.path,
   threadMute: API_ROUTES.threadMute.path,
   postsSearch: API_ROUTES.postsSearch.path,

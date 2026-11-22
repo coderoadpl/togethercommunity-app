@@ -97,7 +97,8 @@ link checkout and the hosted cart page through `DeliveryStep`:
   corners or border.
 - **I know the code** in the header closes the picker the same way as
   **Back**, opens the **Parcel locker code** field on the page and moves focus
-  into it.
+  into it. When the field already holds a code, that code is selected, so the
+  first key replaces it (the same after **Type the code**).
 - One tap chooses the locker. InPost's map reports a point only when the buyer
   taps the map's own yellow select button in the point's card or details
   panel; tapping a marker, a list item or the map's details link only shows
@@ -127,11 +128,15 @@ link checkout and the hosted cart page through `DeliveryStep`:
   read out. Enter inside the picker never submits the checkout.
 - The map element is created only while the picker is open and removed when it
   closes. When the map script fails to load (for example a content security
-  policy kept from an in-app navigation), the picker says so and offers
-  **Try again** and **Type the code**. **Try again** clears the failure, moves
-  focus to the picker title and mounts the map again with a fresh script.
-  After **Type the code** (or **I know the code**) the option shows the code
-  input with the reason for the rest of the page's life. A script that fails
+  policy kept from an in-app navigation), the picker says so in the guidance
+  line and again above **Try again** and **Type the code** in the map area
+  (that copy is hidden from assistive technology, so the failure is read out
+  once). The header then shows no **I know the code**, so **Type the code** is
+  the only code exit. **Try again** clears the failure, brings **I know the
+  code** back, moves focus to the picker title and mounts the map again with a
+  fresh script.
+  After **Type the code** the option shows the code input with the reason for
+  the rest of the page's life. A script that fails
   while the picker is closed is removed, so the next opening loads it again.
   A token InPost rejects (for example one issued for another domain) loads the
   map with InPost's own red access-denied banner, a watermark and no points;
@@ -168,8 +173,14 @@ The email and the terms acceptance move to Stripe when the workspace has both a
 terms URL and a privacy URL (see
 [Payments](payments.md#terms-acceptance-on-the-together-checkout-page)). The page
 asks for the email only for a discount code with a per-person limit (the field
-appears inside the code row after the server asks for it), and for the email and
-the terms for an order with nothing to pay, which never reaches Stripe. A
+appears inside the code row after the server asks for it, with a line saying that
+without it the buyer pays the full price), and for the email and the terms for
+an order with nothing to pay, which never reaches Stripe. A code from the
+checkout link keeps its discount while the address in the code row is edited and
+is validated again for the new complete address; once that address is cleared
+or no longer complete, the discount is dropped, the pay button shows the full
+amount and sends no code, and the code is validated again by itself when the
+address is complete. A
 signed-in buyer is never asked for the email: the account email is sent with the
 request. A workspace without both legal URLs, and the development simulated
 payment, keep the email field and, when a URL is set, the terms checkbox on the
@@ -183,7 +194,13 @@ their panels open below the button, so nothing above them moves.
 The shared parts (`CheckoutSteps`, `CheckoutSummaryRow`, `CheckoutDisclosureRow`
 and `CheckoutPayBar` in `apps/web/src/components/ui/CheckoutStepParts.tsx`, and
 `ProductSafetySummary` in `apps/web/src/features/checkout/`) take plain props so
-the cart checkout can adopt them; the cart page keeps its current layout.
+the cart checkout can adopt them; the cart page uses `CheckoutPriceBreakdown`
+for its summary above the pay button, so its coupon panel (`breakdown="discount"`
+on `CouponField`) shows only the discount and the lowest price of the last 30
+days, and otherwise keeps its own layout, a
+plain list of delivery options with the parcel locker block (**Choose a parcel
+locker** or the chosen locker, and **I know the code**) directly under the
+locker option, before the next option.
 The locker name and address stored on the order are as entered by the buyer;
 only the code is validated, and staff pack by the code. When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
@@ -324,11 +341,14 @@ the number without a link. A new carrier is one entry in that map.
 ### Shipment e-mail
 
 The buyer receives the `order-shipped` e-mail at the member e-mail address:
-"Your order <number> has been shipped — <workspace>" with the order number, the
-shipped items (product lines, not the delivery line; a line above one unit is
-named "<units> × <name>"), the delivery option with
-the locker code and details or the postal address, the carrier, the tracking
-number and, for InPost, the tracking link. The language follows the member's
+"Order shipped — <workspace> (#<reference>)", where the reference is the first
+eight characters of the order id, upper-cased. Directly under the first sentence
+comes the tracking link (InPost), then the shipped items (product lines, not the
+delivery line; a line above one unit is named "<units> × <name>"), the delivery
+option with the locker code and details or the postal address (a locker name
+that repeats its code is printed once, the country by name), and one block with
+the full order number, the carrier (left out for `other`) and the tracking
+number. The language follows the member's
 language, then the workspace default. Test-mode orders send no e-mail, like
 other purchase e-mails. The message is queued in the same transaction as the
 shipment and dispatched right after commit; it uses the workspace transport
@@ -806,21 +826,46 @@ physical goods:
 | `manufacturerName` | 1–200 characters |
 | `manufacturerAddress` | 1–300 characters, postal address |
 | `manufacturerEmail` | contact e-mail |
+| `manufacturerOutsideEu` | `true` when the manufacturer is not established in the EU, `false` by default |
+| `responsiblePersonName` | 1–200 characters, the responsible person in the EU |
+| `responsiblePersonAddress` | 1–300 characters, its postal address |
+| `responsiblePersonEmail` | its contact e-mail |
 | `modelIdentifier` | 1–100 characters, model or type |
 | `batchIdentifier` | optional, 1–100 characters |
 | `safetyWarnings` | 0–5000 characters of Markdown, empty by default |
 | `instructionsUrl` | optional HTTPS URL |
+
+When `manufacturerOutsideEu` is `true`, the three responsible-person fields are
+required, and each missing one fails validation with
+`<field> is required when the manufacturer is outside the EU`. When it is
+`false` they are optional, but given together or not at all, and the offer
+does not show them. Safety information stored before these fields existed
+reads as a manufacturer in the EU without a responsible person.
 
 The field is accepted on every product type through the API, the CLI and the
 import API; Studio shows the expandable **Product safety (GPSR)** section in the
 product editor for physical products only. The workspace is responsible for the
 content; the platform only validates the shape.
 
+In that section the **The manufacturer is established outside the EU** switch,
+its hint and, while it is on, the three responsible-person fields sit in one
+group under a left rule. The name field says the responsible person is usually
+the importer or the manufacturer's authorised representative in the EU, and the
+address field asks for the country. Saving checks the draft against the same
+schema: when a responsible-person field fails, the editor asks to fill in or
+correct the responsible person and marks the failing fields; when another field
+fails, it shows the manufacturer message; both show when both fail. While the
+switch is off, the hidden responsible-person texts do not count, so clearing
+every visible field removes the safety information.
+
 The public offer returns `compliance` for each product with
 `safetyWarningsHtml`, the warnings rendered by the server-side Markdown renderer
 used for sales-link descriptions (links, emphasis and lists only; HTML and
 images are escaped or dropped). Public sales-link offers carry `compliance` and
-the product `coverUrl` on each line the same way.
+the product `coverUrl` on each line the same way. Both leave out
+`responsiblePersonName`, `responsiblePersonAddress` and `responsiblePersonEmail`
+while `manufacturerOutsideEu` is off; the stored values stay visible to staff in
+Studio and the management API.
 
 Regulation (EU) 2023/988 art. 19 says an online offer "shall clearly and
 visibly indicate at least":
@@ -839,22 +884,34 @@ The Together checkout page shows a compact **Product safety information**
 section above the pay button, for every product type with `compliance`. Without
 a click it shows, per manufacturer, the name, the postal address, the contact
 e-mail and, when the offer sells more than one product, `applies to N products`
-(a); then, for each product of that manufacturer, a 40 px picture from the
-product cover with the product title as its alternative text when the product
-has a cover, the product title when the offer sells more than one product, the
-model identifier (c), and the safety warnings as plain text when the workspace
-entered any (d). A warning longer than 280 characters shows its first three
-lines with **Show more**, which extends the same text; screen readers read the
-whole warning either way. Products without warnings show no warning line.
-Products whose manufacturer name, address and e-mail are identical share one
-manufacturer line.
+(a); for a manufacturer outside the EU, a **Responsible person in the EU** line
+right under it with that person's name, postal address and e-mail (b), and when
+the section shows a responsible person every manufacturer name in it carries a
+**Manufacturer** label in the same form, the label in the line colour and the
+name in the primary colour; then,
+for each product of that manufacturer, a 40 px picture from the product cover
+with the product title as its alternative text when the product has a cover,
+the product title when the offer sells more than one product, the model
+identifier (c), and the safety warnings as plain text when the workspace
+entered any (d), so the section covers (a) to (d) without a click. A warning
+longer than 280 characters shows its first three
+lines with **Show more**, which extends the same text; while it is collapsed
+the paragraphs of the warning sit without a gap, so the third line is never cut.
+Screen readers read the whole warning either way. Products without warnings show
+no warning line. When at least one product of a manufacturer has a picture, the
+rows without one keep an empty 40 px slot hidden from assistive technology, so
+the texts of one manufacturer start at the same edge.
+Products whose manufacturer name, address and e-mail and whose responsible
+person are identical share one manufacturer line.
 
-**Details** on a manufacturer line holds only what goes beyond that minimum: per
-product (titled when the offer sells more than one product) the batch and the
-instructions link. A manufacturer whose products have neither shows no
-**Details**. The product data has no separate responsible-person field, so the
-page shows no line of its own for (b). The cart checkout keeps one section per
-product, expanded for physical products.
+**Details**, after a manufacturer's product rows and directly above its panel,
+holds only what goes beyond that minimum: per product the batch and the
+instructions link, with the product's title only when more than one product of
+that manufacturer has them. A manufacturer whose products have neither shows no
+**Details**. The cart checkout keeps one section per product, expanded for
+physical products, with the responsible person under the manufacturer when it
+applies, in the manufacturer's shape: a label, name and address row, then its
+contact row right under it.
 A sales link with any product that carries safety information never
 takes the automatic `/offer/<slug>` handoff to Stripe: like shipped and
 consent-bound products it stays on the Together page at `?checkout=together`,
@@ -864,7 +921,10 @@ confirmation e-mail does not include it.
 
 Product snapshots carry the descriptive fields, so the field was added in
 product snapshot version 8 (`core/domain/snapshots/product/v8.ts`); version 7
-snapshots read unchanged because the field is optional.
+snapshots read unchanged because the field is optional. The responsible-person
+fields were added in version 11 (`core/domain/snapshots/product/v11.ts`); older
+snapshots read with `manufacturerOutsideEu: false` and no responsible person.
+The `compliance` column is JSON, so no migration was needed.
 
 ## Product variants
 
@@ -1164,7 +1224,10 @@ an empty string clears it. `--pickup-point` needs
 cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
 For an order with a line above one unit, `orders list` shows its product lines
-as `2 × Title; Title`; other orders keep the product title. `--compliance null` removes the safety information and
+as `2 × Title; Title`; other orders keep the product title. For a manufacturer
+outside the EU, `--compliance` adds `"manufacturerOutsideEu":true` with
+`responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail`. `--compliance null` removes the safety information and
 `--clear-variant` removes the variant group and label. `product create|update
 --sales-channel sales_links_only` limits a product to sales links (see
 [Products sold only through sales links](sales-links.md#products-sold-only-through-sales-links));
@@ -1538,7 +1601,9 @@ still `paid` or already `refunded`, without the purchase analytics payload and
 without the Meta conversion consent payload; `charged` is `false` for an order
 paid with zero. The hosted success page (`status=success`) then stops polling
 and shows the sold-out message without the sign-in button, saying that the
-refund was started, or that nothing was charged when `charged` is `false`; it
+refund was started, or that nothing was charged when `charged` is `false`, with
+a "Back to shop" link to the workspace home (a full document navigation) and,
+when the workspace has a support address, a "Contact the seller" link; it
 sends no purchase event. The
 document keeps its script policy: the analytics libraries may still load as on
 any success return, and the full-navigation exit rule is unchanged.

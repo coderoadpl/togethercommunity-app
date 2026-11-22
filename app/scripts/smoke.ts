@@ -367,7 +367,7 @@ const publicNavigationSchema = z.object({
     lockedSpaces: z.array(z.object({ id: z.string(), productIds: z.array(z.string()) })),
   }),
 });
-const publicThreadSchema = z.object({
+const threadSchema = z.object({
   discussion: z.object({
     threads: z.array(z.object({ id: z.string(), replyCount: z.number() })),
   }),
@@ -1565,6 +1565,16 @@ const driveEventsFlow = async (port: number, homes: string[]): Promise<void> => 
     ),
   ).event;
   assert(created.discussionRootPostId !== null, 'creating an event should open its discussion thread');
+  const eventThread = threadSchema.parse(
+    expectOk(
+      await studio(['space', 'thread', '--space', space.id, '--post', created.discussionRootPostId], followerHome),
+      'events: member reads the event discussion by its root id',
+    ),
+  );
+  assert(
+    eventThread.discussion.threads[0]?.id === created.discussionRootPostId,
+    'the event discussion should be readable by its root id',
+  );
   expectError(
     await studio(
       ['event', 'create', '--space', space.id, '--title', 'Odwrotnie', '--starts-at', '2099-07-12T20:00:00.000Z', '--ends-at', '2099-07-12T18:00:00.000Z'],
@@ -1911,7 +1921,7 @@ const driveAnonymousPublicFlow = async (port: number, homes: string[]): Promise<
     feed.items.every((item) => item.reactions.every((reaction) => !reaction.viewerReacted)),
     'public: an anonymous reader must never own a reaction',
   );
-  const thread = publicThreadSchema.parse(
+  const thread = threadSchema.parse(
     await publicData(
       await publicGet(
         API_PATHS.publicSpaceThread

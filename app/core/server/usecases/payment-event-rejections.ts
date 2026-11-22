@@ -94,11 +94,15 @@ const notifyOwners = async (
   return queuedAny;
 };
 
+const hasLiveOrder = async (tenantId: string, checkoutSessionId: string | null, deps: PaymentEventRejectionDeps): Promise<boolean> =>
+  checkoutSessionId !== null &&
+  await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, { checkoutSession: checkoutSessionId }, 'live') !== null;
+
 /** Its own failures are only logged: the answer to Stripe must stay the refusal, so Stripe keeps retrying, or the acceptance. */
 export const recordStripeWebhookOutcome = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   event: PaymentWebhookEvent,
-  outcome: Result<unknown, AppError>,
+  outcome: Result<{ processed: boolean }, AppError>,
   deps: PaymentEventRejectionDeps,
 ): Promise<void> => {
   if (!isLivePaidCheckout(event)) return;
@@ -110,17 +114,18 @@ export const recordStripeWebhookOutcome = async (
     }
   };
   if (outcome.ok) {
-    await guarded('resolve', () => deps.paymentEventRejections.resolve(tenant.id, event.id, deps.clock.nowIso()));
+    await guarded('resolve', async () => {
+      if (outcome.value.processed || await hasLiveOrder(tenant.id, event.objectId, deps)) {
+        await deps.paymentEventRejections.resolve(tenant.id, event.id, deps.clock.nowIso());
+      }
+    });
     return;
   }
   const error = outcome.error;
   if (error.code === 'conflict') return;
   await guarded('record', async () => {
     const checkoutSessionId = event.objectId;
-    if (checkoutSessionId !== null &&
-        await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: checkoutSessionId }, 'live') !== null) {
-      return;
-    }
+    if (await hasLiveOrder(tenant.id, checkoutSessionId, deps)) return;
     deps.logger.error(`[payment-webhook-rejected] tenant=${tenant.id} event=${event.id} type=${event.type} reason=${error.code}`);
     const recorded = await deps.paymentEventRejections.record(tenant.id, {
       eventId: event.id,

@@ -63,13 +63,20 @@ const paidCheckout = (overrides: Partial<PaymentWebhookEvent> = {}, paymentStatu
   ...overrides,
 });
 
+const liveOrder: Order = {
+  mode: 'live', id: 'order-1', tenantId: tenant.id, memberId: 'member-1', productId: 'product-1', priceId: null, kind: 'one_time',
+  status: 'paid', amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_paid' },
+  couponId: null, discountCents: 0, createdAt: '2026-11-20T09:00:00.000Z',
+};
+
 const setup = (options: { order?: Order | null; staff?: Array<{ userId: string; email: string; staffRole: StaffRole; language: 'en' | 'pl' | null }> } = {}) => {
   const store = createRejectionStore();
   const outbox = new Map<string, EmailOutboxEnqueueInput>();
   let now = '2026-11-20T10:00:00.000Z';
   const logger = { error: vi.fn<(message: string) => void>(), warn: vi.fn<(message: string) => void>() };
   const dispatchEmail = vi.fn<() => void>();
-  const findOrder = vi.fn(async (): Promise<Order | null> => options.order ?? null);
+  let order = options.order ?? null;
+  const findOrder = vi.fn(async (): Promise<Order | null> => order);
   const deps: PaymentEventRejectionDeps = {
     paymentEventRejections: store.repository,
     paymentRefunds: { findOrderByProviderObjectIds: findOrder },
@@ -94,10 +101,16 @@ const setup = (options: { order?: Order | null; staff?: Array<{ userId: string; 
     logger,
     dispatchEmail,
   };
-  return { deps, store, outbox, logger, dispatchEmail, findOrder, advance: (next: string) => { now = next; } };
+  return {
+    deps, store, outbox, logger, dispatchEmail, findOrder,
+    advance: (next: string) => { now = next; },
+    setOrder: (next: Order | null) => { order = next; },
+  };
 };
 
-const refused: Result<unknown, AppError> = err(validation('Checkout snapshot not found'));
+type Outcome = Result<{ processed: boolean }, AppError>;
+
+const refused: Outcome = err(validation('Checkout snapshot not found'));
 
 describe('recordStripeWebhookOutcome', () => {
   it('records a refused paid checkout session, logs the operator marker and e-mails the owners', async () => {
@@ -180,6 +193,27 @@ describe('recordStripeWebhookOutcome', () => {
     expect(await deps.paymentEventRejections.listUnresolved(tenant.id, 10)).toEqual([]);
   });
 
+  it('keeps the record open when a later delivery is acknowledged without an order', async () => {
+    const { deps, store, advance } = setup();
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+    advance('2026-11-21T09:00:00.000Z');
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), ok({ processed: false }), deps);
+
+    expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', resolvedAt: null }]);
+  });
+
+  it('marks the record resolved when a later duplicate delivery finds the order already recorded', async () => {
+    const { deps, store, advance, setOrder } = setup();
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+    setOrder(liveOrder);
+    advance('2026-11-21T09:00:00.000Z');
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), ok({ processed: false }), deps);
+
+    expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', resolvedAt: '2026-11-21T09:00:00.000Z' }]);
+  });
+
   it('records a refused session that needed no payment and a completed event without session data', async () => {
     const { deps, store } = setup();
 
@@ -203,7 +237,7 @@ describe('recordStripeWebhookOutcome', () => {
     expect(JSON.stringify([...outbox.values()])).not.toContain('buyer@togethercommunity.app');
   });
 
-  it.each<[string, PaymentWebhookEvent, Result<unknown, AppError>]>([
+  it.each<[string, PaymentWebhookEvent, Outcome]>([
     ['an unpaid session', paidCheckout({}, 'unpaid'), refused],
     ['a test-mode session', paidCheckout({ id: 'test:evt_paid', mode: 'test', livemode: false }), refused],
     ['a live event delivered with livemode false', paidCheckout({ livemode: false }), refused],
@@ -224,12 +258,7 @@ describe('recordStripeWebhookOutcome', () => {
   });
 
   it('records nothing when the refused delivery already has an order for its checkout session', async () => {
-    const order: Order = {
-      mode: 'live', id: 'order-1', tenantId: tenant.id, memberId: 'member-1', productId: 'product-1', priceId: null, kind: 'one_time',
-      status: 'paid', amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: { checkoutSession: 'cs_paid' },
-      couponId: null, discountCents: 0, createdAt: '2026-11-20T09:00:00.000Z',
-    };
-    const { deps, store, outbox, findOrder } = setup({ order });
+    const { deps, store, outbox, findOrder } = setup({ order: liveOrder });
 
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
 

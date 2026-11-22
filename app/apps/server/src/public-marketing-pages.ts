@@ -265,7 +265,7 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .shell{width:min(calc(100% - 2rem),40rem);margin:0 auto;padding:1.5rem 0 4rem}
 .brand{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--line);padding-bottom:1rem}
-.brand-mark{display:flex;align-items:center;gap:.6rem;min-width:0}
+.brand-mark{display:flex;align-items:center;gap:.6rem;min-width:0;color:inherit;text-decoration:none}
 .brand img{display:block;width:auto;height:auto;min-width:0;max-width:min(10rem,100%);max-height:2.5rem;object-fit:contain}
 .brand-logo--dark{display:none}
 .brand-name{font-family:var(--font-display);font-size:1.25rem;font-weight:600;letter-spacing:-.015em;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -318,11 +318,24 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .prose pre{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--muted-surface);padding:1rem}
 .prose code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}
 .signup-field{display:grid;gap:.5rem;margin-block:1.25rem}.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}.signup-trap{display:none}
-.social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.875rem}
+.site-footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.875rem}
+.site-footer-line{margin:0;overflow-wrap:anywhere}
+.site-footer-line a{color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
+.document-version{margin:.5rem 0 0;font-size:.875rem}
+.social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-bottom:.5rem}
 .social-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
 @media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}.brand-name{font-size:1.5rem}.card{padding:1.75rem}}
 @media(max-width:520px){.brand{gap:.75rem}.brand img{max-width:8rem}.brand-name{font-size:1.125rem}.actions{flex-direction:column;align-items:stretch}.actions button,.actions .button-link,.unsubscribe-option form,.unsubscribe-option button{width:100%}}
 @media(prefers-color-scheme:dark){.brand-logo--light{display:none}.brand-logo--dark{display:block}}`;
+
+const supportLink = (settings: TenantSettings | null, t: PublicMarketingMessages): string | null => {
+  if (settings == null) return null;
+  if (settings.supportEmail !== null) {
+    return `<a href="${escapeHtml(`mailto:${settings.supportEmail}`)}">${escapeHtml(settings.supportEmail)}</a>`;
+  }
+  const url = settings.supportUrl === null ? null : safeHref(settings.supportUrl);
+  return url === null ? null : `<a href="${escapeHtml(url)}">${escapeHtml(t.supportLink)}</a>`;
+};
 
 export type StatusCue = 'success' | 'info' | 'error';
 
@@ -375,7 +388,8 @@ const renderPage = (input: {
     ? ''
     : `<nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav>`;
   const cue = input.cue === undefined ? '' : renderStatusCue(input.cue);
-  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><div class="brand-mark">${brandMark}</div>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section>${socialNavigation}</main></body></html>`;
+  const contact = supportLink(settings, t);
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main></body></html>`;
 };
 
 export interface StatusLink {
@@ -442,15 +456,6 @@ export const renderHostedErrorPage = (input: {
     testId: copy.testId,
     cue: 'error',
   });
-};
-
-const supportLink = (settings: TenantSettings | null, t: PublicMarketingMessages): string | null => {
-  if (settings == null) return null;
-  if (settings.supportEmail !== null) {
-    return `<a href="${escapeHtml(`mailto:${settings.supportEmail}`)}">${escapeHtml(settings.supportEmail)}</a>`;
-  }
-  const url = settings.supportUrl === null ? null : safeHref(settings.supportUrl);
-  return url === null ? null : `<a href="${escapeHtml(url)}">${escapeHtml(t.supportLink)}</a>`;
 };
 
 export const renderPreferencesPage = (input: {
@@ -531,21 +536,25 @@ export const renderLegalDocumentPage = (input: {
   nonce: string;
   brand: PublicBrand;
   language: Language;
-  path: string;
+  slug: string;
   title: string;
   content: string;
-  immutableVersion: { version: number; publishedAt: string } | null;
+  version: { version: number; publishedAt: string };
+  address: 'current' | 'permanent';
+  latestVersion: number;
 }): string => {
   const t = messages[input.language];
   const locale = input.language === 'pl' ? 'pl-PL' : 'en-US';
-  const notice = input.immutableVersion === null
-    ? ''
-    : `<p class="notice">${escapeHtml(t.immutableVersion({
-        version: input.immutableVersion.version,
-        date: new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(new Date(input.immutableVersion.publishedAt)),
-      }))}</p>`;
-  const body = `${notice}<article class="prose">${renderHostedMarkdown(input.content)}</article>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.path, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
+  const documentPath = `/legal/${encodeURIComponent(input.slug)}`;
+  const details = {
+    version: input.version.version,
+    date: new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(new Date(input.version.publishedAt)),
+  };
+  const versionLine = input.address === 'current'
+    ? `<p class="document-version"><a href="${documentPath}/v/${String(input.version.version)}">${escapeHtml(t.currentVersionLine(details))}</a></p>`
+    : `<p class="notice">${escapeHtml(t.immutableVersion(details))}${input.latestVersion > input.version.version ? ` <a href="${documentPath}">${escapeHtml(t.viewCurrentVersion)}</a>` : ''}</p>`;
+  const body = `${versionLine}<article class="prose">${renderHostedMarkdown(input.content)}</article>`;
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: null, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
 };
 
 export const renderConfirmationPage = (input: {

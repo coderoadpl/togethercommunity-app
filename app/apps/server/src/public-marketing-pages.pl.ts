@@ -48,6 +48,8 @@ export const publicMarketingMessagesPl = {
   documentNotFoundTitle: 'Nie znaleziono dokumentu',
   documentNotFoundBody: 'Ten dokument nie istnieje albo został wycofany.',
   immutableVersion: ({ version, date }) => `Wersja ${version}, opublikowana ${date}. Treść tej wersji nie ulega zmianie.`,
+  currentVersionLine: ({ version, date }) => `Wersja ${version} · opublikowana ${date}`,
+  viewCurrentVersion: 'Zobacz aktualną wersję',
   confirmationEyebrow: 'Potwierdzenie zgody',
   confirmationPromptTitle: 'Potwierdź zgodę',
   confirmationPromptBody: ({ tenant }) => `Potwierdź, że chcesz otrzymywać wiadomości od ${tenant}.`,

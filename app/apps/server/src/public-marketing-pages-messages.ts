@@ -46,6 +46,8 @@ export interface PublicMarketingMessages {
   documentNotFoundTitle: string;
   documentNotFoundBody: string;
   immutableVersion: (input: { version: number; date: string }) => string;
+  currentVersionLine: (input: { version: number; date: string }) => string;
+  viewCurrentVersion: string;
   confirmationEyebrow: string;
   confirmationPromptTitle: string;
   confirmationPromptBody: (input: { tenant: string }) => string;

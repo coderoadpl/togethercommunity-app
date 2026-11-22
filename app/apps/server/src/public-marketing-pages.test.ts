@@ -85,7 +85,9 @@ describe('public marketing pages', () => {
     expect(html).toContain('min-height:44px');
     expect(html).toContain('@media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}');
     expect(html).toContain('.prose h2{font-size:1.5rem}');
-    expect(html).toContain('<div class="brand-mark"><img class="brand-logo" src="/brand.svg" alt="Studio Demo"></div>');
+    expect(html).toContain('<a class="brand-mark" href="/"><img class="brand-logo" src="/brand.svg" alt="Studio Demo"></a>');
+    expect(html).toContain('<footer class="site-footer"><nav class="social-links" aria-label="Social profiles">');
+    expect(html).toContain('<p class="site-footer-line">Studio Demo</p></footer>');
     expect(html).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(html).toContain(':root{color-scheme:light dark;');
     expect(html).not.toContain('together-theme-mode');
@@ -113,8 +115,8 @@ describe('public marketing pages', () => {
     expect(html).not.toContain('Select the messages');
     expect(html).not.toContain('<h2>Unsubscribe</h2>');
     const polish = renderPreferencesPage(preferenceInput({ globallySuppressed: true, language: 'pl' }));
-    expect(polish).toContain('Ten adres jest wypisany ze wszystkich wiadomości marketingowych od nadawcy Studio Demo.');
-    expect(polish).toContain('Na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.');
+    expect(polish).toContain(publicMarketingMessagesPl.unsubscribedEverything({ tenant: 'Studio Demo' }));
+    expect(polish).toContain(publicMarketingMessagesPl.resubscribeBlocked);
     expect(polish).not.toContain('<a href="mailto:');
   });
 
@@ -161,11 +163,11 @@ describe('public marketing pages', () => {
     expect(html).toContain('You will stop receiving messages from this list.');
     expect(html).not.toContain('archived-definition');
     const polish = renderPreferencesPage(preferenceInput({ scope: 'consent:archived-definition', scopeLabel: null, language: 'pl' }));
-    expect(polish).toContain('Przestaniesz otrzymywać wiadomości z tej listy.');
-    expect(polish).toContain('<h2>Wypisz się</h2>');
-    expect(polish).toContain('>Wypisz mnie</button>');
-    expect(polish).toContain('>Wypisz mnie ze wszystkich wiadomości marketingowych</button>');
-    expect(polish).toContain('Zatrzymuje wszystkie wiadomości marketingowe od nadawcy Studio Demo. Tego wyboru nie cofniesz na tej stronie.');
+    expect(polish).toContain(publicMarketingMessagesPl.unsubscribeListBody);
+    expect(polish).toContain(`<h2>${publicMarketingMessagesPl.unsubscribeTitle}</h2>`);
+    expect(polish).toContain(`>${publicMarketingMessagesPl.unsubscribeSubmit}</button>`);
+    expect(polish).toContain(`>${publicMarketingMessagesPl.unsubscribeAllSubmit}</button>`);
+    expect(polish).toContain(publicMarketingMessagesPl.unsubscribeAllWarning({ tenant: 'Studio Demo' }));
   });
 
   it('escapes consent labels and the workspace name in every preference state', () => {
@@ -193,15 +195,15 @@ describe('public marketing pages', () => {
     expect(html).toContain('status-cue--success');
     expect(html).not.toContain('all marketing');
     const polish = renderPreferenceResultPage(resultInput({ language: 'pl' }));
-    expect(polish).toContain('Nie będziesz już otrzymywać wiadomości objętych zgodą „Product news”.');
-    expect(polish).toContain('Jeśli zmienisz zdanie, wróć tutaj i zaznacz zgody ponownie.');
+    expect(polish).toContain(publicMarketingMessagesPl.unsubscribedConsentBody({ label: 'Product news' }));
+    expect(polish).toContain(publicMarketingMessagesPl.resubscribeHint);
   });
 
   it('confirms a scoped unsubscribe without a label as this list', () => {
     expect(renderPreferenceResultPage(resultInput({ scopeLabel: null })))
       .toContain('<p class="lede">You will no longer receive messages from this list.</p>');
     expect(renderPreferenceResultPage(resultInput({ scopeLabel: null, language: 'pl' })))
-      .toContain('<p class="lede">Nie będziesz już otrzymywać wiadomości z tej listy.</p>');
+      .toContain(`<p class="lede">${publicMarketingMessagesPl.unsubscribedListBody}</p>`);
   });
 
   it('says that an unsubscribe from everything cannot be reversed from the page', () => {
@@ -209,8 +211,8 @@ describe('public marketing pages', () => {
     expect(html).toContain('<p class="lede">You will no longer receive any marketing messages from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p>');
     expect(html).not.toContain('If you change your mind');
     const polish = renderPreferenceResultPage(resultInput({ result: 'all_unsubscribed', scopeLabel: null, language: 'pl' }));
-    expect(polish).toContain('Nie będziesz już otrzymywać żadnych wiadomości marketingowych od nadawcy Studio Demo.');
-    expect(polish).toContain('Na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.');
+    expect(polish).toContain(publicMarketingMessagesPl.unsubscribedAllBody({ tenant: 'Studio Demo' }));
+    expect(polish).toContain(publicMarketingMessagesPl.resubscribeBlocked);
   });
 
   it('confirms saved preferences and announces pending confirmations', () => {
@@ -254,9 +256,9 @@ describe('public marketing pages', () => {
 
   it.each([
     ['link_invalid', 'en', 'marketing-link-invalid', 'This link does not work'],
-    ['link_invalid', 'pl', 'marketing-link-invalid', 'Link jest niepełny albo nieaktualny. Otwórz link z najnowszej wiadomości albo skontaktuj się z nadawcą.'],
+    ['link_invalid', 'pl', 'marketing-link-invalid', publicMarketingMessagesPl.linkInvalidBody],
     ['document_not_found', 'en', 'hosted-legal-not-found', 'This document does not exist or has been withdrawn.'],
-    ['document_not_found', 'pl', 'hosted-legal-not-found', 'Nie znaleziono dokumentu'],
+    ['document_not_found', 'pl', 'hosted-legal-not-found', publicMarketingMessagesPl.documentNotFoundTitle],
     ['request_failed', 'en', 'marketing-request-failed', 'Something went wrong'],
   ] as const)('renders the %s error page in %s', (kind, language, testId, text) => {
     const html = renderHostedErrorPage({ nonce: 'test-nonce', brand, language, path: '/u/token', kind });
@@ -271,7 +273,8 @@ describe('public marketing pages', () => {
     const html = renderLegalDocumentPage({
       nonce: 'test-nonce',
       brand: { ...brand, settings: { ...brand.settings, accentColor: '#F5C842', accentLight } },
-      language: 'en', path: '/legal/privacy', title: 'Privacy', content: '[Policy](https://courses.example.org/privacy)', immutableVersion: null,
+      language: 'en', slug: 'privacy', title: 'Privacy', content: '[Policy](https://courses.example.org/privacy)',
+      version: { version: 1, publishedAt: '2026-07-22T10:00:00.000Z' }, address: 'current', latestVersion: 1,
     });
     const match = /<html[^>]+style="--accent-light:(#[0-9a-f]{6});--accent-dark:(#[0-9a-f]{6})"/i.exec(html);
     if (match === null) throw new Error('Missing accent variables');
@@ -404,10 +407,51 @@ describe('public marketing pages', () => {
     const publishedDate = new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long' }).format(new Date(publishedAt));
     const html = renderLegalDocumentPage({
       nonce: 'test-nonce',
-      brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Privacy', content: 'Body',
-      immutableVersion: { version: 2, publishedAt },
+      brand, language: 'pl', slug: 'privacy', title: 'Privacy', content: 'Body',
+      version: { version: 2, publishedAt }, address: 'permanent', latestVersion: 2,
     });
-    expect(html).toContain(publicMarketingMessagesPl.immutableVersion({ version: 2, date: publishedDate }));
+    expect(html).toContain(`<p class="notice">${publicMarketingMessagesPl.immutableVersion({ version: 2, date: publishedDate })}</p>`);
+    expect(html).not.toContain('class="document-version"');
+  });
+
+  const legalInput = (overrides: Partial<Parameters<typeof renderLegalDocumentPage>[0]> = {}) => ({
+    nonce: 'test-nonce', brand, language: 'en' as const, slug: 'privacy policy', title: 'Privacy', content: '# Heading\n\nBody',
+    version: { version: 2, publishedAt: '2026-07-22T10:00:00.000Z' }, address: 'current' as const, latestVersion: 2, ...overrides,
+  });
+
+  it('links the current legal address to its permanent version and hides the language switch', () => {
+    const html = renderLegalDocumentPage(legalInput());
+    expect(html).toContain('<h1>Privacy</h1><p class="document-version"><a href="/legal/privacy%20policy/v/2">Version 2 · published July 22, 2026</a></p>');
+    expect(html).toContain('<article class="prose"><h2>Heading</h2>');
+    expect(html).not.toContain('class="languages"');
+    expect(html).not.toContain('class="notice"');
+  });
+
+  it('points an older permanent version to the current one', () => {
+    const older = renderLegalDocumentPage(legalInput({ address: 'permanent', version: { version: 1, publishedAt: '2026-06-01T10:00:00.000Z' } }));
+    expect(older).toContain('<p class="notice">Version 1, published June 1, 2026. This version will not change. <a href="/legal/privacy%20policy">View the current version</a></p>');
+    const latest = renderLegalDocumentPage(legalInput({ address: 'permanent' }));
+    expect(latest).toContain('<p class="notice">Version 2, published July 22, 2026. This version will not change.</p>');
+    expect(latest).not.toContain('View the current version');
+    expect(renderLegalDocumentPage(legalInput({ address: 'permanent', latestVersion: 3, language: 'pl' }))).toContain(`>${publicMarketingMessagesPl.viewCurrentVersion}</a>`);
+  });
+
+  it('closes every hosted page with the workspace name and its support contact', () => {
+    if (brand.settings == null) throw new Error('Missing brand settings');
+    const withEmail = renderLegalDocumentPage(legalInput({
+      brand: { ...brand, settings: { ...brand.settings, socialLinks: [], supportEmail: 'help@studio.test', supportUrl: 'https://studio.test/help' } },
+    }));
+    expect(withEmail).toContain('<footer class="site-footer"><p class="site-footer-line">Studio Demo · <a href="mailto:help@studio.test">help@studio.test</a></p></footer>');
+    const withUrl = renderPreferenceResultPage({
+      nonce: 'test-nonce', language: 'pl', token: 'token', result: 'saved', scopeLabel: null,
+      brand: { ...brand, settings: { ...brand.settings, supportUrl: 'https://studio.test/help' } },
+    });
+    expect(withUrl).toContain(`<p class="site-footer-line">Studio Demo · <a href="https://studio.test/help">${publicMarketingMessagesPl.supportLink}</a></p>`);
+    const withoutSettings = renderStatusPage({
+      nonce: 'test-nonce', brand: { ...brand, tenant: { ...brand.tenant, name: 'Studio & Co' }, settings: null }, language: 'en', path: null,
+      eyebrow: 'Status', title: 'Title', lines: ['Line'], testId: 'status',
+    });
+    expect(withoutSettings).toContain('<footer class="site-footer"><p class="site-footer-line">Studio &amp; Co</p></footer>');
   });
 
   it('selects PL or EN from the explicit query, cookie, and accepted language', () => {

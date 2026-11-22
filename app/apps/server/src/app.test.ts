@@ -2476,9 +2476,32 @@ describe('marketing HTTP surfaces', () => {
     const nonce = /(?:^|; )script-src [^;]*'nonce-([^']+)'/.exec(contentSecurityPolicy ?? '')?.[1];
     const body = await response.text();
     expect(body).toContain('Immutable terms');
+    expect(body).toContain('<p class="document-version"><a href="/legal/terms/v/1">Version 1 · published July 22, 1998</a></p>');
+    expect(body).not.toContain('class="languages"');
     expect(nonce).toBeDefined();
     expect(body).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(body).not.toContain('together-theme-mode');
+  });
+
+  it('serves a permanent legal version in the workspace language with a link to the newer current one', async () => {
+    const marketing = marketingDeps();
+    const document = { id: 'document-1', tenantId: 't-acme', slug: 'terms', title: 'Terms', status: 'published' as const, createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z' };
+    const version = (number: number, publishedAt: string) => ({
+      id: `version-${String(number)}`, tenantId: 't-acme', documentId: 'document-1', version: number,
+      content: `Terms version ${String(number)}`, publishedAt, createdAt: publishedAt, createdBy: 'staff',
+    });
+    marketing.documents = {
+      ...marketing.documents,
+      findLatestPublished: async () => ({ document, version: version(2, '1998-08-01T00:00:00.000Z') }),
+      findPublishedVersion: async (_tenantId, _slug, number) => number === 1 ? { document, version: version(1, '1998-07-22T00:00:00.000Z') } : null,
+    };
+    const response = await marketingApp(marketing).request('/legal/terms/v/1?lang=pl', { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('lang="en"');
+    expect(body).toContain('Terms version 1');
+    expect(body).toContain('<p class="notice">Version 1, published July 22, 1998. This version will not change. <a href="/legal/terms">View the current version</a></p>');
+    expect(body).not.toContain('class="languages"');
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
@@ -2583,7 +2606,10 @@ describe('marketing HTTP surfaces', () => {
       expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
     }
     const polish = await app.request('/u/missing_token_1234567890123456?lang=pl', { headers });
-    expect(await polish.text()).toContain('Ten link nie działa');
+    const polishPage = await polish.text();
+    expect(polishPage).toContain('lang="pl"');
+    expect(polishPage).toContain('data-testid="marketing-link-invalid"');
+    expect(polishPage).not.toContain('This link does not work');
   });
 
   it('keeps the one-click unsubscribe answer for mail clients unchanged', async () => {

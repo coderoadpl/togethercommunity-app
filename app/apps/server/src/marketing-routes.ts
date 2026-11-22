@@ -36,6 +36,7 @@ import {
   type SnsWebhookMessageType,
   type Tenant,
   type TenantApiKey,
+  type TenantDocumentVersion,
 } from '#core/domain/index.js';
 import {
   addManualSuppression,
@@ -786,6 +787,11 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     ? deps.marketing?.documents.findLatestPublished(tenantId, slug) ?? null
     : deps.marketing?.documents.findPublishedVersion(tenantId, slug, version) ?? null;
 
+  const publishedVersion = (version: TenantDocumentVersion) => ({
+    version: version.version,
+    publishedAt: version.publishedAt ?? version.createdAt,
+  });
+
   const legalNotFoundPage = async (c: Context<Vars>, tenant: Tenant, status: number): Promise<Response> => html(
     renderHostedErrorPage({ nonce: pageNonce(c), ...await legalPageContext(deps, tenant), path: null, kind: 'document_not_found' }),
     status,
@@ -799,11 +805,13 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ? legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.not_found)
       : html(renderLegalDocumentPage({
           nonce: pageNonce(c),
-          ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
-          path: `/legal/${encodeURIComponent(c.req.param('slug'))}`,
+          ...await legalPageContext(deps, resolved.value.tenant),
+          slug: c.req.param('slug'),
           title: document.document.title,
           content: document.version.content,
-          immutableVersion: null,
+          version: publishedVersion(document.version),
+          address: 'current',
+          latestVersion: document.version.version,
         }));
   });
 
@@ -813,18 +821,17 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const parsed = z.coerce.number().int().positive().safeParse(c.req.param('version'));
     if (!parsed.success) return legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.validation);
     const document = await legal(resolved.value.tenant.id, c.req.param('slug'), parsed.data);
-    return document === null
-      ? legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.not_found)
-      : html(renderLegalDocumentPage({
-          nonce: pageNonce(c),
-          ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
-          path: `/legal/${encodeURIComponent(c.req.param('slug'))}/v/${String(parsed.data)}`,
-          title: document.document.title,
-          content: document.version.content,
-          immutableVersion: {
-            version: document.version.version,
-            publishedAt: document.version.publishedAt ?? document.version.createdAt,
-          },
-        }));
+    if (document === null) return legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.not_found);
+    const latest = await legal(resolved.value.tenant.id, c.req.param('slug'));
+    return html(renderLegalDocumentPage({
+      nonce: pageNonce(c),
+      ...await legalPageContext(deps, resolved.value.tenant),
+      slug: c.req.param('slug'),
+      title: document.document.title,
+      content: document.version.content,
+      version: publishedVersion(document.version),
+      address: 'permanent',
+      latestVersion: latest?.version.version ?? document.version.version,
+    }));
   });
 };

@@ -1,4 +1,5 @@
 {
+  "address": "permanent",
   "brand": {
     "settings": {
       "accentColor": "#0E7490",
@@ -63,12 +64,13 @@
     }
   },
   "content": "# How we handle your data\n\nWe respect your privacy and use your data only to provide the services you choose.\n\n## Contact\n\nFor questions about your data, email [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- You can withdraw consent at any time.\n- Every change is recorded in your consent history.\n\n## Your rights\n\n1. You can ask for a copy of the data we hold about you.\n\n2. You can ask us to correct or delete it.\n\n3. You can object to processing based on our legitimate interest.",
-  "immutableVersion": {
+  "language": "en",
+  "latestVersion": 1,
+  "nonce": "storybook",
+  "slug": "privacy-policy",
+  "title": "Privacy policy",
+  "version": {
     "publishedAt": "2026-06-01 12:00:00+00",
     "version": 1
-  },
-  "language": "en",
-  "nonce": "storybook",
-  "path": "/legal/privacy-policy/v/1",
-  "title": "Privacy policy"
+  }
 }

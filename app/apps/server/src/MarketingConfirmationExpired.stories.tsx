@@ -15,3 +15,4 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const ShadcnDesktop: Story = { parameters: { __id: 'marketing-confirmation-expired--shadcn--desktop' }, globals: { viewport: { value: 'desktop' } } };
 export const ShadcnMobile: Story = { parameters: { __id: 'marketing-confirmation-expired--shadcn--mobile' }, globals: { viewport: { value: 'mobile' } } };
+export const SignUpAgainMobile: Story = { render: () => <iframe title="marketing-confirmation-expired-sign-up-again" srcDoc={renderConfirmationPage({ ...input, signupHref: `/marketing/forms/newsletter?lang=${input.language}` })} style={{ display: 'block', border: 0, width: '100vw', height: '100vh' }} />, globals: { viewport: { value: 'mobile' } } };

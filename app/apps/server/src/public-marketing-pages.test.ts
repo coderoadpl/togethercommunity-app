@@ -12,6 +12,7 @@ import { contrastRatio, deriveLightAccent, type MarketingSignupForm } from '#cor
 
 import {
   languageFromRequest,
+  renderConfirmationPage,
   renderHostedErrorPage,
   renderHostedMarkdown,
   renderLegalDocumentPage,
@@ -542,6 +543,30 @@ describe('sign-up pages', () => {
     expect(html).not.toContain('Thank you for signing up');
   });
 
+  it.each([
+    ['success', 'You are subscribed', 'status-cue--success', 'You will receive e-mails from Studio Demo. Every message has a link to unsubscribe.'],
+    ['expired', 'This link is no longer active', 'status-cue--error', 'The confirmation link has expired or is invalid. Sign up again and we will send you a new link.'],
+    ['prompt', 'Confirm your subscription', 'status-cue--info', 'Confirm that you want to receive messages from Studio Demo.'],
+  ] as const)('renders the %s confirmation page left-aligned with a state cue', (state, title, cue, body) => {
+    const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'en', path: '/marketing/confirm/token', state });
+    expect(html).toContain(`data-testid="marketing-confirmation-${state}"`);
+    expect(html).toContain('<p class="eyebrow">Subscription confirmation</p>');
+    expect(html).toContain(`<h1>${title}</h1>`);
+    expect(html).toContain(cue);
+    expect(html).toContain(`<div class="status"><p class="lede">${body}</p>`);
+    expect(html).not.toContain('button-link--primary"');
+  });
+
+  it('offers the sign-up form as the primary action on an expired link and escapes its address', () => {
+    const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'pl', path: '/marketing/confirm/token', state: 'expired', signupHref: '/marketing/forms/news?lang=pl&x="y"' });
+    expect(html).toContain(`<div class="actions"><a class="button-link button-link--primary" href="/marketing/forms/news?lang=pl&amp;x=&quot;y&quot;">${publicMarketingMessagesPl.signupAgain}</a><a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a></div>`);
+    expect(html).toContain(`<h1>${publicMarketingMessagesPl.confirmationExpiredTitle}</h1>`);
+    const success = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'pl', path: '/marketing/confirm/token', state: 'success' });
+    expect(success).toContain(`<h1>${publicMarketingMessagesPl.confirmationSuccessTitle}</h1>`);
+    expect(success).toContain(publicMarketingMessagesPl.confirmationSuccessBody({ tenant: 'Studio Demo' }));
+    expect(success).toContain(`<a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a>`);
+  });
+
   it('keeps the thank-you heading without double opt-in and localizes the pending page in Polish', () => {
     const subscribed = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: false, thanks: true });
     expect(subscribed).toContain('<h1>Thank you for signing up</h1>');
@@ -580,7 +605,7 @@ const signupHttpFixture = async (doubleOptIn: boolean) => {
     submissions: await fixture.db.select().from(marketingSignupSubmissions),
     confirmations: await fixture.db.select().from(consentConfirmationTokens),
   });
-  return { ...fixture, deps, contact, now, request, submit, snapshot };
+  return { ...fixture, deps, form, contact, now, request, submit, snapshot };
 };
 
 describe('public signup persistence and confirmation', () => {
@@ -619,6 +644,29 @@ describe('public signup persistence and confirmation', () => {
       expect(linked).not.toContain('More information:');
     } finally { await fixture.close(); }
   });
+  it('sends an expired confirmation back to its active sign-up form and otherwise to the workspace home', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      expect((await fixture.submit()).status).toBe(303);
+      const consent = (await fixture.snapshot()).consents[0];
+      if (consent === undefined || fixture.deps.marketingSignup === undefined) throw new Error('Missing consent');
+      const token = await signupConfirmationToken(fixture.db, 'directory-a', consent.id);
+      fixture.setNow(new Date(Date.parse(fixture.now) + 2 * 86_400_000).toISOString());
+      const expired = await (await fixture.request(`/marketing/confirm/${token}?lang=pl`)).text();
+      expect(expired).toContain('data-testid="marketing-confirmation-expired"');
+      expect(expired).toContain(`<a class="button-link button-link--primary" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
+      const expiredPost = await (await fixture.request(`/marketing/confirm/${token}?lang=en`, { method: 'POST' })).text();
+      expect(expiredPost).toContain('<a class="button-link button-link--primary" href="/marketing/forms/newsletter?lang=en">Sign up again</a>');
+      const unknown = await (await fixture.request('/marketing/confirm/unknown_confirmation_token_1234567?lang=en')).text();
+      expect(unknown).toContain('This link is no longer active');
+      expect(unknown).not.toContain('button-link--primary"');
+      expect(unknown).toContain('<a class="button-link" href="/">Go to the home page</a>');
+      directoryValue(await fixture.deps.marketingSignup.forms.save('directory-a', { ...fixture.form, status: 'archived', revision: fixture.form.revision + 1 }, fixture.form.revision));
+      const archived = await (await fixture.request(`/marketing/confirm/${token}?lang=en`)).text();
+      expect(archived).not.toContain('button-link--primary"');
+      expect(archived).toContain('<a class="button-link" href="/">Go to the home page</a>');
+    } finally { await fixture.close(); }
+  });
   it('rolls back token consumption, consent and contact effects when membership fails', async () => {
     const fixture = await signupHttpFixture(true);
     try {
@@ -654,14 +702,14 @@ describe('public signup persistence and confirmation', () => {
       expect(await fixture.snapshot()).toEqual(pending);
       const response = await fixture.request(path, { method: 'POST' });
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain('Email address confirmed');
+      expect(await response.text()).toContain('You are subscribed');
       const confirmed = await fixture.snapshot();
       expect(confirmed.contact).toMatchObject({ displayName: 'Real Name', source: 'import', archivedAt: null, tags: ['existing', 'signup'] });
       expect(confirmed.memberships).toMatchObject([{ listId: 'newsletter-list', contactId: fixture.contact.id, removedAt: null }]);
       expect(confirmed.consents).toHaveLength(2);
       expect(confirmed.consents).toEqual(expect.arrayContaining([expect.objectContaining({ status: 'confirmed', previousId: consent.id })]));
       expect(Date.parse(confirmed.confirmations[0]?.usedAt ?? '')).toBe(Date.parse(fixture.now));
-      expect(await (await fixture.request(path, { method: 'POST' })).text()).toContain('Email address confirmed');
+      expect(await (await fixture.request(path, { method: 'POST' })).text()).toContain('You are subscribed');
       expect(await fixture.snapshot()).toEqual(confirmed);
     } finally { await fixture.close(); }
   });

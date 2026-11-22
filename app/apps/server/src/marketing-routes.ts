@@ -31,6 +31,7 @@ import {
   validation,
   type AppError,
   type Identity,
+  type Language,
   type Result,
   type SnsWebhookDeliveryOutcome,
   type SnsWebhookMessageType,
@@ -735,6 +736,18 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     }));
   });
 
+  const signupAgainHref = async (
+    marketing: MarketingAppDeps, tenantId: string, token: string, language: Language,
+  ): Promise<string | null> => {
+    const confirmation = await marketing.confirmations.findByToken(tenantId, token);
+    if (confirmation === null) return null;
+    const consent = await marketing.marketingConsents.findById(tenantId, confirmation.marketingConsentRowId);
+    const formId = consent?.source === 'signup_form' ? consent.evidence['formId'] : undefined;
+    if (typeof formId !== 'string') return null;
+    const form = await deps.marketingSignup?.forms.findById(tenantId, formId);
+    return form?.status === 'active' ? `/marketing/forms/${encodeURIComponent(form.slug)}?lang=${language}` : null;
+  };
+
   app.get('/marketing/confirm/:token', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
@@ -748,11 +761,13 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ? 'expired'
       : confirmation.usedAt === null ? 'prompt' : 'success';
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
+    const page = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
     return html(renderConfirmationPage({
       nonce: pageNonce(c),
-      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
+      ...page,
       path,
       state,
+      signupHref: state === 'expired' ? await signupAgainHref(marketing.value, resolved.value.tenant.id, token, page.language) : null,
     }));
   });
 
@@ -775,11 +790,13 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       clock: deps.clock,
     }));
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
+    const page = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
     return html(renderConfirmationPage({
       nonce: pageNonce(c),
-      ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
+      ...page,
       path,
       state: result.ok ? 'success' : 'expired',
+      signupHref: result.ok ? null : await signupAgainHref(marketing.value, tenant.id, token, page.language),
     }));
   });
 

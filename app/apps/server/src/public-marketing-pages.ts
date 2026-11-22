@@ -304,6 +304,9 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .button-link{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.7rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:.875rem;font-weight:500;line-height:1.45;text-decoration:none}
 .button-link:hover{border-color:var(--line-strong);background:var(--muted-surface)}
 .button-link:active{background:var(--pressed)}
+.button-link--primary{border-color:transparent;background:var(--primary);color:var(--primary-ink)}
+.button-link--primary:hover{border-color:transparent;background:var(--primary-hover)}
+.button-link--primary:active{background:var(--primary-active);box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}
 .prose{margin-top:2rem;overflow-wrap:anywhere}
 .prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
 .prose h2{font-size:1.5rem}
@@ -397,6 +400,7 @@ const renderPage = (input: {
 interface StatusLink {
   label: string;
   href: string;
+  primary?: boolean;
 }
 
 export const renderStatusPage = (input: {
@@ -414,7 +418,7 @@ export const renderStatusPage = (input: {
   const t = messages[input.language];
   const [summary, ...details] = input.lines;
   const links = [...(input.links ?? []), { label: t.homeLink, href: '/' }]
-    .map((link) => `<a class="button-link" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
+    .map((link) => `<a class="button-link${link.primary === true ? ' button-link--primary' : ''}" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
     .join('');
   const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${details
     .map((line) => `<p class="fine">${escapeHtml(line)}</p>`)
@@ -565,28 +569,30 @@ export const renderConfirmationPage = (input: {
   language: Language;
   path: string;
   state: 'prompt' | 'success' | 'expired';
+  signupHref?: string | null;
 }): string => {
   const t = messages[input.language];
-  const success = input.state === 'success';
-  const prompt = input.state === 'prompt';
-  const title = prompt ? t.confirmationPromptTitle : success ? t.confirmationSuccessTitle : t.confirmationExpiredTitle;
-  const summary = success
-    ? t.confirmationSuccessBody({ tenant: input.brand.tenant.name })
-    : prompt
-      ? t.confirmationPromptBody({ tenant: input.brand.tenant.name })
-      : t.confirmationExpiredBody;
-  const action = prompt
-    ? `<form class="actions" method="post" action="${input.path}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`
-    : '';
+  const tenant = input.brand.tenant.name;
+  const common = { nonce: input.nonce, brand: input.brand, language: input.language, path: input.path, eyebrow: t.confirmationEyebrow, testId: `marketing-confirmation-${input.state}` };
+  if (input.state === 'success') {
+    return renderStatusPage({ ...common, title: t.confirmationSuccessTitle, lines: [t.confirmationSuccessBody({ tenant })], cue: 'success' });
+  }
+  if (input.state === 'expired') {
+    const signupHref = input.signupHref ?? null;
+    return renderStatusPage({
+      ...common,
+      title: t.confirmationExpiredTitle,
+      lines: [t.confirmationExpiredBody],
+      cue: 'error',
+      links: signupHref === null ? [] : [{ label: t.signupAgain, href: signupHref, primary: true }],
+    });
+  }
+  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
   return renderPage({
-    nonce: input.nonce,
-    brand: input.brand,
-    language: input.language,
-    path: input.path,
-    title,
-    eyebrow: t.confirmationEyebrow,
-    body: `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${action}</div>`,
-    testId: `marketing-confirmation-${input.state}`,
+    ...common,
+    title: t.confirmationPromptTitle,
+    body: `<div class="status"><p class="lede">${escapeHtml(t.confirmationPromptBody({ tenant }))}</p>${action}</div>`,
+    cue: 'info',
   });
 };
 

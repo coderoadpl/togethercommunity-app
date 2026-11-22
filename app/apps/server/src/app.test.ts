@@ -2564,15 +2564,15 @@ describe('marketing HTTP surfaces', () => {
     const success = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await success.text()).toContain('Email address confirmed');
+    expect(await success.text()).toContain('You are subscribed');
     const repeated = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await repeated.text()).toContain('Email address confirmed');
+    expect(await repeated.text()).toContain('You are subscribed');
     const confirmedGet = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
-    expect(await confirmedGet.text()).toContain('Email address confirmed');
+    expect(await confirmedGet.text()).toContain('You are subscribed');
     const expired = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });

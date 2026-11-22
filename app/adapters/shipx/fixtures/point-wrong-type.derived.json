@@ -1,0 +1,76 @@
+{
+  "href": "https://api-pl-points.easypack24.net/v1/points/KRA14A",
+  "name": "KRA14A",
+  "display_name": "InPost Paczkomat KRA14A",
+  "type": [
+    "pop"
+  ],
+  "status": "Operating",
+  "location": {
+    "longitude": 20.00547,
+    "latitude": 50.09049
+  },
+  "location_type": "Outdoor",
+  "location_date": null,
+  "location_description": "Przy markecie Kaufland",
+  "location_description_1": null,
+  "location_description_2": "Kaufland",
+  "distance": null,
+  "opening_hours": "24/7",
+  "address": {
+    "line1": "os. Kombatant\u00f3w 16",
+    "line2": "31-630 Krak\u00f3w"
+  },
+  "address_details": {
+    "city": "Krak\u00f3w",
+    "province": "ma\u0142opolskie",
+    "post_code": "31-630",
+    "street": "os. Kombatant\u00f3w",
+    "building_number": "16",
+    "flat_number": null
+  },
+  "phone_number": null,
+  "payment_point_descr": "P\u0142atno\u015b\u0107 apk\u0105 InPost oraz PayByLink",
+  "functions": [
+    "allegro_courier_collect",
+    "allegro_courier_reverse_return_send",
+    "allegro_courier_send",
+    "allegro_letter_send",
+    "allegro_parcel_collect",
+    "allegro_parcel_reverse_return_send",
+    "allegro_parcel_send",
+    "cross_network_parcel_collect",
+    "cross_network_parcel_send",
+    "parcel",
+    "parcel_collect",
+    "parcel_reverse_return_send",
+    "parcel_send",
+    "standard_courier_reverse_return_send",
+    "standard_courier_send"
+  ],
+  "partner_id": 0,
+  "is_next": false,
+  "payment_available": true,
+  "payment_type": {
+    "0": "Payments are not supported"
+  },
+  "virtual": "0",
+  "recommended_low_interest_box_machines_list": [
+    "KRA273M",
+    "KRA175M",
+    "KRA22APP",
+    "KRA39A",
+    "KRA03A"
+  ],
+  "apm_doubled": null,
+  "location_247": true,
+  "operating_hours_extended": {
+    "customer": null
+  },
+  "agency": "KRA",
+  "image_url": "https://static.easypack24.net/points/pl/images/KRA14A.jpg",
+  "easy_access_zone": true,
+  "air_index_level": null,
+  "physical_type_mapped": "003",
+  "physical_type_description": null
+}

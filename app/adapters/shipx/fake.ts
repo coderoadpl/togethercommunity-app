@@ -1,11 +1,14 @@
 import {
   err,
+  normalizePickupPointCode,
   ok,
   shipxRejected,
+  type InpostPoint,
+  type PickupPointLookup,
   type ShipxRemoteShipment,
   type ShipxService,
 } from '#core/domain/index.js';
-import type { ShipxClient } from '#core/server/index.js';
+import type { PickupPointDirectory, ShipxClient } from '#core/server/index.js';
 
 const FAKE_ID_PREFIX = '9';
 const FAKE_TRACKING_PREFIX = '6';
@@ -78,4 +81,33 @@ export const createFakeShipxClient = (): ShipxClient => ({
     contentType: 'application/pdf',
     bytes: pdfLabel(fakeShipxTrackingNumber(shipmentId)),
   }),
+});
+
+export const FAKE_PICKUP_POINT_CODES = {
+  operating: 'WAW01M',
+  notFound: 'MISSING1',
+  notOperating: 'CLOSED01',
+  wrongType: 'SENDONLY1',
+  unavailable: 'OUTAGE01',
+} as const;
+
+const fakeLocker = (change: Partial<InpostPoint> = {}): InpostPoint => ({
+  name: FAKE_PICKUP_POINT_CODES.operating,
+  status: 'Operating',
+  types: ['parcel_locker'],
+  functions: ['parcel_collect', 'parcel_send'],
+  locationDescription: 'Next to the main entrance',
+  address: { line1: 'Main Street 1', line2: '00-001 Warsaw' },
+  ...change,
+});
+
+const FAKE_PICKUP_POINTS: Readonly<Record<string, PickupPointLookup>> = {
+  [FAKE_PICKUP_POINT_CODES.operating]: { kind: 'found', point: fakeLocker() },
+  [FAKE_PICKUP_POINT_CODES.notOperating]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.notOperating, status: 'NonOperating' }) },
+  [FAKE_PICKUP_POINT_CODES.wrongType]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.wrongType, types: ['pop'], functions: ['parcel_send'] }) },
+  [FAKE_PICKUP_POINT_CODES.unavailable]: { kind: 'unavailable' },
+};
+
+export const createFakePickupPointDirectory = (): PickupPointDirectory => ({
+  lookup: async (code) => FAKE_PICKUP_POINTS[normalizePickupPointCode(code)] ?? { kind: 'not_found' },
 });

@@ -30,9 +30,10 @@ import { createOrderVerificationRepository } from '#adapters/db/order-verificati
 import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
-import { createFakeShipxClient } from '#adapters/shipx/fake.js';
+import { createFakePickupPointDirectory, createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
@@ -558,6 +559,7 @@ export interface AppDeps {
   orderPersonalizations?: OrderPersonalizationRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
+  pickupPoints?: PickupPointDirectory;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -1630,6 +1632,7 @@ export const createDeps = (
       shipxSettings: createShipxSettingsRepository(db),
       wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
+    pickupPoints: env.PAYMENT_PROVIDER === 'stripe' ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),

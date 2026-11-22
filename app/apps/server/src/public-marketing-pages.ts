@@ -288,9 +288,15 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .choice span{font-size:.9375rem;overflow-wrap:anywhere}
 .choice small{grid-column:2;color:var(--muted);font-size:.8125rem}
 .notice{margin-top:1.5rem;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem;overflow-wrap:anywhere}
-.status{padding-block:clamp(2.5rem,10vw,5rem);text-align:center}
-.status .lede{max-width:32rem;margin-inline:auto}
-.status .actions{justify-content:center}
+.status{margin-top:1rem}
+.status .lede,.status .fine{max-width:36rem}
+.status .lede{color:var(--ink)}
+.status-cue{display:inline-flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin:0 0 1rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent)}
+.status-cue--error{background:color-mix(in srgb,var(--danger) 12%,var(--surface));color:var(--danger)}
+.status-cue svg{width:1.25rem;height:1.25rem}
+.button-link{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.7rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:.875rem;font-weight:500;line-height:1.45;text-decoration:none}
+.button-link:hover{border-color:var(--line-strong);background:var(--muted-surface)}
+.button-link:active{background:var(--pressed)}
 .prose{margin-top:2rem;overflow-wrap:anywhere}
 .prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
 .prose h2{font-size:1.5rem}
@@ -308,18 +314,30 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.875rem}
 .social-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
 @media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}.brand-name{font-size:1.5rem}.card{padding:1.75rem}}
-@media(max-width:520px){.brand{gap:.75rem}.brand img{max-width:8rem}.brand-name{font-size:1.125rem}.actions{flex-direction:column;align-items:stretch}.actions button{width:100%}}
+@media(max-width:520px){.brand{gap:.75rem}.brand img{max-width:8rem}.brand-name{font-size:1.125rem}.actions{flex-direction:column;align-items:stretch}.actions button,.actions .button-link{width:100%}}
 @media(prefers-color-scheme:dark){.brand-logo--light{display:none}.brand-logo--dark{display:block}}`;
+
+export type StatusCue = 'success' | 'info' | 'error';
+
+const statusCueIcons: Record<StatusCue, string> = {
+  success: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  info: '<path d="M12 11v6"/><path d="M12 7.5h.01"/>',
+  error: '<path d="M12 7v6"/><path d="M12 16.5h.01"/>',
+};
+
+const renderStatusCue = (cue: StatusCue): string =>
+  `<span class="status-cue status-cue--${cue}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${statusCueIcons[cue]}</svg></span>`;
 
 const renderPage = (input: {
   nonce: string;
   brand: PublicBrand;
   language: Language;
-  path: string;
+  path: string | null;
   title: string;
   eyebrow: string;
   body: string;
   testId: string;
+  cue?: StatusCue;
 }): string => {
   const t = messages[input.language];
   const settings = input.brand.settings;
@@ -346,7 +364,77 @@ const renderPage = (input: {
     : `<nav class="social-links" aria-label="${escapeHtml(t.socialProfiles)}">${socialLinks
       .map((item) => `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.label)}</a>`)
       .join('')}</nav>`;
-  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><div class="brand-mark">${brandMark}</div><nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav></header><section class="page"><p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section>${socialNavigation}</main></body></html>`;
+  const languageSwitch = input.path === null
+    ? ''
+    : `<nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav>`;
+  const cue = input.cue === undefined ? '' : renderStatusCue(input.cue);
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><div class="brand-mark">${brandMark}</div>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section>${socialNavigation}</main></body></html>`;
+};
+
+export interface StatusLink {
+  label: string;
+  href: string;
+}
+
+export const renderStatusPage = (input: {
+  nonce: string;
+  brand: PublicBrand;
+  language: Language;
+  path: string | null;
+  eyebrow: string;
+  title: string;
+  lines: readonly [string, ...string[]];
+  testId: string;
+  cue?: StatusCue;
+  links?: readonly StatusLink[];
+}): string => {
+  const t = messages[input.language];
+  const [summary, ...details] = input.lines;
+  const links = [...(input.links ?? []), { label: t.homeLink, href: '/' }]
+    .map((link) => `<a class="button-link" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
+    .join('');
+  const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${details
+    .map((line) => `<p class="fine">${escapeHtml(line)}</p>`)
+    .join('')}<div class="actions">${links}</div></div>`;
+  return renderPage({
+    nonce: input.nonce,
+    brand: input.brand,
+    language: input.language,
+    path: input.path,
+    title: input.title,
+    eyebrow: input.eyebrow,
+    body,
+    testId: input.testId,
+    ...(input.cue === undefined ? {} : { cue: input.cue }),
+  });
+};
+
+export type HostedErrorKind = 'link_invalid' | 'document_not_found' | 'request_failed';
+
+export const renderHostedErrorPage = (input: {
+  nonce: string;
+  brand: PublicBrand;
+  language: Language;
+  path: string | null;
+  kind: HostedErrorKind;
+}): string => {
+  const t = messages[input.language];
+  const copy = {
+    link_invalid: { eyebrow: t.preferencesEyebrow, title: t.linkInvalidTitle, body: t.linkInvalidBody, testId: 'marketing-link-invalid' },
+    document_not_found: { eyebrow: t.legalEyebrow, title: t.documentNotFoundTitle, body: t.documentNotFoundBody, testId: 'hosted-legal-not-found' },
+    request_failed: { eyebrow: t.preferencesEyebrow, title: t.requestFailedTitle, body: t.requestFailedBody, testId: 'marketing-request-failed' },
+  }[input.kind];
+  return renderStatusPage({
+    nonce: input.nonce,
+    brand: input.brand,
+    language: input.language,
+    path: input.path,
+    eyebrow: copy.eyebrow,
+    title: copy.title,
+    lines: [copy.body],
+    testId: copy.testId,
+    cue: 'error',
+  });
 };
 
 export const renderPreferencesPage = (input: {

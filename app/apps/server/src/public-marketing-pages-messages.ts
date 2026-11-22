@@ -10,6 +10,11 @@ export interface PublicMarketingMessages {
   polish: string;
   english: string;
   socialProfiles: string;
+  homeLink: string;
+  linkInvalidTitle: string;
+  linkInvalidBody: string;
+  requestFailedTitle: string;
+  requestFailedBody: string;
   preferencesTitle: string;
   preferencesEyebrow: string;
   preferencesFor: (input: { email: string }) => string;
@@ -34,6 +39,8 @@ export interface PublicMarketingMessages {
   resubscribeHint: string;
   backToPreferences: string;
   legalEyebrow: string;
+  documentNotFoundTitle: string;
+  documentNotFoundBody: string;
   immutableVersion: (input: { version: number; date: string }) => string;
   confirmationEyebrow: string;
   confirmationPromptTitle: string;

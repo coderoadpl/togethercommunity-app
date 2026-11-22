@@ -15,6 +15,7 @@ import {
 import {
   appError,
   capabilitiesForApiKey,
+  DEFAULT_LANGUAGE,
   err,
   marketingAutomationMessagesSchema,
   marketingConsentApiSchema,
@@ -64,6 +65,7 @@ import { readJson, requireJsonContentType } from './read-json.js';
 import {
   languageFromRequest,
   renderConfirmationPage,
+  renderHostedErrorPage,
   renderLegalDocumentPage,
   renderPreferenceResultPage,
   renderPreferencesPage,
@@ -159,10 +161,15 @@ const publicPageContext = async (deps: AppDeps, tenant: Tenant, request: Request
   return { brand, language: languageFromRequest(request, brand.settings?.defaultLanguage) };
 };
 
-const html = (body: string): Response => new Response(body, {
-  status: 200,
+const html = (body: string, status = 200): Response => new Response(body, {
+  status,
   headers: { 'content-type': 'text/html; charset=UTF-8', 'cache-control': 'no-store' },
 });
+
+const legalPageContext = async (deps: AppDeps, tenant: Tenant) => {
+  const brand: PublicBrand = { tenant, settings: await deps.tenants.findSettings(tenant.id) };
+  return { brand, language: brand.settings?.defaultLanguage ?? DEFAULT_LANGUAGE };
+};
 
 const pageNonce = (context: Context<Vars>): string => {
   const nonce = context.get('secureHeadersNonce');
@@ -608,6 +615,16 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     return result.ok ? new Response(null, { status: 200 }) : response(result);
   });
 
+  const tokenFailurePage = async (c: Context<Vars>, tenant: Tenant, token: string, error: AppError): Promise<Response> => html(
+    renderHostedErrorPage({
+      nonce: pageNonce(c),
+      ...await publicPageContext(deps, tenant, c.req.raw),
+      path: `/u/${encodeURIComponent(token)}`,
+      kind: error.code === 'not_found' ? 'link_invalid' : 'request_failed',
+    }),
+    HTTP_STATUS_BY_ERROR_CODE[error.code],
+  );
+
   app.post('/u/:token/confirm', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
@@ -616,11 +633,11 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const token = c.req.param('token');
     const ctx = tokenCtx(resolved.value.tenant);
     const result = await unsubscribeOneClick(ctx, { token }, unsubscribeDeps(deps, marketing.value));
-    if (!result.ok) return response(result);
+    if (!result.ok) return tokenFailurePage(c, resolved.value.tenant, token, result.error);
     const preferences = await getUnsubscribePreferences(
       ctx, { token }, unsubscribeDeps(deps, marketing.value),
     );
-    if (!preferences.ok) return response(preferences);
+    if (!preferences.ok) return tokenFailurePage(c, resolved.value.tenant, token, preferences.error);
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -641,7 +658,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       { token },
       unsubscribeDeps(deps, marketing.value),
     );
-    if (!result.ok) return response(result);
+    if (!result.ok) return tokenFailurePage(c, resolved.value.tenant, token, result.error);
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -678,7 +695,16 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       outbox: deps.emailOutbox,
       tokens: { nextToken: () => randomBytes(24).toString('base64url') },
     });
-    if (!result.ok) return response(result);
+    if (!result.ok) {
+      const current = result.error.code === 'validation'
+        ? await getUnsubscribePreferences(tokenCtx(resolved.value.tenant), { token }, unsubscribeDeps(deps, marketing.value))
+        : null;
+      if (current?.ok === true && current.value.globallySuppressed) {
+        const { language } = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
+        return c.redirect(`/u/${encodeURIComponent(token)}?lang=${language}`, 303);
+      }
+      return tokenFailurePage(c, resolved.value.tenant, token, result.error);
+    }
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -699,7 +725,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       { token: c.req.param('token') },
       unsubscribeDeps(deps, marketing.value),
     );
-    if (!preferences.ok) return response(preferences);
+    if (!preferences.ok) return tokenFailurePage(c, resolved.value.tenant, c.req.param('token'), preferences.error);
     return html(renderPreferencesPage({
       nonce: pageNonce(c),
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -760,12 +786,17 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     ? deps.marketing?.documents.findLatestPublished(tenantId, slug) ?? null
     : deps.marketing?.documents.findPublishedVersion(tenantId, slug, version) ?? null;
 
+  const legalNotFoundPage = async (c: Context<Vars>, tenant: Tenant, status: number): Promise<Response> => html(
+    renderHostedErrorPage({ nonce: pageNonce(c), ...await legalPageContext(deps, tenant), path: null, kind: 'document_not_found' }),
+    status,
+  );
+
   app.get('/legal/:slug', async (c) => {
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const document = await legal(resolved.value.tenant.id, c.req.param('slug'));
     return document === null
-      ? response(err(appError('not_found', 'Legal document was not found')))
+      ? legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.not_found)
       : html(renderLegalDocumentPage({
           nonce: pageNonce(c),
           ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -780,10 +811,10 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const parsed = z.coerce.number().int().positive().safeParse(c.req.param('version'));
-    if (!parsed.success) return response(err(validation('Invalid document version')));
+    if (!parsed.success) return legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.validation);
     const document = await legal(resolved.value.tenant.id, c.req.param('slug'), parsed.data);
     return document === null
-      ? response(err(appError('not_found', 'Legal document version was not found')))
+      ? legalNotFoundPage(c, resolved.value.tenant, HTTP_STATUS_BY_ERROR_CODE.not_found)
       : html(renderLegalDocumentPage({
           nonce: pageNonce(c),
           ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),

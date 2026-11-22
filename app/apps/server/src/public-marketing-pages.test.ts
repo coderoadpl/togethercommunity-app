@@ -12,9 +12,11 @@ import { contrastRatio, deriveLightAccent } from '#core/domain/index.js';
 
 import {
   languageFromRequest,
+  renderHostedErrorPage,
   renderHostedMarkdown,
   renderLegalDocumentPage,
   renderPreferencesPage,
+  renderStatusPage,
   type PublicBrand,
 } from './public-marketing-pages.js';
 
@@ -96,6 +98,36 @@ describe('public marketing pages', () => {
     expect(html).toContain('.prose{margin-top:2rem;overflow-wrap:anywhere}');
     expect(html).toContain('?lang=pl">Polski</a>');
     expect(html).toContain('?lang=en" aria-current="page">English</a>');
+  });
+
+  it('renders a reusable status page with escaped lines, a state cue and a link to the workspace home', () => {
+    const html = renderStatusPage({
+      nonce: 'test-nonce', brand, language: 'en', path: null, eyebrow: 'Status', title: 'Done <now>',
+      lines: ['First <line>', 'Second & last'], testId: 'status-test', cue: 'success',
+      links: [{ label: 'Back', href: '/u/token?lang=en' }],
+    });
+    expect(html).toContain('data-testid="status-test"');
+    expect(html).toContain('<h1>Done &lt;now&gt;</h1>');
+    expect(html).toContain('<span class="status-cue status-cue--success" aria-hidden="true"><svg');
+    expect(html).toContain('<div class="status"><p class="lede">First &lt;line&gt;</p><p class="fine">Second &amp; last</p><div class="actions"><a class="button-link" href="/u/token?lang=en">Back</a><a class="button-link" href="/">Go to the home page</a></div></div>');
+    expect(html).not.toContain('class="languages"');
+    expect(html).toContain('.status{margin-top:1rem}');
+    expect(html).toContain('.status .lede{color:var(--ink)}');
+    expect(html).not.toContain('text-align:center');
+  });
+
+  it.each([
+    ['link_invalid', 'en', 'marketing-link-invalid', 'This link does not work'],
+    ['link_invalid', 'pl', 'marketing-link-invalid', 'Link jest niepełny albo nieaktualny. Otwórz link z najnowszej wiadomości albo skontaktuj się z nadawcą.'],
+    ['document_not_found', 'en', 'hosted-legal-not-found', 'This document does not exist or has been withdrawn.'],
+    ['document_not_found', 'pl', 'hosted-legal-not-found', 'Nie znaleziono dokumentu'],
+    ['request_failed', 'en', 'marketing-request-failed', 'Something went wrong'],
+  ] as const)('renders the %s error page in %s', (kind, language, testId, text) => {
+    const html = renderHostedErrorPage({ nonce: 'test-nonce', brand, language, path: '/u/token', kind });
+    expect(html).toContain(`data-testid="${testId}"`);
+    expect(html).toContain(text);
+    expect(html).toContain('status-cue--error');
+    expect(html).toContain('<a href="/u/token?lang=pl"');
   });
 
   it.each([null, '#786000'])('uses the light accent %s on hosted pages', (accentLight) => {

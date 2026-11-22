@@ -2560,6 +2560,90 @@ describe('marketing HTTP surfaces', () => {
     expect(await expiredPost.text()).toContain('This link is no longer active');
   });
 
+  it('answers an unknown unsubscribe token with a branded page on every human route', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const headers = { host: 'acme.localhost:48730' };
+    const responses = [
+      await app.request('/u/missing_token_1234567890123456?lang=en', { headers }),
+      await app.request('/u/missing_token_1234567890123456/confirm?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/all?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/preferences?lang=en', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'present-consent': 'definition-news' }),
+      }),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('data-testid="marketing-link-invalid"');
+      expect(page).toContain('This link does not work');
+      expect(page).toContain('Open the link from the newest e-mail, or contact the sender.');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
+    }
+    const polish = await app.request('/u/missing_token_1234567890123456?lang=pl', { headers });
+    expect(await polish.text()).toContain('Ten link nie działa');
+  });
+
+  it('keeps the one-click unsubscribe answer for mail clients unchanged', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const unknown = await app.request('/u/missing_token_1234567890123456', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get('content-type')).toBe('application/json');
+    expect(await unknown.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const known = await app.request('/u/unsubscribe_token_123456789012345', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(known.status).toBe(200);
+    expect(await known.text()).toBe('');
+  });
+
+  it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.suppressions.record('t-acme', {
+      id: 'suppression-member', tenantId: 't-acme', email: 'member@example.test',
+      emailHmac: marketing.hmac.compute('t-acme', 'member@example.test'), reason: 'unsubscribe_global',
+      sourceRef: 'unsubscribe-news', meta: null, createdAt: '1998-07-02T00:00:00.000Z', liftedAt: null, liftedBy: null,
+    });
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams([['present-consent', 'definition-news'], ['consent', 'definition-news']]),
+    });
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const page = await app.request(post.headers.get('location') ?? '', { headers: { host: 'acme.localhost:48730' } });
+    expect(await page.text()).toContain('data-testid="marketing-preferences"');
+  });
+
+  it('answers a missing hosted document or version with a branded page in the workspace language', async () => {
+    const app = marketingApp();
+    const headers = { host: 'acme.localhost:48730' };
+    const cases = [
+      { path: '/legal/missing?lang=pl', status: 404 },
+      { path: '/legal/terms/v/7?lang=pl', status: 404 },
+      { path: '/legal/terms/v/latest?lang=pl', status: 400 },
+    ];
+    for (const { path, status } of cases) {
+      const response = await app.request(path, { headers });
+      expect(response.status).toBe(status);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('lang="en"');
+      expect(page).toContain('data-testid="hosted-legal-not-found"');
+      expect(page).toContain('Document not found');
+      expect(page).toContain('This document does not exist or has been withdrawn.');
+      expect(page).toContain('href="/"');
+      expect(page).not.toContain('class="languages"');
+    }
+  });
+
   it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{

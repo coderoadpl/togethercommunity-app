@@ -3795,7 +3795,7 @@ export const CourseCardRoot = styled(Box)<AsElement & { to?: string; href?: stri
   },
 }));
 
-export const VisuallyHidden = styled('span')({
+const VISUALLY_HIDDEN: CSSObject = {
   position: 'absolute',
   width: 1,
   height: 1,
@@ -3805,7 +3805,9 @@ export const VisuallyHidden = styled('span')({
   clip: 'rect(0 0 0 0)',
   whiteSpace: 'nowrap',
   border: 0,
-});
+};
+
+export const VisuallyHidden = styled('span')(VISUALLY_HIDDEN);
 
 export type CoverFrame = 'card' | 'standalone';
 
@@ -4235,11 +4237,13 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& .MuiAlert-action .MuiButton-root': { minHeight: 0 },
   },
   [theme.breakpoints.down('md')]: {
     marginInline: '-1.25rem',
     padding: '0.5rem 0.75rem',
     '& .MuiButton-root': { width: 'auto', minHeight: 44 },
+    '& .MuiAlert-action .MuiIconButton-root': { width: 44, height: 44 },
     '& [data-slot="compact"]': { flex: '0 0 auto' },
     '& .MuiButton-root[data-slot="compact"], & [data-slot="compact"] > .MuiButton-root': {
       width: 44,
@@ -4258,6 +4262,10 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
     '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
+}));
+
+export const LessonAlertDetail = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: VISUALLY_HIDDEN,
 }));
 
 export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({

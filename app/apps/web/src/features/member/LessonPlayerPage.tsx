@@ -5,6 +5,7 @@ import {
   Button,
   type ButtonProps,
   Chip,
+  IconButton,
   Link as MuiLink,
   Paper,
   Skeleton,
@@ -39,6 +40,7 @@ import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js
 import {
   Eyebrow,
   LessonActionLabel,
+  LessonAlertDetail,
   LessonCompletionStatus,
   LessonDestinationLabel,
   LessonFooterBar,
@@ -61,6 +63,7 @@ import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson, type Lesso
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
+import { CloseIcon } from './shell/shell-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -726,6 +729,12 @@ export const LessonPlayerPage = ({
     else markComplete();
   };
 
+  const dismissCompletionError = () => {
+    footerBarRef.current?.focus();
+    resetComplete();
+    resetUncomplete();
+  };
+
   return (
     <MemberSurface
       title={lessonName}
@@ -824,17 +833,29 @@ export const LessonPlayerPage = ({
               data-testid="lesson-completion-error"
               sx={{ mb: '0.5rem' }}
               action={(
-                <Button
-                  color="inherit"
-                  size="small"
-                  data-testid="lesson-completion-retry"
-                  onClick={retryCompletion}
-                >
-                  {t.common.retry}
-                </Button>
+                <>
+                  <Button
+                    color="inherit"
+                    size="small"
+                    data-testid="lesson-completion-retry"
+                    onClick={retryCompletion}
+                  >
+                    {t.common.retry}
+                  </Button>
+                  <IconButton
+                    color="inherit"
+                    size="small"
+                    aria-label={t.common.close}
+                    data-testid="lesson-completion-close"
+                    onClick={dismissCompletionError}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </>
               )}
             >
-              <strong>{t.lesson.completionFailed}</strong> {localizeError(completionError, t)}
+              <strong>{t.lesson.completionFailed}</strong>
+              <LessonAlertDetail data-testid="lesson-completion-detail"> {localizeError(completionError, t)}</LessonAlertDetail>
             </Alert>
           )}
           {firstSkipped !== null && neighbours !== null ? (

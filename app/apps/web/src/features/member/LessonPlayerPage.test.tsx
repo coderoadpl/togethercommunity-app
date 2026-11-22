@@ -1553,6 +1553,43 @@ describe('LessonPlayerPage', () => {
     expect(footer).toHaveFocus();
   });
 
+  it('closes a failed completion without changing the completion state and keeps a short alert on phones', async () => {
+    let calls = 0;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      okProgress(),
+      http.post('/api/student/lessons/complete', () => {
+        calls += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    await user.click(await screen.findByTestId('mark-complete'));
+    const error = await screen.findByTestId('lesson-completion-error');
+    const footer = error.closest('footer');
+
+    const detail = within(error).getByTestId('lesson-completion-detail');
+    expect(detail).toHaveTextContent(en.errors.messageInternal);
+    expect(stylesBelow(detail, 375)).toMatchObject({ position: 'absolute', width: '1px', height: '1px' });
+    expect(stylesAt(detail, 900).position).toBeUndefined();
+    const retry = within(error).getByRole('button', { name: en.common.retry });
+    expect(stylesBelow(retry, 375)).toMatchObject({ 'min-height': '44px' });
+    expect(stylesAt(retry, 900)).toMatchObject({ 'min-height': '0px' });
+    const close = within(error).getByRole('button', { name: en.common.close });
+    expect(stylesBelow(close, 375)).toMatchObject({ width: '44px', height: '44px' });
+
+    await user.click(close);
+
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+    expect(footer).toHaveFocus();
+    expect(screen.getByTestId('mark-complete')).toBeEnabled();
+    expect(screen.queryByTestId('unmark-complete')).not.toBeInTheDocument();
+    expect(calls).toBe(1);
+  });
+
   it('retries a failed complete and continue and then moves on', async () => {
     let completeCalls = 0;
     let releaseRetry: () => void = () => undefined;

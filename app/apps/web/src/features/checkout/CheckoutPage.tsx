@@ -26,7 +26,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, checkoutReturnLink, formatSalesLinkVariantParam, isStripeTermsUrlMissing, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, CHECKOUT_RETURN_PARAM, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, checkoutReturnLink, formatSalesLinkVariantParam, isStripeTermsUrlMissing, resolveHostedCheckoutReturnUrl, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -124,12 +124,15 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   useSuppressGlobalChrome();
   const t = useTranslations();
   const { language } = useLanguage();
-  const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
+  const search = new URLSearchParams(window.location.search);
+  const [checkoutStatus, setCheckoutStatus] = useState(() => search.get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
   const singleOffer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage && salesLinkSlug === undefined });
-  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? '', new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)), enabled: !statusPage && salesLinkSlug !== undefined });
+  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? '', search.getAll(SALES_LINK_VARIANT_PARAM)), enabled: !statusPage && salesLinkSlug !== undefined });
   const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
+  const returnParam = salesLinkSlug === undefined ? search.get(CHECKOUT_RETURN_PARAM) : null;
+  const returnUrl = resolveHostedCheckoutReturnUrl(returnParam, paymentConfig.data?.checkoutReturnOrigins ?? []);
   const me = useQuery({ ...actions.me, enabled: !statusPage });
   const signedInEmail = me.data !== undefined && me.data.impersonation === null ? me.data.email : null;
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
@@ -342,7 +345,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       const codeAtSubmit = appliedCoupon === undefined ? null : couponCode;
       const keyAtSubmit = autoValidationKey;
       checkoutSession.mutate({
-        attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
+        attribution: attributionFromSearchParams(search),
+        ...(returnUrl === null ? {} : { returnUrl }),
         ...(buyerEmail === undefined ? {} : { email: buyerEmail }),
         ...purchaseRequest(),
       }, {
@@ -373,12 +377,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     });
   };
 
-  const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
-  const retryParams = attributionToSearchParams(attributionFromSearchParams(new URLSearchParams(window.location.search)));
+  const togetherCheckout = search.get('checkout') === 'together';
+  const retryParams = attributionToSearchParams(attributionFromSearchParams(search));
   if (togetherCheckout) retryParams.set('checkout', 'together');
-  const retryCouponCode = new URLSearchParams(window.location.search).get('code');
+  const retryCouponCode = search.get('code');
   if (retryCouponCode !== null && retryCouponCode !== '') retryParams.set('code', retryCouponCode);
-  for (const value of new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)) retryParams.append(SALES_LINK_VARIANT_PARAM, value);
+  if (returnParam !== null) retryParams.set(CHECKOUT_RETURN_PARAM, returnParam);
+  for (const value of search.getAll(SALES_LINK_VARIANT_PARAM)) retryParams.append(SALES_LINK_VARIANT_PARAM, value);
   const retryUrl = `${window.location.pathname}${retryParams.size === 0 ? '' : `?${retryParams.toString()}`}`;
   const retry = () => {
     window.history.replaceState(null, '', retryUrl);
@@ -672,6 +677,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           <Stack useFlexGap spacing="0.75rem">
             <CheckoutTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CheckoutTitle>
+            {returnUrl === null ? null : <MuiLink href={returnUrl} sx={{ alignSelf: 'flex-start' }}>{t.checkout.backToShop}</MuiLink>}
             {bundle?.soldOut === true ? (() => {
               const soldOutLines = bundle.lines.filter((line) => line.maxQuantity === 0);
               const takenProducts = new Set(bundle.lines.map((line) => line.productId));

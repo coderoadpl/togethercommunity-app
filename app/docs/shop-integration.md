@@ -64,7 +64,7 @@ Equivalent configuration reads include:
 | Request | Successful `data` |
 | --- | --- |
 | `GET /api/tenant/settings` with a staff bearer session | `settings` and `personalisationMaxBytes` |
-| Anonymous `GET /api/public/payment-config` | `stripeConfigured`, test/simulation capability flags, public `shippingRates`, optional analytics configuration and Geowidget fields |
+| Anonymous `GET /api/public/payment-config` | `stripeConfigured`, test/simulation capability flags, public `shippingRates` and `checkoutReturnOrigins`, optional analytics configuration and Geowidget fields |
 | Anonymous `GET /api/public/offer` | `tenant`, `contentVersion`, `products`, `salesLinks`, `previewLessons`, `shippingRates`, `inpostGeowidgetToken` |
 
 For a live paid checkout, `stripeConfigured` checks for the workspace's live
@@ -297,7 +297,7 @@ allow open CORS without credentialed requests:
 | Route | Cross-origin method | Purpose |
 | --- | --- | --- |
 | `/api/public/offer` or `?productRef=paperback` | `GET`, `OPTIONS` | Listed catalog, or one published product by ID/slug |
-| `/api/public/payment-config` | `GET`, `OPTIONS` | Public checkout capability and active rates |
+| `/api/public/payment-config` | `GET`, `OPTIONS` | Public checkout capability, active rates and allowed shop origins |
 | `/api/public/sales-links/<slug>` | `GET`, `OPTIONS` | Active fixed bundle, VAT lines, total and public workspace context |
 | `/api/public/checkout/coupon` | `POST`, `OPTIONS` | Server-side coupon validation |
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
@@ -582,7 +582,10 @@ two optional addresses on the shop's own site:
 - `returnUrl`: stored with the checkout for the "Back to shop" button on the
   workspace confirmation page (section 7). Payment success still returns to the
   workspace confirmation page; the success address sent to Stripe does not
-  change.
+  change. Without a `cancelUrl`, cart and standard single-product checkout
+  also keep the address on the workspace cancel URL and show it before payment
+  as a "Back to shop" link without checkout result parameters, so point
+  `returnUrl` at a page that works without them.
 
 Each address is accepted only when all of these hold; otherwise the answer is a
 `validation` error (400) and nothing is stored or sent to Stripe:
@@ -602,6 +605,14 @@ refused address. A request without either field behaves exactly as before.
 | --- | --- |
 | not an absolute `https:` URL (`http:`, `javascript:`, `data:`, a relative path), longer than 2000 characters, or with a user name or password | `validation` (400), `details.fieldErrors.returnUrl` or `details.fieldErrors.cancelUrl` |
 | an origin that is not in the workspace's `checkoutReturnOrigins` | `validation` (400) |
+
+A storefront using the hosted cart page can append the URL-encoded address as
+`return`, for example
+`/checkout/cart/pay?lines=<product-id>.2&return=https%3A%2F%2Fshop.example.test%2Fcart`.
+The standard single-product page (`/checkout/<product-id>` or `/checkout/<slug>`)
+accepts the same parameter; `/offer/<slug>` does not. The hosted forms ignore
+invalid or disallowed addresses without an error. An accepted address becomes
+the checkout request's `returnUrl`; the forms do not send a `cancelUrl`.
 
 ### Errors, caching and retry behavior
 
@@ -633,8 +644,10 @@ returns to the hosted cart page `/checkout/cart/pay`; sales-link checkout
 returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
 `checkout=together` for the standard sales-link flow, and with the cart's
-`lines` for a cart, so the buyer can try the same cart again). Preserve the returned URL
-and its other query parameters. A validated `cancelUrl` (section 6, "Return and
+`lines` for a cart, so the buyer can try the same cart again). On the cart and
+standard single-product pages, the workspace cancel URL also preserves an
+accepted shop address as `return` so the buyer can retry. Preserve the returned
+URL and its other query parameters. A validated `cancelUrl` (section 6, "Return and
 cancel addresses") replaces only the cancel address. There is no `successUrl`
 field: success always returns to the workspace confirmation page.
 
@@ -656,6 +669,10 @@ conversion data or shop return address. With `cancelled`, `data.charged` is
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ### Back to shop
+
+The hosted cart and standard single-product forms show a "Back to shop" link
+before payment when `?return=` names an address on an allowed origin. Before
+payment it opens that address without adding any checkout result parameters.
 
 When the checkout carried a `returnUrl`, the session-status answer of that paid
 session also holds `returnUrl` and `checkoutRef` (the checkout snapshot id). The

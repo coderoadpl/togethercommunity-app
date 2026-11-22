@@ -80,7 +80,11 @@ fragment, user name, password or wildcard. A checkout request may send the buyer
 back to that site only through an address on one of these origins: a validated
 `cancelUrl` becomes the payment cancel address and a validated `returnUrl` is
 stored with the checkout. The payment success address and the confirmation page
-do not change. A workspace without origins refuses both fields. The owner edits
+do not change. The hosted cart and standard single-product forms use the same
+list to validate their `?return=` parameter. These are public shop origins:
+`GET /api/public/payment-config` returns them as `checkoutReturnOrigins` (an
+empty array when none are configured). A workspace without origins refuses both
+request fields and ignores the hosted forms' parameter. The owner edits
 the list in **Studio → Settings → Shipping → Return to your shop**, through
 `tenant settings-set --checkout-return-origins '<origin>,<origin>'` (an empty
 string clears it) or through the shop manifest's `checkoutReturnOrigins`. See

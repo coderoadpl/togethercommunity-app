@@ -6,6 +6,7 @@ import {
   FormControl,
   FormLabel,
   IconButton,
+  Link as MuiLink,
   OutlinedInput,
   Paper,
   Stack,
@@ -21,10 +22,12 @@ import {
   attributionToSearchParams,
   CART_CURRENCY_MISMATCH_MESSAGE,
   CART_LINES_PARAM,
+  CHECKOUT_RETURN_PARAM,
   cartCurrencies,
   cartLineMaxQuantity,
   formatCartLinesParam,
   parseCartLinesParam,
+  resolveHostedCheckoutReturnUrl,
   singleSellableOneTimePrice,
   type CartLine,
 } from '#core/domain/index.js';
@@ -245,7 +248,9 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const stripeConfigured = testEnabled ? paymentConfig.data?.testConfigured === true : paymentConfig.data?.stripeConfigured === true;
   const [email, setEmail] = useState('');
   const invoice = useInvoiceFields();
-  const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
+  const search = new URLSearchParams(window.location.search);
+  const initialCouponCode = search.get('code') ?? '';
+  const returnUrl = resolveHostedCheckoutReturnUrl(search.get(CHECKOUT_RETURN_PARAM), paymentConfig.data?.checkoutReturnOrigins ?? []);
   const [checkoutState, dispatchCheckout] = useReducer(reduceCheckoutState, initialCouponCode, createCheckoutState);
   const checkLocker = useLockerCheck(checkoutState, dispatchCheckout);
   const submittingAfterLockerCheck = useRef(false);
@@ -376,7 +381,8 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
 
   const startCheckout = () => checkoutSession.mutate({
     lines: cartLines,
-    attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
+    attribution: attributionFromSearchParams(search),
+    ...(returnUrl === null ? {} : { returnUrl }),
     email,
     language,
     ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
@@ -411,6 +417,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     >
       <Stack useFlexGap spacing="1rem">
         <CardTitle variant="h1">{t.checkout.cartTitle}</CardTitle>
+        {returnUrl === null ? null : <MuiLink href={returnUrl} sx={{ alignSelf: 'flex-start' }}>{t.checkout.backToShop}</MuiLink>}
         <Stack useFlexGap spacing="0.75rem" data-testid="cart-lines">
           {items.map((item) => {
             const remove = () => changeLines(lines.filter((line) => line.productId !== item.productId));
@@ -548,6 +555,8 @@ const CartCheckout = () => {
       const retryParams = attributionToSearchParams(attributionFromSearchParams(search));
       const code = search.get('code');
       if (code !== null && code !== '') retryParams.set('code', code);
+      const returnParam = search.get(CHECKOUT_RETURN_PARAM);
+      if (returnParam !== null) retryParams.set(CHECKOUT_RETURN_PARAM, returnParam);
       const query = [`${CART_LINES_PARAM}=${encodeURIComponent(search.get(CART_LINES_PARAM) ?? '')}`, retryParams.toString()].filter((part) => part !== '').join('&');
       window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
       setStatus(null);

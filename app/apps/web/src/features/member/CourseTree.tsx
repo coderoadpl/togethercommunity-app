@@ -45,26 +45,48 @@ const TITLE_TOOLTIP_DELAY_MS = 500;
 
 type RowConfig = {
   title: string;
+  visibleTitle: string;
   testId: string;
   to?: string;
   ref?: (node: HTMLElement | null) => void;
   prefetch?: () => void;
 };
 
-const RowContext = createContext<RowConfig>({ title: '', testId: '' });
+const RowContext = createContext<RowConfig>({ title: '', visibleTitle: '', testId: '' });
+
+const isTitleCut = (content: HTMLElement | null): boolean => {
+  const title = content?.querySelector('[data-course-tree-row-title]');
+  return title instanceof HTMLElement
+    && (title.scrollWidth > title.clientWidth || title.scrollHeight > title.clientHeight);
+};
+
+const tooltipAddsSomething = (title: string, visibleTitle: string, content: HTMLElement | null) =>
+  title !== visibleTitle || isTitleCut(content);
 
 const RowContent = (props: ComponentProps<typeof CourseTreeItemContent> & Pick<UseTreeItemContentSlotOwnProps, 'data-focused'>) => {
   const row = useContext(RowContext);
-  const ref = useForkRef<HTMLDivElement>(props.ref, row.ref);
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
+  const ref = useForkRef<HTMLDivElement>(props.ref, row.ref, setContent);
   const focused = props['data-focused'] !== undefined;
-  const [tooltip, setTooltip] = useState({ focused, open: focused });
-  if (tooltip.focused !== focused) setTooltip({ focused, open: focused });
+  const [tooltip, setTooltip] = useState({ focused, open: false });
+  if (tooltip.focused !== focused) setTooltip({ focused, open: false });
+  const { title, visibleTitle } = row;
+
+  useEffect(() => {
+    if (!focused) return;
+    const timer = setTimeout(
+      () => setTooltip({ focused: true, open: tooltipAddsSomething(title, visibleTitle, content) }),
+      TITLE_TOOLTIP_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [focused, title, visibleTitle, content]);
+
   return (
     <Tooltip
       describeChild
-      title={row.title}
+      title={title}
       open={tooltip.open}
-      onOpen={() => setTooltip({ focused, open: true })}
+      onOpen={() => setTooltip({ focused, open: tooltipAddsSomething(title, visibleTitle, content) })}
       onClose={() => setTooltip({ focused, open: false })}
       enterDelay={TITLE_TOOLTIP_DELAY_MS}
       enterNextDelay={TITLE_TOOLTIP_DELAY_MS}
@@ -243,7 +265,7 @@ const LessonRow = ({
     void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
   };
   const label = (
-    <TreeLessonTitle component="span" noWrap sx={{ display: 'block', minWidth: 0, flex: 1 }}>
+    <TreeLessonTitle component="span" data-course-tree-row-title="" sx={{ minWidth: 0, flex: 1 }}>
       <Highlighted text={lesson.name} query={search} />
     </TreeLessonTitle>
   );
@@ -275,6 +297,7 @@ const LessonRow = ({
   return (
     <RowContext value={{
       title: locked ? t.courseTree.lockedLessonTooltip({ name: lesson.name }) : lesson.name,
+      visibleTitle: lesson.name,
       testId: `lesson-button-${lesson.lessonId}`,
       ...(locked ? {} : { to: `/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`, prefetch }),
       ref: rowRef,
@@ -319,7 +342,7 @@ type BranchProps = {
 const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChapter }) => {
   const labelId = useId();
   return (
-    <RowContext value={{ title: chapter.name, testId: `chapter-toggle-${chapter.id}` }}>
+    <RowContext value={{ title: chapter.name, visibleTitle: chapter.name, testId: `chapter-toggle-${chapter.id}` }}>
       <CourseTreeItem
         itemId={chapter.id}
         kind="chapter"
@@ -330,7 +353,7 @@ const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChap
         onKeyDown={toggleWithKeyboard(() => props.onToggle(chapter.id))}
         label={
           <>
-            <CourseTreeChapterTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
+            <CourseTreeChapterTitle component="span" noWrap data-course-tree-row-title="" sx={{ flex: 1, minWidth: 0 }}>
               <Highlighted text={chapter.name} query={props.search} />
             </CourseTreeChapterTitle>
             {' '}
@@ -356,7 +379,7 @@ const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChap
 const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule }) => {
   const labelId = useId();
   return (
-    <RowContext value={{ title: module.name, testId: `module-toggle-${module.id}` }}>
+    <RowContext value={{ title: module.name, visibleTitle: module.name, testId: `module-toggle-${module.id}` }}>
       <CourseTreeItem
         itemId={module.id}
         kind="module"
@@ -368,7 +391,7 @@ const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule 
         onKeyDown={toggleWithKeyboard(() => props.onToggle(module.id))}
         label={
           <>
-            <CourseTreeModuleTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
+            <CourseTreeModuleTitle component="span" noWrap data-course-tree-row-title="" sx={{ flex: 1, minWidth: 0 }}>
               <Highlighted text={module.name} query={props.search} />
             </CourseTreeModuleTitle>
             {' '}

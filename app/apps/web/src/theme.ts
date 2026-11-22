@@ -3721,6 +3721,11 @@ export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
 export const TreeLessonTitle = styled(Typography)<AsElement>({
   fontSize: '0.875rem',
   lineHeight: 1.45,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
 });
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({

@@ -9,11 +9,12 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createThemeForMode } from '../../theme.js';
@@ -132,6 +133,17 @@ const renderFocusedTree = async (focusLessonId: string | null) =>
 
 const renderCollapsedTree = async () =>
   renderNode(<CourseTree courseId="course-1" structure={structure} focusLessonId="l1" />);
+
+const cutTitles = (...titles: string[]) =>
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute('data-course-tree-row-title') && titles.includes(this.textContent) ? 400 : 0;
+  });
+
+const pastTooltipDelay = () => new Promise((resolve) => setTimeout(resolve, 700));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const treeItem = (testId: string) => {
   const item = screen.getByTestId(testId).closest('[role="treeitem"]');
@@ -710,6 +722,7 @@ describe('CourseTree', () => {
         HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'x' } }, { status: 404 }),
       ),
     );
+    cutTitles('Intro to Variables');
     await renderTree();
 
     await user.hover(await screen.findByTestId('lesson-button-l1'));
@@ -717,8 +730,52 @@ describe('CourseTree', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
   });
 
+  it('keeps the tooltip closed on hover when the title fits', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'x' } }, { status: 404 }),
+      ),
+    );
+    await renderTree();
+
+    await user.hover(await screen.findByTestId('lesson-button-l2'));
+    await pastTooltipDelay();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('keeps the tooltip closed on keyboard focus when the title fits', async () => {
+    await renderTree();
+    treeItem('module-toggle-m1').focus();
+    await pastTooltipDelay();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('waits the hover delay before opening a cut title tooltip on keyboard focus', async () => {
+    cutTitles('01 - Fundamentals');
+    await renderTree();
+    treeItem('module-toggle-m1').focus();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(await screen.findByRole('tooltip', {}, { timeout: 1500 })).toHaveTextContent('01 - Fundamentals');
+  });
+
+  it('wraps lesson titles to two clamped lines instead of a single cut line', async () => {
+    await renderTree();
+
+    const title = (await screen.findByTestId('lesson-button-l1')).querySelector('[data-course-tree-row-title]');
+    if (title === null) throw new Error('Missing lesson title');
+    for (const width of [390, 1440]) {
+      expect(stylesAt(title, width)['white-space']).not.toBe('nowrap');
+      expect(stylesAt(title, width)['-webkit-line-clamp']).toBe('2');
+    }
+  });
+
   it('shows only the focused row tooltip and dismisses it with Escape or blur', async () => {
     const user = userEvent.setup();
+    cutTitles('01 - Fundamentals', 'Getting started', 'Intro to Variables');
     await renderTree();
     treeItem('module-toggle-m1').focus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent('01 - Fundamentals');

@@ -2743,7 +2743,7 @@ export const pl: Messages = {
   },
   courseOverview: {
     progressTitle: 'Twoje postępy',
-    completedOf: ({ done, total }) => format('{done} z {total} ukończone', { done, total }),
+    completedOf: ({ done, total }) => format('Ukończono {done} z {total} lekcji', { done, total }),
     percentValue: ({ percent }) => format('{percent}%', { percent }),
     continueLearning: 'Kontynuuj naukę',
     reviewAgain: 'Powtórz lekcję',
@@ -2866,7 +2866,7 @@ export const pl: Messages = {
     searching: 'Szukanie…',
     searchEmpty: 'Brak wyników dla tego zapytania.',
     searchCourseHeading: 'Szukaj w dyskusjach',
-    searchCoursePlaceholder: 'Szukaj we wszystkich lekcjach…',
+    searchCoursePlaceholder: 'Szukaj we wpisach dyskusji…',
     searchCourseEmpty: 'Nic nie znaleziono w dyskusjach tego kursu.',
   },
   community: {

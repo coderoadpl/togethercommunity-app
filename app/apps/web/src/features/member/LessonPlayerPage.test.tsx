@@ -1753,7 +1753,7 @@ describe('LessonPlayerPage', () => {
       okStructureOf(
         structureOf([
           entry('l1', 'Intro to Variables'),
-          ...lockedIds.map((id) => entry(id, `Locked ${id}`, false)),
+          ...lockedIds.map((id) => ({ ...entry(id, `Locked ${id}`, false), unlockProductId: 'prod-full' })),
           entry('l9', 'Scopes'),
         ]),
       ),
@@ -1768,6 +1768,66 @@ describe('LessonPlayerPage', () => {
     expect(skipped.closest('footer')).not.toBeNull();
     expect(screen.getByTestId('complete-continue')).toBeInTheDocument();
     expect(screen.queryByTestId('next-locked')).not.toBeInTheDocument();
+  });
+
+  it('links the first skipped lesson a product can unlock', async () => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          entry('l2', 'Locked l2', false),
+          { ...entry('l3', 'Locked l3', false), unlockProductId: 'prod-full' },
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkipped({ count: 2 }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l3');
+  });
+
+  it.each([1, 2] as const)('says that %i skipped lessons are locked without promising an unlock when no product sells them', async (count) => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          ...['l2', 'l3'].slice(0, count).map((id) => entry(id, `Locked ${id}`, false)),
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkippedNotForSale({ count }));
+    expect(skipped).not.toHaveTextContent(en.lesson.lockedSkipped({ count }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+  });
+
+  it('invites the member to unlock the next lesson when a product sells it', async () => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          { ...entry('l2', 'Advanced Variables', false), unlockProductId: 'prod-full' },
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const nextLocked = await screen.findByRole('link', { name: en.lesson.unlockNextLesson });
+    expect(nextLocked).toHaveAttribute('data-testid', 'next-locked');
+    expect(nextLocked).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(within(nextLocked).getByTestId('lock-closed')).toBeInTheDocument();
+    expect(nextLocked).not.toHaveTextContent(en.lesson.nextLocked);
   });
 
   it('renders an entitlement-backed attachment download', async () => {

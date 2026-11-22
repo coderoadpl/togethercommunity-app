@@ -595,7 +595,7 @@ export const LessonPlayerPage = ({
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
-  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.next : null;
+  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.firstUnlockableSkipped ?? neighbours.next : null;
   const completionSlot = nextHref !== null ? 'compact' : nextLockedLesson !== null ? 'wide' : 'fill';
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
@@ -719,7 +719,9 @@ export const LessonPlayerPage = ({
               sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', mb: '0.5rem' }}
             >
               <LockedLessonIcon />
-              {t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })}
+              {firstSkipped.unlockable
+                ? t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })
+                : t.lesson.lockedSkippedNotForSale({ count: neighbours.lockedSkipped })}
             </MuiLink>
           ) : null}
           <Stack
@@ -830,7 +832,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 startIcon={<LockedLessonIcon />}
               >
-                <LessonDestinationLabel>{t.lesson.nextLocked}</LessonDestinationLabel>
+                <LessonDestinationLabel>{nextLockedLesson.unlockable ? t.lesson.unlockNextLesson : t.lesson.nextLocked}</LessonDestinationLabel>
               </Button>
             )}
             {atCourseEnd && (

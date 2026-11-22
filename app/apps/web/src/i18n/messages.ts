@@ -2448,6 +2448,8 @@ export interface Messages {
     notForSaleBodyNoContact: string;
     contactCreator: string;
     undoCompletion: string;
+    unlockNextLesson: string;
+    lockedSkippedNotForSale: (params: { count: number }) => string;
   };
   discussion: {
     heading: string;

@@ -221,11 +221,17 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
           width="wide"
           state={{
             kind: 'not-found',
-            title: t.courseTree.courseNotInLibrary,
+            title: t.courseTree.courseUnavailable,
+            body: `${t.courseTree.courseNotInLibrary} ${t.courseTree.renewInMyProducts}`,
             action: (
-              <Button component={Link} to="/my" variant="contained">
-                {t.courseTree.backToMyCourses}
-              </Button>
+              <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem' }}>
+                <Button component={Link} to="/my" variant="contained">
+                  {t.courseTree.backToMyCourses}
+                </Button>
+                <Button component={Link} to="/my/products" variant="text">
+                  {t.student.myProducts}
+                </Button>
+              </Stack>
             ),
           }}
         />

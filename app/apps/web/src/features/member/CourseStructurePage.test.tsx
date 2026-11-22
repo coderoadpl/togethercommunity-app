@@ -659,8 +659,15 @@ describe('CourseStructurePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseNotFound })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { name: en.courseTree.courseNotFound })).toHaveLength(1);
-    expect(screen.getByText(en.courseTree.courseNotInLibrary)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: en.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
+    expect(screen.getByRole('heading', { level: 2, name: en.courseTree.courseUnavailable })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.courseTree.courseNotInLibrary })).not.toBeInTheDocument();
+    expect(screen.getByText(`${en.courseTree.courseNotInLibrary} ${en.courseTree.renewInMyProducts}`)).toBeInTheDocument();
+    const myCourses = screen.getByRole('link', { name: en.courseTree.backToMyCourses });
+    expect(myCourses).toHaveAttribute('href', '/my');
+    expect(myCourses).toHaveClass('MuiButton-contained');
+    const myProducts = screen.getByRole('link', { name: en.student.myProducts });
+    expect(myProducts).toHaveAttribute('href', '/my/products');
+    expect(myProducts).toHaveClass('MuiButton-text');
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 

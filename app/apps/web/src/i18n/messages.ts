@@ -2371,6 +2371,7 @@ export interface Messages {
     completionComplete: string;
     completionPartial: string;
     nextLesson: string;
+    renewInMyProducts: string;
   };
   courseOverview: {
     progressTitle: string;

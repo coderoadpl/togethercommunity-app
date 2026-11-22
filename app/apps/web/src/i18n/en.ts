@@ -2687,6 +2687,7 @@ export const en: Messages = {
     completionComplete: 'Completed',
     completionPartial: 'Partially completed',
     nextLesson: 'Next',
+    renewInMyProducts: 'If your access has expired, you can renew it in My products.',
   },
   courseOverview: {
     progressTitle: 'Your progress',

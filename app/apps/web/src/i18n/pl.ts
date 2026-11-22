@@ -2739,6 +2739,7 @@ export const pl: Messages = {
     completionComplete: 'Ukończone',
     completionPartial: 'Częściowo ukończone',
     nextLesson: 'Następna',
+    renewInMyProducts: 'Jeśli Twój dostęp wygasł, odnowisz go w Moich produktach.',
   },
   courseOverview: {
     progressTitle: 'Twoje postępy',

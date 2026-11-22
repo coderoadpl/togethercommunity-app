@@ -2237,7 +2237,12 @@ describe('LessonPlayerPage', () => {
     const next = within(footer).getByRole('link', { name: en.lesson.next({ name: 'Scopes' }) });
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l4');
     expect(next).toHaveClass('MuiButton-outlined');
-    expect(within(next).getByText('Scopes')).toBeInTheDocument();
+    const bare = within(next).getByText('Scopes');
+    const chevron = within(next).getByTestId('lesson-nav-icon');
+    expect(bare.compareDocumentPosition(chevron)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(stylesAt(chevron, 390)).not.toMatchObject({ display: 'none' });
+    expect(stylesAt(chevron, 900)).toMatchObject({ display: 'none' });
+    expect(stylesBelow(bare.parentElement ?? next, 390)).toMatchObject({ display: '-webkit-box', '-webkit-line-clamp': '2' });
     expect(screen.getByTestId('locked-lesson-upsell').compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

@@ -237,13 +237,16 @@ const LockedLead = ({ children, heading = false }: { children: string; heading?:
   </Stack>
 );
 
-const NextLessonName = ({ name }: { name: string }) => {
+const NextLessonLabel = ({ name }: { name: string }) => {
   const t = useTranslations();
   return (
-    <LessonDestinationLabel>
-      <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
-      <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
-    </LessonDestinationLabel>
+    <>
+      <LessonDestinationLabel>
+        <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
+        <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
+      </LessonDestinationLabel>
+      <NextLessonIcon />
+    </>
   );
 };
 
@@ -280,7 +283,7 @@ const LockedFooter = ({ courseId, neighbours }: { courseId: string; neighbours: 
             data-slot="primary"
             aria-label={t.lesson.next({ name: nextUnlocked.name })}
           >
-            <NextLessonName name={nextUnlocked.name} />
+            <NextLessonLabel name={nextUnlocked.name} />
           </Button>
         )}
       </Stack>
@@ -956,8 +959,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <NextLessonName name={nextLesson.name} />
-                <NextLessonIcon />
+                <NextLessonLabel name={nextLesson.name} />
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (

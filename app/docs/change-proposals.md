@@ -193,7 +193,7 @@ key is unaffected on every route.
 | `direct` | branding and product cover image upload and completion | the handler runs and keeps the image private until approval ([Images](#images)) |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
-| `refuse`, reason `not-in-release` | the [download file](shop-management-keys.md#download-files) routes: upload, completion, copy, the staged file list and discard (`/api/m2m/shop/downloads/*`), and the attach, replace and remove routes (`POST /api/m2m/shop/products/downloads`, `…/replace`, `…/remove`) | `403 forbidden`, with the message that product download files are not available to a propose-mode key yet |
+| `refuse`, reason `not-in-release` | the [download file](shop-management-keys.md#download-files) routes: upload, completion, copy, the staged file list and discard (`/api/m2m/shop/downloads/*`), and the attach, replace and remove routes (`POST /api/m2m/shop/products/downloads`, `…/replace`, `…/remove`) | `403 forbidden`; the class carries the feature it names, so the message for these routes says that product download files are not available to a propose-mode key yet |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
 
 Reads (`GET`) behave as before for both modes, except the staged download file

@@ -601,12 +601,12 @@ Completing an upload whose completion already staged its file answers that
 staged file again while it is staged and the minute sweep has not settled the
 upload; once the file was attached or discarded completion answers
 `409 conflict`, as it does once the sweep settled the upload (at the earliest
-20 minutes after it started), and `404` once the sweep purged it, a day after
-it started. Completion also answers:
+20 minutes after it started), and `404` once the sweep purged it, at the
+earliest a day after it started. Completion also answers:
 
-- `409 conflict` while another completion of the same upload runs, after the
-  15 minutes, and after a completion that failed for a definite reason (start a
-  new upload);
+- `409 conflict` while another completion of the same upload runs, when the
+  upload was not completed within its 15 minutes, and after a completion that
+  failed for a definite reason (start a new upload);
 - `400 validation` when nothing was uploaded, when the stored object does not
   have the declared size (the signed `PUT` accepts no other) or when its first
   bytes are not of the declared type, and the upload is closed (start a new
@@ -721,8 +721,9 @@ deletion is still owed, and each object an upload or a copy still owns at its
 declared size: the upload object of an upload until the minute sweep settles
 it, at the earliest 20 minutes after it started (a still valid upload URL can
 write it again until then), and the staged copy of an upload or a copy until a
-completion hands it to a staged file or a failed attempt's delete is
-confirmed. A completed upload's file counts once, as its staged file, its
+completion hands it to a staged file or a delete of it is confirmed (by the
+failed attempt, or by the minute sweep when the attempt's outcome was
+unknown). A completed upload's file counts once, as its staged file, its
 owed deletion or the product file it became. The file count adds owed
 deletions and the uploads and copies, failed ones included, that still own an
 object, without counting a completed upload again. Removing an attached file
@@ -1143,12 +1144,12 @@ or use `createShopManagementClient`, which does that and returns a
 
 | Status | `error.code` | When | CLI exit code | What the backend does |
 |---|---|---|---|---|
-| 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode | 2 | Fix the request; never retry unchanged |
+| 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode; a download file whose stored bytes do not have the declared size or type, or a file a key cannot copy | 2 | Fix the request; never retry unchanged |
 | 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a key whose issuer is no longer a verified owner; a cookie or `Authorization` header on the request | 3 | Stop and alert; ask a current owner for a new key |
 | 403 | `forbidden` | The key lacks the route's scope, or a propose-mode key calls a route its mode refuses | 4 | Stop and alert; issue a key with the needed scope or mode |
 | 404 | `not_found` | The product, price, order, sales link, candidate upload, download file, file upload or staged file does not exist in this workspace or for this key | 5 | Treat as gone |
 | 404 | `tenant_not_found` | The host or `x-tenant` selects no workspace | 7 | Fix the base URL or workspace slug |
-| 409 | `conflict` | Stale sales-link revision, order line already issued, a download file limit (`error.details.changeProposalCap`), a file upload that is being completed, expired or failed | 6 | Re-read, then decide |
+| 409 | `conflict` | Stale sales-link revision, order line already issued, a download file limit (`error.details.changeProposalCap`), a file upload that is being completed, expired, failed or settled by the sweep, or completed and no longer staged | 6 | Re-read, then decide |
 | 409 | `fulfilment_conflict` | Order already shipped, or another request is creating its InPost shipment | 27 | Re-read the order; shipped means done |
 | 409 | `sold_out` | Public checkout of a product without available stock | 26 | Show the product as sold out |
 | 412 | `integration_not_configured` | A provider the route needs is not set up | 8 | Run provisioning first |

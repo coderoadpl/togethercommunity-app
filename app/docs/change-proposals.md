@@ -561,7 +561,8 @@ has no owner preview route, so its fixture API answers the owner preview
 address of two known story digests itself, with a small inline image for the
 loaded story and an unreadable one for the failed story. File proposals are in
 `Panel/ProposalChanges` too (an uploaded file, a copied file, a new version, a
-removal and the gone state of **Download file**, each in English and Polish),
+removal that leaves an earlier version current, a removal of the product's only
+file and the gone state of **Download file**, each in English and Polish),
 in `Pages/PanelProposalFiles` (a group that creates a digital product, adds its
 file, adds a price and publishes it, next to a single file proposal; English on
 desktop and mobile, Polish on desktop) and in `Pages/PanelProposalFilesHistory`
@@ -1426,9 +1427,12 @@ workbook.pdf: version 2 → 3 · PDF · 12.4 MB → 13.1 MB · fingerprint
 3f6c9a0e12bd" (with the new name on its own line when the new version is named
 differently), and a removal "Removed: workbook.pdf version 2 · PDF · 12.4 MB",
 followed by the version that becomes current, the version that stays current
-or that no version of the file is left, and always by "If this is the
-product’s only file and the product is published when you approve, it stays
-published with nothing to download." The type is shown by its label (PDF,
+or that no version of the file is left. Only when the file list after the
+removal holds no ready file does the row add "This is the product’s only file.
+If the product is published when you approve, it stays published with nothing
+to download."; a list that changes after the proposal makes the approval
+`stale`, so only the product's publication can still differ when it applies.
+The type is shown by its label (PDF,
 EPUB, ZIP, MP3, M4A, MP4, PNG, JPEG; any other type as its raw value). The
 fingerprint shows the first twelve characters of the SHA-256, with the full
 value as the element's title and for assistive technology, as for a proposed
@@ -1454,22 +1458,33 @@ proposal shows the row without either.
 The confirmation is built from the same data. A new file: "“workbook.pdf” (PDF,
 12.4 MB, fingerprint 3f6c9a0e12bd) will be added to “Field Guide (digital)”.
 Everyone who has access to this product, current buyers included, can download
-it at once." A new version: "“workbook.pdf” (PDF, 13.1 MB, fingerprint …)
-becomes version 3 of “workbook.pdf” in “Field Guide (digital)”; buyers get the
-new version." A removal: "Buyers of “Field Guide (digital)” will no longer be
-able to download “workbook.pdf” version 2." followed by the version that
-becomes or stays current, or that no version of the file is left. "Nothing
-else changes." follows, as after any sentence that
-names every changed field; when the file list changed in any other way than
-the one proposed change, the confirmation names the operation and counts the
-changed fields instead. A removal's confirmation always adds the only-file
-sentence above, and a proposal that attaches a file adds "If the proposed file
-no longer exists, nothing is changed." A group with a file item is approved
-like any other group: its confirmation repeats the sentence of each file item,
-adds the only-file sentence when an item removes a file, and "If the proposed
-file no longer exists, none of the changes is applied." when an item attaches
-one ("If one of the 2 proposed files no longer exists, none of the changes is
-applied." for two distinct files).
+it at once." A new version that keeps the name: "A new version of
+“workbook.pdf” (PDF, 13.1 MB, fingerprint …) becomes version 3 in “Field Guide
+(digital)”; buyers get the new version."; one named differently names both
+files: "“workbook-2027.pdf” (PDF, 13.1 MB, fingerprint …) becomes version 3 of
+“workbook.pdf” in “Field Guide (digital)”; buyers get the new version." A new
+file or a new version that is a copy adds its source, because approving gives
+the bytes of the other product's file to everyone with access to this one: "It
+is a copy of version 2 of a file from “Creator Workbook (print)”.", or "It is a
+copy of version 2 of a file from a product that no longer exists." A removal:
+"Buyers of “Field Guide (digital)” will no longer be able to download
+“workbook.pdf” version 2." followed by the version that becomes or stays
+current, or that no version of the file is left. "Nothing else changes."
+follows, as after any sentence that names every changed field; when the file
+list changed in any other way than the one proposed change, the confirmation
+names the operation and counts the changed fields instead. A removal whose file
+list after holds no ready file adds the only-file sentence above, and a
+proposal that attaches a file adds "If the proposed file no longer exists,
+nothing is changed." A group with a file item is approved like any other group:
+its confirmation repeats the sentence of each file item, with the copy source
+as above; a file added to a product an earlier item of the group creates reads
+"… will be added to “Field Guide (digital)”. Everyone who gets access to this
+product can download the file once the product is published or sold." instead
+of naming current buyers. It adds the only-file sentence when an item's removal
+leaves its product no ready file and no later item of the group changes that
+product's files, and "If the proposed file no longer exists, none of the
+changes is applied." when an item attaches one ("If one of the 2 proposed files
+no longer exists, none of the changes is applied." for two distinct files).
 
 An approval that ended `stale` because a file was gone, the note code
 `file_unavailable` on its `stale` event, is explained in the settled notice and

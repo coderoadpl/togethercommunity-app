@@ -24,8 +24,10 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
   const { language } = useLanguage();
   const requestOpen = request?.status === 'open';
   useEffect(() => {
-    if (requestOpen) setOpen(false);
-  }, [requestOpen]);
+    if (!requestOpen) return;
+    setOpen(false);
+    onConfirmEmailChange('');
+  }, [requestOpen, onConfirmEmailChange]);
   const confirmMatches = erasureConfirmEmail.trim().toLowerCase() === email.toLowerCase();
   const close = () => {
     setOpen(false);

@@ -438,10 +438,11 @@ describe('Account dialogs', () => {
   });
 
   it('closes the erasure confirmation once the request is open so a later cancellation does not reopen it', async () => {
+    const onConfirmEmailChange = vi.fn();
     const card = (request: Parameters<typeof AccountErasureCard>[0]['request']) => <LanguageProvider><AccountErasureCard
       request={request} pending={false} error={null} createPending={false} createError={null}
       cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail="demo@example.com"
-      onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+      onConfirmEmailChange={onConfirmEmailChange} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
     /></LanguageProvider>;
     const base = { id: 'erasure-1', tenantId: 't1', memberId: 'm1', reason: null, requestedAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', resolvedByUserId: null, resolutionNote: null };
     const view = render(card(null));
@@ -449,6 +450,7 @@ describe('Account dialogs', () => {
     expect(screen.getByRole('dialog')).toBeVisible();
     view.rerender(card({ ...base, status: 'open', resolvedAt: null }));
     expect(screen.getByTestId('account-erasure-cancel')).toBeVisible();
+    expect(onConfirmEmailChange).toHaveBeenLastCalledWith('');
     view.rerender(card({ ...base, status: 'cancelled', resolvedAt: '2026-06-21T12:00:00.000Z' }));
     expect(screen.getByTestId('account-erasure-open')).toBeVisible();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

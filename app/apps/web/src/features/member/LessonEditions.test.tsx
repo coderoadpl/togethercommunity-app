@@ -1,4 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider } from '@mui/material';
+import { darken, lighten, type Theme } from '@mui/material/styles';
 import type { ReactElement } from 'react';
 import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -10,7 +12,9 @@ import { server } from '../../test/server.js';
 import { en } from '../../i18n/en.js';
 import { LanguageProvider } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
+import { createThemeForMode, MODES } from '../../theme.js';
 import { languagePreference } from '../../theme-mode.js';
 import { LessonEditionBadge, LessonEditionBanner, LessonEditionControls, LessonEditionNotice, LessonEditionPicker, LessonEditionsList } from './LessonEditions.js';
 
@@ -18,6 +22,11 @@ const editions = [
   { number: '10', note: 'Revised examples', markedAt: '2026-10-01T12:00:00.000Z' },
   { number: '2.1', note: null, markedAt: '2026-09-01T12:00:00.000Z' },
 ];
+
+const editionsMatching = (matching: readonly string[]) => ({
+  editions: editions.map((edition) => ({ ...edition, matchesLive: matching.includes(edition.number) })),
+  currentEdition: matching[0] ?? null,
+});
 
 const inPolish = (ui: ReactElement) => {
   languagePreference.save('pl');
@@ -116,6 +125,12 @@ describe('lesson editions', () => {
     expect(rows[1]).not.toHaveAttribute('aria-current');
   });
 
+  it.each(['scoreboard', 'logbook', 'shadcn'] as const)('keeps the %s list card hover effects off the edition rows', (mode) => {
+    renderWithProviders(<ThemeProvider theme={createThemeForMode(mode)}><LessonEditionsList editions={editions} currentEdition="10" onSelect={vi.fn()} onCurrent={vi.fn()} /></ThemeProvider>);
+    const row = screen.getByTestId('lesson-editions-list').querySelector('.MuiListItem-root');
+    expect(stylesAt(row, 1440)).toMatchObject({ 'box-shadow': 'none', transform: 'none', 'background-image': 'none' });
+  });
+
   it('titles the dialog in Polish', async () => {
     inPolish(<LessonEditionPicker editions={editions} currentEdition={null} onSelect={vi.fn()} onCurrent={vi.fn()} />);
     expect(screen.getByTestId('lesson-edition-badge')).toHaveTextContent(pl.lesson.editionCurrentVersion);
@@ -125,7 +140,7 @@ describe('lesson editions', () => {
   });
 
   it('defers the editions request until lesson content has loaded successfully', async () => {
-    const reads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions, currentEdition: '10' } }));
+    const reads = vi.fn(() => HttpResponse.json({ ok: true, data: editionsMatching(['10']) }));
     server.use(http.get('/api/student/lessons/l1/editions', reads));
     const view = renderWithProviders(<LessonEditionControls lessonId="l1" enabled={false} onSelect={vi.fn()} onCurrent={vi.fn()} />);
     expect(view.queryClient.getQueryState(actions.studentLessonEditions('l1').queryKey)?.fetchStatus).toBe('idle');
@@ -145,6 +160,26 @@ describe('lesson editions', () => {
     expect(onCurrent).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ...MODES.flatMap((mode) => (['light', 'dark'] as const).map((scheme) => ({ name: `${mode.id}/${scheme}`, theme: createThemeForMode(mode.id, undefined, scheme) }))),
+    ...(['light', 'dark'] as const).map((scheme) => ({ name: `shadcn member/${scheme}`, theme: createThemeForMode('shadcn', undefined, scheme, 'member') })),
+  ])('tints the banner as a standard alert of its severity in the $name theme', ({ theme }) => {
+    const tint = (current: Theme, color: 'warning' | 'info') => current.palette.mode === 'light'
+      ? { background: lighten(current.palette[color].light, 0.9), text: darken(current.palette[color].light, 0.6) }
+      : { background: darken(current.palette[color].light, 0.9), text: lighten(current.palette[color].light, 0.6) };
+    const { unmount } = renderWithProviders(<ThemeProvider theme={theme}><LessonEditionBanner number="2.1" markedAt="2026-09-01T12:00:00.000Z" onCurrent={vi.fn()} /></ThemeProvider>);
+    expect(stylesAt(screen.getByRole('alert'), 1440)).toMatchObject({
+      'background-color': tint(theme, 'warning').background,
+      color: tint(theme, 'warning').text,
+    });
+    unmount();
+    renderWithProviders(<ThemeProvider theme={theme}><LessonEditionBanner number="2.1" onCurrent={vi.fn()} /></ThemeProvider>);
+    expect(stylesAt(screen.getByRole('alert'), 1440)).toMatchObject({
+      'background-color': tint(theme, 'info').background,
+      color: tint(theme, 'info').text,
+    });
+  });
+
   it('words the banner in Polish without a reading or watching verb', () => {
     inPolish(<LessonEditionBanner number="2.1" markedAt="2026-09-01T12:00:00.000Z" onCurrent={vi.fn()} />);
     expect(screen.getByRole('alert')).toHaveTextContent(pl.lesson.editionOlderNotice({ number: '2.1', date: new Intl.DateTimeFormat('pl', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date('2026-09-01T12:00:00.000Z')) }));
@@ -152,20 +187,41 @@ describe('lesson editions', () => {
   });
 
   it.each([
-    { currentEdition: '10', viewing: '2.1', banner: 'This is edition 2.1 from Sep 1, 2026. The lesson has newer content.' },
-    { currentEdition: '2.1', viewing: '2.1', banner: null },
-    { currentEdition: null, viewing: '10', banner: 'This is edition 10 from Oct 1, 2026. The lesson has newer content.' },
-  ])('shows the banner on edition $viewing only when it differs from the live lesson', async ({ currentEdition, viewing, banner }) => {
-    server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: true, data: { editions, currentEdition } })));
+    { matching: ['10'], viewing: '2.1', banner: 'This is edition 2.1 from Sep 1, 2026. The lesson has newer content.' },
+    { matching: ['2.1'], viewing: '2.1', banner: null },
+    { matching: [], viewing: '10', banner: 'This is edition 10 from Oct 1, 2026. The lesson has newer content.' },
+    { matching: ['10', '2.1'], viewing: '10', banner: null },
+    { matching: ['10', '2.1'], viewing: '2.1', banner: null },
+  ])('shows the banner on edition $viewing only when it differs from the live lesson (matching $matching)', async ({ matching, viewing, banner }) => {
+    server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: true, data: editionsMatching(matching) })));
     const view = renderWithProviders(<LessonEditionNotice lessonId="l1" editionNumber={viewing} enabled onCurrent={vi.fn()} />);
     await vi.waitFor(() => expect(view.queryClient.getQueryState(actions.studentLessonEditions('l1').queryKey)?.status).toBe('success'));
     if (banner === null) expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
     else expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent(banner);
   });
 
-  it('keeps the banner without a date when the editions cannot be read', async () => {
+  it('names the edition without claiming newer content when the editions were never read', async () => {
     server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Down' } }, { status: 500 })));
     renderWithProviders(<LessonEditionNotice lessonId="l1" editionNumber="2.1" enabled onCurrent={vi.fn()} />);
-    expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent('This is edition 2.1. The lesson has newer content.');
+    const banner = await screen.findByTestId('lesson-edition-banner');
+    expect(banner).toHaveTextContent(/^This is edition 2\.1\.Go to the current lesson$/);
+    expect(banner).toHaveClass('MuiAlert-colorInfo');
+  });
+
+  it('keeps a matching edition free of the banner when a later read fails', async () => {
+    server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: true, data: editionsMatching(['10', '2.1']) })));
+    const view = renderWithProviders(<LessonEditionNotice lessonId="l1" editionNumber="2.1" enabled onCurrent={vi.fn()} />);
+    const queryKey = actions.studentLessonEditions('l1').queryKey;
+    await vi.waitFor(() => expect(view.queryClient.getQueryState(queryKey)?.status).toBe('success'));
+    server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Down' } }, { status: 500 })));
+    await view.queryClient.refetchQueries({ queryKey });
+    await vi.waitFor(() => expect(view.queryClient.getQueryState(queryKey)?.status).toBe('error'));
+    expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
+  });
+
+  it('names an edition missing from the list without claiming newer content', async () => {
+    server.use(http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({ ok: true, data: editionsMatching(['10']) })));
+    renderWithProviders(<LessonEditionNotice lessonId="l1" editionNumber="3" enabled onCurrent={vi.fn()} />);
+    expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent(/^This is edition 3\.Go to the current lesson$/);
   });
 });

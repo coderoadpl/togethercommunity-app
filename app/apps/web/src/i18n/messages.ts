@@ -2395,7 +2395,7 @@ export interface Messages {
     editionCurrentVersion: string;
     editionCurrentMark: string;
     editionOlderNotice: (params: { number: string; date: string }) => string;
-    editionOlderNoticeUndated: (params: { number: string }) => string;
+    editionNotice: (params: { number: string }) => string;
     editionGoToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;

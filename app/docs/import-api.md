@@ -406,10 +406,10 @@ history also lets staff preview and mark any stored lesson version. Unmarking
 hides the edition from readers while retaining its snapshot for staff history
 and restore. Ordinary saves and restores keep their existing behavior.
 
-The reader editions response names the edition, if any, whose content (name,
-blocks and duration) equals the live lesson. Readers see an edition badge beside
-the lesson title: that edition's number, or **Current version** when no edition
-matches. When there is anything to switch to, the badge is a button that opens
+The reader editions response flags every edition whose content (name, blocks
+and duration) equals the live lesson (`matchesLive`) and names the newest of them
+as `currentEdition`. Readers see an edition badge beside the lesson title: that
+edition's number, or **Current version** when no edition matches. When there is anything to switch to, the badge is a button that opens
 **Lesson editions**: the live lesson first, marked **Current** and leading to the
 plain lesson URL, then the other editions with their numbers, marking dates and
 notes, ordered numerically from newest edition number to oldest. The row on
@@ -422,7 +422,9 @@ show the lesson not-found notice. This URL requires the same lesson access as
 current content, including free previews. An edition view whose content differs
 from the live lesson shows a warning naming the edition and its date with a
 control that opens the lesson URL without the `/editions/<number>` suffix; the
-edition URL of the matching edition shows no warning.
+edition URL of any edition that matches the live lesson shows no warning. When
+the editions list cannot be read, the view names the edition with the same
+control and makes no claim about newer content.
 Discussion, progress, completion, and next-lesson navigation keep the lesson's
 identity. Unmarked snapshots are unavailable through reader APIs.
 

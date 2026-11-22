@@ -174,7 +174,7 @@ describe('lesson edition routes', () => {
       okLesson([{ type: 'html', html: '<p>Current content</p>' }]), okStructure(), okProgress(),
       http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: ['3', '2.10'].map((number) => ({ number, note: null, markedAt: '2026-10-01T12:00:00.000Z' })), currentEdition: '3' },
+        data: { editions: ['3', '2.10'].map((number) => ({ number, note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: number === '3' })), currentEdition: '3' },
       })),
       http.get('/api/student/lessons/l1/editions/2.10', () => HttpResponse.json({
         ok: true,

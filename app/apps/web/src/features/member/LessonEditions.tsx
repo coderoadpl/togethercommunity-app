@@ -107,7 +107,7 @@ export const LessonEditionPicker = ({ editions, currentEdition, viewing, onSelec
   if (editions.length === 0) return null;
   const onLive = liveOnScreen(currentEdition, viewing);
   if (onLive && currentEdition !== null && editions.length === 1) return <LessonEditionBadge number={currentEdition} />;
-  const shown = onLive ? currentEdition : viewing ?? null;
+  const shown = viewing ?? currentEdition;
   const close = () => setOpen(false);
   return (
     <>
@@ -145,7 +145,7 @@ export const LessonEditionBanner = ({ number, markedAt, onCurrent }: { number: s
   const formatDate = useEditionDate();
   return (
     <LessonEditionWarning
-      severity="warning"
+      severity={markedAt === undefined ? 'info' : 'warning'}
       variant="standard"
       data-testid="lesson-edition-banner"
       sx={{ mb: '1.5rem' }}
@@ -153,7 +153,7 @@ export const LessonEditionBanner = ({ number, markedAt, onCurrent }: { number: s
     >
       <Typography variant="body1">
         {markedAt === undefined
-          ? t.lesson.editionOlderNoticeUndated({ number })
+          ? t.lesson.editionNotice({ number })
           : t.lesson.editionOlderNotice({ number, date: formatDate(markedAt) })}
       </Typography>
     </LessonEditionWarning>
@@ -163,10 +163,10 @@ export const LessonEditionBanner = ({ number, markedAt, onCurrent }: { number: s
 export const LessonEditionNotice = ({ lessonId, editionNumber, enabled, onCurrent }: { lessonId: string; editionNumber?: string | undefined; enabled: boolean; onCurrent: () => void }) => {
   const editions = useLessonEditions(lessonId, enabled && editionNumber !== undefined);
   if (!enabled || editionNumber === undefined) return null;
-  if (editions.isError) return <LessonEditionBanner number={editionNumber} onCurrent={onCurrent} />;
-  if (editions.data === undefined || editions.data.currentEdition === editionNumber) return null;
-  const marked = editions.data.editions.find((edition) => edition.number === editionNumber);
-  return <LessonEditionBanner number={editionNumber} markedAt={marked?.markedAt} onCurrent={onCurrent} />;
+  if (editions.data === undefined) return editions.isError ? <LessonEditionBanner number={editionNumber} onCurrent={onCurrent} /> : null;
+  const viewed = editions.data.editions.find((edition) => edition.number === editionNumber);
+  if (viewed?.matchesLive === true) return null;
+  return <LessonEditionBanner number={editionNumber} markedAt={viewed?.markedAt} onCurrent={onCurrent} />;
 };
 
 export const LessonEditionControls = ({ lessonId, editionNumber, enabled, onSelect, onCurrent }: { lessonId: string; editionNumber?: string | undefined; enabled: boolean; onSelect: (number: string) => void; onCurrent: () => void }) => {

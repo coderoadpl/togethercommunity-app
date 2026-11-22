@@ -7049,7 +7049,7 @@ describe('free lesson preview route', () => {
     const makeApp = (isPreview: boolean, version: EntityVersionRecord = stored) => appWithCourse({
       ...base,
       lessons: { ...base.lessons, findById: async () => ({ ...preview, isPreview }) },
-      lessonEditions: { ...base.lessonEditions, list: async () => [edition], find: async (_tenant, _lesson, number) => number === '2' ? version : null },
+      lessonEditions: { ...base.lessonEditions, list: async () => [{ ...edition, version }], find: async (_tenant, _lesson, number) => number === '2' ? version : null },
     }, courseFor('edition-course', true), preview.id);
     const headers = { [TENANT_HEADER]: acme.slug };
     const listPath = API_PATHS.studentLessonEditions.replace(':lessonId', preview.id);
@@ -7057,10 +7057,10 @@ describe('free lesson preview route', () => {
     const listed = await makeApp(true).request(listPath, { headers });
     expect(listed.status).toBe(200);
     expect(await listed.json()).toEqual({ ok: true, data: { editions: [{
-      number: edition.number, note: edition.note, markedAt: edition.markedAt,
+      number: edition.number, note: edition.note, markedAt: edition.markedAt, matchesLive: false,
     }], currentEdition: null } });
     const matching = await makeApp(true, { ...stored, payload: preview }).request(listPath, { headers });
-    expect(await matching.json()).toMatchObject({ ok: true, data: { currentEdition: '2' } });
+    expect(await matching.json()).toMatchObject({ ok: true, data: { editions: [{ number: '2', matchesLive: true }], currentEdition: '2' } });
     const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
     expect(opened.status).toBe(200);
     expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });

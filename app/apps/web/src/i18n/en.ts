@@ -2711,7 +2711,7 @@ export const en: Messages = {
     editionCurrentVersion: 'Current version',
     editionCurrentMark: 'Current',
     editionOlderNotice: ({ number, date }) => format('This is edition {number} from {date}. The lesson has newer content.', { number, date }),
-    editionOlderNoticeUndated: ({ number }) => format('This is edition {number}. The lesson has newer content.', { number }),
+    editionNotice: ({ number }) => format('This is edition {number}.', { number }),
     editionGoToCurrent: 'Go to the current lesson',
     mediaFailedTitle: 'Unable to load the material',
     videoFailedTitle: 'Unable to load the video',

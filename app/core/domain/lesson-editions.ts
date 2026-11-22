@@ -13,7 +13,7 @@ export const readerLessonEditionSchema = z.object({
 });
 export type ReaderLessonEdition = z.infer<typeof readerLessonEditionSchema>;
 export const readerLessonEditionsSchema = z.object({
-  editions: z.array(readerLessonEditionSchema),
+  editions: z.array(readerLessonEditionSchema.extend({ matchesLive: z.boolean() })),
   currentEdition: lessonEditionNumberSchema.nullable(),
 });
 export type ReaderLessonEditions = z.infer<typeof readerLessonEditionsSchema>;

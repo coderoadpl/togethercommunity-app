@@ -2763,7 +2763,7 @@ export const pl: Messages = {
     editionCurrentVersion: 'Aktualna wersja',
     editionCurrentMark: 'Aktualne',
     editionOlderNotice: ({ number, date }) => format('To jest wydanie {number} z {date}. Lekcja ma nowszą treść.', { number, date }),
-    editionOlderNoticeUndated: ({ number }) => format('To jest wydanie {number}. Lekcja ma nowszą treść.', { number }),
+    editionNotice: ({ number }) => format('To jest wydanie {number}.', { number }),
     editionGoToCurrent: 'Przejdź do aktualnej lekcji',
     mediaFailedTitle: 'Nie udało się załadować materiału',
     videoFailedTitle: 'Nie udało się załadować wideo',

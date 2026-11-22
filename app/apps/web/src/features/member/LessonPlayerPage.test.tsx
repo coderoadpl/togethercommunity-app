@@ -305,7 +305,7 @@ describe('LessonPlayerPage', () => {
     server.use(okLesson([]), okStructure(), okProgress(),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: '2.1' },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: true }], currentEdition: '2.1' },
       })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -318,7 +318,7 @@ describe('LessonPlayerPage', () => {
     server.use(okLesson([]), okStructure(), okProgress(),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: null },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: false }], currentEdition: null },
       })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
@@ -334,12 +334,29 @@ describe('LessonPlayerPage', () => {
       })),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: '2.1' },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: true }], currentEdition: '2.1' },
       })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber="2.1" />);
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Same as live');
     expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent('Edition 2.1');
+    expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
+  });
+
+  it.each(['2', '1'])('shows no banner on edition %s when two identical editions both equal the live lesson', async (number) => {
+    server.use(okStructure(), okProgress(), okLesson([]),
+      http.get(`/api/student/lessons/l1/editions/${number}`, () => HttpResponse.json({
+        ok: true,
+        data: { lesson: lesson([{ type: 'html', html: '<p>Same as live</p>' }]), authenticated: true },
+      })),
+      http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
+        ok: true,
+        data: { editions: ['2', '1'].map((edition) => ({ number: edition, note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: true })), currentEdition: '2' },
+      })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber={number} />);
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Same as live');
+    expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent(`Edition ${number}`);
     expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
   });
 
@@ -353,7 +370,7 @@ describe('LessonPlayerPage', () => {
       })),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: null },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: false }], currentEdition: null },
       })),
       http.get('/api/discussion', ({ request }) => {
         discussions.push(new URL(request.url).searchParams.get('contextId') ?? '');

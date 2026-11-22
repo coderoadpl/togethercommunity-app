@@ -2,7 +2,7 @@ import type { ElementType } from 'react';
 import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
-import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
@@ -4150,7 +4150,20 @@ export const LessonMediaIframe = styled('iframe')({
   display: 'block',
 });
 
+const standardAlertTint = (theme: Theme, color: 'warning' | 'info'): CSSObject => {
+  const light = theme.palette.mode === 'light';
+  return {
+    padding: '6px 16px',
+    border: 'none',
+    backgroundColor: light ? lighten(theme.palette[color].light, 0.9) : darken(theme.palette[color].light, 0.9),
+    color: light ? darken(theme.palette[color].light, 0.6) : lighten(theme.palette[color].light, 0.6),
+    '& .MuiAlert-icon': { color: theme.palette[color].main },
+  };
+};
+
 export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
+  '&.MuiAlert-standard.MuiAlert-colorWarning': standardAlertTint(theme, 'warning'),
+  '&.MuiAlert-standard.MuiAlert-colorInfo': standardAlertTint(theme, 'info'),
   alignItems: 'center',
   '& .MuiAlert-message > .MuiTypography-root': { fontWeight: 700 },
   '& .MuiAlert-action': { paddingTop: 0 },
@@ -4174,6 +4187,10 @@ export const LessonEditionRows = styled(List)(({ theme }) => ({
     border: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
+    backgroundImage: 'none',
+    boxShadow: 'none',
+    transform: 'none',
+    transition: 'none',
   },
   '& .MuiListItem-root + .MuiListItem-root': { borderTop: `1px solid ${theme.palette.divider}` },
   '& .MuiListItemButton-root': {

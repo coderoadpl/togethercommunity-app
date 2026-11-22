@@ -30,7 +30,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
-import { LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
+import { LESSON_READING_COLUMN_SX, LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
 import { lessonHeadingDocument } from '../../components/ui/lesson-heading-document.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
@@ -679,7 +679,11 @@ export const LessonPlayerPage = ({
                 data-testid={`lesson-block-${index}`}
                 data-block-type={group.kind === 'block' ? group.block.type : group.kind}
               >
-                <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+                <Eyebrow
+                  variant="overline"
+                  component="p"
+                  sx={group.kind === 'block' && group.block.type === 'html' ? { mb: '0.75rem', ...LESSON_READING_COLUMN_SX } : { mb: '0.75rem' }}
+                >
                   {groupLabel(t, group)}
                 </Eyebrow>
                 <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />

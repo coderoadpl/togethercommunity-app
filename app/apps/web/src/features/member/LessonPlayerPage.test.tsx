@@ -2060,6 +2060,18 @@ describe('LessonPlayerPage', () => {
     });
   });
 
+  it('puts the reading eyebrow on the centred reading column and leaves other eyebrows at the card edge', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const readingBlock = (await screen.findByTestId('lesson-html')).closest('[data-block-type="html"]');
+    if (!(readingBlock instanceof HTMLElement)) throw new Error('Expected the reading block card');
+    const readingColumn = { 'max-width': '44rem', 'margin-left': 'auto', 'margin-right': 'auto' };
+    expect(stylesAt(within(readingBlock).getByText(en.lesson.labelReading), 1440)).toMatchObject(readingColumn);
+    expect(stylesAt(within(readingBlock).getByText(en.lesson.labelReading), 375)).toMatchObject(readingColumn);
+    expect(stylesAt(within(screen.getByTestId('lesson-block-0')).getByText(en.lesson.labelVideo), 1440)['max-width']).toBeUndefined();
+  });
+
   it('leaves the program to the shell sidebar from md up', async () => {
     stubDesktopViewport();
     server.use(okStructure(), okProgress(), okLesson(allBlocks));

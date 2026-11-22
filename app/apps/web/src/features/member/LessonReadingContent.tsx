@@ -7,6 +7,8 @@ import { RichTextContent } from '../../components/ui/RichTextContent.js';
 
 export const LESSON_TEXT_REVEAL_EVENT = 'lesson-text:reveal';
 
+export const LESSON_READING_COLUMN_SX = { maxWidth: '44rem', mx: 'auto' } as const;
+
 export const LessonReadingContent = ({ html }: { html: string }) => {
   const t = useTranslations();
   const contentId = useId();
@@ -51,7 +53,7 @@ export const LessonReadingContent = ({ html }: { html: string }) => {
   }, [html]);
 
   return (
-    <Box sx={{ maxWidth: '44rem', mx: 'auto' }}>
+    <Box sx={LESSON_READING_COLUMN_SX}>
       <Box
         id={contentId}
         data-testid="lesson-reading-preview"

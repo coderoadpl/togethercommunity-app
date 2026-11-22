@@ -1035,7 +1035,7 @@ describe('MemberAccountPage', () => {
     await userEvent.click(await screen.findByText(en.security.passkeyHelp));
     await userEvent.click(screen.getByTestId('passkey-set-password'));
     expect(await findToast('success')).toHaveTextContent(
-      en.security.resetSent,
+      en.account.resetSent,
     );
     expect(body).toEqual({
       email: 'member@together.dev',
@@ -1065,7 +1065,7 @@ describe('MemberAccountPage', () => {
     });
   });
 
-  it('reports a failed account password setup request with an error toast', async () => {
+  it('reports a failed account password setup request once, beside the button that sent it', async () => {
     server.use(
       stubMe(),
       stubSettings(null),
@@ -1077,7 +1077,8 @@ describe('MemberAccountPage', () => {
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
 
-    expect(await findToast('error')).toBeInTheDocument();
+    expect(await screen.findByTestId('account-reset-password-error')).toBeVisible();
+    expect(errorToasts()).toHaveLength(0);
   });
 
   it('changes the member password and sends the revocation choice', async () => {
@@ -1130,11 +1131,64 @@ describe('MemberAccountPage', () => {
 
     expect(screen.queryByTestId('change-password-open')).not.toBeInTheDocument();
     const setup = await screen.findByTestId('account-reset-password');
-    expect(setup).toHaveTextContent(en.account.setPassword);
+    expect(setup).toHaveTextContent(en.security.setOrResetPassword);
+    expect(screen.getByTestId('two-factor-set-password')).toHaveTextContent(en.security.setOrResetPassword);
     expect(screen.queryByTestId('enable-2fa-open')).not.toBeInTheDocument();
     expect(screen.getByText(en.security.twoFactorNeedsPassword)).toBeVisible();
     await userEvent.click(setup);
     expect(body).toMatchObject({ email: 'member@together.dev' });
+  });
+
+  it('offers only the password link in the passkey dialog of a passwordless account', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { hasPassword: false }),
+      stubSettings(null),
+      stubBillingOrders(),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('add-passkey-open'));
+    const dialog = await screen.findByRole('dialog');
+    const setup = within(dialog).getByTestId('passkey-set-password');
+    expect(setup).toHaveTextContent(en.security.setOrResetPassword);
+    expect(setup).toHaveClass('MuiButton-contained');
+    expect(setup).toHaveFocus();
+    expect(within(dialog).queryByTestId('passkey-name')).not.toBeInTheDocument();
+    expect(within(dialog).queryByTestId('passkey-proof-password')).not.toBeInTheDocument();
+    expect(within(dialog).queryByTestId('add-passkey')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed password link only beside the passwordless button that sent it', async () => {
+    let requests = 0;
+    server.use(
+      stubMe(true, {}, null, null, { hasPassword: false }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => {
+        requests += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal' } }, { status: 500 });
+      }),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('two-factor-set-password'));
+    expect(await screen.findByTestId('two-factor-set-password-error')).toBeVisible();
+    expect(screen.queryByTestId('account-reset-password-error')).not.toBeInTheDocument();
+    expect(errorToasts()).toHaveLength(0);
+
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByTestId('passkey-set-password'));
+    expect(await within(dialog).findByTestId('passkey-set-password-error')).toBeVisible();
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
+    expect(requests).toBe(2);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    expect(within(await screen.findByRole('dialog')).queryByTestId('passkey-set-password-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
+    expect(errorToasts()).toHaveLength(0);
   });
   it('downloads the authenticated member data export', async () => {
     let requested = false;

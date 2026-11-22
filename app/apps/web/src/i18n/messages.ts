@@ -2642,7 +2642,6 @@ export interface Messages {
     editName: string;
     passwordStatusSet: string;
     passwordStatusUnset: string;
-    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
     forgotPasswordEmailLink: string;

@@ -2998,7 +2998,6 @@ export const en: Messages = {
     editName: 'Edit name',
     passwordStatusSet: 'Password set',
     passwordStatusUnset: 'No password',
-    setPassword: 'Set password',
     passwordHeading: 'Password',
     passwordIntro:
       'Change your password here using your current password. If you do not have a password yet, use the email password link to set one. Magic-link sign-in keeps working.',

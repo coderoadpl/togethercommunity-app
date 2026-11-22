@@ -216,19 +216,12 @@ export const MemberAccountPage = () => {
     if (unauthorized) void redirectToLogin();
   }, [redirectToLogin, unauthorized]);
 
-  const requestPasswordReset = useMutation({
+  const [passwordLinkFromCard, setPasswordLinkFromCard] = useState(false);
+  const requestPasswordLink = useMutation({
     ...actions.requestPasswordReset,
     onSuccess: () => {
       toast.success(t.account.resetSent);
     },
-    onError: reportFailure,
-  });
-  const requestPasskeyPasswordSetup = useMutation({
-    ...actions.requestPasswordReset,
-    onSuccess: () => {
-      toast.success(t.security.resetSent);
-    },
-    onError: reportFailure,
   });
   const changePassword = useMutation({
     ...actions.changePassword,
@@ -424,10 +417,13 @@ export const MemberAccountPage = () => {
                   <Button
                     variant={me.data.hasPassword ? 'text' : 'contained'}
                     data-testid="account-reset-password"
-                    disabled={requestPasswordReset.isPending}
-                    onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
+                    disabled={requestPasswordLink.isPending}
+                    onClick={() => {
+                      setPasswordLinkFromCard(true);
+                      requestPasswordLink.mutate(passwordSetupInput);
+                    }}
                   >
-                    {requestPasswordReset.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.account.setPassword}
+                    {requestPasswordLink.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.security.setOrResetPassword}
                   </Button>
                   <AccountHelp title={t.account.passwordLinkHelp}>
                     <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
@@ -435,7 +431,7 @@ export const MemberAccountPage = () => {
                     <Typography variant="body2">{t.account.passwordIntro}</Typography>
                   </AccountHelp>
                 </Stack>
-                {requestPasswordReset.error ? <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert> : null}
+                {passwordLinkFromCard && requestPasswordLink.error ? <Alert severity="error" data-testid="account-reset-password-error">{localizeError(requestPasswordLink.error, t)}</Alert> : null}
             </SectionCard></Box>}
                 sessionsCard={<ActiveSessions
                 Card={SectionCard}
@@ -473,10 +469,13 @@ export const MemberAccountPage = () => {
                   run: removePasskey.mutate,
                 }}
                 requestPasswordSetup={{
-                  pending: requestPasskeyPasswordSetup.isPending,
-                  success: requestPasskeyPasswordSetup.isSuccess,
-                  error: requestPasskeyPasswordSetup.error,
-                  run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
+                  pending: requestPasswordLink.isPending,
+                  success: requestPasswordLink.isSuccess,
+                  error: passwordLinkFromCard ? null : requestPasswordLink.error,
+                  run: () => {
+                    setPasswordLinkFromCard(false);
+                    requestPasswordLink.mutate(passwordSetupInput);
+                  },
                 }}
                 enableTwoFactor={{
                   data: enableTwoFactor.data,

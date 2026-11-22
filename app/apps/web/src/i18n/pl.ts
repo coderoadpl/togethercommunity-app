@@ -1618,7 +1618,7 @@ export const pl: Messages = {
     twoFactorNeedsPassword: 'Najpierw ustaw hasło, aby włączyć weryfikację dwuetapową.',
     heading: 'Bezpieczeństwo',
     setOrResetPasswordHeading: 'Ustaw lub zresetuj hasło',
-    setOrResetPassword: 'Ustaw hasło linkiem',
+    setOrResetPassword: 'Wyślij mi link do ustawienia hasła',
     resetSending: 'Wysyłanie…',
     resetSent: 'Wysłaliśmy e-mail z linkiem do ustawienia hasła. Sprawdź swoją skrzynkę.',
     passkeys: 'Klucze dostępu',
@@ -3052,7 +3052,6 @@ export const pl: Messages = {
     editName: 'Edytuj nazwę',
     passwordStatusSet: 'Hasło ustawione',
     passwordStatusUnset: 'Brak hasła',
-    setPassword: 'Ustaw hasło',
     passwordHeading: 'Hasło',
     passwordIntro:
       'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem. Logowanie magicznym linkiem nadal będzie działać.',

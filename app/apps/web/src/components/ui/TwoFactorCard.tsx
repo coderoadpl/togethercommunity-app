@@ -283,6 +283,7 @@ export const TwoFactorCard = ({
           >
             {requestPasswordSetup.pending ? t.security.resetSending : t.security.setOrResetPassword}
           </Button>
+          {requestPasswordSetup.error ? <Alert severity="error" data-testid="two-factor-set-password-error">{localizeError(requestPasswordSetup.error, t)}</Alert> : null}
         </Stack>
       )}
 

@@ -68,10 +68,12 @@ type OfferProductInput = {
   id: string;
   title: string;
   description?: string;
+  soldOut?: boolean;
+  variants?: { productId: string; slug: string; label: string; soldOut: boolean }[];
   prices?: { id: string; kind: 'one_time' | 'recurring'; interval: 'month' | 'year' | null; amountCents: number; currency: string }[];
 };
 
-const offerProduct = ({ id, title, description = '', prices }: OfferProductInput) => ({
+const offerProduct = ({ id, title, description = '', soldOut = false, variants = [], prices }: OfferProductInput) => ({
   id,
   type: 'course',
   slug: id,
@@ -81,6 +83,8 @@ const offerProduct = ({ id, title, description = '', prices }: OfferProductInput
   priceCents: prices?.[0]?.amountCents ?? 19_900,
   currency: 'PLN',
   prices: prices ?? [{ id: `price-${id}`, kind: 'one_time', interval: null, amountCents: 19_900, currency: 'PLN' }],
+  stock: { tracked: soldOut, soldOut, low: false, available: soldOut ? 0 : null },
+  variants,
 });
 
 type OfferSalesLinkInput = { id: string; slug: string; heading: string; description: string; totalCents: number; currency: string };
@@ -317,6 +321,36 @@ describe('AnonHomePage', () => {
     expect(bundleDescription).toHaveTextContent(/^Inside Every course in one pack\.$/);
     expect(bundleDescription.textContent).not.toContain('**');
     expect(getComputedStyle(bundleDescription).webkitLineClamp).toBe('3');
+  });
+
+  it('replaces the buy button with a disabled sold-out label only when no variant is left', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({
+        products: [
+          offerProduct({ id: 'prod-gone', title: 'Printed workbook', soldOut: true }),
+          offerProduct({
+            id: 'prod-size-s',
+            title: 'Club shirt',
+            soldOut: true,
+            variants: [
+              { productId: 'prod-size-s', slug: 'prod-size-s', label: 'S', soldOut: true },
+              { productId: 'prod-size-m', slug: 'prod-size-m', label: 'M', soldOut: false },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const soldOut = await screen.findByTestId('offer-product-sold-out-prod-gone');
+    expect(soldOut).toBeDisabled();
+    expect(soldOut).toHaveTextContent(en.checkout.soldOut);
+    expect(screen.getByRole('button', { name: `${en.checkout.soldOut} Printed workbook` })).toBe(soldOut);
+    expect(screen.queryByTestId('offer-product-cta-prod-gone')).not.toBeInTheDocument();
+    expect(screen.getByTestId('offer-product-cta-prod-size-s')).toHaveAttribute('href', '/checkout/prod-size-s');
+    expect(screen.queryByTestId('offer-product-sold-out-prod-size-s')).not.toBeInTheDocument();
   });
 
   it('counts catalogue products when deciding whether the home is empty', async () => {

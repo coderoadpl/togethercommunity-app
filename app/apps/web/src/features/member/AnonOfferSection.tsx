@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import type { PublicOfferOutput } from '#core/contract/index.js';
@@ -17,6 +17,9 @@ export const offerProductPrices = (product: OfferProduct): OfferPriceTerms[] =>
   product.prices.length > 0
     ? product.prices
     : [{ kind: 'one_time', interval: null, amountCents: product.priceCents, currency: product.currency }];
+
+const offerProductSoldOut = (product: OfferProduct): boolean =>
+  product.stock.soldOut && product.variants.every((variant) => variant.soldOut);
 
 export const useOfferPriceFormatter = () => {
   const t = useTranslations();
@@ -89,13 +92,25 @@ const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
   const formatTerms = useOfferPriceFormatter();
   const prices = offerProductPrices(product);
   const free = prices.every((price) => price.amountCents === 0);
+  const soldOut = offerProductSoldOut(product);
   return (
     <OfferCard
       testId={`offer-product-${product.id}`}
       heading={product.title}
       description={plainTextExcerpt(htmlToPlainText(product.description))}
       price={prices.map(formatTerms).join(' · ')}
-      renderAction={(headingId) => (
+      renderAction={(headingId) => soldOut ? (
+        <Button
+          id={`${headingId}-cta`}
+          aria-labelledby={`${headingId}-cta ${headingId}`}
+          variant="outlined"
+          size="small"
+          disabled
+          data-testid={`offer-product-sold-out-${product.id}`}
+        >
+          {t.checkout.soldOut}
+        </Button>
+      ) : (
         <EmberCtaLink
           id={`${headingId}-cta`}
           aria-labelledby={`${headingId}-cta ${headingId}`}

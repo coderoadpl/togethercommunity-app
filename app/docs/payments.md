@@ -518,6 +518,46 @@ not mark fulfillment complete; a later delivery can process after checkout has
 created the subscription. Checkout completion remains responsible for the initial
 order and enrollment.
 
+## Payments that could not be recorded
+
+A signature-verified live `checkout.session.completed` or
+`checkout.session.async_payment_succeeded` event whose session is paid or needs
+no payment (`payment_status` other than `unpaid`) can still be refused with a
+non-2xx answer, for example when its metadata no longer matches the checkout
+snapshot. Stripe then retries the delivery for about three days and gives up. So
+that a refusal does not go unnoticed, the webhook route records it after the
+answer is decided, in `payment_event_rejections` (migration 0171):
+
+- One row per workspace and Stripe event: event type, checkout session id, the
+  `AppError` code and message, first and last sighting and the attempt count.
+  Every later refusal of the same event bumps the count. No payload, buyer
+  e-mail or address is stored; an `internal` failure is stored as `Payment
+  processing failed unexpectedly` because its message can quote stored data.
+- Nothing is recorded for a request whose signature fails, for test-mode,
+  foreign-tenant or unpaid events, for an in-progress conflict (another worker
+  holds the event) or when an order already exists for the session.
+- A later delivery of the same event that is answered with 2xx marks the row
+  resolved (`resolved_at`).
+- Recording never changes the answer: a failed write is only logged, so the
+  refusal still makes Stripe retry and an acceptance stays an acceptance.
+
+Every workspace owner gets one e-mail per event, not per retry (outbox id
+`payment-event-rejected:<tenantId>:<eventId>:<userId>`, kept on conflict). It
+says the payment succeeded at Stripe but no order was recorded, that Stripe
+retries for up to three days, not to refund or ask the buyer to pay again
+before support has checked it, and the reason.
+
+Owners and admins see the unresolved rows in Studio → Sales under **Payments
+that could not be recorded** (`GET /api/orders/rejected-payments`, capability
+`order:reconcile`); the CLI reads the same list with
+`together orders rejected-payments [--limit <n>]`, and `--json` prints one
+envelope.
+
+Each recorded refusal also logs one error line for the production health alarm:
+`[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
+A failed record or resolve write logs
+`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`.
+
 ## Test mode for staff
 
 A tenant owner can configure an independent Stripe sandbox in Studio → Integrations → Stripe → Test mode. Create a restricted key in the tenant's Stripe sandbox and enter the `rk_test_` key in this card. Grant the same checkout, subscription and webhook permissions shown for the live integration. The live card accepts only `rk_live_` keys; the test card accepts only `rk_test_` keys, including when credentials are saved through the API.

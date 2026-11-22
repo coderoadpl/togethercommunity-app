@@ -355,6 +355,7 @@
       "value": {
         "analytics": null,
         "canTest": false,
+        "checkoutReturnOrigins": [],
         "inpostGeowidgetToken": null,
         "inpostGeowidgetWithheld": false,
         "shippingRates": [],

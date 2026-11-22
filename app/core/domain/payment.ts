@@ -66,9 +66,8 @@ export type CheckoutConsentCapture = {
 
 const stripeNullableText = z.string().nullable().optional().transform((value) => value ?? null);
 
-const stripeShippingDetailsSchema = z.object({
+const stripeShippingLocationSchema = z.object({
   name: stripeNullableText,
-  phone: stripeNullableText,
   address: z.object({
     line1: stripeNullableText,
     line2: stripeNullableText,
@@ -93,34 +92,37 @@ const parsedOrNull = <S extends z.ZodTypeAny>(schema: S, value: unknown): NonNul
 
 const stripeSessionFieldsSchema = z.record(z.unknown());
 const stripeCollectedInformationSchema = z.object({ shipping_details: z.unknown() });
-const stripeCustomerPhoneSchema = z.object({ phone: stripeNullableText });
+const stripePhoneSchema = z.object({ phone: stripeNullableText });
 const stripeShippingAmountSchema = z.object({ amount_shipping: z.number().int().nullable().optional() });
 
 /**
- * Tenant webhook endpoints follow the account's default API version, so a
- * Checkout Session can carry its delivery in any of three places:
+ * Tenant webhook endpoints registered before endpoints were pinned to the
+ * library's API version follow the account default, so a Checkout Session can
+ * carry its delivery in any of three places:
  * `collected_information.shipping_details` (2025-03-31.basil and later),
  * `shipping_details` (2022-08-01 to basil) or `shipping` (before 2022-08-01).
  * `shipping_cost` replaced the `shipping_rate` id in 2022-08-01;
  * `total_details.amount_shipping` is present in every version and stands in for
- * it once a delivery address was collected. Each field is parsed on its own so
- * one unexpected shape cannot drop the others.
+ * it once a delivery address was collected. The location, the phone and each
+ * cost field are parsed on their own so one unexpected shape cannot drop the
+ * others.
  */
 export const checkoutShippingFromStripe = (
   session: unknown,
 ): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
   const fields = parsedOrNull(stripeSessionFieldsSchema, session) ?? {};
-  const details = [
+  const location = [
     parsedOrNull(stripeCollectedInformationSchema, fields['collected_information'])?.shipping_details,
     fields['shipping_details'],
     fields['shipping'],
-  ].map((value) => parsedOrNull(stripeShippingDetailsSchema, value)).find((value) => value !== null) ?? null;
+  ].map((raw) => ({ raw, details: parsedOrNull(stripeShippingLocationSchema, raw) })).find((candidate) => candidate.details !== null);
   const shippingCostCents = parsedOrNull(stripeShippingCostSchema, fields['shipping_cost'])?.amount_total ?? null;
-  if (details === null) return { shipping: null, shippingCostCents };
+  if (location === undefined || location.details === null) return { shipping: null, shippingCostCents };
+  const details = location.details;
   return {
     shipping: {
       name: details.name,
-      phone: parsedOrNull(stripeCustomerPhoneSchema, fields['customer_details'])?.phone ?? details.phone,
+      phone: parsedOrNull(stripePhoneSchema, fields['customer_details'])?.phone ?? parsedOrNull(stripePhoneSchema, location.raw)?.phone ?? null,
       address: {
         line1: details.address.line1,
         line2: details.address.line2,

@@ -142,10 +142,12 @@ const CourseProgramSection = ({
   courseId,
   structure,
   focusLessonId,
+  nextLessonId,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
   focusLessonId: string | null;
+  nextLessonId: string | null;
 }) => {
   const t = useTranslations();
   const headingId = useId();
@@ -160,7 +162,7 @@ const CourseProgramSection = ({
       <Eyebrow variant="overline" component="h2" id={headingId} sx={{ mb: '0.75rem' }}>
         {t.courseOverview.curriculum}
       </Eyebrow>
-      <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} />
+      <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} nextLessonId={nextLessonId} />
     </Paper>
   );
 };
@@ -273,7 +275,12 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     />
   );
   const program = hasModules ? (
-    <CourseProgramSection courseId={courseId} structure={course} focusLessonId={focusLessonId} />
+    <CourseProgramSection
+      courseId={courseId}
+      structure={course}
+      focusLessonId={focusLessonId}
+      nextLessonId={progress.data?.progress.resume?.target?.id ?? null}
+    />
   ) : null;
   const emptyState = !hasModules ? (
     <StatusView

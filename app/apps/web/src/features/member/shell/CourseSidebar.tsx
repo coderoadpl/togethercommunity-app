@@ -174,6 +174,7 @@ export const CourseSidebar = ({
             focusLessonId={focusLessonId}
             scrollFocusIntoView
             showFilter={showFilter}
+            nextLessonId={currentLessonId === null ? progress.data?.progress.resume?.target?.id ?? null : null}
             {...(currentLessonId === null ? {} : { currentLessonId })}
           />
         </>

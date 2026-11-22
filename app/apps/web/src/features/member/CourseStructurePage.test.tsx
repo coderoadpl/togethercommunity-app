@@ -369,6 +369,16 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
   });
 
+  it('marks the resume target as the next lesson in the compact program', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-next-l2')).toHaveTextContent(en.courseTree.nextLesson);
+    expect(within(inlineProgram).getAllByText(en.courseTree.nextLesson)).toHaveLength(1);
+  });
+
   it('holds the small-screen program closed until the last viewed lesson is known', async () => {
     stubViewport(true);
     mockPage({ progressPending: true });

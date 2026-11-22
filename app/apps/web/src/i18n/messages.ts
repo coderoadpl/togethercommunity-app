@@ -2370,6 +2370,7 @@ export interface Messages {
     accessPartiallyUnlocked: string;
     completionComplete: string;
     completionPartial: string;
+    nextLesson: string;
   };
   courseOverview: {
     progressTitle: string;

@@ -2738,6 +2738,7 @@ export const pl: Messages = {
     accessPartiallyUnlocked: 'Częściowo odblokowane',
     completionComplete: 'Ukończone',
     completionPartial: 'Częściowo ukończone',
+    nextLesson: 'Następna',
   },
   courseOverview: {
     progressTitle: 'Twoje postępy',

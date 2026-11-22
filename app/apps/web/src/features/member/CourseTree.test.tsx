@@ -518,6 +518,23 @@ describe('CourseTree', () => {
     expect(empty).toHaveTextContent(en.search.stemHint);
   });
 
+  it('marks the next lesson with a chip that is part of the row name', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll nextLessonId="l2" />);
+
+    const chip = await screen.findByTestId('lesson-next-l2');
+    expect(chip).toHaveTextContent(en.courseTree.nextLesson);
+    expect(within(screen.getByTestId('lesson-button-l2')).getByTestId('lesson-next-l2')).toBe(chip);
+    expect(treeItem('lesson-button-l2')).toHaveAccessibleName(expect.stringContaining(en.courseTree.nextLesson));
+    expect(treeItem('lesson-button-l1')).not.toHaveAccessibleName(expect.stringContaining(en.courseTree.nextLesson));
+  });
+
+  it('drops the next-lesson mark once a lesson is open', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll currentLessonId="l1" nextLessonId="l2" />);
+
+    expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
+  });
+
   it('renders no filter when the caller leaves filtering to another tree', async () => {
     await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll showFilter={false} />);
 

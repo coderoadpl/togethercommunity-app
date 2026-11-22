@@ -225,12 +225,14 @@ const LessonRow = ({
   search,
   scrollIntoView,
   guest,
+  nextLessonId,
 }: {
   lesson: CourseStructureLesson;
   courseId: string;
   search: string;
   scrollIntoView: boolean;
   guest: boolean;
+  nextLessonId: string | null;
 }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -258,6 +260,10 @@ const LessonRow = ({
       )}
       {' '}
       {guest && lesson.isPreview ? <Chip size="small" label={t.anon.previewChip} color="primary" variant="outlined" /> : null}
+      {' '}
+      {lesson.lessonId === nextLessonId ? (
+        <Chip size="small" label={t.courseTree.nextLesson} color="primary" data-testid={`lesson-next-${lesson.lessonId}`} />
+      ) : null}
       {' '}
       <LessonCompletion status={lesson.completionStatus} />
       {' '}
@@ -307,6 +313,7 @@ type BranchProps = {
   onToggle: (id: string) => void;
   scrollLessonId: string | null;
   guest: boolean;
+  nextLessonId: string | null;
 };
 
 const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChapter }) => {
@@ -397,6 +404,7 @@ export const CourseTree = ({
   guest = false,
   scrollFocusIntoView = false,
   showFilter = true,
+  nextLessonId = null,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
@@ -406,6 +414,7 @@ export const CourseTree = ({
   guest?: boolean;
   scrollFocusIntoView?: boolean;
   showFilter?: boolean;
+  nextLessonId?: string | null;
 }) => {
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
@@ -500,6 +509,7 @@ export const CourseTree = ({
                 search={searchActive ? search : ''}
                 onToggle={toggle}
                 scrollLessonId={scrollLessonId}
+                nextLessonId={currentLessonId === undefined ? nextLessonId : null}
               />
             ))}
           </CourseTreeRoot>

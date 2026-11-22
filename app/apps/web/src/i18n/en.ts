@@ -2686,6 +2686,7 @@ export const en: Messages = {
     accessPartiallyUnlocked: 'Partially unlocked',
     completionComplete: 'Completed',
     completionPartial: 'Partially completed',
+    nextLesson: 'Next',
   },
   courseOverview: {
     progressTitle: 'Your progress',

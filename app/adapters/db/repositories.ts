@@ -5,7 +5,7 @@ import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
 import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePersonalization, purchaseHasPersonalizations } from './personalization-erasure.js';
-import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers } from '#core/domain/index.js';
+import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers, storedProductCompliance, type StoredProductCompliance } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
 import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -250,7 +250,7 @@ const parseStaffRole = (raw: string): StaffRole | null => {
   return parsed.success ? parsed.data : null;
 };
 
-const parseProduct = (product: Product): Product => productSchema.parse(product);
+const parseProduct = (product: Omit<Product, 'compliance'> & { compliance?: StoredProductCompliance | null }): Product => productSchema.parse(product);
 
 const parseLessonAttachment = (attachment: LessonAttachment): LessonAttachment =>
   lessonAttachmentSchema.parse(attachment);
@@ -440,7 +440,7 @@ export const createProductRepository = (
           salesChannel: product.salesChannel,
           deliveryMethod: product.deliveryMethod,
           parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
-          compliance: product.compliance ?? null,
+          compliance: storedProductCompliance(product.compliance),
           personalization: product.personalization ?? null,
           variantGroup: product.variantGroup ?? null,
           variantLabel: product.variantLabel ?? null,
@@ -473,7 +473,7 @@ export const createProductRepository = (
         ...(product.salesChannel === undefined ? {} : { salesChannel: product.salesChannel }),
         deliveryMethod: product.deliveryMethod,
         parcelTemplate: product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE,
-        compliance: product.compliance ?? null,
+        compliance: storedProductCompliance(product.compliance),
         ...(product.personalization === undefined ? {} : { personalization: product.personalization }),
         variantGroup: product.variantGroup ?? null,
         variantLabel: product.variantLabel ?? null,

@@ -301,16 +301,45 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('shows only the badge for a lesson with one reader edition', async () => {
+  it('shows only the badge for a lesson whose one reader edition is the live content', async () => {
     server.use(okLesson([]), okStructure(), okProgress(),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: '2.1' },
       })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent('Edition 2.1');
-    expect(screen.queryByRole('button', { name: en.lesson.editionMenu })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edition 2.1/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
+  });
+
+  it('offers the current version beside an edition the live lesson no longer matches', async () => {
+    server.use(okLesson([]), okStructure(), okProgress(),
+      http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
+        ok: true,
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: null },
+      })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByRole('button', { name: en.lesson.editionCurrentVersion })).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows no banner on the edition URL whose content equals the live lesson', async () => {
+    server.use(okStructure(), okProgress(), okLesson([]),
+      http.get('/api/student/lessons/l1/editions/2.1', () => HttpResponse.json({
+        ok: true,
+        data: { lesson: lesson([{ type: 'html', html: '<p>Same as live</p>' }]), authenticated: true },
+      })),
+      http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
+        ok: true,
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: '2.1' },
+      })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber="2.1" />);
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Same as live');
+    expect(await screen.findByTestId('lesson-edition-badge')).toHaveTextContent('Edition 2.1');
     expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
   });
 
@@ -324,7 +353,7 @@ describe('LessonPlayerPage', () => {
       })),
       http.get('/api/student/lessons/:lessonId/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }] },
+        data: { editions: [{ number: '2.1', note: null, markedAt: '2026-10-01T12:00:00.000Z' }], currentEdition: null },
       })),
       http.get('/api/discussion', ({ request }) => {
         discussions.push(new URL(request.url).searchParams.get('contextId') ?? '');
@@ -337,7 +366,7 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber="2.1" />);
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Earlier chapter content');
-    expect(screen.getByTestId('lesson-edition-banner')).toHaveTextContent(en.lesson.editionOlderWarning);
+    expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent('This is edition 2.1 from Oct 1, 2026. The lesson has newer content.');
     await userEvent.click(await screen.findByTestId('mark-complete'));
     await waitFor(() => expect(completions).toEqual([{ lessonId: 'l1' }]));
     expect(discussions).toContain('l1');

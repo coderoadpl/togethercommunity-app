@@ -2390,10 +2390,12 @@ export interface Messages {
   lesson: {
     enlargeImage: string;
     editionLabel: (params: { number: string }) => string;
-    previousEditions: string;
-    editionMenu: string;
-    editionOlderWarning: string;
-    editionBackToCurrent: string;
+    editionsTitle: string;
+    editionCurrentVersion: string;
+    editionCurrentMark: string;
+    editionOlderNotice: (params: { number: string; date: string }) => string;
+    editionOlderNoticeUndated: (params: { number: string }) => string;
+    editionGoToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
     videoUnavailable: string;

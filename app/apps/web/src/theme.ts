@@ -4151,10 +4151,39 @@ export const LessonMediaIframe = styled('iframe')({
 });
 
 export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
-  '&.MuiAlert-colorWarning': {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.warning.contrastText,
+  alignItems: 'center',
+  '& .MuiAlert-message > .MuiTypography-root': { fontWeight: 700 },
+  '& .MuiAlert-action': { paddingTop: 0 },
+  '& .MuiAlert-action .MuiButton-root': { whiteSpace: 'nowrap' },
+  [theme.breakpoints.down('sm')]: {
+    flexWrap: 'wrap',
+    '& .MuiAlert-action': { flexBasis: '100%', margin: 0, padding: '0 0 0.5rem' },
+    '& .MuiAlert-icon ~ .MuiAlert-action': { paddingLeft: '2.125rem' },
   },
+}));
+
+export const LessonEditionTrigger = styled(Button)({
+  minHeight: TOUCH_TARGET_MIN,
+  whiteSpace: 'nowrap',
+});
+
+export const LessonEditionRows = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root, & .MuiListItem-root:first-of-type, & .MuiListItem-root:last-of-type, & .MuiListItem-root:hover': {
+    padding: 0,
+    margin: 0,
+    border: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+  },
+  '& .MuiListItem-root + .MuiListItem-root': { borderTop: `1px solid ${theme.palette.divider}` },
+  '& .MuiListItemButton-root': {
+    alignItems: 'center',
+    gap: '0.75rem',
+    minHeight: TOUCH_TARGET_MIN,
+    padding: '0.75rem 1.5rem',
+    borderRadius: 0,
+  },
+  '& .MuiListItemText-root': { margin: 0 },
 }));
 
 export const LessonPlaceholder = styled(Box)(({ theme }) => ({

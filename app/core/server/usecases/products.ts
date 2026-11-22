@@ -124,7 +124,7 @@ export const createProduct = async (
     title: parsed.data.title,
     description: parsed.data.description,
     coverUrl: parsed.data.coverUrl,
-    images: parsed.data.images,
+    images: parsed.data.images ?? [],
     priceCents: parsed.data.priceCents,
     currency: parsed.data.currency,
     published: false,

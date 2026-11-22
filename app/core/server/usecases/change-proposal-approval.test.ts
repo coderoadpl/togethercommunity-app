@@ -425,6 +425,45 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(approved.value).toMatchObject({ status: 'applied', appliedResourceId: created?.id });
   });
 
+  it('applies a gallery-less product creation or draft deletion stored by a release without the gallery', async () => {
+    const h = harness();
+    const createId = await h.submit('product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 });
+    const deleteId = await h.submit('product.delete-draft', { productId: 'product-draft' });
+    for (const id of [createId, deleteId]) {
+      const stored = h.proposal(id);
+      if (stored === undefined) throw new Error('proposal missing');
+      expect(Object.keys(stored.input)).not.toContain('images');
+      expect(Object.keys(stored.effect)).not.toContain('images');
+      h.store.seed(storedProposal({ ...stored, id: `${id}-before-gallery` }));
+    }
+
+    const created = await h.approve(`${createId}-before-gallery`);
+    if (!created.ok) throw new Error(created.error.message);
+    expect(created.value).toMatchObject({ status: 'applied' });
+    expect(Object.keys(created.value.effect)).not.toContain('images');
+    expect(h.state.products.find((candidate) => candidate.slug === 'teapot')?.images).toEqual([]);
+    expect(await h.approve(`${deleteId}-before-gallery`)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(liveProduct(h, 'product-draft')).toBeUndefined();
+  });
+
+  it('applies a product update that reorders the gallery, and marks it stale when the gallery moved after submission', async () => {
+    const front = { url: '/api/public/assets/product-image/front.png', alt: 'Front' };
+    const back = { url: '/api/public/assets/product-image/back.png', alt: 'Back' };
+    const h = harness();
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [front, back] });
+    const reordered = await h.submit('product.update', { id: 'product-mug', images: [back, front] });
+    expect(h.proposal(reordered)?.effect).toEqual({ images: { before: [front, back], after: [back, front] } });
+
+    expect(await h.approve(reordered)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(liveProduct(h, 'product-mug')?.images).toEqual([back, front]);
+
+    const cleared = await h.submit('product.update', { id: 'product-mug', images: [] });
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [front] });
+    const before = structuredClone(h.state);
+    expect(await h.approve(cleared)).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(h.state).toEqual(before);
+  });
+
   it('keeps the proposal pending and live state untouched when the infrastructure throws', async () => {
     const h = harness();
     const id = await h.submit('product.update', { id: 'product-mug', title: 'Big mug' });

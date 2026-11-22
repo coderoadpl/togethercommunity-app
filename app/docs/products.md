@@ -46,7 +46,9 @@ From the CLI, `product image-upload <file>` prints the URL and
 The public offer and the sales-link offer lines return `images` (`[]` when
 empty) next to `coverUrl`, with URLs in the same form. Product versions carry
 the gallery like the cover, so restoring a version restores its gallery;
-restoring a version saved before galleries existed clears the gallery.
+restoring a version saved before galleries existed clears the gallery. The
+version preview lists the gallery in order, so a version that differs only in
+its gallery or in the order of its images shows the gallery as changed.
 
 Rollback: migration 0168 adds `products.images` with the default `[]`. The
 previous release ignores the column, so its product writes keep the stored
@@ -54,6 +56,15 @@ gallery and its public offer omits `images`; storefronts then fall back to
 `coverUrl`. Product content versions written by this release are snapshot
 version 12; that release refuses to open or restore them as newer than its
 version 11 and leaves the rows intact.
+
+Pending change proposals survive the release in both directions. A product
+without gallery images has no `images` entry in a proposal's effect, so a
+product creation or draft deletion proposed before this release still applies
+after it, and a product creation proposed without `images` stores no `images`
+key in its input, so the previous release can still apply it after a rollback.
+The previous release marks a proposal that sends `images`, or the draft
+deletion of a product with gallery images, stale on approval and changes
+nothing.
 
 ## History retention
 

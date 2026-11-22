@@ -188,7 +188,7 @@ export const newProductSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long'),
   description: newProductDescriptionSchema.default(''),
   coverUrl: productCoverUrlSchema.nullable().default(null),
-  images: productImagesSchema.default([]),
+  images: productImagesSchema.optional(),
   priceCents: z.number().int('Price must be a whole number of cents').nonnegative('Price must not be negative'),
   currency: currencySchema.default('PLN'),
   accessItems: z.array(accessItemSchema).default([]),

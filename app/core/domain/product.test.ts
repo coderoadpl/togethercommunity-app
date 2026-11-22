@@ -156,8 +156,8 @@ describe('product visibility', () => {
 describe('product images', () => {
   const imageUrl = (index: number): string => `/api/public/assets/product-image/00000000-0000-4000-8000-${String(index).padStart(12, '0')}.webp`;
 
-  it('defaults a new product to an empty gallery and leaves the gallery out of an update without it', () => {
-    expect(newProductSchema.parse({ title: 'Course', priceCents: 0 }).images).toEqual([]);
+  it('leaves the gallery out of a create or update input without it', () => {
+    expect(newProductSchema.parse({ title: 'Course', priceCents: 0 })).not.toHaveProperty('images');
     expect(updateProductInputSchema.parse({ id: 'p1' })).not.toHaveProperty('images');
     expect(updateProductInputSchema.parse({ id: 'p1', images: [] }).images).toEqual([]);
   });

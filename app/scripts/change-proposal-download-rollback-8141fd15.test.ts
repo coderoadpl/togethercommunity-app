@@ -1,7 +1,6 @@
 // Literal copies of schemas and parsing steps of release 8141fd15, the release on production when download file
 // proposals were added. They prove what that release does with what this release stores, so they must stay as that
 // release shipped them and never follow the live schema.
-import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -435,7 +434,7 @@ const harness = () => {
 };
 
 const storedRow = async (id: string): Promise<ChangeProposalRow> => {
-  const [row] = await database.db.select().from(changeProposals).where(and(eq(changeProposals.tenantId, TENANT), eq(changeProposals.id, id)));
+  const row = (await database.db.select().from(changeProposals)).find((candidate) => candidate.tenantId === TENANT && candidate.id === id);
   if (row === undefined) throw new Error(`No stored proposal ${id}`);
   return row;
 };
@@ -475,7 +474,7 @@ describe('release 8141fd15 reading what download file proposals store', () => {
     const id = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id });
     expect(await discardKeyDownloadFile(keyCtx, { id: file.id }, h.deps)).toMatchObject({ ok: true });
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'stale' } });
-    const events = await database.db.select().from(changeProposalEvents).where(eq(changeProposalEvents.proposalId, id));
+    const events = (await database.db.select().from(changeProposalEvents)).filter((event) => event.proposalId === id);
     const previous = events.map((event) => changeProposalEventSchema.parse(event));
     expect(previous.map((event) => event.kind).sort()).toEqual(['proposed', 'stale']);
     expect(previous.find((event) => event.kind === 'stale')?.note).toMatch(/^file_unavailable: /u);
@@ -487,7 +486,7 @@ describe('release 8141fd15 reading what download file proposals store', () => {
     const file = await h.stage('attached.pdf');
     const id = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id });
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
-    const [row] = await database.db.select().from(productDownloadAssets).where(and(eq(productDownloadAssets.tenantId, TENANT), eq(productDownloadAssets.id, file.id)));
+    const row = (await database.db.select().from(productDownloadAssets)).find((asset) => asset.tenantId === TENANT && asset.id === file.id);
     expect(row?.sha256).toMatch(/^[0-9a-f]{64}$/u);
     const previous = productDownloadAssetSchema.parse(row);
     expect(previous).toMatchObject({ id: file.id, status: 'ready', storageKey: row?.storageKey });

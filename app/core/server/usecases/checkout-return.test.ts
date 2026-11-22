@@ -97,6 +97,20 @@ describe('checkout return and cancel addresses', () => {
     expect(h.snapshotRows[0]?.returnUrl).toBe(cancelUrl.searchParams.get('return'));
   });
 
+  it('does not keep the return address on the sales-link cancel URL', async () => {
+    const h = harness(ORIGINS);
+    const returnUrl = 'https://shop.example.test/thanks';
+    const started = await legacyCheckout(h, {
+      productId: 'course-1', salesLinkSlug: 'collection', email: 'buyer@example.com', language: 'en', termsAccepted: true, returnUrl,
+    });
+    expect(started.ok).toBe(true);
+    expect(h.paymentInputs).toHaveLength(1);
+    const cancelUrl = new URL(h.paymentInputs[0]?.cancelUrl ?? '');
+    expect(cancelUrl.pathname).toBe('/offer/collection');
+    expect(cancelUrl.searchParams.has('return')).toBe(false);
+    expect(h.snapshotRows[0]?.returnUrl).toBe(returnUrl);
+  });
+
   it('accepts both addresses on the cart form', async () => {
     const plain = harness(ORIGINS);
     expect((await cartCheckout(plain, posterCart)).ok).toBe(true);

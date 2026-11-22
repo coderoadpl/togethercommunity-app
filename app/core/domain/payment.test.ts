@@ -36,6 +36,19 @@ describe('checkoutShippingFromStripe', () => {
     expect(checkoutShippingFromStripe({ shipping_cost: { amount_total: 0 } })).toEqual({ shipping: null, shippingCostCents: 0 });
   });
 
+  it('keeps every readable field when another one has an unexpected shape', () => {
+    expect(checkoutShippingFromStripe({
+      collected_information: { shipping_details: 'unexpected' },
+      shipping: { name: 'Test Buyer', phone: '+48500100900', address: address('Old Street 1') },
+      customer_details: { phone: 48500100200 },
+      shipping_cost: { amount_total: '1599' },
+      total_details: { amount_discount: 'unexpected', amount_shipping: 1599 },
+    })).toEqual({
+      shipping: { name: 'Test Buyer', phone: '+48500100900', address: { line1: 'Old Street 1', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+      shippingCostCents: 1599,
+    });
+  });
+
   it('reports nothing for a session it cannot read', () => {
     expect(checkoutShippingFromStripe({ shipping: { name: 'Test Buyer' } })).toEqual({ shipping: null, shippingCostCents: null });
     expect(checkoutShippingFromStripe(null)).toEqual({ shipping: null, shippingCostCents: null });

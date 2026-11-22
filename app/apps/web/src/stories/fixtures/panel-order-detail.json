@@ -58,7 +58,14 @@
           "tenantId": "tenant-studio",
           "verificationToken": "fixture-verification-token-0000000000000000000000000000000000000000"
         },
-        "refundJob": null
+        "refundJob": null,
+        "refundTotals": {
+          "currency": "PLN",
+          "paidCents": 31920,
+          "refundedCents": 0,
+          "remainingCents": 31920
+        },
+        "staffRefunds": []
       }
     },
     "getTenantSettings:[]": {

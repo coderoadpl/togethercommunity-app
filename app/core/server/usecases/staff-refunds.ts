@@ -20,10 +20,10 @@ import {
   type AppError,
   type Order,
   type OrderRefundTotals,
+  type OrderListItem,
   type OrderStaffRefundView,
   type Result,
-  type StaffRefundFulfilmentOptions,
-  type StripeMode,
+  type StaffRefundPreview,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -55,24 +55,6 @@ const providerCommittedCents = async (
   return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider' } : { cents: null, source: 'platform' };
 };
 
-export interface StaffRefundPreview {
-  orderId: string;
-  refundable: boolean;
-  blockedReason: string | null;
-  paidCents: number;
-  refundedCents: number;
-  remainderCents: number;
-  currency: string;
-  mode: StripeMode;
-  remainderSource: 'provider' | 'platform';
-  returnableStock: Array<{ productId: string; quantity: number }>;
-  onPackingList: boolean;
-  hasShipment: boolean;
-  hasInvoice: boolean;
-  fullRefundOptions: StaffRefundFulfilmentOptions;
-  waitingRefundId: string | null;
-}
-
 export interface StaffRefundDeps {
   orderDetails: OrderDetailRepository;
   staffRefunds: OrderStaffRefundRepository;
@@ -82,16 +64,30 @@ export interface StaffRefundDeps {
   clock: Clock;
   logger: { warn(message: string): void };
   dispatchOrderRefunds?(): void;
+  rateLimit?(input: { kind: StaffRefundRateLimitKind; tenantId: string; actorUserId: string }): Promise<Result<void, AppError>>;
 }
+
+export type StaffRefundRateLimitKind = 'preview' | 'write';
+
+const withinRateLimit = async (
+  ctx: Ctx,
+  tenant: Result<string, AppError>,
+  kind: StaffRefundRateLimitKind,
+  deps: Pick<StaffRefundDeps, 'rateLimit'>,
+): Promise<Result<string, AppError>> => {
+  if (!tenant.ok || deps.rateLimit === undefined) return tenant;
+  const limited = await deps.rateLimit({ kind, tenantId: tenant.value, actorUserId: ctx.identity.userId });
+  return limited.ok ? tenant : limited;
+};
 
 export const previewStaffRefund = async (
   ctx: Ctx,
   orderId: string,
-  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices'>,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices' | 'rateLimit'>,
 ): Promise<Result<StaffRefundPreview, AppError>> => {
   const refusal = machineKeyRefusal(ctx);
   if (refusal !== null) return refusal;
-  const tenant = authorizeTenant(ctx, 'order:refund');
+  const tenant = await withinRateLimit(ctx, authorizeTenant(ctx, 'order:refund'), 'preview', deps);
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
@@ -191,11 +187,11 @@ export const createStaffRefund = async (
   ctx: Ctx,
   orderId: string,
   input: unknown,
-  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'ids' | 'clock' | 'logger' | 'dispatchOrderRefunds'>,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'ids' | 'clock' | 'logger' | 'dispatchOrderRefunds' | 'rateLimit'>,
 ): Promise<Result<{ refund: OrderStaffRefundView; created: boolean }, AppError>> => {
   const refusal = machineKeyRefusal(ctx);
   if (refusal !== null) return refusal;
-  const tenant = authorizeTenant(ctx, 'order:refund');
+  const tenant = await withinRateLimit(ctx, authorizeTenant(ctx, 'order:refund'), 'write', deps);
   if (!tenant.ok) return tenant;
   const parsed = createStaffRefundInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid refund request', parsed.error.flatten()));
@@ -229,17 +225,18 @@ export const createStaffRefund = async (
 export const shipRefundedOrderAnyway = async (
   ctx: Ctx,
   orderId: string,
-  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds'>,
-): Promise<Result<Order, AppError>> => {
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'rateLimit'>,
+): Promise<Result<OrderListItem, AppError>> => {
   const refusal = machineKeyRefusal(ctx);
   if (refusal !== null) return refusal;
-  const tenant = authorizeTenant(ctx, 'order:refund');
+  const tenant = await withinRateLimit(ctx, authorizeTenant(ctx, 'order:refund'), 'write', deps);
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
   const blocker = shipAnywayBlocker(order);
   if (blocker !== null) return err(blocker);
-  return deps.staffRefunds.shipAnyway(tenant.value, order.id);
+  const shipped = await deps.staffRefunds.shipAnyway(tenant.value, order.id);
+  return shipped.ok ? ok({ ...order, fulfilmentStatus: shipped.value.fulfilmentStatus ?? null }) : shipped;
 };
 
 export const orderStaffRefundSummary = async (

@@ -68,6 +68,8 @@ export const AuthBrandRow = styled(Box)<{ component?: ElementType; to?: string }
   minWidth: 0,
   color: 'inherit',
   textDecoration: 'none',
+  // The platform wordmark is an SVG with a viewBox and no width or height, so an auto-sized image collapses here.
+  '& img': { height: '2rem' },
 });
 
 export const AuthControls = styled(Box)({

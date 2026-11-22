@@ -303,6 +303,17 @@ describe('AuthShell', () => {
     expect(screen.queryByTestId('auth-footer-links')).not.toBeInTheDocument();
   });
 
+  it('gives the header brand logo an explicit height so the platform wordmark renders', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+
+    await renderShell('togethercommunity.app');
+
+    const logo = screen.getByTestId('auth-brand').querySelector('img');
+    expect(logo).toHaveAttribute('alt', en.common.appName);
+    expect(logo).not.toBeNull();
+    expect(window.getComputedStyle(logo ?? document.body).height).toBe('2rem');
+  });
+
   it('reduces the platform surface footer to the Together wordmark alone', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;

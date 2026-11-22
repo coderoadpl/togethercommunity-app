@@ -5,16 +5,17 @@ import { type SxProps, type Theme } from '@mui/material/styles';
 import { useTranslations } from '../../i18n/index.js';
 import { LessonMediaClip, LessonMediaFrame, LessonMediaIframe } from '../../theme.js';
 
-export const LessonMediaError = ({ message, onRetry, externalUrl }: {
+export const LessonMediaError = ({ message, onRetry, externalUrl, action }: {
   message: string;
   onRetry?: () => void;
   externalUrl?: string;
+  action?: ReactNode;
 }) => {
   const t = useTranslations();
   return (
     <Stack role="status" spacing={1} sx={{ p: '1rem', minHeight: '100%', justifyContent: 'center', alignItems: 'center' }}>
       <Typography align="center">{message}</Typography>
-      {onRetry === undefined && externalUrl === undefined ? null : (
+      {onRetry === undefined && externalUrl === undefined && action === undefined ? null : (
         <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem' }}>
           {onRetry === undefined ? null : <Button variant="outlined" onClick={onRetry}>{t.common.retry}</Button>}
           {externalUrl === undefined ? null : (
@@ -22,6 +23,7 @@ export const LessonMediaError = ({ message, onRetry, externalUrl }: {
               {t.lesson.mediaOpenExternal}
             </Button>
           )}
+          {action}
         </Stack>
       )}
     </Stack>

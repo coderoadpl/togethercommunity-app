@@ -1422,8 +1422,43 @@ describe('LessonPlayerPage', () => {
       } })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByText(en.lesson.videoUnavailable)).toBeInTheDocument();
+    expect(await screen.findByText(en.lesson.videoUnavailableNoContact)).toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.videoUnavailable)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-video-contact')).not.toBeInTheDocument();
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['https://support.example.org/help', null, `${en.lesson.contactCreator} ${en.lesson.newTabHint}`],
+    ['mailto:help@example.org', null, `${en.lesson.contactCreator} ${en.lesson.mailHint}`],
+    [null, '/account?tab=profile&support=open', en.lesson.contactCreator],
+  ] as const)('links the workspace contact %s from an unavailable video', async (supportUrl, formHref, accessibleName) => {
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
+      http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {
+        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [{ kind: 'unavailable', storageKey: 'k1', reason: 'secret_invalid' }],
+      } })),
+      http.get('/api/member/settings', () => HttpResponse.json({ ok: true, data: { settings: {
+        billingPortalUrl: null,
+        supportUrl, supportConfigured: true,
+        videoAutoplayDefault: false,
+        memberVideoAutoplayOverride: false,
+      } } })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByText(en.lesson.videoUnavailable)).toBeInTheDocument();
+    const contact = await screen.findByTestId('lesson-video-contact');
+    expect(contact).toHaveTextContent(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    expect(contact).toHaveAccessibleName(accessibleName);
+    expect(contact).toHaveAttribute('href', formHref ?? supportUrl);
+    if (supportUrl?.startsWith('https:') === true) {
+      expect(contact).toHaveAttribute('target', '_blank');
+      expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
+    } else {
+      expect(contact).not.toHaveAttribute('target');
+    }
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 

@@ -2397,6 +2397,7 @@ export interface Messages {
     mediaFailedTitle: string;
     videoFailedTitle: string;
     videoUnavailable: string;
+    videoUnavailableNoContact: string;
     mediaOpenExternal: string;
     loading: string;
     unavailable: string;

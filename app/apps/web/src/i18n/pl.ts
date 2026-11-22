@@ -2765,6 +2765,7 @@ export const pl: Messages = {
     mediaFailedTitle: 'Nie udało się załadować materiału',
     videoFailedTitle: 'Nie udało się załadować wideo',
     videoUnavailable: 'To wideo jest chwilowo niedostępne. Skontaktuj się z osobą prowadzącą kurs.',
+    videoUnavailableNoContact: 'To wideo jest chwilowo niedostępne.',
     mediaOpenExternal: 'Otwórz w nowej karcie',
     loading: 'Wczytywanie lekcji…',
     unavailable: 'Lekcja niedostępna',

@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  type ButtonProps,
   Chip,
   IconButton,
   Link as MuiLink,
@@ -14,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createLink, Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import {
@@ -64,6 +63,7 @@ import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 import { CloseIcon } from './shell/shell-icons.js';
+import { resolveSupportContact, SupportContactButton } from './SupportContactButton.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -97,6 +97,17 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
   }
 };
 
+const UnavailableVideoMessage = () => {
+  const t = useTranslations();
+  const settings = useQuery({ ...actions.memberSettings });
+  const contact = settings.data === undefined
+    ? null
+    : resolveSupportContact(settings.data.settings.supportUrl, settings.data.settings.supportConfigured === true);
+  return contact === null
+    ? <LessonMediaError message={t.lesson.videoUnavailableNoContact} />
+    : <LessonMediaError message={t.lesson.videoUnavailable} action={<SupportContactButton contact={contact} testId="lesson-video-contact" />} />;
+};
+
 const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editionNumber }: { lessonId: string; storageKey: string; autoplay: boolean; authenticated: boolean; editionNumber?: string | undefined }) => {
   const t = useTranslations();
   const playback = useQuery({ ...actions.studentLessonPlayback(lessonId, editionNumber), enabled: authenticated });
@@ -109,7 +120,7 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
     return (
       <LessonMediaFrame sx={{ ...LESSON_VIDEO_FRAME_SX, display: 'grid' }}>
         {video?.kind === 'unavailable'
-          ? <LessonMediaError message={t.lesson.videoUnavailable} />
+          ? <UnavailableVideoMessage />
           : <LessonMediaError message={t.lesson.videoFailedTitle} onRetry={() => void playback.refetch()} />}
       </LessonMediaFrame>
     );
@@ -201,10 +212,6 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
       return <LessonLinkList links={group.links} />;
   }
 };
-
-const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
-
-const ButtonLink = createLink(({ href = '', ...props }: Omit<ButtonProps<'a'>, 'component'>) => <Button href={href} {...props} />);
 
 const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
 const TEXT_BREAK = '\u2029';
@@ -343,8 +350,7 @@ const LockedView = ({
       yearly: t.common.priceYearly,
     });
   const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
-  const externalSupport = typeof supportUrl === 'string' && !supportUrl.toLowerCase().startsWith('mailto:');
-  const supportForm = supportUrl === null && supportConfigured;
+  const supportContact = resolveSupportContact(supportUrl, supportConfigured);
   const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
@@ -367,35 +373,14 @@ const LockedView = ({
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
               <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
               <Typography variant="body2" color="text.secondary">
-                {typeof supportUrl === 'string' || supportForm ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
+                {supportContact === null ? t.lesson.notForSaleBodyNoContact : t.lesson.notForSaleBody}
               </Typography>
               <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
                 {t.lesson.backToCourse}
               </Button>
-              {typeof supportUrl === 'string' ? (
-                <Button
-                  href={supportUrl}
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  data-testid="locked-contact-creator"
-                  {...(externalSupport ? NEW_TAB : {})}
-                  aria-label={`${t.lesson.contactCreator} ${externalSupport ? t.lesson.newTabHint : t.lesson.mailHint}`}
-                >
-                  {t.lesson.contactCreator}
-                </Button>
-              ) : supportForm ? (
-                <ButtonLink
-                  to="/account"
-                  search={{ tab: 'profile', support: 'open' }}
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  data-testid="locked-contact-creator"
-                >
-                  {t.lesson.contactCreator}
-                </ButtonLink>
-              ) : null}
+              {supportContact === null ? null : (
+                <SupportContactButton contact={supportContact} testId="locked-contact-creator" size="large" fullWidth />
+              )}
             </Stack>
           ) : (
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>

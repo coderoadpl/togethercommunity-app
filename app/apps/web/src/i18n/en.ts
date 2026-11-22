@@ -2713,6 +2713,7 @@ export const en: Messages = {
     mediaFailedTitle: 'Unable to load the material',
     videoFailedTitle: 'Unable to load the video',
     videoUnavailable: 'This video is temporarily unavailable. Contact your instructor.',
+    videoUnavailableNoContact: 'This video is temporarily unavailable.',
     mediaOpenExternal: 'Open in a new tab',
     loading: 'Loading lesson…',
     unavailable: 'Lesson unavailable',

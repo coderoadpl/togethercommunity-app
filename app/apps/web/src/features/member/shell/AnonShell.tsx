@@ -27,7 +27,7 @@ const VisitorAccount = ({ email }: { email: string }) => {
         noWrap
         color="text.secondary"
         data-testid="anon-visitor-email"
-        sx={{ display: { xs: 'none', sm: 'block' }, minWidth: 0, maxWidth: '16rem' }}
+        sx={{ minWidth: 0, maxWidth: { xs: '9rem', sm: '16rem' } }}
       >
         {email}
       </Typography>

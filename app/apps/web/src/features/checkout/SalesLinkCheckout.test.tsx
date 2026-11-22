@@ -158,6 +158,27 @@ it('resubmits attribution after cancellation on the manual sales-link checkout',
   expect(new URLSearchParams(window.location.search).get('checkout')).toBe('together');
 });
 
+it('does not show or submit a shop return address on the sales-link checkout form', async () => {
+  window.history.replaceState(null, '', `/offer/complete-bundle?checkout=together&return=${encodeURIComponent('https://shop.example.test/cart')}`);
+  let payload: unknown;
+  server.use(
+    http.get('/api/public/sales-links/:slug', () => HttpResponse.json({ ok: true, data: offer })),
+    http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
+      stripeConfigured: true, simulatedPaymentsEnabled: false, checkoutReturnOrigins: ['https://shop.example.test'],
+    } })),
+    http.post('/api/public/checkout/session', async ({ request }) => {
+      payload = await request.json();
+      return HttpResponse.json({ ok: false, error: { code: 'validation', message: 'Checkout unavailable' } }, { status: 400 });
+    }),
+  );
+  renderOffer();
+  const pay = await screen.findByTestId('checkout-pay-cta');
+  expect(screen.queryByRole('link', { name: en.checkout.backToShop })).not.toBeInTheDocument();
+  await userEvent.click(pay);
+  await waitFor(() => expect(payload).toHaveProperty('salesLinkSlug', 'complete-bundle'));
+  expect(payload).not.toHaveProperty('returnUrl');
+});
+
 it('keeps staff test checkout and cancellation retries on the manual checkout page', async () => {
   window.history.replaceState(null, '', '/offer/complete-bundle?checkout=together');
   let testEnabled = false;

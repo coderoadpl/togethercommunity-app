@@ -347,6 +347,14 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
       throw new E2eFailure(`Account switch failed at ${page.url()}: ${await page.locator('body').innerText()}\n${String(cause)}`);
     }
     assert((await sessionCookies(context)).length === 0, 'switching accounts retained the shared session');
+    await page.goto(`${tenantBaseUrl}/login`, { waitUntil: 'networkidle' });
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(foreignOrigin.href, { waitUntil: 'networkidle' });
+    await page.getByRole('banner').getByRole('button', { name: en.tenant.signOut, exact: true }).click();
+    await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
+    const signedOutMe = await page.request.get(new URL(API_PATHS.me, foreignOrigin).href);
+    assert(signedOutMe.status() === 401, `header sign-out left foreign-host /api/me answering HTTP ${signedOutMe.status()}`);
     console.log('custom-domain-e2e: shared session falls back to a foreign-tenant visitor OK');
     await context.close();
   } finally {

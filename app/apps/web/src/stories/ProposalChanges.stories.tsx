@@ -1,6 +1,4 @@
-import { useState } from 'react';
 import { Paper } from '@mui/material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { userEvent, within } from 'storybook/test';
 import type { ChangeProposalOwnerView } from '#core/domain/index.js';
@@ -15,25 +13,20 @@ import {
   fileReplaceProposal,
 } from '../test/change-proposal-fixtures.js';
 import { STORY_PROPOSAL_GONE_FILE_ID, STORY_PROPOSAL_IMAGE_DIGESTS } from './fixture-client.js';
-import { withAccountPreview } from './page-decorators.js';
+import { withAccountPreview, withQueryClient } from './page-decorators.js';
 
 type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'proposedFiles'>>;
 
-const Rows = ({ proposal, stockNow, inGroup = false, pendingProposalId = null }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean; pendingProposalId?: string | null }) => {
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }));
-  return (
-    <QueryClientProvider client={client}>
-      <Paper elevation={1} sx={{ p: '1.5rem', maxWidth: '48rem' }}>
-        <ProposalFieldRows
-          proposal={proposal}
-          stockNow={stockNow}
-          pendingProposalId={pendingProposalId}
-          {...(inGroup ? { references: groupReferences(changeProposalGroupItems) } : {})}
-        />
-      </Paper>
-    </QueryClientProvider>
-  );
-};
+const Rows = ({ proposal, stockNow, inGroup = false, pendingProposalId = null }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean; pendingProposalId?: string | null }) => (
+  <Paper elevation={1} sx={{ p: '1.5rem', maxWidth: '48rem' }}>
+    <ProposalFieldRows
+      proposal={proposal}
+      stockNow={stockNow}
+      pendingProposalId={pendingProposalId}
+      {...(inGroup ? { references: groupReferences(changeProposalGroupItems) } : {})}
+    />
+  </Paper>
+);
 
 const text: Proposal = {
   input: {},
@@ -94,7 +87,7 @@ const settingsChoices: Proposal = {
   },
 };
 
-const meta = { title: 'Panel/ProposalChanges', decorators: [withAccountPreview], parameters: { locale: 'en', colorScheme: 'light', layout: 'fullscreen' }, render: () => <Rows proposal={text} /> } satisfies Meta;
+const meta = { title: 'Panel/ProposalChanges', decorators: [withQueryClient, withAccountPreview], parameters: { locale: 'en', colorScheme: 'light', layout: 'fullscreen' }, render: () => <Rows proposal={text} /> } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 

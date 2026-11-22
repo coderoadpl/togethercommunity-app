@@ -14,6 +14,10 @@ import {
 } from './stripe.js';
 import type { PaymentProvider } from '#core/server/index.js';
 import { HANDLED_EVENT_TYPES } from '#core/server/index.js';
+import oldApiAddressPaid from './fixtures/checkout-completed-2020-03-02-address-paid.json' with { type: 'json' };
+import oldApiLockerFree from './fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
+import cloverAddressPaid from './fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
+import cloverLockerFree from './fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
 
 const webhookSecret = 'whsec_test_secret';
 const stripe = new Stripe('sk_test_unused');
@@ -1837,6 +1841,40 @@ it.each([
     shippingCostCents: 1499,
     shipping: { name: 'Jane Buyer', phone: '+48600100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
   } } });
+});
+
+const recordedCheckouts: Record<string, unknown> = {
+  '2020-03-02-locker-free': oldApiLockerFree,
+  '2020-03-02-address-paid': oldApiAddressPaid,
+  '2025-09-30-locker-free': cloverLockerFree,
+  '2025-09-30-address-paid': cloverAddressPaid,
+};
+const lockerDelivery = { name: 'Test Buyer', phone: '+48500100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } };
+const addressDelivery = { name: 'Test Buyer', phone: '+48500100300', address: { line1: 'Market Square 1', line2: 'Flat 2', postalCode: '31-001', city: 'Cracow', country: 'PL', state: null } };
+const lockerSession = {
+  email: 'test.buyer@example.com', termsAccepted: true, paymentStatus: 'paid', amountTotalCents: 8800, discountTotalCents: 0, shippingCostCents: 0, shipping: lockerDelivery,
+  metadata: { tenantId: 'tenant-a', productId: 'product-course', salesLinkId: 'link-book-bundle', directCheckout: true, termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy' },
+};
+const addressSession = {
+  email: 'test.buyer@example.com', termsAccepted: true, paymentStatus: 'paid', amountTotalCents: 9519, discountTotalCents: 880, shippingCostCents: 1599, shipping: addressDelivery,
+  customerName: 'Test Buyer', customerCountry: 'PL',
+  metadata: { tenantId: 'tenant-a', productId: 'product-course', salesLinkId: 'link-book-bundle', checkoutConsentCaptureId: 'capture-old-api-address' },
+};
+
+describe('checkout sessions rendered with an old and the current webhook API version', () => {
+  it.each([
+    ['2020-03-02', 'locker-free', { ...lockerSession, objectId: 'cs_test_old_api_locker', paymentIntentId: 'pi_test_old_api_locker', customerName: null, customerCountry: null, billing: null, checkoutSnapshotId: 'snapshot-old-api-locker' }],
+    ['2020-03-02', 'address-paid', { ...addressSession, objectId: 'cs_test_old_api_address', paymentIntentId: 'pi_test_old_api_address', checkoutSnapshotId: 'snapshot-old-api-address' }],
+    ['2025-09-30', 'locker-free', { ...lockerSession, objectId: 'cs_test_clover_locker', paymentIntentId: 'pi_test_clover_locker', customerName: 'Test Buyer', customerCountry: 'PL', checkoutSnapshotId: 'snapshot-clover-locker' }],
+    ['2025-09-30', 'address-paid', { ...addressSession, objectId: 'cs_test_clover_address', paymentIntentId: 'pi_test_clover_address', metadata: { ...addressSession.metadata, checkoutConsentCaptureId: 'capture-clover-address' }, checkoutSnapshotId: 'snapshot-clover-address' }],
+  ])('maps the delivery, its cost and the totals of a %s %s checkout session', async (version, kind, expected) => {
+    const { objectId, checkoutSnapshotId, ...session } = expected;
+    const result = await verify(JSON.stringify(recordedCheckouts[`${version}-${kind}`]));
+    expect(result).toMatchObject({ ok: true, value: {
+      type: 'checkout.session.completed', objectId, livemode: true,
+      checkoutSession: { ...session, metadata: { ...session.metadata, checkoutSnapshotId } },
+    } });
+  });
 });
 
 it('reports no shipping details for sessions that collected none', async () => {

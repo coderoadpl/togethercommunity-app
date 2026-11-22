@@ -67,15 +67,16 @@ const okFeed = (items: SpaceFeedItem[]) =>
 type OfferProductInput = {
   id: string;
   title: string;
+  description?: string;
   prices?: { id: string; kind: 'one_time' | 'recurring'; interval: 'month' | 'year' | null; amountCents: number; currency: string }[];
 };
 
-const offerProduct = ({ id, title, prices }: OfferProductInput) => ({
+const offerProduct = ({ id, title, description = '', prices }: OfferProductInput) => ({
   id,
   type: 'course',
   slug: id,
   title,
-  description: '',
+  description,
   coverUrl: null,
   priceCents: prices?.[0]?.amountCents ?? 19_900,
   currency: 'PLN',
@@ -291,6 +292,31 @@ describe('AnonHomePage', () => {
     expect(section).toHaveTextContent('Every course in one pack.');
     expect(section).not.toHaveTextContent(en.salesLinks.heading);
     expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+  });
+
+  it('shows product and bundle descriptions as plain text and leaves the slot out when empty', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({
+        products: [
+          offerProduct({ id: 'prod-html', title: 'Starter course', description: '<p>Learn <strong>fast</strong> &amp; well.</p><script>window.offerScript = true</script>' }),
+          offerProduct({ id: 'prod-empty', title: 'Empty course', description: '<p> </p>' }),
+        ],
+        salesLinks: [{ id: 'link-md', slug: 'complete-bundle', heading: 'Complete bundle', description: '## Inside\n\nEvery **course** in one pack.', totalCents: 4200, currency: 'PLN' }],
+      }),
+    );
+
+    await renderPage();
+
+    const productDescription = await screen.findByTestId('offer-product-prod-html-description');
+    expect(productDescription).toHaveTextContent(/^Learn fast & well\.$/);
+    expect(productDescription.querySelector('strong')).toBeNull();
+    expect(Reflect.get(window, 'offerScript')).toBeUndefined();
+    expect(screen.queryByTestId('offer-product-prod-empty-description')).not.toBeInTheDocument();
+    const bundleDescription = screen.getByTestId('offer-sales-link-link-md-description');
+    expect(bundleDescription).toHaveTextContent(/^Inside Every course in one pack\.$/);
+    expect(bundleDescription.textContent).not.toContain('**');
+    expect(getComputedStyle(bundleDescription).webkitLineClamp).toBe('3');
   });
 
   it('counts catalogue products when deciding whether the home is empty', async () => {

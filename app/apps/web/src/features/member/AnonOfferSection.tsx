@@ -6,6 +6,7 @@ import type { PublicOfferOutput } from '#core/contract/index.js';
 
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatOfferPriceTerms, formatPrice, type OfferPriceTerms } from '../../lib/format.js';
+import { htmlToPlainText, markdownToPlainText, plainTextExcerpt } from './plain-text.js';
 import { CourseCardRoot, DataValue, EmberCtaLink } from '../../theme.js';
 import { TileSection } from './StartPage.js';
 
@@ -59,7 +60,18 @@ const OfferCard = ({
           {heading}
         </Typography>
         {description ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid={`${testId}-description`}
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+            }}
+          >
             {description}
           </Typography>
         ) : null}
@@ -81,6 +93,7 @@ const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
     <OfferCard
       testId={`offer-product-${product.id}`}
       heading={product.title}
+      description={plainTextExcerpt(htmlToPlainText(product.description))}
       price={prices.map(formatTerms).join(' · ')}
       renderAction={(headingId) => (
         <EmberCtaLink
@@ -106,7 +119,7 @@ const SalesLinkOfferCard = ({ salesLink }: { salesLink: OfferSalesLink }) => {
     <OfferCard
       testId={`offer-sales-link-${salesLink.id}`}
       heading={salesLink.heading}
-      description={salesLink.description}
+      description={plainTextExcerpt(markdownToPlainText(salesLink.description))}
       price={formatPrice(salesLink.totalCents, salesLink.currency, language)}
       renderAction={(headingId) => (
         <EmberCtaLink

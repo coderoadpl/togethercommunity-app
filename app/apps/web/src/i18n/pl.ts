@@ -804,13 +804,23 @@ export const pl: Messages = {
       'Plik „{file}” ({facts}) zostanie dodany do produktu „{target}”. Każdy, kto ma dostęp do tego produktu, także obecni kupujący, będzie mógł go od razu pobrać.',
       { file, facts, target },
     ),
+    approveFileAddToNewProduct: ({ file, facts, target }) => format(
+      'Plik „{file}” ({facts}) zostanie dodany do produktu „{target}”. Każdy, kto otrzyma dostęp do tego produktu, będzie mógł pobrać plik, gdy produkt zostanie opublikowany albo sprzedany.',
+      { file, facts, target },
+    ),
+    approveFileCopiedFrom: ({ version, product }) => format('To kopia wersji {version} pliku z produktu „{product}”.', { version, product }),
+    approveFileCopiedFromGone: ({ version }) => format('To kopia wersji {version} pliku z produktu, którego już nie ma.', { version }),
+    approveFileNewVersion: ({ file, facts, version, target }) => format(
+      'Nowa wersja pliku „{file}” ({facts}) stanie się wersją {version} w produkcie „{target}”; kupujący dostaną nową wersję.',
+      { file, facts, version, target },
+    ),
     approveFileReplace: ({ file, facts, version, previous, target }) => format(
       'Plik „{file}” ({facts}) stanie się wersją {version} pliku „{previous}” w produkcie „{target}”; kupujący dostaną nową wersję.',
       { file, facts, version, previous, target },
     ),
     approveFileRemove: ({ file, version, target }) =>
       format('Kupujący produkt „{target}” nie będą już mogli pobrać pliku „{file}” w wersji {version}.', { file, version, target }),
-    fileRemoveOnlyFile: 'Jeśli to jedyny plik produktu, a produkt będzie opublikowany w chwili zatwierdzenia, pozostanie opublikowany bez pliku do pobrania.',
+    fileRemoveOnlyFile: 'To jedyny plik produktu. Jeśli produkt będzie opublikowany w chwili zatwierdzenia, pozostanie opublikowany bez pliku do pobrania.',
     approveFileMissing: 'Jeśli proponowanego pliku już nie ma, nic się nie zmieni.',
     approveGroupFilesMissing: ({ count }) => format(plural(
       count,

@@ -250,21 +250,61 @@ describe('the approval confirmation of a file proposal', () => {
     expect(screen.getByTestId('proposal-approve-files')).not.toHaveTextContent(t.fileRemoveOnlyFile);
   });
 
-  it('names the version a replacement becomes and that buyers get it', () => {
-    expect(summaryOf(samples['download.replace'])).toMatch(
-      /^“mug-guide\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 of “mug-guide\.pdf” in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
+  it('names the file of a new version once when the new version keeps its name', () => {
+    const summary = summaryOf(samples['download.replace']);
+    expect(summary).toMatch(
+      /^A new version of “mug-guide\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
     );
+    expect(summary.match(/mug-guide\.pdf/gu)).toHaveLength(1);
     expect(dialogText(<ApprovalFilesNote proposals={[samples['download.replace']]} group={false} />)).toBe(t.approveFileMissing);
   });
 
-  it('says buyers lose a removed file and always warns about a published product left without a file', () => {
+  it('names both files of a new version when the new version is named differently', () => {
+    const renamed = { ...mugGuideSecond, fileName: 'mug-guide-2027.pdf' };
+    const proposal = { ...samples['download.replace'], effect: { files: { before: [mugGuide], after: [{ ...mugGuide, latest: false }, renamed] } } };
+    expect(summaryOf(proposal)).toMatch(
+      /^“mug-guide-2027\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 of “mug-guide\.pdf” in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
+    );
+  });
+
+  it('says buyers lose a removed file and warns about a published product only when no file is left', () => {
     expect(summaryOf(samples['download.remove'])).toBe(
       `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1. ${t.fileNoVersionLeft} ${t.approveNothingElse}`,
     );
     expect(dialogText(<ApprovalFilesNote proposals={[samples['download.remove']]} group={false} />)).toBe(t.fileRemoveOnlyFile);
-    expect(t.fileRemoveOnlyFile).toBe('If this is the product’s only file and the product is published when you approve, it stays published with nothing to download.');
+    expect(t.fileRemoveOnlyFile).toBe('This is the product’s only file. If the product is published when you approve, it stays published with nothing to download.');
     const kept = { ...samples['download.remove'], effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } }, input: { productId: 'product-mug', assetId: mugGuideSecond.id } };
-    expect(summaryOf(kept)).toContain(`version 2. ${t.fileBecomesCurrent({ version: 1 })} ${t.approveNothingElse}`);
+    expect(summaryOf(kept)).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 2. ${t.fileBecomesCurrent({ version: 1 })} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[kept]} group={false} />)).toBe('');
+    const otherFile = { ...careSheet, id: 'file-care-sheet', lineageId: 'file-care-sheet' };
+    const otherLeft = { ...samples['download.remove'], effect: { files: { before: [mugGuide, otherFile], after: [otherFile] } } };
+    expect(summaryOf(otherLeft)).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1. ${t.fileNoVersionLeft} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[otherLeft]} group={false} />)).toBe('');
+  });
+
+  it('names the product a copied file comes from, isolated, and says plainly when that product is gone', () => {
+    const title = `Mug${OVERRIDE}tnirp`;
+    const copied = { ...samples['download.add'], proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: title, versionNumber: 2 } }] };
+    expect(summaryOf(copied)).toBe(normalized(
+      `“care-sheet.pdf” (PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}) will be added to “Mug”. `
+      + `Everyone who has access to this product, current buyers included, can download it at once. It is a copy of version 2 of a file from “${title}”. Nothing else changes.`,
+    ));
+    const { unmount } = render(<ApprovalSummary proposal={copied} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['care-sheet.pdf', 'Mug', title]);
+    const outside = summary.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+    unmount();
+
+    const version = { ...samples['download.replace'], proposedFiles: [{ id: mugGuideSecond.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: null, versionNumber: 3 } }] };
+    expect(summaryOf(version)).toMatch(/buyers get the new version\. It is a copy of version 3 of a file from a product that no longer exists\. Nothing else changes\.$/u);
+    expect(summaryOf(samples['download.add'])).not.toContain('copy');
   });
 
   it('isolates a file name with a direction override inside the confirmation sentence', () => {
@@ -294,7 +334,10 @@ describe('the approval confirmation of a file proposal', () => {
       { id: 'item-product', operation: 'product.create', input: { title: 'Field Guide (digital)' }, targetLabel: null, groupPosition: 1 },
     ]);
     const sentences = dialogText(<GroupFileSentences items={items} references={references} />);
-    expect(sentences).toContain('will be added to “Field Guide (digital)”.');
+    expect(sentences).toContain(
+      'will be added to “Field Guide (digital)”. Everyone who gets access to this product can download the file once the product is published or sold.',
+    );
+    expect(sentences).not.toContain('current buyers included');
     expect(sentences).toContain('Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1.');
     expect(sentences).not.toContain(t.approveNothingElse);
     expect(filesNoteOf(<ApprovalFilesNote proposals={items} group />)).toBe(`${t.fileRemoveOnlyFile} ${t.approveGroupFilesMissing({ count: 1 })}`);
@@ -302,9 +345,50 @@ describe('the approval confirmation of a file proposal', () => {
     expect(dialogText(<ApprovalFilesNote proposals={[samples['product.publish']]} group />)).toBe('');
   });
 
+  it('keeps the sentence about current buyers for a file a group adds to an existing product', () => {
+    const items = [{ ...samples['download.add'], id: 'item-add' }];
+    expect(dialogText(<GroupFileSentences items={items} references={groupReferences([])} />))
+      .toContain('will be added to “Mug”. Everyone who has access to this product, current buyers included, can download it at once.');
+  });
+
+  it('names the product a copied file comes from in a group confirmation, isolated', () => {
+    const title = `Mug${OVERRIDE}tnirp`;
+    const copy = { ...samples['download.add'], id: 'item-copy' };
+    const items = [{ ...copy, proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: title, versionNumber: 2 } }] }];
+    const { container, unmount } = render(<GroupFileSentences items={items} references={groupReferences([])} />);
+    const sentence = screen.getByTestId('proposal-approve-file-item-copy');
+    expect(normalized(sentence.textContent ?? '')).toMatch(new RegExp(`can download it at once\\. It is a copy of version 2 of a file from “Mug${OVERRIDE}tnirp”\\.$`, 'u'));
+    expect([...sentence.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['care-sheet.pdf', 'Mug', title]);
+    const outside = container.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+    unmount();
+
+    const gone = [{ ...copy, proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: null, versionNumber: 2 } }] }];
+    expect(dialogText(<GroupFileSentences items={gone} references={groupReferences([])} />)).toContain(t.approveFileCopiedFromGone({ version: 2 }));
+  });
+
+  it('warns about a product left without a file in a group only when no later item gives it a file again', () => {
+    const lastRemoved = { ...samples['download.remove'], id: 'item-remove' };
+    const kept = { ...samples['download.remove'], id: 'item-remove-kept', effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } } };
+    const addedAgain = { ...samples['download.add'], id: 'item-add-again', effect: { files: { before: [], after: [careSheet] } } };
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[lastRemoved, samples['product.publish']]} group />)).toBe(t.fileRemoveOnlyFile);
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[kept]} group />)).toBe('');
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[lastRemoved, addedAgain]} group />)).toBe(t.approveGroupFilesMissing({ count: 1 }));
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[addedAgain, lastRemoved]} group />)).toBe(`${t.fileRemoveOnlyFile} ${t.approveGroupFilesMissing({ count: 1 })}`);
+  });
+
   it('words the file sentences in Polish with the file and product quoted', () => {
     const polish = pl.changeProposals;
     expect(polish.approveFileAdd({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' })).toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\./u);
+    expect(polish.approveFileAddToNewProduct({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' }))
+      .toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\. .+ pobra\p{L} plik, gdy produkt zostanie opublikowany albo sprzedany\.$/u);
+    expect(polish.approveFileNewVersion({ file: 'a.pdf', facts: 'PDF, 1 MB', version: 2, target: 'Mug' }))
+      .toMatch(/^Nowa wersja pliku „a\.pdf” \(PDF, 1 MB\) stanie si\p{L} wersj\p{L} 2 w produkcie „Mug”; /u);
+    expect(polish.approveFileCopiedFrom({ version: 2, product: 'Mug' })).toBe('To kopia wersji 2 pliku z produktu „Mug”.');
+    expect(polish.approveFileCopiedFromGone({ version: 2 })).toMatch(/^To kopia wersji 2 pliku z produktu, kt/u);
+    expect(polish.fileRemoveOnlyFile).toMatch(/^To jedyny plik produktu\. Je\p{L}li produkt /u);
     expect(polish.approveGroupFilesMissing({ count: 1 })).not.toMatch(/\d/u);
     expect(polish.approveGroupFilesMissing({ count: 5 })).toContain('5 proponowanych plik');
   });

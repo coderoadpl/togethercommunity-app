@@ -310,6 +310,7 @@ export type FileChange =
 export interface FileChanges {
   changes: FileChange[];
   complete: boolean;
+  leavesNoFile: boolean;
 }
 
 const FILES_FIELD = 'files';
@@ -346,7 +347,7 @@ export const proposalFileChanges = (proposal: Pick<ChangeProposalOwnerView, 'eff
     const kept = afterIds.get(file.id);
     return kept === undefined || JSON.stringify(kept) === JSON.stringify(file) || (touched.has(file.lineageId) && differsOnlyInLatest(file, kept));
   });
-  return { changes, complete };
+  return { changes, complete, leavesNoFile: after.data.length === 0 };
 };
 
 export const proposedImagePaths = (proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]): string[] => {

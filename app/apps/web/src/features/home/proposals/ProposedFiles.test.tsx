@@ -7,7 +7,7 @@ import type { ChangeProposalOwnerView } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
 import { formatFileSize } from '../../../lib/format.js';
-import { fileAddProposal, fileCopyProposal, fileRemoveProposal, fileReplaceProposal } from '../../../test/change-proposal-fixtures.js';
+import { fileAddProposal, fileCopyProposal, fileLastRemoveProposal, fileRemoveProposal, fileReplaceProposal } from '../../../test/change-proposal-fixtures.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ProposalFieldRows } from './ProposalChanges.js';
@@ -116,15 +116,28 @@ describe('proposed file rows', () => {
     expect(screen.getByTestId('proposed-file')).toHaveTextContent(t.fileNewName({ name: 'workbook-2027.pdf' }));
   });
 
-  it('shows a removal with the version that becomes current and the only-file warning, without a download', () => {
+  it('shows a removal with the version that becomes current and no only-file warning while a file is left, without a download', () => {
     renderRows(fileRemoveProposal);
 
     const row = screen.getByTestId('proposed-file');
     expect(row).toHaveAttribute('data-change', 'removed');
     expect(normalized(row.querySelector('p')?.textContent ?? null)).toBe(`Removed: workbook.pdf version 2 · PDF · ${size(13_731_020)}`);
     expect(row).toHaveTextContent(t.fileBecomesCurrent({ version: 1 }));
-    expect(row).toHaveTextContent(t.fileRemoveOnlyFile);
+    expect(row).not.toHaveTextContent(t.fileRemoveOnlyFile);
+    expect(within(row).queryByTestId('proposed-file-only-file')).toBeNull();
     expect(within(row).queryByTestId('proposed-file-download')).toBeNull();
+  });
+
+  it('warns that a published product keeps nothing to download only when the removal leaves no file', () => {
+    renderRows(fileLastRemoveProposal);
+
+    const row = screen.getByTestId('proposed-file');
+    expect(normalized(row.textContent)).toBe(
+      `Removed: sketch-pack.zip version 1 · ZIP · ${size(48_210_775)}${t.fileNoVersionLeft}${t.fileRemoveOnlyFile}`,
+    );
+    expect(within(row).getByTestId('proposed-file-only-file')).toHaveTextContent(
+      'This is the product’s only file. If the product is published when you approve, it stays published with nothing to download.',
+    );
   });
 
   it('says which version stays current when an earlier version is removed, and when none is left', () => {
@@ -132,10 +145,18 @@ describe('proposed file rows', () => {
     const second = at(fileRemoveProposal.effect.files.before, 1);
     const { unmount } = renderRows({ ...fileRemoveProposal, effect: { files: { before: [first, second], after: [second] } } });
     expect(screen.getByTestId('proposed-file')).toHaveTextContent(t.fileStaysCurrent({ version: 2 }));
+    expect(screen.queryByTestId('proposed-file-only-file')).toBeNull();
     unmount();
+
+    const other = { ...first, id: 'file-answers', lineageId: 'file-answers', fileName: 'answers.pdf', latest: true };
+    const { unmount: unmountOther } = renderRows({ ...fileRemoveProposal, effect: { files: { before: [{ ...first, latest: true }, other], after: [other] } } });
+    expect(screen.getByTestId('proposed-file')).toHaveTextContent(t.fileNoVersionLeft);
+    expect(screen.queryByTestId('proposed-file-only-file')).toBeNull();
+    unmountOther();
 
     renderRows({ ...fileRemoveProposal, effect: { files: { before: [{ ...first, latest: true }], after: [] } } });
     expect(screen.getByTestId('proposed-file')).toHaveTextContent(t.fileNoVersionLeft);
+    expect(screen.getByTestId('proposed-file-only-file')).toHaveTextContent(t.fileRemoveOnlyFile);
   });
 
   it('says the file is no longer held instead of offering its download', () => {

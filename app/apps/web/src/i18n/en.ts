@@ -764,13 +764,23 @@ export const en: Messages = {
       '“{file}” ({facts}) will be added to “{target}”. Everyone who has access to this product, current buyers included, can download it at once.',
       { file, facts, target },
     ),
+    approveFileAddToNewProduct: ({ file, facts, target }) => format(
+      '“{file}” ({facts}) will be added to “{target}”. Everyone who gets access to this product can download the file once the product is published or sold.',
+      { file, facts, target },
+    ),
+    approveFileCopiedFrom: ({ version, product }) => format('It is a copy of version {version} of a file from “{product}”.', { version, product }),
+    approveFileCopiedFromGone: ({ version }) => format('It is a copy of version {version} of a file from a product that no longer exists.', { version }),
+    approveFileNewVersion: ({ file, facts, version, target }) => format(
+      'A new version of “{file}” ({facts}) becomes version {version} in “{target}”; buyers get the new version.',
+      { file, facts, version, target },
+    ),
     approveFileReplace: ({ file, facts, version, previous, target }) => format(
       '“{file}” ({facts}) becomes version {version} of “{previous}” in “{target}”; buyers get the new version.',
       { file, facts, version, previous, target },
     ),
     approveFileRemove: ({ file, version, target }) =>
       format('Buyers of “{target}” will no longer be able to download “{file}” version {version}.', { file, version, target }),
-    fileRemoveOnlyFile: 'If this is the product’s only file and the product is published when you approve, it stays published with nothing to download.',
+    fileRemoveOnlyFile: 'This is the product’s only file. If the product is published when you approve, it stays published with nothing to download.',
     approveFileMissing: 'If the proposed file no longer exists, nothing is changed.',
     approveGroupFilesMissing: ({ count }) => format(plural(
       count,

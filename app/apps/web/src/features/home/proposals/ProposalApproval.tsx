@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 import { Typography } from '@mui/material';
 
-import { changeProposalStagedFileIds, registeredChangeProposalOperation, type ChangeProposalOwnerView } from '#core/domain/index.js';
+import {
+  changeProposalStagedFileIds,
+  registeredChangeProposalOperation,
+  type ChangeProposalOwnerView,
+  type ChangeProposalProposedFile,
+} from '#core/domain/index.js';
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatFileSize } from '../../../lib/format.js';
@@ -24,8 +29,10 @@ import { fileTypeLabel, Isolated, operationTitle, priceTerms, Sentence, targetPr
 
 export type ApprovalFacts = Pick<
   ChangeProposalOwnerView,
-  'id' | 'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId'
+  'id' | 'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId' | 'proposedFiles'
 >;
+
+type CopySource = ChangeProposalProposedFile['copiedFrom'];
 
 type Translations = Messages['changeProposals'];
 
@@ -63,7 +70,30 @@ const closingSentence = (t: Translations, rows: readonly DisplayRow[], names: Co
   return names !== 'every-row' && names.length === 0 ? t.approveFieldCount({ count }) : t.approveOtherFields({ count });
 };
 
-const FileApprovalText = ({ change, target }: { change: FileChange; target: string }) => {
+const CopySentence = ({ source }: { source: CopySource }) => {
+  const t = useTranslations().changeProposals;
+  if (source === null) return null;
+  return (
+    <>
+      {' '}
+      {source.productTitle === null
+        ? t.approveFileCopiedFromGone({ version: source.versionNumber })
+        : <Isolated sentence={(product) => t.approveFileCopiedFrom({ version: source.versionNumber, product })} value={source.productTitle} />}
+    </>
+  );
+};
+
+const FileApprovalText = ({
+  change,
+  target,
+  copiedFrom,
+  newProduct,
+}: {
+  change: FileChange;
+  target: string;
+  copiedFrom: CopySource;
+  newProduct: boolean;
+}) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
   const facts = (file: ProposalFile, fingerprint: string): string => {
@@ -75,25 +105,45 @@ const FileApprovalText = ({ change, target }: { change: FileChange; target: stri
   const fingerprint = change.file.fingerprint === null ? null : <Fingerprint value={change.file.fingerprint} />;
   const product = <bdi>{target}</bdi>;
   switch (change.kind) {
-    case 'added':
+    case 'added': {
+      const add = newProduct ? t.approveFileAddToNewProduct : t.approveFileAdd;
       return (
-        <Sentence
-          text={(file, slot, name) => t.approveFileAdd({ file, facts: facts(change.file, slot), target: name })}
-          parts={[fileName, fingerprint, product]}
-        />
+        <>
+          <Sentence
+            text={(file, slot, name) => add({ file, facts: facts(change.file, slot), target: name })}
+            parts={[fileName, fingerprint, product]}
+          />
+          <CopySentence source={copiedFrom} />
+        </>
       );
+    }
     case 'replaced':
       return (
-        <Sentence
-          text={(file, slot, previous, name) => t.approveFileReplace({
-            file,
-            facts: facts(change.file, slot),
-            version: change.file.versionNumber,
-            previous,
-            target: name,
-          })}
-          parts={[fileName, fingerprint, <bdi>{change.previous.fileName}</bdi>, product]}
-        />
+        <>
+          {change.file.fileName === change.previous.fileName ? (
+            <Sentence
+              text={(file, slot, name) => t.approveFileNewVersion({
+                file,
+                facts: facts(change.file, slot),
+                version: change.file.versionNumber,
+                target: name,
+              })}
+              parts={[fileName, fingerprint, product]}
+            />
+          ) : (
+            <Sentence
+              text={(file, slot, previous, name) => t.approveFileReplace({
+                file,
+                facts: facts(change.file, slot),
+                version: change.file.versionNumber,
+                previous,
+                target: name,
+              })}
+              parts={[fileName, fingerprint, <bdi>{change.previous.fileName}</bdi>, product]}
+            />
+          )}
+          <CopySentence source={copiedFrom} />
+        </>
       );
     case 'removed':
       return (
@@ -110,6 +160,9 @@ const singleFileChange = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): Fi
   const [change] = files?.complete === true && files.changes.length === 1 ? files.changes : [];
   return change ?? null;
 };
+
+const copySourceOf = (proposal: Pick<ApprovalFacts, 'proposedFiles'>, change: FileChange): CopySource =>
+  proposal.proposedFiles?.find((entry) => entry.id === change.file.id)?.copiedFrom ?? null;
 
 const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[]): ApprovalSentence => {
   const t = useTranslations().changeProposals;
@@ -175,25 +228,37 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
     case 'download.replace':
     case 'download.remove': {
       const change = singleFileChange(proposal);
-      return change === null ? fallback : { text: <FileApprovalText change={change} target={name} />, names: ['files'] };
+      return change === null
+        ? fallback
+        : { text: <FileApprovalText change={change} target={name} copiedFrom={copySourceOf(proposal, change)} newProduct={false} />, names: ['files'] };
     }
   }
 };
 
 const FILE_OPERATIONS: ReadonlySet<string> = new Set(['download.add', 'download.replace', 'download.remove']);
 
-const removesFile = (proposal: Pick<ChangeProposalOwnerView, 'operation'>): boolean => proposal.operation === 'download.remove';
+type FileNoteFacts = Pick<ChangeProposalOwnerView, 'operation' | 'input' | 'effect' | 'target'>;
+
+const removesLastFile = (proposal: FileNoteFacts): boolean =>
+  proposal.operation === 'download.remove' && proposalFileChanges(proposal)?.leavesNoFile === true;
+
+const changesFilesOf = (proposal: FileNoteFacts, product: string | null): boolean =>
+  FILE_OPERATIONS.has(proposal.operation) && proposal.target.id === product;
+
+const leavesProductWithoutFile = (proposals: readonly FileNoteFacts[]): boolean =>
+  proposals.some((proposal, index) => removesLastFile(proposal)
+    && !proposals.slice(index + 1).some((later) => changesFilesOf(later, proposal.target.id)));
 
 export const ApprovalFilesNote = ({
   proposals,
   group,
 }: {
-  proposals: readonly Pick<ChangeProposalOwnerView, 'operation' | 'input'>[];
+  proposals: readonly FileNoteFacts[];
   group: boolean;
 }) => {
   const t = useTranslations().changeProposals;
   const attached = changeProposalStagedFileIds(proposals).length;
-  const removal = proposals.some(removesFile);
+  const removal = leavesProductWithoutFile(proposals);
   if (attached === 0 && !removal) return null;
   const missing = attached === 0 ? null : group ? t.approveGroupFilesMissing({ count: attached }) : t.approveFileMissing;
   return (
@@ -208,10 +273,18 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
   const files = items.flatMap((item) => {
     if (!FILE_OPERATIONS.has(item.operation)) return [];
     const change = singleFileChange(item);
-    const target = targetName(proposalTarget(item, references));
+    const shownTarget = proposalTarget(item, references);
+    const target = targetName(shownTarget);
     return [{ item, text: change === null || target === null
       ? t.approveFallback({ operation: operationTitle(t, item.operation) })
-      : <FileApprovalText change={change} target={target} /> }];
+      : (
+        <FileApprovalText
+          change={change}
+          target={target}
+          copiedFrom={copySourceOf(item, change)}
+          newProduct={shownTarget.kind === 'reference'}
+        />
+      ) }];
   });
   return (
     <>

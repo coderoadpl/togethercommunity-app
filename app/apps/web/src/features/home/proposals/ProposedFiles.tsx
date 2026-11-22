@@ -111,10 +111,12 @@ const FileChangeText = ({
   change,
   proposedFiles,
   pendingProposalId,
+  leavesNoFile,
 }: {
   change: FileChange;
   proposedFiles: readonly ChangeProposalProposedFile[];
   pendingProposalId: string | null;
+  leavesNoFile: boolean;
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
@@ -157,7 +159,7 @@ const FileChangeText = ({
             {`${SEPARATOR}${fileTypeLabel(change.file.contentType)}${SEPARATOR}${size(change.file)}`}
           </WrapAnywhereText>
           <FinePrint component="p">{currentVersionText(t, change)}</FinePrint>
-          <FinePrint component="p">{t.fileRemoveOnlyFile}</FinePrint>
+          {leavesNoFile ? <FinePrint component="p" data-testid="proposed-file-only-file">{t.fileRemoveOnlyFile}</FinePrint> : null}
         </Stack>
       );
   }
@@ -188,7 +190,13 @@ export const FileChangeRows = ({
         value: (
           <Stack useFlexGap spacing="0.75rem">
             {files.changes.map((change) => (
-              <FileChangeText key={`${change.kind}:${change.file.id}`} change={change} proposedFiles={proposedFiles} pendingProposalId={pendingProposalId} />
+              <FileChangeText
+                key={`${change.kind}:${change.file.id}`}
+                change={change}
+                proposedFiles={proposedFiles}
+                pendingProposalId={pendingProposalId}
+                leavesNoFile={files.leavesNoFile}
+              />
             ))}
           </Stack>
         ),

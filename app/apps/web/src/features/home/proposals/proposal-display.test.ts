@@ -123,23 +123,23 @@ describe('proposal display', () => {
       ]);
   });
 
-  it('derives an added file, a new version and a removal from the file lists by id', () => {
+  it('derives an added file, a new version and a removal from the file lists by id, and whether no file is left', () => {
     const file = (id: string, lineageId: string, versionNumber: number, latest: boolean) => ({
       id, lineageId, versionNumber, latest, fileName: `${id}.pdf`, contentType: 'application/pdf', sizeBytes: 1024, fingerprint: null, versionNote: null,
     });
     const first = file('file-1', 'file-1', 1, true);
     const added = file('staged-1', 'staged-1', 1, true);
     expect(proposalFileChanges({ effect: { files: { before: [first], after: [first, added] } } }))
-      .toEqual({ changes: [{ kind: 'added', file: added }], complete: true });
+      .toEqual({ changes: [{ kind: 'added', file: added }], complete: true, leavesNoFile: false });
 
     const second = file('staged-2', 'file-1', 2, true);
     expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, latest: false }, second] } } }))
-      .toEqual({ changes: [{ kind: 'replaced', file: second, previous: first }], complete: true });
+      .toEqual({ changes: [{ kind: 'replaced', file: second, previous: first }], complete: true, leavesNoFile: false });
 
     expect(proposalFileChanges({ effect: { files: { before: [{ ...first, latest: false }, second], after: [first] } } }))
-      .toEqual({ changes: [{ kind: 'removed', file: second, current: first }], complete: true });
+      .toEqual({ changes: [{ kind: 'removed', file: second, current: first }], complete: true, leavesNoFile: false });
     expect(proposalFileChanges({ effect: { files: { before: [first], after: [] } } }))
-      .toEqual({ changes: [{ kind: 'removed', file: first, current: null }], complete: true });
+      .toEqual({ changes: [{ kind: 'removed', file: first, current: null }], complete: true, leavesNoFile: true });
   });
 
   it('marks a file change incomplete when another file changed too, and reads nothing from a list it cannot parse', () => {
@@ -150,6 +150,6 @@ describe('proposal display', () => {
     expect(proposalFileChanges({ effect: { files: { before: [first], after: [first] } } })).toBeNull();
     expect(proposalFileChanges({ effect: { files: { before: 'none', after: [first] } } })).toBeNull();
     expect(proposalFileChanges({ effect: { title: { before: 'a', after: 'b' } } })).toBeNull();
-    expect(proposalFileChanges({ effect: { files: { before: null, after: [added] } } })).toEqual({ changes: [{ kind: 'added', file: added }], complete: true });
+    expect(proposalFileChanges({ effect: { files: { before: null, after: [added] } } })).toEqual({ changes: [{ kind: 'added', file: added }], complete: true, leavesNoFile: false });
   });
 });

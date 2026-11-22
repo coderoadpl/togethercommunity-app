@@ -28,6 +28,7 @@ import {
   fileAddProposal,
   fileChangeProposalGroup,
   fileHistoryDetail,
+  fileLastRemoveProposal,
   fileRemoveProposal,
   fileUnavailableHistoryProposal,
   pendingChangeProposals,
@@ -836,7 +837,7 @@ describe('ProposalsPanel', () => {
   });
 
   it('shows a file proposal with its file row and lets the owner approve it with a confirmation built from the same data', async () => {
-    usePending([fileAddProposal, fileRemoveProposal]);
+    usePending([fileAddProposal, fileRemoveProposal, fileLastRemoveProposal]);
 
     renderPanel();
 
@@ -856,10 +857,19 @@ describe('ProposalsPanel', () => {
 
     const removal = screen.getByTestId(`proposal-card-${fileRemoveProposal.id}`);
     expect(within(removal).getByText(t.operation['download.remove'])).toBeInTheDocument();
-    expect(within(removal).getByTestId('proposed-file')).toHaveTextContent(t.fileRemoveOnlyFile);
+    expect(within(removal).getByTestId('proposed-file')).toHaveTextContent(t.fileBecomesCurrent({ version: 1 }));
+    expect(within(removal).getByTestId('proposed-file')).not.toHaveTextContent(t.fileRemoveOnlyFile);
     await userEvent.click(within(removal).getByTestId('proposal-approve'));
     const removalDialog = await screen.findByTestId('proposal-approve-dialog');
-    expect(within(removalDialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.fileRemoveOnlyFile);
+    expect(within(removalDialog).getByTestId('proposal-approve-summary')).toHaveTextContent(t.fileBecomesCurrent({ version: 1 }));
+    expect(within(removalDialog).queryByTestId('proposal-approve-files')).toBeNull();
+    await userEvent.click(within(removalDialog).getByRole('button', { name: en.common.cancel }));
+
+    const lastRemoval = screen.getByTestId(`proposal-card-${fileLastRemoveProposal.id}`);
+    expect(within(lastRemoval).getByTestId('proposed-file')).toHaveTextContent(t.fileRemoveOnlyFile);
+    await userEvent.click(within(lastRemoval).getByTestId('proposal-approve'));
+    const lastRemovalDialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(within(lastRemovalDialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.fileRemoveOnlyFile);
   });
 
   it('shows the file row in its group step and approves a group with a file item like any other group', async () => {
@@ -885,7 +895,7 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(group).getByRole('button', { name: t.approveGroup({ count: 4 }) }));
     const dialog = await screen.findByTestId('proposal-approve-dialog');
     expect(within(dialog).getByTestId('proposal-approve-file-proposal-field-guide-digital-file'))
-      .toHaveTextContent('will be added to “Field Guide (digital)”. Everyone who has access to this product, current buyers included, can download it at once.');
+      .toHaveTextContent('will be added to “Field Guide (digital)”. Everyone who gets access to this product can download the file once the product is published or sold.');
     expect(within(dialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.approveGroupFilesMissing({ count: 1 }));
     await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
 

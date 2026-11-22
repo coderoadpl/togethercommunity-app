@@ -715,6 +715,10 @@ export interface Messages {
     approveImagesPublic: (params: { count: number }) => string;
     approveGroupImagesPublic: (params: { count: number }) => string;
     approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
+    approveFileAddToNewProduct: (params: { file: string; facts: string; target: string }) => string;
+    approveFileCopiedFrom: (params: { version: number; product: string }) => string;
+    approveFileCopiedFromGone: (params: { version: number }) => string;
+    approveFileNewVersion: (params: { file: string; facts: string; version: number; target: string }) => string;
     approveFileReplace: (params: { file: string; facts: string; version: number; previous: string; target: string }) => string;
     approveFileRemove: (params: { file: string; version: number; target: string }) => string;
     fileRemoveOnlyFile: string;

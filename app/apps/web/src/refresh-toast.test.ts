@@ -44,6 +44,27 @@ describe('query retry policy', () => {
   });
 });
 
+describe('error reporting policy', () => {
+  it.each(['rate_limited', 'not_found'] as const)('does not report a parcel locker lookup the server refused as %s', async (code) => {
+    await expect(queryClient.fetchQuery({
+      queryKey: ['parcel-locker', 'WAW01M'],
+      queryFn: () => failingQuery(new ApiError({ code, message: `${code} refusal` })),
+      retry: false,
+    })).rejects.toThrow(`${code} refusal`);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('still reports an unexpected parcel locker lookup failure and the same refusal on another query', async () => {
+    const unexpected = new ApiError({ code: 'internal', message: 'Lookup broke' });
+    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: () => failingQuery(unexpected), retry: false }))
+      .rejects.toThrow('Lookup broke');
+    const elsewhere = new ApiError({ code: 'not_found', message: 'Missing elsewhere' });
+    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: () => failingQuery(elsewhere), retry: false }))
+      .rejects.toThrow('Missing elsewhere');
+    expect(reportError.mock.calls).toEqual([[unexpected], [elsewhere]]);
+  });
+});
+
 describe('refresh error policy', () => {
   it('shows one toast when a stale-data refresh fails', async () => {
     const listener = vi.fn();

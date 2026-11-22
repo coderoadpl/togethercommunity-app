@@ -19,13 +19,22 @@ const isExpectedAnonymousMe = (error: unknown, queryKey: readonly unknown[]): bo
   queryKey.length === 1 &&
   queryKey[0] === 'me';
 
+const EXPECTED_PARCEL_LOCKER_REFUSALS = new Set(['rate_limited', 'not_found']);
+
+const isExpectedParcelLockerRefusal = (error: unknown, queryKey: readonly unknown[]): boolean =>
+  error instanceof ApiError &&
+  EXPECTED_PARCEL_LOCKER_REFUSALS.has(error.appError.code) &&
+  queryKey[0] === 'parcel-locker';
+
 const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): boolean =>
-  isExpectedMissingPublicOffer(error, queryKey) || isExpectedAnonymousMe(error, queryKey);
+  isExpectedMissingPublicOffer(error, queryKey) || isExpectedAnonymousMe(error, queryKey) ||
+  isExpectedParcelLockerRefusal(error, queryKey);
 
 /**
  * QueryCache is the single global error surface (one notice per failing query,
  * not per observer). Every failure is reported to Sentry (with the active trace
- * id) when configured, except for expected anonymous/public misses. With data
+ * id) when configured, except for expected anonymous/public misses and parcel
+ * locker lookups the server refused by rate limit or workspace. With data
  * already on screen we keep it and toast the refresh failure; with no data the
  * query's local render or the root error boundary handles it.
  */

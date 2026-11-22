@@ -1151,6 +1151,14 @@ export interface Messages {
     reconciliationHint: string;
     reconciliationEmpty: string;
     reconciliationAge: (params: { date: string }) => string;
+    rejectedPaymentsHeading: string;
+    rejectedPaymentsHint: string;
+    rejectedPaymentsReason: string;
+    rejectedPaymentsFirstSeen: string;
+    rejectedPaymentsLastSeen: string;
+    rejectedPaymentsAttempts: string;
+    rejectedPaymentsEvent: string;
+    rejectedPaymentsSession: string;
     orderTitle: (params: { id: string }) => string;
     allOrders: string;
     provider: string;

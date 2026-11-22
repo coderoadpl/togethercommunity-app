@@ -43,6 +43,9 @@ export const server = setupServer(
       production: { organizationId: null, token: null, configured: false },
     } }),
   ),
+  http.get('*/api/orders/rejected-payments', () =>
+    HttpResponse.json({ ok: true, data: { rejections: [] } }),
+  ),
   http.get('*/api/orders/:orderId/shipx', () =>
     HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),

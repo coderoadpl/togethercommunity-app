@@ -1,5 +1,6 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { useState } from 'react';
 import {
   Alert,
@@ -165,6 +166,7 @@ export const SalesPanel = () => {
           ))}
         </Alert>
       ) : null}
+      {canWriteInvoice ? <RejectedPaymentsSection /> : null}
       <ConsumerSalesCard />
       <ListSection
         data-testid="sales-list"

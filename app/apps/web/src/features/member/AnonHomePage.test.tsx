@@ -436,8 +436,32 @@ describe('AnonHomePage', () => {
 
       await renderPage('/#offer');
 
-      await screen.findByTestId('anon-offer');
+      const section = await screen.findByTestId('anon-offer');
       await waitFor(() => expect(scrolled).toEqual(['anon-offer']));
+      expect(section).toHaveAttribute('tabindex', '-1');
+      expect(section).toHaveFocus();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('scrolls to a locked-space card and focuses it when the page opens on its anchor', async () => {
+    const scrolled: (string | null)[] = [];
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function record(this: Element) {
+      scrolled.push(this.getAttribute('data-testid'));
+    });
+    try {
+      server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+
+      await renderPage('/#locked-s9');
+
+      const card = await screen.findByTestId('locked-space-card-s9');
+      expect(card).toHaveAttribute('id', 'locked-s9');
+      expect(getComputedStyle(card).scrollMarginTop).toBe(SHELL_ANCHOR_SCROLL_MARGIN);
+      await waitFor(() => expect(scrolled).toEqual(['locked-space-card-s9']));
+      expect(card).toHaveAttribute('tabindex', '-1');
+      expect(card).toHaveFocus();
+      expect(screen.getByTestId('anon-offer')).toHaveAttribute('id', 'offer');
     } finally {
       spy.mockRestore();
     }

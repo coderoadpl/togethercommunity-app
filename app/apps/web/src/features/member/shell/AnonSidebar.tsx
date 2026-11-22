@@ -2,14 +2,14 @@ import { Box, List, ListItemIcon, ListItemText, Tooltip, Typography } from '@mui
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 
-import { communitySpacePath, PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+import { communitySpacePath } from '#core/contract/index.js';
 
 import { actions } from '../../../api.js';
 import { TenantLogo } from '../../../branding.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { LockClosed } from '../tree-icons.js';
 import { LockedSpaceTooltipTitle } from '../SpaceCards.js';
-import { activeNavEntry, anonHomePath, type MemberNavEntry } from './member-nav.js';
+import { activeNavEntry, anonHomePath, lockedSpaceAnchor, type MemberNavEntry } from './member-nav.js';
 import { BrandLink, NavRow, type ShellLinkProps, type ShellVariant } from './shell-chrome.js';
 import { CourseOverviewIcon, SpaceIcon, StartIcon } from './shell-icons.js';
 import { LinkRow, SidebarError, SidebarLoading } from './sidebar-rows.js';
@@ -51,7 +51,7 @@ const AnonNavigationList = ({ active }: { active: MemberNavEntry | null }) => {
             {lockedSpaces.map((space) => {
               const linkProps: ShellLinkProps & { disabled?: boolean } = space.productIds[0] === undefined
                 ? { component: 'div', disabled: true }
-                : { component: Link, to: anonHomePath(), hash: PUBLIC_OFFER_ANCHOR };
+                : { component: Link, to: anonHomePath(), hash: lockedSpaceAnchor(space.id) };
               return (
                 <Tooltip key={space.id} title={<LockedSpaceTooltipTitle space={space} />}>
                   <NavRow {...linkProps} data-testid={`anon-sidebar-locked-${space.id}`}>

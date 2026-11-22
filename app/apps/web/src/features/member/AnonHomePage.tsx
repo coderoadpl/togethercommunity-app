@@ -14,6 +14,7 @@ import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 import { PublicFeedList } from './PublicFeed.js';
+import { isPublicHomeAnchor, lockedSpaceAnchor } from './shell/member-nav.js';
 import { SectionHeadingLink } from './shell/shell-chrome.js';
 import { LockedSpaceCard, SpaceCard } from './SpaceCards.js';
 import { TileSection } from './StartPage.js';
@@ -77,18 +78,21 @@ const EmptyWorkspaceActions = ({ supportUrl, signedIn }: { supportUrl: string | 
   );
 };
 
-const useScrollToOfferAnchor = (ready: boolean) => {
+const useScrollToHomeAnchor = (ready: boolean) => {
   const hash = useLocation({ select: (location) => location.hash });
   const settled = useIsFetching() === 0;
   const scrolledFor = useRef<string | null>(null);
   useEffect(() => {
-    if (hash !== PUBLIC_OFFER_ANCHOR) {
+    if (!isPublicHomeAnchor(hash)) {
       scrolledFor.current = null;
       return;
     }
     if (!ready || !settled || scrolledFor.current === hash) return;
     scrolledFor.current = hash;
-    document.getElementById(PUBLIC_OFFER_ANCHOR)?.scrollIntoView({ block: 'start' });
+    const target = document.getElementById(hash);
+    if (target === null) return;
+    target.scrollIntoView({ block: 'start' });
+    target.focus({ preventScroll: true });
   }, [ready, settled, hash]);
 };
 
@@ -107,7 +111,7 @@ export const AnonHomePage = ({ visitorEmail = null }: { visitorEmail?: string | 
     return lead === undefined ? null : formatTerms(lead);
   };
   const navigation = useQuery(actions.publicNavigation);
-  useScrollToOfferAnchor(navigation.isSuccess);
+  useScrollToHomeAnchor(navigation.isSuccess);
 
   if (navigation.isPending) {
     return (
@@ -228,7 +232,12 @@ export const AnonHomePage = ({ visitorEmail = null }: { visitorEmail?: string | 
         {lockedSpaces.length === 0 ? null : (
           <TileSection title={t.start.lockedSection} id={anchorFor('locked')} testId="anon-locked">
             {lockedSpaces.map((space) => (
-              <LockedSpaceCard key={space.id} space={space} price={lockedPrice(space.productIds)} />
+              <LockedSpaceCard
+                key={space.id}
+                space={space}
+                price={lockedPrice(space.productIds)}
+                anchorId={lockedSpaceAnchor(space.id)}
+              />
             ))}
           </TileSection>
         )}

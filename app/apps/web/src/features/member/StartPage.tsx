@@ -14,7 +14,7 @@ import {
   CourseCardRoot,
   ProgressPercentText,
   RailProgressBar,
-  SHELL_ANCHOR_SCROLL_MARGIN,
+  SHELL_ANCHOR_TARGET_STYLE,
 } from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
@@ -125,8 +125,9 @@ export const TileSection = ({
   <Box
     component="section"
     id={id}
+    tabIndex={id === undefined ? undefined : -1}
     data-testid={testId}
-    sx={id === undefined ? undefined : { scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN }}
+    sx={id === undefined ? undefined : SHELL_ANCHOR_TARGET_STYLE}
   >
     <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
       {to === undefined ? title : (

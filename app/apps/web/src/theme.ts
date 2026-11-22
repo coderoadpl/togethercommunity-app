@@ -23,6 +23,10 @@ export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Conso
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
 export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
 export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
+export const SHELL_ANCHOR_TARGET_STYLE = {
+  scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
+  '&:focus': { outline: 'none' },
+} as const;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";

@@ -1352,7 +1352,7 @@ describe('MemberShell', () => {
       '/my/courses/c1',
     );
     const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
-    expect(locked).toHaveAttribute('href', '/#offer');
+    expect(locked).toHaveAttribute('href', '/#locked-s9');
     expect(within(screen.getByTestId('anon-sidebar-spaces')).getByTestId('anon-sidebar-locked-s9')).toBe(locked);
     expect(within(screen.getByTestId('anon-sidebar-courses')).getByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
     expect(within(nav).getByText(en.shell.spacesSection)).toBeInTheDocument();

@@ -411,7 +411,7 @@ export interface Messages {
   auth: {
     signInNoticeLabel: string;
     invalidCredentials: string;
-    signInRateLimited: string;
+    signInRateLimitedRetryIn: (params: { seconds: number }) => string;
     signInRateLimitedTitle: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;

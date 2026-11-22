@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError, retryAfterSecondsOf } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
@@ -127,5 +127,15 @@ describe('localizeError', () => {
       if (hinted.includes(code)) continue;
       expect(localizeErrorCodeForPanel(code, pl)).toBe(localizeErrorCode(code, pl));
     }
+  });
+});
+
+describe('retryAfterSecondsOf', () => {
+  it('reads only a positive whole retry delay from the error details', () => {
+    const withDelay = (retryAfterSeconds: unknown) => ({ appError: { code: 'rate_limited', details: { retryAfterSeconds } } });
+    expect(retryAfterSecondsOf(withDelay(42))).toBe(42);
+    expect([0, -3, 1.5, '42', null].map((value) => retryAfterSecondsOf(withDelay(value)))).toEqual([null, null, null, null, null]);
+    expect(retryAfterSecondsOf({ appError: { code: 'rate_limited' } })).toBeNull();
+    expect(retryAfterSecondsOf(null)).toBeNull();
   });
 });

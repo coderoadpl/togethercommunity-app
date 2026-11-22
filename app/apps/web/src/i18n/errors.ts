@@ -41,6 +41,11 @@ const stringDetailOf = (error: unknown, key: string): string | null => {
 
 export const providerCodeOf = (error: unknown): string | null => stringDetailOf(error, 'providerCode');
 
+export const retryAfterSecondsOf = (error: unknown): number | null => {
+  const value = errorDetailOf(error, 'retryAfterSeconds');
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+};
+
 const isAdoptionRefusal = (value: string): value is StripeAdoptionRefusal =>
   STRIPE_ADOPTION_REFUSALS.some((candidate) => candidate === value);
 

@@ -9,6 +9,7 @@ export {
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
+  retryAfterSecondsOf,
   serverMessageOf,
 } from './errors.js';
 export { localizeShipxError } from './shipx-errors.js';

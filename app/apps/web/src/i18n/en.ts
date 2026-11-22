@@ -400,7 +400,7 @@ export const en: Messages = {
   auth: {
     signInNoticeLabel: 'Sign-in notice',
     invalidCredentials: 'Invalid email or password.',
-    signInRateLimited: 'Try again in a moment.',
+    signInRateLimitedRetryIn: ({ seconds }) => format('Too many attempts. Try again in {seconds} s.', { seconds }),
     signInRateLimitedTitle: 'Please wait a moment',
     signInTitle: 'Sign in',
     signInToTenant: ({ tenant }) => format('Sign in to {tenant}', { tenant }),

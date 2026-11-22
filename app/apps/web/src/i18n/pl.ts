@@ -407,7 +407,7 @@ export const pl: Messages = {
   auth: {
     signInNoticeLabel: 'Informacja o logowaniu',
     invalidCredentials: 'Nieprawidłowy e-mail lub hasło.',
-    signInRateLimited: 'Spróbuj ponownie za chwilę.',
+    signInRateLimitedRetryIn: ({ seconds }) => format('Zbyt wiele prób. Spróbuj ponownie za {seconds} s.', { seconds }),
     signInRateLimitedTitle: 'Poczekaj chwilę',
     signInTitle: 'Zaloguj się',
     signInToTenant: ({ tenant }) => format('Zaloguj się do {tenant}', { tenant }),

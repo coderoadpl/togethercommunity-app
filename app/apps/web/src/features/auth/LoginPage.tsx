@@ -19,7 +19,14 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizeError, providerCodeOf, useLanguage, useTranslations } from '../../i18n/index.js';
+import {
+  errorCodeOf,
+  localizeError,
+  providerCodeOf,
+  retryAfterSecondsOf,
+  useLanguage,
+  useTranslations,
+} from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
@@ -90,6 +97,34 @@ const ChevronIcon = () => (
 const isInvalidTwoFactorCode = (error: unknown): boolean => {
   const providerCode = providerCodeOf(error);
   return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
+};
+
+const useRetryCountdown = (error: unknown): number => {
+  const [countdown, setCountdown] = useState<{ error: unknown; seconds: number }>({ error: null, seconds: 0 });
+  if (countdown.error !== error) setCountdown({ error, seconds: retryAfterSecondsOf(error) ?? 0 });
+  const { seconds } = countdown;
+  useEffect(() => {
+    if (seconds === 0) return undefined;
+    const timer = window.setTimeout(
+      () => setCountdown((current) => ({ ...current, seconds: Math.max(0, current.seconds - 1) })),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [seconds]);
+  return countdown.error === error ? seconds : retryAfterSecondsOf(error) ?? 0;
+};
+
+// Assistive technology hears the delay once; only the visible copy ticks.
+const RateLimitMessage = ({ error, remaining }: { error: unknown; remaining: number }) => {
+  const t = useTranslations();
+  const initial = retryAfterSecondsOf(error);
+  if (initial === null || remaining === 0) return <>{t.errors.messageRateLimited}</>;
+  return (
+    <>
+      <span aria-hidden data-testid="rate-limit-countdown">{t.auth.signInRateLimitedRetryIn({ seconds: remaining })}</span>
+      <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ seconds: initial })}</VisuallyHidden>
+    </>
+  );
 };
 
 const initialsOf = (email: string): string =>
@@ -183,6 +218,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const navigate = useNavigate();
 
   const authConfig = useQuery(actions.authConfig);
+  const resolveRetryIn = useRetryCountdown(resolveFailure);
   const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
   const publicOffer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
   const platformSurface = usesPlatformAuthSurface(hostname);
@@ -290,6 +326,13 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       setRequestedMagicEmail(variables.email);
     },
   });
+
+  const signInRetryIn = useRetryCountdown(signIn.error);
+  const magicLinkRetryIn = useRetryCountdown(requestMagicLink.error);
+  const magicLinkErrorMessage = errorCodeOf(requestMagicLink.error) === 'rate_limited'
+    ? <RateLimitMessage error={requestMagicLink.error} remaining={magicLinkRetryIn} />
+    : localizeError(requestMagicLink.error, t);
+  const resendWait = Math.max(resendCooldown, magicLinkRetryIn);
 
   const devMagicLink = useQuery({
     ...actions.devMagicLink(requestedMagicEmail),
@@ -423,7 +466,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const signInErrorCode = errorCodeOf(signIn.error);
   const signInErrorMessage = signInErrorCode === 'rate_limited'
-    ? t.auth.signInRateLimited
+    ? <RateLimitMessage error={signIn.error} remaining={signInRetryIn} />
     : signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials'
       ? t.auth.invalidCredentials
       : localizeError(signIn.error, t);
@@ -510,15 +553,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           variant="outlined"
           fullWidth
           data-testid="resend-magic-link"
-          disabled={resendCooldown > 0 || requestMagicLink.isPending}
+          disabled={resendWait > 0 || requestMagicLink.isPending}
           onClick={resendMagicLink}
         >
-          {resendCooldown > 0
-            ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
+          {resendWait > 0
+            ? t.auth.magicLinkResendCooldown({ seconds: resendWait })
             : t.auth.magicLinkResend}
         </Button>
         {requestMagicLink.isError ? (
-          <Alert severity="error">{errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}</Alert>
+          <Alert severity="error" data-testid="magic-link-error">{magicLinkErrorMessage}</Alert>
         ) : null}
         {devMagicLink.isLoading ? (
           <FinePrint variant="caption" component="p">
@@ -626,14 +669,14 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             {t.auth.signInRateLimitedTitle}
           </AuthTitle>
           <AuthLead component="p" data-testid="sign-in-rate-limited-message">
-            {t.auth.signInRateLimited}
+            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} />
           </AuthLead>
         </Box>
         <Button
           variant="contained"
           fullWidth
           data-testid="sign-in-methods-retry"
-          disabled={resolveSignInMethods.isPending}
+          disabled={resolveSignInMethods.isPending || resolveRetryIn > 0}
           onClick={() => resolveSignInMethods.mutate({ email })}
         >
           {t.common.retry}
@@ -758,8 +801,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         </Alert>
       ) : null}
       {requestMagicLink.isError ? (
-        <Alert severity="error" role="alert" sx={{ mb: '1rem' }}>
-          {errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}
+        <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="magic-link-error">
+          {magicLinkErrorMessage}
         </Alert>
       ) : null}
       <AuthMethodList>
@@ -769,7 +812,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           title={t.auth.methodMagicLinkTitle}
           body={requestMagicLink.isPending ? t.auth.magicLinkPending : t.auth.methodMagicLinkBody}
           testId="send-magic-link"
-          disabled={requestMagicLink.isPending}
+          disabled={requestMagicLink.isPending || magicLinkRetryIn > 0}
           onClick={sendMagicLink}
         />
         <MethodCard
@@ -813,7 +856,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                         type="submit"
                         variant="contained"
                         fullWidth
-                        disabled={signIn.isPending}
+                        disabled={signIn.isPending || signInRetryIn > 0}
                         data-testid="signin-submit"
                       >
                         {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}

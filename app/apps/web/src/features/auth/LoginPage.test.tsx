@@ -824,9 +824,24 @@ describe('LoginPage', () => {
     rateLimitSignInMethods(42);
     await continueWithEmail();
 
-    expect(await screen.findByTestId('sign-in-rate-limited')).toHaveTextContent(
-      en.auth.signInRateLimited,
+    expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
+      en.auth.signInRateLimitedRetryIn({ seconds: 42 }),
     );
+    expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+  });
+
+  it('counts the lookup delay down and enables the retry when it ends', async () => {
+    await renderLoginPage();
+    rateLimitSignInMethods(1);
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent(
+      en.auth.signInRateLimitedRetryIn({ seconds: 1 }),
+    );
+    expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+
+    await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.errors.messageRateLimited);
   });
 
   it('states a rate limit without a delay when the resolver sends none', async () => {
@@ -834,9 +849,48 @@ describe('LoginPage', () => {
     rateLimitSignInMethods();
     await continueWithEmail();
 
-    expect(await screen.findByTestId('sign-in-rate-limited')).toHaveTextContent(
-      en.auth.signInRateLimited,
+    expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
+      en.errors.messageRateLimited,
     );
+    expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled();
+  });
+
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('holds the password submit until the rate-limit delay ends in $language', async ({ language, t }) => {
+    server.use(http.post('*', () => HttpResponse.json(
+      { ok: false, error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 1 } } },
+      { status: 429 },
+    )));
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'creator@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
+    await userEvent.click(await screen.findByTestId('use-password'));
+    await userEvent.type(await screen.findByTestId('login-password'), 'some-password');
+    await userEvent.click(screen.getByTestId('signin-submit'));
+
+    expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(screen.getByTestId('signin-submit')).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId('signin-submit')).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByTestId('signin-error')).toHaveTextContent(t.errors.messageRateLimited);
+  });
+
+  it('holds the sign-in link card until the rate-limit delay ends', async () => {
+    server.use(http.post('*', ({ request }) => new URL(request.url).pathname.endsWith('/sign-in/magic-link')
+      ? HttpResponse.json(
+        { ok: false, error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 1 } } },
+        { status: 429 },
+      )
+      : undefined));
+    await renderLoginPage(false, '/login', undefined, ['magic-link']);
+    await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+
+    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(screen.getByTestId('send-magic-link')).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId('send-magic-link')).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.errors.messageRateLimited);
   });
 
   it('opens the password step after a failed lookup', async () => {
@@ -1111,7 +1165,7 @@ describe('LoginPage', () => {
 
   it.each([
     { status: 500, message: en.errors.messageInternal },
-    { status: 429, message: en.auth.signInRateLimited },
+    { status: 429, message: en.errors.messageRateLimited },
     { status: 0, message: en.errors.messageUnknown },
   ])('preserves operational error copy for password failures with status $status', async ({ status, message }) => {
     server.use(http.post('*', () => status === 0

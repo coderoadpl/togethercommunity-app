@@ -4285,6 +4285,10 @@ export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.primary,
 }));
 
+export const LockedLeadText = styled(Typography)<AsElement>({
+  '&.MuiTypography-subtitle1': { lineHeight: 1.4 },
+});
+
 export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
   display: '-webkit-box',

@@ -49,6 +49,7 @@ import {
   LESSON_CARD_PADDING_X,
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
+  LockedLeadText,
   LockedScopeText,
   VisuallyHidden,
 } from '../../theme.js';
@@ -223,11 +224,11 @@ const plainText = (html: string): string => {
 };
 
 const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (
-  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center' }}>
+  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
     <LockedLeadIcon />
-    <Typography variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
+    <LockedLeadText variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
       {children}
-    </Typography>
+    </LockedLeadText>
   </Stack>
 );
 

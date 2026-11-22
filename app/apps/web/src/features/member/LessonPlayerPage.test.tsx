@@ -2056,6 +2056,8 @@ describe('LessonPlayerPage', () => {
     const lead = within(card).getByTestId('locked-lesson-lead');
     expect(lead).toHaveTextContent(en.lesson.noAccess);
     expect(lead.parentElement?.firstElementChild).toBe(within(card).getByTestId('locked-lesson-lock'));
+    expect(stylesAt(lead.parentElement, 390)).toMatchObject({ 'align-items': 'flex-start' });
+    expect(stylesAt(lead, 390)).toMatchObject({ 'line-height': '1.4' });
     expect(card.querySelector('[data-testid="locked-lesson-lead"]')).toBe(
       [...card.querySelectorAll('p, h2')][0],
     );

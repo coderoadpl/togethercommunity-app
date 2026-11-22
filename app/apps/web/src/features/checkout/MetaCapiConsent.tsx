@@ -13,6 +13,7 @@ const browserIdentifier = (): string | undefined => {
   if (!value) return undefined;
   try { return decodeURIComponent(value); } catch { return undefined; }
 };
+const emptyStatus = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' } as const;
 const staleText = (error: unknown): boolean => error instanceof ApiError && error.appError.code === 'validation'
   && fieldErrorEntries(error.appError.details).some(([field]) => field === 'textVersion');
 
@@ -101,14 +102,12 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
           {staleText(choice.error) ? `${t.metaCapi.decisionError} ${t.metaCapi.textChanged}` : t.metaCapi.decisionError}
         </Alert>
       ) : null}
-      {status === null ? null : (
-        <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }} data-testid="meta-capi-status">
-          <Typography ref={statusText} variant="body1" role="status" tabIndex={-1}>{status.text}</Typography>
-          {status.action ? (
-            <Button variant="text" disabled={status.action.pending} onClick={status.action.run} sx={{ px: 0, minWidth: 0, minHeight: 44 }}>{status.action.label}</Button>
-          ) : null}
-        </Stack>
-      )}
+      <Stack spacing={0.5} sx={status === null ? emptyStatus : { alignItems: 'flex-start' }} data-testid="meta-capi-status">
+        <Typography ref={statusText} variant="body1" role="status" tabIndex={-1}>{status?.text ?? ''}</Typography>
+        {status?.action ? (
+          <Button variant="text" disabled={status.action.pending} onClick={status.action.run} sx={{ px: 0, minWidth: 0, minHeight: 44 }}>{status.action.label}</Button>
+        ) : null}
+      </Stack>
       {withdrawal.isError && !withdrawn ? <Alert severity="error">{t.metaCapi.withdrawError}</Alert> : null}
     </>
   );

@@ -56,12 +56,16 @@ it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the
   }));
   document.cookie = '_fbp=fb.1.123456.987; Path=/';
   renderConsent();
+  const region = screen.getByRole('status', { hidden: true });
+  expect(region).toBeEmptyDOMElement();
   fireEvent.click(screen.getByRole('button', { name: choice === 'granted' ? metaCapiConfig.acceptLabel : metaCapiConfig.declineLabel }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('status')).toBe(region);
   await waitFor(() => expect(requestBody).toHaveBeenCalledWith({ sessionId, decision: choice, locale: metaCapiConfig.locale, textVersion: metaCapiConfig.textVersion, fbp: 'fb.1.123456.987' }));
   expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.saving);
   await act(async () => { finish(HttpResponse.json({ ok: true, data: { consent: choice, withdrawnAt: null } })); });
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(choice === 'granted' ? en.metaCapi.granted : en.metaCapi.denied));
+  expect(screen.getByRole('status')).toBe(region);
   if (choice === 'granted') expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
   else expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
 });
@@ -112,7 +116,7 @@ it('reopens the dialog from the error alert without recording a choice', async (
   fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
   const alert = await screen.findByRole('alert');
   expect(alert).not.toHaveTextContent(/reload/i);
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
   fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
   expect(await screen.findByRole('dialog', { name: metaCapiConfig.heading })).toBeVisible();
   expect(screen.queryByRole('alert')).toBeNull();

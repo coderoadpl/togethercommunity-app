@@ -68,6 +68,12 @@ export const ReportsIcon = () => (
   </SvgIcon>
 );
 
+export const ProposalsIcon = () => (
+  <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
+    <path d="M16.54 11 13 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L16.54 11zM11 7H2v2h9V7zm10 6.41L19.59 12 17 14.59 14.41 12 13 13.41 15.59 16 13 18.59 14.41 20 17 17.41 19.59 20 21 18.59 18.41 16 21 13.41zM11 15H2v2h9v-2z" />
+  </SvgIcon>
+);
+
 export const CouponsIcon = () => (
   <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
     <path d="M22 10V6c0-1.1-.9-2-2-2H4c-1.1 0-1.99.9-1.99 2v4C3.1 10 4 10.9 4 12s-.9 2-1.99 2v4c0 1.1.89 2 1.99 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-9 7.5h-2v-2h2v2zm0-4.5h-2v-2h2v2zm0-4.5h-2v-2h2v2z" />

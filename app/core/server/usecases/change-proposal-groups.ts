@@ -50,6 +50,8 @@ import {
   proposingKey,
   type DecidedOutcome,
 } from '../change-proposal-access.js';
+import { notifyOwnersOfProposal, type ChangeProposalNotifyDeps } from '../change-proposal-notifications.js';
+import { changeProposalOwnerFacts, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type { Ctx } from '../context.js';
 import type {
   ChangeProposalEventDraft,
@@ -75,7 +77,7 @@ export interface ChangeProposalGroupCreateDeps {
   clock: Clock;
 }
 
-export interface ChangeProposalGroupSubmitDeps extends ChangeProposalRunDeps {
+export interface ChangeProposalGroupSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   changeProposals: Pick<ChangeProposalRepository, 'countCapReached'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findByKey' | 'addItem'>;
@@ -88,23 +90,21 @@ export interface ChangeProposalGroupKeyDeps {
   clock: Clock;
 }
 
-export interface ChangeProposalGroupOwnerReadDeps {
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById'>;
+export interface ChangeProposalGroupOwnerReadDeps extends ChangeProposalOwnerViewDeps {
+  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds'>;
   changeProposalEvents: ChangeProposalEventRepository;
-  shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
   clock: Clock;
 }
 
 export interface ChangeProposalGroupDecisionDeps extends ChangeProposalGroupOwnerReadDeps {
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'decide'>;
+  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'decide'>;
   ids: IdGenerator;
 }
 
-export interface ChangeProposalGroupApprovalDeps extends ChangeProposalRunDeps {
+export interface ChangeProposalGroupApprovalDeps extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps {
   changeProposalTransaction: ChangeProposalTransaction;
-  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'recordExpiry'>;
+  changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'recordExpiry'>;
   changeProposalEvents: ChangeProposalEventRepository;
-  shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
 }
 
 const keyGroupMissing = (id: string): AppError => notFound(`No change proposal group "${id}" for this key`);
@@ -116,21 +116,26 @@ const keyReceipt = ({ group, items }: ChangeProposalGroupWithItems, now: string)
 
 const ownerView = async (
   { group, items }: ChangeProposalGroupWithItems,
-  deps: Pick<ChangeProposalGroupOwnerReadDeps, 'changeProposalEvents' | 'shopManagementKeys'>,
+  deps: ChangeProposalOwnerViewDeps & Pick<ChangeProposalGroupOwnerReadDeps, 'changeProposalEvents'>,
   now: string,
 ): Promise<ChangeProposalGroupOwnerView> => {
   const key = keyNamed(await deps.shopManagementKeys.listByTenant(group.tenantId), group.proposedByKeyId);
-  const keyState = changeProposalKeyState(key, now);
   const first = items[0];
+  const issuerUserId = key?.issuedByUserId ?? first?.proposedByIssuerUserId ?? null;
+  const { factsOf, person } = await changeProposalOwnerFacts(group.tenantId, items, deps, now, [issuerUserId]);
+  const issuer = person(issuerUserId);
   const details = [];
   for (const item of items) {
     const events = await deps.changeProposalEvents.listByProposal(group.tenantId, item.id);
-    details.push(toChangeProposalOwnerDetail(item, keyState, group.title, events, now));
+    details.push(toChangeProposalOwnerDetail(item, factsOf(item), events, now));
   }
   return toChangeProposalGroupOwnerView(group, items, {
     keyName: key?.name ?? first?.proposedByKeyName ?? null,
-    issuerUserId: key?.issuedByUserId ?? first?.proposedByIssuerUserId ?? null,
-    keyState,
+    issuerUserId,
+    issuerEmail: issuer.email,
+    issuerIsVerifiedOwner: issuer.verifiedOwner,
+    issuerIsFormerTeamMember: issuer.formerTeamMember,
+    keyState: changeProposalKeyState(key, now),
   }, details, now);
 };
 
@@ -237,6 +242,7 @@ export const submitGroupedChangeProposal = async (
     const references = changeProposalGroupReferences();
     for (const [index, item] of earlier.entries()) {
       const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
+      if (outcome.status === 'aborted') return err(outcome.error);
       if (outcome.status !== 'applied') return err(earlierItemNoLongerApplies(item));
     }
     const resolved = resolveChangeProposalReferences(operationName, prepared.value.input, references.idOf);
@@ -274,6 +280,13 @@ export const submitGroupedChangeProposal = async (
   const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, deps.clock);
   switch (added.kind) {
     case 'created':
+      await notifyOwnersOfProposal(deps, {
+        tenantId,
+        keyId,
+        keyName: proposingKeyRow.name,
+        group: { id: groupId, title: current.group.title },
+        notice: added.proposal.groupPosition === 1 ? 'raise' : 'signal',
+      });
       return ok(keyReceipt({ group: current.group, items: [...earlier, added.proposal] }, now));
     case 'cap_exceeded':
       return err(changeProposalCapExceeded(added.cap));
@@ -467,6 +480,7 @@ export const approveChangeProposalGroup = async (
     });
     if (!applied.ok && halt.current === null) return applied;
     const stop = halt.current;
+    if (stop !== null && stop.outcome.status === 'aborted') return err(stop.outcome.error);
     if (stop !== null && stop.outcome.status === 'expired') {
       const recorded = await groups.recordExpiry(tenantId, id, expiryEvent(deps.ids, stop.outcome.at, { actorUserId: owner, apiKeyId: null }));
       if (recorded.kind === 'busy') return err(changeProposalsBusy());
@@ -482,7 +496,7 @@ export const approveChangeProposalGroup = async (
           transition: decidedTransition({ status: 'applied', appliedResourceId: outcome.appliedResourceId, at }, owner, at, null, deps.ids.nextId()),
         });
       }
-    } else if (stop !== null && stop.outcome.status !== 'expired') {
+    } else if (stop !== null && stop.outcome.status !== 'expired' && stop.outcome.status !== 'aborted') {
       const offending = stop.outcome;
       at = offending.at;
       for (const item of locked.items) {

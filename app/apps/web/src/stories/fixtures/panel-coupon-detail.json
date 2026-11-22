@@ -1,5 +1,13 @@
 {
   "calls": {
+    "getChangeProposalSummary:[]": {
+      "ok": true,
+      "value": {
+        "hasProposals": false,
+        "pending": 0,
+        "pendingGroups": 0
+      }
+    },
     "getCouponStats:[\"coupon-studio-partner20\"]": {
       "ok": true,
       "value": {

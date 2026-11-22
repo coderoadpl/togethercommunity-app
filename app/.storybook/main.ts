@@ -9,7 +9,7 @@ const appBaseDomain = process.env['APP_BASE_DOMAIN'];
 const config: StorybookConfig = {
   framework: { name: '@storybook/react-vite', options: {} },
   stories: ['../apps/web/src/stories/**/*.stories.tsx', '../apps/server/src/**/*.stories.tsx'],
-  staticDirs: ['../apps/web/public'],
+  staticDirs: ['../apps/web/public', { from: '../apps/web/src/stories/assets', to: '/api/public/assets' }],
   addons: [],
   core: { disableTelemetry: true },
   viteFinal: (config) => ({

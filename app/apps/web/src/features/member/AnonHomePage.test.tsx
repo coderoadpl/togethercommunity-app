@@ -116,6 +116,10 @@ describe('AnonHomePage', () => {
 
     expect(await screen.findByTestId('public-feed-post-p1')).toHaveTextContent('Wpis powitalny');
     expect(screen.getByTestId('anon-home-feed')).toHaveTextContent('General');
+    expect(within(screen.getByTestId('anon-home-feed')).getByRole('heading', { level: 2, name: 'General' })).toContainElement(
+      screen.getByTestId('anon-home-feed-link'),
+    );
+    expect(screen.getByTestId('anon-home-feed-link')).toHaveAttribute('href', '/community/s1');
     expect(screen.getByTestId('anon-read-only-banner')).toHaveTextContent(en.anon.readOnlyBanner);
     expect(screen.getByTestId('space-card-s2')).toHaveAttribute('href', '/community/s2');
     expect(screen.queryByTestId('space-card-s1')).not.toBeInTheDocument();

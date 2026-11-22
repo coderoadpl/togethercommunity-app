@@ -3,7 +3,7 @@ import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from '@tanstack/react-router';
 
-import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+import { communitySpacePath, PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
@@ -14,6 +14,7 @@ import { CourseCard } from './CourseCards.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 import { PublicFeedList } from './PublicFeed.js';
+import { SectionHeadingLink } from './shell/shell-chrome.js';
 import { LockedSpaceCard, SpaceCard } from './SpaceCards.js';
 import { TileSection } from './StartPage.js';
 
@@ -24,7 +25,12 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
   return (
     <Box component="section" data-testid="anon-home-feed">
       <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
-        {name}
+        <SectionHeadingLink component={Link} to={communitySpacePath(spaceId)} data-testid="anon-home-feed-link">
+          {name}
+          <Box component="span" aria-hidden sx={{ ml: '0.35rem' }}>
+            →
+          </Box>
+        </SectionHeadingLink>
       </Typography>
       {feed.isPending ? (
         <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />

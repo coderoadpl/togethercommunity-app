@@ -100,12 +100,11 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
     return <LessonMediaEmbed frameSx={LESSON_VIDEO_FRAME_SX} data-testid="lesson-video" src={withVideoAutoplay(video.embedUrl, autoplay)} title={t.lesson.videoTitle} failureMessage={t.lesson.videoFailedTitle} allow={VIDEO_ALLOW} allowFullScreen />;
   }
   if (video?.kind === 'unavailable' || playback.isError) {
-    const message = video?.kind === 'unavailable'
-      ? video.reason === 'missing_library_id' ? t.lesson.videoMissingLibrary : t.lesson.videoSecretInvalid
-      : t.lesson.videoFailedTitle;
     return (
       <LessonMediaFrame sx={{ ...LESSON_VIDEO_FRAME_SX, display: 'grid' }}>
-        <LessonMediaError message={message} onRetry={() => void playback.refetch()} />
+        {video?.kind === 'unavailable'
+          ? <LessonMediaError message={t.lesson.videoUnavailable} />
+          : <LessonMediaError message={t.lesson.videoFailedTitle} onRetry={() => void playback.refetch()} />}
       </LessonMediaFrame>
     );
   }

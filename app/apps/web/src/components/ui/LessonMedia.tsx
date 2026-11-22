@@ -7,21 +7,23 @@ import { LessonMediaClip, LessonMediaFrame, LessonMediaIframe } from '../../them
 
 export const LessonMediaError = ({ message, onRetry, externalUrl }: {
   message: string;
-  onRetry: () => void;
+  onRetry?: () => void;
   externalUrl?: string;
 }) => {
   const t = useTranslations();
   return (
     <Stack role="status" spacing={1} sx={{ p: '1rem', minHeight: '100%', justifyContent: 'center', alignItems: 'center' }}>
       <Typography align="center">{message}</Typography>
-      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem' }}>
-        <Button variant="outlined" onClick={onRetry}>{t.common.retry}</Button>
-        {externalUrl === undefined ? null : (
-          <Button component="a" href={externalUrl} target="_blank" rel="noopener noreferrer" variant="outlined">
-            {t.lesson.mediaOpenExternal}
-          </Button>
-        )}
-      </Stack>
+      {onRetry === undefined && externalUrl === undefined ? null : (
+        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem' }}>
+          {onRetry === undefined ? null : <Button variant="outlined" onClick={onRetry}>{t.common.retry}</Button>}
+          {externalUrl === undefined ? null : (
+            <Button component="a" href={externalUrl} target="_blank" rel="noopener noreferrer" variant="outlined">
+              {t.lesson.mediaOpenExternal}
+            </Button>
+          )}
+        </Stack>
+      )}
     </Stack>
   );
 };

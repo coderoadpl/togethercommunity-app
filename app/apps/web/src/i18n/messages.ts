@@ -2182,8 +2182,7 @@ export interface Messages {
     editionBackToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
-    videoMissingLibrary: string;
-    videoSecretInvalid: string;
+    videoUnavailable: string;
     mediaOpenExternal: string;
     loading: string;
     unavailable: string;

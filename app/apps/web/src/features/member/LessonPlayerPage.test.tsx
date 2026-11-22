@@ -1323,25 +1323,34 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['missing_library_id', en.lesson.videoMissingLibrary],
-    ['secret_invalid', en.lesson.videoSecretInvalid],
-  ])('explains unavailable video reason %s and retries playback', async (reason, message) => {
-    let recovered = false;
+  it.each(['missing_library_id', 'secret_invalid'])('shows one member-facing line without a retry for unavailable video reason %s', async (reason) => {
     server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
       http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {
-        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [recovered
-          ? { kind: 'bunny', storageKey: 'k1', videoId: 'vid-1', libraryId: '1', embedUrl: 'https://courses.example.org/video', hlsUrl: null, signed: false }
-          : { kind: 'unavailable', storageKey: 'k1', reason }],
+        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [{ kind: 'unavailable', storageKey: 'k1', reason }],
       } })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(await screen.findByText(en.lesson.videoUnavailable)).toBeInTheDocument();
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it('retries a failed playback request', async () => {
+    let recovered = false;
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
+      http.get('/api/student/lessons/:lessonId/playback', () => recovered
+        ? HttpResponse.json({ ok: true, data: {
+          lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [
+            { kind: 'bunny', storageKey: 'k1', videoId: 'vid-1', libraryId: '1', embedUrl: 'https://courses.example.org/video', hlsUrl: null, signed: false },
+          ],
+        } })
+        : HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Internal' } }, { status: 500 })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByText(en.lesson.videoFailedTitle)).toBeInTheDocument();
     recovered = true;
     await userEvent.setup().click(screen.getByRole('button', { name: en.common.retry }));
     expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', 'https://courses.example.org/video');
-    expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
   it('leaves the breadcrumb trail to the member app bar', async () => {

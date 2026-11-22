@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest';
+
+import { changeProposalGroupItems } from '../../../test/change-proposal-fixtures.js';
+import {
+  groupReferences,
+  isSameOriginPublicAssetPath,
+  proposalRows,
+  proposalTarget,
+  stockAdjustmentProductId,
+} from './proposal-display.js';
+
+describe('proposal display', () => {
+  it('shows an image only for a same-origin public asset path', () => {
+    expect(isSameOriginPublicAssetPath('/api/public/assets/product-cover/a.webp')).toBe(true);
+    expect(isSameOriginPublicAssetPath('https://images.example.org/a.webp')).toBe(false);
+    expect(isSameOriginPublicAssetPath('//images.example.org/a.webp')).toBe(false);
+    expect(isSameOriginPublicAssetPath('/api/public/assets/../private/a.webp')).toBe(false);
+    expect(isSameOriginPublicAssetPath('javascript:alert(1)')).toBe(false);
+
+    const rows = proposalRows({
+      input: {},
+      effect: { coverUrl: { before: 'https://images.example.org/old.jpg', after: '/api/public/assets/product-cover/new.webp' } },
+    });
+    expect(rows).toEqual([{
+      kind: 'change',
+      field: 'coverUrl',
+      before: { kind: 'text', text: 'https://images.example.org/old.jpg', long: false, breakAnywhere: true },
+      after: { kind: 'image', path: '/api/public/assets/product-cover/new.webp' },
+    }]);
+  });
+
+  it('keeps a stock adjustment a delta', () => {
+    expect(proposalRows({ input: { productId: 'p1', delta: -3, reason: 'Damaged' }, effect: { onHand: { delta: -3 } } }))
+      .toEqual([{ kind: 'delta', field: 'onHand', delta: -3 }]);
+    expect(stockAdjustmentProductId({ operation: 'stock.adjust', input: { productId: 'p1' } })).toBe('p1');
+    expect(stockAdjustmentProductId({ operation: 'stock.adjust', input: { productId: '$proposal:p1' } })).toBeNull();
+  });
+
+  it('shows only the after column for a new record and hides the existence marker', () => {
+    const [first] = changeProposalGroupItems;
+    if (first === undefined) throw new Error('missing fixture');
+    const rows = proposalRows(first);
+    expect(rows.some((row) => row.field === 'exists')).toBe(false);
+    expect(rows.every((row) => row.kind === 'change' && row.before === null)).toBe(true);
+    expect(rows[0]?.field).toBe('title');
+  });
+
+  it('names a reference by the step that creates it', () => {
+    const references = groupReferences(changeProposalGroupItems);
+    const link = changeProposalGroupItems[4];
+    if (link === undefined) throw new Error('missing fixture');
+    const productIds = proposalRows(link, references).find((row) => row.field === 'productIds');
+    expect(productIds).toEqual({
+      kind: 'change',
+      field: 'productIds',
+      before: null,
+      after: { kind: 'list', items: [{ kind: 'reference', thing: 'product', position: 1, label: 'Field Guide (print)' }] },
+    });
+    const price = changeProposalGroupItems[1];
+    if (price === undefined) throw new Error('missing fixture');
+    expect(proposalTarget(price, references)).toEqual({
+      kind: 'reference',
+      reference: { thing: 'product', position: 1, label: 'Field Guide (print)' },
+    });
+  });
+
+  it('formats money with its currency and keeps unknown fields', () => {
+    expect(proposalRows({ input: { currency: 'PLN' }, effect: { priceCents: { before: 100, after: 200 }, giftWrap: { before: null, after: { colour: 'red' } } } }))
+      .toEqual([
+        { kind: 'change', field: 'priceCents', before: { kind: 'money', amountCents: 100, currency: 'PLN' }, after: { kind: 'money', amountCents: 200, currency: 'PLN' } },
+        {
+          kind: 'change',
+          field: 'giftWrap',
+          before: { kind: 'empty' },
+          after: { kind: 'record', entries: [{ field: 'colour', value: { kind: 'text', text: 'red', long: false, breakAnywhere: true } }] },
+        },
+      ]);
+  });
+});

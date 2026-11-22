@@ -15,6 +15,9 @@ export const server = setupServer(
   http.get('*/api/student/lessons/:lessonId/editions', () =>
     HttpResponse.json({ ok: true, data: { editions: [] } }),
   ),
+  http.get('*/api/change-proposals/summary', () =>
+    HttpResponse.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: false } }),
+  ),
   http.get('*/api/messages/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }),
   ),

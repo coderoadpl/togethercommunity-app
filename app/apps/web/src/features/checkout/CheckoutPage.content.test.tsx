@@ -102,7 +102,7 @@ describe('checkout content', () => {
       `${en.checkout.breakdownDelivery} ${pln(1999)}`,
       `${en.checkout.breakdownTotal} ${pln(5919)}`,
     ]);
-    expect(screen.queryByText(new RegExp(`^${en.checkout.couponFinal({ price: '' })}`, 'u'))).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Total: /u)).not.toBeInTheDocument();
   });
 
   it('announces a changed summary total politely', async () => {

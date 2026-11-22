@@ -27,6 +27,10 @@ export interface TransactionalEmailMessages {
     hints: Record<NotificationFooterKind, string>;
   };
   purchase: {
+    heading: string;
+    paymentReceived: (orderReference: string, tenantName: string) => string;
+    collectInPerson: string;
+    nextSteps: Record<WelcomeSignInProductType, string>;
     orderNumber: string;
     lines: string;
     item: string;
@@ -35,8 +39,14 @@ export interface TransactionalEmailMessages {
     exempt: string;
     total: string;
     notInvoice: string;
-    subject: (orderNumber: string, tenantName: string) => string;
+    invoiceContact: (contact: string) => string;
+    contactLabel: string;
+    signInValidity: string;
+    signInLater: (signInPage: string) => string;
+    signInPageLabel: string;
+    subject: (orderReference: string, tenantName: string) => string;
     verification: string;
+    verificationText: string;
     qrAlt: string;
     delivery: string;
     pickupPoint: string;
@@ -48,12 +58,13 @@ export interface TransactionalEmailMessages {
     carrier: string;
     trackingNumber: string;
     trackLabel: string;
-    carriers: Record<'inpost' | 'other', string>;
+    carriers: Record<'inpost', string>;
     render: (input: BrandedInput & {
       tenantName: string;
       tenantNameHtml: string;
-      orderNumber: string;
-      orderNumberHtml: string;
+      orderReference: string;
+      orderReferenceHtml: string;
+      track: RenderedTextParts;
       items: RenderedTextParts;
       delivery: RenderedTextParts;
       tracking: RenderedTextParts;
@@ -166,6 +177,8 @@ export interface TransactionalEmailMessages {
   };
   subscriptionPaymentFailed: {
     billingPortalLabel: string;
+    contactLabel: string;
+    workspaceLabel: (tenantName: string) => string;
     render: (input: BrandedInput & {
       tenantName: string;
       tenantNameHtml: string;
@@ -175,6 +188,10 @@ export interface TransactionalEmailMessages {
       accessEndsAtHtml: string;
       billingPortalUrl: string | null;
       portal: string;
+      contactUrl: string | null;
+      contactLink: string | null;
+      workspaceUrl: string | null;
+      workspaceLink: string | null;
     }) => TransactionalEmailMessageContent;
   };
   subscriptionEnded: {
@@ -259,6 +276,8 @@ export interface TransactionalEmailMessages {
       tenantNameHtml: string;
       orderId: string;
       orderIdHtml: string;
+      orderReference: string;
+      orderReferenceHtml: string;
       productTitles: string;
       productTitlesHtml: string;
       refund: { amount: string; amountHtml: string } | null;

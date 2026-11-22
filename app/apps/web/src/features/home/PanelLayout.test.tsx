@@ -11,6 +11,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
+import { refreshForNotificationKind } from '../../notifications-data.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import {
   PanelCoursesRoute,
@@ -35,6 +36,7 @@ const meWithTenant = {
 };
 
 const MarketingTestRoute = () => <div data-testid="marketing-route" />;
+const ProposalsTestRoute = () => <div data-testid="proposals-route" />;
 
 const stubViewport = (isDesktop: boolean) => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -114,6 +116,7 @@ const renderPanelAt = async (
     path: 'marketing/campaigns',
     component: MarketingTestRoute,
   });
+  const proposalsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'proposals', component: ProposalsTestRoute });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       layoutRoute.addChildren([
@@ -126,6 +129,7 @@ const renderPanelAt = async (
         integrationsRoute,
         settingsRoute,
         marketingRoute,
+        proposalsRoute,
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
@@ -531,5 +535,220 @@ describe('Creator panel routing', () => {
 
     await waitFor(() => expect(screen.queryByTestId('user-menu-messages')).toBeNull());
     expect(screen.getByTestId('user-menu-products')).toBeInTheDocument();
+  });
+});
+
+const PROPOSALS_MEMORY_KEY = 'together-has-proposals-t1';
+
+const serveProposalSummary = (data: { pending: number; hasProposals: boolean }) => {
+  const reads = { count: 0 };
+  server.use(http.get('/api/change-proposals/summary', () => {
+    reads.count += 1;
+    return HttpResponse.json({ ok: true, data: { pending: data.pending, pendingGroups: 0, hasProposals: data.hasProposals } });
+  }));
+  return reads;
+};
+
+describe('Proposals navigation entry', () => {
+  it('shows the owner of a workspace with proposals the entry and the pending count in its badge', async () => {
+    stubViewport(true);
+    commonHandlers();
+    serveProposalSummary({ pending: 7, hasProposals: true });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('proposals-pending-count')).toHaveTextContent('7');
+    const entry = screen.getByTestId('section-proposals');
+    expect(entry).toHaveTextContent(en.sections.proposals);
+    expect(within(entry).getByText(en.changeProposals.navBadge({ count: 7 }))).toBeInTheDocument();
+    await waitFor(() => expect(window.localStorage.getItem(PROPOSALS_MEMORY_KEY)).toBe('true'));
+  });
+
+  it('shows the entry without a badge when the workspace has only decided proposals', async () => {
+    stubViewport(true);
+    commonHandlers();
+    serveProposalSummary({ pending: 0, hasProposals: true });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('section-proposals')).toHaveTextContent(en.sections.proposals);
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+  });
+
+  it('shows the owner of a workspace without proposals no entry and remembers that', async () => {
+    stubViewport(true);
+    commonHandlers();
+    const reads = serveProposalSummary({ pending: 0, hasProposals: false });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    await waitFor(() => expect(reads.count).toBeGreaterThan(0));
+    await waitFor(() => expect(window.localStorage.getItem(PROPOSALS_MEMORY_KEY)).toBe('false'));
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+  });
+
+  it('shows the entry while the proposals page is open, even without proposals', async () => {
+    stubViewport(true);
+    commonHandlers();
+    serveProposalSummary({ pending: 0, hasProposals: false });
+
+    await renderPanelAt('/panel/proposals');
+
+    expect(await screen.findByTestId('proposals-route')).toBeInTheDocument();
+    const entry = await screen.findByTestId('section-proposals');
+    expect(entry).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('renders the remembered entry before the summary answers', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem(PROPOSALS_MEMORY_KEY, 'true');
+    server.use(http.get('/api/change-proposals/summary', async () => {
+      await delay('infinite');
+      return HttpResponse.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: true } });
+    }));
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('section-proposals')).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+  });
+
+  it('remembers each workspace on its own', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem('together-has-proposals-another-workspace', 'true');
+    server.use(http.get('/api/change-proposals/summary', async () => {
+      await delay('infinite');
+      return HttpResponse.json({ ok: true, data: { pending: 0, pendingGroups: 0, hasProposals: true } });
+    }));
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+  });
+
+  it('drops the remembered entry once the summary says the workspace has no proposals', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem(PROPOSALS_MEMORY_KEY, 'true');
+    serveProposalSummary({ pending: 0, hasProposals: false });
+
+    await renderPanelAt('/panel/products');
+
+    await waitFor(() => expect(window.localStorage.getItem(PROPOSALS_MEMORY_KEY)).toBe('false'));
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+  });
+
+  it('keeps the remembered entry when the summary fails', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem(PROPOSALS_MEMORY_KEY, 'true');
+    let failures = 0;
+    server.use(http.get('/api/change-proposals/summary', () => {
+      failures += 1;
+      return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 });
+    }));
+
+    await renderPanelAt('/panel/products');
+
+    await waitFor(() => expect(failures).toBeGreaterThan(0));
+    expect(await screen.findByTestId('section-proposals')).toBeInTheDocument();
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+    expect(window.localStorage.getItem(PROPOSALS_MEMORY_KEY)).toBe('true');
+  });
+
+  it('shows no entry when the summary fails and nothing is remembered', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(http.get('/api/change-proposals/summary', () =>
+      HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 })));
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+  });
+
+  it('makes the entry appear when the first proposal arrives', async () => {
+    stubViewport(true);
+    commonHandlers();
+    const served = { hasProposals: false };
+    server.use(http.get('/api/change-proposals/summary', () =>
+      HttpResponse.json({ ok: true, data: { pending: served.hasProposals ? 1 : 0, pendingGroups: 0, hasProposals: served.hasProposals } })));
+    const { queryClient } = await renderPanelAt('/panel/products');
+    await waitFor(() => expect(window.localStorage.getItem(PROPOSALS_MEMORY_KEY)).toBe('false'));
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+
+    served.hasProposals = true;
+    await act(() => refreshForNotificationKind(queryClient, 'change-proposal'));
+
+    expect(await screen.findByTestId('proposals-pending-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('section-proposals')).toBeInTheDocument();
+  });
+
+  it('renders from the summary when the storage is unavailable', async () => {
+    stubViewport(true);
+    commonHandlers();
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage blocked'); });
+    serveProposalSummary({ pending: 2, hasProposals: true });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('proposals-pending-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('section-proposals')).toBeInTheDocument();
+  });
+
+  it('does not ask for the summary of an owner who has not verified the e-mail and shows no entry without a remembered one', async () => {
+    stubViewport(true);
+    commonHandlers();
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: { ...meWithTenant, emailVerified: false } })));
+    const reads = serveProposalSummary({ pending: 7, hasProposals: true });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+    expect(reads.count).toBe(0);
+  });
+
+  it('does not ask for the summary of an owner viewing the community as a member', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem(PROPOSALS_MEMORY_KEY, 'true');
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({
+        ok: true,
+        data: {
+          ...meWithTenant,
+          impersonation: { id: 'imp-1', subjectMemberId: 'mem-1', subjectName: 'John Participant', actorName: 'Demo', expiresAt: '2026-08-15T09:00:00.000Z' },
+        },
+      })),
+    );
+    const reads = serveProposalSummary({ pending: 7, hasProposals: true });
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('section-proposals')).toBeInTheDocument();
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('proposals-pending-count')).toBeNull();
+    expect(reads.count).toBe(0);
+  });
+
+  it('hides the entry from an admin, whatever is remembered, and never reads the owner summary', async () => {
+    stubViewport(true);
+    commonHandlers();
+    window.localStorage.setItem(PROPOSALS_MEMORY_KEY, 'true');
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: { ...meWithTenant, tenant: { ...meWithTenant.tenant, staffRole: 'admin' } } })));
+    const reads = serveProposalSummary({ pending: 7, hasProposals: true });
+
+    await renderPanelAt('/panel/proposals');
+
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('5');
+    expect(screen.queryByTestId('section-proposals')).toBeNull();
+    expect(reads.count).toBe(0);
   });
 });

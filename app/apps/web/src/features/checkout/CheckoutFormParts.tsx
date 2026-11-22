@@ -38,13 +38,13 @@ export const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s
 
 const COUPON_EMAIL_REQUIRED_MESSAGE = 'An email is required to validate this coupon';
 
-const couponError = (error: unknown, t: Translations): string => {
+const couponError = (error: unknown, t: Translations, row: boolean): string => {
   if (!(error instanceof ApiError)) return localizeError(error, t);
   switch (error.appError.message) {
     case 'Coupon cannot be applied':
       return t.checkout.couponUnavailable;
     case COUPON_EMAIL_REQUIRED_MESSAGE:
-      return t.checkout.couponEmailRequired;
+      return row ? t.checkout.couponEmailRequiredFullPrice : t.checkout.couponEmailRequired;
     default:
       return localizeError(error, t);
   }
@@ -175,7 +175,9 @@ type CouponValidation = {
   error: unknown;
 };
 
-export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, onCodeChange, onApply, validation, currency, language, recurring }: {
+type CouponBreakdown = 'full' | 'discount';
+
+export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, onCodeChange, onApply, validation, currency, language, recurring, breakdown = 'full' }: {
   visible: boolean;
   testEnabled: boolean;
   code: string;
@@ -186,6 +188,7 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
   currency: string;
   language: 'pl' | 'en';
   recurring: boolean;
+  breakdown?: CouponBreakdown;
 }) => {
   const t = useTranslations();
   return (
@@ -206,7 +209,8 @@ export const CouponField = ({ visible, testEnabled, code, onVisibilityChange, on
       </CheckoutDisclosureButton>
       {testEnabled ? <CouponTestModeNote /> : null}
       {visible && !testEnabled ? (
-        <CouponInputs code={code} onCodeChange={onCodeChange} onApply={onApply} validation={validation} currency={currency} language={language} recurring={recurring} />
+        <CouponInputs code={code} onCodeChange={onCodeChange} onApply={onApply} validation={validation} currency={currency} language={language} recurring={recurring}
+          breakdown={breakdown} />
       ) : null}
     </>
   );
@@ -223,7 +227,7 @@ export const CouponTestModeNote = () => {
 
 type CouponRowProps = { variant?: 'standalone' } | { variant: 'row'; onRemove: () => void };
 
-export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, children, ...rowProps }: {
+export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency, language, recurring, breakdown = 'full', children, ...rowProps }: {
   code: string;
   onCodeChange: (code: string) => void;
   onApply: () => void;
@@ -231,6 +235,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
   currency: string;
   language: 'pl' | 'en';
   recurring: boolean;
+  breakdown?: CouponBreakdown;
   children?: ReactNode;
 } & CouponRowProps) => {
   const t = useTranslations();
@@ -289,6 +294,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
             ref={removeRef}
             type="button"
             variant="text"
+            disableFocusRipple
             data-testid="checkout-coupon-remove"
             aria-label={t.checkout.couponRemoveLabel({ code: applied.code })}
             onClick={() => {
@@ -305,6 +311,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
           <Button
             type="button"
             variant="outlined"
+            disableFocusRipple
             data-testid="checkout-coupon-apply"
             disabled={!canApply}
             aria-describedby={emptyReason ? emptyReasonId : undefined}
@@ -318,17 +325,17 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
       {validation.data === undefined ? null : (
         <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
           <Stack useFlexGap spacing="0.25rem">
-            <Typography>{t.checkout.couponOriginal({
+            {breakdown === 'full' ? <Typography>{t.checkout.couponOriginal({
               price: formatPrice(validation.data.breakdown.originalCents, currency, language),
-            })}</Typography>
+            })}</Typography> : null}
             <Typography>{t.checkout.couponDiscount({
               price: formatPrice(validation.data.breakdown.discountCents, currency, language),
             })}</Typography>
-            <Typography data-testid="checkout-coupon-final">
-              {(row === null ? t.checkout.couponFinal : t.checkout.couponAfterDiscount)({
+            {breakdown === 'full' ? <Typography data-testid="checkout-coupon-final">
+              {t.checkout.couponAfterDiscount({
                 price: formatPrice(validation.data.breakdown.finalCents, currency, language),
               })}
-            </Typography>
+            </Typography> : null}
             {!recurring ? null : (
               <Typography>
                 {validation.data.recurringDuration === 'forever'
@@ -350,7 +357,7 @@ export const CouponInputs = ({ code, onCodeChange, onApply, validation, currency
       )}
       {validation.error === null ? null : (
         <Alert severity="error" data-testid="checkout-coupon-error">
-          {couponError(validation.error, t)}
+          {couponError(validation.error, t, row !== null)}
         </Alert>
       )}
     </Stack>

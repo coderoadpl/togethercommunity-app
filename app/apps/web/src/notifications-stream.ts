@@ -1,9 +1,14 @@
 import { NOTIFICATIONS_STREAM_PATH } from '#core/client/index.js';
+import { notificationStreamFrameSchema } from '#core/contract/index.js';
+
+export interface NotificationStreamEvent {
+  data?: unknown;
+}
 
 export interface NotificationStreamSource {
   addEventListener(
     type: 'unread' | 'notification' | 'dm' | 'error' | 'open',
-    listener: () => void,
+    listener: (event: NotificationStreamEvent) => void,
   ): void;
   close(): void;
 }
@@ -14,6 +19,7 @@ export interface NotificationsStreamHandle {
 
 export interface NotificationsStreamOptions {
   onEvent: () => void;
+  onNotificationKind?: (kind: string) => void;
   /**
    * Called once the stream is unusable: no EventSource support, repeated errors,
    * or connections the host keeps cutting short.
@@ -36,6 +42,16 @@ const STREAMLESS_POLL_INTERVAL_MS = 30_000;
 export const CONVERSATION_POLL_INTERVAL_MS = 5_000;
 
 export const UNREAD_BADGE_POLL_INTERVAL_MS = 15_000;
+
+const notificationKind = (event: NotificationStreamEvent): string | null => {
+  if (typeof event.data !== 'string') return null;
+  try {
+    const frame = notificationStreamFrameSchema.safeParse(JSON.parse(event.data));
+    return frame.success ? frame.data.kind ?? null : null;
+  } catch {
+    return null;
+  }
+};
 
 export const streamlessPollInterval = (
   streamless: boolean,
@@ -69,7 +85,11 @@ export const connectNotificationsStream = (
     options.onStreaming?.();
   });
   source.addEventListener('unread', options.onEvent);
-  source.addEventListener('notification', options.onEvent);
+  source.addEventListener('notification', (event) => {
+    options.onEvent();
+    const kind = notificationKind(event);
+    if (kind !== null) options.onNotificationKind?.(kind);
+  });
   source.addEventListener('dm', options.onEvent);
   source.addEventListener('error', () => {
     errors += 1;

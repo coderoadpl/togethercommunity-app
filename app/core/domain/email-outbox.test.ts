@@ -184,7 +184,7 @@ describe('renderEmailOutboxPayload', () => {
     const rendered = renderEmailOutboxPayload(payload);
     expect(rendered.success).toBe(true);
     if (rendered.success) {
-      expect(rendered.data.subject).toBe('Your order order-7 has been shipped — Caravan');
+      expect(rendered.data.subject).toBe('Order shipped — Caravan (#ORDER-7)');
       expect(rendered.data.text).toContain('Tracking number: ABCD1234');
     }
     expect(renderEmailOutboxPayload({ ...payload, shipment: { ...payload.shipment, trackingNumber: '' } }).success).toBe(false);

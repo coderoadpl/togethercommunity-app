@@ -25,6 +25,9 @@ const compliance = {
   manufacturerName: 'Maker', manufacturerAddress: 'Street 1', manufacturerEmail: 'maker@example.test',
   modelIdentifier: 'model', safetyWarnings: '',
 };
+const responsiblePerson = {
+  manufacturerOutsideEu: true, responsiblePersonName: 'Representative', responsiblePersonAddress: 'Street 2', responsiblePersonEmail: 'rep@example.test',
+};
 const chapter = { id: 'chapter', name: 'Chapter', contents: [] };
 const content = { id: 'content', name: 'Content', lessonKey: 'lesson' };
 const video = { type: 'video', storageKey: 'key', streamVideoId: 'video' };
@@ -89,11 +92,12 @@ const limits: LimitCase[] = [
   field('product', 'variantGroup', 60), field('product', 'variantLabel', 60),
   ...([
     ['manufacturerName', 200], ['manufacturerAddress', 300], ['manufacturerEmail', 254],
+    ['responsiblePersonName', 200], ['responsiblePersonAddress', 300], ['responsiblePersonEmail', 254],
     ['modelIdentifier', 100], ['batchIdentifier', 100], ['safetyWarnings', 5_000], ['instructionsUrl', 2_048],
   ] as const).map(([key, max]): LimitCase => ({
     label: `product.compliance.${key}`, kind: 'product', max,
-    payload: (text) => ({ ...records.product, compliance: { ...compliance, [key]: text } }),
-    ...(key === 'instructionsUrl' ? { value: url } : key === 'manufacturerEmail' ? { value: email } : {}),
+    payload: (text) => ({ ...records.product, compliance: { ...compliance, ...(key.startsWith('responsiblePerson') ? responsiblePerson : {}), [key]: text } }),
+    ...(key === 'instructionsUrl' ? { value: url } : key === 'manufacturerEmail' || key === 'responsiblePersonEmail' ? { value: email } : {}),
   })),
   ...(['course', 'modules', 'lessons'] as const).flatMap((level) => {
     const base = { level, courseKey: 'course', ...(level === 'modules' ? { moduleKeys: ['module'] } : level === 'lessons' ? { lessonKeys: ['lesson'] } : {}) };

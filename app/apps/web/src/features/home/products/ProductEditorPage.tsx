@@ -42,7 +42,7 @@ import {
 
 import { DeliveryMethodField } from './DeliveryMethodField.js';
 import { ParcelTemplateField } from './ParcelTemplateField.js';
-import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft } from './ProductComplianceFields.js';
+import { ProductComplianceFields, ProductVariantFields, complianceDraftFrom, complianceFromDraft, type ComplianceFailure } from './ProductComplianceFields.js';
 import { ProductPersonalizationFields, personalizationDraftFrom, personalizationFromDraft } from './ProductPersonalizationFields.js';
 
 import { actions } from '../../../api.js';
@@ -69,7 +69,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const [deliveryMethod, setDeliveryMethod] = useState(product.deliveryMethod);
   const [parcelTemplate, setParcelTemplate] = useState(product.parcelTemplate ?? DEFAULT_PARCEL_TEMPLATE);
   const [compliance, setCompliance] = useState(complianceDraftFrom(product.compliance));
-  const [complianceInvalid, setComplianceInvalid] = useState(false);
+  const [complianceFailing, setComplianceFailing] = useState<ComplianceFailure>([]);
   const [variant, setVariant] = useState({ group: product.variantGroup ?? '', label: product.variantLabel ?? '' });
   const [personalization, setPersonalization] = useState(personalizationDraftFrom(product.personalization));
   const [personalizationTouched, setPersonalizationTouched] = useState(false);
@@ -90,7 +90,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsedCompliance = complianceFromDraft(compliance);
-    setComplianceInvalid(!parsedCompliance.ok);
+    setComplianceFailing(parsedCompliance.ok ? [] : parsedCompliance.failing);
     const parsedPersonalization = personalizationTouched && product.type !== 'membership' ? personalizationFromDraft(personalization) : null;
     setPersonalizationInvalid(parsedPersonalization?.ok === false);
     if (!parsedCompliance.ok || parsedPersonalization?.ok === false) return;
@@ -217,7 +217,7 @@ const ProductDetailsSection = ({ product }: { product: Product }) => {
       {product.type === 'physical' ? (
         <>
           <ProductVariantFields group={variant.group} label={variant.label} onChange={(value) => { resetFeedback(); setVariant(value); }} />
-          <ProductComplianceFields value={compliance} invalid={complianceInvalid} onChange={(value) => { resetFeedback(); setComplianceInvalid(false); setCompliance(value); }} />
+          <ProductComplianceFields value={compliance} failing={complianceFailing} onChange={(value) => { resetFeedback(); setComplianceFailing([]); setCompliance(value); }} />
         </>
       ) : null}
       {product.type === 'membership' ? null : (

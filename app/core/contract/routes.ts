@@ -93,6 +93,7 @@ import {
   productDownloadAssetViewSchema,
   productDownloadUploadInputSchema,
   listDiscussionInputSchema,
+  getThreadInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
@@ -1221,6 +1222,10 @@ export const discussionGetInputSchema = listDiscussionInputSchema;
 
 export type DiscussionGetInput = z.input<typeof discussionGetInputSchema>;
 
+export const discussionThreadGetInputSchema = getThreadInputSchema;
+
+export type DiscussionThreadGetInput = z.input<typeof discussionThreadGetInputSchema>;
+
 export const discussionOutputSchema = z.object({
   discussion: discussionSchema,
 });
@@ -1345,6 +1350,11 @@ export type NotificationsListInput = z.input<typeof notificationsListInputSchema
 export const notificationsListOutputSchema = z.object({
   notifications: z.array(notificationSchema),
   nextCursor: z.string().nullable(),
+});
+
+export const notificationStreamFrameSchema = z.object({
+  id: z.string(),
+  kind: z.string().min(1).optional(),
 });
 
 export const notificationReadInputSchema = notificationMarkReadInputSchema;
@@ -2153,6 +2163,7 @@ export const API_ROUTES = {
   postsPurge: { method: 'DELETE', path: '/api/posts/:postId/permanent' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
+  discussionThread: { method: 'GET', path: '/api/discussion/threads/:postId' },
   threadSubscribe: { method: 'POST', path: '/api/discussion/subscribe' },
   threadMute: { method: 'POST', path: '/api/discussion/mute' },
   postsSearch: { method: 'GET', path: '/api/posts/search' },
@@ -2232,6 +2243,7 @@ export const API_ROUTES = {
   apiKeysShopManagementPurge: { method: 'POST', path: '/api/api-keys/shop-management/purge' },
   apiKeysShopManagementEvents: { method: 'GET', path: '/api/api-keys/shop-management/events' },
   changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposalSummary: { method: 'GET', path: '/api/change-proposals/summary' },
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
@@ -2574,6 +2586,7 @@ export const API_PATHS = {
   postsPurge: API_ROUTES.postsPurge.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
+  discussionThread: API_ROUTES.discussionThread.path,
   threadSubscribe: API_ROUTES.threadSubscribe.path,
   threadMute: API_ROUTES.threadMute.path,
   postsSearch: API_ROUTES.postsSearch.path,
@@ -2647,6 +2660,7 @@ export const API_PATHS = {
   apiKeysShopManagementPurge: API_ROUTES.apiKeysShopManagementPurge.path,
   apiKeysShopManagementEvents: API_ROUTES.apiKeysShopManagementEvents.path,
   changeProposals: API_ROUTES.changeProposals.path,
+  changeProposalSummary: API_ROUTES.changeProposalSummary.path,
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,

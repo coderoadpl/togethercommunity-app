@@ -227,7 +227,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
 
   if (viewer === 'anonymous') {
     return (
-      <AnonShell>
+      <AnonShell visitorEmail={me.data?.tenantAccess === 'none' ? me.data.email : null}>
         {me.data?.tenantAccess === 'none' ? (
           <ForeignTenantNotice email={me.data.email} hostname={hostname} />
         ) : null}

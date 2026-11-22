@@ -331,7 +331,7 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
       await page.getByText(en.anon.eyebrow, { exact: true }).waitFor({ state: 'visible' });
       assert(await page.getByText(en.errors.messageForbidden, { exact: true }).count() === 0, 'visitor entry showed a permission error');
       assert(await page.getByTestId('foreign-tenant-notice').textContent().then((text) => text?.includes(SMOKE_TENANT_CREATOR_EMAIL) === true), 'visitor notice omitted the signed-in account');
-      await page.getByRole('banner').getByRole('link', { name: en.auth.signInLink, exact: true }).waitFor({ state: 'visible' });
+      await page.getByRole('banner').getByRole('button', { name: en.tenant.signOut, exact: true }).waitFor({ state: 'visible' });
       const me = await page.request.get(new URL(API_PATHS.me, foreignOrigin).href);
       assert(me.status() === 200, 'foreign-host /api/me did not return 200');
       const identity = z.object({ data: z.object({ tenantAccess: z.literal('none'), tenant: z.null() }) }).safeParse(await me.json());

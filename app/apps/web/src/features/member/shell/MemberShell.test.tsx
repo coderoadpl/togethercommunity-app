@@ -322,7 +322,10 @@ describe('MemberShell', () => {
     );
     expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', 'http://start.localhost:3000');
     expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeEnabled();
-    expect(screen.getByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+    const header = screen.getByRole('banner');
+    expect(within(header).getByTestId('anon-visitor-email')).toHaveTextContent('jan@example.com');
+    expect(within(header).getByRole('button', { name: en.tenant.signOut })).toBeEnabled();
     expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
@@ -335,7 +338,10 @@ describe('MemberShell', () => {
     stubViewport(true);
     server.use(okMe({ tenant: null, tenantAccess }), okOffer(), okPublicNavigation());
     await renderShell('/start', page(en.redirects.targetLesson), page(en.redirects.targetCourse), hostname);
-    expect(await screen.findByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    const headerAction = tenantAccess === 'none'
+      ? await screen.findByRole('button', { name: en.tenant.signOut })
+      : await screen.findByRole('link', { name: en.auth.signInLink });
+    expect(headerAction.closest('header')).not.toBeNull();
     expect(screen.queryByTestId('foreign-tenant-notice')).not.toBeInTheDocument();
   });
 

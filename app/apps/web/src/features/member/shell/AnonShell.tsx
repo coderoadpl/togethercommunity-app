@@ -1,19 +1,56 @@
 import type { ReactNode } from 'react';
-import { AppBar, Box, Toolbar, useMediaQuery } from '@mui/material';
+import { AppBar, Box, Toolbar, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { Link } from '@tanstack/react-router';
 
 import { TenantLogo } from '../../../branding.js';
 import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
-import { useTranslations } from '../../../i18n/index.js';
+import { useToastError } from '../../../components/ui/Toast.js';
+import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
 import { BrandLink, PublicSignInButton, SidebarColumn } from './shell-chrome.js';
+import { useVisitorSignOut } from './visitor-sign-out.js';
 
 const COMPACT_PUBLIC_HEADER_QUERY = '(max-width:399px)';
 
-export const AnonShell = ({ children }: { children: ReactNode }) => {
+const VisitorAccount = ({ email }: { email: string }) => {
+  const t = useTranslations();
+  const signOut = useVisitorSignOut();
+  useToastError(signOut.isError ? localizeError(signOut.error, t) : null);
+  return (
+    <>
+      <Typography
+        variant="caption"
+        component="p"
+        noWrap
+        color="text.secondary"
+        data-testid="anon-visitor-email"
+        sx={{ display: { xs: 'none', sm: 'block' }, minWidth: 0, maxWidth: '16rem' }}
+      >
+        {email}
+      </Typography>
+      <PublicSignInButton
+        color="inherit"
+        size="small"
+        disabled={signOut.isPending}
+        onClick={() => signOut.mutate()}
+        data-testid="anon-sign-out"
+      >
+        {t.tenant.signOut}
+      </PublicSignInButton>
+    </>
+  );
+};
+
+export const AnonShell = ({
+  children,
+  visitorEmail = null,
+}: {
+  children: ReactNode;
+  visitorEmail?: string | null;
+}) => {
   useSuppressGlobalChrome();
   const t = useTranslations();
   const theme = useTheme();
@@ -43,14 +80,18 @@ export const AnonShell = ({ children }: { children: ReactNode }) => {
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <ColorSchemeCycleButton />
             </Box>
-            <PublicSignInButton
-              component={Link}
-              to="/login"
-              color="inherit"
-              size="small"
-            >
-              {t.auth.signInLink}
-            </PublicSignInButton>
+            {visitorEmail === null ? (
+              <PublicSignInButton
+                component={Link}
+                to="/login"
+                color="inherit"
+                size="small"
+              >
+                {t.auth.signInLink}
+              </PublicSignInButton>
+            ) : (
+              <VisitorAccount email={visitorEmail} />
+            )}
           </Toolbar>
         </AppBar>
         <Box

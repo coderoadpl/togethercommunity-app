@@ -52,20 +52,23 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
 
 type OfferAnchorSection = 'offer' | 'locked' | 'courses' | 'spaces';
 
-const EmptyWorkspaceActions = ({ supportUrl }: { supportUrl: string | null }) => {
+const EmptyWorkspaceActions = ({ supportUrl, signedIn }: { supportUrl: string | null; signedIn: boolean }) => {
   const t = useTranslations();
   const external = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
   return (
     <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap sx={{ gap: '0.75rem', justifyContent: 'center' }}>
-      <Button component={Link} to="/login" variant="contained" data-testid="anon-empty-sign-in">
-        {t.auth.signInLink}
-      </Button>
+      {signedIn ? null : (
+        <Button component={Link} to="/login" variant="contained" data-testid="anon-empty-sign-in">
+          {t.auth.signInLink}
+        </Button>
+      )}
       {supportUrl === null ? null : (
         <Button
           href={supportUrl}
-          variant="outlined"
+          variant={signedIn ? 'contained' : 'outlined'}
           data-testid="anon-empty-contact"
-          {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+          target={external ? '_blank' : undefined}
+          rel={external ? 'noopener noreferrer' : undefined}
         >
           {t.anon.contactCreator}
         </Button>
@@ -82,12 +85,13 @@ const useScrollToOfferAnchor = (ready: boolean) => {
   }, [ready, hash]);
 };
 
-export const AnonHomePage = () => {
+export const AnonHomePage = ({ visitorEmail = null }: { visitorEmail?: string | null } = {}) => {
   const t = useTranslations();
   const offer = useQuery(actions.publicOffer);
   const salesLinks = offer.data?.salesLinks ?? [];
   const offerProducts = uniqueOfferProducts(offer.data?.products ?? []);
   const title = offer.data?.tenant.name ?? t.anon.homeTitle;
+  const supportUrl = offer.data?.tenant.support.url ?? null;
   const formatTerms = useOfferPriceFormatter();
   const previewCourseIds = new Set((offer.data?.previewLessons ?? []).map((lesson) => lesson.courseId));
   const lockedPrice = (productIds: readonly string[]): string | null => {
@@ -157,7 +161,9 @@ export const AnonHomePage = () => {
               icon: <EmptyLibraryIcon />,
               title: t.anon.emptyTitle,
               body: t.anon.emptyBody,
-              action: <EmptyWorkspaceActions supportUrl={offer.data?.tenant.support.url ?? null} />,
+              ...(visitorEmail !== null && supportUrl === null
+                ? {}
+                : { action: <EmptyWorkspaceActions supportUrl={supportUrl} signedIn={visitorEmail !== null} /> }),
             }}
             data-testid="anon-empty-state"
           />
@@ -185,9 +191,11 @@ export const AnonHomePage = () => {
                 {t.anon.salesCta}
               </MuiLink>
             ) : null}
-            <MuiLink component={Link} to="/login">
-              {t.auth.signInLink}
-            </MuiLink>
+            {visitorEmail === null ? (
+              <MuiLink component={Link} to="/login">
+                {t.auth.signInLink}
+              </MuiLink>
+            ) : null}
           </Box>
         </QuietNotice>
         {homeSpace === undefined ? null : (

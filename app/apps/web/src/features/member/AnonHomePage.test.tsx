@@ -100,8 +100,8 @@ const okOffer = ({
       data: { tenant: { slug: 'acme', name: 'Acme Academy', support: { url: supportUrl } }, contentVersion: 1, products, salesLinks, previewLessons },
     }));
 
-const renderPage = async (initialEntry = '/') => {
-  const rootRoute = createRootRoute({ component: AnonHomePage });
+const renderPage = async (initialEntry = '/', visitorEmail: string | null = null) => {
+  const rootRoute = createRootRoute({ component: () => <AnonHomePage visitorEmail={visitorEmail} /> });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
@@ -329,6 +329,31 @@ describe('AnonHomePage', () => {
     const banner = await screen.findByTestId('anon-read-only-banner');
     expect(within(banner).getByRole('link', { name: en.anon.salesCta })).toHaveAttribute('href', '/#offer');
     expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('drops the sign-in link from the read-only banner for a signed-in visitor', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+
+    await renderPage('/', 'jan@example.com');
+
+    const banner = await screen.findByTestId('anon-read-only-banner');
+    expect(within(banner).getByRole('link', { name: en.anon.salesCta })).toBeInTheDocument();
+    expect(within(banner).queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+  });
+
+  it('leaves the sign-in button out of the empty state for a signed-in visitor', async () => {
+    server.use(
+      okNavigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] }),
+      okOffer({ supportUrl: 'mailto:help@studio.example.org' }),
+    );
+
+    await renderPage('/', 'jan@example.com');
+
+    const empty = await screen.findByTestId('anon-empty-state');
+    expect(within(empty).queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+    const contact = within(empty).getByRole('link', { name: en.anon.contactCreator });
+    expect(contact).toHaveAttribute('href', 'mailto:help@studio.example.org');
+    expect(contact).not.toHaveAttribute('target');
   });
 
   it('names the product price on a locked-space button and keeps the plain label without one', async () => {

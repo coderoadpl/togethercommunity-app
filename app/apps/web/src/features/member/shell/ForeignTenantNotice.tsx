@@ -1,11 +1,8 @@
 import { Alert, Button, Stack } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 
-import { actions } from '../../../api.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
-import { forgetLoginIdentifier } from '../../../lib/login-identifier.js';
 import { hasConfiguredBaseDomain, isTenantHost, tenantUrl } from '../../../lib/tenant.js';
+import { useVisitorSignOut } from './visitor-sign-out.js';
 
 export const ForeignTenantNotice = ({
   email,
@@ -15,16 +12,7 @@ export const ForeignTenantNotice = ({
   hostname: string;
 }) => {
   const t = useTranslations();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const signOut = useMutation({
-    ...actions.signOut,
-    onSuccess: async () => {
-      forgetLoginIdentifier();
-      queryClient.clear();
-      await navigate({ to: '/login' });
-    },
-  });
+  const signOut = useVisitorSignOut();
 
   if (!hasConfiguredBaseDomain() || !isTenantHost(hostname)) return null;
   return (

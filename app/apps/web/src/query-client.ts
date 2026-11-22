@@ -1,6 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '#core/client/index.js';
+import { ApiError, apiFailureSource } from '#core/client/index.js';
 
 import { reportError } from './observability.js';
 import { refreshToastStore } from './refresh-toast.js';
@@ -23,7 +23,7 @@ const EXPECTED_PARCEL_LOCKER_REFUSALS = new Set(['rate_limited', 'not_found']);
 
 const isExpectedParcelLockerRefusal = (error: unknown, queryKey: readonly unknown[]): boolean =>
   error instanceof ApiError &&
-  EXPECTED_PARCEL_LOCKER_REFUSALS.has(error.appError.code) &&
+  (EXPECTED_PARCEL_LOCKER_REFUSALS.has(error.appError.code) || apiFailureSource(error.appError) === 'network') &&
   queryKey[0] === 'parcel-locker';
 
 const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): boolean =>
@@ -33,10 +33,11 @@ const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): b
 /**
  * QueryCache is the single global error surface (one notice per failing query,
  * not per observer). Every failure is reported to Sentry (with the active trace
- * id) when configured, except for expected anonymous/public misses and parcel
- * locker lookups the server refused by rate limit or workspace. With data
+ * id) when configured, except for expected anonymous/public misses. With data
  * already on screen we keep it and toast the refresh failure; with no data the
  * query's local render or the root error boundary handles it.
+ * Parcel locker lookup failures are expected: the page treats them as an
+ * unavailable carrier and the server decides at checkout.
  */
 const queryCache = new QueryCache({
   onError: (error, query) => {

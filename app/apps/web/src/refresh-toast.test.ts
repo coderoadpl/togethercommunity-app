@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '#core/client/index.js';
+import { ApiError, createApiClient, unwrap } from '#core/client/index.js';
 
 import { refreshToastStore } from './refresh-toast.js';
 
@@ -52,6 +52,16 @@ describe('error reporting policy', () => {
       retry: false,
     })).rejects.toThrow(`${code} refusal`);
     expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('does not report a parcel locker lookup that never reached the server, but reports the same failure on another query', async () => {
+    const api = createApiClient({ baseUrl: 'https://shop.example.test', fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: async () => unwrap(await api.publicParcelLocker('WAW01M')), retry: false }))
+      .rejects.toBeInstanceOf(ApiError);
+    expect(reportError).not.toHaveBeenCalled();
+    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: async () => unwrap(await api.publicPaymentConfig()), retry: false }))
+      .rejects.toBeInstanceOf(ApiError);
+    expect(reportError).toHaveBeenCalledOnce();
   });
 
   it('still reports an unexpected parcel locker lookup failure and the same refusal on another query', async () => {

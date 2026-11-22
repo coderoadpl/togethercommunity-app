@@ -40,6 +40,7 @@ export const createRefundProviderFake = (input: {
     const refund: ProviderRefund = {
       refundId: `re_${String(created.length + 1)}`, paymentIntentId: call.paymentIntentId, amountCents: call.amountCents,
       status, failureReason: status === 'failed' ? 'expired_or_canceled_card' : null, orderId: call.metadata.orderId, reason: call.metadata.reason,
+      ...(call.metadata.reason === 'staff' ? { refundJobId: call.metadata.refundJobId } : {}),
     };
     refunds.push(refund);
     created.push(refund);

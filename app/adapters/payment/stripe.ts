@@ -450,6 +450,7 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
     failureReason: parsed.data.failure_reason ?? null,
     orderId: parsed.data.metadata?.['orderId'] ?? null,
     reason: parsed.data.metadata?.['reason'] ?? null,
+    ...(parsed.data.metadata?.['refundJobId'] === undefined ? {} : { refundJobId: parsed.data.metadata['refundJobId'] }),
   });
 };
 
@@ -756,7 +757,12 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           {
             payment_intent: input.paymentIntentId,
             amount: input.amountCents,
-            metadata: { tenantId: input.tenantId, orderId: input.metadata.orderId, reason: input.metadata.reason },
+            metadata: {
+              tenantId: input.tenantId,
+              orderId: input.metadata.orderId,
+              reason: input.metadata.reason,
+              ...(input.metadata.reason === 'staff' ? { refundJobId: input.metadata.refundJobId } : {}),
+            },
           },
           { ...REFUND_REQUEST_OPTIONS, idempotencyKey: input.idempotencyKey },
         );

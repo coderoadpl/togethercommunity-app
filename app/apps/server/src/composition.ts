@@ -92,6 +92,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
+import { createRefundJobQueue } from '#adapters/db/refund-job-queue.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -1237,8 +1238,9 @@ export const createDeps = (
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
   const runOrderRefundDispatch = (dispatchOptions: DispatchOrderRefundJobsOptions = {}) => dispatchOrderRefundJobs({
-    refundJobs: createOrderRefundJobRepository(db),
+    refundJobs: createRefundJobQueue(db),
     orderDetails: orderRepository,
+    members: createMemberRepository(db),
     payment,
     tenants,
     tenantAccess,

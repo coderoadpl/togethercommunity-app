@@ -175,6 +175,58 @@ const unchanged = async (tx: Executor, tenantId: string, productId: string): Pro
   };
 };
 
+const committedOrderStock = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string, reason: string) => {
+  const committed = await executor.select({
+    productId: stockEvents.productId,
+    committed: sql<string>`coalesce(sum(${stockEvents.quantity}) filter (where ${stockEvents.type} IN ('committed', 'committed_late')), 0)`,
+    returned: sql<string>`count(*) filter (where ${stockEvents.type} = 'returned' and (${stockEvents.reference} ->> 'reason') = ${reason})`,
+  })
+    .from(stockEvents)
+    .innerJoin(productStock, and(eq(productStock.tenantId, stockEvents.tenantId), eq(productStock.productId, stockEvents.productId)))
+    .where(and(
+      eq(stockEvents.tenantId, tenantId),
+      sql`${stockEvents.type} IN ('committed', 'committed_late', 'returned')`,
+      sql`(${stockEvents.reference} ->> 'orderId') = ${orderId}`,
+    ))
+    .groupBy(stockEvents.productId)
+    .orderBy(asc(stockEvents.productId));
+  return committed
+    .map((line) => ({ productId: line.productId, quantity: -Number(line.committed), alreadyReturned: Number(line.returned) > 0 }))
+    .filter((line) => Number.isSafeInteger(line.quantity) && line.quantity > 0);
+};
+
+export const returnableOrderStock = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string, reason: string) =>
+  (await committedOrderStock(executor, tenantId, orderId, reason))
+    .filter((line) => !line.alreadyReturned)
+    .map(({ productId, quantity }) => ({ productId, quantity }));
+
+export const returnCommittedOrderStock = async (
+  tx: Executor,
+  tenantId: string,
+  input: { orderId: string; reason: string; actorUserId: string | null; now: string },
+): Promise<Array<{ productId: string; quantity: number }>> => {
+  const returned: Array<{ productId: string; quantity: number }> = [];
+  for (const line of await returnableOrderStock(tx, tenantId, input.orderId, input.reason)) {
+    const current = await lockStock(tx, tenantId, line.productId);
+    if (current === null) continue;
+    const onHand = Math.min(current.onHand + line.quantity, MAX_STOCK_QUANTITY);
+    if (onHand === current.onHand) continue;
+    await tx.update(productStock)
+      .set({ onHand, ...stockAlertMarkers({ ...current, onHand }), updatedAt: input.now })
+      .where(stockKey(tenantId, line.productId));
+    await appendEvent(tx, tenantId, {
+      productId: line.productId,
+      type: 'returned',
+      quantity: onHand - current.onHand,
+      reference: { orderId: input.orderId, reason: input.reason },
+      actorUserId: input.actorUserId,
+      occurredAt: input.now,
+    });
+    returned.push({ productId: line.productId, quantity: onHand - current.onHand });
+  }
+  return returned;
+};
+
 export const createStockRepository = (db: Db): StockRepository => ({
   find: async (tenantId, productId) => {
     const [row] = await db.select().from(productStock).where(stockKey(tenantId, productId));

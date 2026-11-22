@@ -63,6 +63,27 @@ describe('Stripe createRefund', () => {
     expect(h.keys).toEqual(['stripe.restrictedKey']);
   });
 
+  it('tags a staff refund with its refund id and reads it back from the refund metadata', async () => {
+    const staffMetadata = { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7', tenantId: 'tenant-1' };
+    const h = providerOverFetch(() => stripeJson(refundObject({ amount: 1500, metadata: staffMetadata })));
+    expect(await h.createRefund({ ...refundInput, amountCents: 1500, idempotencyKey: 'staff-refund-refund-7', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7' } })).toEqual(ok({
+      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 1500, status: 'succeeded', failureReason: null, orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7',
+    }));
+    const request = h.requests[0];
+    if (request === undefined) throw new Error('Refund request missing');
+    expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+      payment_intent: 'pi_paid', amount: '1500',
+      'metadata[tenantId]': 'tenant-1', 'metadata[orderId]': 'order-1', 'metadata[reason]': 'staff', 'metadata[refundJobId]': 'refund-7',
+    });
+  });
+
+  it('reads a refund without metadata, as an account on an old API version may return it', async () => {
+    const h = providerOverFetch(() => stripeJson({ data: [refundObject({ metadata: null }), refundObject({ id: 're_2', metadata: {} })], has_more: false, object: 'list', url: '/v1/refunds' }));
+    expect(await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toMatchObject({
+      ok: true, value: [{ refundId: 're_123', orderId: null, reason: null }, { refundId: 're_2', orderId: null, reason: null }],
+    });
+  });
+
   it('uses the test-mode key for a test order', async () => {
     const h = providerOverFetch(() => stripeJson(refundObject()));
     expect(await h.createRefund({ ...refundInput, mode: 'test' })).toMatchObject({ ok: true, value: { status: 'succeeded' } });
@@ -380,5 +401,13 @@ describe('fake payment provider refunds', () => {
     const listed = await f.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
     expect(listed.ok ? listed.value.map((refund) => refund.amountCents) : []).toEqual([2900, 2000]);
     expect(await f.listRefunds({ mode: 'live', tenantId: 'tenant-2', paymentIntentId: 'pi_paid' })).toEqual(ok([]));
+  });
+
+  it('lists a staff refund with the refund id it was tagged with', async () => {
+    const f = fake({ pi_paid: 4900 });
+    const staff = await f.createRefund({ ...refundInput, amountCents: 1500, idempotencyKey: 'staff-refund-refund-7', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7' } });
+    expect(staff).toMatchObject({ ok: true, value: { amountCents: 1500, reason: 'staff', refundJobId: 'refund-7' } });
+    const tooMuch = await f.createRefund({ ...refundInput, amountCents: 3401, idempotencyKey: 'staff-refund-refund-8', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-8' } });
+    expect(tooMuch.ok ? null : refundFailureOf(tooMuch.error)?.kind).toBe('refund_failed');
   });
 });

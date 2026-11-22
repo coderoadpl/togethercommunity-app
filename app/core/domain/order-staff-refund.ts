@@ -58,6 +58,11 @@ export const STAFF_REFUND_WAITING_STATUSES = ['pending', 'running', 'blocked_per
 // Every status in which money left or may still leave the platform; failed and skipped refunds moved none.
 export const PLATFORM_COMMITTED_REFUND_STATUSES = ['pending', 'running', 'submitted', 'succeeded', 'blocked_permission', 'unconfirmed'] as const;
 
+const SETTLED_STAFF_REFUND_STATUSES = ['succeeded', 'skipped_refunded', 'resolved_externally'] as const;
+
+export const isActiveStaffRefundStatus = (status: OrderStaffRefund['status']): boolean =>
+  !SETTLED_STAFF_REFUND_STATUSES.some((settled) => settled === status);
+
 export const isPlatformCommittedRefundStatus = (status: OrderStaffRefund['status']): boolean =>
   PLATFORM_COMMITTED_REFUND_STATUSES.some((committed) => committed === status);
 
@@ -80,6 +85,16 @@ export const staffRefundOrderBlocker = (order: RefundableOrder): AppError | null
   if (order.provider !== 'stripe') return validation('The order was not paid through the payment provider and cannot be refunded here');
   if ((order.providerObjectIds['paymentIntent'] ?? '') === '') return validation('The order has no payment to refund');
   if (order.amountCents <= 0) return validation('The order was free; there is nothing to refund');
+  return null;
+};
+
+const SHIP_ANYWAY_STATUSES: readonly OrderStatus[] = ['paid', 'refunded', 'partially_refunded'];
+
+export const shipAnywayBlocker = (order: Pick<Order, 'status' | 'shipping' | 'fulfilmentStatus' | 'cancelReason'>): AppError | null => {
+  if (order.shipping == null) return appError('conflict', 'The order has nothing to ship');
+  if (order.cancelReason != null) return appError('conflict', 'A sold-out order cannot be put back on the packing list');
+  if (order.fulfilmentStatus != null) return appError('conflict', 'The order is already on the packing list or shipped');
+  if (!SHIP_ANYWAY_STATUSES.includes(order.status)) return appError('conflict', 'Only a paid or refunded order can be put back on the packing list');
   return null;
 };
 

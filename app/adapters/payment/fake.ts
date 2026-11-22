@@ -54,7 +54,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
   const charges = new Map<string, number>();
   const resolveKey = (tenantId: string, mode: 'live' | 'test') =>
     resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
-  const execute = (tenantId: string, paymentIntentId: string, amountCents: number, metadata: { orderId: string; reason: string }): Result<ProviderRefund, AppError> => {
+  const execute = (tenantId: string, paymentIntentId: string, amountCents: number, metadata: { orderId: string; reason: string; refundJobId?: string }): Result<ProviderRefund, AppError> => {
     const chargeKey = JSON.stringify([tenantId, paymentIntentId]);
     // Without a configured charge, the first refund asked of a payment intent stands for its whole amount.
     const chargeCents = charges.get(chargeKey) ?? options.chargeAmountCents?.[paymentIntentId] ?? amountCents;
@@ -66,6 +66,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
     if (amountCents > remainingCents) return err(refundFailure('refund_failed', 'Refund amount is greater than the unrefunded amount on the charge'));
     const refund: ProviderRefund = {
       refundId: `re_fake_${randomUUID()}`, paymentIntentId, amountCents, status: 'succeeded', failureReason: null, orderId: metadata.orderId, reason: metadata.reason,
+      ...(metadata.refundJobId === undefined ? {} : { refundJobId: metadata.refundJobId }),
     };
     refunds.set(refund.refundId, { tenantId, refund });
     return ok(refund);

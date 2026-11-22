@@ -1453,7 +1453,6 @@ export interface OrderRefundJobRepository {
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
 }
 
-/** The queue the refund dispatcher drains: sold-out refund jobs and staff refunds, claimed in due order. */
 export interface RefundJobQueue {
   claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedRefundJob | null>;
   countDue(input: { now: string }): Promise<number>;
@@ -1500,6 +1499,8 @@ export interface OrderStaffRefundRepository {
   listByOrder(tenantId: string, orderId: string): Promise<OrderStaffRefund[]>;
   platformCommittedCents(tenantId: string, orderId: string): Promise<number>;
   hasLabel(tenantId: string, orderId: string): Promise<boolean>;
+  returnableStock(tenantId: string, orderId: string): Promise<Array<{ productId: string; quantity: number }>>;
+  committedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
   shipAnyway(tenantId: string, orderId: string): Promise<Result<Order, AppError>>;
 }
@@ -2050,6 +2051,7 @@ export interface PaymentTransactionPort {
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
       orderRefundJobs: OrderRefundJobRepository;
+      orderStaffRefunds?: Pick<OrderStaffRefundRepository, 'noteChargeRefunded'>;
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;

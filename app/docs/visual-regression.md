@@ -227,6 +227,11 @@ baseline changes.
 
 ### Baselines from the CI capture
 
+Owner decision 2026-11-22, recorded in `CLAUDE.md` (Storybook and visual
+verification): baselines authored this way are accepted, and the ten baselines
+changed by #448 and #450 and re-recorded in #452 were authored this way. The
+conditions below are checked by a reviewer, not enforced by a command.
+
 A contributor without a macOS host may take baselines from the pull request's
 own CI `visual` job instead, which runs the same capture on the pinned macOS
 runner and browser. All of these conditions hold, or the baselines are not

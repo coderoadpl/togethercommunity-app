@@ -328,6 +328,12 @@ describe('submitChangeProposal dry run', () => {
     expect(h.store.proposals[0]?.effect).toEqual({ title: { before: 'Mug', after: 'Big mug' } });
   });
 
+  it('records product safety information in the stored form, so the effect is the same under the release before the responsible-person fields', async () => {
+    const compliance = { manufacturerName: 'Example Workshop', manufacturerAddress: 'Example Street 1, Warsaw', manufacturerEmail: 'safety@example.com', modelIdentifier: 'MUG-1' };
+    await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-mug', compliance } }, h.submitDeps);
+    expect(h.store.proposals[0]?.effect).toEqual({ compliance: { before: null, after: { ...compliance, safetyWarnings: '' } } });
+  });
+
   it('records a new price as a change of the active prices without generated ids', async () => {
     await submitChangeProposal(keyCtx(), { operation: 'price.create', input: OPERATION_INPUTS['price.create'] }, h.submitDeps);
     expect(h.store.proposals[0]?.effect).toEqual({

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { QueryClient } from '@tanstack/query-core';
 
 import {
   lessonPlaybackVideoSchema,
@@ -8,6 +9,7 @@ import {
 import { ok, type AppError, type Result } from '#core/domain/index.js';
 
 import { ApiError, createApiClient, unwrap } from './http.js';
+import { publicParcelLockerQuery } from './queries.js';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -700,6 +702,22 @@ it('looks a parcel locker up by its encoded code alone', async () => {
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
   await expect(client.publicParcelLocker('WAW01M?x=1')).resolves.toEqual(ok({ status: 'unavailable' }));
+});
+
+it('asks for a failed parcel locker lookup once even when the query client retries by default', async () => {
+  let requests = 0;
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => {
+      requests += 1;
+      throw new TypeError('Failed to fetch');
+    },
+  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } });
+  const lookup = publicParcelLockerQuery(client, 'WAW01M');
+  expect(lookup.meta).toEqual({ background: true });
+  await expect(queryClient.fetchQuery(lookup)).rejects.toThrow();
+  expect(requests).toBe(1);
 });
 
 it('rejects checkout status responses containing extra data', async () => {

@@ -6,10 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PICKUP_POINT_REJECTION_MESSAGES } from '#core/domain/index.js';
 
-import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
-import { queryClient } from '../../query-client.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
@@ -338,17 +336,6 @@ describe('typed parcel locker code check', () => {
     expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found);
     expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_found);
     expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
-  });
-
-  it('asks the server once for a lookup that fails, also under the app retry policy', async () => {
-    const lookups: string[] = [];
-    server.use(http.get('/api/public/parcel-lockers/:code', ({ params }) => {
-      lookups.push(String(params.code));
-      return HttpResponse.error();
-    }));
-    await expect(queryClient.fetchQuery(actions.publicParcelLocker('WAW01M'))).rejects.toThrow();
-    expect(lookups).toEqual(['WAW01M']);
-    queryClient.clear();
   });
 
   it('has the locker check copy in both languages', () => {

@@ -280,6 +280,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
 | `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
 | `GET /api/change-proposals/:id/assets/:digest` | authenticated | read | change proposal image |
+| `GET /api/change-proposals/:id/files/:fileId` | authenticated | read | change proposal file |
 | `GET /api/change-proposals/groups/:id` | authenticated | read | change proposal group |
 | `POST /api/change-proposals/groups/:id/reject` | authenticated | mutating | change proposal group reject |
 | `POST /api/change-proposals/groups/:id/approve` | authenticated | mutating | change proposal group approve |

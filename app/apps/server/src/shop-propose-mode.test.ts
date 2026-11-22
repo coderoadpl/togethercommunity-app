@@ -16,6 +16,7 @@ import {
   emailOutbox,
   entityVersions,
   productPrices,
+  productDownloadAssets,
   products,
   productStock,
   salesLinks,
@@ -39,10 +40,12 @@ import {
   changeProposalsListOutputSchema,
   SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
+  SHOP_DOWNLOAD_ROUTES,
   SHOP_PROPOSAL_ROUTES,
   SHOP_SETTINGS_ROUTES,
   shopAssetsContracts,
   shopCatalogContracts,
+  shopDownloadContracts,
   shopProposalContracts,
   shopSettingsContracts,
 } from '#core/contract/index.js';
@@ -142,9 +145,14 @@ const liveState = async () => {
     versions: forWorkspace(await database.db.select().from(entityVersions)),
     outbox: forWorkspace(await database.db.select().from(emailOutbox)),
     salesLinks: forWorkspace(await database.db.select().from(salesLinks)),
+    files: forWorkspace(await database.db.select().from(productDownloadAssets)),
     secrets: forWorkspace(await database.db.select().from(tenantSecrets)),
   });
 };
+
+const withFakeStorage = (resolver: TenantSecretResolver): TenantSecretResolver => ({
+  resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key),
+});
 
 const briefLockWaitApp = () => {
   const lockWait = { lockWaitMs: 300 };
@@ -153,7 +161,7 @@ const briefLockWaitApp = () => {
     ...deps,
     changeProposals: createChangeProposalRepository(database.db, lockWait),
     changeProposalTransaction: createChangeProposalTransaction(database.db, deps.logger, (connection) =>
-      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)), lockWait),
   });
 };
 
@@ -182,7 +190,11 @@ interface Fixture {
   draft: string;
   publishedPrice: string;
   salesLink: string;
+  digital: string;
 }
+
+const OWNER_FILE = { id: 'owner-workbook', key: 'acme/product-downloads/owner/workbook.pdf' };
+const PDF = new TextEncoder().encode('%PDF-1.7\nworkbook\n%%EOF\n');
 
 let fixture: Fixture;
 let direct: Awaited<ReturnType<typeof createShopKey>>;
@@ -202,7 +214,53 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_ASSETS_ROUTES.createSalesLink.path]: { slug: 'proposed-link', title: 'Proposed link', heading: 'Proposed offer', productIds: [fixture.draft] },
   [SHOP_ASSETS_ROUTES.updateSalesLink.path]: { ...salesLinkFields(), id: fixture.salesLink, expectedRevision: 1, heading: 'Proposed heading' },
   [SHOP_SETTINGS_ROUTES.updateSettings.path]: { name: 'Proposed shop name' },
+  [SHOP_DOWNLOAD_ROUTES.removeProductDownload.path]: { productId: fixture.digital, assetId: OWNER_FILE.id },
 });
+
+const storageKeyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
+
+const stageFile = async (secret: string, fileName: string): Promise<string> => {
+  const started = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, { fileName, contentType: 'application/pdf', sizeBytes: PDF.byteLength });
+  expect(started.status, fileName).toBe(200);
+  const upload = envelope(shopDownloadContracts.uploadStagedDownload.output).parse(await started.json()).data.upload;
+  imageStorage.objects.set(storageKeyOf(upload.url), { bytes: PDF, contentType: 'application/pdf' });
+  const completed = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path, { uploadId: upload.id });
+  expect(completed.status, fileName).toBe(200);
+  return envelope(shopDownloadContracts.completeStagedDownload.output).parse(await completed.json()).data.file.id;
+};
+
+const bodyFor = async (secret: string, path: string, bodies: Record<string, unknown>): Promise<unknown> => {
+  if (path === SHOP_DOWNLOAD_ROUTES.addProductDownload.path) return { productId: fixture.digital, stagedFileId: await stageFile(secret, 'added.pdf') };
+  if (path === SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path) {
+    return { productId: fixture.digital, replacesAssetId: OWNER_FILE.id, stagedFileId: await stageFile(secret, 'replacing.pdf') };
+  }
+  return bodies[path] ?? {};
+};
+
+const STAGING_ROUTES: ReadonlySet<string> = new Set([
+  SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path,
+  SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path, SHOP_DOWNLOAD_ROUTES.discardStagedDownload.path,
+]);
+
+const stagingRoute = async (secret: string, route: ShopMachineRoute, extra: Record<string, string> = {}): Promise<number> => {
+  if (route.path === SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path) {
+    return (await keyed(secret, 'POST', route.path, { fileName: 'started.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength }, acmeHost, extra)).status;
+  }
+  if (route.path === SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path) {
+    const started = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, { fileName: 'completed.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength });
+    const upload = envelope(shopDownloadContracts.uploadStagedDownload.output).parse(await started.json()).data.upload;
+    imageStorage.objects.set(storageKeyOf(upload.url), { bytes: PDF, contentType: 'application/pdf' });
+    return (await keyed(secret, 'POST', route.path, { uploadId: upload.id }, acmeHost, extra)).status;
+  }
+  if (route.path === SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path) {
+    return (await keyed(secret, 'POST', route.path, { productId: fixture.digital, assetId: OWNER_FILE.id }, acmeHost, extra)).status;
+  }
+  const id = await stageFile(secret, 'discarded.pdf');
+  return (await keyed(secret, 'DELETE', route.path.replace(':id', id), undefined, acmeHost, extra)).status;
+};
+
+const directRoute = (secret: string, route: ShopMachineRoute, candidate: { key: string | null }, extra: Record<string, string> = {}): Promise<number> =>
+  STAGING_ROUTES.has(route.path) ? stagingRoute(secret, route, extra) : imageUploadRoute(secret, route, candidate, extra);
 
 const IMAGE_UPLOAD_BODIES: Record<string, unknown> = {
   [SHOP_ASSETS_ROUTES.productCoverUpload.path]: { kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: PNG.byteLength },
@@ -248,11 +306,12 @@ beforeAll(async () => {
   secretsMasterKey = env.SECRETS_MASTER_KEY;
   const created = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
   imageStorage = createObjectStorageFake();
-  const resolver: TenantSecretResolver = created.secretResolver;
   deps = {
     ...created,
     storage: imageStorage.storage,
-    secretResolver: { resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key) },
+    secretResolver: withFakeStorage(created.secretResolver),
+    changeProposalTransaction: createChangeProposalTransaction(database.db, created.logger, (connection) =>
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), createSecretCrypto(secretsMasterKey)))),
   };
   app = buildApp(deps);
 
@@ -284,7 +343,15 @@ beforeAll(async () => {
   const linked = await keyed(direct.secret, 'POST', SHOP_ASSETS_ROUTES.createSalesLink.path, { slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [published] });
   expect(linked.status).toBe(201);
   const salesLink = envelope(shopAssetsContracts.createSalesLink.output).parse(await linked.json()).data.salesLink.id;
-  fixture = { published, draft, publishedPrice, salesLink };
+  const digitalCreated = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Workbook', type: 'digital_download', priceCents: 900 });
+  expect(digitalCreated.status).toBe(200);
+  const digital = envelope(shopCatalogContracts.createProduct.output).parse(await digitalCreated.json()).data.product.id;
+  await database.db.insert(productDownloadAssets).values({
+    id: OWNER_FILE.id, tenantId: 'acme', productId: digital, lineageId: OWNER_FILE.id, versionNumber: 1, versionNote: null, supersededAt: null, replacesAssetId: null,
+    fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength, storageKey: OWNER_FILE.key, status: 'ready', createdAt: now, sha256: null,
+  });
+  imageStorage.objects.set(OWNER_FILE.key, { bytes: PDF, contentType: 'application/pdf' });
+  fixture = { published, draft, publishedPrice, salesLink, digital };
 }, 120_000);
 
 afterAll(async () => { await database?.close(); });
@@ -333,15 +400,15 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
       'POST /api/m2m/shop/sales-links/:id': 'proposal sales-link.update',
       'DELETE /api/m2m/shop/sales-links/:id': 'proposal sales-link.delete',
-      'POST /api/m2m/shop/downloads/upload': 'refuse not-in-release',
-      'POST /api/m2m/shop/downloads/complete': 'refuse not-in-release',
-      'POST /api/m2m/shop/downloads/copy': 'refuse not-in-release',
-      'GET /api/m2m/shop/downloads/staged': 'refuse not-in-release',
-      'DELETE /api/m2m/shop/downloads/staged/:id': 'refuse not-in-release',
+      'POST /api/m2m/shop/downloads/upload': 'direct',
+      'POST /api/m2m/shop/downloads/complete': 'direct',
+      'POST /api/m2m/shop/downloads/copy': 'direct',
+      'GET /api/m2m/shop/downloads/staged': 'read',
+      'DELETE /api/m2m/shop/downloads/staged/:id': 'direct',
       'GET /api/m2m/shop/products/:productId/downloads': 'read',
-      'POST /api/m2m/shop/products/downloads': 'refuse not-in-release',
-      'POST /api/m2m/shop/products/downloads/replace': 'refuse not-in-release',
-      'POST /api/m2m/shop/products/downloads/remove': 'refuse not-in-release',
+      'POST /api/m2m/shop/products/downloads': 'proposal download.add',
+      'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
+      'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
       'GET /api/m2m/shop/integrations/secrets': 'read',
       'POST /api/m2m/shop/integrations/secrets': 'refuse secret',
       'DELETE /api/m2m/shop/integrations/secrets/:key': 'refuse secret',
@@ -366,7 +433,7 @@ describe('shop route classification', () => {
 });
 
 describe('a propose-mode key on every registered shop route', () => {
-  it('never reaches a live write: proposals answer 202, refusals 403, reads still read', async () => {
+  it('never reaches a live write: proposals answer 202, refusals 403, reads still read, uploads stay private', async () => {
     const bodies = proposalBodies();
     const before = await liveState();
     const publicBefore = imageStorage.keysUnder('image-assets/');
@@ -377,11 +444,11 @@ describe('a propose-mode key on every registered shop route', () => {
       const mode = route.proposeMode;
       if (mode?.kind === 'proposal-management') continue;
       if (mode?.kind === 'direct') {
-        expect(await imageUploadRoute(proposer.secret, route, candidate), label).toBe(200);
+        expect(await directRoute(proposer.secret, route, candidate), label).toBe(200);
         outcomes.push(`${label} quarantined`);
         continue;
       }
-      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
+      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : await bodyFor(proposer.secret, route.path, bodies);
       const response = await keyed(proposer.secret, route.method, salesLinkPath(route.path), body);
       if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
@@ -401,11 +468,12 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(await liveState()).toBe(before);
     expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
     expect(imageStorage.keysUnder('image-asset-quarantine/acme/').length).toBeGreaterThan(0);
-    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
-    expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(4);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(20);
+    expect(imageStorage.keysUnder('acme/product-downloads/').filter((key) => !key.includes(`/${proposer.apiKey.id}/`))).toEqual([OWNER_FILE.key]);
+    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(17);
+    expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(8);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(12);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
-    expect(stored).toHaveLength(14);
+    expect(stored).toHaveLength(17);
   });
 
   it('never reaches a live write with the group header either: every proposal joins its group, refusals stay 403, reads still read', async () => {
@@ -424,12 +492,12 @@ describe('a propose-mode key on every registered shop route', () => {
       const created = await keyed(grouper.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: label });
       expect(created.status, label).toBe(201);
       const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
-      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
+      const body = route.method === 'GET' || route.method === 'DELETE' || mode?.kind === 'direct' ? undefined : await bodyFor(grouper.secret, route.path, bodies);
       const response = mode?.kind === 'direct'
         ? null
         : await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
       if (response === null) {
-        expect(await imageUploadRoute(grouper.secret, route, candidate, { 'x-proposal-group': group.id }), label).toBe(200);
+        expect(await directRoute(grouper.secret, route, candidate, { 'x-proposal-group': group.id }), label).toBe(200);
       } else if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
       } else if (mode.kind === 'proposal') {
@@ -446,9 +514,9 @@ describe('a propose-mode key on every registered shop route', () => {
     }
     expect(await liveState()).toBe(before);
     expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
-    expect(proposed).toHaveLength(14);
+    expect(proposed).toHaveLength(17);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === grouper.apiKey.id);
-    expect(stored).toHaveLength(14);
+    expect(stored).toHaveLength(17);
     expect(stored.every((row) => row.groupId !== null && row.groupPosition === 1)).toBe(true);
   });
 

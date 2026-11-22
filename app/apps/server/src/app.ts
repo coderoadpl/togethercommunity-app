@@ -93,6 +93,7 @@ export const buildApp = (deps: AppDeps) => {
       },
       referrerPolicy: 'strict-origin-when-cross-origin',
     })(c, next);
+    if (c.get('noReferrer') === true) c.res.headers.set('referrer-policy', 'no-referrer');
     const redirectOrigin = c.get('signupRedirectOrigin');
     let policy = c.res.headers.get('content-security-policy');
     if (policy === null) return;

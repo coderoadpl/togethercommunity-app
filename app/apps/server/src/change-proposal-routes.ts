@@ -12,6 +12,7 @@ import {
   approveChangeProposal,
   approveChangeProposalGroup,
   getChangeProposal,
+  getChangeProposalFileLink,
   getChangeProposalGroup,
   getChangeProposalImage,
   getChangeProposalSummary,
@@ -20,6 +21,7 @@ import {
   rejectChangeProposalGroup,
   type ChangeProposalApprovalDeps,
   type ChangeProposalDecisionDeps,
+  type ChangeProposalFileLinkDeps,
   type ChangeProposalGroupApprovalDeps,
   type ChangeProposalGroupDecisionDeps,
   type ChangeProposalImagePreview,
@@ -33,6 +35,8 @@ import { ctxOf } from './ctx-of.js';
 import { readJson } from './read-json.js';
 import { respond, retryAfterHeaders } from './respond.js';
 
+const FILE_LINK_CACHE_CONTROL = 'private, no-store';
+
 const imagePreviewResponse = (preview: ChangeProposalImagePreview): Response => new Response(Uint8Array.from(preview.bytes), {
   headers: {
     'content-type': preview.contentType,
@@ -45,7 +49,8 @@ const imagePreviewResponse = (preview: ChangeProposalImagePreview): Response => 
 export const registerChangeProposalRoutes = (
   app: Hono<AppVars>,
   deps: ChangeProposalOwnerReadDeps & ChangeProposalDecisionDeps & ChangeProposalApprovalDeps
-    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps & ChangeProposalSummaryDeps & ChangeProposalImagePreviewDeps,
+    & ChangeProposalGroupDecisionDeps & ChangeProposalGroupApprovalDeps & ChangeProposalSummaryDeps & ChangeProposalImagePreviewDeps
+    & ChangeProposalFileLinkDeps,
 ): void => {
   app.get(API_PATHS.changeProposals, async (c) => {
     const query = changeProposalListQuerySchema.safeParse({
@@ -90,6 +95,14 @@ export const registerChangeProposalRoutes = (
   app.get(API_PATHS.changeProposalImage, async (c) => {
     const result = await getChangeProposalImage(ctxOf(c), { id: c.req.param('id') ?? '', digest: c.req.param('digest') ?? '' }, deps);
     return result.ok ? imagePreviewResponse(result.value) : respond(result, { headers: retryAfterHeaders(result.error) });
+  });
+
+  app.get(API_PATHS.changeProposalFile, async (c) => {
+    c.set('noReferrer', true);
+    const result = await getChangeProposalFileLink(ctxOf(c), { id: c.req.param('id') ?? '', fileId: c.req.param('fileId') ?? '' }, deps);
+    return result.ok
+      ? respond(result, { cacheControl: FILE_LINK_CACHE_CONTROL })
+      : respond(result, { headers: retryAfterHeaders(result.error) });
   });
 
   app.get(API_PATHS.changeProposalGroup, async (c) => {

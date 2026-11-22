@@ -480,7 +480,7 @@ describe('shop management client download file calls', () => {
     expect((await client.discardStagedDownload('staged/1')).ok).toBe(true);
     expect((await client.addProductDownload({ productId: 'product-2', stagedFileId: 'staged-1' })).ok).toBe(true);
     expect((await client.replaceProductDownload({ productId: 'product-2', replacesAssetId: 'asset-1', stagedFileId: 'staged-1', versionNote: 'Second edition' })).ok).toBe(true);
-    expect(await client.removeProductDownload({ productId: 'product-2', assetId: 'asset-1' })).toEqual({ ok: true, value: { deleted: true } });
+    expect(await client.removeProductDownload({ productId: 'product-2', assetId: 'asset-1' })).toEqual({ ok: true, value: { outcome: 'applied', deleted: true } });
     expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
       'GET /api/m2m/shop/products/product%2F1/downloads',
       `POST ${SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path}`,

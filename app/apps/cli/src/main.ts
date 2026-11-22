@@ -5,6 +5,7 @@ import { registerSurveyCommands } from './survey-commands.js';
 import { registerOperatorCommands } from './operator-commands.js';
 import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
 import { registerMarketingCommands } from './marketing-commands.js';
+import { saveProposedFile } from './proposal-file-download.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command, CommanderError } from 'commander';
@@ -4215,6 +4216,13 @@ const changeProposalGroupLabel = (proposal: Pick<ChangeProposalOwnerView, 'group
 const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
   `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t${changeProposalGroupLabel(proposal)}\t(${proposal.id})`;
 
+const changeProposalFileLines = (proposal: ChangeProposalOwnerView): string[] => (proposal.proposedFiles ?? []).flatMap((file) => [
+  `  ${file.id}: ${file.available ? 'held by this proposal' : 'no longer available; approving changes nothing'}${file.copiedFrom === null
+    ? ''
+    : `; copy of version ${String(file.copiedFrom.versionNumber)} of ${file.copiedFrom.productTitle ?? 'a deleted product'} (${file.copiedFrom.productId})`}`,
+  ...(file.available && proposal.status === 'pending' ? [`    download it with: together proposals file ${proposal.id} ${file.id} --out <path>`] : []),
+]);
+
 const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
   ...(proposal.groupId === null ? [] : [`in ${changeProposalGroupLabel(proposal)}; decide it with the whole group`]),
@@ -4224,6 +4232,7 @@ const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `expires: ${proposal.expiresAt}`,
   'effect:',
   ...changeProposalEffectLines(proposal.effect),
+  ...(proposal.proposedFiles === undefined ? [] : ['files:', ...changeProposalFileLines(proposal)]),
   ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
   ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
 ];
@@ -4263,6 +4272,19 @@ changeProposals
         'history:',
         ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
       ].join('\n'));
+    }),
+  );
+
+changeProposals
+  .command('file <id> <fileId>')
+  .description('Download a file a pending proposal attaches, to check it before deciding: a 60-second signed link from the server, streamed straight from the storage to disk and never opened')
+  .requiredOption('--out <path>', 'file to write')
+  .option('--force', 'overwrite the file at --out if it exists')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.string().min(1), z.object({ out: z.string().min(1), force: z.boolean().optional() })]), async (ctx, [id, fileId, options]) => {
+      const link = await ctx.api.getChangeProposalFileLink({ id, fileId });
+      const saved = link.ok ? await saveProposedFile(link.value.download, options.out, options.force === true) : link;
+      emit(saved, ctx.json, (data) => `wrote ${data.fileName} (${String(data.sizeBytes)} bytes) to ${data.out}`);
     }),
   );
 

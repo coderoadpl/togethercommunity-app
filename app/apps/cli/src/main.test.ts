@@ -53,6 +53,7 @@ interface Hoisted {
   listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
   listChangeProposals: ReturnType<typeof vi.fn>;
   getChangeProposal: ReturnType<typeof vi.fn>;
+  getChangeProposalFileLink: ReturnType<typeof vi.fn>;
   rejectChangeProposal: ReturnType<typeof vi.fn>;
   approveChangeProposal: ReturnType<typeof vi.fn>;
   getChangeProposalGroup: ReturnType<typeof vi.fn>;
@@ -159,6 +160,7 @@ const h = vi.hoisted(
     listShopManagementKeyEvents: vi.fn(),
     listChangeProposals: vi.fn(),
     getChangeProposal: vi.fn(),
+    getChangeProposalFileLink: vi.fn(),
     rejectChangeProposal: vi.fn(),
     approveChangeProposal: vi.fn(),
     getChangeProposalGroup: vi.fn(),
@@ -313,6 +315,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listShopManagementKeyEvents: h.listShopManagementKeyEvents,
     listChangeProposals: h.listChangeProposals,
     getChangeProposal: h.getChangeProposal,
+    getChangeProposalFileLink: h.getChangeProposalFileLink,
     rejectChangeProposal: h.rejectChangeProposal,
     approveChangeProposal: h.approveChangeProposal,
     getChangeProposalGroup: h.getChangeProposalGroup,
@@ -2658,6 +2661,73 @@ describe('owner change proposal commands', () => {
     expect(printed).toContain('  onHand: +5');
     expect(printed).toContain('proposed by key: Catalogue agent (shop-key, active), issued by owner-1');
     expect(printed).toContain('  1998-08-01T00:00:00.000Z\tproposed\tshop-key');
+  });
+  it('lists the file a proposal attaches, its copy source and how to download it while it is pending', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', events: [], proposedFiles: [
+      { id: 'staged-1', available: true, copiedFrom: { productId: 'product-2', productTitle: 'Field guide', versionNumber: 2 } },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(printed).toContain('files:');
+    expect(printed).toContain('  staged-1: held by this proposal; copy of version 2 of Field guide (product-2)');
+    expect(printed).toContain('    download it with: together proposals file proposal-1 staged-1 --out <path>');
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', status: 'stale', events: [], proposedFiles: [
+      { id: 'staged-1', available: false, copiedFrom: null },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const gone = String(logSpy.mock.calls[0]?.[0]);
+    expect(gone).toContain('  staged-1: no longer available; approving changes nothing');
+    expect(gone).not.toContain('download it with');
+  });
+  it('downloads a proposed file through the short-lived link to --out, never printing the link, and refuses to overwrite without --force', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));
+    const bytes = new TextEncoder().encode('%PDF-1.7\nreviewed\n');
+    const url = 'https://storage.example.test/acme/file?X-Amz-Signature=secret-signature';
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response(bytes));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const out = join(directory, 'review.pdf');
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(ok({ download: { url, expiresAt: '1998-08-01T00:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: bytes.byteLength } }));
+      await run('proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(h.getChangeProposalFileLink).toHaveBeenCalledWith({ id: 'proposal-1', fileId: 'staged-1' });
+      expect(fetchSpy).toHaveBeenCalledWith(url, { redirect: 'error' });
+      expect(new Uint8Array(await readFile(out))).toEqual(bytes);
+      expect(logSpy).toHaveBeenCalledWith(`wrote workbook.pdf (${String(bytes.byteLength)} bytes) to ${out}`);
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain('secret-signature');
+      await writeFile(out, 'kept');
+      logSpy.mockClear();
+      fetchSpy.mockClear();
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(await readFile(out, 'utf8')).toBe('kept');
+      logSpy.mockClear();
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out, '--force');
+      expect(soleJson()).toEqual({ ok: true, data: { fileName: 'workbook.pdf', sizeBytes: bytes.byteLength, out } });
+      expect(new Uint8Array(await readFile(out))).toEqual(bytes);
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true });
+    }
+  });
+  it('writes nothing when the proposed file is gone or the storage sends a different size', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));
+    try {
+      const out = join(directory, 'review.pdf');
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(err(appError('not_found', 'No proposed file awaiting approval under this address')));
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      logSpy.mockClear();
+      vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(new Uint8Array(3))));
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(ok({ download: { url: 'https://storage.example.test/f', expiresAt: '1998-08-01T00:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: 9 } }));
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+      await expect(readFile(out)).rejects.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true });
+    }
   });
   it('rejects a proposal with an optional note', async () => {
     h.rejectChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'rejected', decisionNote: 'Not now' } }));

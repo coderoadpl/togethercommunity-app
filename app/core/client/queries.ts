@@ -1793,6 +1793,7 @@ export const approveChangeProposalInvalidates = () => [
   { queryKey: productsScopes.all() },
   { queryKey: productPricesScopes.all() },
   { queryKey: productStockScopes.all() },
+  { queryKey: productDownloadsScopes.all() },
   { queryKey: salesLinkScopes.all() },
   { queryKey: tenantSettingsScopes.all() },
 ];

@@ -59,11 +59,8 @@ describe('i18n dictionaries', () => {
       /does not exist/iu,
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
-      messages.auth.signInMethodsUnavailable,
       messages.auth.signInRateLimited,
-      messages.auth.signInMethodsChoosePrompt,
-      messages.auth.signInMethodsChooseMagicLink,
-      messages.auth.signInMethodsChoosePassword,
+      messages.auth.signInRateLimitedTitle,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,
@@ -81,7 +78,6 @@ describe('i18n dictionaries', () => {
     expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => /łeś|łaś/u.test(text))).toEqual([]);
     for (const messages of Object.values(dictionaries)) {
       expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
-      expect(messages.auth.signInMethodsChooseMagicLink).toBe(messages.auth.methodMagicLinkTitle);
       expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
     }
     expect(en.auth.methodMagicLinkTitle).toContain('sign-in link');

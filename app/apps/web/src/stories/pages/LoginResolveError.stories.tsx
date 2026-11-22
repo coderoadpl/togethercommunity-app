@@ -27,6 +27,6 @@ export const ShadcnMobile: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
-    await canvas.findByTestId('sign-in-methods-unavailable');
+    await canvas.findByTestId('send-magic-link');
   },
 };

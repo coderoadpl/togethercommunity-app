@@ -412,6 +412,7 @@ export interface Messages {
     signInNoticeLabel: string;
     invalidCredentials: string;
     signInRateLimited: string;
+    signInRateLimitedTitle: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -431,10 +432,6 @@ export interface Messages {
     signingInAs: (params: { email: string }) => string;
     changeIdentifier: string;
     changeIdentifierShort: string;
-    signInMethodsUnavailable: string;
-    signInMethodsChoosePrompt: string;
-    signInMethodsChooseMagicLink: string;
-    signInMethodsChoosePassword: string;
     methodTitle: string;
     methodLead: string;
     methodMagicLinkTitle: string;

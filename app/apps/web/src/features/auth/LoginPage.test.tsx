@@ -592,7 +592,10 @@ describe('LoginPage', () => {
     if (outcome === 'failure') failSignInMethods();
     if (outcome === 'rate-limit') rateLimitSignInMethods();
     await continueWithEmail();
-    if (outcome !== 'success') await userEvent.click(await screen.findByTestId('choose-magic-link'));
+    if (outcome === 'rate-limit') {
+      stubSignInMethods(['magic-link']);
+      await userEvent.click(await screen.findByTestId('sign-in-methods-retry'));
+    }
     await screen.findByTestId('send-magic-link');
     expect(screen.getByTestId('continue-google')).toBeEnabled();
   });
@@ -771,28 +774,49 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(en.auth.emailLabel)).toHaveValue('creator@together.dev');
   });
 
-  it('names the failure and preselects nothing when the lookup fails', async () => {
+  it('lands a failed lookup on the normal method step, the same for a known and an unknown address', async () => {
+    const stepAfterFailedLookup = async (email: string) => {
+      const view = await renderLoginPage();
+      failSignInMethods();
+      await continueWithEmail(email);
+      await screen.findByTestId('use-password');
+      const content = screen.getByTestId('sign-in-content');
+      const layout = [...content.querySelectorAll('*')].map((element) => [
+        element.tagName,
+        element.getAttribute('data-testid'),
+        element.getAttribute('disabled'),
+        element.children.length === 0 ? (element.textContent ?? '').replaceAll(email, '<email>') : null,
+      ]);
+      const alerts = within(content).queryAllByRole('alert').length;
+      view.unmount();
+      return { layout, alerts };
+    };
+
+    const known = await stepAfterFailedLookup('creator@together.dev');
+    window.sessionStorage.clear();
+    const unknown = await stepAfterFailedLookup('crow.unknown@example.com');
+
+    expect(unknown).toEqual(known);
+    const testIds = known.layout.map(([, testId]) => testId);
+    expect(testIds).toEqual(expect.arrayContaining(['send-magic-link', 'use-password', 'signin-passkey']));
+    expect(testIds).not.toContain('sign-in-rate-limited');
+    expect(known.alerts).toBe(0);
+  });
+
+  it('gives the rate limit its own screen with a heading and one primary action', async () => {
     await renderLoginPage();
-    failSignInMethods();
+    rateLimitSignInMethods();
     await continueWithEmail();
 
-    const failure = await screen.findByTestId('sign-in-methods-unavailable');
-    expect(failure).toHaveTextContent(
-      en.auth.signInMethodsUnavailable,
-    );
-    const retry = within(failure).getByTestId('sign-in-methods-retry');
-    expect(retry).toHaveClass('MuiButton-outlined');
-    expect(retry).toHaveStyle({ width: '100%', minHeight: '44px' });
-    expect(screen.getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
-    expect(screen.getByTestId('choose-magic-link')).toHaveTextContent(
-      en.auth.signInMethodsChooseMagicLink,
-    );
-    expect(screen.getByTestId('choose-password')).toHaveTextContent(
-      en.auth.signInMethodsChoosePassword,
-    );
-    expect(screen.queryByTestId('choose-passkey')).not.toBeInTheDocument();
+    const screenRoot = await screen.findByTestId('sign-in-rate-limited');
+    const title = within(screenRoot).getByRole('heading', { level: 1, name: en.auth.signInRateLimitedTitle });
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(within(screenRoot).getByTestId('login-identity')).toHaveTextContent('creator@together.dev');
+    const buttons = within(screenRoot).getAllByRole('button');
+    expect(buttons.filter((button) => button.classList.contains('MuiButton-contained'))).toEqual([
+      within(screenRoot).getByTestId('sign-in-methods-retry'),
+    ]);
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
   it('uses calm copy when the resolver rate-limits the visitor with a retry delay', async () => {
@@ -800,7 +824,7 @@ describe('LoginPage', () => {
     rateLimitSignInMethods(42);
     await continueWithEmail();
 
-    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+    expect(await screen.findByTestId('sign-in-rate-limited')).toHaveTextContent(
       en.auth.signInRateLimited,
     );
   });
@@ -810,46 +834,34 @@ describe('LoginPage', () => {
     rateLimitSignInMethods();
     await continueWithEmail();
 
-    expect(await screen.findByTestId('sign-in-methods-unavailable')).toHaveTextContent(
+    expect(await screen.findByTestId('sign-in-rate-limited')).toHaveTextContent(
       en.auth.signInRateLimited,
     );
   });
 
-  it('opens the password step from the failed lookup', async () => {
+  it('opens the password step after a failed lookup', async () => {
     await renderLoginPage();
     failSignInMethods();
     await continueWithEmail();
 
-    await userEvent.click(await screen.findByTestId('choose-password'));
+    await userEvent.click(await screen.findByTestId('use-password'));
 
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
-    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
-  });
-
-  it.each([failSignInMethods, rateLimitSignInMethods])('offers all methods after a failed lookup: %s', async (failLookup) => {
-    await renderLoginPage();
-    failLookup();
-    await continueWithEmail();
-
-    await userEvent.click(await screen.findByTestId('choose-magic-link'));
-
-    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
-    expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
     expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
-    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
-  it('retries the lookup and lands on the resolved method', async () => {
+  it('retries a rate-limited lookup and lands on the method step', async () => {
     await renderLoginPage();
-    failSignInMethods();
+    rateLimitSignInMethods();
     await continueWithEmail();
-    await screen.findByTestId('sign-in-methods-unavailable');
+    await screen.findByTestId('sign-in-rate-limited');
     stubSignInMethods(['password', 'magic-link']);
 
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
     expect(await screen.findByTestId('use-password')).toBeInTheDocument();
-    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {
@@ -857,12 +869,12 @@ describe('LoginPage', () => {
     await continueWithEmail();
     await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
-    failSignInMethods();
+    rateLimitSignInMethods();
 
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
     expect(await screen.findByTestId('use-password')).toBeInTheDocument();
-    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
   });
 
   it('does not carry a known password method over to another address', async () => {
@@ -871,11 +883,11 @@ describe('LoginPage', () => {
     await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
-    failSignInMethods();
+    rateLimitSignInMethods();
 
     await continueWithEmail('someone-else@together.dev');
 
-    expect(await screen.findByTestId('sign-in-methods-unavailable')).toBeInTheDocument();
+    expect(await screen.findByTestId('sign-in-rate-limited')).toBeInTheDocument();
     expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
   });
 
@@ -1427,19 +1439,6 @@ describe('LoginPage', () => {
     const resend = within(sent).getByRole('button', { name: t.auth.magicLinkResend });
     expect(resend).toHaveClass('MuiButton-outlined');
     expect(resend).toHaveClass('MuiButton-fullWidth');
-  });
-
-  it('retries the sign-in method lookup from the unavailable notice', async () => {
-    await renderLoginPage();
-    failSignInMethods();
-    await continueWithEmail();
-    await screen.findByTestId('sign-in-methods-unavailable');
-
-    stubSignInMethods(['password']);
-    await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
-
-    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
-    expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('clears the failed sign-in and the typed password when switching methods', async () => {

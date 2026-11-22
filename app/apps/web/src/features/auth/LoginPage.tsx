@@ -9,7 +9,6 @@ import {
   Link as MuiLink,
   Stack,
   SvgIcon,
-  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
@@ -179,6 +178,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
+  const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -194,6 +194,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   }, [requestedMagicEmail]);
 
   useEffect(() => {
+    if (resolveFailure !== null) rateLimitedTitleRef.current?.focus();
+  }, [resolveFailure]);
+
+  useEffect(() => {
     if (resendCooldown === 0) return undefined;
     const timer = window.setTimeout(() => setResendCooldown((seconds) => seconds - 1), 1000);
     return () => window.clearTimeout(timer);
@@ -207,7 +211,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       setMethod('magic-link');
     },
     onError: (error, variables) => {
-      if (passwordKnownFor === variables.email && !magicLinkExpired) {
+      if (errorCodeOf(error) !== 'rate_limited' || (passwordKnownFor === variables.email && !magicLinkExpired)) {
+        setResolveFailure(null);
         setMethod('magic-link');
         return;
       }
@@ -416,9 +421,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthIdentityChip>
   );
 
-  const resolveFailureMessage = errorCodeOf(resolveFailure) === 'rate_limited'
-    ? t.auth.signInRateLimited
-    : t.auth.signInMethodsUnavailable;
   const signInErrorCode = errorCodeOf(signIn.error);
   const signInErrorMessage = signInErrorCode === 'rate_limited'
     ? t.auth.signInRateLimited
@@ -617,49 +619,26 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   if (method === null && resolveFailure !== null) {
     return shell(
-      <>
+      <Box data-testid="sign-in-rate-limited">
         {identityChip}
-        <Alert
-          severity="error"
-          role="alert"
-          sx={{ mb: '1rem' }}
-          data-testid="sign-in-methods-unavailable"
+        <Box sx={{ mb: '1.5rem' }}>
+          <AuthTitle variant="h1" ref={rateLimitedTitleRef} tabIndex={-1}>
+            {t.auth.signInRateLimitedTitle}
+          </AuthTitle>
+          <AuthLead component="p" data-testid="sign-in-rate-limited-message">
+            {t.auth.signInRateLimited}
+          </AuthLead>
+        </Box>
+        <Button
+          variant="contained"
+          fullWidth
+          data-testid="sign-in-methods-retry"
+          disabled={resolveSignInMethods.isPending}
+          onClick={() => resolveSignInMethods.mutate({ email })}
         >
-          <Stack useFlexGap spacing="0.75rem" sx={{ width: '100%' }}>
-            <Typography variant="body2">{resolveFailureMessage}</Typography>
-            <Button
-              variant="outlined"
-              color="inherit"
-              fullWidth
-              data-testid="sign-in-methods-retry"
-              disabled={resolveSignInMethods.isPending}
-              onClick={() => resolveSignInMethods.mutate({ email })}
-              sx={{ minHeight: '44px' }}
-            >
-              {t.common.retry}
-            </Button>
-          </Stack>
-        </Alert>
-        <Stack useFlexGap spacing="0.75rem">
-          <Typography variant="body1">{t.auth.signInMethodsChoosePrompt}</Typography>
-          <Button
-            variant="outlined"
-            fullWidth
-            data-testid="choose-magic-link"
-            onClick={() => switchMethod('magic-link')}
-          >
-            {t.auth.signInMethodsChooseMagicLink}
-          </Button>
-          <Button
-            variant="outlined"
-            fullWidth
-            data-testid="choose-password"
-            onClick={() => switchMethod('password')}
-          >
-            {t.auth.signInMethodsChoosePassword}
-          </Button>
-        </Stack>
-      </>,
+          {t.common.retry}
+        </Button>
+      </Box>,
       null,
     );
   }

@@ -454,6 +454,8 @@ export const en: Messages = {
     magicLinkExpiredOnStep: 'The previous link expired. We will send a new one — you can also sign in with a password.',
     checkInboxTitle: 'Check your inbox',
     magicLinkRequestedBody: () => 'If an account exists, we have sent a sign-in link.',
+    magicLinkSentHint: ({ minutes }) =>
+      format('Nothing yet? Check your spam folder. The link is valid for {minutes} {unit}.', { minutes, unit: plural(minutes, 'minute', 'minutes') }),
     magicLinkResend: 'Send the link again',
     magicLinkResendCooldown: ({ seconds }) => format('Send again ({seconds} s)', { seconds }),
     magicLinkResent: 'If an account exists, we have sent another sign-in link.',

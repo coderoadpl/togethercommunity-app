@@ -461,6 +461,8 @@ export const pl: Messages = {
     magicLinkExpiredOnStep: 'Poprzedni link wygasł. Wyślemy nowy — możesz też zalogować się hasłem.',
     checkInboxTitle: 'Sprawdź skrzynkę',
     magicLinkRequestedBody: () => 'Jeśli konto istnieje, wysłaliśmy link do logowania.',
+    magicLinkSentHint: ({ minutes }) =>
+      format('Nie widać wiadomości? Sprawdź folder spam. Link jest ważny przez {minutes} {unit}.', { minutes, unit: plural(minutes, 'minutę', 'minuty', 'minut') }),
     magicLinkResend: 'Wyślij link ponownie',
     magicLinkResendCooldown: ({ seconds }) => format('Wyślij ponownie ({seconds} s)', { seconds }),
     magicLinkResent: 'Jeśli konto istnieje, wysłaliśmy nowy link do logowania.',

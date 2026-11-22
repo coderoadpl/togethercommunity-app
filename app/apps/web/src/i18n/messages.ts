@@ -464,6 +464,7 @@ export interface Messages {
     magicLinkExpiredOnStep: string;
     checkInboxTitle: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
+    magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
     magicLinkResendCooldown: (params: { seconds: number }) => string;
     magicLinkResent: string;

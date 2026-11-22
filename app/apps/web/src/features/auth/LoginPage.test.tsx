@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
-import type { Language } from '#core/domain/index.js';
+import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type Language } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
@@ -1360,6 +1360,34 @@ describe('LoginPage', () => {
 
     expect(await screen.findByLabelText(en.auth.emailLabel)).toHaveValue('member@example.com');
     expect(screen.queryByTestId('magic-link-sent')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('confirms the sent link with the address, validity and a full-width resend in $language', async ({ language, t }) => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'member@example.com');
+    await userEvent.click(screen.getByTestId('login-continue'));
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+
+    const sent = await screen.findByTestId('magic-link-sent');
+    const title = within(sent).getByRole('heading', { level: 1, name: t.auth.checkInboxTitle });
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title).toHaveAttribute('tabindex', '-1');
+    expect(within(sent).getByTestId('login-identity')).toHaveTextContent('member@example.com');
+    expect(within(sent).getAllByTestId('login-change-email')).toHaveLength(1);
+    expect(within(sent).getByTestId('magic-link-sent-hint')).toHaveTextContent(
+      t.auth.magicLinkSentHint({ minutes: MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60 }),
+    );
+    expect(within(sent).getByTestId('magic-link-sent-hint')).toHaveTextContent(
+      String(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60),
+    );
+    const resend = within(sent).getByRole('button', { name: t.auth.magicLinkResend });
+    expect(resend).toHaveClass('MuiButton-outlined');
+    expect(resend).toHaveClass('MuiButton-fullWidth');
   });
 
   it('retries the sign-in method lookup from the unavailable notice', async () => {

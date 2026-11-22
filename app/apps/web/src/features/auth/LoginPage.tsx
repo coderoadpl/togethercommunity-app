@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
-import type { SignInMethod } from '#core/domain/index.js';
+import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type SignInMethod } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
@@ -57,6 +57,7 @@ const TWO_FACTOR_ERROR_ID = 'two-factor-error';
 const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
+const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
 
 type TwoFactorMode = 'app' | 'backup';
 
@@ -177,6 +178,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
+  const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -186,6 +188,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const platformSurface = usesPlatformAuthSurface(hostname);
   const tenantName = publicOffer.data?.tenant.name ?? null;
   const tenantNamePending = resolveTenantOffer && publicOffer.isPending;
+
+  useEffect(() => {
+    if (requestedMagicEmail !== '') magicLinkSentTitleRef.current?.focus();
+  }, [requestedMagicEmail]);
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -481,33 +487,39 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return shell(
       <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
         <Box>
-          <AuthTitle variant="h1">{t.auth.checkInboxTitle}</AuthTitle>
+          {identityChip}
+          <AuthTitle
+            variant="h1"
+            ref={magicLinkSentTitleRef}
+            tabIndex={-1}
+            sx={{ '&:focus': { outline: 'none' } }}
+          >
+            {t.auth.checkInboxTitle}
+          </AuthTitle>
           <AuthLead component="p">
             {t.auth.magicLinkRequestedBody({ email: requestedMagicEmail })}
           </AuthLead>
+          <AuthHelp component="p" sx={{ mt: '0.5rem' }} data-testid="magic-link-sent-hint">
+            {t.auth.magicLinkSentHint({ minutes: MAGIC_LINK_VALID_MINUTES })}
+          </AuthHelp>
         </Box>
         {magicLinkResent ? (
           <FinePrint variant="caption" component="p" role="status">
             {t.auth.magicLinkResent}
           </FinePrint>
         ) : null}
-        <FinePrint variant="caption" component="p">
-          <MuiLink
-            component="button"
-            type="button"
-            data-testid="resend-magic-link"
-            color={resendCooldown > 0 ? 'text.disabled' : undefined}
-            disabled={resendCooldown > 0 || requestMagicLink.isPending}
-            onClick={resendMagicLink}
-          >
-            {resendCooldown > 0
-              ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
-              : t.auth.magicLinkResend}
-          </MuiLink>
-        </FinePrint>
-        <FinePrint variant="caption" component="p">
-          {changeIdentifierLink(t.auth.changeIdentifier)}
-        </FinePrint>
+        <Button
+          type="button"
+          variant="outlined"
+          fullWidth
+          data-testid="resend-magic-link"
+          disabled={resendCooldown > 0 || requestMagicLink.isPending}
+          onClick={resendMagicLink}
+        >
+          {resendCooldown > 0
+            ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
+            : t.auth.magicLinkResend}
+        </Button>
         {requestMagicLink.isError ? (
           <Alert severity="error">{errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}</Alert>
         ) : null}

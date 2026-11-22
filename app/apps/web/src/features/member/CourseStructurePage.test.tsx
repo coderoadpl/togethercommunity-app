@@ -671,6 +671,35 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
+  it('titles a failed course load as unavailable and offers My courses next to Retry', async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    server.use(
+      okMe(),
+      http.get('/api/student/courses/:courseId/structure', () => {
+        calls += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 });
+      }),
+      http.get('/api/student/progress', () =>
+        HttpResponse.json({ ok: true, data: { progress: progressView() } }),
+      ),
+      http.get('/api/student/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: catalog } }),
+      ),
+    );
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseUnavailable }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.student.myCourses })).not.toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: en.common.retry });
+    const myCourses = screen.getByRole('link', { name: en.courseTree.backToMyCourses });
+    expect(myCourses).toHaveAttribute('href', '/my');
+    expect(retry.parentElement).toBe(myCourses.parentElement);
+    const before = calls;
+    await user.click(retry);
+    await vi.waitFor(() => expect(calls).toBeGreaterThan(before));
+  });
+
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
     anonCoursePage(null);
 

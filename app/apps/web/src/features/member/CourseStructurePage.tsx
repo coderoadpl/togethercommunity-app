@@ -240,13 +240,18 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
 
     return (
       <MemberSurface
-        title={t.student.myCourses}
+        title={t.courseTree.courseUnavailable}
         eyebrow={t.student.courseEyebrow}
         width="wide"
         state={{
           kind: 'error',
           message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
           retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
+          action: (
+            <Button component={Link} to="/my" variant="text">
+              {t.courseTree.backToMyCourses}
+            </Button>
+          ),
         }}
       />
     );

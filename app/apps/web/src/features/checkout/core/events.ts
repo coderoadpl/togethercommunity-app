@@ -9,7 +9,7 @@ export interface PickedPickupPoint {
 export type LockerCheck =
   | { status: 'checking'; code: string }
   | { status: 'found'; code: string; name: string | null; address: string | null }
-  | { status: 'rejected'; code: string; reason: PickupPointRejectionReason; name: string | null; address: string | null }
+  | { status: 'rejected'; code: string; reason: PickupPointRejectionReason; name: string | null; address: string | null; byServer?: true }
   | { status: 'unavailable'; code: string };
 
 export type CheckoutEvent =

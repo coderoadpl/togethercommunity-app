@@ -34,6 +34,10 @@ export const createCheckoutState = (couponCode: string): CheckoutState => ({
 const lockerCheckFor = (check: LockerCheck | null, code: string): LockerCheck | null =>
   check !== null && check.code === normalizePickupPointCode(code) ? check : null;
 
+const refusedByServer = (current: LockerCheck | null, next: LockerCheck): boolean =>
+  current?.status === 'rejected' && current.byServer === true && current.code === next.code &&
+  !(next.status === 'rejected' && next.byServer === true);
+
 export const reduceCheckoutState = (
   state: CheckoutState,
   event: CheckoutEvent,
@@ -52,7 +56,9 @@ export const reduceCheckoutState = (
     case 'pickupPointSelected':
       return { ...state, pickupPointCode: event.point.code, pickupPoint: event.point, lockerCheck: lockerCheckFor(state.lockerCheck, event.point.code) };
     case 'lockerCheckChanged':
-      return event.check.code === normalizePickupPointCode(state.pickupPointCode) ? { ...state, lockerCheck: event.check } : state;
+      return event.check.code === normalizePickupPointCode(state.pickupPointCode) && !refusedByServer(state.lockerCheck, event.check)
+        ? { ...state, lockerCheck: event.check }
+        : state;
   }
 };
 
@@ -82,7 +88,7 @@ export const lockerCheckFrom = (code: string, lookup: ParcelLockerLookup | null)
 
 export const lockerRefusal = (code: string, details: unknown): LockerCheck | null => {
   const reason = pickupPointRejectionReason(details);
-  return reason === null ? null : { status: 'rejected', code: normalizePickupPointCode(code), reason, name: null, address: null };
+  return reason === null ? null : { status: 'rejected', code: normalizePickupPointCode(code), reason, name: null, address: null, byServer: true };
 };
 
 export type DeliverySelection =

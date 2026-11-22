@@ -170,6 +170,25 @@ describe('typed locker code check', () => {
     expect(selectDelivery(changed, { required: true, rates })).toMatchObject({ status: 'ready' });
   });
 
+  it('keeps a server refusal of the unchanged code over a preview answer that arrives after it', () => {
+    const checking = reduceCheckoutState(typed('waw01m'), { type: 'lockerCheckChanged', check: { status: 'checking', code: 'WAW01M' } });
+    const refusal = lockerRefusal('WAW01M', { pickupPointReason: 'not_operating' });
+    if (refusal === null) throw new Error('Expected a refusal');
+    const refused = reduceCheckoutState(checking, { type: 'lockerCheckChanged', check: refusal });
+    const lateFound = reduceCheckoutState(refused, { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', {
+      status: 'found', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1', usable: true, reason: null,
+    }) });
+    expect(lateFound).toBe(refused);
+    expect(reduceCheckoutState(refused, { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', null) })).toBe(refused);
+    expect(lockerRejection(lateFound)).toMatchObject({ code: 'WAW01M', reason: 'not_operating' });
+    expect(selectDelivery(lateFound, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'pickup_point_rejected' });
+    const retyped = reduceCheckoutState(reduceCheckoutState(lateFound, { type: 'pickupPointCodeChanged', code: 'waw01' }), { type: 'pickupPointCodeChanged', code: 'waw01m' });
+    const fresh = reduceCheckoutState(retyped, { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', {
+      status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null,
+    }) });
+    expect(typedLockerCheck(fresh)).toMatchObject({ status: 'found' });
+  });
+
   it('runs a submit-time check only when the chosen delivery needs a locker', () => {
     const checking = reduceCheckoutState(typed('missing1'), { type: 'lockerCheckChanged', check: { status: 'checking', code: 'MISSING1' } });
     expect(submitLockerCheckDue(checking, selectDelivery(checking, { required: true, rates }))).toBe('MISSING1');
@@ -181,7 +200,7 @@ describe('typed locker code check', () => {
   it('turns an unusable point and a server refusal into a refusal reason', () => {
     expect(lockerCheckFrom('CLOSED01', { status: 'found', code: 'CLOSED01', name: null, address: null, usable: false, reason: 'not_operating' }))
       .toEqual({ status: 'rejected', code: 'CLOSED01', reason: 'not_operating', name: null, address: null });
-    expect(lockerRefusal(' sendonly1 ', { pickupPointReason: 'not_usable' })).toEqual({ status: 'rejected', code: 'SENDONLY1', reason: 'not_usable', name: null, address: null });
+    expect(lockerRefusal(' sendonly1 ', { pickupPointReason: 'not_usable' })).toEqual({ status: 'rejected', code: 'SENDONLY1', reason: 'not_usable', name: null, address: null, byServer: true });
     expect(lockerRefusal('WAW01M', { fieldErrors: {} })).toBeNull();
   });
 });

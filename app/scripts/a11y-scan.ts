@@ -90,6 +90,7 @@ const SCREENS: ScreenSpec[] = [
     viewports: memberViewports,
     ready: async (page) => {
       await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
+      await page.getByTestId('use-password').click();
       await page.getByTestId('login-password').waitFor(visible);
     },
   },

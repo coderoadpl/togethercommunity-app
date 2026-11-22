@@ -88,10 +88,13 @@ const lockerLookups = {
   [lockerLookupCall('PENDING1')]: { ok: true, value: { status: 'unavailable' } },
 };
 const mapRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"pickupPoint":{"address":"Example Street 5, 00-001 Warsaw","code":"WAW01M","name":"Next to the pharmacy entrance","provider":"inpost"},"rateId":"locker"}}]';
+const typedRefusalCall = 'createCheckoutSession:[{"language":"en","priceId":"price-product-studio-course-101","productId":"product-studio-course-101","shipping":{"pickupPoint":{"code":"WAW02M","provider":"inpost"},"rateId":"locker"}}]';
+const notOperatingRefusal = { ok: false, error: { code: 'validation', message: PICKUP_POINT_REJECTION_MESSAGES.not_operating, details: { pickupPointReason: 'not_operating' } } };
 const lockerCheckFixture = (pending: boolean) => {
   const fixture = fixtureFor('together-checkout-locker-check', stand, lockerMapPayment, { calls: {
     ...lockerLookups,
-    [mapRefusalCall]: { ok: false, error: { code: 'validation', message: PICKUP_POINT_REJECTION_MESSAGES.not_operating, details: { pickupPointReason: 'not_operating' } } },
+    [mapRefusalCall]: notOperatingRefusal,
+    [typedRefusalCall]: notOperatingRefusal,
   } });
   return pending ? { ...fixture, pending: [{ call: lockerLookupCall('PENDING1'), queryKeys: [['parcel-locker', 'PENDING1']] }] } : fixture;
 };
@@ -567,9 +570,9 @@ export const CartLockerOptionMapFailed: Story = lockerStory('map-failed', { cart
 export const CartLockerOptionMapFailedMobile: Story = lockerStory('map-failed', { viewport: mobile375, cart: true });
 export const CartLockerOptionCodeOpen: Story = lockerStory('code-open', { cart: true });
 export const CartLockerOptionCodeOpenMobile: Story = lockerStory('code-open', { viewport: mobile375, cart: true });
-const LOCKER_CHECK_STATES = ['idle', 'checking', 'found', 'not_found', 'not_usable', 'not_operating', 'unavailable', 'map_rejected'] as const;
+const LOCKER_CHECK_STATES = ['idle', 'checking', 'found', 'not_found', 'not_usable', 'not_operating', 'unavailable', 'map_rejected', 'typed_refused'] as const;
 type LockerCheckState = typeof LOCKER_CHECK_STATES[number];
-const lockerCheckCodes: Record<Exclude<LockerCheckState, 'idle' | 'map_rejected'>, string> = {
+const lockerCheckCodes: Record<Exclude<LockerCheckState, 'idle' | 'map_rejected' | 'typed_refused'>, string> = {
   checking: 'PENDING1', found: 'WAW02M', not_found: 'MISSING1', not_usable: 'SENDONLY1', not_operating: 'CLOSED01', unavailable: 'OUTAGE01',
 };
 const lockerCheckState = (value: unknown): LockerCheckState => LOCKER_CHECK_STATES.find((state) => state === value) ?? 'idle';
@@ -583,8 +586,17 @@ const showLockerCheck = async (canvasElement: HTMLElement, state: LockerCheckSta
     return;
   }
   await chooseRate(canvasElement, /parcel locker/u);
-  await userEvent.click(await canvas.findByTestId('checkout-locker-know-code'));
+  const toggle = await canvas.findByTestId('checkout-locker-know-code');
+  await userEvent.click(toggle);
   const field = await canvas.findByTestId('checkout-pickup-point');
+  if (state === 'typed_refused') {
+    await userEvent.type(field, 'WAW02M');
+    await userEvent.click(toggle);
+    await userEvent.click(await canvas.findByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(canvas.getByRole('alert')).toBeInTheDocument());
+    await settled();
+    return;
+  }
   if (state !== 'idle') {
     await userEvent.type(field, lockerCheckCodes[state]);
     field.blur();

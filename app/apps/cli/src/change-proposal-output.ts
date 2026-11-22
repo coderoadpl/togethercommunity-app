@@ -35,7 +35,7 @@ export const changeProposalAppliedLine = (operation: string, appliedResourceId: 
 
 const NOTE_CODE_SEPARATOR = ': ';
 
-export const changeProposalGoneReason = (note: string | null): string | null =>
+const changeProposalGoneReason = (note: string | null): string | null =>
   note !== null && (isChangeProposalFileMissingNote(note) || isChangeProposalImageMissingNote(note))
     ? note.slice(note.indexOf(NOTE_CODE_SEPARATOR) + NOTE_CODE_SEPARATOR.length)
     : null;

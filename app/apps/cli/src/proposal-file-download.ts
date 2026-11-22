@@ -15,7 +15,7 @@ export interface SavedProposedFile {
   out: string;
 }
 
-export interface ProposedFileHandle {
+interface ProposedFileHandle {
   write(buffer: Uint8Array, offset: number, length: number): Promise<{ bytesWritten: number }>;
   close(): Promise<void>;
 }

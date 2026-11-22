@@ -189,6 +189,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/image-assets/branding/complete` | self-authenticating | mutating | api m2m shop image-assets branding complete |
 | `POST /api/m2m/shop/image-assets/product-cover/upload` | self-authenticating | mutating | api m2m shop image-assets product-cover upload |
 | `POST /api/m2m/shop/image-assets/product-cover/complete` | self-authenticating | mutating | api m2m shop image-assets product-cover complete |
+| `POST /api/m2m/shop/image-assets/product-image/upload` | self-authenticating | mutating | api m2m shop image-assets product-image upload |
+| `POST /api/m2m/shop/image-assets/product-image/complete` | self-authenticating | mutating | api m2m shop image-assets product-image complete |
 | `GET /api/m2m/shop/sales-links` | self-authenticating | read | api m2m shop sales-links |
 | `GET /api/m2m/shop/sales-links/:id` | self-authenticating | read | api m2m shop sales-links id |
 | `POST /api/m2m/shop/sales-links` | self-authenticating | mutating | api m2m shop sales-links |
@@ -362,6 +364,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/image-assets/course-cover/complete` | authenticated | mutating | course cover complete |
 | `POST /api/image-assets/product-cover/upload` | authenticated | mutating | product cover upload |
 | `POST /api/image-assets/product-cover/complete` | authenticated | mutating | product cover complete |
+| `POST /api/image-assets/product-image/upload` | authenticated | mutating | product image upload |
+| `POST /api/image-assets/product-image/complete` | authenticated | mutating | product image complete |
 | `POST /api/image-assets/branding/upload` | authenticated | mutating | branding asset upload |
 | `POST /api/image-assets/branding/complete` | authenticated | mutating | branding asset complete |
 | `GET /api/my/products` | authenticated | read | my products |

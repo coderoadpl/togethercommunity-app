@@ -151,7 +151,7 @@ replaces the whole list; `[]` removes every origin. The CLI form is
 and an empty string clears the list. Studio shows it under Settings → Shipping,
 "Return to your shop".
 
-## 4. Create a draft physical product and its cover
+## 4. Create a draft physical product, its cover and its gallery
 
 Use a staff bearer session. All JSON examples below are relative to the workspace
 origin, use `Content-Type: application/json`, and return the application envelope.
@@ -201,8 +201,8 @@ with `responsiblePersonName`, `responsiblePersonAddress` and
 
 ### Optional platform-hosted cover upload
 
-There is one cover, not a gallery. The protected backend can upload it without
-the UI:
+The cover is the product's main picture. The protected backend can upload it
+without the UI:
 
 1. `POST /api/image-assets/product-cover/upload` with this body:
 
@@ -230,6 +230,47 @@ Resolve a root-relative cover against the **workspace origin**, for example
 `new URL(product.coverUrl, workspaceOrigin).href`, before rendering it on a
 separate website. Public asset GETs redirect to storage; the JSON API's CORS
 policy does not promise cross-origin JavaScript byte access to those images.
+
+### Product gallery
+
+Besides the cover, a product holds an ordered gallery in `images`: an array of
+`{ "url": "<image-url>", "alt": "<alternative text>" }`, at most 12 entries,
+each URL at most once. `url` takes the same forms as `coverUrl` (an absolute
+HTTP(S) URL or a root-relative platform asset path); `alt` is trimmed text of 0
+to 250 characters and defaults to `""`. New products start with an empty
+gallery. `POST /api/products/update` with `images` replaces the whole list in
+the given order, `[]` removes every image, and an update without `images`
+keeps the stored gallery.
+
+Platform-hosted gallery images use the same four steps as the cover with the
+`product-image` kind: `POST /api/image-assets/product-image/upload` with
+`{ "kind": "product-image", ... }`, the `PUT` of the bytes, then
+`POST /api/image-assets/product-image/complete`. The same types (PNG, JPEG,
+WebP, SVG) and the 5 MiB limit apply. Completion only publishes the image under
+`/api/public/assets/product-image/<file>`; it joins the gallery when a product
+update lists it:
+
+```json
+{
+  "id": "<product-id>",
+  "images": [
+    { "url": "/api/public/assets/product-image/<front-file>", "alt": "Paperback, front cover" },
+    { "url": "/api/public/assets/product-image/<back-file>", "alt": "Paperback, back cover" }
+  ]
+}
+```
+
+The CLI equivalent is `product image-upload ./front.png` (prints the URL) and
+`product update <product-id> --images-file images.json`, where the file holds
+the array above; see [CLI](cli.md). Shop management keys use the
+`/api/m2m/shop/image-assets/product-image/*` routes and the `shop images upload`
+command; see [Shop management keys](shop-management-keys.md#product-covers-gallery-images-and-sales-links).
+
+The public offer returns `images` for every product, `[]` when the product has
+no gallery. Resolve each `url` against the workspace origin like `coverUrl`,
+show the images in the returned order, and fall back to `coverUrl` when
+`images` is empty or missing (an offer recorded before the gallery existed has
+no `images` field).
 
 ## 5. Add an active one-time price, stock and publication
 
@@ -359,6 +400,8 @@ const product = offer.products.find((item) => item.slug === 'paperback');
 const price = product?.prices.find((item) => item.kind === 'one_time');
 if (!product || !price || product.stock.soldOut) throw new Error('Product is unavailable');
 const coverUrl = product.coverUrl === null ? null : new URL(product.coverUrl, workspaceOrigin).href;
+const gallery = (product.images ?? []).map((image) => ({ src: new URL(image.url, workspaceOrigin).href, alt: image.alt }));
+const pictures = gallery.length > 0 ? gallery : coverUrl === null ? [] : [{ src: coverUrl, alt: product.title }];
 const session = await readData(await fetch(`${workspaceOrigin}/api/public/checkout/session`, {
   method: 'POST',
   credentials: 'omit',
@@ -399,6 +442,8 @@ const product = offer.data.products.find((item) => item.slug === 'paperback');
 const price = product?.prices.find((item) => item.kind === 'one_time');
 if (!product || !price || product.stock.soldOut) throw new Error('Product is unavailable');
 const coverUrl = product.coverUrl === null ? null : new URL(product.coverUrl, workspaceOrigin).href;
+const gallery = product.images.map((image) => ({ src: new URL(image.url, workspaceOrigin).href, alt: image.alt }));
+const pictures = gallery.length > 0 ? gallery : coverUrl === null ? [] : [{ src: coverUrl, alt: product.title }];
 const input = checkoutSessionRequestSchema.parse({
   productId: product.id,
   priceId: price.id,
@@ -419,7 +464,8 @@ if (!sessionResponse.ok) throw new Error('Checkout request failed');
 window.location.assign(session.data.url);
 ```
 
-`coverUrl` is ready for the storefront's image component. A pickup product omits
+`pictures` (the ordered gallery, or the cover when the gallery is empty) is
+ready for the storefront's image component. A pickup product omits
 `shipping`. For a locker rate, add `shipping.pickupPoint` with `provider: "inpost"`
 and the selected `code`; optional `name` and `address` are display metadata.
 The payment provider collects the shipping address/phone; do not invent an
@@ -902,7 +948,9 @@ or certify a live provider/KSeF submission.
   never in the listed catalogue. Sell it through its sales link (`salesLinkSlug`
   or `salesLinkId`, `/offer/<slug>`); see
   [Sales links](sales-links.md#products-sold-only-through-sales-links).
-- **One cover.** The product exposes `coverUrl`, not a product gallery.
+- **Cover and gallery.** The product exposes one `coverUrl` and an ordered
+  `images` gallery of at most 12 images with alternative text; there are no
+  per-variant galleries beyond each variant product's own fields.
 - **Delivery in Poland.** Shipping is limited to `PL`, with at most five rates.
   Pickup instructions remain seller/storefront content.
 - **Hosted confirmation.** Payment success returns to the workspace confirmation

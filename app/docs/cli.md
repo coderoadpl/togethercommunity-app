@@ -89,6 +89,37 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
 
+## Product gallery
+
+A product has a cover and an ordered gallery of at most 12 images, each with a
+URL and alternative text (see [Products: Gallery](products.md#gallery)).
+`product image-upload <file>` uploads a PNG, JPEG, WebP or SVG file of up to
+5 MiB to the workspace storage and prints its URL; the upload alone does not
+change any product. `product create|update --images-file <path>` then sets the
+whole gallery, in order, from a JSON array (`-` reads it from stdin). An update
+without the flag keeps the stored gallery and `[]` removes every image.
+Unknown fields, more than 12 entries, a URL listed twice or an alternative text
+longer than 250 characters fail before the request.
+
+```bash
+pnpm --silent run cli --tenant acme product image-upload ./front.png
+pnpm --silent run cli --tenant acme product image-upload ./back.webp
+pnpm --silent run cli --tenant acme product update <product-id> --images-file images.json
+```
+
+with `images.json`:
+
+```json
+[
+  { "url": "/api/public/assets/product-image/<front-file>.png", "alt": "Printed holder, front" },
+  { "url": "/api/public/assets/product-image/<back-file>.webp", "alt": "" }
+]
+```
+
+With a [shop management key](shop-management-keys.md#product-covers-gallery-images-and-sales-links)
+the same steps are `shop images upload <file>` and
+`shop products create|update --images-file <path>`.
+
 ## CLI parity inventory
 
 Run `pnpm run cli-parity` to list every method in the `core/client` API client
@@ -122,7 +153,7 @@ workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
-The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
+The `shop products|prices|stock|orders|settings|branding|cover|images|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list. With a
 propose-mode key the catalogue, `shop settings set` and

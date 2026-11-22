@@ -22,7 +22,7 @@ exactly the effect the owner saw, or applies nothing.
 | Groups: item references, group dry run, all-or-nothing approval, key and owner routes and CLI ([Groups](#groups)) | Available |
 | Owner view with live labels and issuer state, pending summary, owner notification ([Owner view](#owner-view)) | Available |
 | Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
-| Images (product covers, branding) | Not yet available |
+| Images (product covers, product gallery images, branding) | Not yet available |
 
 ## What a proposal is
 
@@ -186,7 +186,7 @@ shop route. A direct-mode key is unaffected on every route.
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
 | `proposal` | the fourteen write routes above | `202` with a receipt; the live handler never runs |
-| `refuse`, reason `not-in-release` | branding and product cover images | `403 forbidden` |
+| `refuse`, reason `not-in-release` | branding images, product cover and product gallery images | `403 forbidden` |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
@@ -918,8 +918,9 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 
 ## Not yet available
 
-- **Images.** The product cover and branding image routes refuse a
-  propose-mode key. Images will be uploaded to a private quarantine and
+- **Images.** The product cover, product gallery and branding image routes
+  refuse a propose-mode key. A product update proposal may still carry an
+  `images` list of URLs that are already published. Images will be uploaded to a private quarantine and
   published only on approval.
 - **Retention.** Terminal proposals and their events are kept; a retention
   purge is a follow-up.

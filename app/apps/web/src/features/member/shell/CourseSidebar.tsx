@@ -84,11 +84,13 @@ export const CourseSidebar = ({
   currentLessonId,
   tenantName,
   notFoundFallback = null,
+  showFilter = true,
 }: {
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
   notFoundFallback?: ReactNode;
+  showFilter?: boolean;
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
@@ -171,6 +173,7 @@ export const CourseSidebar = ({
             structure={tree}
             focusLessonId={focusLessonId}
             scrollFocusIntoView
+            showFilter={showFilter}
             {...(currentLessonId === null ? {} : { currentLessonId })}
           />
         </>

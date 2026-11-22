@@ -390,6 +390,7 @@ export const CourseTree = ({
   expandAll = false,
   guest = false,
   scrollFocusIntoView = false,
+  showFilter = true,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
@@ -398,6 +399,7 @@ export const CourseTree = ({
   expandAll?: boolean;
   guest?: boolean;
   scrollFocusIntoView?: boolean;
+  showFilter?: boolean;
 }) => {
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
@@ -435,24 +437,28 @@ export const CourseTree = ({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
-      <OutlinedInput
-        fullWidth
-        size="small"
-        sx={{ mb: '0.75rem', flexShrink: 0 }}
-        value={rawSearch}
-        onChange={(event) => setRawSearch(event.target.value)}
-        placeholder={t.courseTree.filterPlaceholder}
-        inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
-      />
-      <Typography
-        variant="caption"
-        component="p"
-        color="text.secondary"
-        sx={{ mb: '0.75rem', flexShrink: 0 }}
-        data-testid="lesson-search-hint"
-      >
-        {t.courseTree.filterHint}
-      </Typography>
+      {showFilter ? (
+        <>
+          <OutlinedInput
+            fullWidth
+            size="small"
+            sx={{ mb: '0.75rem', flexShrink: 0 }}
+            value={rawSearch}
+            onChange={(event) => setRawSearch(event.target.value)}
+            placeholder={t.courseTree.filterPlaceholder}
+            inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
+          />
+          <Typography
+            variant="caption"
+            component="p"
+            color="text.secondary"
+            sx={{ mb: '0.75rem', flexShrink: 0 }}
+            data-testid="lesson-search-hint"
+          >
+            {t.courseTree.filterHint}
+          </Typography>
+        </>
+      ) : null}
 
       <Box
         data-testid="course-tree-scroll"

@@ -288,7 +288,7 @@ describe('CourseStructurePage', () => {
       .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
 
     expect(compactOrder).toEqual([...compactOrder].sort((left, right) => left - right));
-    expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
+    expect(inlineProgram).toHaveClass('MuiPaper-root');
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
     expect(within(inlineProgram).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
@@ -358,14 +358,35 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
   });
 
-  it('leaves the program to the shell sidebar on desktop', async () => {
+  it('puts the desktop program in the main column under the stat tiles, inside a card', async () => {
     stubViewport(false);
-    mockPage();
+    mockPage({ lastViewedLessonId: 'l4' });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    await screen.findByTestId('course-progress-card');
+    const program = await screen.findByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    const order = [statTile, program, cover, about]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(program).toHaveClass('MuiPaper-root');
+    expect(program.closest('[data-testid^="member-rail"]')).toBeNull();
+    expect(within(program).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
+    expect(within(program).getByTestId('course-tree')).toBeInTheDocument();
+    expect(within(program).getByTestId('lesson-search')).toBeInTheDocument();
+    expect(screen.getAllByTestId('lesson-search')).toHaveLength(1);
+    expect(within(program).getByText('Closures Deep Dive')).toBeInTheDocument();
+  });
+
+  it('drops the desktop program for a course without modules', async () => {
+    stubViewport(false);
+    mockPage({ body: { ...structure, modules: [] } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByTestId('course-empty-state')).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
   });
 
   it('keeps desktop progress and discussion search in the rail', async () => {

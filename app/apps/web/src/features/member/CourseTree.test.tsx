@@ -482,6 +482,15 @@ describe('CourseTree', () => {
     expect(empty).toHaveTextContent(en.search.stemHint);
   });
 
+  it('renders no filter when the caller leaves filtering to another tree', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll showFilter={false} />);
+
+    expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+  });
+
   it('keeps module and chapter counts on the full structure while filtering', async () => {
     const user = userEvent.setup();
     await renderTree();

@@ -1,13 +1,21 @@
 import { Paper } from '@mui/material';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { userEvent, within } from 'storybook/test';
 import type { ChangeProposalOwnerView } from '#core/domain/index.js';
 import { ProposalFieldRows, type StockNow } from '../features/home/proposals/ProposalChanges.js';
 import { groupReferences } from '../features/home/proposals/proposal-display.js';
-import { changeProposalGroupItems } from '../test/change-proposal-fixtures.js';
-import { STORY_PROPOSAL_IMAGE_DIGESTS } from './fixture-client.js';
+import {
+  changeProposalGroupItems,
+  fileAddProposal,
+  fileAddProposalOf,
+  fileCopyProposal,
+  fileRemoveProposal,
+  fileReplaceProposal,
+} from '../test/change-proposal-fixtures.js';
+import { STORY_PROPOSAL_GONE_FILE_ID, STORY_PROPOSAL_IMAGE_DIGESTS } from './fixture-client.js';
 import { withAccountPreview } from './page-decorators.js';
 
-type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'>;
+type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'proposedFiles'>>;
 
 const Rows = ({ proposal, stockNow, inGroup = false, pendingProposalId = null }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean; pendingProposalId?: string | null }) => (
   <Paper elevation={1} sx={{ p: '1.5rem', maxWidth: '48rem' }}>
@@ -69,6 +77,7 @@ const reference: Proposal = { input: {}, effect: { productIds: { before: null, a
 const unknown: Proposal = { input: {}, effect: { giftWrapping: { before: null, after: 'Recycled paper, red ribbon' } } };
 const stockDelta: Proposal = { input: { productId: 'product-studio-workbook-print', delta: -3, reason: 'Damaged copies' }, effect: { onHand: { delta: -3 } } };
 const [newProduct] = changeProposalGroupItems;
+const goneFile = fileAddProposalOf(STORY_PROPOSAL_GONE_FILE_ID, 'workbook-answers.pdf');
 const settingsChoices: Proposal = {
   input: {},
   effect: {
@@ -100,4 +109,20 @@ export const NewRecord: Story = { render: () => (newProduct === undefined ? <></
 export const NewRecordPolishMobile: Story = { ...NewRecord, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const EnumeratedValues: Story = { render: () => <Rows proposal={settingsChoices} /> };
 export const TextPolishMobile: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileUploaded: Story = { render: () => <Rows proposal={fileAddProposal} pendingProposalId={fileAddProposal.id} /> };
+export const ProposedFileUploadedPolishMobile: Story = { ...ProposedFileUploaded, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileCopied: Story = { render: () => <Rows proposal={fileCopyProposal} pendingProposalId={fileCopyProposal.id} /> };
+export const ProposedFileCopiedPolishMobile: Story = { ...ProposedFileCopied, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileVersion: Story = { render: () => <Rows proposal={fileReplaceProposal} pendingProposalId={fileReplaceProposal.id} /> };
+export const ProposedFileVersionPolishMobile: Story = { ...ProposedFileVersion, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileRemoval: Story = { render: () => <Rows proposal={fileRemoveProposal} pendingProposalId={fileRemoveProposal.id} /> };
+export const ProposedFileRemovalPolishMobile: Story = { ...ProposedFileRemoval, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedFileGone: Story = {
+  render: () => <Rows proposal={goneFile} pendingProposalId={goneFile.id} />,
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByTestId('proposed-file-download'));
+    await within(canvasElement).findByTestId('proposed-file-unavailable');
+  },
+};
+export const ProposedFileGonePolishMobile: Story = { ...ProposedFileGone, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const TextDark: Story = { parameters: { colorScheme: 'dark' } };

@@ -2950,9 +2950,9 @@ export const en: Messages = {
     erasureHeading: 'Request account erasure',
     erasureIntro: 'Ask the team to erase your data in this workspace. Once the team completes the request:',
     erasureEffects: {
-      profile: 'Your profile, picture and delivery addresses are removed.',
+      profile: 'Your name, email and picture are removed from your profile; your name, street and phone are erased from past orders.',
       posts: 'Your posts stay, signed as “Deleted account”.',
-      access: 'Your access to purchased content and your subscriptions end.',
+      access: 'Your access to purchased content ends, and the team cancels your subscriptions with the payment provider.',
       signIn: 'Your sign-in account is deleted too, unless it is still linked to another workspace or a team role.',
     },
     erasureDialogBody: ({ days }) =>

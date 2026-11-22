@@ -3004,9 +3004,9 @@ export const pl: Messages = {
     erasureHeading: 'Poproś o usunięcie konta',
     erasureIntro: 'Poproś zespół o usunięcie Twoich danych w tej społeczności. Po realizacji wniosku:',
     erasureEffects: {
-      profile: 'Profil, zdjęcie i adresy dostawy zostaną usunięte.',
+      profile: 'Wyświetlana nazwa, e-mail i zdjęcie zostaną usunięte z profilu; z wcześniejszych zamówień zostaną usunięte imię i nazwisko, ulica i numer telefonu.',
       posts: 'Wpisy pozostaną, podpisane jako „Konto usunięte”.',
-      access: 'Dostęp do kupionych treści wygaśnie, a subskrypcje zostaną zakończone.',
+      access: 'Dostęp do kupionych treści wygaśnie, a zespół anuluje subskrypcje u dostawcy płatności.',
       signIn: 'Konto logowania również zostanie usunięte, chyba że nadal jest powiązane z inną społecznością lub rolą w zespole.',
     },
     erasureDialogBody: ({ days }) =>

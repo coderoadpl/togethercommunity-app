@@ -615,11 +615,7 @@ const sweepUploads = async (tenantId: string, createdBefore: string, budget: Swe
   return removed;
 };
 
-/**
- * One pass over released and abandoned quarantined images, expired upload records and unfinished publication records,
- * within a wall-clock budget. Workspaces and rows are served longest-waiting first, by the time of their last failed
- * attempt or else their creation, so rows whose removal keeps failing move behind the others.
- */
+/** Rows are served by the time of their last failed attempt or else their creation, so rows whose removal keeps failing move behind the others. */
 export const sweepQuarantinedImages = async (
   deps: QuarantinedImageSweepDeps,
 ): Promise<Result<{ tenants: number; removed: number }, AppError>> => {

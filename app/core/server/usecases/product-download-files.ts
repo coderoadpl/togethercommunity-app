@@ -30,11 +30,7 @@ export interface ProductDownloadAttachDeps {
   stagedByKeyId?: string;
 }
 
-/**
- * Attaches a staged file as a new file of a digital product or as the next version of one of its ready files; the new
- * file's id is the staged file's id and its object is the staged object. It makes no storage request, so it runs as it
- * is inside a caller's transaction, a dry run included. A shop key attaches only a file it staged itself.
- */
+/** Makes no storage request, so it runs unchanged inside a caller's transaction, a dry run included. */
 export const attachStagedProductDownload = async (
   ctx: Ctx,
   input: KeyDownloadAttachInput,
@@ -82,10 +78,7 @@ export interface ProductDownloadRemoveDeps {
   logger: { error(message: string): void };
 }
 
-/**
- * Removes a file version with the product locked as `attachStagedProductDownload` locks it. A staged object's deletion
- * is owed in the same transaction and finished afterwards, so a failed storage delete is retried by the sweep.
- */
+/** The deletion is owed in the removing transaction, so a storage delete that fails afterwards is retried by the sweep. */
 export const removeProductDownloadFile = async (
   ctx: Ctx,
   input: KeyDownloadRemoveInput,

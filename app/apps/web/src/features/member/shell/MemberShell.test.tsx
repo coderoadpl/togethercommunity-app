@@ -321,7 +321,7 @@ describe('MemberShell', () => {
       en.tenant.visitorNotice({ email: 'jan@example.com' }),
     );
     expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', 'http://start.localhost:3000');
-    expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeEnabled();
+    expect(within(screen.getByTestId('foreign-tenant-notice')).queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
     const header = screen.getByRole('banner');
     expect(within(header).getByTestId('anon-visitor-email')).toHaveTextContent('jan@example.com');

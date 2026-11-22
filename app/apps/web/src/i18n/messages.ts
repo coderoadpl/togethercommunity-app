@@ -499,7 +499,6 @@ export interface Messages {
   tenant: {
     visitorNotice: (params: { email: string }) => string;
     visitorOwnCommunity: string;
-    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;

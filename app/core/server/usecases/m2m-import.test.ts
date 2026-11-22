@@ -513,6 +513,32 @@ describe('m2m content import', () => {
     expect(h.products.get('product-source')?.images).toEqual([]);
   });
 
+  it('audits a product import that omits the gallery under a payload with only keys the release without the gallery knows', async () => {
+    const PREVIOUS_RELEASE_IMPORT_PRODUCT_KEYS = [
+      'vatRate', 'vatExemptionBasis', 'importKey', 'legacyId', 'createdAt', 'type', 'slug', 'title', 'description', 'coverUrl',
+      'priceCents', 'currency', 'accessItems', 'compliance', 'variantGroup', 'variantLabel', 'salesChannel', 'personalization',
+    ];
+    const h = harness();
+    const write = (record: Record<string, unknown>) => importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{ ...productRecord(), accessItems: [], ...record }],
+    }, h.deps);
+    const auditedKeys = (): string[] => {
+      const payload: unknown = JSON.parse(h.audits.get('product:product-source')?.payloadHash ?? 'null');
+      return Object.keys(payload ?? {}).filter((key) => !PREVIOUS_RELEASE_IMPORT_PRODUCT_KEYS.includes(key)).sort();
+    };
+
+    expect(await write({ vatRate: 23 })).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(auditedKeys()).toEqual([]);
+
+    expect(await write({ images: [{ url: GALLERY_ASSET_PATH, alt: 'Front view' }] })).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(auditedKeys()).toEqual(['images']);
+
+    expect(await write({ title: 'Renamed course' })).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(h.products.get('product-source')?.images).toEqual([{ url: GALLERY_ASSET_PATH, alt: 'Front view' }]);
+    expect(auditedKeys()).toEqual([]);
+  });
+
   it('refuses a personalised membership and a personalisation record with unknown fields', async () => {
     const h = harness();
     await seedImportedProduct(h);

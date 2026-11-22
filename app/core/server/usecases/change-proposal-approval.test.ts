@@ -488,6 +488,78 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
   });
 });
 
+describe('product proposals stored by this release and read by the release without the gallery', () => {
+  const PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS = [
+    'vatRate', 'vatExemptionBasis', 'type', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance',
+    'personalization', 'variantGroup', 'variantLabel', 'slug', 'title', 'description', 'coverUrl', 'priceCents', 'currency',
+    'accessItems',
+  ];
+  const PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS = [
+    'vatRate', 'vatExemptionBasis', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance',
+    'personalization', 'variantGroup', 'variantLabel', 'id', 'title', 'description', 'coverUrl',
+  ];
+  const PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS = [
+    'exists', 'type', 'slug', 'title', 'description', 'coverUrl', 'priceCents', 'currency', 'published', 'visibility',
+    'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance', 'personalization', 'variantGroup', 'variantLabel',
+    'vatRate', 'vatExemptionBasis', 'accessItems', 'activePrices', 'prices', 'downloads', 'stock',
+  ];
+  const gallery = [{ url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front' }];
+
+  const unknownKeys = (stored: object, known: readonly string[]): string[] =>
+    Object.keys(stored).filter((key) => !known.includes(key)).sort();
+
+  const stored = (h: Harness, id: string): ChangeProposal => {
+    const proposal = h.proposal(id);
+    if (proposal === undefined) throw new Error('proposal missing');
+    return proposal;
+  };
+
+  it('stores a product creation without gallery images with input and effect keys the previous release knows', async () => {
+    const h = harness();
+    const proposal = stored(h, await h.submit('product.create', {
+      title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0, vatRate: 23, coverUrl: 'https://cdn.example.test/teapot.jpg',
+    }));
+
+    expect(Object.keys(proposal.effect)).toContain('coverUrl');
+    expect(unknownKeys(proposal.input, PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS)).toEqual([]);
+    expect(unknownKeys(proposal.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual([]);
+  });
+
+  it('stores a product update that omits the gallery with keys the previous release knows, whether or not the product has a gallery', async () => {
+    const h = harness();
+    Object.assign(liveProduct(h, 'product-draft') ?? {}, { images: gallery });
+    for (const productId of ['product-mug', 'product-draft']) {
+      const proposal = stored(h, await h.submit('product.update', { id: productId, title: 'Renamed', description: 'New text' }));
+
+      expect(proposal.effect).toEqual({
+        title: { before: liveProduct(h, productId)?.title, after: 'Renamed' },
+        description: { before: '', after: 'New text' },
+      });
+      expect(unknownKeys(proposal.input, PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS)).toEqual([]);
+    }
+  });
+
+  it('stores a draft deletion of a product without gallery images with effect keys the previous release knows', async () => {
+    const h = harness();
+    const proposal = stored(h, await h.submit('product.delete-draft', { productId: 'product-draft' }));
+
+    expect(Object.keys(proposal.effect)).toContain('downloads');
+    expect(unknownKeys(proposal.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual([]);
+  });
+
+  it('stores the gallery key the previous release refuses only when a proposal sends images or deletes a product that has them', async () => {
+    const h = harness();
+    Object.assign(liveProduct(h, 'product-draft') ?? {}, { images: gallery });
+    const created = stored(h, await h.submit('product.create', { title: 'Teapot', slug: 'teapot', priceCents: 0, images: gallery }));
+    const updated = stored(h, await h.submit('product.update', { id: 'product-mug', images: gallery }));
+    const deleted = stored(h, await h.submit('product.delete-draft', { productId: 'product-draft' }));
+
+    expect(unknownKeys(created.input, PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS)).toEqual(['images']);
+    expect(unknownKeys(updated.input, PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS)).toEqual(['images']);
+    expect(unknownKeys(deleted.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual(['images']);
+  });
+});
+
 describe('approveChangeProposal post-commit effects', () => {
   it('deletes the stored files of an applied draft deletion after the commit', async () => {
     const h = harness();

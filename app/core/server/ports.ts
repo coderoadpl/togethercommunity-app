@@ -1664,12 +1664,15 @@ export interface StorageReferenceRepository {
 /** `getObject` and `head` answer `not_found` only when the storage says the object does not exist; any other failure is another code. */
 export interface StorageProvider {
   list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
+  /** With `deadlineMs`, a request still unanswered then fails as `integration_unavailable`. */
   getObject(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
+    deadlineMs?: number;
   }, options: { maxBytes: number; range?: boolean }): Promise<Result<Uint8Array, AppError>>;
+  /** With `deadlineMs`, a request still unanswered then fails as `integration_unavailable`. */
   putObject(input: {
     url: string;
     accessKeyId: string;
@@ -1677,6 +1680,7 @@ export interface StorageProvider {
     region?: string;
     body: Uint8Array;
     contentType: string;
+    deadlineMs?: number;
   }): Promise<Result<void, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;
   probe(
@@ -1703,7 +1707,10 @@ export interface StorageProvider {
     region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
-  /** `deadlineMs` bounds the whole request; without it the adapter's default deadline applies. */
+  /**
+   * `deadlineMs` bounds the request from the moment the endpoint's address is resolved, which has its own bound; without
+   * it the adapter's default deadline applies.
+   */
   delete(input: {
     url: string;
     accessKeyId: string;
@@ -1721,12 +1728,14 @@ export interface StorageProvider {
   /**
    * A server-side copy of `sourceKey` to `key` in the configured bucket; no byte passes through the server. The copy's
    * metadata is replaced with the server's own (octet-stream, attachment, no-store), so nothing a writer of the source
-   * set survives. `not_found` only when the source does not exist.
+   * set survives. `not_found` only when the source does not exist, and a definite failure (`storageFailureIsDefinite`)
+   * when the provider refused the copy; after any other failure the destination may still appear later.
    */
   copyObject(input: { configuration: StorageConfiguration; sourceKey: string; key: string; deadlineMs: number }): Promise<Result<void, AppError>>;
   /**
    * Streams the object through SHA-256 without buffering it, refusing one larger than `maxBytes`, and answers its
-   * digest, its size and its first `headBytes` bytes.
+   * digest, its size and its first `headBytes` bytes. An object that cannot be the one asked for (empty, larger than
+   * `maxBytes`, longer than its stated length) is a definite failure (`storageFailureIsDefinite`).
    */
   digestObject(input: {
     url: string;
@@ -3247,29 +3256,38 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /**
    * Under the workspace proposal lock, locks the selected rows and marks released those no pending, unexpired proposal
    * of their key attaches; answers them together with selected rows released earlier, whose objects the caller removes
-   * with `finishRelease` after this commit. `sweep` selects, oldest first, rows released earlier and the unattached rows
-   * created before `createdBefore` or of a revoked or deleted key.
+   * with `finishRelease` after this commit. `sweep` selects, longest waiting first (by the last failed removal or else the
+   * creation), rows released earlier and the unattached rows created before `createdBefore` or of a revoked or deleted key.
    */
   release(tenantId: string, selection: QuarantinedImageRelease, now: string): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
   /**
    * In a short transaction under the lock of the key that `insert` takes: when the row is still released, runs
-   * `removeObject` and deletes the row once it answers true; a row a completion revived meanwhile is left as it is.
+   * `removeObject` and deletes the row once it answers true, or records the failed attempt at `now`; a row a completion
+   * revived meanwhile is left as it is.
    */
-  finishRelease(tenantId: string, asset: QuarantinedImageAsset, removeObject: () => Promise<boolean>): Promise<QuarantinedImageReleaseEnd>;
-  /** The workspaces holding rows a `sweep` selects. */
+  finishRelease(tenantId: string, asset: QuarantinedImageAsset, removeObject: () => Promise<boolean>, now: string): Promise<QuarantinedImageReleaseEnd>;
+  /**
+   * The workspaces holding rows a `sweep` selects, the one waiting longest first, by the time of a row's last failed
+   * removal or else its creation.
+   */
   listTenantIdsToSweep(createdBefore: string, now: string, limit: number): Promise<string[]>;
   /**
    * Under the lock of the key, records a presigned upload unless the key already started `uploadsPerKey` uploads
    * created after `countedAfter`.
    */
   recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
+  /** Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. */
   listTenantIdsWithUploadsBefore(createdBefore: string, limit: number): Promise<string[]>;
   listUploadsBefore(tenantId: string, createdBefore: string, limit: number): Promise<QuarantinedImageUpload[]>;
   deleteUpload(tenantId: string, objectKey: string): Promise<void>;
+  /** Records a failed removal, so the upload moves behind the others. */
+  markUploadAttempted(tenantId: string, objectKey: string, now: string): Promise<void>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
   listTenantIdsWithPublicationsBefore(startedBefore: string, limit: number): Promise<string[]>;
   listPublicationsBefore(tenantId: string, startedBefore: string, limit: number): Promise<ProposalImagePublication[]>;
+  /** Records a failed removal, so the publication record moves behind the others. */
+  markPublicationAttempted(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
 }
 
 export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {

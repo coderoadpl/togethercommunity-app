@@ -15,6 +15,7 @@ import {
   parseProposalImagePath,
   parseUploadedImagePath,
   PRODUCT_COVER_PROPOSAL_IMAGE_KINDS,
+  PROPOSAL_IMAGE_STORAGE_DEADLINES,
   proposalImageContentType,
   proposalImageExtensionFor,
   proposalImageKindSchema,
@@ -82,10 +83,22 @@ const logImageFailure = (deps: { logger: { error(message: string): void } }, ten
   deps.logger.error(`[change-proposal] ${what} tenant=${tenantId}: ${cause instanceof Error ? serializeErrorChain(cause) : String(cause)}`);
 };
 
+/** The milliseconds left of a sweep's wall-clock budget; a decision's own release has no budget. */
+type SweepBudget = () => number;
+
+const UNBOUNDED: SweepBudget = () => Number.POSITIVE_INFINITY;
+
+const SWEEP_MINIMUM_DELETE_MS = 1_000;
+
+const deleteDeadline = (budget: SweepBudget): number => Math.max(1, Math.min(PROPOSAL_IMAGE_STORAGE_DEADLINES.deleteMs, budget()));
+
+const spent = (budget: SweepBudget): boolean => budget() < SWEEP_MINIMUM_DELETE_MS;
+
 const finishReleases = async (
   tenantId: string,
   assets: readonly QuarantinedImageAsset[],
   deps: ChangeProposalImageReleaseDeps,
+  budget: SweepBudget,
 ): Promise<number> => {
   if (assets.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
@@ -95,14 +108,16 @@ const finishReleases = async (
   }
   let removed = 0;
   for (const asset of assets) {
+    if (spent(budget)) break;
     const finished = await deps.quarantinedImages.finishRelease(tenantId, asset, async () => {
       const deleted = await deps.storage.delete({
         url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, asset.apiKeyId, asset)).toString(),
         ...credentialsOf(configuration.value),
+        deadlineMs: deleteDeadline(budget),
       });
       if (!deleted.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
       return deleted.ok;
-    });
+    }, deps.clock.nowIso());
     if (finished === 'removed') removed += 1;
   }
   return removed;
@@ -116,6 +131,7 @@ export const releaseQuarantinedImages = async (
   tenantId: string,
   selection: QuarantinedImageRelease,
   deps: ChangeProposalImageReleaseDeps,
+  budget: SweepBudget = UNBOUNDED,
 ): Promise<number> => {
   try {
     const released = await deps.quarantinedImages.release(tenantId, selection, deps.clock.nowIso());
@@ -123,7 +139,7 @@ export const releaseQuarantinedImages = async (
       logImageFailure(deps, tenantId, 'quarantined image release was busy', 'left for the scheduled sweep');
       return 0;
     }
-    return await finishReleases(tenantId, released.value, deps);
+    return await finishReleases(tenantId, released.value, deps, budget);
   } catch (cause) {
     logImageFailure(deps, tenantId, 'quarantined image release failed', cause);
     return 0;
@@ -326,6 +342,7 @@ export const prepareApprovalImages = async (
       const read = await deps.storage.getObject({
         url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
         ...credentialsOf(configuration),
+        deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
       }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
       if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
       if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
@@ -377,6 +394,7 @@ export const recordApprovalPublications = async (
     const found = await deps.storage.head({
       url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
       ...credentialsOf(configuration.value),
+      deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs,
     });
     if (found.ok) continue;
     if (found.error.code !== 'not_found') return found;
@@ -412,12 +430,14 @@ export const publishApprovalImages = async (
     for (const { image, bytes } of prepared.images) {
       const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
       if (!recorded(image)) {
-        const present = await deps.storage.head({ url, ...credentialsOf(configuration) });
+        const present = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
         if (present.ok) continue;
         return err(present.error.code === 'not_found' ? changeProposalsBusy() : present.error);
       }
       written.push(image);
-      const stored = await deps.storage.putObject({ url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension) });
+      const stored = await deps.storage.putObject({
+        url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
+      });
       if (!stored.ok) return stored;
     }
   }
@@ -442,6 +462,7 @@ const removePublication = async (
   image: ProposalImageReference,
   written: boolean,
   deps: ChangeProposalImageWithdrawDeps,
+  budget: SweepBudget = UNBOUNDED,
 ): Promise<boolean> => {
   const failure = 'could not withdraw an image published by an approval that did not apply';
   try {
@@ -455,6 +476,7 @@ const removePublication = async (
         const deleted = await deps.storage.delete({
           url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
           ...credentialsOf(configuration.value),
+          deadlineMs: deleteDeadline(budget),
         });
         if (!deleted.ok) return deleted;
       }
@@ -532,6 +554,7 @@ export const getChangeProposalImage = async (
   const read = await deps.storage.getObject({
     url: deps.storage.objectUrl(configuration.value, objectKey).toString(),
     ...credentialsOf(configuration.value),
+    deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
   }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
   if (!read.ok) return read.error.code === 'not_found' ? err(missing) : read;
   if (deps.contentHash.sha256(read.value) !== image.digest) return err(missing);
@@ -552,14 +575,20 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     | 'listTenantIdsWithUploadsBefore'
     | 'listUploadsBefore'
     | 'deleteUpload'
+    | 'markUploadAttempted'
     | 'listTenantIdsWithPublicationsBefore'
     | 'listPublicationsBefore'
+    | 'markPublicationAttempted'
   >;
+  /** Wall-clock milliseconds one run may take, checked between workspaces and rows; each storage delete gets what is left. */
+  budgetMs?: number;
+  /** An absolute end the caller sets, in epoch milliseconds; the run stops at the earlier of this and its own budget. */
+  deadlineAt?: number;
 }
 
 const before = (now: string, ageMs: number): string => new Date(Date.parse(now) - ageMs).toISOString();
 
-const sweepUploads = async (tenantId: string, createdBefore: string, deps: QuarantinedImageSweepDeps): Promise<number> => {
+const sweepUploads = async (tenantId: string, createdBefore: string, budget: SweepBudget, deps: QuarantinedImageSweepDeps): Promise<number> => {
   const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, createdBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
   if (uploads.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
@@ -569,12 +598,15 @@ const sweepUploads = async (tenantId: string, createdBefore: string, deps: Quara
   }
   let removed = 0;
   for (const upload of uploads) {
+    if (spent(budget)) break;
     const deleted = await deps.storage.delete({
       url: deps.storage.objectUrl(configuration.value, upload.objectKey).toString(),
       ...credentialsOf(configuration.value),
+      deadlineMs: deleteDeadline(budget),
     });
     if (!deleted.ok) {
       logImageFailure(deps, tenantId, 'could not remove an expired image upload', deleted.error.message);
+      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso());
       continue;
     }
     await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
@@ -583,33 +615,48 @@ const sweepUploads = async (tenantId: string, createdBefore: string, deps: Quara
   return removed;
 };
 
+/**
+ * One pass over released and abandoned quarantined images, expired upload records and unfinished publication records,
+ * within a wall-clock budget. Workspaces and rows are served longest-waiting first, by the time of their last failed
+ * attempt or else their creation, so rows whose removal keeps failing move behind the others.
+ */
 export const sweepQuarantinedImages = async (
   deps: QuarantinedImageSweepDeps,
 ): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
   const now = deps.clock.nowIso();
+  const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? QUARANTINED_IMAGE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
+  const budget: SweepBudget = () => endsAt - Date.parse(deps.clock.nowIso());
   const createdBefore = before(now, QUARANTINED_IMAGE_LIMITS.unattachedMaxAgeMs);
   const limit = QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun;
   const tenants = new Set<string>();
   let removed = 0;
   for (const tenantId of await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit)) {
+    if (spent(budget)) break;
     tenants.add(tenantId);
-    removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps);
+    removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps, budget);
   }
   const uploadsBefore = before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs);
-  for (const tenantId of await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit)) {
+  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit)) {
+    if (spent(budget)) break;
     tenants.add(tenantId);
     try {
-      removed += await sweepUploads(tenantId, uploadsBefore, deps);
+      removed += await sweepUploads(tenantId, uploadsBefore, budget, deps);
     } catch (cause) {
       logImageFailure(deps, tenantId, 'expired image upload sweep failed', cause);
     }
   }
   const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
-  for (const tenantId of await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit)) {
+  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit)) {
+    if (spent(budget)) break;
     tenants.add(tenantId);
     const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);
     for (const record of records) {
-      if (await removePublication(tenantId, record.attemptId, record.image, true, deps)) removed += 1;
+      if (spent(budget)) break;
+      if (await removePublication(tenantId, record.attemptId, record.image, true, deps, budget)) {
+        removed += 1;
+      } else {
+        await deps.quarantinedImages.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso());
+      }
     }
   }
   return ok({ tenants: tenants.size, removed });

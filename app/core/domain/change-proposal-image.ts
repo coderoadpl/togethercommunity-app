@@ -29,6 +29,15 @@ export const QUARANTINED_IMAGE_LIMITS = {
   sweepUploadsPerTenant: 200,
   publicationSweepAfterMs: 10 * 60 * 1000,
   sweepPublicationsPerTenant: 20,
+  sweepBudgetMs: 10_000,
+} as const;
+
+/** Each storage request of an approval, a preview or a publication answers within the statement bound of an approval. */
+export const PROPOSAL_IMAGE_STORAGE_DEADLINES = {
+  getMs: 5_000,
+  putMs: 5_000,
+  headMs: 5_000,
+  deleteMs: 5_000,
 } as const;
 
 export const PROPOSAL_IMAGE_QUARANTINE_PREFIX = 'image-asset-quarantine';

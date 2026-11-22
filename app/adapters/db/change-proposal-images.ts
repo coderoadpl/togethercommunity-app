@@ -185,6 +185,12 @@ const selectionFilter = (tenantId: string, selection: QuarantinedImageRelease, n
 
 type Settled<T> = { current: T | null };
 
+const imageWaiting = sql`coalesce(${changeProposalImages.sweepAttemptedAt}, ${changeProposalImages.createdAt})`;
+
+const uploadWaiting = sql`coalesce(${changeProposalImageUploads.sweepAttemptedAt}, ${changeProposalImageUploads.createdAt})`;
+
+const publicationWaiting = sql`coalesce(${changeProposalImagePublications.sweepAttemptedAt}, ${changeProposalImagePublications.startedAt})`;
+
 export const createQuarantinedImageRepository = (db: Db, options: ChangeProposalBoundOptions = {}): QuarantinedImageRepository => {
   const bounds = changeProposalBounds(options);
   const waits = { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs };
@@ -210,7 +216,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
           if (Number(usage?.bytes ?? 0) + parsed.sizeBytes > QUARANTINED_IMAGE_LIMITS.bytesPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
           const [saved] = row === undefined
             ? await tx.insert(changeProposalImages).values(parsed).returning()
-            : await tx.update(changeProposalImages).set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null })
+            : await tx.update(changeProposalImages).set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null, sweepAttemptedAt: null })
               .where(imageOfKey(tenantId, parsed.apiKeyId, parsed)).returning();
           if (saved === undefined) throw new Error('Quarantined image write returned no row');
           const stored = await store();
@@ -230,7 +236,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       await boundLockWait(tx, bounds);
       const query = tx.select().from(changeProposalImages).where(selectionFilter(tenantId, selection, now))
-        .orderBy(asc(changeProposalImages.createdAt), asc(changeProposalImages.apiKeyId), asc(changeProposalImages.digest));
+        .orderBy(asc(imageWaiting), asc(changeProposalImages.apiKeyId), asc(changeProposalImages.kind), asc(changeProposalImages.digest), asc(changeProposalImages.extension));
       const candidates = selection.kind === 'sweep' ? await query.limit(selection.limit).for('update') : await query.for('update');
       const earlier = candidates.filter((row) => row.releasedAt !== null);
       const fresh = candidates.filter((row) => row.releasedAt === null);
@@ -242,18 +248,22 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       )).returning();
       return { kind: 'written', value: [...earlier, ...marked].map(parseImage) };
     }), { kind: 'busy' } as const),
-    finishRelease: (tenantId, asset, removeObject) => busyAfterRollback(() => db.transaction(async (tx): Promise<QuarantinedImageReleaseEnd> => {
+    finishRelease: (tenantId, asset, removeObject, now) => busyAfterRollback(() => db.transaction(async (tx): Promise<QuarantinedImageReleaseEnd> => {
       if (!await boundedAdvisoryLock(tx, keyLock(tenantId, asset.apiKeyId), waits)) return 'busy';
       const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset)).for('update');
       if (row === undefined) return 'gone';
       if (row.releasedAt === null) return 'revived';
-      if (!await removeObject()) return 'failed';
+      if (!await removeObject()) {
+        await tx.update(changeProposalImages).set({ sweepAttemptedAt: now }).where(imageOfKey(tenantId, asset.apiKeyId, asset));
+        return 'failed';
+      }
       await tx.delete(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset));
       return 'removed';
     }), 'busy' as const),
     listTenantIdsToSweep: async (createdBefore, now, limit) =>
-      (await db.selectDistinct({ tenantId: changeProposalImages.tenantId }).from(changeProposalImages)
-        .where(sweepable(createdBefore, now)).orderBy(asc(changeProposalImages.tenantId)).limit(limit)).map((row) => row.tenantId),
+      (await db.select({ tenantId: changeProposalImages.tenantId }).from(changeProposalImages)
+        .where(sweepable(createdBefore, now)).groupBy(changeProposalImages.tenantId)
+        .orderBy(sql`min(${imageWaiting})`, asc(changeProposalImages.tenantId)).limit(limit)).map((row) => row.tenantId),
     recordUpload: (tenantId, upload, countedAfter) => {
       const parsed = quarantinedImageUploadSchema.parse(upload);
       return db.transaction(async (tx): Promise<QuarantinedImageUploadRecord> => {
@@ -269,15 +279,20 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       });
     },
     listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
-      (await db.selectDistinct({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)
-        .where(lt(changeProposalImageUploads.createdAt, createdBefore)).orderBy(asc(changeProposalImageUploads.tenantId)).limit(limit))
+      (await db.select({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)
+        .where(lt(changeProposalImageUploads.createdAt, createdBefore)).groupBy(changeProposalImageUploads.tenantId)
+        .orderBy(sql`min(${uploadWaiting})`, asc(changeProposalImageUploads.tenantId)).limit(limit))
         .map((row) => row.tenantId),
     listUploadsBefore: async (tenantId, createdBefore, limit) =>
       (await db.select().from(changeProposalImageUploads)
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), lt(changeProposalImageUploads.createdAt, createdBefore)))
-        .orderBy(asc(changeProposalImageUploads.createdAt), asc(changeProposalImageUploads.objectKey)).limit(limit)).map(parseUpload),
+        .orderBy(asc(uploadWaiting), asc(changeProposalImageUploads.objectKey)).limit(limit)).map(parseUpload),
     deleteUpload: async (tenantId, objectKey) => {
       await db.delete(changeProposalImageUploads)
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
+    },
+    markUploadAttempted: async (tenantId, objectKey, now) => {
+      await db.update(changeProposalImageUploads).set({ sweepAttemptedAt: now })
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
     },
     recordPublications: async (tenantId, attemptId, images, startedAt) => {
@@ -288,12 +303,17 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         .onConflictDoNothing();
     },
     listTenantIdsWithPublicationsBefore: async (startedBefore, limit) =>
-      (await db.selectDistinct({ tenantId: changeProposalImagePublications.tenantId }).from(changeProposalImagePublications)
-        .where(lt(changeProposalImagePublications.startedAt, startedBefore)).orderBy(asc(changeProposalImagePublications.tenantId)).limit(limit))
+      (await db.select({ tenantId: changeProposalImagePublications.tenantId }).from(changeProposalImagePublications)
+        .where(lt(changeProposalImagePublications.startedAt, startedBefore)).groupBy(changeProposalImagePublications.tenantId)
+        .orderBy(sql`min(${publicationWaiting})`, asc(changeProposalImagePublications.tenantId)).limit(limit))
         .map((row) => row.tenantId),
     listPublicationsBefore: async (tenantId, startedBefore, limit) =>
       (await db.select().from(changeProposalImagePublications)
         .where(and(eq(changeProposalImagePublications.tenantId, tenantId), lt(changeProposalImagePublications.startedAt, startedBefore)))
-        .orderBy(asc(changeProposalImagePublications.startedAt), asc(changeProposalImagePublications.attemptId)).limit(limit)).map(parsePublication),
+        .orderBy(asc(publicationWaiting), asc(changeProposalImagePublications.attemptId), asc(changeProposalImagePublications.kind),
+          asc(changeProposalImagePublications.digest), asc(changeProposalImagePublications.extension)).limit(limit)).map(parsePublication),
+    markPublicationAttempted: async (tenantId, attemptId, image, now) => {
+      await db.update(changeProposalImagePublications).set({ sweepAttemptedAt: now }).where(publicationOf(tenantId, attemptId, image));
+    },
   };
 };

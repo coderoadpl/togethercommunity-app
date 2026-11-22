@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { err, notFound, ok, type StorageConfiguration } from '#core/domain/index.js';
+import { err, notFound, ok, storageFailureIsDefinite, type StorageConfiguration } from '#core/domain/index.js';
 
 import { createS3StorageProvider, mapStorageProbeFailure } from './s3.js';
 
@@ -100,6 +100,7 @@ const fakeBucket = (
     headers?: Record<string, string>;
   },
   allowedOrigins?: string[],
+  options: { ignoresResponseOverrides?: boolean } = {},
 ) => {
   const requests: Array<{
     method: string;
@@ -145,9 +146,14 @@ const fakeBucket = (
     }
     if (init.method === 'GET') {
       const stored = objects.get(path);
+      const query = new URL(url).searchParams;
+      const overrides = options.ignoresResponseOverrides === true ? {} : {
+        ...(query.has('response-content-type') ? { 'content-type': query.get('response-content-type') ?? '' } : {}),
+        ...(query.has('response-content-disposition') ? { 'content-disposition': query.get('response-content-disposition') ?? '' } : {}),
+      };
       return stored === undefined
         ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
-        : storageResponse(200, typeof stored === 'string' ? stored : new TextDecoder().decode(stored));
+        : storageResponse(200, typeof stored === 'string' ? stored : new TextDecoder().decode(stored), { 'content-type': 'text/plain', ...overrides });
     }
     if (init.method === 'HEAD') {
       const stored = objects.get(path);
@@ -422,10 +428,11 @@ describe('createS3StorageProvider', () => {
       value: {
         code: 'storage.available',
         message: 'Storage completed the write, read and delete probe.',
+        signedResponseOverrides: 'honoured',
       },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
-    expect(bucket.requests[3]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[4]?.headers).toEqual({
       Origin: 'http://localhost:48730',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
@@ -656,8 +663,8 @@ describe('createS3StorageProvider', () => {
       ok: false,
       error: { details: { providerCode: 'storage.cors' } },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
-    expect(bucket.requests[3]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[4]?.headers).toEqual({
       Origin: 'https://app.together.example',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
@@ -676,8 +683,8 @@ describe('createS3StorageProvider', () => {
       MINIO_CONFIGURATION,
       ['https://acme.together.example', 'https://app.together.example'],
     )).resolves.toMatchObject({ ok: true, value: { code: 'storage.available' } });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS', 'OPTIONS']);
-    expect(bucket.requests.slice(3).map((request) => request.headers?.Origin)).toEqual([
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS', 'OPTIONS']);
+    expect(bucket.requests.slice(4).map((request) => request.headers?.Origin)).toEqual([
       'https://acme.together.example',
       'https://app.together.example',
     ]);
@@ -700,7 +707,7 @@ describe('createS3StorageProvider', () => {
         details: { providerCode: 'storage.cors', corsOrigin: 'https://acme.together.example' },
       },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it('reports each deep-health CORS preflight as ok or blocked', async () => {
@@ -831,7 +838,7 @@ describe('createS3StorageProvider', () => {
       ok: true,
       value: { healthy: true },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it('reports the stored configuration as invalid instead of leaking its content', async () => {
@@ -983,16 +990,45 @@ describe('download file storage operations', () => {
   });
 
   it.each([
-    [404, '', 'not_found'],
-    [200, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable'],
-    [403, '<Error><Code>AccessDenied</Code></Error>', 'integration_unavailable'],
-  ] as const)('reports a copy answered %s %s as %s', async (status, body, code) => {
+    [404, '', 'not_found', true],
+    [403, '<Error><Code>AccessDenied</Code></Error>', 'integration_unavailable', true],
+    [500, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<?xml version="1.0" encoding="UTF-8"?>\n<Error xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<s3:Error xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><Code>SlowDown</Code></s3:Error>', 'integration_unavailable', false],
+    [200, '', 'integration_unavailable', false],
+    [200, '<ListBucketResult></ListBucketResult>', 'integration_unavailable', false],
+  ] as const)('reports a copy answered %s %j as %s, a definite failure: %s', async (status, body, code, definite) => {
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],
       fetchStorage: async () => storageResponse(status, body),
     });
-    expect(await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 }))
-      .toMatchObject({ ok: false, error: { code } });
+    const copied = await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 });
+    if (copied.ok) throw new Error('the copy was accepted');
+    expect(copied.error.code).toBe(code);
+    expect(storageFailureIsDefinite(copied.error)).toBe(definite);
+  });
+
+  it.each([
+    '<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>',
+    '<?xml version="1.0" encoding="UTF-8"?>\n<CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"x"</ETag></CopyObjectResult>',
+    '<s3:CopyObjectResult xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><s3:ETag>"x"</s3:ETag></s3:CopyObjectResult>',
+  ])('accepts a copy answered with the result %j', async (body) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, body),
+    });
+    expect(await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 })).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each(['0', '12'])('reports an object of %s bytes against a ceiling of 9 as a definite digest failure', async (length) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': length }),
+    });
+    const digest = await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 9, headBytes: 4 });
+    if (digest.ok) throw new Error('the digest was accepted');
+    expect(storageFailureIsDefinite(digest.error)).toBe(true);
   });
 
   it('streams an object through SHA-256 and answers its size and first bytes without a buffer of the whole object', async () => {
@@ -1035,6 +1071,68 @@ describe('download file storage operations', () => {
     ]);
     for (const outcome of outcomes) {
       expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+      if (!outcome.ok) expect(storageFailureIsDefinite(outcome.error)).toBe(false);
     }
+  });
+
+  it('gives up a read and a write of a published image whose storage never answers once their deadline passes', async () => {
+    const pending = () => new Promise<never>(() => undefined);
+    const storage = createS3StorageProvider(resolver, { lookupAddresses: async () => ['93.184.216.34'], fetchStorage: pending });
+    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 };
+    const outcomes = await Promise.all([
+      storage.getObject(target, { maxBytes: 10 }),
+      storage.putObject({ ...target, body: new Uint8Array([1]), contentType: 'image/png' }),
+    ]);
+    for (const outcome of outcomes) {
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+    }
+  });
+
+  it('gives up a read whose body stops arriving once its deadline passes', async () => {
+    const { response } = streamedResponse(200, 'endless');
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => ({ ...response, headers: { get: (name: string) => name === 'content-length' ? '64' : null } }),
+    });
+    expect(await storage.getObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 }, { maxBytes: 64 }))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+  });
+
+  it('starts the deadline of a HEAD and a delete once the endpoint resolved, so a slow lookup does not use it up', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: () => new Promise((resolve) => { setTimeout(() => { resolve(['93.184.216.34']); }, 60); }),
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': '3' }),
+    });
+    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 30 };
+    expect(await storage.head(target)).toEqual({ ok: true, value: { sizeBytes: 3 } });
+    expect(await storage.delete(target)).toEqual({ ok: true, value: { deleted: true } });
+  });
+});
+
+describe('the signed download override probe', () => {
+  it('signs a read with a type and a file name override and reports a provider that answers them', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toMatchObject({ ok: true, value: { signedResponseOverrides: 'honoured' } });
+    const override = new URL(bucket.requests[2]?.url ?? 'http://missing.invalid');
+    expect(override.searchParams.get('response-content-type')).toBe('application/x-together-probe');
+    expect(override.searchParams.get('response-content-disposition')).toBe('attachment; filename="together-probe-override.txt"');
+    expect(override.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/u);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('reports a provider that returns the right body but ignores both overrides, without failing the configuration', async () => {
+    const bucket = fakeBucket(undefined, undefined, { ignoresResponseOverrides: true });
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toEqual({
+      ok: true,
+      value: {
+        code: 'storage.available',
+        message: expect.stringContaining('application/octet-stream download named after its stored object'),
+        signedResponseOverrides: 'ignored',
+      },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.objects.size).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ import { ProductSafetySummary } from './ProductSafetySummary.js';
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
+  AlertTitle,
   Button,
   FormControl,
   FormControlLabel,
@@ -25,7 +26,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import { attributionFromSearchParams, attributionToSearchParams, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, checkoutReturnLink, formatSalesLinkVariantParam, isStripeTermsUrlMissing, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, CHECKOUT_RETURN_PARAM, CHECKOUT_TERMS_ON_PAGE, CHECKOUT_TERMS_PARAM, checkoutReturnLink, formatSalesLinkVariantParam, isStripeTermsUrlMissing, resolveHostedCheckoutReturnUrl, SALES_LINK_VARIANT_PARAM } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
@@ -122,30 +123,49 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   useSuppressGlobalChrome();
   const t = useTranslations();
   const { language } = useLanguage();
-  const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
+  const search = new URLSearchParams(window.location.search);
+  const [checkoutStatus, setCheckoutStatus] = useState(() => search.get('status'));
   const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
   const singleOffer = useQuery({ ...actions.checkoutOffer(productRef), enabled: !statusPage && salesLinkSlug === undefined });
-  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? '', new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)), enabled: !statusPage && salesLinkSlug !== undefined });
+  const bundleOffer = useQuery({ ...actions.salesLinks.publicOffer(salesLinkSlug ?? '', search.getAll(SALES_LINK_VARIANT_PARAM)), enabled: !statusPage && salesLinkSlug !== undefined });
   const offer = salesLinkSlug === undefined ? singleOffer : bundleOffer;
   const paymentConfig = useQuery(actions.publicPaymentConfig);
+  const returnParam = salesLinkSlug === undefined ? search.get(CHECKOUT_RETURN_PARAM) : null;
+  const returnUrl = resolveHostedCheckoutReturnUrl(returnParam, paymentConfig.data?.checkoutReturnOrigins ?? []);
   const me = useQuery({ ...actions.me, enabled: !statusPage });
   const signedInEmail = me.data !== undefined && me.data.impersonation === null ? me.data.email : null;
   const sessionId = new URLSearchParams(window.location.search).get('session_id');
   const hasSessionId = sessionId !== null && sessionId !== '';
-  const [statusDeadline] = useState(() => Date.now() + 180_000);
+  const [statusDeadline, setStatusDeadline] = useState(() => Date.now() + 180_000);
   const [statusTimedOut, setStatusTimedOut] = useState(false);
   const paymentStatus = useQuery({
     ...actions.publicCheckoutSessionStatus(sessionId ?? '', language),
     enabled: (query) => checkoutStatus === 'success' && hasSessionId &&
       !statusTimedOut && (query.state.data?.status ?? 'pending') === 'pending',
-    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' ||
+    refetchInterval: (query) => (query.state.data?.status ?? 'pending') !== 'pending' || query.state.status === 'error' ||
       statusTimedOut || Date.now() >= statusDeadline ? false : 3000,
-    retry: false,
+    retry: 1,
+    retryDelay: 1000,
   });
   const paymentPaid = !hasSessionId || paymentStatus.data?.status === 'paid';
   const soldOutRefund = hasSessionId && paymentStatus.data?.status === 'cancelled';
-  const soldOutBody = paymentStatus.data?.charged === false ? t.checkout.soldOutNothingChargedBody : t.checkout.soldOutRefundBody;
   const paymentSettled = paymentPaid || soldOutRefund;
+  const statusRequestFailed = hasSessionId && paymentStatus.isError && !paymentSettled;
+  const workspaceOffer = useQuery({ ...actions.publicOffer, enabled: checkoutStatus === 'success' });
+  const supportUrl = workspaceOffer.data?.tenant.support.url ?? null;
+  const returnTitle = useRef<HTMLHeadingElement | null>(null);
+  const [rechecking, setRechecking] = useState(false);
+  const checkAgain = () => {
+    const wasFailed = statusRequestFailed;
+    setStatusTimedOut(false);
+    setStatusDeadline(Date.now() + 180_000);
+    setRechecking(true);
+    if (!wasFailed) window.requestAnimationFrame(() => returnTitle.current?.focus());
+    void paymentStatus.refetch().finally(() => {
+      setRechecking(false);
+      if (wasFailed) window.requestAnimationFrame(() => returnTitle.current?.focus());
+    });
+  };
 
   useEffect(() => {
     if (checkoutStatus !== 'success' || paymentSettled) return;
@@ -324,7 +344,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       const codeAtSubmit = appliedCoupon === undefined ? null : couponCode;
       const keyAtSubmit = autoValidationKey;
       checkoutSession.mutate({
-        attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
+        attribution: attributionFromSearchParams(search),
+        ...(returnUrl === null ? {} : { returnUrl }),
         ...(buyerEmail === undefined ? {} : { email: buyerEmail }),
         ...purchaseRequest(),
       }, {
@@ -339,12 +360,13 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     simulate();
   };
 
-  const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
-  const retryParams = attributionToSearchParams(attributionFromSearchParams(new URLSearchParams(window.location.search)));
+  const togetherCheckout = search.get('checkout') === 'together';
+  const retryParams = attributionToSearchParams(attributionFromSearchParams(search));
   if (togetherCheckout) retryParams.set('checkout', 'together');
-  const retryCouponCode = new URLSearchParams(window.location.search).get('code');
+  const retryCouponCode = search.get('code');
   if (retryCouponCode !== null && retryCouponCode !== '') retryParams.set('code', retryCouponCode);
-  for (const value of new URLSearchParams(window.location.search).getAll(SALES_LINK_VARIANT_PARAM)) retryParams.append(SALES_LINK_VARIANT_PARAM, value);
+  if (returnParam !== null) retryParams.set(CHECKOUT_RETURN_PARAM, returnParam);
+  for (const value of search.getAll(SALES_LINK_VARIANT_PARAM)) retryParams.append(SALES_LINK_VARIANT_PARAM, value);
   const retryUrl = `${window.location.pathname}${retryParams.size === 0 ? '' : `?${retryParams.toString()}`}`;
   const retry = () => {
     window.history.replaceState(null, '', retryUrl);
@@ -365,7 +387,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
 
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
-    const title = soldOutRefund ? t.checkout.soldOutRefundTitle : paymentPaid ? t.checkout.successTitle : t.checkout.successPendingTitle;
+    const waiting = !paymentSettled && !testPurchase;
+    const failed = waiting && statusRequestFailed;
+    const timedOut = waiting && !failed && statusTimedOut;
+    const title = soldOutRefund
+      ? t.checkout.soldOutRefundTitle
+      : paymentPaid
+        ? t.checkout.successTitle
+        : failed ? t.checkout.statusErrorTitle : timedOut ? t.checkout.successTimedOutTitle : t.checkout.successPendingTitle;
     const paidStatus = paymentStatus.data?.status === 'paid' ? paymentStatus.data : undefined;
     const shopLink = paidStatus?.returnUrl === undefined || paidStatus.checkoutRef === undefined ? null : checkoutReturnLink(paidStatus.returnUrl, {
       checkoutRef: paidStatus.checkoutRef, status: 'paid', clientReference: paidStatus.clientReference,
@@ -373,8 +402,32 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     const eyebrow = soldOutRefund
       ? t.checkout.soldOutRefundEyebrow
       : paymentPaid
-        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : t.checkout.successPaidEyebrow
-        : t.checkout.successEyebrow;
+        ? subscriptionSuccess ? t.checkout.subscriptionSuccessEyebrow : hasSessionId ? t.checkout.successPaidEyebrow : t.checkout.successConfirmedEyebrow
+        : t.checkout.successPendingEyebrow;
+    const body = testPurchase
+      ? [t.checkout.testPurchaseBody]
+      : soldOutRefund
+        ? paymentStatus.data?.charged === false
+          ? [t.checkout.soldOutNothingChargedBody]
+          : [t.checkout.soldOutRefundBody, t.checkout.soldOutRefundStarted, t.checkout.soldOutRefundTiming]
+        : paymentPaid
+          ? [subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody]
+          : failed
+            ? [t.checkout.statusErrorBody]
+            : timedOut
+              ? [t.checkout.successPendingTimeout, ...(supportUrl === null ? [] : [t.checkout.successPendingContact])]
+              : [t.checkout.successPendingBody];
+    const paidLines = paymentPaid && !testPurchase && !soldOutRefund && !subscriptionSuccess
+      ? [t.checkout.successBody, `${t.checkout.successWhere} ${t.checkout.successShipping}`, t.checkout.successSpam]
+      : null;
+    const failedContact = failed && statusTimedOut && supportUrl !== null;
+    const offersRecheck = failed || timedOut;
+    const externalContact = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
+    const contactLink = supportUrl !== null && (soldOutRefund || timedOut || failedContact)
+      ? externalContact
+        ? <Button href={supportUrl} target="_blank" rel="noopener noreferrer" variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+        : <Button href={supportUrl} variant="outlined" fullWidth>{t.checkout.contactSeller}</Button>
+      : null;
     return (
       <FocusCard {...frame} eyebrow={eyebrow}>
         <Stack useFlexGap spacing="1rem">
@@ -386,14 +439,24 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           /> : null}
           {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
-          <CardTitle variant="h1">{title}</CardTitle>
-          <Typography variant="body1">
-            {testPurchase ? t.checkout.testPurchaseBody : soldOutRefund ? soldOutBody : paymentPaid
-              ? subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody
-              : statusTimedOut ? t.checkout.successPendingTimeout : t.checkout.successPendingBody}
-          </Typography>
-          {paymentSettled ? null : <LinearProgress aria-label={title} />}
+          <Stack useFlexGap spacing="1rem" role="status" aria-live="polite" aria-atomic="true" data-testid="checkout-return-status">
+            <CardTitle variant="h1" ref={returnTitle} tabIndex={-1}>{title}</CardTitle>
+            {failed ? (
+              <>
+                <Alert severity="error" role="none" data-testid="checkout-return-error">{body[0]}</Alert>
+                {failedContact ? <Typography variant="body1">{t.checkout.successPendingContact}</Typography> : null}
+              </>
+            ) : (paidLines ?? body).map((line) => <Typography key={line} variant="body1">{line}</Typography>)}
+          </Stack>
+          {paymentSettled || offersRecheck ? null : <LinearProgress aria-label={title} />}
+          {offersRecheck ? (
+            <Button variant="contained" fullWidth onClick={checkAgain} disabled={rechecking}>
+              {t.checkout.checkAgain}
+            </Button>
+          ) : null}
           {shopLink === null ? null : <Button href={shopLink} variant="contained" fullWidth>{t.checkout.backToShop}</Button>}
+          {soldOutRefund ? <Button href="/" variant="contained" fullWidth>{t.checkout.backToShop}</Button> : null}
+          {contactLink}
           {soldOutRefund ? null : (
             <Button component={Link} to="/login" variant={shopLink !== null ? 'outlined' : paymentPaid ? 'contained' : 'text'} fullWidth>
               {t.checkout.goToLogin}
@@ -461,7 +524,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         eyebrow={t.checkout.orderEyebrow}
       >
         <StatusView
-          state={{
+          state={salesLinkSlug === undefined ? {
             kind: 'not-found',
             title: t.checkout.unavailableTitle,
             body: t.checkout.unavailableBody,
@@ -470,6 +533,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
                 {t.checkout.goToLogin}
               </Button>
             ),
+          } : {
+            kind: 'not-found',
+            title: t.salesLinks.offerUnavailableTitle,
+            body: t.salesLinks.offerUnavailableBody,
+            action: <Button href="/" variant="contained">{t.salesLinks.goHome}</Button>,
           }}
         />
       </FocusCard>
@@ -479,7 +547,14 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   if (salesLinkSlug !== undefined && (!legal?.termsUrl || !legal.privacyUrl)) {
     return (
       <FocusCard {...frame} eyebrow={t.checkout.orderEyebrow}>
-        <Alert severity="error">{t.checkout.unavailableTitle}</Alert>
+        <StatusView
+          state={{
+            kind: 'not-found',
+            title: t.salesLinks.offerUnavailableTitle,
+            body: t.salesLinks.offerUnavailableBody,
+            action: <Button href="/" variant="contained">{t.salesLinks.goHome}</Button>,
+          }}
+        />
       </FocusCard>
     );
   }
@@ -560,7 +635,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       required={required}
       onChange={(value) => {
         setEmail(value);
-        if (emailMattersForCoupon && !(rememberedCode && couponValidation.data !== undefined)) discardCouponResult();
+        const keptResult = rememberedCode && couponValidation.data !== undefined && (emailPlacement !== 'coupon' || completeEmail(value));
+        if (emailMattersForCoupon && !keptResult) discardCouponResult();
       }}
     />
   );
@@ -583,6 +659,23 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
           ) : null}
           <Stack useFlexGap spacing="0.75rem">
             <CheckoutTitle variant="h1">{bundle === undefined ? product.title : bundle.salesLink.heading}</CheckoutTitle>
+            {returnUrl === null ? null : <MuiLink href={returnUrl} sx={{ alignSelf: 'flex-start' }}>{t.checkout.backToShop}</MuiLink>}
+            {bundle?.soldOut === true ? (() => {
+              const soldOutLines = bundle.lines.filter((line) => line.maxQuantity === 0);
+              const takenProducts = new Set(bundle.lines.map((line) => line.productId));
+              const variantLeft = soldOutLines.length > 0 && soldOutLines.every((line) =>
+                line.variants.some((variant) => !variant.soldOut && variant.productId !== line.productId && !takenProducts.has(variant.productId)));
+              const names = soldOutLines.map((line) => {
+                const current = line.variants.find((variant) => variant.productId === line.productId);
+                return variantLeft && current !== undefined ? `${line.name} (${current.label})` : line.name;
+              }).join(', ');
+              return (
+                <Alert severity="warning" data-testid="bundle-sold-out-notice">
+                  <AlertTitle>{variantLeft ? t.salesLinks.variantSoldOutTitle : t.salesLinks.soldOutTitle}</AlertTitle>
+                  {soldOutLines.length === 0 ? null : variantLeft ? t.salesLinks.variantSoldOutLines({ names }) : t.salesLinks.soldOutLines({ names })}
+                </Alert>
+              );
+            })() : null}
             <CheckoutSummaryRow
               items={t.checkout.itemCount({ count: bundle?.lines.length ?? 1 })}
               total={formatOfferPrice(payableCents, selectedCurrency, language, t.common.free)}

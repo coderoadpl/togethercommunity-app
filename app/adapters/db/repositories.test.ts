@@ -388,6 +388,23 @@ describe('product repository', () => {
       priceCents: 100, currency: 'PLN', createdAt: NOW, salesChannel: sql`'catalogue'`,
     })).rejects.toThrow();
   });
+  it('round-trips the responsible person and reads stored safety information without it as a manufacturer in the EU', async () => {
+    const repo = createProductRepository(db);
+    const manufacturer = { manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.test', modelIdentifier: 'LAMP-2' };
+    const responsiblePerson = { responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw', responsiblePersonEmail: 'eu-rep@example.test' };
+    await repo.create(GLOBEX, product({
+      id: 'prod-globex-outside-eu', tenantId: GLOBEX, type: 'physical',
+      compliance: { ...manufacturer, ...responsiblePerson, manufacturerOutsideEu: true, safetyWarnings: '' },
+    }));
+    await db.insert(products).values({
+      id: 'prod-globex-legacy-compliance', tenantId: GLOBEX, slug: 'prod-globex-legacy-compliance', title: 'Stored before', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW, compliance: sql`${JSON.stringify({ ...manufacturer, safetyWarnings: '' })}::jsonb`,
+    });
+    expect((await repo.findById(GLOBEX, 'prod-globex-outside-eu'))?.compliance)
+      .toEqual({ ...manufacturer, ...responsiblePerson, manufacturerOutsideEu: true, safetyWarnings: '' });
+    expect((await repo.findById(GLOBEX, 'prod-globex-legacy-compliance'))?.compliance)
+      .toEqual({ ...manufacturer, manufacturerOutsideEu: false, safetyWarnings: '' });
+  });
 });
 
 describe('member repository', () => {

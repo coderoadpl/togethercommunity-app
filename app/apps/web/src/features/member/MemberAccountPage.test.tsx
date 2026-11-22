@@ -851,6 +851,14 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByTestId('account-support-open')).not.toBeInTheDocument();
   });
 
+  it('opens the support form straight away when the link from an e-mail asks for it', async () => {
+    server.use(stubMe(), stubSettings(null, true), stubBillingOrders());
+    await renderAccount('/account?support=open');
+
+    expect(await screen.findByRole('button', { name: en.support.send })).toBeInTheDocument();
+    expect(screen.getByLabelText(en.support.subjectLabel)).toBeInTheDocument();
+  });
+
   it('keeps support submission inactive until both fields are filled and resets after success', async () => {
     const user = userEvent.setup();
     let body: unknown;

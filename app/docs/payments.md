@@ -2,7 +2,7 @@
 
 ## Purchase confirmation and purchased files
 
-The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending`, `paid` or `cancelled` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. An order cancelled because its goods sold out before the payment arrived returns `cancelled` with `charged` (`false` when the order was paid with zero) and without analytics or `metaCapi`, and the page shows a sold-out message with the automatic refund, or that nothing was charged, instead of the confirmation (see [the shop guide](shop.md)). Polling stops after payment confirmation, a cancellation or the timeout. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the paid card immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
+The success return page polls `GET /api/public/checkout/session-status?session_id=<id>` every three seconds for at most three minutes when a non-empty session ID is present. The tenant-scoped, mode-aware endpoint returns `pending`, `paid` or `cancelled` in the API envelope with `Cache-Control: no-store`. The request accepts an optional `locale`. Paid sessions include the purchase analytics payload described below only when the tenant has configured a GA4 measurement ID or Meta Pixel ID. When the tenant has enabled Meta conversions and configured a Meta Pixel ID, paid sessions also include `metaCapi`: the order's consent state and withdrawal time, the consent copy resolved for the requested locale, the privacy-policy URL and the copy's text version, described in [the Meta Conversions API guide](integrations/meta-capi.md). Buyer identity (name, email or address) is never included. Unknown sessions and unpaid sessions have identical responses; refunded payments also count as paid for this confirmation. An order cancelled because its goods sold out before the payment arrived returns `cancelled` with `charged` (`false` when the order was paid with zero) and without analytics or `metaCapi`, and the page shows a sold-out message with the automatic refund, or that nothing was charged, instead of the confirmation (see [the shop guide](shop.md)). Polling stops after payment confirmation, a cancellation or the timeout. While it waits, the page claims no payment yet. After the timeout it shows its own timed-out card with a "Check again" action that restarts polling for another three minutes, and a contact link when the workspace has a support address; a status request that fails twice in a row shows an inline error with the same action instead of the waiting card, polling stops there, and after the three-minute window that card also shows the contact link when the workspace has a support address. The card's title and body sit in a polite live region so screen readers announce each state. Free and fully discounted checkouts are fulfilled synchronously and return without a session ID, showing the order confirmation immediately without polling; legacy returns and empty session IDs follow the same behavior. Welcome magic links target `/my/course/<productId>` for the first digital download product in the order lines (or the fulfilled download product when there are no order lines), and `/start` otherwise. The sidebar and mobile menu list granted products with download assets in a Downloads section directly below Spaces. Their product pages show the description and downloadable files, or courses followed by downloads when both are included. The avatar menu retains the full My products list.
 
 ## Checkout analytics
 
@@ -317,7 +317,10 @@ terms acceptance from the page. A coupon without a per-member limit no longer
 needs an email before a paid order. A workspace with only one legal URL, or none,
 keeps the earlier behaviour: the page asks for the terms when one URL is set, and
 a sales link still refuses to start without both. The cart checkout
-(`/checkout/cart/pay`) keeps the terms and the email on its page.
+(`/checkout/cart/pay`) keeps the terms and the email on its page. Both the cart
+and standard single-product checkouts accept `?return=` for a shop address on an
+allowed origin and retain it when Stripe sends the buyer back after cancellation.
+See [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses).
 
 ### Stripe accounts without a Dashboard terms URL
 
@@ -369,16 +372,54 @@ Stripe coupons discount line items, never shipping rates.
 
 The webhook reads the address from `collected_information.shipping_details`,
 falling back to the top-level `shipping_details` of events in API versions
-before `2025-03-31.basil`, the phone number from `customer_details.phone` and the fee from
-`shipping_cost.amount_total`. It rejects a session whose fee differs from the
+from `2022-08-01` to before `2025-03-31.basil` and to `shipping` of events in
+versions before `2022-08-01`. It reads the phone number from
+`customer_details.phone`, falling back to the phone of that delivery hash, and
+the fee from `shipping_cost.amount_total`, falling back to
+`total_details.amount_shipping` (versions before `2022-08-01` carry only a
+`shipping_rate` id). It rejects a session whose fee differs from the
 snapshot's shipping line or whose address is missing or outside the allowed
-countries. A session whose coupon covered every product line but which charged
+countries. When the event carries no fee under any of these keys, it accepts
+the session only if `amount_total` plus `total_details.amount_discount` equals
+the sum of every snapshot line, the shipping line included; a session without
+`amount_total` is rejected. See [Webhook API version](#webhook-api-version). A session whose coupon covered every product line but which charged
 the delivery fee is recorded even when the coupon redemption claim loses a race
 at the redemption limit: the order keeps the coupon and Stripe's discount, no
 redemption row is written, so the coupon is over-redeemed by one shipped order,
 and the webhook logs `reason=coupon_over_redeemed`. Staff see the order on the
 Studio Orders page; nothing is refunded automatically. See [Shop](shop.md) for
 the delivery options and the stored order data.
+
+## Webhook API version
+
+A webhook endpoint registered with an `api_version` receives events rendered
+in that version; an endpoint registered without one receives events in the
+account's default API version at the time the event was created, and a retry
+delivers the same payload. Registration in the payment configuration creates
+the endpoint without an `api_version`, so every tenant endpoint follows the
+account default version, which on an older account can be years old. The
+webhook therefore reads every known location of the fields it uses (delivery
+address, phone, shipping fee, invoice subscription and payment references,
+subscription period end) instead of trusting one version.
+
+To check an account, open Stripe Dashboard → Developers (Workbench) → Webhooks, select the
+Together endpoint (`/api/webhooks/stripe/<tenantId>`, `?mode=test` for the test
+slot) and read its API version. The account default version is shown in
+Workbench → Overview.
+
+Re-running the webhook registration of the payment configuration (saving the
+restricted key again in Studio → Integrations → Stripe, or the same call through
+a shop management key) deletes every endpoint of that tenant and slot and the
+endpoint at the same URL, creates a new endpoint with a new signing secret and
+stores that secret. Stripe stops retrying an event when its endpoint has been
+deleted at the time of the retry, and the new endpoint does not receive events
+created before it existed. A paid event that is still failing and retrying
+(Stripe retries a live event for up to three days) is therefore lost to
+automatic retries by a re-registration. Do not re-register while a paid event
+is still retrying; let the fixed handler record it first. An event lost this way
+can still be resent from the Dashboard (**Resend**, up to 15 days after the
+event) or with `stripe events resend <event_id> --webhook-endpoint=<endpoint_id>`
+(up to 30 days).
 
 ## Order campaign attribution
 
@@ -449,12 +490,9 @@ original event supplies the invoice amounts, currency and billing period.
 Payment-intent or charge IDs are stored on renewal orders so later refunds and
 disputes can find them. Lookup failures fail webhook processing for retry instead
 of acknowledging an event without its payment references. Existing pre-Clover
-top-level payment references remain supported for older events. Both Checkout
-Session delivery address locations are supported for the same reason: tenant
-webhook endpoints are registered without a pinned API version, so Stripe sends
-events in the account's default version, and versions before `2025-03-31.basil`
-carry the address in the top-level `shipping_details` instead of
-`collected_information.shipping_details`. Signature
+top-level payment references remain supported for older events, and every
+Checkout Session delivery address location is read for the same reason (see
+[Webhook API version](#webhook-api-version)). Signature
 verification and the signed mode check happen before any lookup.
 
 Checkout Sessions propagate `tenantId` to subscription metadata and, for one-time
@@ -587,6 +625,24 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 `does not have the required permissions` is classified as `missing`. Other
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
+
+## Order and subscription e-mail subjects
+
+Order e-mails to buyers lead with the outcome and the workspace and carry a short
+order reference, the first eight characters of the order id upper-cased with a
+`#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
+<workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
+<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+body keeps the full order id on the order-number line so the seller can match
+it. The payment-failed, direct-message and community notification subjects end
+with " — <workspace>".
+
+When a subscription payment fails, the e-mail says the access ends on the period
+end unless the payment goes through. It links the workspace billing portal when
+one is configured. Otherwise it asks the member to contact the workspace to
+settle the payment and links, in this order, the account page with its support
+form open (`/account?support=open`) when the workspace has a support e-mail, the
+workspace support page, or the workspace home page; it never promises a retry.
 
 ## Adopting existing Stripe subscriptions
 

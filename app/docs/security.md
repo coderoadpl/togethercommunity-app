@@ -545,8 +545,12 @@ scopes on every shop key.
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
-  value or the deciding account; after an approval it names only the id of
-  the applied resource, which the key can already read with its read scope.
+  value, a live label, the issuer's state or the deciding account; after an
+  approval it names only the id of the applied resource, which the key can
+  already read with its read scope. The owner view adds a display label read
+  from live state at read time (never used by a decision), the issuing
+  account's e-mail and whether it is still a verified owner of the
+  workspace, and the deciding account's e-mail.
   Only the verified owner in their own session reads, approves and
   rejects proposals (`proposal:read`, `proposal:decide`, owner-only); an admin, an
   impersonating owner, a direct-mode key, a propose-mode key and a legacy key
@@ -573,13 +577,19 @@ scopes on every shop key.
   the clock again, runs the live use-case as the approving owner inside a
   savepoint, recomputes the effect and commits the change only when it equals
   the stored effect the owner saw; otherwise the savepoint is rolled back and
-  the proposal becomes `stale` (or `failed` with the domain error). A draft
+  the proposal becomes `stale`, or `failed` when the live use-case refuses the
+  command itself. Any other error of the live use-case (an infrastructure,
+  configuration or caller code, see `describesTheRequest` in
+  `core/domain/errors.ts`) rolls the whole transaction back, leaves the
+  proposal or the whole group pending and answers that error. A reject and a
+  withdrawal lock the proposal row before they read the clock, so a proposal
+  that expired during the wait is recorded as expired, never decided. A draft
   deletion's effect lists everything it destroys (every price, every download
   file, the stock), read under the exclusive locks the deletion takes, so a
   file uploaded after the proposal makes it `stale`. Settings writes lock the
-  workspace row `FOR NO KEY UPDATE` and key revocation and purge withdraw the
-  key's proposals before writing their key event, so a settings approval and a
-  revocation cannot deadlock. There is no intermediate state, so a
+  workspace row `FOR NO KEY UPDATE`, which does not conflict with the key-share
+  lock a key event's foreign key takes, so a settings approval and a key
+  revocation share only the proposal row lock and cannot deadlock. There is no intermediate state, so a
   repeated or concurrent approve finds no pending row and gets `409`; an
   infrastructure failure rolls everything back and leaves the proposal
   pending. Non-database effects of an applied change run only after the
@@ -587,7 +597,25 @@ scopes on every shop key.
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
-  today. A retention purge of settled proposals is a follow-up.
+  today. A retention purge of settled proposals is a follow-up. The owner
+  panel's summary (`GET /api/change-proposals/summary`) is owner-only like the
+  list and returns `{ pending, pendingGroups, hasProposals }`: the pending and
+  pending-group counts and whether the workspace holds any proposal at all,
+  whatever its status. A submitted proposal raises an in-app notification for
+  the workspace owners (direct and organisation-derived, the same effective
+  grant as the owner session), at most one unread per owner and key (the
+  notification's unique source key, which is per key, makes it atomic); a group
+  raises it once, with its first item; its later items signal the owner's open
+  panel and never make a read notification unread again. It names only the key and the group title, carries no
+  effect, and is written after the proposal committed, in its own transaction
+  with a 500 ms bound on every lock wait and statement, and the submission
+  stops waiting for it after 500 ms in any case, so a held or failing
+  notification is logged and never fails, changes or holds up the submission
+  beyond that bound. Each re-armed
+  notification gets a new id, so a late "mark read" of an earlier one cannot
+  clear it. The owner view shows an account's e-mail only while that account
+  holds a staff grant in the workspace; a former team member or a deleted
+  account is shown as such, without its address.
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

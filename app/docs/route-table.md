@@ -266,6 +266,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
 | `GET /api/change-proposals` | authenticated | read | change proposals |
+| `GET /api/change-proposals/summary` | authenticated | read | change proposal summary |
 | `GET /api/change-proposals/:id` | authenticated | read | change proposal |
 | `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
 | `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
@@ -503,6 +504,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/posts/:postId/permanent` | authenticated | mutating | posts purge |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
+| `GET /api/discussion/threads/:postId` | authenticated | read | discussion thread |
 | `POST /api/discussion/subscribe` | authenticated | mutating | thread subscribe |
 | `POST /api/discussion/mute` | authenticated | mutating | thread mute |
 | `GET /api/posts/search` | authenticated | read | posts search |

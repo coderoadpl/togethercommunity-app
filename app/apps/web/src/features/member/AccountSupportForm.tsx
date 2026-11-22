@@ -4,13 +4,13 @@ import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput } from '@mui/
 import { AccountCard as SectionCard } from './AccountCard.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 
-export const AccountSupportForm = ({ supportSubject, supportBody, pending, success = false, error = null, onSubjectChange, onBodyChange, onSubmit }: {
-  supportSubject: string; supportBody: string; pending: boolean; success?: boolean; error?: Error | null;
+export const AccountSupportForm = ({ supportSubject, supportBody, pending, success = false, error = null, initiallyOpen = false, onSubjectChange, onBodyChange, onSubmit }: {
+  supportSubject: string; supportBody: string; pending: boolean; success?: boolean; error?: Error | null; initiallyOpen?: boolean;
   onSubjectChange(value: string): void; onBodyChange(value: string): void;
   onSubmit(input: { subject: string; body: string }): void;
 }) => {
   const t = useTranslations();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   useEffect(() => {
     if (success) setOpen(false);
   }, [success]);

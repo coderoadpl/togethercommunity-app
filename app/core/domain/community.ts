@@ -82,6 +82,12 @@ export const listDiscussionInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 
+export const getThreadInputSchema = z.object({
+  contextKind: postContextKindSchema,
+  contextId: z.string().min(1),
+  postId: z.string().min(1),
+});
+
 export const subscribeThreadInputSchema = z.object({
   rootPostId: z.string().min(1),
 });
@@ -106,6 +112,7 @@ export const notificationKindSchema = z.enum([
   'space-event',
   'tenant-domain-verified',
   'tenant-domain-error',
+  'change-proposal',
 ]);
 
 /** Notification contexts outgrew post contexts: posts stay lesson|space. */
@@ -116,7 +123,8 @@ const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm', 'tenant']
  * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
  * name for space contexts and the sender display for direct messages, while
  * `domain` carries tenant contexts, which have no post, author or context row
- * (courseId stays null outside lessons).
+ * (courseId stays null outside lessons). A change proposal names the proposing
+ * key in `authorDisplay`, and its group in `contextId` and `snippet`.
  */
 const notificationPayloadSchema = z.object({
   // Defaults keep rows persisted before these fields existed parseable, and the

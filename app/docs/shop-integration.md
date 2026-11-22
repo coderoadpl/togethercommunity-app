@@ -64,7 +64,7 @@ Equivalent configuration reads include:
 | Request | Successful `data` |
 | --- | --- |
 | `GET /api/tenant/settings` with a staff bearer session | `settings` and `personalisationMaxBytes` |
-| Anonymous `GET /api/public/payment-config` | `stripeConfigured`, test/simulation capability flags, public `shippingRates`, optional analytics configuration and Geowidget fields |
+| Anonymous `GET /api/public/payment-config` | `stripeConfigured`, test/simulation capability flags, public `shippingRates` and `checkoutReturnOrigins`, optional analytics configuration and Geowidget fields |
 | Anonymous `GET /api/public/offer` | `tenant`, `contentVersion`, `products`, `salesLinks`, `previewLessons`, `shippingRates`, `inpostGeowidgetToken` |
 
 For a live paid checkout, `stripeConfigured` checks for the workspace's live
@@ -193,7 +193,11 @@ New products have `published: false`.
 The CLI equivalent starts with `product create --type physical --title Paperback
 --slug paperback --price-cents 4900 --currency PLN --vat-rate 5
 --delivery-method shipping --parcel-template small --cover-url '<https-url>'`;
-`--compliance '<json-object>'` accepts the safety fields above.
+`--compliance '<json-object>'` accepts the safety fields above. For a
+manufacturer not established in the EU, add `"manufacturerOutsideEu": true`
+with `responsiblePersonName`, `responsiblePersonAddress` and
+`responsiblePersonEmail` (see
+[Product safety information](shop.md#product-safety-information-gpsr)).
 
 ### Optional platform-hosted cover upload
 
@@ -293,7 +297,7 @@ allow open CORS without credentialed requests:
 | Route | Cross-origin method | Purpose |
 | --- | --- | --- |
 | `/api/public/offer` or `?productRef=paperback` | `GET`, `OPTIONS` | Listed catalog, or one published product by ID/slug |
-| `/api/public/payment-config` | `GET`, `OPTIONS` | Public checkout capability and active rates |
+| `/api/public/payment-config` | `GET`, `OPTIONS` | Public checkout capability, active rates and allowed shop origins |
 | `/api/public/sales-links/<slug>` | `GET`, `OPTIONS` | Active fixed bundle, VAT lines, total and public workspace context |
 | `/api/public/checkout/coupon` | `POST`, `OPTIONS` | Server-side coupon validation |
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
@@ -536,7 +540,18 @@ limits. The page reads product IDs in lower case, as the platform issues them,
 so an upper-case ID finds its product and two IDs that differ only in case are
 a duplicate. The page lets the buyer change the quantities within the limits or
 remove a line, and collects delivery, billing, consents and a coupon as the
-single-product page does. A malformed or empty `lines` parameter shows an error
+single-product page does. Each line's limit is the lower of its type rule and the
+offer's `maxQuantity`; when the stock is the lower one the line says how many
+pieces are left, even with one left, and that the quantity was lowered when the
+link asked for more. A line whose limit is 1 shows no quantity picker. A
+sold-out line asks to be removed before paying, as an unavailable one does, and
+its Remove button names the product. On a `sold_out` refusal the page reloads
+the offers and names the product. A discount counts only for the lines it was
+checked for: once a reload changes them, the summary and the pay button drop it
+until the code is checked again, which a code from the link does by itself. One
+summary above the pay button lists the products, the discount of an applied
+code, the delivery (with a placeholder until an option is chosen, when the cart
+ships) and the total to pay. A malformed or empty `lines` parameter shows an error
 and sends no request. The page picks each line's price by the session route's
 rule, so a product with one one-time and one recurring price is sold at its
 one-time price, while a membership or a product without exactly one active
@@ -561,7 +576,10 @@ two optional addresses on the shop's own site:
 - `returnUrl`: stored with the checkout for the "Back to shop" button on the
   workspace confirmation page (section 7). Payment success still returns to the
   workspace confirmation page; the success address sent to Stripe does not
-  change.
+  change. Without a `cancelUrl`, cart and standard single-product checkout
+  also keep the address on the workspace cancel URL and show it before payment
+  as a "Back to shop" link without checkout result parameters, so point
+  `returnUrl` at a page that works without them.
 
 Each address is accepted only when all of these hold; otherwise the answer is a
 `validation` error (400) and nothing is stored or sent to Stripe:
@@ -581,6 +599,14 @@ refused address. A request without either field behaves exactly as before.
 | --- | --- |
 | not an absolute `https:` URL (`http:`, `javascript:`, `data:`, a relative path), longer than 2000 characters, or with a user name or password | `validation` (400), `details.fieldErrors.returnUrl` or `details.fieldErrors.cancelUrl` |
 | an origin that is not in the workspace's `checkoutReturnOrigins` | `validation` (400) |
+
+A storefront using the hosted cart page can append the URL-encoded address as
+`return`, for example
+`/checkout/cart/pay?lines=<product-id>.2&return=https%3A%2F%2Fshop.example.test%2Fcart`.
+The standard single-product page (`/checkout/<product-id>` or `/checkout/<slug>`)
+accepts the same parameter; `/offer/<slug>` does not. The hosted forms ignore
+invalid or disallowed addresses without an error. An accepted address becomes
+the checkout request's `returnUrl`; the forms do not send a `cancelUrl`.
 
 ### Errors, caching and retry behavior
 
@@ -612,8 +638,10 @@ returns to the hosted cart page `/checkout/cart/pay`; sales-link checkout
 returns to `/offer/<slug>`. Success uses `status=success` and, for paid
 Stripe sessions, `session_id`; cancellation uses `status=cancelled` (with
 `checkout=together` for the standard sales-link flow, and with the cart's
-`lines` for a cart, so the buyer can try the same cart again). Preserve the returned URL
-and its other query parameters. A validated `cancelUrl` (section 6, "Return and
+`lines` for a cart, so the buyer can try the same cart again). On the cart and
+standard single-product pages, the workspace cancel URL also preserves an
+accepted shop address as `return` so the buyer can retry. Preserve the returned
+URL and its other query parameters. A validated `cancelUrl` (section 6, "Return and
 cancel addresses") replaces only the cancel address. There is no `successUrl`
 field: success always returns to the workspace confirmation page.
 
@@ -635,6 +663,10 @@ conversion data or shop return address. With `cancelled`, `data.charged` is
 ledger, not from a caller-supplied paid flag or a browser redirect.
 
 ### Back to shop
+
+The hosted cart and standard single-product forms show a "Back to shop" link
+before payment when `?return=` names an address on an allowed origin. Before
+payment it opens that address without adding any checkout result parameters.
 
 When the checkout carried a `returnUrl`, the session-status answer of that paid
 session also holds `returnUrl` and `checkoutRef` (the checkout snapshot id). The

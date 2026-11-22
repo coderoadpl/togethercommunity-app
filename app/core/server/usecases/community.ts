@@ -7,12 +7,14 @@ import {
   DUPLICATE_BODY_WINDOW_MINUTES,
   err,
   forbidden,
+  getThreadInputSchema,
   heuristicSignalsFor,
   internal,
   listDiscussionInputSchema,
   muteThreadInputSchema,
   notificationListInputSchema,
   notificationMarkReadInputSchema,
+  notFound,
   ok,
   POST_RATE_LIMIT,
   postSchema,
@@ -339,6 +341,54 @@ export const listDiscussion = async (
     viewerSubscriptions[subscription.rootPostId] = subscription.mutedAt === null ? 'subscribed' : 'muted';
   }
   return ok({ threads, nextCursor: listed.nextCursor, viewerSubscriptions });
+};
+
+export const getThread = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CommunityDeps,
+): Promise<Result<Discussion, AppError>> => {
+  const scope = requireMemberOrStaff(ctx, 'community:read');
+  if (!scope.ok) return scope;
+  const parsed = getThreadInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid thread query', parsed.error.flatten()));
+  const access = await contextAccess(ctx, parsed.data, deps);
+  if (!access.ok) return access;
+  const root = await deps.posts.findById(scope.value.tenantId, parsed.data.postId);
+  if (
+    root === null ||
+    root.contextKind !== parsed.data.contextKind ||
+    root.contextId !== parsed.data.contextId ||
+    root.rootPostId !== root.id
+  ) {
+    return err(notFound('Thread not found'));
+  }
+  const repliesByThread = await deps.posts.listRepliesForRoots(scope.value.tenantId, [root.id]);
+  const replies = repliesByThread.get(root.id) ?? [];
+  const avatarUrls = await avatarUrlsFor(
+    scope.value.tenantId,
+    [root, ...replies].map((post) => post.authorUserId),
+    deps,
+  );
+  const subscriptions = await deps.threadSubscriptions.listForUser(scope.value.tenantId, {
+    userId: scope.value.userId,
+    rootPostIds: [root.id],
+  });
+  const viewerSubscriptions: Record<string, ThreadSubscriptionState> = {};
+  for (const subscription of subscriptions) {
+    viewerSubscriptions[subscription.rootPostId] = subscription.mutedAt === null ? 'subscribed' : 'muted';
+  }
+  return ok({
+    threads: [
+      {
+        ...toRenderedPublicPost(root, scope.value.userId, avatarUrls.get(root.authorUserId) ?? null),
+        replyCount: replies.filter((reply) => reply.deletedAt === null).length,
+        replies: nestReplies(root.id, replies, scope.value.userId, avatarUrls),
+      },
+    ],
+    nextCursor: null,
+    viewerSubscriptions,
+  });
 };
 
 export const editPost = async (

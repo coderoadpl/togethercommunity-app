@@ -29,6 +29,7 @@ const offerBody = {
   ],
 };
 
+const shopReturnUrl = 'https://shop.example.test/cart?order=88&lang=en';
 const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 
 const textPattern = (value: string) =>
@@ -798,13 +799,17 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('link', { name: en.checkout.goToLogin })).toHaveAttribute('href', '/login');
   });
 
-  it('renders cancellation guidance and returns to retry', async () => {
-    window.history.replaceState(null, '', '/checkout/course-1?status=cancelled&utm_source=meta&utm_medium=paid&fbclid=X');
+  it.each([
+    ['allowed', '', shopReturnUrl, shopReturnUrl],
+    ['unlisted', '', 'https://other.example.test/cart', null],
+    ['allowed after cancellation', 'status=cancelled&utm_source=meta&utm_medium=paid&fbclid=X&', shopReturnUrl, shopReturnUrl],
+  ])('only links and submits the single-product return address when allowed: %s', async (_label, parameters, requested, accepted) => {
+    window.history.replaceState(null, '', `/checkout/course-1?${parameters}return=${encodeURIComponent(requested)}`);
     let payload: unknown;
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
       http.get('/api/public/payment-config', () =>
-        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true, checkoutReturnOrigins: ['https://shop.example.test'] } }),
       ),
       http.post('/api/public/checkout/session', async ({ request }) => {
         payload = await request.json();
@@ -813,12 +818,26 @@ describe('CheckoutPage', () => {
     );
     renderCheckout('course-1');
 
-    expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
+    if (parameters !== '') {
+      expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
+      expect(new URLSearchParams(window.location.search).get('return')).toBe(requested);
+    }
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    const link = screen.queryByRole('link', { name: en.checkout.backToShop });
+    if (accepted === null) {
+      expect(link).not.toBeInTheDocument();
+    } else {
+      expect(link).toBeInstanceOf(HTMLAnchorElement);
+      expect(link).toHaveAttribute('href', accepted);
+    }
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.test');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
-    await waitFor(() => expect(payload).toMatchObject({ attribution: { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X' } }));
+    await waitFor(() => expect(payload).toHaveProperty('productId', 'course-1'));
+    if (accepted === null) expect(payload).not.toHaveProperty('returnUrl');
+    else expect(payload).toHaveProperty('returnUrl', accepted);
+    expect(payload).not.toHaveProperty('cancelUrl');
+    if (parameters !== '') expect(payload).toHaveProperty('attribution', { utmSource: 'meta', utmMedium: 'paid', fbclid: 'X' });
   });
 
   it('keeps the coupon code from the cancelled return URL when retrying', async () => {

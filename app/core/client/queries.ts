@@ -84,6 +84,7 @@ import type {
   NotificationReadInput,
   NotificationsListInput,
   DiscussionGetInput,
+  DiscussionThreadGetInput,
   PostCreateInput,
   PostDeleteInput,
   PostPinInput,
@@ -410,6 +411,7 @@ const studentScopes = {
 const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
+  thread: (contextId: string, postId: string) => ['discussion', 'thread', contextId, postId] as const,
   search: (query: string, lessonIds: readonly string[], spaceIds: readonly string[]) =>
     ['discussion', 'search', query, lessonIds.join(','), spaceIds.join(',')] as const,
 };
@@ -1370,6 +1372,12 @@ export const discussionQuery = (api: ApiClient, input: DiscussionGetInput) =>
     call: ({ signal }) => api.discussion(input, signal),
   });
 
+export const discussionThreadQuery = (api: ApiClient, input: DiscussionThreadGetInput) =>
+  defineQuery({
+    queryKey: discussionScopes.thread(input.contextId, input.postId),
+    call: ({ signal }) => api.discussionThread(input, signal),
+  });
+
 export const createPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...discussionScopes.all(), 'create-post'],
@@ -1715,6 +1723,8 @@ export const apiKeysInvalidates = () => ({ queryKey: apiKeyScopes.all() });
 const changeProposalScopes = {
   all: () => ['change-proposals'] as const,
   lists: (input: ChangeProposalListQueryInput) => ['change-proposals', 'list', input] as const,
+  pages: (input: Omit<ChangeProposalListQueryInput, 'cursor'>) => ['change-proposals', 'pages', input] as const,
+  summary: () => ['change-proposals', 'summary'] as const,
   detail: (id: string) => ['change-proposals', 'detail', id] as const,
   group: (id: string) => ['change-proposals', 'group', id] as const,
 };
@@ -1723,6 +1733,21 @@ export const changeProposalsQuery = (api: ApiClient, input: ChangeProposalListQu
   defineQuery({
     queryKey: changeProposalScopes.lists(input),
     call: ({ signal }) => api.listChangeProposals(input, signal),
+  });
+
+export const changeProposalPagesQuery = (api: ApiClient, input: Omit<ChangeProposalListQueryInput, 'cursor'>) =>
+  defineCursorQuery({
+    queryKey: changeProposalScopes.pages(input),
+    call: ({ signal, pageParam }) => api.listChangeProposals({
+      ...input, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => page.hasMore ? page.nextCursor : null,
+  });
+
+export const changeProposalSummaryQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: changeProposalScopes.summary(),
+    call: ({ signal }) => api.getChangeProposalSummary(signal),
   });
 
 export const changeProposalQuery = (api: ApiClient, id: string) =>

@@ -670,7 +670,7 @@ export const MemberAccountPage = () => {
         ) : null}
 
         {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
-          <AccountSupportForm success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
+          <AccountSupportForm initiallyOpen={search['support'] === 'open'} success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
         ) : null}
 
         {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (

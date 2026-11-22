@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Notification } from '#core/domain/index.js';
 
 import { en } from './i18n/en.js';
-import { notificationTarget, notificationTitle } from './notification-links.js';
+import { notificationSnippet, notificationSnippetParts, notificationTarget, notificationTitle } from './notification-links.js';
 
 const notification = (input: {
   kind: Notification['kind'];
@@ -189,5 +189,49 @@ describe('notificationTitle', () => {
         }),
       ),
     ).toBe(en.notifications.threadReply({ author: 'Ola', lesson: 'Hamaki w kamperze' }));
+  });
+});
+
+describe('change proposal notifications', () => {
+  const proposal = (snippet: string): Notification => ({
+    id: 'n-proposal',
+    tenantId: 't1',
+    recipientUserId: 'owner',
+    kind: 'change-proposal',
+    payload: {
+      rootPostId: null,
+      postId: null,
+      contextKind: 'tenant',
+      contextId: snippet === '' ? null : 'group-1',
+      courseId: null,
+      eventId: null,
+      domain: null,
+      lessonName: '',
+      authorDisplay: 'Catalogue agent',
+      authorAvatarUrl: null,
+      snippet,
+    },
+    sourceKey: 'change-proposal:key-1',
+    readAt: null,
+    createdAt: '2026-11-20T08:00:00.000Z',
+  });
+
+  it('opens the proposals page for a single proposal and for a group', () => {
+    expect(notificationTarget(proposal(''))).toEqual({ kind: 'change-proposals' });
+    expect(notificationTarget(proposal('Launch the field guide'))).toEqual({ kind: 'change-proposals' });
+  });
+
+  it('names the key in the title and attributes the group title in the text', () => {
+    expect(notificationTitle(en, proposal(''))).toBe(en.notifications.changeProposal({ key: 'Catalogue agent' }));
+    expect(notificationSnippet(en, proposal(''))).toBe('');
+    expect(notificationSnippet(en, proposal('<b>Launch</b>'))).toBe(en.notifications.changeProposalGroup({ title: '<b>Launch</b>' }));
+  });
+
+  it('splits the group title out of its sentence so the bell can isolate it', () => {
+    const title = 'Spring\u201D \u202Elaunch';
+    const parts = notificationSnippetParts(en, proposal(title));
+    expect(parts.isolated).toBe(title);
+    expect(`${parts.before}${parts.isolated}${parts.after}`).toBe(en.notifications.changeProposalGroup({ title }));
+    expect(notificationSnippetParts(en, proposal(''))).toEqual({ before: '', isolated: '', after: '' });
   });
 });

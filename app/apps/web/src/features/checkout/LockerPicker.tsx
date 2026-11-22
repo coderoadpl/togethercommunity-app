@@ -112,15 +112,17 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
             {mapFailed ? t.shipping.lockerPickerMapFailed : t.shipping.lockerPickerPrompt}
           </Typography>
         </Box>
-        <Button
-          variant="text"
-          onClick={onTypeCode}
-          startIcon={<KeyboardGlyph />}
-          data-testid="checkout-locker-dialog-know-code"
-          sx={{ gridArea: 'code', justifySelf: 'end', minHeight: '2.75rem', px: '0.5rem', mr: '-0.5rem' }}
-        >
-          {t.shipping.lockerKnowCode}
-        </Button>
+        {mapFailed ? null : (
+          <Button
+            variant="text"
+            onClick={onTypeCode}
+            startIcon={<KeyboardGlyph />}
+            data-testid="checkout-locker-dialog-know-code"
+            sx={{ gridArea: 'code', justifySelf: 'end', minHeight: '2.75rem', px: '0.5rem', mr: '-0.5rem' }}
+          >
+            {t.shipping.lockerKnowCode}
+          </Button>
+        )}
         {fullScreen ? null : (
           <IconButton aria-label={t.common.close} onClick={onCancel} data-testid="checkout-locker-dialog-close" sx={{ gridArea: 'close', width: '2.75rem', height: '2.75rem' }}>
             <CloseGlyph />
@@ -130,6 +132,7 @@ export const LockerPicker = ({ open, token, language, shownCode, mapFailed, onPo
       <CheckoutLockerMapArea data-testid="checkout-locker-map-area">
         {mapFailed ? (
           <CheckoutLockerMapCover>
+            <Typography variant="body2" aria-hidden="true" data-testid="checkout-locker-map-failed-reason">{t.shipping.lockerPickerMapFailed}</Typography>
             <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap', justifyContent: 'center' }}>
               <Button variant="contained" onClick={retryMap} data-testid="checkout-locker-map-retry">{t.common.retry}</Button>
               <Button variant="outlined" onClick={onTypeCode} data-testid="checkout-locker-type-code">{t.shipping.lockerTypeCode}</Button>

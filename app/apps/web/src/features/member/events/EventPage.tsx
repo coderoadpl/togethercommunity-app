@@ -191,6 +191,7 @@ const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: strin
           </Typography>
         ) : (
           <ThreadDiscussion
+            key={current.discussionRootPostId}
             context={{ contextKind: 'space', contextId: spaceId }}
             heading={t.events.discussionTitle}
             data-testid="event-discussion"
@@ -198,6 +199,7 @@ const MemberEventPage = ({ spaceId, eventId }: { spaceId: string; eventId: strin
               rootPostId: current.discussionRootPostId,
               onExit: () => void navigate({ to: '/community/$spaceId', params: { spaceId } }),
               exitLabel: t.events.backToSpace,
+              exitHref: communitySpacePath(spaceId),
             }}
           />
         )}

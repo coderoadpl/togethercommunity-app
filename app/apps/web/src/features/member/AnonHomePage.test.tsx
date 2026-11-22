@@ -378,6 +378,8 @@ describe('AnonHomePage', () => {
     expect(priced).toHaveAttribute('href', '/checkout/p1');
     expect(screen.getByTestId('locked-space-cta-s8')).toHaveTextContent(en.courseTree.unlockAccess);
     expect(screen.getByTestId('locked-space-cta-s8').textContent).not.toContain('—');
+    expect(screen.queryByTestId('locked-space-mark-s9')).not.toBeInTheDocument();
+    expect(screen.getByTestId('space-visibility-s9')).toHaveTextContent(en.community.productGated);
   });
 
   it('marks a course card with the preview chip when one of its lessons is a free preview', async () => {

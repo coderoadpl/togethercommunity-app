@@ -3378,16 +3378,6 @@ export const InkDotBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
 }));
 
-export const LockedSpaceMark = styled(Box)(({ theme }) => ({
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '8px',
-  backgroundColor: theme.palette.action.hover,
-}));
-
 export const UnreadDot = styled('span')(({ theme }) => ({
   display: 'inline-block',
   width: 8,

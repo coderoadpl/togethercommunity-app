@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router';
 import type { SpaceProductSummary, SpaceVisibility } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, EmberCtaLink, LockedSpaceMark, UnreadDot } from '../../theme.js';
+import { CourseCardRoot, EmberCtaLink, UnreadDot } from '../../theme.js';
 import { LockClosed } from './tree-icons.js';
 
 const GLOBE_ICON_PATH =
@@ -199,10 +199,7 @@ export const LockedSpaceCard = ({ space, price }: { space: LockedSpaceCardSpace;
             width: '100%',
           }}
         >
-          <LockedSpaceMark sx={{ display: { xs: 'none', sm: 'grid' } }} data-testid={`locked-space-mark-${space.id}`}>
-            <LockClosed />
-          </LockedSpaceMark>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ flex: '1 1 14rem', minWidth: 0 }}>
             <Typography variant="h3" component="h3" color="text.primary">
               {space.name}
             </Typography>

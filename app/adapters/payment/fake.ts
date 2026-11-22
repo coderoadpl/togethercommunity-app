@@ -3,7 +3,7 @@ import { checkoutProductIdsMetadata } from './metadata.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import {
-  collectedShippingFromStripe,
+  checkoutShippingFromStripe,
   err,
   ok,
   refundCoverage,
@@ -171,8 +171,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver, option
               invoiceId: object.invoice ?? null,
               amountTotalCents: object.amount_total ?? null,
               discountTotalCents: object.total_details?.amount_discount ?? null,
-              shipping: collectedShippingFromStripe(object, object.customer_details?.phone ?? null),
-              shippingCostCents: object.shipping_cost?.amount_total ?? null,
+              ...checkoutShippingFromStripe(object),
               metadata: {
                 attribution: attributionFromMetadata(object.metadata),
                 tenantId: object.metadata?.tenantId ?? null,

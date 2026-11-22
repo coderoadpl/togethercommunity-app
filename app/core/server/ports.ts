@@ -3258,14 +3258,21 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * of their key attaches; answers them together with selected rows released earlier, whose objects the caller removes
    * with `finishRelease` after this commit. `sweep` selects, longest waiting first (by the last failed removal or else the
    * creation), rows released earlier and the unattached rows created before `createdBefore` or of a revoked or deleted key.
+   * `lockWaitMs` shortens every lock wait below the repository's own bound.
    */
-  release(tenantId: string, selection: QuarantinedImageRelease, now: string): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
+  release(tenantId: string, selection: QuarantinedImageRelease, now: string, lockWaitMs?: number): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
   /**
    * In a short transaction under the lock of the key that `insert` takes: when the row is still released, runs
    * `removeObject` and deletes the row once it answers true, or records the failed attempt at `now`; a row a completion
-   * revived meanwhile is left as it is.
+   * revived meanwhile is left as it is. `lockWaitMs` shortens every lock wait below the repository's own bound.
    */
-  finishRelease(tenantId: string, asset: QuarantinedImageAsset, removeObject: () => Promise<boolean>, now: string): Promise<QuarantinedImageReleaseEnd>;
+  finishRelease(
+    tenantId: string,
+    asset: QuarantinedImageAsset,
+    removeObject: () => Promise<boolean>,
+    now: string,
+    lockWaitMs?: number,
+  ): Promise<QuarantinedImageReleaseEnd>;
   /**
    * The workspaces holding rows a `sweep` selects, the one waiting longest first, by the time of a row's last failed
    * removal or else its creation.
@@ -3335,7 +3342,12 @@ export interface ChangeProposalTransactionScope {
  * rolls back an error; `dryRun` always rolls back. Non-database effects go through `afterCommit`.
  */
 export interface ChangeProposalTransaction {
-  run<T>(tenantId: string, operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  /** `lockWaitMs` shortens every lock wait of the transaction below its own bound. */
+  run<T>(
+    tenantId: string,
+    operation: (scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>,
+    options?: { lockWaitMs?: number },
+  ): Promise<Result<T, AppError>>;
   /** With `groupId`, at most one dry run of that group runs at a time; a second one answers busy. */
   dryRun<T>(
     tenantId: string,

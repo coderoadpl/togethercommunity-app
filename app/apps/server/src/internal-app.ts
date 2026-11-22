@@ -809,8 +809,13 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
-// The cron function stops at 60 seconds; both sweeps end five seconds before that, whatever ran ahead of them.
-const STAGING_SWEEP_TICK_END_MS = 55_000;
+const CRON_FUNCTION_LIMIT_MS = 60_000;
+
+// A sweep starts a row only when what is left covers its lock wait and each delete, endpoint lookup included, so the
+// sweeps' lock waits and storage requests end by the tick end; the margin is for their database statements and the answer.
+const STAGING_SWEEP_MARGIN_MS = 10_000;
+
+const STAGING_SWEEP_TICK_END_MS = CRON_FUNCTION_LIMIT_MS - STAGING_SWEEP_MARGIN_MS;
 
 const runStagingSweep = async (
   failure: string,

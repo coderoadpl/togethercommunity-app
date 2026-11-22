@@ -23,7 +23,7 @@ import type {
   QuarantinedImageUploadRecord,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
 import { boundLockWait, busyAfterRollback, changeProposalBounds, lockWorkspaceProposals, type ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import {
@@ -193,7 +193,7 @@ const publicationWaiting = sql`coalesce(${changeProposalImagePublications.sweepA
 
 export const createQuarantinedImageRepository = (db: Db, options: ChangeProposalBoundOptions = {}): QuarantinedImageRepository => {
   const bounds = changeProposalBounds(options);
-  const waits = { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs };
+  const boundsFor = (wait: number | undefined) => wait === undefined ? bounds : { ...bounds, lockWaitMs: Math.min(bounds.lockWaitMs, lockWaitMs(wait)) };
   return {
     ...liveUseOver(db),
     insert: async (tenantId, asset, store) => {
@@ -232,9 +232,10 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       }
     },
     find: (tenantId, apiKeyId, image) => findUnreleased(db, tenantId, apiKeyId, image),
-    release: (tenantId, selection, now) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>> => {
-      if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
-      await boundLockWait(tx, bounds);
+    release: (tenantId, selection, now, wait) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>> => {
+      const scoped = boundsFor(wait);
+      if (!await lockWorkspaceProposals(tx, tenantId, scoped)) return { kind: 'busy' };
+      await boundLockWait(tx, scoped);
       const query = tx.select().from(changeProposalImages).where(selectionFilter(tenantId, selection, now))
         .orderBy(asc(imageWaiting), asc(changeProposalImages.apiKeyId), asc(changeProposalImages.kind), asc(changeProposalImages.digest), asc(changeProposalImages.extension));
       const candidates = selection.kind === 'sweep' ? await query.limit(selection.limit).for('update') : await query.for('update');
@@ -248,8 +249,9 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       )).returning();
       return { kind: 'written', value: [...earlier, ...marked].map(parseImage) };
     }), { kind: 'busy' } as const),
-    finishRelease: (tenantId, asset, removeObject, now) => busyAfterRollback(() => db.transaction(async (tx): Promise<QuarantinedImageReleaseEnd> => {
-      if (!await boundedAdvisoryLock(tx, keyLock(tenantId, asset.apiKeyId), waits)) return 'busy';
+    finishRelease: (tenantId, asset, removeObject, now, wait) => busyAfterRollback(() => db.transaction(async (tx): Promise<QuarantinedImageReleaseEnd> => {
+      const { lockWaitMs: scoped } = boundsFor(wait);
+      if (!await boundedAdvisoryLock(tx, keyLock(tenantId, asset.apiKeyId), { lockWaitMs: scoped, lockWaitAfterMs: scoped })) return 'busy';
       const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset)).for('update');
       if (row === undefined) return 'gone';
       if (row.releasedAt === null) return 'revived';

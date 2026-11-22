@@ -3511,7 +3511,7 @@ describe('email dispatch route', () => {
     expect(calls).toStrictEqual(['email', 'refunds', 'images', 'files']);
     finishImages();
     expect((await response).status).toBe(200);
-    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 55_000;
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 50_000;
     expect(sweepQuarantinedImages.mock.calls).toStrictEqual([[{ deadlineAt }]]);
     expect(sweepKeyDownloadFiles.mock.calls).toStrictEqual([[{ deadlineAt }]]);
     expect(logger.error).toHaveBeenCalledWith('[change-proposal] quarantined image sweep failed: image storage unavailable');

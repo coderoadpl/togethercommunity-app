@@ -25,6 +25,7 @@ import {
   QUARANTINED_IMAGE_LIMITS,
   sameProposalImage,
   changeProposalImageCapExceeded,
+  storageFailureIsDefinite,
   type AppError,
   type ChangeProposal,
   type ChangeProposalEffect,
@@ -57,6 +58,7 @@ import type {
 } from '../ports.js';
 import { beginCandidateUpload, readCandidateImage, type ImageAssetDeps, type ImageAssetUploadStart } from './image-assets.js';
 import { resolveStorageConfiguration } from './storage-assets.js';
+import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
 
 type ProposedImageFamily = 'catalog' | 'settings';
 
@@ -83,16 +85,9 @@ const logImageFailure = (deps: { logger: { error(message: string): void } }, ten
   deps.logger.error(`[change-proposal] ${what} tenant=${tenantId}: ${cause instanceof Error ? serializeErrorChain(cause) : String(cause)}`);
 };
 
-/** The milliseconds left of a sweep's wall-clock budget; a decision's own release has no budget. */
-type SweepBudget = () => number;
+const deleteDeadline = (budget: SweepBudget): number => sweepDeleteDeadline(budget, PROPOSAL_IMAGE_STORAGE_DEADLINES.deleteMs, 0);
 
-const UNBOUNDED: SweepBudget = () => Number.POSITIVE_INFINITY;
-
-const SWEEP_MINIMUM_DELETE_MS = 1_000;
-
-const deleteDeadline = (budget: SweepBudget): number => Math.max(1, Math.min(PROPOSAL_IMAGE_STORAGE_DEADLINES.deleteMs, budget()));
-
-const spent = (budget: SweepBudget): boolean => budget() < SWEEP_MINIMUM_DELETE_MS;
+const spent = (budget: SweepBudget): boolean => sweepLockWait(budget, 1) === null;
 
 const finishReleases = async (
   tenantId: string,
@@ -108,7 +103,8 @@ const finishReleases = async (
   }
   let removed = 0;
   for (const asset of assets) {
-    if (spent(budget)) break;
+    const wait = sweepLockWait(budget, 1);
+    if (wait === null) break;
     const finished = await deps.quarantinedImages.finishRelease(tenantId, asset, async () => {
       const deleted = await deps.storage.delete({
         url: deps.storage.objectUrl(configuration.value, proposalImageQuarantineKey(tenantId, asset.apiKeyId, asset)).toString(),
@@ -117,7 +113,7 @@ const finishReleases = async (
       });
       if (!deleted.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
       return deleted.ok;
-    }, deps.clock.nowIso());
+    }, deps.clock.nowIso(), wait);
     if (finished === 'removed') removed += 1;
   }
   return removed;
@@ -134,7 +130,9 @@ export const releaseQuarantinedImages = async (
   budget: SweepBudget = UNBOUNDED,
 ): Promise<number> => {
   try {
-    const released = await deps.quarantinedImages.release(tenantId, selection, deps.clock.nowIso());
+    const wait = sweepLockWait(budget, 1);
+    if (wait === null) return 0;
+    const released = await deps.quarantinedImages.release(tenantId, selection, deps.clock.nowIso(), wait);
     if (released.kind === 'busy') {
       logImageFailure(deps, tenantId, 'quarantined image release was busy', 'left for the scheduled sweep');
       return 0;
@@ -406,12 +404,20 @@ export const recordApprovalPublications = async (
   return ok({ attemptId, images: absent });
 };
 
+export interface ApprovalImageWrites {
+  written: ProposalImageReference[];
+  unconfirmed: ProposalImageReference[];
+}
+
+export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], unconfirmed: [] });
+
 /**
  * Writes the verified bytes of each recorded image to its public, content-addressed key and deletes the attempt's
  * records, inside the approval transaction once the outcome is applied and before COMMIT, so committed live state
  * never points at an object that does not exist and the records disappear exactly when the approval commits. Every
- * image it tries to write, a failed write included, is added to `written`. An image not recorded must still be public:
- * the workspace lock this transaction holds keeps it there until the commit.
+ * image it tries to write, a failed write included, is added to `writes.written`, and a write whose outcome is unknown
+ * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
+ * recorded must still be public: the workspace lock this transaction holds keeps it there until the commit.
  */
 export const publishApprovalImages = async (
   tenantId: string,
@@ -419,7 +425,7 @@ export const publishApprovalImages = async (
   publication: ApprovalPublication,
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalImagePrepareDeps,
-  written: ProposalImageReference[],
+  writes: ApprovalImageWrites,
 ): Promise<Result<void, AppError>> => {
   const images = scope.repositories.quarantinedImages;
   const recorded = (image: ProposalImageReference) => publication.images.some((known) => sameProposalImage(known, image));
@@ -434,11 +440,14 @@ export const publishApprovalImages = async (
         if (present.ok) continue;
         return err(present.error.code === 'not_found' ? changeProposalsBusy() : present.error);
       }
-      written.push(image);
+      writes.written.push(image);
       const stored = await deps.storage.putObject({
         url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
       });
-      if (!stored.ok) return stored;
+      if (!stored.ok) {
+        if (!storageFailureIsDefinite(stored.error)) writes.unconfirmed.push(image);
+        return stored;
+      }
     }
   }
   if (publication.images.length > 0) await images.settlePublications(tenantId, publication.attemptId);
@@ -454,23 +463,27 @@ export interface ChangeProposalImageWithdrawDeps {
 /**
  * Holds the workspace's approval lock, so no approval can publish the same address between the check and the deletion.
  * When `written`, it deletes the public object first, except when a live field shows the address or an applied
- * proposal carries it: then an applied approval published it, and product history may still point at it.
+ * proposal carries it: then an applied approval published it, and product history may still point at it. When
+ * `keepRecord`, the record stays after the delete, so the sweep deletes the object once more after the record's age
+ * bound: a write whose outcome was unknown may still land after this delete.
  */
 const removePublication = async (
   tenantId: string,
   attemptId: string,
   image: ProposalImageReference,
-  written: boolean,
+  written: { written: boolean; keepRecord: boolean },
   deps: ChangeProposalImageWithdrawDeps,
   budget: SweepBudget = UNBOUNDED,
 ): Promise<boolean> => {
   const failure = 'could not withdraw an image published by an approval that did not apply';
+  const lockWaitMs = sweepLockWait(budget, 1);
+  if (lockWaitMs === null) return false;
   try {
     const removed = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<boolean, AppError>> => {
       const images = scope.repositories.quarantinedImages;
       if (!await images.claimPublications(tenantId, attemptId, [image])) return ok(false);
       const path = proposalImagePublicPath(image);
-      if (written && !await images.inLiveUse(tenantId, path) && !await images.inAppliedProposal(tenantId, path)) {
+      if (written.written && !await images.inLiveUse(tenantId, path) && !await images.inAppliedProposal(tenantId, path)) {
         const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
         if (!configuration.ok) return configuration;
         const deleted = await deps.storage.delete({
@@ -480,9 +493,10 @@ const removePublication = async (
         });
         if (!deleted.ok) return deleted;
       }
+      if (written.keepRecord) return ok(false);
       await images.deletePublication(tenantId, attemptId, image);
       return ok(true);
-    });
+    }, lockWaitMs === undefined ? {} : { lockWaitMs });
     if (!removed.ok) logImageFailure(deps, tenantId, failure, removed.error.message);
     return removed.ok && removed.value;
   } catch (cause) {
@@ -491,15 +505,18 @@ const removePublication = async (
   }
 };
 
-/** Runs after an approval that did not end applied; a record it cannot remove stays for the sweep. */
+/** Runs after an approval that did not end applied; a record it cannot remove, or keeps after an unknown write, stays for the sweep. */
 export const withdrawPublishedImages = async (
   tenantId: string,
   publication: ApprovalPublication,
-  written: readonly ProposalImageReference[],
+  writes: ApprovalImageWrites,
   deps: ChangeProposalImageWithdrawDeps,
 ): Promise<void> => {
   for (const image of publication.images) {
-    await removePublication(tenantId, publication.attemptId, image, written.some((known) => sameProposalImage(known, image)), deps);
+    await removePublication(tenantId, publication.attemptId, image, {
+      written: writes.written.some((known) => sameProposalImage(known, image)),
+      keepRecord: writes.unconfirmed.some((known) => sameProposalImage(known, image)),
+    }, deps);
   }
 };
 
@@ -580,7 +597,10 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     | 'listPublicationsBefore'
     | 'markPublicationAttempted'
   >;
-  /** Wall-clock milliseconds one run may take, checked between workspaces and rows; each storage delete gets what is left. */
+  /**
+   * Wall-clock milliseconds one run may take. A step starts only when what is left covers a lock wait and its storage
+   * delete; its lock waits and the delete, endpoint lookup included, come out of what is left.
+   */
   budgetMs?: number;
   /** An absolute end the caller sets, in epoch milliseconds; the run stops at the earlier of this and its own budget. */
   deadlineAt?: number;
@@ -648,7 +668,7 @@ export const sweepQuarantinedImages = async (
     const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);
     for (const record of records) {
       if (spent(budget)) break;
-      if (await removePublication(tenantId, record.attemptId, record.image, true, deps, budget)) {
+      if (await removePublication(tenantId, record.attemptId, record.image, { written: true, keepRecord: false }, deps, budget)) {
         removed += 1;
       } else {
         await deps.quarantinedImages.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso());

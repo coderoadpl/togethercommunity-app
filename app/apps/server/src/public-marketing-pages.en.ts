@@ -9,7 +9,7 @@ export const publicMarketingMessagesEn = {
   signupPending: 'Check your inbox and confirm your email address to complete your signup.',
 
   language: 'Language',
-  polish: 'Polish',
+  polish: 'Polski',
   english: 'English',
   socialProfiles: 'Social profiles',
   preferencesTitle: 'Email preferences',

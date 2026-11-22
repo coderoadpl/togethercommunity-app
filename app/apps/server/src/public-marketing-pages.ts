@@ -255,22 +255,22 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .page{padding-top:2.5rem}
 .eyebrow{margin:0 0 .5rem;color:var(--muted);font-size:.75rem;font-weight:500;letter-spacing:0;line-height:1.7;text-transform:none}
 .page h1{margin:0;font-family:var(--font-display);font-size:1.75rem;font-weight:700;line-height:1.14;letter-spacing:-.03em}
-.lede{margin:.5rem 0 0;color:var(--muted);font-size:1rem}
+.lede{margin:.5rem 0 0;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}
 .card{margin-top:1.75rem;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--shadow);padding:1.25rem}
 .card h2{margin:0 0 .35rem;font-family:var(--font-display);font-size:1.125rem;font-weight:600;letter-spacing:-.015em;line-height:1.4}
 .actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem}
 .danger-zone{border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
-.fine{margin:.25rem 0 0;color:var(--muted);font-size:.875rem}
+.fine{margin:.25rem 0 0;color:var(--muted);font-size:.875rem;overflow-wrap:anywhere}
 .choice{display:grid;grid-template-columns:auto 1fr;align-items:start;gap:.15rem .75rem;min-height:44px;padding:.85rem 0;border-bottom:1px solid var(--line)}
 .choice:last-of-type{border-bottom:0}
 .choice input{width:1.15rem;height:1.15rem;margin:.28rem 0 0;accent-color:var(--accent)}
-.choice span{font-size:.9375rem}
+.choice span{font-size:.9375rem;overflow-wrap:anywhere}
 .choice small{grid-column:2;color:var(--muted);font-size:.8125rem}
-.notice{margin-top:1.5rem;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem}
+.notice{margin-top:1.5rem;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem;overflow-wrap:anywhere}
 .status{padding-block:clamp(2.5rem,10vw,5rem);text-align:center}
 .status .lede{max-width:32rem;margin-inline:auto}
 .status .actions{justify-content:center}
-.prose{margin-top:2rem}
+.prose{margin-top:2rem;overflow-wrap:anywhere}
 .prose h1,.prose h2,.prose h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
 .prose h1{font-size:1.5rem}
 .prose h2{font-size:1.25rem}

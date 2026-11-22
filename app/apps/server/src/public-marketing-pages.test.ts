@@ -82,6 +82,22 @@ describe('public marketing pages', () => {
     expect(html).not.toContain('together-theme-mode');
   });
 
+  it('wraps long unbroken text and names each language in its own language', () => {
+    const html = renderPreferencesPage({
+      nonce: 'test-nonce',
+      brand, language: 'en', token: 'token_1234567890123456789012', email: 'member@example.test',
+      scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
+      definitions: [{ id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false }],
+    });
+    expect(html).toContain('.lede{margin:.5rem 0 0;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}');
+    expect(html).toContain('.fine{margin:.25rem 0 0;color:var(--muted);font-size:.875rem;overflow-wrap:anywhere}');
+    expect(html).toContain('.choice span{font-size:.9375rem;overflow-wrap:anywhere}');
+    expect(html).toContain('font-size:.9375rem;overflow-wrap:anywhere}\n.status');
+    expect(html).toContain('.prose{margin-top:2rem;overflow-wrap:anywhere}');
+    expect(html).toContain('?lang=pl">Polski</a>');
+    expect(html).toContain('?lang=en" aria-current="page">English</a>');
+  });
+
   it.each([null, '#786000'])('uses the light accent %s on hosted pages', (accentLight) => {
     if (brand.settings == null) throw new Error('Missing brand settings');
     const html = renderLegalDocumentPage({

@@ -40,6 +40,7 @@ const PROBE_OVERRIDE_DISPOSITION = 'attachment; filename="together-probe-overrid
 const HEAD_DEADLINE_MS = 5_000;
 const DELETE_DEADLINE_MS = 10_000;
 const OBJECT_TRANSFER_DEADLINE_MS = 30_000;
+const COPY_SIGNATURE_SECONDS = 60;
 
 const rfc3986 = (value: string): string =>
   encodeURIComponent(value).replace(
@@ -436,8 +437,14 @@ const liveProbe = async (
     const cors = await verifyCors(fetchStorage, signed('PUT'), origin, dispatcher);
     if (!cors.ok) return cors;
   }
-  const honoured = override?.ok === true
-    && override.value.headers.get('content-type')?.trim().toLowerCase() === PROBE_OVERRIDE_CONTENT_TYPE
+  if (override?.ok !== true) {
+    return ok({
+      code: 'storage.available',
+      message: 'Warning: storage completed the write, read and delete probe, but it refused a signed read that asks for a type and a file name. Buyer download links carry these overrides, so buyers may not be able to download files.',
+      signedResponseOverrides: 'refused',
+    });
+  }
+  const honoured = override.value.headers.get('content-type')?.trim().toLowerCase() === PROBE_OVERRIDE_CONTENT_TYPE
     && override.value.headers.get('content-disposition')?.trim() === PROBE_OVERRIDE_DISPOSITION;
   return ok(honoured
     ? { code: 'storage.available', message: 'Storage completed the write, read and delete probe.', signedResponseOverrides: 'honoured' }
@@ -593,24 +600,46 @@ export const createS3StorageProvider = (
   const allowPrivateEndpoints = options.allowPrivateEndpoints ?? false;
   const lookupAddresses = options.lookupAddresses ?? (async (hostname: string) =>
     (await dns.lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address));
-  const sendObjectRequest = async (
+  /**
+   * A caller's deadline bounds the whole request, the endpoint lookup included; without one the default deadline starts
+   * once the endpoint resolved, after a lookup bounded on its own.
+   */
+  const boundedRequest = async <T>(
     url: string,
-    method: 'DELETE' | 'HEAD',
-    deadlineMs: number,
-  ): Promise<Result<StorageResponse, AppError>> => {
-    const safeTarget = await validateProbeEndpoint(new URL(url).origin, allowPrivateEndpoints, lookupAddresses);
-    if (!safeTarget.ok) return safeTarget;
-    return withDeadline(deadlineMs, async (signal) => {
-      const dispatcher = pinnedDispatcher(safeTarget.value);
+    deadlineMs: number | undefined,
+    defaultDeadlineMs: number,
+    work: (signal: AbortSignal, dispatcher: Dispatcher) => Promise<Result<T, AppError>>,
+    failure: string,
+  ): Promise<Result<T, AppError>> => {
+    const send = async (signal: AbortSignal, target: { address: string }): Promise<Result<T, AppError>> => {
+      const dispatcher = pinnedDispatcher(target);
       try {
-        const response = await abortable(fetchStorage(url, { method, dispatcher, redirect: 'error', signal }), signal);
-        await abortable(discardStorageResponseBody(response), signal);
-        return ok(response);
+        return await work(signal, dispatcher);
       } finally {
         await dispatcher.destroy();
       }
-    }, 'Could not reach S3.');
+    };
+    const origin = new URL(url).origin;
+    if (deadlineMs === undefined) {
+      const safeTarget = await validateProbeEndpoint(origin, allowPrivateEndpoints, lookupAddresses);
+      if (!safeTarget.ok) return safeTarget;
+      return withDeadline(defaultDeadlineMs, (signal) => send(signal, safeTarget.value), failure);
+    }
+    return withDeadline(deadlineMs, async (signal) => {
+      const safeTarget = await abortable(validateProbeEndpoint(origin, allowPrivateEndpoints, lookupAddresses), signal);
+      return safeTarget.ok ? send(signal, safeTarget.value) : safeTarget;
+    }, failure);
   };
+  const sendObjectRequest = (
+    url: string,
+    method: 'DELETE' | 'HEAD',
+    deadlineMs: number | undefined,
+    defaultDeadlineMs: number,
+  ): Promise<Result<StorageResponse, AppError>> => boundedRequest(url, deadlineMs, defaultDeadlineMs, async (signal, dispatcher) => {
+    const response = await abortable(fetchStorage(url, { method, dispatcher, redirect: 'error', signal }), signal);
+    await abortable(discardStorageResponseBody(response), signal);
+    return ok(response);
+  }, 'Could not reach S3.');
   const copyObject: StorageProvider['copyObject'] = async ({ configuration, sourceKey, key, deadlineMs }) => {
     const target = objectUrl(configuration, key);
     const headers = {
@@ -620,7 +649,7 @@ export const createS3StorageProvider = (
       'x-amz-copy-source': copySource(configuration.bucket, sourceKey),
       'x-amz-metadata-directive': 'REPLACE',
     };
-    const signed = signObjectUrl('PUT', target, { ...configuration, expiresInSeconds: 60 }, now, headers);
+    const signed = signObjectUrl('PUT', target, { ...configuration, expiresInSeconds: COPY_SIGNATURE_SECONDS }, now, headers);
     return withDeadline(deadlineMs, async (signal) => {
       const safeTarget = await abortable(validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses), signal);
       if (!safeTarget.ok) return safeTarget;
@@ -813,7 +842,7 @@ export const createS3StorageProvider = (
     delete: async (input) => {
       const signed = presign('DELETE', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const response = await sendObjectRequest(signed.value, 'DELETE', input.deadlineMs ?? DELETE_DEADLINE_MS);
+      const response = await sendObjectRequest(signed.value, 'DELETE', input.deadlineMs, DELETE_DEADLINE_MS);
       if (!response.ok) return response;
       return response.value.ok
         ? ok({ deleted: true })
@@ -822,7 +851,7 @@ export const createS3StorageProvider = (
     head: async (input) => {
       const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const response = await sendObjectRequest(signed.value, 'HEAD', input.deadlineMs ?? HEAD_DEADLINE_MS);
+      const response = await sendObjectRequest(signed.value, 'HEAD', input.deadlineMs, HEAD_DEADLINE_MS);
       if (!response.ok) return response;
       if (response.value.status === 404) return err(notFound('No storage object at this key'));
       if (!response.value.ok) {
@@ -837,77 +866,66 @@ export const createS3StorageProvider = (
     putObject: async (input) => {
       const signed = presign('PUT', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
-      if (!safeTarget.ok) return safeTarget;
-      return withDeadline(input.deadlineMs ?? OBJECT_TRANSFER_DEADLINE_MS, async (signal) => {
-        const dispatcher = pinnedDispatcher(safeTarget.value);
-        try {
-          const response = await abortable(fetchStorage(signed.value, {
-            method: 'PUT', dispatcher, redirect: 'error', signal,
-            headers: { 'content-type': input.contentType }, body: input.body,
-          }), signal);
-          await abortable(discardStorageResponseBody(response), signal);
-          return response.ok ? ok(undefined) : err(integrationUnavailable('S3 rejected the published image'));
-        } finally {
-          await dispatcher.destroy();
+      return boundedRequest(signed.value, input.deadlineMs, OBJECT_TRANSFER_DEADLINE_MS, async (signal, dispatcher) => {
+        const response = await abortable(fetchStorage(signed.value, {
+          method: 'PUT', dispatcher, redirect: 'error', signal,
+          headers: { 'content-type': input.contentType }, body: input.body,
+        }), signal);
+        await abortable(discardStorageResponseBody(response), signal);
+        if (response.status >= 400 && response.status < 500) {
+          return err(storageDefiniteFailure(`S3 refused the published image with status ${String(response.status)}`));
         }
+        return response.ok ? ok(undefined) : err(integrationUnavailable('S3 rejected the published image'));
       }, 'Could not store the published image');
     },
     getObject: async (input, { maxBytes, range = false }) => {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return err(validation('Invalid object byte ceiling'));
       const signed = presign('GET', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const safeTarget = await validateProbeEndpoint(new URL(signed.value).origin, allowPrivateEndpoints, lookupAddresses);
-      if (!safeTarget.ok) return safeTarget;
-      return withDeadline(input.deadlineMs ?? OBJECT_TRANSFER_DEADLINE_MS, async (signal) => {
-        const dispatcher = pinnedDispatcher(safeTarget.value);
+      return boundedRequest(signed.value, input.deadlineMs, OBJECT_TRANSFER_DEADLINE_MS, async (signal, dispatcher) => {
+        const response = await abortable(fetchStorage(signed.value, {
+          method: 'GET', dispatcher, redirect: 'error', signal,
+          headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
+        }), signal);
+        if (response.status === 404) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(notFound('No storage object at this key'));
+        }
+        const length = response.headers.get('content-length');
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        const contentRange = response.headers.get('content-range');
+        const rangeMatch = contentRange === null ? null : /^bytes 0-(\d+)\/(\d+)$/u.exec(contentRange);
+        if (range && (size > maxBytes || (rangeMatch !== null && Number(rangeMatch[2]) > maxBytes))) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(validation('Object exceeds the byte ceiling'));
+        }
+        if (range && response.status === 206 && (rangeMatch === null
+          || Number(rangeMatch[1]) + 1 !== size || Number(rangeMatch[2]) !== size)) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(integrationUnavailable('S3 returned an incomplete object range'));
+        }
+        if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
+          (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
+          await abortable(discardStorageResponseBody(response), signal);
+          return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
+        }
+        const reader = response.body.getReader();
         try {
-          const response = await abortable(fetchStorage(signed.value, {
-            method: 'GET', dispatcher, redirect: 'error', signal,
-            headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
-          }), signal);
-          if (response.status === 404) {
-            await abortable(discardStorageResponseBody(response), signal);
-            return err(notFound('No storage object at this key'));
-          }
-          const length = response.headers.get('content-length');
-          const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
-          const contentRange = response.headers.get('content-range');
-          const rangeMatch = contentRange === null ? null : /^bytes 0-(\d+)\/(\d+)$/u.exec(contentRange);
-          if (range && (size > maxBytes || (rangeMatch !== null && Number(rangeMatch[2]) > maxBytes))) {
-            await abortable(discardStorageResponseBody(response), signal);
-            return err(validation('Object exceeds the byte ceiling'));
-          }
-          if (range && response.status === 206 && (rangeMatch === null
-            || Number(rangeMatch[1]) + 1 !== size || Number(rangeMatch[2]) !== size)) {
-            await abortable(discardStorageResponseBody(response), signal);
-            return err(integrationUnavailable('S3 returned an incomplete object range'));
-          }
-          if (!response.ok || !Number.isSafeInteger(size) || size < 1 || size > maxBytes ||
-            (response.headers.get('content-encoding') ?? 'identity') !== 'identity' || !response.body?.getReader) {
-            await abortable(discardStorageResponseBody(response), signal);
-            return err(integrationUnavailable('Object is unavailable or exceeds the byte ceiling'));
-          }
-          const reader = response.body.getReader();
-          try {
-            const bytes = new Uint8Array(size);
-            let offset = 0;
-            for (;;) {
-              const chunk = await abortable(reader.read(), signal);
-              if (chunk.done) break;
-              if (chunk.value === undefined || offset + chunk.value.byteLength > size) {
-                void reader.cancel().catch(() => undefined);
-                return err(integrationUnavailable('Object exceeds its declared size'));
-              }
-              bytes.set(chunk.value, offset);
-              offset += chunk.value.byteLength;
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (;;) {
+            const chunk = await abortable(reader.read(), signal);
+            if (chunk.done) break;
+            if (chunk.value === undefined || offset + chunk.value.byteLength > size) {
+              void reader.cancel().catch(() => undefined);
+              return err(integrationUnavailable('Object exceeds its declared size'));
             }
-            return offset === size ? ok(bytes) : err(integrationUnavailable('Object size does not match its metadata'));
-          } finally {
-            reader.releaseLock();
+            bytes.set(chunk.value, offset);
+            offset += chunk.value.byteLength;
           }
+          return offset === size ? ok(bytes) : err(integrationUnavailable('Object size does not match its metadata'));
         } finally {
-          await dispatcher.destroy();
+          reader.releaseLock();
         }
       }, 'Could not read the bounded storage object');
     },

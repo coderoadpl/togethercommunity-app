@@ -44,7 +44,7 @@ export const providerDiagnosticSchema = z.object({
   code: providerDiagnosticCodeSchema,
   message: z.string().min(1),
   details: z.object({ transport: z.string().min(1) }).optional(),
-  signedResponseOverrides: z.enum(['honoured', 'ignored']).optional(),
+  signedResponseOverrides: z.enum(['honoured', 'ignored', 'refused']).optional(),
 });
 
 export type ProviderDiagnostic = z.infer<typeof providerDiagnosticSchema>;

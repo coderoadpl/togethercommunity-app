@@ -100,7 +100,7 @@ const fakeBucket = (
     headers?: Record<string, string>;
   },
   allowedOrigins?: string[],
-  options: { ignoresResponseOverrides?: boolean } = {},
+  options: { ignoresResponseOverrides?: boolean; refusesResponseOverrides?: boolean } = {},
 ) => {
   const requests: Array<{
     method: string;
@@ -147,6 +147,9 @@ const fakeBucket = (
     if (init.method === 'GET') {
       const stored = objects.get(path);
       const query = new URL(url).searchParams;
+      if (options.refusesResponseOverrides === true && query.has('response-content-disposition')) {
+        return storageResponse(400, '<Error><Code>InvalidArgument</Code></Error>');
+      }
       const overrides = options.ignoresResponseOverrides === true ? {} : {
         ...(query.has('response-content-type') ? { 'content-type': query.get('response-content-type') ?? '' } : {}),
         ...(query.has('response-content-disposition') ? { 'content-disposition': query.get('response-content-disposition') ?? '' } : {}),
@@ -1098,14 +1101,49 @@ describe('download file storage operations', () => {
       .toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
   });
 
-  it('starts the deadline of a HEAD and a delete once the endpoint resolved, so a slow lookup does not use it up', async () => {
+  it('bounds a request that names a deadline by it, endpoint lookup included, and starts the default deadline once the endpoint resolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: () => new Promise((resolve) => { setTimeout(() => { resolve(['93.184.216.34']); }, 4_000); }),
+        fetchStorage: async () => storageResponse(200, 'abc', { 'content-length': '3' }),
+      });
+      const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1' };
+      const bounded = { ...target, deadlineMs: 3_000 };
+      const outcomes = Promise.all([
+        storage.head(target),
+        storage.delete(target),
+        storage.head(bounded),
+        storage.delete(bounded),
+        storage.getObject(bounded, { maxBytes: 3 }),
+        storage.putObject({ ...bounded, body: new Uint8Array([1]), contentType: 'image/png' }),
+      ]);
+      await vi.advanceTimersByTimeAsync(4_000);
+      const [head, deleted, ...late] = await outcomes;
+      expect(head).toEqual({ ok: true, value: { sizeBytes: 3 } });
+      expect(deleted).toEqual({ ok: true, value: { deleted: true } });
+      expect(late).toHaveLength(4);
+      for (const outcome of late) {
+        expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers a refused write of a published image as definite and a server error as unknown', async () => {
+    const answer = { status: 403 };
     const storage = createS3StorageProvider(resolver, {
-      lookupAddresses: () => new Promise((resolve) => { setTimeout(() => { resolve(['93.184.216.34']); }, 60); }),
-      fetchStorage: async () => storageResponse(200, '', { 'content-length': '3' }),
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(answer.status, ''),
     });
-    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 30 };
-    expect(await storage.head(target)).toEqual({ ok: true, value: { sizeBytes: 3 } });
-    expect(await storage.delete(target)).toEqual({ ok: true, value: { deleted: true } });
+    const write = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', body: new Uint8Array([1]), contentType: 'image/png' };
+    const refused = await storage.putObject(write);
+    answer.status = 503;
+    const unknown = await storage.putObject(write);
+    if (refused.ok || unknown.ok) throw new Error('A failed write answered ok');
+    expect(storageFailureIsDefinite(refused.error)).toBe(true);
+    expect(storageFailureIsDefinite(unknown.error)).toBe(false);
   });
 });
 
@@ -1133,6 +1171,20 @@ describe('the signed download override probe', () => {
       },
     });
     expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('warns that buyer download links carry the overrides when a provider refuses a signed read that asks for them', async () => {
+    const bucket = fakeBucket(undefined, undefined, { refusesResponseOverrides: true });
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toEqual({
+      ok: true,
+      value: {
+        code: 'storage.available',
+        message: expect.stringMatching(/^Warning: .*Buyer download links carry these overrides/u),
+        signedResponseOverrides: 'refused',
+      },
+    });
     expect(bucket.objects.size).toBe(0);
   });
 });

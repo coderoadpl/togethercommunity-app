@@ -2953,6 +2953,7 @@ export const en: Messages = {
     erasureDialogBody: ({ days }) =>
       `Sending the request removes nothing yet. The team reviews it and can complete or decline it; a response is due within ${days} ${plural(days, 'day', 'days')}. You can cancel the request while it is open. Download your data first if you want a copy.`,
     erasureConfirmLabel: 'Retype your e-mail address',
+    erasureConfirmHint: ({ email }) => `Type ${email} to confirm.`,
     erasureRequestButton: 'Request erasure',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Request open · due by ${dueAt}`,
     erasureCancelButton: 'Cancel request',

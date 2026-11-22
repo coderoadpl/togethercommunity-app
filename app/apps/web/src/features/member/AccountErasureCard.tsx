@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { TriangleAlertIcon } from '../../components/ui/account-icons.js';
-import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput, Typography } from '@mui/material';
+import { Alert, Box, Button, FormControl, FormHelperText, FormLabel, OutlinedInput, Typography } from '@mui/material';
 import { ERASURE_REQUEST_RESPONSE_DAYS, type MemberErasureRequest } from '#core/domain/index.js';
 import { AccountCard as SectionCard } from './AccountCard.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { AccountWrappingText } from '../../theme.js';
 
 interface AccountErasureCardProps {
   request: MemberErasureRequest | null;
@@ -25,6 +26,12 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
   useEffect(() => {
     if (requestOpen) setOpen(false);
   }, [requestOpen]);
+  const confirmMatches = erasureConfirmEmail.trim().toLowerCase() === email.toLowerCase();
+  const close = () => {
+    setOpen(false);
+    onConfirmEmailChange('');
+  };
+  const confirm = () => onCreate({ confirmEmail: erasureConfirmEmail });
   return (
 <Box data-account-wide data-account-danger><SectionCard icon={<TriangleAlertIcon />}
           title={t.account.erasureHeading}
@@ -80,18 +87,22 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
               {request === null || request.status === 'cancelled' || request.status === 'rejected' ? <>
               <Box><Button color="error" variant="outlined" data-testid="account-erasure-open" onClick={() => setOpen(true)}>{t.account.erasureRequestButton}</Button></Box>
               <ConfirmDialog open={open} title={t.account.erasureHeading} confirmLabel={t.account.erasureRequestButton} cancelLabel={t.common.cancel}
-                pending={createPending} confirmDisabled={erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()} confirmTestId="account-erasure-create"
-                onClose={() => setOpen(false)} onConfirm={() => onCreate({ confirmEmail: erasureConfirmEmail })}
-                body={<><Typography data-testid="account-erasure-dialog-body">{t.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS })}</Typography><FormControl fullWidth>
+                pending={createPending} confirmDisabled={!confirmMatches} confirmTestId="account-erasure-create"
+                onClose={close} onConfirm={confirm}
+                body={<><Typography data-testid="account-erasure-dialog-body">{t.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS })}</Typography><Box component="form" noValidate onSubmit={(event: FormEvent) => { event.preventDefault(); if (confirmMatches && !createPending) confirm(); }}><FormControl fullWidth>
                 <FormLabel htmlFor="erasure-confirm-email">
                   {t.account.erasureConfirmLabel}
                 </FormLabel>
                 <OutlinedInput
                   id="erasure-confirm-email"
+                  type="email"
+                  autoComplete="off"
                   value={erasureConfirmEmail}
                   onChange={(event) => onConfirmEmailChange(event.target.value)}
+                  inputProps={{ autoCapitalize: 'none', spellCheck: false, 'aria-describedby': 'erasure-confirm-email-hint' }}
                 />
-              </FormControl>{createError ? <Alert severity="error">{localizeError(createError, t)}</Alert> : null}</>}
+                <FormHelperText id="erasure-confirm-email-hint" data-testid="account-erasure-confirm-hint"><AccountWrappingText component="span" variant="inherit">{t.account.erasureConfirmHint({ email })}</AccountWrappingText></FormHelperText>
+              </FormControl></Box>{createError ? <Alert severity="error">{localizeError(createError, t)}</Alert> : null}</>}
               />
               </> : null}
             </>

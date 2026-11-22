@@ -3007,6 +3007,7 @@ export const pl: Messages = {
     erasureDialogBody: ({ days }) =>
       `Wysłanie wniosku jeszcze niczego nie usuwa. Zespół go rozpatrzy i może go zrealizować albo odrzucić; termin odpowiedzi to ${days} ${plural(days, 'dzień', 'dni', 'dni')}. Otwarty wniosek można anulować. Jeśli potrzebujesz kopii danych, pobierz ją wcześniej.`,
     erasureConfirmLabel: 'Wpisz ponownie swój adres e-mail',
+    erasureConfirmHint: ({ email }) => `Aby potwierdzić, wpisz ${email}.`,
     erasureRequestButton: 'Wyślij wniosek',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Wniosek otwarty · termin do ${dueAt}`,
     erasureCancelButton: 'Anuluj wniosek',

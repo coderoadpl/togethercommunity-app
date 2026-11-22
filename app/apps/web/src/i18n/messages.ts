@@ -2665,6 +2665,7 @@ export interface Messages {
     erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
     erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
+    erasureConfirmHint: (input: { email: string }) => string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;

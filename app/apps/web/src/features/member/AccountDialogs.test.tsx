@@ -361,6 +361,32 @@ describe('Account dialogs', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('confirms erasure with Enter, shows the address to retype and clears the typed value on close', async () => {
+    const onCreate = vi.fn();
+    const onConfirmEmailChange = vi.fn();
+    const card = (typed: string) => <LanguageProvider><AccountErasureCard
+      request={null} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail={typed}
+      onConfirmEmailChange={onConfirmEmailChange} onCreate={onCreate} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>;
+    const view = render(card(''));
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    const field = screen.getByLabelText(en.account.erasureConfirmLabel);
+    expect(field).toHaveAttribute('type', 'email');
+    expect(field).toHaveAttribute('autocomplete', 'off');
+    expect(field).toHaveAttribute('autocapitalize', 'none');
+    expect(field).toHaveAccessibleDescription(en.account.erasureConfirmHint({ email: 'demo@example.com' }));
+    expect(within(screen.getByRole('dialog')).getByTestId('account-erasure-confirm-hint')).toHaveTextContent('demo@example.com');
+    await userEvent.type(field, '{Enter}');
+    expect(onCreate).not.toHaveBeenCalled();
+    view.rerender(card('Demo@Example.com'));
+    await userEvent.type(screen.getByLabelText(en.account.erasureConfirmLabel), '{Enter}');
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'Demo@Example.com' });
+    await userEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    expect(onConfirmEmailChange).toHaveBeenLastCalledWith('');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('offers no new erasure request after a completed one', () => {
     render(<LanguageProvider><AccountErasureCard
       request={{ id: 'erasure-1', tenantId: 't1', memberId: 'm1', status: 'completed', reason: null, requestedAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', resolvedAt: '2026-06-30T12:00:00.000Z', resolvedByUserId: null, resolutionNote: null }}

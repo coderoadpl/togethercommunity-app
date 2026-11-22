@@ -22,5 +22,3 @@ export type PaymentEventRejection = z.output<typeof paymentEventRejectionSchema>
 export const paymentEventRejectionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
-
-export type PaymentEventRejectionListQuery = z.output<typeof paymentEventRejectionListQuerySchema>;

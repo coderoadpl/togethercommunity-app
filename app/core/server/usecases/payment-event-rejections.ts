@@ -94,10 +94,7 @@ const notifyOwners = async (
   return queuedAny;
 };
 
-/**
- * Runs after the webhook use-case decided its answer to Stripe. Its own failures are only
- * logged: the answer must stay the refusal, so Stripe keeps retrying, or the acceptance.
- */
+/** Its own failures are only logged: the answer to Stripe must stay the refusal, so Stripe keeps retrying, or the acceptance. */
 export const recordStripeWebhookOutcome = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   event: PaymentWebhookEvent,

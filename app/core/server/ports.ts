@@ -1835,7 +1835,7 @@ export interface ProcessedPaymentEventRepository {
 }
 
 export interface PaymentEventRejectionRepository {
-  /** Upserts by event id: the first delivery sets firstSeenAt, every later one bumps attempts and reopens a resolved row. */
+  /** A later refusal of an event already resolved reopens its row. */
   record(
     tenantId: string,
     rejection: Pick<PaymentEventRejection, 'eventId' | 'eventType' | 'checkoutSessionId' | 'reasonCode' | 'reasonMessage'> & { seenAt: string },

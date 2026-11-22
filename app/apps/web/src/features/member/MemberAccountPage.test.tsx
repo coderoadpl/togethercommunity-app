@@ -1000,6 +1000,8 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByTestId('change-password-open')).not.toBeInTheDocument();
     const setup = await screen.findByTestId('account-reset-password');
     expect(setup).toHaveTextContent(en.account.setPassword);
+    expect(screen.queryByTestId('enable-2fa-open')).not.toBeInTheDocument();
+    expect(screen.getByText(en.security.twoFactorNeedsPassword)).toBeVisible();
     await userEvent.click(setup);
     expect(body).toMatchObject({ email: 'member@together.dev' });
   });

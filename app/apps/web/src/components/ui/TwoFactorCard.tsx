@@ -27,10 +27,11 @@ import type { AuthenticationMethodsProps } from './authentication-methods-types.
 
 type Props = Pick<
   AuthenticationMethodsProps,
-  'Card' | 'enableTwoFactor' | 'verifyTotp' | 'disableTwoFactor' | 'regenerateBackupCodes'
+  'Card' | 'enableTwoFactor' | 'verifyTotp' | 'disableTwoFactor' | 'regenerateBackupCodes' | 'requestPasswordSetup'
 > & {
   backupCodes: string[];
   twoFactorEnabled: boolean;
+  hasPassword: boolean;
   onSecurityRefresh(): void;
 };
 
@@ -130,8 +131,10 @@ export const TwoFactorCard = ({
   verifyTotp,
   disableTwoFactor,
   regenerateBackupCodes,
+  requestPasswordSetup,
   backupCodes,
   twoFactorEnabled,
+  hasPassword,
   onSecurityRefresh,
 }: Props) => {
   const t = useTranslations();
@@ -251,12 +254,24 @@ export const TwoFactorCard = ({
             {t.security.disableTwoFactor}
           </Button>
         </Stack>
-      ) : (
+      ) : hasPassword ? (
         <Box>
           <Button variant="contained" data-testid="enable-2fa-open" onClick={openEnable}>
             {t.security.enableTwoFactor}
           </Button>
         </Box>
+      ) : (
+        <Stack data-testid="two-factor-needs-password" useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-start' }}>
+          <Typography variant="body2">{t.security.twoFactorNeedsPassword}</Typography>
+          <Button
+            variant="outlined"
+            data-testid="two-factor-set-password"
+            disabled={requestPasswordSetup.pending}
+            onClick={() => requestPasswordSetup.run()}
+          >
+            {requestPasswordSetup.pending ? t.security.resetSending : t.security.setOrResetPassword}
+          </Button>
+        </Stack>
       )}
 
       <AccountDialog open={mode === 'enable'} title={t.security.twoFactor} pending={enableTwoFactor.pending || verifyTotp.pending} onClose={close}>

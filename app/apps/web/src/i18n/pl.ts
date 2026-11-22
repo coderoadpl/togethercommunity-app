@@ -1610,6 +1610,7 @@ export const pl: Messages = {
     finishSetup: 'Zakończ konfigurację',
     setupComplete: 'Weryfikacja dwuetapowa jest gotowa.',
     twoFactorDescription: 'Zabezpiecz logowanie kodem z aplikacji uwierzytelniającej.',
+    twoFactorNeedsPassword: 'Najpierw ustaw hasło, aby włączyć weryfikację dwuetapową.',
     heading: 'Bezpieczeństwo',
     setOrResetPasswordHeading: 'Ustaw lub zresetuj hasło',
     setOrResetPassword: 'Ustaw hasło linkiem',

@@ -34,6 +34,7 @@ export const AuthenticationMethods = ({
   sessionsCard,
   Card = AccountSection,
   twoFactorEnabled = false,
+  hasPassword = true,
   onSecurityRefresh = ignoreSecurityRefresh,
   passkeys,
   registerPasskey,
@@ -134,10 +135,8 @@ export const AuthenticationMethods = ({
           {registerPasskey.error ? <Alert severity="error">{localizeError(registerPasskey.error, t)}</Alert> : null}
         </Box>
   );
-  const passkeyHelp = (
-<AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
-          <Typography variant="body2">{t.security.passkeyIntro}</Typography>
-        <Box sx={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }}>
+  const passwordlessHint = (
+        <Box sx={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }} data-testid="passkey-passwordless">
           <Typography variant="caption">{t.security.passkeyPasswordlessHint}</Typography>
           <Button
             type="button"
@@ -152,6 +151,12 @@ export const AuthenticationMethods = ({
               : t.security.passkeySetPassword}
           </Button>
         </Box>
+  );
+  const passwordlessHintAbove = presentation === 'account' && !hasPassword;
+  const passkeyHelp = (
+<AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
+          <Typography variant="body2">{t.security.passkeyIntro}</Typography>
+        {passwordlessHintAbove ? null : passwordlessHint}
         </AccountHelp>
   );
 
@@ -206,6 +211,7 @@ export const AuthenticationMethods = ({
         {presentation === 'account' ? <>
           <Box><Button variant="contained" data-testid="add-passkey-open" onClick={() => { setProofPassword(''); setAdding(true); }}>{t.security.addPasskey}</Button></Box>
           <AccountDialog open={adding} title={t.security.addPasskey} pending={registerPasskey.pending || requestPasswordSetup.pending} onClose={() => { setAdding(false); setProofPassword(''); }}>
+            {passwordlessHintAbove ? passwordlessHint : null}
             {passkeyForm}
             {passkeyHelp}
 
@@ -251,7 +257,7 @@ export const AuthenticationMethods = ({
         enrollTwoFactor={enrollTwoFactor}
         submitTotp={submitTotp}
         backupCodes={backupCodes}
-      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} onSecurityRefresh={onSecurityRefresh} />;
+      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} requestPasswordSetup={requestPasswordSetup} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} hasPassword={hasPassword} onSecurityRefresh={onSecurityRefresh} />;
   return <Box sx={{ display: 'grid', gap: '1rem', alignItems: 'start', '@media (min-width: 1024px)': { gridTemplateColumns: presentation === 'account' ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: '1.5rem' } }}>
     {presentation === 'account' ? <>
       <Stack spacing="1rem" sx={{ minWidth: 0 }}>{passwordCard}{twoFactorCard}</Stack>

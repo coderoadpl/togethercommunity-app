@@ -1430,6 +1430,7 @@ export interface Messages {
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;
+    twoFactorNeedsPassword: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;

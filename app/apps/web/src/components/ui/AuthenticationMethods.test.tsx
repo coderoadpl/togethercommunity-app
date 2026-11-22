@@ -159,4 +159,44 @@ describe('AuthenticationMethods', () => {
     expect(screen.getByTestId('regenerate-backup-codes').parentElement).toBe(row);
     expect(screen.getByTestId('disable-2fa').parentElement).toBe(row);
   });
+
+  it('offers a password link instead of two-factor enrollment to a passwordless account', async () => {
+    const requestPasswordSetup = vi.fn();
+    renderMethods(propsWith({
+      presentation: 'account',
+      hasPassword: false,
+      requestPasswordSetup: { ...idle, run: requestPasswordSetup },
+    }));
+
+    expect(screen.queryByTestId('enable-2fa-open')).not.toBeInTheDocument();
+    expect(screen.getByText(en.security.twoFactorNeedsPassword)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: en.security.setOrResetPassword }));
+
+    expect(requestPasswordSetup).toHaveBeenCalledOnce();
+  });
+
+  it('keeps two-factor enrollment for an account with a password', () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: true }));
+
+    expect(screen.getByTestId('enable-2fa-open')).toBeVisible();
+    expect(screen.queryByTestId('two-factor-needs-password')).not.toBeInTheDocument();
+  });
+
+  it('shows the password hint above the passkey form when the account has no password', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    const hint = screen.getByTestId('passkey-passwordless');
+    expect(hint.closest('details')).toBeNull();
+    expect(hint).toBeVisible();
+    expect(hint.compareDocumentPosition(screen.getByTestId('passkey-name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('passkey-set-password')).toBeVisible();
+  });
+
+  it('keeps the password hint inside the passkey help when the account has a password', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: true }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    expect(screen.getByTestId('passkey-passwordless').closest('details')).not.toBeNull();
+  });
 });

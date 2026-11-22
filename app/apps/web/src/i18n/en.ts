@@ -1571,6 +1571,7 @@ export const en: Messages = {
     finishSetup: 'Finish setup',
     setupComplete: 'Two-factor authentication is ready.',
     twoFactorDescription: 'Add an authenticator code to protect your sign-in.',
+    twoFactorNeedsPassword: 'Set a password first to turn on two-factor authentication.',
     heading: 'Security',
     setOrResetPasswordHeading: 'Set or reset password',
     setOrResetPassword: 'Email me a password link',

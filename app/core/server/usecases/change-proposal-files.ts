@@ -1,5 +1,7 @@
 import {
+  CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS,
   CHANGE_PROPOSAL_FILE_LINK_TTL_SECONDS,
+  changeProposalFileChecksOutOfTime,
   changeProposalDisplayStatus,
   changeProposalFileInputSchema,
   changeProposalFileUnavailable,
@@ -63,6 +65,7 @@ export interface ChangeProposalFileApprovalDeps {
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'findStaged'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
+  clock: Clock;
 }
 
 export interface ApprovalFileChecks {
@@ -71,39 +74,68 @@ export interface ApprovalFileChecks {
 
 const fileCheckKey = (proposalId: string, fileId: string): string => `${proposalId}/${fileId}`;
 
+type FileCheck = Result<KeyDownloadStagedFile | null, AppError>;
+
 /**
- * Runs before the approval transaction, so no storage request ever waits under the workspace's approval lock. A file
- * whose row is gone, whose object the storage reports missing or whose size differs is recorded as gone; any other
- * storage failure is answered and nothing is decided.
+ * Runs before the approval transaction, so none of these storage requests waits under the workspace's approval lock,
+ * a few at a time within one wall-clock budget. A file whose row is gone, whose object the storage reports missing or
+ * whose size differs is recorded as gone; a budget that runs out or any other storage failure is answered (the first
+ * in the order of the proposals) and nothing is decided.
  */
 export const checkApprovalFiles = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
   deps: ChangeProposalFileApprovalDeps,
 ): Promise<Result<ApprovalFileChecks, AppError>> => {
-  const seen = new Map<string, KeyDownloadStagedFile | null>();
-  let configuration: StorageConfiguration | null = null;
-  for (const proposal of proposals) {
+  const limits = CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS;
+  const endsAt = Date.parse(deps.clock.nowIso()) + limits.budgetMs;
+  const left = (): number => endsAt - Date.parse(deps.clock.nowIso());
+  const files = proposals.flatMap((proposal) => {
     const fileId = changeProposalStagedFileId(proposal.operation, proposal.input);
-    if (fileId === null) continue;
-    const key = fileCheckKey(proposal.id, fileId);
+    return fileId === null ? [] : [{ proposal, fileId }];
+  });
+  let configuration: Promise<Result<StorageConfiguration, AppError>> | null = null;
+  const configured = (): Promise<Result<StorageConfiguration, AppError>> => {
+    configuration ??= resolveStorageConfiguration(tenantId, deps.secretResolver);
+    return configuration;
+  };
+  const check = async (proposal: ChangeProposal, fileId: string): Promise<FileCheck> => {
+    if (left() < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
     const file = await deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId);
-    if (file?.proposalId !== proposal.id) {
-      seen.set(key, null);
-      continue;
-    }
-    if (configuration === null) {
-      const resolved = await resolveStorageConfiguration(tenantId, deps.secretResolver);
-      if (!resolved.ok) return resolved;
-      configuration = resolved.value;
-    }
+    if (file?.proposalId !== proposal.id) return ok(null);
+    const resolved = await configured();
+    if (!resolved.ok) return resolved;
+    const remaining = left();
+    if (remaining < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
+    const deadlineMs = Math.min(KEY_DOWNLOAD_STORAGE_DEADLINES.headMs, remaining);
     const head = await deps.storage.head({
-      url: deps.storage.objectUrl(configuration, file.objectKey).toString(),
-      ...credentialsOf(configuration),
-      deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.headMs,
+      url: deps.storage.objectUrl(resolved.value, file.objectKey).toString(),
+      ...credentialsOf(resolved.value),
+      deadlineMs,
     });
-    if (!head.ok && head.error.code !== 'not_found') return head;
-    seen.set(key, head.ok && head.value.sizeBytes === file.sizeBytes ? file : null);
+    if (head.ok) return ok(head.value.sizeBytes === file.sizeBytes ? file : null);
+    if (head.error.code === 'not_found') return ok(null);
+    return deadlineMs < KEY_DOWNLOAD_STORAGE_DEADLINES.headMs ? err(changeProposalFileChecksOutOfTime()) : head;
+  };
+  const answers: Array<FileCheck | undefined> = files.map(() => undefined);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < files.length) {
+      const index = next;
+      next += 1;
+      const entry = files[index];
+      if (entry === undefined) return;
+      const answer = await check(entry.proposal, entry.fileId);
+      answers[index] = answer;
+      if (!answer.ok) next = files.length;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limits.concurrency, files.length) }, worker));
+  const seen = new Map<string, KeyDownloadStagedFile | null>();
+  for (const [index, { proposal, fileId }] of files.entries()) {
+    const answer = answers[index] ?? err(changeProposalFileChecksOutOfTime());
+    if (!answer.ok) return answer;
+    seen.set(fileCheckKey(proposal.id, fileId), answer.value);
   }
   return ok({ seen });
 };

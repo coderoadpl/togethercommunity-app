@@ -69,6 +69,7 @@ interface Hoisted {
   saved: CliConfig[];
   createProduct: ReturnType<typeof vi.fn>;
   updateProduct: ReturnType<typeof vi.fn>;
+  uploadProductImage: ReturnType<typeof vi.fn>;
   archiveCourse: ReturnType<typeof vi.fn>;
   restoreCourse: ReturnType<typeof vi.fn>;
   restoreContentVersion: ReturnType<typeof vi.fn>;
@@ -181,6 +182,7 @@ const h = vi.hoisted(
     loadError: null,
     saved: [],
     createProduct: vi.fn(),
+    uploadProductImage: vi.fn(),
     updateProduct: vi.fn(),
     archiveCourse: vi.fn(),
     restoreCourse: vi.fn(),
@@ -325,6 +327,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getMarketingSignupForm: h.getMarketingSignupForm,
     createMarketingSignupForm: h.createMarketingSignupForm,
     createProduct: h.createProduct,
+    uploadProductImage: h.uploadProductImage,
     updateProduct: h.updateProduct,
     archiveCourse: h.archiveCourse,
     restoreCourse: h.restoreCourse,
@@ -462,6 +465,7 @@ beforeEach(() => {
   h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
   h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
+  h.uploadProductImage.mockReset().mockResolvedValue(ok({ url: '/api/public/assets/product-image/1.png' }));
   h.archiveCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
   h.restoreCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
   h.restoreContentVersion.mockReset().mockResolvedValue(ok({ restored: { entityKind: 'course', entityId: 'course-1', restoredFromOrdinal: 2 } }));
@@ -2418,6 +2422,53 @@ describe('fulfilment CLI', () => {
     await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
     expect(h.createProduct).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('product image-upload CLI', () => {
+  const imageFile = async (name: string): Promise<string> => {
+    const directory = await mkdtemp(join(tmpdir(), 'product-image-'));
+    const path = join(directory, name);
+    await writeFile(path, new Uint8Array([137, 80, 78, 71]));
+    return path;
+  };
+
+  it('uploads a gallery image and prints only its URL', async () => {
+    const path = await imageFile('front.PNG');
+    await run('product', 'image-upload', path);
+    expect(h.uploadProductImage).toHaveBeenCalledExactlyOnceWith({
+      kind: 'product-image', fileName: 'front.PNG', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array([137, 80, 78, 71]),
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('/api/public/assets/product-image/1.png');
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(h.updateProduct).not.toHaveBeenCalled();
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('prints the upload result as JSON with --json and passes a server refusal through', async () => {
+    const path = await imageFile('side.jpeg');
+    await run('--json', 'product', 'image-upload', path);
+    expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/product-image/1.png' } });
+    expect(h.uploadProductImage).toHaveBeenCalledWith(expect.objectContaining({ fileName: 'side.jpeg', contentType: 'image/jpeg' }));
+    logSpy.mockClear();
+    h.uploadProductImage.mockResolvedValue(err(appError('forbidden', 'Not allowed')));
+    await run('--json', 'product', 'image-upload', path);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('refuses a missing file and an unsupported type with the validation exit code before any upload', async () => {
+    const gif = await imageFile('front.gif');
+    for (const file of [join(gif, '..', 'missing.png'), gif]) {
+      process.exitCode = 0;
+      logSpy.mockClear();
+      await run('--json', 'product', 'image-upload', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    }
+    expect(h.uploadProductImage).not.toHaveBeenCalled();
+    await rm(join(gif, '..'), { recursive: true, force: true });
   });
 });
 

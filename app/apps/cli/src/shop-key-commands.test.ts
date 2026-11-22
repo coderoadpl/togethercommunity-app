@@ -136,6 +136,11 @@ const fetchImpl: typeof fetch = async (input, init) => {
       ? { key: 'image-asset-candidates/acme/product-cover/1.png', servePath: '/api/public/assets/product-cover/1.png', upload: { url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
       : { url: '/api/public/assets/product-cover/1.png' } });
   }
+  if (url.pathname.startsWith('/api/m2m/shop/image-assets/product-image/')) {
+    return Response.json({ ok: true, data: url.pathname.endsWith('/upload')
+      ? { key: 'image-asset-candidates/acme/product-image/2.png', servePath: '/api/public/assets/product-image/2.png', upload: { url: 'https://storage.example.test/candidate?signature=2', headers: { 'content-type': 'image/png' }, expiresAt: '2026-11-15T10:15:00.000Z' } }
+      : { url: '/api/public/assets/product-image/2.png' } });
+  }
   if (url.pathname.startsWith('/api/m2m/shop/sales-links')) {
     return Response.json({ ok: true, data: method === 'DELETE' ? { deleted: true }
       : method === 'GET' && url.pathname === '/api/m2m/shop/sales-links' ? { salesLinks: [salesLink] }
@@ -452,6 +457,48 @@ describe('shop settings and branding CLI', () => {
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(calls).toEqual([]);
     await rm(directory, { recursive: true });
+  });
+});
+
+describe('shop gallery images CLI', () => {
+  it('uploads a gallery image, PUTs the bytes without the key, completes it and prints only its URL', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-images-cli-'));
+    try {
+      const file = join(directory, 'front.png');
+      await writeFile(file, new Uint8Array([137, 80, 78, 71]));
+      await run('shop', 'images', 'upload', file);
+      expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/product-image/2.png' } });
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'POST /api/m2m/shop/image-assets/product-image/upload', 'PUT /candidate', 'POST /api/m2m/shop/image-assets/product-image/complete',
+      ]);
+      expect(calls[0]?.body).toEqual({ kind: 'product-image', fileName: 'front.png', contentType: 'image/png', sizeBytes: 4 });
+      expect(calls[1]?.headers.has('x-api-key')).toBe(false);
+      expect(calls[1]?.headers.get('content-type')).toBe('image/png');
+      expect(calls[2]?.body).toEqual({ key: 'image-asset-candidates/acme/product-image/2.png' });
+      expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
+
+      calls.length = 0;
+      logSpy.mockClear();
+      process.argv = ['node', 'together', 'shop', 'images', 'upload', file];
+      vi.resetModules();
+      await import('./main.js');
+      expect(logSpy).toHaveBeenCalledExactlyOnceWith('/api/public/assets/product-image/2.png');
+    } finally {
+      await rm(directory, { recursive: true });
+    }
+  });
+
+  it.each(['front.gif', 'missing.png'])('refuses %s with the validation exit code before any request', async (name) => {
+    const directory = await mkdtemp(join(tmpdir(), 'shop-images-cli-'));
+    try {
+      if (name !== 'missing.png') await writeFile(join(directory, name), new Uint8Array([71, 73, 70]));
+      await run('shop', 'images', 'upload', join(directory, name));
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+      expect(calls).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true });
+    }
   });
 });
 

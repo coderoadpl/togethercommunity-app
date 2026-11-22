@@ -114,6 +114,7 @@ add it here before using it in either dictionary.
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
 | Tenant | platforma | workspace | Never expose tenant in user-facing copy. The Polish workspace term is distinct from the community-space term. |
+| Tenant as named to visitors | społeczność | community | Visitor-facing public pages and the workspace-not-found screens name the workspace a community; the panel, member account and billing keep workspace / platforma. Never confuse it with a space (przestrzeń). |
 | Login identity | konto | account | Shared authentication identity. |
 | Automatic lesson text expansion | `account.lessonTextAutoExpandLabel` in the Polish dictionary | Expand lesson text automatically | A member preference for the initial reading-preview state, independent of video autoplay policy. |
 | Browser-local preference help | `account.lessonTextAutoExpandHint` in the Polish dictionary | Remembered in this browser. | Applies to the current browser only, not every device signed in to the account. |

@@ -133,7 +133,7 @@ const LessonCompletion = ({ status }: { status: CompletionStatus }) => {
 
 const ProgressMark = ({ lessons, guest }: { lessons: CourseStructureLesson[]; guest: boolean }) => {
   const t = useTranslations();
-  if (guest) return <TreeProgressCount variant="caption" component="span">{`${lessons.length} ${t.courseOverview.statLessons({ count: lessons.length })}`}</TreeProgressCount>;
+  if (guest) return <TreeProgressCount variant="caption" component="span">{t.courseOverview.lessonCount({ count: lessons.length })}</TreeProgressCount>;
   const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
   const total = lessons.length;
   if (done === total && total > 0) {

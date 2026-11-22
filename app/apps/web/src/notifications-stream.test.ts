@@ -4,6 +4,7 @@ import {
   CONVERSATION_POLL_INTERVAL_MS,
   connectNotificationsStream,
   streamlessPollInterval,
+  type NotificationStreamEvent,
   type NotificationStreamSource,
 } from './notifications-stream.js';
 
@@ -12,9 +13,9 @@ type StreamEvent = 'unread' | 'notification' | 'dm' | 'error' | 'open';
 class FakeEventSource implements NotificationStreamSource {
   closed = false;
 
-  private readonly listeners = new Map<string, Array<() => void>>();
+  private readonly listeners = new Map<string, Array<(event: NotificationStreamEvent) => void>>();
 
-  addEventListener(type: StreamEvent, listener: () => void): void {
+  addEventListener(type: StreamEvent, listener: (event: NotificationStreamEvent) => void): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
 
@@ -22,8 +23,8 @@ class FakeEventSource implements NotificationStreamSource {
     this.closed = true;
   }
 
-  emit(type: StreamEvent): void {
-    for (const listener of this.listeners.get(type) ?? []) listener();
+  emit(type: StreamEvent, data?: string): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(data === undefined ? {} : { data });
   }
 }
 
@@ -38,6 +39,20 @@ describe('notifications stream wrapper', () => {
     source.emit('dm');
 
     expect(onEvent).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports the kind a notification frame names and ignores frames without one', () => {
+    const source = new FakeEventSource();
+    const onEvent = vi.fn();
+    const onNotificationKind = vi.fn();
+    connectNotificationsStream({ onEvent, onNotificationKind, onFallback: vi.fn(), createSource: () => source });
+
+    source.emit('notification', JSON.stringify({ id: 'n1', kind: 'change-proposal' }));
+    source.emit('notification', JSON.stringify({ id: 'n2' }));
+    source.emit('notification', 'not json');
+
+    expect(onEvent).toHaveBeenCalledTimes(3);
+    expect(onNotificationKind.mock.calls).toEqual([['change-proposal']]);
   });
 
   it('polls where EventSource is missing or the stream fell back', () => {

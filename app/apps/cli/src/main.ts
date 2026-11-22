@@ -1,4 +1,4 @@
-import { changeProposalDisplayStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -1599,7 +1599,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
-  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'offer no buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
@@ -1719,7 +1719,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
-  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it')
+  .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'remove the buyer personalisation')
   .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')
@@ -4198,7 +4198,7 @@ const changeProposals = program
   .description('Change proposals made by propose-mode shop management keys (verified owner session only)');
 
 const changeProposalListOptionsSchema = z.object({
-  status: changeProposalDisplayStatusSchema.optional(),
+  status: changeProposalListStatusSchema.optional(),
   group: z.string().min(1).optional(),
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
@@ -4231,7 +4231,7 @@ const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
 changeProposals
   .command('list')
   .description('List the change proposals of the workspace, newest first')
-  .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed or expired')
+  .option('--status <status>', 'pending, applied, rejected, stale, withdrawn, failed, expired, or decided (every proposal no longer waiting)')
   .option('--group <id>', 'only the items of this group')
   .option('--cursor <id>', 'continue after this proposal id')
   .option('--limit <n>', 'proposals per page (1-100, default 50)')

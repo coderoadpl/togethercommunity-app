@@ -279,8 +279,15 @@ const runCourseJourney = async (page: Page, studioBaseUrl: string): Promise<void
   const viewport = page.viewportSize();
   assert(viewport !== null, 'public course journey requires a viewport');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByTestId('guest-course-sticky-offer').waitFor({ state: 'attached' });
+  const phoneBar = page.getByTestId('guest-course-sticky-offer');
+  await phoneBar.waitFor({ state: 'attached' });
+  await page.getByTestId('public-course-unlock-cta').evaluate((button) => {
+    window.scrollBy(0, button.getBoundingClientRect().bottom);
+  });
+  await phoneBar.waitFor({ state: 'visible' });
+  assert(await phoneBar.getAttribute('inert') === null, 'phone offer bar stayed inert after the card button scrolled under the header');
   await expectHref(page, 'public-course-unlock-cta-mobile', '/checkout/product-free-preview');
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.setViewportSize(viewport);
 
   const structure = await requestOk(

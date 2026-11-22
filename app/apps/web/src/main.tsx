@@ -105,6 +105,7 @@ import {
   PanelProductsRoute,
   PanelProductCreateRoute,
   PanelProductDetailRoute,
+  PanelProposalsRoute,
   PanelSalesRoute,
   PanelOrderDetailRoute,
   PanelOrderVerificationRoute,
@@ -324,6 +325,11 @@ const panelProductDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'products/$productId',
   component: PanelProductDetailRoute,
+});
+const panelProposalsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'proposals',
+  component: PanelProposalsRoute,
 });
 const panelCoursesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -587,6 +593,7 @@ const router = createRouter({
       panelSalesLinksRoute,
       panelProductCreateRoute,
       panelProductDetailRoute,
+      panelProposalsRoute,
       panelCoursesRoute,
       panelCourseCreateRoute,
       panelModuleCreateRoute,

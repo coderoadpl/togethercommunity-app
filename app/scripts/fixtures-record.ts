@@ -152,6 +152,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     await call('unreadNotificationCount', [], () => api.unreadNotificationCount());
     await call('listReports', [{ status: 'open', limit: 1 }], () => api.listReports({ status: 'open', limit: 1 }));
     await call('listDmReports', [{ status: 'open', limit: 1 }], () => api.listDmReports({ status: 'open', limit: 1 }));
+    await call('getChangeProposalSummary', [], () => api.getChangeProposalSummary());
   }
   const { courseId, lessonId, spaceId } = scenario;
   let route = scenario.route ?? '/start';

@@ -8,6 +8,7 @@ import { useSuppressGlobalChrome } from '../../../components/ui/app-chrome.js';
 import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitcher.js';
 import { useToastError } from '../../../components/ui/Toast.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { SHELL_TOOLBAR_MIN_HEIGHT } from '../../../theme.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
 import { BrandLink, PublicSignInButton, SidebarColumn } from './shell-chrome.js';
@@ -58,7 +59,7 @@ export const AnonShell = ({
   const compactBrand = useMediaQuery(COMPACT_PUBLIC_HEADER_QUERY);
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${SHELL_TOOLBAR_MIN_HEIGHT + 1}px` }}>
       {isDesktop ? (
         <SidebarColumn component="aside">
           <AnonSidebar variant="drawer" />
@@ -66,7 +67,7 @@ export const AnonShell = ({
       ) : null}
       <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
         <AppBar position="sticky">
-          <Toolbar variant="dense" sx={{ minHeight: '52px', px: '1.25rem', gap: '0.75rem' }}>
+          <Toolbar variant="dense" sx={{ minHeight: `${SHELL_TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
             <Box sx={{ display: { xs: 'flex', md: 'none' }, minWidth: 0 }}>
               <BrandLink
                 component={Link}

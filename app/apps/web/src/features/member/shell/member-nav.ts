@@ -1,3 +1,5 @@
+import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
+
 export type MemberNavEntry =
   | { kind: 'start' }
   | { kind: 'search' }
@@ -16,6 +18,13 @@ export interface CourseContext {
 export const memberHomePath = (): '/start' => '/start';
 
 export const anonHomePath = (): '/' => '/';
+
+const LOCKED_SPACE_ANCHOR_PREFIX = 'locked-';
+
+export const lockedSpaceAnchor = (spaceId: string): string => `${LOCKED_SPACE_ANCHOR_PREFIX}${spaceId}`;
+
+export const isPublicHomeAnchor = (hash: string): boolean =>
+  hash === PUBLIC_OFFER_ANCHOR || (hash.startsWith(LOCKED_SPACE_ANCHOR_PREFIX) && hash.length > LOCKED_SPACE_ANCHOR_PREFIX.length);
 
 export const memberSearchPath = (): '/search' => '/search';
 

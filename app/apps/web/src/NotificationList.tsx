@@ -7,7 +7,7 @@ import { UserAvatar } from './components/ui/UserAvatar.js';
 import { useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate, formatDateTime, formatRelativeTime } from './lib/format.js';
 import { NotificationKindIcon } from './notification-icons.js';
-import { notificationTarget, notificationTitle, notificationTitleParts } from './notification-links.js';
+import { notificationSnippetParts, notificationTarget, notificationTitle, notificationTitleParts } from './notification-links.js';
 import {
   FinePrint,
   NotificationActor,
@@ -51,7 +51,8 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
   const { language } = useLanguage();
   const unread = notification.readAt === null;
   const parts = notificationTitleParts(t, notification);
-  const { authorDisplay, authorAvatarUrl, snippet } = notification.payload;
+  const { authorDisplay, authorAvatarUrl } = notification.payload;
+  const snippet = notificationSnippetParts(t, notification);
   return (
     <>
       <NotificationActor>
@@ -71,12 +72,14 @@ const NotificationBody = ({ notification, group }: { notification: Notification;
       <NotificationItemMain>
         <NotificationLine component="p" unread={unread}>
           {parts.before}
-          <NotificationSubject>{parts.subject}</NotificationSubject>
+          <NotificationSubject><bdi>{parts.subject}</bdi></NotificationSubject>
           {parts.after}
         </NotificationLine>
-        {snippet.length === 0 ? null : (
+        {snippet.before.length + snippet.isolated.length + snippet.after.length === 0 ? null : (
           <NotificationSnippetLine variant="body2" component="p">
-            {translateDeletedContent(snippet, t)}
+            {snippet.before}
+            {snippet.isolated.length === 0 ? null : <bdi>{snippet.isolated}</bdi>}
+            {snippet.after}
           </NotificationSnippetLine>
         )}
       </NotificationItemMain>

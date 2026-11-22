@@ -88,9 +88,14 @@ export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) =>
           {detailFor(error, t)}
         </Typography>
         {traceId === undefined ? null : (
-          <Typography variant="caption" component="p" sx={{ mb: '1.4rem' }}>
-            {t.errors.traceId} <code>{traceId}</code>
-          </Typography>
+          <Box sx={{ mb: '1.4rem' }}>
+            <Typography variant="caption" component="p">
+              {t.errors.traceId} <code>{traceId}</code>
+            </Typography>
+            <Typography variant="caption" component="p" data-testid="root-error-trace-hint">
+              {t.errors.traceIdHint}
+            </Typography>
+          </Box>
         )}
         {isUnauthorized(error) ? (
           <Button variant="contained" fullWidth href="/login" data-testid="root-error-sign-in">

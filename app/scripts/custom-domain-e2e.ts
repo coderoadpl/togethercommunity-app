@@ -340,13 +340,15 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
     await page.getByRole('link', { name: en.tenant.visitorOwnCommunity }).click();
     await page.getByRole('link', { name: /Acme Courses/u }).waitFor({ state: 'visible', timeout: 20000 });
     await page.goto(foreignOrigin.href, { waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: en.tenant.visitorSwitchAccount }).click();
+    await page.getByRole('banner').getByTestId('anon-sign-out').click();
     try {
       await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
     } catch (cause) {
-      throw new E2eFailure(`Account switch failed at ${page.url()}: ${await page.locator('body').innerText()}\n${String(cause)}`);
+      throw new E2eFailure(`Header sign-out failed at ${page.url()}: ${await page.locator('body').innerText()}\n${String(cause)}`);
     }
-    assert((await sessionCookies(context)).length === 0, 'switching accounts retained the shared session');
+    assert((await sessionCookies(context)).length === 0, 'header sign-out retained the shared session');
+    const signedOutMe = await page.request.get(new URL(API_PATHS.me, foreignOrigin).href);
+    assert(signedOutMe.status() === 401, `header sign-out left foreign-host /api/me answering HTTP ${signedOutMe.status()}`);
     console.log('custom-domain-e2e: shared session falls back to a foreign-tenant visitor OK');
     await context.close();
   } finally {

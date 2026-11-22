@@ -115,7 +115,8 @@ describe('TenantHomePage dispatcher', () => {
     await renderHome();
 
     const card = await screen.findByTestId('tenant-home-error');
-    expect(screen.getByRole('heading', { level: 1, name: en.errors.headingGeneric })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: en.errors.bootHeading })).toBeInTheDocument();
+    expect(card).toHaveTextContent(en.errors.bootEyebrow);
     expect(screen.getByRole('alert')).toHaveTextContent(en.errors.messageInternal);
     expect(card.querySelectorAll('button')).toHaveLength(1);
     expect(screen.getByRole('button', { name: en.common.retry })).toBeInTheDocument();

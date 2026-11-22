@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Capability } from './authorization.js';
+import { priceIntervalSchema, priceKindSchema } from './commerce.js';
 import { appError, type AppError } from './errors.js';
 import type { ShopManagementKey } from './shop-management-key.js';
 
@@ -88,9 +89,15 @@ export type ChangeProposalStatus = z.output<typeof changeProposalStatusSchema>;
 
 export type ChangeProposalTerminalStatus = Exclude<ChangeProposalStatus, 'pending'>;
 
-export const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatusSchema.options, 'expired']);
+const changeProposalDisplayStatusSchema = z.enum([...changeProposalStatusSchema.options, 'expired']);
 
 export type ChangeProposalDisplayStatus = z.output<typeof changeProposalDisplayStatusSchema>;
+
+export const CHANGE_PROPOSAL_DECIDED_FILTER = 'decided';
+
+export const changeProposalListStatusSchema = z.enum([...changeProposalDisplayStatusSchema.options, CHANGE_PROPOSAL_DECIDED_FILTER]);
+
+export type ChangeProposalListStatus = z.output<typeof changeProposalListStatusSchema>;
 
 const changeProposalEventKindSchema = z.enum([
   'proposed',
@@ -286,6 +293,25 @@ const changeProposalEventViewSchema = z.object({
 
 export type ChangeProposalEventView = z.output<typeof changeProposalEventViewSchema>;
 
+const changeProposalIssuerSchema = z.object({
+  issuerUserId: z.string(),
+  issuerEmail: z.string().nullable(),
+  issuerIsVerifiedOwner: z.boolean(),
+  issuerIsFormerTeamMember: z.boolean(),
+}).strict();
+
+export const changeProposalTargetPriceSchema = z.object({
+  kind: priceKindSchema,
+  interval: priceIntervalSchema.nullable(),
+  intervalCount: z.number().int().min(1),
+  amountCents: z.number().int().min(0),
+  currency: z.string(),
+}).strict();
+
+export type ChangeProposalTargetPrice = z.output<typeof changeProposalTargetPriceSchema>;
+
+type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
+
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
@@ -293,18 +319,21 @@ export const changeProposalOwnerViewSchema = z.object({
   groupPosition: z.number().int().nullable(),
   operation: changeProposalStoredOperationSchema,
   target: changeProposalTargetSchema,
+  targetLabel: z.string().nullable(),
+  targetPrice: changeProposalTargetPriceSchema.nullable(),
   input: changeProposalInputSchema,
   effect: changeProposalEffectSchema,
   status: changeProposalDisplayStatusSchema,
   proposedBy: z.object({
     keyId: z.string(),
     keyName: z.string(),
-    issuerUserId: z.string(),
     keyState: changeProposalKeyStateSchema,
-  }).strict(),
+  }).merge(changeProposalIssuerSchema).strict(),
   createdAt: z.string(),
   expiresAt: z.string(),
   decidedByUserId: z.string().nullable(),
+  decidedByEmail: z.string().nullable(),
+  decidedByIsFormerTeamMember: z.boolean(),
   decidedAt: z.string().nullable(),
   decisionNote: z.string().nullable(),
   appliedResourceId: z.string().nullable(),
@@ -339,9 +368,18 @@ export type ChangeProposalKeyReceipt = z.output<typeof changeProposalKeyReceiptS
 export const changeProposalOwnerPageSchema = z.object({
   proposals: z.array(changeProposalOwnerViewSchema),
   nextCursor: z.string().nullable(),
+  hasMore: z.boolean(),
 }).strict();
 
 export type ChangeProposalOwnerPage = z.output<typeof changeProposalOwnerPageSchema>;
+
+export const changeProposalSummarySchema = z.object({
+  pending: z.number().int().min(0),
+  pendingGroups: z.number().int().min(0),
+  hasProposals: z.boolean(),
+}).strict();
+
+export type ChangeProposalSummary = z.output<typeof changeProposalSummarySchema>;
 
 export const changeProposalKeyReceiptPageSchema = z.object({
   proposals: z.array(changeProposalKeyReceiptSchema),
@@ -353,7 +391,7 @@ export type ChangeProposalKeyReceiptPage = z.output<typeof changeProposalKeyRece
 const CHANGE_PROPOSAL_PAGE_SIZE = { default: 50, max: 100 } as const;
 
 export const changeProposalListInputSchema = z.object({
-  status: changeProposalDisplayStatusSchema.optional(),
+  status: changeProposalListStatusSchema.optional(),
   cursor: changeProposalIdentifierSchema.optional(),
   groupId: changeProposalIdentifierSchema.optional(),
   limit: z.number().int().min(1).max(CHANGE_PROPOSAL_PAGE_SIZE.max).default(CHANGE_PROPOSAL_PAGE_SIZE.default),
@@ -391,30 +429,44 @@ const toChangeProposalEventView = (event: ChangeProposalEvent): ChangeProposalEv
   at: event.at,
 });
 
+/** Read at view time: the live label and price are for display only and never take part in a decision. */
+export interface ChangeProposalOwnerFacts {
+  keyState: ChangeProposalKeyState;
+  groupTitle: string | null;
+  issuer: Omit<ChangeProposalIssuer, 'issuerUserId'>;
+  decidedBy: { email: string | null; formerTeamMember: boolean };
+  targetLabel: string | null;
+  targetPrice: ChangeProposalTargetPrice | null;
+}
+
 export const toChangeProposalOwnerView = (
   proposal: ChangeProposal,
-  keyState: ChangeProposalKeyState,
-  groupTitle: string | null,
+  facts: ChangeProposalOwnerFacts,
   now: string,
 ): ChangeProposalOwnerView => ({
   id: proposal.id,
   groupId: proposal.groupId,
-  groupTitle: proposal.groupId === null ? null : groupTitle,
+  groupTitle: proposal.groupId === null ? null : facts.groupTitle,
   groupPosition: proposal.groupPosition,
   operation: proposal.operation,
   target: proposal.target,
+  targetLabel: facts.targetLabel,
+  targetPrice: facts.targetPrice,
   input: proposal.input,
   effect: proposal.effect,
   status: changeProposalDisplayStatus(proposal, now),
   proposedBy: {
     keyId: proposal.proposedByKeyId,
     keyName: proposal.proposedByKeyName,
+    keyState: facts.keyState,
     issuerUserId: proposal.proposedByIssuerUserId,
-    keyState,
+    ...facts.issuer,
   },
   createdAt: proposal.createdAt,
   expiresAt: proposal.expiresAt,
   decidedByUserId: proposal.decidedByUserId,
+  decidedByEmail: proposal.decidedByUserId === null ? null : facts.decidedBy.email,
+  decidedByIsFormerTeamMember: proposal.decidedByUserId !== null && facts.decidedBy.formerTeamMember,
   decidedAt: proposal.decidedAt,
   decisionNote: proposal.decisionNote,
   appliedResourceId: proposal.appliedResourceId,
@@ -424,12 +476,11 @@ export const toChangeProposalOwnerView = (
 
 export const toChangeProposalOwnerDetail = (
   proposal: ChangeProposal,
-  keyState: ChangeProposalKeyState,
-  groupTitle: string | null,
+  facts: ChangeProposalOwnerFacts,
   events: readonly ChangeProposalEvent[],
   now: string,
 ): ChangeProposalOwnerDetail => ({
-  ...toChangeProposalOwnerView(proposal, keyState, groupTitle, now),
+  ...toChangeProposalOwnerView(proposal, facts, now),
   events: events.map(toChangeProposalEventView),
 });
 

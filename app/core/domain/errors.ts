@@ -43,6 +43,44 @@ export interface AppError {
   details?: unknown;
 }
 
+const DESCRIBES_THE_REQUEST: Record<ErrorCode, boolean> = {
+  unauthorized: false,
+  invalid_credentials: false,
+  forbidden: false,
+  banned: false,
+  not_found: true,
+  validation: true,
+  conflict: true,
+  tenant_not_found: false,
+  integration_not_configured: false,
+  integration_auth: false,
+  integration_unavailable: false,
+  unavailable: false,
+  rate_limited: false,
+  not_consented: true,
+  suppressed: true,
+  unsubscribed: true,
+  pending_confirmation: true,
+  ses_not_configured: false,
+  broadcasts_disabled: false,
+  transactional_platform_cap_reached: false,
+  slug_reserved: true,
+  invoice_exemption_basis_missing: true,
+  impersonation_read_only: false,
+  shipping_required: true,
+  sold_out: true,
+  fulfilment_conflict: true,
+  shipx_unavailable: false,
+  shipx_rejected: true,
+  feed_cursor_reset: true,
+  workspace_quota_exceeded: true,
+  organization_managed: true,
+  internal: false,
+};
+
+/** True for a refusal of the request itself against the current state; false for the caller, the configuration or the infrastructure. */
+export const describesTheRequest = (error: Pick<AppError, 'code'>): boolean => DESCRIBES_THE_REQUEST[error.code];
+
 export const appError = (code: ErrorCode, message: string, details?: unknown): AppError =>
   details === undefined ? { code, message } : { code, message, details };
 

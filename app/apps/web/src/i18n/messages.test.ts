@@ -86,6 +86,15 @@ describe('i18n dictionaries', () => {
     }
   });
 
+  it('counts lessons inline in lowercase with the right plural form', () => {
+    expect([1, 3, 12, 22].map((count) => en.courseOverview.lessonCount({ count }))).toEqual([
+      '1 lesson', '3 lessons', '12 lessons', '22 lessons',
+    ]);
+    expect([1, 3, 12, 22].map((count) => pl.courseOverview.lessonCount({ count }))).toEqual([
+      '1 lekcja', '3 lekcje', '12 lekcji', '22 lekcje',
+    ]);
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });

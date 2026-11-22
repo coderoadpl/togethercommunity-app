@@ -2,14 +2,12 @@ import {
   appError,
   CHANGE_PROPOSAL_LIMITS,
   changeProposalDisplayStatus,
-  changeProposalKeyState,
   err,
   forbidden,
   ok,
   validation,
   type AppError,
   type ChangeProposal,
-  type ChangeProposalKeyState,
   type ChangeProposalTerminalStatus,
   type Result,
   type ShopManagementKey,
@@ -17,7 +15,6 @@ import {
 
 import type { Ctx } from './context.js';
 import { ownerSessionTenant } from './owner-session.js';
-import type { ChangeProposalGroupRepository, ShopManagementKeyRepository } from './ports.js';
 
 export interface ProposingKey {
   tenantId: string;
@@ -50,32 +47,14 @@ export const settledConflict = (proposal: ChangeProposal, now: string): AppError
 export const keyNamed = (keys: readonly ShopManagementKey[], keyId: string): ShopManagementKey | null =>
   keys.find((key) => key.id === keyId) ?? null;
 
-export const keyStates = async (
-  tenantId: string,
-  deps: { shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'> },
-  now: string,
-): Promise<(proposal: Pick<ChangeProposal, 'proposedByKeyId'>) => ChangeProposalKeyState> => {
-  const keys = await deps.shopManagementKeys.listByTenant(tenantId);
-  return (proposal) => changeProposalKeyState(keyNamed(keys, proposal.proposedByKeyId), now);
-};
-
-export const groupTitles = async (
-  tenantId: string,
-  proposals: readonly Pick<ChangeProposal, 'groupId'>[],
-  deps: { changeProposalGroups: Pick<ChangeProposalGroupRepository, 'listByIds'> },
-): Promise<(proposal: Pick<ChangeProposal, 'groupId'>) => string | null> => {
-  const ids = [...new Set(proposals.flatMap((proposal) => proposal.groupId === null ? [] : [proposal.groupId]))];
-  const groups = await deps.changeProposalGroups.listByIds(tenantId, ids);
-  return (proposal) => groups.find((group) => group.id === proposal.groupId)?.title ?? null;
-};
-
 export type ApprovalOutcome =
   | { status: 'applied'; appliedResourceId: string | null; at: string }
   | { status: 'stale'; note: string | null; at: string }
   | { status: 'failed'; error: AppError; at: string }
-  | { status: 'expired'; at: string };
+  | { status: 'expired'; at: string }
+  | { status: 'aborted'; error: AppError };
 
-export type DecidedOutcome = Exclude<ApprovalOutcome, { status: 'expired' }>;
+export type DecidedOutcome = Exclude<ApprovalOutcome, { status: 'expired' | 'aborted' }>;
 
 export const outcomeFields = (outcome: DecidedOutcome): {
   status: ChangeProposalTerminalStatus;

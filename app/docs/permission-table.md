@@ -30,7 +30,7 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 `change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key's write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key.
 
-Closed capability count: 144. Route rows: 536. Exported `Ctx` use-case rows: 401.
+Closed capability count: 144. Route rows: 537. Exported `Ctx` use-case rows: 402.
 
 ## Human-readable diff
 
@@ -299,6 +299,7 @@ no changes
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/personalization` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/change-proposals/summary` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
@@ -604,6 +605,7 @@ no changes
 | `change-proposals.ts#getOwnChangeProposal` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#withdrawOwnChangeProposal` | proposal:own:manage | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#listChangeProposals` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
+| `change-proposals.ts#getChangeProposalSummary` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#getChangeProposal` | proposal:read | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#rejectChangeProposal` | proposal:decide | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |
 | `change-proposals.ts#approveChangeProposal` | proposal:decide | owner | owner | yes | core/server/usecases/change-proposals.ts authorization call |

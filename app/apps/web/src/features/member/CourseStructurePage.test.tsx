@@ -752,7 +752,7 @@ describe('CourseStructurePage', () => {
     const user = userEvent.setup();
     const module = await screen.findByTestId('module-toggle-m1');
     expect(module.closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
-    expect(module).toHaveTextContent(`3 ${en.courseOverview.statLessons({ count: 3 })}`);
+    expect(module).toHaveTextContent(en.courseOverview.lessonCount({ count: 3 }));
     await user.click(module);
     expect((await screen.findByTestId('chapter-toggle-c1')).closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
     expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(en.anon.previewChip);

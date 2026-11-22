@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Box, Link as MuiLink, Stack, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from '@tanstack/react-router';
 
 import { PUBLIC_OFFER_ANCHOR } from '#core/contract/index.js';
@@ -48,10 +48,17 @@ type OfferAnchorSection = 'offer' | 'locked' | 'courses' | 'spaces';
 
 const useScrollToOfferAnchor = (ready: boolean) => {
   const hash = useLocation({ select: (location) => location.hash });
+  const settled = useIsFetching() === 0;
+  const scrolledFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!ready || hash !== PUBLIC_OFFER_ANCHOR) return;
+    if (hash !== PUBLIC_OFFER_ANCHOR) {
+      scrolledFor.current = null;
+      return;
+    }
+    if (!ready || !settled || scrolledFor.current === hash) return;
+    scrolledFor.current = hash;
     document.getElementById(PUBLIC_OFFER_ANCHOR)?.scrollIntoView({ block: 'start' });
-  }, [ready, hash]);
+  }, [ready, settled, hash]);
 };
 
 export const AnonHomePage = () => {

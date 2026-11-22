@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Box, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
@@ -31,31 +31,34 @@ const OfferCard = ({
   heading,
   description,
   price,
-  action,
+  renderAction,
 }: {
   testId: string;
   heading: string;
   description?: string | undefined;
   price: string;
-  action: ReactNode;
-}) => (
-  <CourseCardRoot data-testid={testId}>
-    <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', flexGrow: 1 }}>
-      <Typography variant="h3" component="h3" color="text.primary">
-        {heading}
-      </Typography>
-      {description ? (
-        <Typography variant="body2" color="text.secondary">
-          {description}
+  renderAction: (headingId: string) => ReactNode;
+}) => {
+  const headingId = useId();
+  return (
+    <CourseCardRoot data-testid={testId}>
+      <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', flexGrow: 1 }}>
+        <Typography id={headingId} variant="h3" component="h3" color="text.primary">
+          {heading}
         </Typography>
-      ) : null}
-      <Typography variant="body1" component="p" data-testid={`${testId}-price`}>
-        <DataValue>{price}</DataValue>
-      </Typography>
-      <Box sx={{ mt: 'auto', pt: '0.25rem' }}>{action}</Box>
-    </Box>
-  </CourseCardRoot>
-);
+        {description ? (
+          <Typography variant="body2" color="text.secondary">
+            {description}
+          </Typography>
+        ) : null}
+        <Typography variant="body1" component="p" data-testid={`${testId}-price`}>
+          <DataValue>{price}</DataValue>
+        </Typography>
+        <Box sx={{ mt: 'auto', pt: '0.25rem' }}>{renderAction(headingId)}</Box>
+      </Box>
+    </CourseCardRoot>
+  );
+};
 
 const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
   const t = useTranslations();
@@ -73,8 +76,10 @@ const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
       testId={`offer-product-${product.id}`}
       heading={product.title}
       price={prices.map((price) => formatOfferPriceTerms(price, language, labels)).join(' · ')}
-      action={(
+      renderAction={(headingId) => (
         <EmberCtaLink
+          id={`${headingId}-cta`}
+          aria-labelledby={`${headingId}-cta ${headingId}`}
           component={Link}
           to={`/checkout/${encodeURIComponent(product.id)}`}
           variant="contained"
@@ -97,8 +102,10 @@ const SalesLinkOfferCard = ({ salesLink }: { salesLink: OfferSalesLink }) => {
       heading={salesLink.heading}
       description={salesLink.description}
       price={formatPrice(salesLink.totalCents, salesLink.currency, language)}
-      action={(
+      renderAction={(headingId) => (
         <EmberCtaLink
+          id={`${headingId}-cta`}
+          aria-labelledby={`${headingId}-cta ${headingId}`}
           component="a"
           href={`/offer/${encodeURIComponent(salesLink.slug)}`}
           variant="contained"

@@ -254,7 +254,7 @@ describe('AnonHomePage', () => {
 
     const section = await screen.findByTestId('anon-offer');
     expect(section).toHaveAttribute('id', 'offer');
-    expect(within(section).getByRole('link', { name: en.salesLinks.buyBundle })).toHaveAttribute('href', '/offer/complete-bundle');
+    expect(within(section).getByRole('link', { name: `${en.salesLinks.buyBundle} Complete bundle` })).toHaveAttribute('href', '/offer/complete-bundle');
     expect(within(section).getByRole('heading', { level: 3, name: 'Complete bundle' })).toBeInTheDocument();
     expect(section).toHaveTextContent('Every course in one pack.');
     expect(section).not.toHaveTextContent(en.salesLinks.heading);
@@ -303,9 +303,9 @@ describe('AnonHomePage', () => {
   });
 
   it('scrolls to the offer section when the page opens on the offer anchor', async () => {
-    const scrolled: string[] = [];
+    const scrolled: (string | null)[] = [];
     const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function record(this: Element) {
-      scrolled.push(this.id);
+      scrolled.push(this.getAttribute('data-testid'));
     });
     try {
       server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
@@ -313,7 +313,7 @@ describe('AnonHomePage', () => {
       await renderPage('/#offer');
 
       await screen.findByTestId('anon-offer');
-      await waitFor(() => expect(scrolled).toContain('offer'));
+      await waitFor(() => expect(scrolled).toEqual(['anon-offer']));
     } finally {
       spy.mockRestore();
     }

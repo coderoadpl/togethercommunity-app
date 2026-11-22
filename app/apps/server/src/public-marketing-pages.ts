@@ -590,7 +590,7 @@ export const renderConfirmationPage = (input: {
     return renderStatusPage({
       ...common,
       title: t.confirmationExpiredTitle,
-      lines: [t.confirmationExpiredBody],
+      lines: [signupHref === null ? t.confirmationExpiredNoLinkBody : t.confirmationExpiredBody],
       cue: 'error',
       links: signupHref === null ? [] : [{ label: t.signupAgain, href: signupHref, primary: true }],
     });

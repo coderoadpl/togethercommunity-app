@@ -73,4 +73,5 @@ export interface PublicMarketingMessages {
   confirmationSuccessBody: (input: { tenant: string }) => string;
   confirmationExpiredTitle: string;
   confirmationExpiredBody: string;
+  confirmationExpiredNoLinkBody: string;
 }

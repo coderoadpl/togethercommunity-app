@@ -75,4 +75,5 @@ export const publicMarketingMessagesEn = {
   confirmationSuccessBody: ({ tenant }) => `You will receive e-mails from ${tenant}. Every message has a link to unsubscribe.`,
   confirmationExpiredTitle: 'This link is no longer active',
   confirmationExpiredBody: 'The confirmation link has expired or is invalid. Sign up again and we will send you a new link.',
+  confirmationExpiredNoLinkBody: 'The confirmation link has expired or is invalid. Ask the sender to send you a new link.',
 } satisfies PublicMarketingMessages;

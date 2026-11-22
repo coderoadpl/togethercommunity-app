@@ -75,4 +75,5 @@ export const publicMarketingMessagesPl = {
   confirmationSuccessBody: ({ tenant }) => `Będziesz otrzymywać wiadomości e-mail od nadawcy ${tenant}. W każdej z nich znajdziesz link do wypisania się.`,
   confirmationExpiredTitle: 'Link nie jest już aktywny',
   confirmationExpiredBody: 'Link potwierdzający wygasł albo jest nieprawidłowy. Zapisz się ponownie, a wyślemy nowy link.',
+  confirmationExpiredNoLinkBody: 'Link potwierdzający wygasł albo jest nieprawidłowy. Poproś nadawcę o przesłanie nowego linku.',
 } satisfies PublicMarketingMessages;

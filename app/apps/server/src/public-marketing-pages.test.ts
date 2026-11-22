@@ -574,7 +574,7 @@ describe('sign-up pages', () => {
 
   it.each([
     ['success', 'You are subscribed', 'status-cue--success', 'You will receive e-mails from Studio Demo. Every message has a link to unsubscribe.'],
-    ['expired', 'This link is no longer active', 'status-cue--error', 'The confirmation link has expired or is invalid. Sign up again and we will send you a new link.'],
+    ['expired', 'This link is no longer active', 'status-cue--error', 'The confirmation link has expired or is invalid. Ask the sender to send you a new link.'],
     ['prompt', 'Confirm your subscription', 'status-cue--info', 'Confirm that you want to receive messages from Studio Demo.'],
   ] as const)('renders the %s confirmation page left-aligned with a state cue', (state, title, cue, body) => {
     const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'en', path: '/marketing/confirm/token', state });
@@ -590,6 +590,8 @@ describe('sign-up pages', () => {
     const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'pl', path: '/marketing/confirm/token', state: 'expired', signupHref: '/marketing/forms/news?lang=pl&x="y"' });
     expect(html).toContain(`<div class="actions"><a class="button-link button-link--primary" href="/marketing/forms/news?lang=pl&amp;x=&quot;y&quot;">${publicMarketingMessagesPl.signupAgain}</a><a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a></div>`);
     expect(html).toContain(`<h1>${publicMarketingMessagesPl.confirmationExpiredTitle}</h1>`);
+    expect(html).toContain(`<p class="lede">${publicMarketingMessagesPl.confirmationExpiredBody}</p>`);
+    expect(html).not.toContain(publicMarketingMessagesPl.confirmationExpiredNoLinkBody);
     const success = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'pl', path: '/marketing/confirm/token', state: 'success' });
     expect(success).toContain(`<h1>${publicMarketingMessagesPl.confirmationSuccessTitle}</h1>`);
     expect(success).toContain(publicMarketingMessagesPl.confirmationSuccessBody({ tenant: 'Studio Demo' }));
@@ -762,8 +764,10 @@ describe('public signup persistence and confirmation', () => {
       expect(expired).toContain(`<a class="button-link button-link--primary" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
       const expiredPost = await (await fixture.request(`/marketing/confirm/${token}?lang=en`, { method: 'POST' })).text();
       expect(expiredPost).toContain('<a class="button-link button-link--primary" href="/marketing/forms/newsletter?lang=en">Sign up again</a>');
+      expect(expiredPost).toContain('Sign up again and we will send you a new link.');
       const unknown = await (await fixture.request('/marketing/confirm/unknown_confirmation_token_1234567?lang=en')).text();
       expect(unknown).toContain('This link is no longer active');
+      expect(unknown).toContain('<p class="lede">The confirmation link has expired or is invalid. Ask the sender to send you a new link.</p>');
       expect(unknown).not.toContain('button-link--primary"');
       expect(unknown).toContain('<a class="button-link" href="/">Go to the home page</a>');
       const definitions = fixture.deps.marketing.definitions;
@@ -779,6 +783,7 @@ describe('public signup persistence and confirmation', () => {
       directoryValue(await fixture.deps.marketingSignup.forms.save('directory-a', { ...fixture.form, status: 'archived', revision: fixture.form.revision + 1 }, fixture.form.revision));
       const archived = await (await fixture.request(`/marketing/confirm/${token}?lang=en`)).text();
       expect(archived).not.toContain('button-link--primary"');
+      expect(archived).toContain('Ask the sender to send you a new link.');
       expect(archived).toContain('<a class="button-link" href="/">Go to the home page</a>');
     } finally { await fixture.close(); }
   });

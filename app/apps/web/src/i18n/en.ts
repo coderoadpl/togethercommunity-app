@@ -2977,6 +2977,7 @@ export const en: Messages = {
       playback: 'Playback',
     },
     displayNameLabel: 'Display name',
+    displayNameNotSet: 'Not set',
     displayNameHint: 'Shown next to your posts and comments in this community.',
     displayNameSave: 'Save',
     displayNameSaved: 'Display name updated.',

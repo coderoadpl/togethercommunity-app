@@ -292,6 +292,18 @@ describe('Account dialogs', () => {
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
   });
 
+  it('labels the saved display name and falls back to a not-set value instead of an empty line', () => {
+    const view = render(<LanguageProvider><AccountNameFields savedDisplayName="Ada" onCancel={vi.fn()} displayName="Ada" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    const value = screen.getByTestId('account-display-name-value');
+    expect(value.tagName).toBe('DD');
+    expect(value).toHaveTextContent('Ada');
+    const label = screen.getByText(en.account.displayNameLabel);
+    expect(label.tagName).toBe('DT');
+    expect(label.parentElement).toBe(value.parentElement);
+    view.rerender(<LanguageProvider><AccountNameFields savedDisplayName="  " onCancel={vi.fn()} displayName="" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    expect(screen.getByTestId('account-display-name-value')).toHaveTextContent(en.account.displayNameNotSet);
+  });
+
   it('opens support and keeps submit errors in the dialog', async () => {
     const onSubmit = vi.fn();
     render(<LanguageProvider><AccountSupportForm supportSubject="Help" supportBody="Details" onSubjectChange={vi.fn()} onBodyChange={vi.fn()} pending={false} error={failure} onSubmit={onSubmit} /></LanguageProvider>);

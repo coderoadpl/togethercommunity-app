@@ -370,6 +370,10 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByRole('heading', { level: 2, name: en.account.signedInAs }))
       .not.toBeInTheDocument();
     expect(screen.getAllByText('member@together.dev')).toHaveLength(1);
+    const divider = screen.getByTestId('account-profile-divider');
+    expect(screen.getByRole('button', { name: en.account.avatarUpload }).compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.compareDocumentPosition(screen.getByTestId('account-display-name-value')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('account-display-name-value')).toHaveTextContent('Ada');
   });
 
   it('describes the display-name field with its hint instead of the card', async () => {

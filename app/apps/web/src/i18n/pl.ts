@@ -3031,6 +3031,7 @@ export const pl: Messages = {
       playback: 'Odtwarzanie',
     },
     displayNameLabel: 'Wyświetlana nazwa',
+    displayNameNotSet: 'Nie ustawiono',
     displayNameHint: 'Widoczna przy Twoich wpisach i odpowiedziach w tej społeczności.',
     displayNameSave: 'Zapisz',
     displayNameSaved: 'Wyświetlana nazwa została zapisana.',

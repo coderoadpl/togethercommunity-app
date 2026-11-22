@@ -2623,6 +2623,7 @@ export interface Messages {
     tabsLabel: string;
     tabs: { profile: string; security: string; notifications: string; playback: string };
     displayNameLabel: string;
+    displayNameNotSet: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;

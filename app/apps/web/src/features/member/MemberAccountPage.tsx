@@ -379,6 +379,7 @@ export const MemberAccountPage = () => {
                     });
                   }}
             />
+            <Divider data-testid="account-profile-divider" />
             <AccountNameFields savedDisplayName={savedDisplayName} onCancel={() => setDisplayNameDraft(null)} success={updateProfile.isSuccess} error={updateProfile.error} onSubmit={() => updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() })} displayName={displayName} onChange={setDisplayNameDraft} pending={updateProfile.isPending} dirty={displayName.trim() !== savedDisplayName.trim()} />
           </SectionCard>
           </Box>

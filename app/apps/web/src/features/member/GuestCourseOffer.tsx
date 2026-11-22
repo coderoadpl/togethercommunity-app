@@ -86,7 +86,7 @@ const CourseFacts = ({ course }: { course: CourseStructureWithAccess }) => {
       <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: '0.5rem' }} data-testid="guest-course-lessons">
         <StatLessonsIcon />
         <Typography variant="body2" component="span">
-          {`${totals.total} ${t.courseOverview.statLessons({ count: totals.total })}`}
+          {t.courseOverview.lessonCount({ count: totals.total })}
         </Typography>
       </Stack>
       {totals.totalMinutes > 0 ? (

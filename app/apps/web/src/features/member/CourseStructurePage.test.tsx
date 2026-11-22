@@ -568,7 +568,7 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
     expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-lessons')).toHaveTextContent(
-      `5 ${en.courseOverview.statLessons({ count: 5 })}`,
+      en.courseOverview.lessonCount({ count: 5 }),
     );
     expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-duration')).toHaveTextContent(
       en.courseOverview.durationHoursMinutes({ hours: 1, minutes: 0 }),

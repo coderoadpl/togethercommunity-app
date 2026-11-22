@@ -2461,6 +2461,7 @@ export const pl: Messages = {
     aboutCourse: 'O kursie',
     coverAlt: ({ name }) => format('Okładka kursu {name}', { name }),
     statLessons: ({ count }) => plural(count, 'Lekcja', 'Lekcje', 'Lekcji'),
+    lessonCount: ({ count }) => `${count} ${plural(count, 'lekcja', 'lekcje', 'lekcji')}`,
     statDuration: 'Łączny czas',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} godz. {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),

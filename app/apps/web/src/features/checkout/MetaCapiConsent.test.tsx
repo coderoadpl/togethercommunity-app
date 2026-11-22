@@ -25,9 +25,22 @@ it('shows labelled modal, equal choices, disclosures and privacy link without ch
   expect(decline).toHaveClass('MuiButton-outlined', 'MuiButton-fullWidth');
   expect(accept).not.toHaveFocus();
   expect(decline).not.toHaveFocus();
-  expect(screen.getByRole('link', { name: en.metaCapi.privacyPolicy })).toHaveAttribute('href', metaCapiConfig.privacyUrl);
-  await user.click(screen.getByRole('button', { name: en.metaCapi.fieldsToggle }));
+  const privacy = screen.getByRole('link', { name: `${en.metaCapi.privacyPolicy} ${en.metaCapi.newTabHint}` });
+  expect(privacy).toHaveAttribute('href', metaCapiConfig.privacyUrl);
+  expect(privacy).toHaveAttribute('target', '_blank');
+  const toggle = screen.getByRole('button', { name: en.metaCapi.fieldsToggle });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const fields = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+  expect(fields).not.toBeNull();
+  expect(fields).not.toBeVisible();
+  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView');
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(fields).toBeVisible();
   expect(screen.getAllByRole('listitem')).toHaveLength(4);
+  expect(scrolled.mock.contexts[0]).toBe(screen.getAllByRole('listitem')[0]);
+  scrolled.mockRestore();
   decline.focus();
   await user.tab();
   expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
@@ -46,8 +59,11 @@ it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the
   fireEvent.click(screen.getByRole('button', { name: choice === 'granted' ? metaCapiConfig.acceptLabel : metaCapiConfig.declineLabel }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   await waitFor(() => expect(requestBody).toHaveBeenCalledWith({ sessionId, decision: choice, locale: metaCapiConfig.locale, textVersion: metaCapiConfig.textVersion, fbp: 'fb.1.123456.987' }));
+  expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.saving);
   await act(async () => { finish(HttpResponse.json({ ok: true, data: { consent: choice, withdrawnAt: null } })); });
-  if (choice === 'granted') expect(await screen.findByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(choice === 'granted' ? en.metaCapi.granted : en.metaCapi.denied));
+  if (choice === 'granted') expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
+  else expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
 });
 
 it.each(['escape', 'backdrop'])('dismisses with %s without recording a choice and waits until a later session', async (method) => {
@@ -62,9 +78,11 @@ it.each(['escape', 'backdrop'])('dismisses with %s without recording a choice an
     fireEvent.click(backdrop);
   }
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.undecided);
   rendered.unmount();
   const revisited = renderConsent();
   expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: en.metaCapi.decide })).toBeVisible();
   expect(decide).not.toHaveBeenCalled();
   revisited.unmount();
   dismissal.clear();
@@ -84,6 +102,40 @@ it('clears dismissal after a write error so a reload can retry', async () => {
   expect(screen.getByRole('dialog')).toBeVisible();
 });
 
+it('reopens the dialog from the error alert without recording a choice', async () => {
+  const decide = vi.fn(() => HttpResponse.error());
+  server.use(http.post('/api/public/meta-capi/consent', decide));
+  renderConsent();
+  fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).not.toHaveTextContent(/reload/i);
+  expect(screen.queryByRole('status')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
+  expect(await screen.findByRole('dialog', { name: metaCapiConfig.heading })).toBeVisible();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(decide).toHaveBeenCalledOnce();
+});
+
+it('reopens a dismissed dialog from the no-decision row and records nothing until a choice', async () => {
+  const decide = vi.fn(() => HttpResponse.json({ ok: true, data: { consent: 'denied', withdrawnAt: null } }));
+  server.use(http.post('/api/public/meta-capi/consent', decide));
+  dismissal.save();
+  renderConsent();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: en.metaCapi.decide }));
+  expect(await screen.findByRole('dialog')).toBeVisible();
+  expect(decide).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.declineLabel }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.denied));
+  expect(screen.queryByRole('button', { name: en.metaCapi.decide })).toBeNull();
+});
+
+it('offers no new grant after a refusal', () => {
+  renderConsent({ ...metaCapiConfig, consent: 'denied' });
+  expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.denied);
+  expect(screen.queryByRole('button')).toBeNull();
+});
+
 it('keeps a granted state and retry action when guest withdrawal fails, even after disabling CAPI', async () => {
   const requestBody = vi.fn();
   server.use(http.post('/api/public/meta-capi/consent', async ({ request }) => {
@@ -93,12 +145,14 @@ it('keeps a granted state and retry action when guest withdrawal fails, even aft
   renderConsent({ ...metaCapiConfig, enabled: false, consent: 'granted' });
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdraw }));
-  await screen.findByRole('alert');
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.metaCapi.withdrawError);
   expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeEnabled();
   expect(requestBody).toHaveBeenCalledWith({ sessionId, decision: 'withdrawn' });
   server.use(http.post('/api/public/meta-capi/consent', () => HttpResponse.json({ ok: true, data: { consent: 'granted', withdrawnAt: '2026-11-05T10:00:00.000Z' } })));
   fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdraw }));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.withdrawn));
+  expect(screen.getByRole('status')).toHaveFocus();
+  expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
 });
 

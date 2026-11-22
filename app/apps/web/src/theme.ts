@@ -4295,12 +4295,13 @@ export const LessonImageLightbox = styled(Box)(({ theme }) => ({
   },
 }));
 
-export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' })<{ fillRatio: number | null }>(({ theme, fillRatio }) => ({
+export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' && prop !== 'vector' })<{ vector: boolean; fillRatio: number | null }>(({ theme, vector, fillRatio }) => ({
   display: 'block',
-  width: fillRatio === null ? 'auto' : `min(100cqw, calc(100cqh * ${String(fillRatio)}))`,
-  height: 'auto',
+  width: fillRatio !== null ? `min(100cqw, calc(100cqh * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
+  height: vector && fillRatio === null ? '100cqh' : 'auto',
   maxWidth: '100cqw',
   maxHeight: '100cqh',
+  objectFit: 'contain',
   backgroundColor: theme.palette.common.white,
 }));
 

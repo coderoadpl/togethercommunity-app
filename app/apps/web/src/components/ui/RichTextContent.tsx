@@ -9,6 +9,7 @@ interface LightboxImage {
   src: string;
   alt: string;
   figcaption: string;
+  vector: boolean;
   fillRatio: number | null;
   html: string;
 }
@@ -66,13 +67,22 @@ export const RichTextContent = ({
     if (!(target instanceof HTMLImageElement) || target.closest('a')) return;
     target.focus();
     const src = target.currentSrc || target.src;
+    const vector = isVectorSource(src);
     setSelected({
       src,
       alt: target.alt,
       figcaption: target.closest('figure')?.querySelector('figcaption')?.textContent?.trim() ?? '',
-      fillRatio: isVectorSource(src) ? renderedRatio(target) : null,
+      vector,
+      fillRatio: vector ? renderedRatio(target) : null,
       html,
     });
+  };
+  const measureVector = (loaded: HTMLImageElement) => {
+    const { naturalWidth, naturalHeight } = loaded;
+    if (naturalWidth === 0 || naturalHeight === 0) return;
+    setSelected((current) => current?.vector === true && current.fillRatio === null
+      ? { ...current, fillRatio: naturalWidth / naturalHeight }
+      : current);
   };
   const close = () => setSelected(null);
   const closeOutsideImage = (event: MouseEvent<HTMLElement>) => {
@@ -108,7 +118,7 @@ export const RichTextContent = ({
       >
         <IconButton autoFocus disableFocusRipple data-slot="close" aria-label={t.common.close} onClick={close}><CloseIcon /></IconButton>
         <Box data-slot="stage">
-          {image && <LessonLightboxImage src={image.src} alt={image.alt} fillRatio={image.fillRatio} />}
+          {image && <LessonLightboxImage src={image.src} alt={image.alt} vector={image.vector} fillRatio={image.fillRatio} onLoad={(event) => measureVector(event.currentTarget)} />}
         </Box>
         {figcaption && <Typography id={captionId} data-slot="caption">{figcaption}</Typography>}
       </LessonImageLightbox>

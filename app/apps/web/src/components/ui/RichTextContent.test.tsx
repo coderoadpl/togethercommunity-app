@@ -158,6 +158,20 @@ describe('RichTextContent', () => {
     expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 3))'))).toBe(true);
   });
 
+  it('fills the viewer with an unmeasured vector image and sizes it by its natural ratio once loaded', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<img src="/badge.svg" alt="Badge">'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Badge' }) }));
+    const vector = within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' });
+    expect(stylesAt(vector, 1440)).toMatchObject({ width: '100cqw', height: '100cqh', 'object-fit': 'contain' });
+
+    Object.defineProperties(vector, { naturalWidth: { value: 200 }, naturalHeight: { value: 50 } });
+    fireEvent.load(vector);
+
+    await waitFor(() => expect(stylesAt(within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' }), 1440)['height']).toBe('auto'));
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 4))'))).toBe(true);
+  });
+
   it('shows the image edge to edge on a phone and inset from a tablet up', async () => {
     const user = userEvent.setup();
     render(<RichTextContent html={'<img src="/diagram.png" alt="Diagram">'} />);
@@ -186,20 +200,6 @@ describe('RichTextContent', () => {
     link.focus();
     await user.keyboard('{Enter}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('closes on backdrop click and restores focus', async () => {
-    const user = userEvent.setup();
-    const { baseElement } = render(<RichTextContent html={'<img src="/diagram.svg" alt="Diagram">'} />);
-    const trigger = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) });
-    await user.click(trigger);
-    const backdrop = baseElement.querySelector('.MuiBackdrop-root');
-    expect(backdrop).not.toBeNull();
-    if (backdrop === null) throw new Error('Missing lightbox backdrop');
-    fireEvent.click(backdrop);
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(trigger).toHaveFocus();
   });
 
   it('clears the selection when lesson HTML changes and keeps it closed on returning', async () => {

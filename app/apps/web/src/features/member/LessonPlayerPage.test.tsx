@@ -1475,15 +1475,21 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('lesson-block-0').compareDocumentPosition(error)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByTestId(trigger)).toBeInTheDocument();
 
+    const footer = error.closest('footer');
     await user.click(within(error).getByRole('button', { name: en.common.retry }));
 
     expect(await screen.findByTestId(settledTestId)).toBeInTheDocument();
     expect(calls).toBe(2);
     await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+    expect(footer).toHaveFocus();
   });
 
   it('retries a failed complete and continue and then moves on', async () => {
     let completeCalls = 0;
+    let releaseRetry: () => void = () => undefined;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
     server.use(
       okStructure(),
       okProgress(),
@@ -1497,11 +1503,13 @@ describe('LessonPlayerPage', () => {
           },
         });
       }),
-      http.post('/api/student/lessons/complete', () => {
+      http.post('/api/student/lessons/complete', async () => {
         completeCalls += 1;
-        return completeCalls === 1
-          ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 })
-          : HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
+        if (completeCalls === 1) {
+          return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+        }
+        await retryGate;
+        return HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
       }),
     );
     const rootRoute = createRootRoute();
@@ -1526,7 +1534,11 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('complete-continue')).toHaveTextContent(en.lesson.completeContinue);
     expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1');
 
+    const footer = error.closest('footer');
     await user.click(within(error).getByRole('button', { name: en.common.retry }));
+    expect(footer).toHaveFocus();
+    expect(screen.getByTestId('complete-continue')).toHaveTextContent(en.lesson.completing);
+    releaseRetry();
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l2'));
     expect(completeCalls).toBe(2);

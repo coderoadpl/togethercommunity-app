@@ -488,6 +488,7 @@ export const LessonPlayerPage = ({
 
   const [continuing, setContinuing] = useState(false);
   const [completionIntent, setCompletionIntent] = useState<'mark' | 'continue' | 'unmark'>('mark');
+  const footerBarRef = useRef<HTMLElement | null>(null);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -694,6 +695,13 @@ export const LessonPlayerPage = ({
     );
   };
 
+  const retryCompletion = () => {
+    footerBarRef.current?.focus();
+    if (completionIntent === 'continue') continueToNext();
+    else if (completionIntent === 'unmark') unmarkComplete();
+    else markComplete();
+  };
+
   return (
     <MemberSurface
       title={lessonName}
@@ -784,7 +792,7 @@ export const LessonPlayerPage = ({
           </SectionCard>
         ) : null}
 
-        {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+        {authenticated && <LessonFooterBar component="footer" ref={footerBarRef} tabIndex={-1} sx={{ mt: '2.5rem' }}>
           {completionError === null ? null : (
             <Alert
               severity="error"
@@ -796,7 +804,7 @@ export const LessonPlayerPage = ({
                   color="inherit"
                   size="small"
                   data-testid="lesson-completion-retry"
-                  onClick={completionIntent === 'continue' ? continueToNext : completionIntent === 'unmark' ? unmarkComplete : markComplete}
+                  onClick={retryCompletion}
                 >
                   {t.common.retry}
                 </Button>

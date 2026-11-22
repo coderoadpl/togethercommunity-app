@@ -53,6 +53,39 @@ describe('Account dialogs', () => {
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'current-password', newPassword: 'new-password-long', revokeOtherSessions: false });
   });
 
+  it('focuses the first field when each account dialog opens', async () => {
+    const first = render(<LanguageProvider><AccountNameFields savedDisplayName="Ada" onCancel={vi.fn()} displayName="Ada" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('account-name-open'));
+    const name = screen.getByLabelText(en.account.displayNameLabel);
+    await waitFor(() => expect(name).toHaveFocus());
+    expect(name).toHaveAttribute('autocomplete', 'nickname');
+    first.unmount();
+
+    const password = render(<LanguageProvider><ToastProvider><ChangePasswordForm dialog {...idle} onSubmit={vi.fn()} /></ToastProvider></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    await waitFor(() => expect(screen.getByTestId('change-current-password')).toHaveFocus());
+    password.unmount();
+
+    const support = render(<LanguageProvider><AccountSupportForm supportSubject="" supportBody="" onSubjectChange={vi.fn()} onBodyChange={vi.fn()} pending={false} onSubmit={vi.fn()} /></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('account-support-open'));
+    await waitFor(() => expect(screen.getByLabelText(en.support.subjectLabel)).toHaveFocus());
+    support.unmount();
+
+    const methods = render(tree(propsWith()));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    await waitFor(() => expect(screen.getByTestId('enable-2fa-password')).toHaveFocus());
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    await waitFor(() => expect(screen.getByTestId('passkey-name')).toHaveFocus());
+    methods.unmount();
+  });
+
+  it('keeps the inline studio passkey form from taking focus', () => {
+    render(tree(propsWith({ presentation: 'embedded' })));
+    expect(screen.getByTestId('passkey-name')).not.toHaveFocus();
+  });
+
   it('opens passkey registration, requires proof and submits a trimmed name', async () => {
     const run = vi.fn();
     render(tree(propsWith({ registerPasskey: { ...idle, error: failure, run } })));

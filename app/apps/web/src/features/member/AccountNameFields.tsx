@@ -24,6 +24,8 @@ export const AccountNameFields = ({ displayName, savedDisplayName, onChange, onC
               <FormLabel htmlFor="account-display-name">{t.account.displayNameLabel}</FormLabel>
               <OutlinedInput
                 id="account-display-name"
+                autoFocus
+                autoComplete="nickname"
                 inputProps={{ maxLength: 200, 'aria-describedby': 'account-display-name-helper' }}
                 value={displayName}
                 onChange={(event) => onChange(event.target.value)}

@@ -39,6 +39,7 @@ export const AccountSupportForm = ({ configured = true, externalUrl = null, supp
               <FormLabel htmlFor="support-subject">{t.support.subjectLabel}</FormLabel>
               <OutlinedInput
                 id="support-subject"
+                autoFocus
                 value={supportSubject}
                 onChange={(event) => onSubjectChange(event.target.value)}
                 required

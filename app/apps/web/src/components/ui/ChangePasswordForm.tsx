@@ -100,6 +100,7 @@ export const ChangePasswordForm = ({
         <OutlinedInput
           id="change-current-password"
           type="password"
+          autoFocus={dialog}
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
           autoComplete="current-password"

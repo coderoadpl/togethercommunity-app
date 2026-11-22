@@ -102,6 +102,7 @@ export const AuthenticationMethods = ({
             <FormLabel htmlFor="passkey-name">{t.security.passkeyNameLabel}</FormLabel>
             <OutlinedInput
               id="passkey-name"
+              autoFocus={presentation === 'account'}
               value={passkeyName}
               onChange={(event) => setPasskeyName(event.target.value)}
               inputProps={{ 'data-testid': 'passkey-name' }}

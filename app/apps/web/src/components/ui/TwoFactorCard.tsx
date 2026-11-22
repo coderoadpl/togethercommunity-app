@@ -229,6 +229,7 @@ export const TwoFactorCard = ({
       <OutlinedInput
         id="enable-2fa-password"
         type="password"
+        autoFocus
         autoComplete="current-password"
         required
         value={password}

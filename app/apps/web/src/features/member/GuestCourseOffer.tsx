@@ -41,6 +41,8 @@ const useGuestOffer = (course: CourseStructureWithAccess): GuestOffer => {
   return { purchasable: Boolean(product) || Boolean(salesUrl), price, cta };
 };
 
+const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
 const CourseNotOnSale = ({ supportUrl }: { supportUrl: string | null }) => {
   const t = useTranslations();
   const loginLink = useLoginLinkWithReturn();
@@ -52,9 +54,9 @@ const CourseNotOnSale = ({ supportUrl }: { supportUrl: string | null }) => {
       </Typography>
       {supportUrl === null ? null : (
         <EmberCtaLink
+          component="a"
           href={supportUrl}
-          target={external ? '_blank' : undefined}
-          rel={external ? 'noopener noreferrer' : undefined}
+          {...(external ? NEW_TAB : {})}
           variant="contained"
           fullWidth
           data-testid="public-course-contact"

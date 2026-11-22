@@ -4436,7 +4436,7 @@ export const AccountTabs = styled(Tabs)(({ theme }) => {
   const accent = accentOnSurface(theme.brandAccent ?? theme.emberCta?.main ?? '#E8682A', theme.palette.background.default, 4.5);
   return {
     '& .MuiTab-root': { minHeight: 48, gap: 8, color: theme.palette.text.secondary, '&:hover': { color: theme.palette.text.primary } },
-    '& .MuiTab-icon': { margin: 0 },
+    '& .MuiTab-root > .MuiTab-icon': { margin: 0 },
     '& .MuiTab-root.Mui-selected': { color: accent, fontWeight: 600 },
     '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
     '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },

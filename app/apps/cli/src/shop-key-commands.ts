@@ -554,7 +554,7 @@ export const registerShopKeyCommands = (
     .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
     .option('--description <description>')
     .option('--cover-url <url>', 'absolute cover image URL')
-    .option('--compliance <json>', 'product safety information (GPSR) as a JSON object')
+    .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
     .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
     .option('--no-personalization', 'offer no buyer personalisation')
     .option('--variant-group <slug>', 'products sharing a variant group are offered as variants of each other')

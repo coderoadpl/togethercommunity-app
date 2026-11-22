@@ -11,7 +11,7 @@ import { useRedirectToLogin } from './use-login-redirect.js';
 import { ThreadHeadline } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceThreadPage } from './PublicSpaceThreadPage.js';
-import { PAGE_SIZE, ThreadDiscussion } from './ThreadDiscussion.js';
+import { ThreadDiscussion } from './ThreadDiscussion.js';
 import { useViewerKind } from './viewer.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -49,9 +49,7 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
   const navigate = useNavigate();
   const redirectToLogin = useRedirectToLogin();
   const spaces = useQuery(actions.spaces);
-  const discussion = useQuery(
-    actions.discussion({ contextKind: 'space', contextId: spaceId, limit: PAGE_SIZE }),
-  );
+  const thread = useQuery(actions.discussionThread({ contextKind: 'space', contextId: spaceId, postId }));
   const unauthorized = isUnauthorized(spaces.error);
 
   useEffect(() => {
@@ -100,12 +98,13 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
     );
   }
 
-  const rootPost = discussion.data?.discussion.threads.find((thread) => thread.id === postId);
-  const headline = rootPost === undefined ? null : threadHeadline(rootPost.bodyPlainText);
+  const rootPost = thread.data?.discussion.threads.find((candidate) => candidate.id === postId);
+  const titledRoot = rootPost === undefined || rootPost.deletedAt !== null ? undefined : rootPost;
+  const headline = titledRoot === undefined ? null : threadHeadline(titledRoot.bodyPlainText);
 
   return (
     <MemberSurface
-      documentTitle={rootPost?.body.split(/\r?\n/u)[0]?.trim() || t.community.threadTitle}
+      documentTitle={titledRoot?.body.split(/\r?\n/u)[0]?.trim() || t.community.threadTitle}
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"
@@ -121,12 +120,14 @@ const MemberSpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: s
       ]}
     >
       <ThreadDiscussion
+        key={postId}
         context={{ contextKind: 'space', contextId: spaceId }}
         data-testid="space-thread"
         focus={{
           rootPostId: postId,
           onExit: () => void navigate({ to: '/community/$spaceId', params: { spaceId } }),
           exitLabel: t.community.backToFeed,
+          exitHref: `/community/${encodeURIComponent(spaceId)}`,
         }}
       />
     </MemberSurface>

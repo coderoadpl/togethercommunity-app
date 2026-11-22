@@ -32,7 +32,7 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key would need `proposal:asset:upload` with `proposal:submit:catalog`. In this release every `/api/m2m/shop/downloads` route refuses a propose-mode key before its handler, so the table lists `product:write` and the direct-mode key alone. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read`. The attach and removal use-cases of `product-download-files.ts` need `product:write` and are reached only through the direct-mode shop routes; the attach also refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which no route does in this release.
 
-Closed capability count: 144. Route rows: 546. Exported `Ctx` use-case rows: 413.
+Closed capability count: 144. Route rows: 547. Exported `Ctx` use-case rows: 414.
 
 ## Human-readable diff
 
@@ -549,6 +549,7 @@ no changes
 | `DELETE /api/posts/:postId/permanent` | community:moderate | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/discussion` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/discussion/threads/:postId` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/subscribe` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/discussion/mute` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/posts/search` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -631,6 +632,7 @@ no changes
 | `community-access.ts#listAccessibleSpaces` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts authorization call |
 | `community.ts#createPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `community.ts#getThread` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#purgePost` | community:moderate | owner, admin | owner, admin | yes | core/server/usecases/community.ts authorization call |
@@ -1014,13 +1016,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:215` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1290` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1292` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1314` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1328` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1858` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1858` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1292` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1294` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1316` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1330` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1860` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1860` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1041,9 +1043,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
 | staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(space);` |
 | staff-role | `core/server/usecases/community-access.ts:267` | `if (ctx.identity.staffRole) return ok(spaces);` |
-| member-scope | `core/server/usecases/community.ts:179` | `if (tenantId !== null && identity.memberId !== null) {` |
-| staff-role | `core/server/usecases/community.ts:193` | `if (ctx.identity.staffRole !== null) return false;` |
-| staff-role | `core/server/usecases/community.ts:395` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
+| member-scope | `core/server/usecases/community.ts:181` | `if (tenantId !== null && identity.memberId !== null) {` |
+| staff-role | `core/server/usecases/community.ts:195` | `if (ctx.identity.staffRole !== null) return false;` |
+| staff-role | `core/server/usecases/community.ts:445` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:61` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:62` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |

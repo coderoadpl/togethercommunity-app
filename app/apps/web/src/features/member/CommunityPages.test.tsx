@@ -8,7 +8,7 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -196,6 +196,22 @@ const okDiscussion = (
       data: { discussion: { threads, nextCursor: null, viewerSubscriptions } },
     }),
   );
+
+const okThreads = (
+  roots: DiscussionPost[],
+  viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
+) =>
+  http.get('/api/discussion/threads/:postId', ({ params }) => {
+    const root = roots.find((candidate) => candidate.id === params.postId);
+    return root === undefined
+      ? HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 })
+      : HttpResponse.json({ ok: true, data: { discussion: { threads: [root], nextCursor: null, viewerSubscriptions } } });
+  });
+
+const okThread = (
+  root: DiscussionPost,
+  viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
+) => okThreads([root], viewerSubscriptions);
 
 const stubNarrowViewport = () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -389,12 +405,10 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'General' })]),
-      okDiscussion([
-        {
-          ...feedItem({ id: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }),
-          replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }), replies: [] }],
-        },
-      ]),
+      okThread({
+        ...feedItem({ id: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }),
+        replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: markupLikeBody, bodyHtml: markupLikeBodyHtml }), replies: [] }],
+      }),
     );
 
     await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
@@ -473,7 +487,7 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'General' })]),
-      okDiscussion([{
+      okThread({
         ...feedItem({
           id: 'p1',
           body: '**Followed** [thread](https://example.com)',
@@ -482,7 +496,7 @@ describe('community pages', () => {
           bodyPlainText: 'Followed thread',
         }),
         replies: [],
-      }]),
+      }),
     );
 
     await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
@@ -686,6 +700,101 @@ describe('community pages', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent(en.community.reportTitle);
   });
 
+  it('opens a thread that is not among the first page of the space discussion', async () => {
+    const olderThreads = Array.from({ length: 20 }, (_, index) => ({
+      ...feedItem({ id: `old-${String(index)}`, body: `Older thread ${String(index)}` }),
+      replies: [],
+    }));
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okDiscussion(olderThreads),
+      okThread({
+        ...feedItem({ id: 'p42', body: 'Newest thread' }),
+        replyCount: 1,
+        replies: [{ ...feedItem({ id: 'p43', parentPostId: 'p42', rootPostId: 'p42', body: 'First reply' }), replies: [] }],
+      }),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p42" />, '/community/s1/posts/p42');
+
+    expect(await screen.findByTestId('post-body-p42')).toHaveTextContent('Newest thread');
+    expect(screen.getByTestId('post-body-p43')).toHaveTextContent('First reply');
+    expect(screen.getByRole('heading', { level: 1, name: 'Newest thread' })).toBeInTheDocument();
+    expect(screen.queryByText(en.discussion.deletedPost)).toBeNull();
+    expect(screen.queryByTestId('thread-not-found')).toBeNull();
+  });
+
+  it('shows a not-found state with the way back when the thread does not exist', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okThread({ ...feedItem({ id: 'p1' }), replies: [] }),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="missing" />, '/community/s1/posts/missing');
+
+    const notFound = await screen.findByTestId('thread-not-found');
+    expect(notFound).toHaveTextContent(en.community.threadNotFoundTitle);
+    expect(notFound).toHaveTextContent(en.community.threadNotFoundBody);
+    expect(screen.queryByText(en.discussion.deletedPost)).toBeNull();
+    expect(screen.queryByTestId('discussion-error')).toBeNull();
+    expect(within(notFound).getByRole('link', { name: en.community.backToFeed })).toHaveAttribute('href', '/community/s1');
+  });
+
+  it('keeps the deleted-post text for a thread whose root was deleted', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okThread({
+        ...feedItem({ id: 'p1', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author' }),
+        replyCount: 1,
+        replies: [{ ...feedItem({ id: 'p2', parentPostId: 'p1', rootPostId: 'p1', body: 'Still here' }), replies: [] }],
+      }),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByTestId('deleted-post-p1')).toHaveTextContent(en.discussion.deletedPost);
+    expect(screen.getByTestId('post-body-p2')).toHaveTextContent('Still here');
+    expect(screen.queryByTestId('thread-not-found')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: en.community.threadTitle })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[deleted-post]');
+  });
+
+  it('shows the next thread when the page switches to another thread in the same mounted tree', async () => {
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'General' })]),
+      okThreads([
+        { ...feedItem({ id: 'p1', body: 'First thread' }), replies: [] },
+        { ...feedItem({ id: 'p2', body: 'Second thread' }), replies: [] },
+      ]),
+    );
+    const Switcher = () => {
+      const [postId, setPostId] = useState('p1');
+      return (
+        <>
+          <button type="button" onClick={() => setPostId('p2')}>next thread</button>
+          <SpaceThreadPage spaceId="s1" postId={postId} />
+        </>
+      );
+    };
+
+    const user = userEvent.setup();
+    await renderPage(() => <Switcher />, '/community/s1/posts/p1');
+    expect(await screen.findByTestId('post-body-p1')).toHaveTextContent('First thread');
+    await user.click(screen.getByRole('button', { name: 'next thread' }));
+
+    expect(await screen.findByTestId('post-body-p2')).toHaveTextContent('Second thread');
+    expect(screen.getByRole('heading', { level: 1, name: 'Second thread' })).toBeInTheDocument();
+    expect(screen.queryByTestId('thread-not-found')).toBeNull();
+  });
+
   it('mutes a followed thread from the space thread surface', async () => {
     const muteCalls: unknown[] = [];
     const root: DiscussionPost = {
@@ -696,7 +805,7 @@ describe('community pages', () => {
       okMe(),
       noNotifications(),
       okSpaces([space({ id: 's1', name: 'General' })]),
-      okDiscussion([root], { p1: 'subscribed' }),
+      okThread(root, { p1: 'subscribed' }),
       http.post('/api/discussion/mute', async ({ request }) => {
         muteCalls.push(await request.json());
         return HttpResponse.json({ ok: true, data: { rootPostId: 'p1' } });

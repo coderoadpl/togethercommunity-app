@@ -816,12 +816,162 @@ describe('ProductsPanel', () => {
         manufacturerName: 'Example Workshop',
         manufacturerAddress: 'Example Street 1, Warsaw',
         manufacturerEmail: 'safety@example.com',
+        manufacturerOutsideEu: false,
         modelIdentifier: 'STAND-1',
         batchIdentifier: null,
         safetyWarnings: 'Keep away from open flame.',
         instructionsUrl: null,
       },
     })]);
+    expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+  });
+
+  it('requires the responsible person when the manufacturer is outside the EU and saves it', async () => {
+    const user = userEvent.setup();
+    const physical: Product = {
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'imported-lamp', title: 'Imported lamp', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', published: false, accessItems: [],
+      compliance: {
+        manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+        manufacturerOutsideEu: false, modelIdentifier: 'LAMP-2', safetyWarnings: '',
+      },
+      legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products/draft-1', [physical]);
+    const bodies: unknown[] = [];
+    server.use(http.post('/api/products/update', async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { product: physical } });
+    }));
+    const outside = await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu });
+    expect(outside).not.toBeChecked();
+    expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+    await user.click(outside);
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonName));
+    await user.paste('Example EU Representative');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+    expect(bodies).toEqual([]);
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonAddress));
+    await user.paste('Example Street 1, Warsaw');
+    await user.click(screen.getByLabelText(en.productSafety.responsiblePersonEmail));
+    await user.paste('eu-rep@example.com');
+    await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(bodies).toEqual([expect.objectContaining({
+      compliance: expect.objectContaining({
+        manufacturerOutsideEu: true,
+        responsiblePersonName: 'Example EU Representative',
+        responsiblePersonAddress: 'Example Street 1, Warsaw',
+        responsiblePersonEmail: 'eu-rep@example.com',
+      }),
+    })]);
+  });
+
+  describe('product safety validation by failing field', () => {
+    const lamp = (compliance: Product['compliance']): Product => ({
+      id: 'draft-1', tenantId: 't1', type: 'physical', slug: 'imported-lamp', title: 'Imported lamp', description: '', coverUrl: null,
+      priceCents: 4900, currency: 'PLN', visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', published: false, accessItems: [],
+      compliance, legacyId: null, createdAt: '2026-07-12T10:00:00.000Z',
+    });
+    const manufacturer = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road, Example City', manufacturerEmail: 'safety@example.com',
+      manufacturerOutsideEu: false, modelIdentifier: 'LAMP-2', safetyWarnings: '',
+    };
+    const renderLamp = async (compliance: Product['compliance']) => {
+      const product = lamp(compliance);
+      await renderProductsPanel([], '/panel/products/draft-1', [product]);
+      const bodies: unknown[] = [];
+      server.use(http.post('/api/products/update', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { product } });
+      }));
+      return bodies;
+    };
+    const responsiblePersonFields = () => [
+      screen.getByLabelText(en.productSafety.responsiblePersonName),
+      screen.getByLabelText(en.productSafety.responsiblePersonAddress),
+      screen.getByLabelText(en.productSafety.responsiblePersonEmail),
+    ];
+
+    it('keeps the switch, its hint and the responsible person fields in one ruled group that ends before the model identifier', async () => {
+      const user = userEvent.setup();
+      await renderLamp(manufacturer);
+      const outside = await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu });
+      const group = screen.getByTestId('product-compliance-outside-eu');
+      expect(group).toContainElement(outside);
+      expect(within(group).getByText(en.productSafety.manufacturerOutsideEuHint)).toBeVisible();
+      await user.click(outside);
+      for (const field of responsiblePersonFields()) expect(group).toContainElement(field);
+      expect(group).not.toContainElement(screen.getByLabelText(en.productSafety.modelIdentifier));
+      expect(group).not.toContainElement(screen.getByLabelText(en.productSafety.manufacturerEmail));
+      expect(group).toHaveStyle({ paddingLeft: '1rem', borderLeftStyle: 'solid' });
+    });
+
+    it('says under the responsible person fields who it usually is and that the address includes the country', async () => {
+      const user = userEvent.setup();
+      await renderLamp(manufacturer);
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      const [name, address, email] = responsiblePersonFields();
+      expect(name).toHaveAccessibleDescription(en.productSafety.responsiblePersonNameHint);
+      expect(address).toHaveAccessibleDescription(en.productSafety.responsiblePersonAddressHint);
+      expect(email).not.toHaveAccessibleDescription();
+    });
+
+    it('asks to correct the responsible person, not the manufacturer, when only its e-mail is malformed, and marks only that field', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp(manufacturer);
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      const [name, address, email] = responsiblePersonFields();
+      for (const [field, text] of [[name, 'Example EU Representative'], [address, 'Example Street 1, 00-001 Warsaw, Poland'], [email, 'eu-rep@example']] as const) {
+        if (field === undefined) throw new Error('expected the responsible person fields');
+        await user.click(field);
+        await user.paste(text);
+      }
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+      expect(alert).not.toHaveTextContent(en.productSafety.incomplete);
+      expect(en.productSafety.responsiblePersonIncomplete).toMatch(/^Fill in or correct /u);
+      expect(email).toHaveAttribute('aria-invalid', 'true');
+      expect(name).toHaveAttribute('aria-invalid', 'false');
+      expect(address).toHaveAttribute('aria-invalid', 'false');
+      for (const field of responsiblePersonFields()) expect(field).not.toBeRequired();
+      expect(bodies).toEqual([]);
+    });
+
+    it('shows both messages and marks the empty responsible person fields when the manufacturer and the responsible person both fail', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp({ ...manufacturer, modelIdentifier: '' });
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(en.productSafety.incomplete);
+      expect(alert).toHaveTextContent(en.productSafety.responsiblePersonIncomplete);
+      for (const field of responsiblePersonFields()) expect(field).toHaveAttribute('aria-invalid', 'true');
+      for (const key of ['responsiblePersonName', 'responsiblePersonAddress']) {
+        expect(document.getElementById(`product-compliance-${key}-helper-text`)).not.toHaveClass('Mui-error');
+      }
+      expect(screen.getByLabelText(en.productSafety.modelIdentifier)).toHaveAttribute('aria-invalid', 'false');
+      expect(bodies).toEqual([]);
+    });
+
+    it('removes the safety information when the switch is off and every visible field is cleared, ignoring the hidden responsible person', async () => {
+      const user = userEvent.setup();
+      const bodies = await renderLamp({
+        ...manufacturer, manufacturerOutsideEu: true, safetyWarnings: 'Keep away from water.',
+        responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, 00-001 Warsaw, Poland', responsiblePersonEmail: 'eu-rep@example.com',
+      });
+      await user.click(await screen.findByRole('switch', { name: en.productSafety.manufacturerOutsideEu }));
+      expect(screen.queryByLabelText(en.productSafety.responsiblePersonName)).not.toBeInTheDocument();
+      for (const label of [en.productSafety.manufacturerName, en.productSafety.manufacturerAddress, en.productSafety.manufacturerEmail, en.productSafety.modelIdentifier, en.productSafety.safetyWarnings]) {
+        await user.clear(screen.getByLabelText(label));
+      }
+      await user.click(screen.getByRole('button', { name: en.products.saveDetails }));
+      expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+      expect(within(screen.getByTestId('product-compliance')).queryByRole('alert')).not.toBeInTheDocument();
+      expect(bodies).toEqual([expect.objectContaining({ compliance: null })]);
+    });
   });
 
   it('saves the InPost parcel size of a shipped physical product', async () => {

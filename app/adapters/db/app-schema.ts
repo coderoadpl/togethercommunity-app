@@ -10,7 +10,7 @@ import { organizations } from './organization-schema.js';
 
 import type {
   OrderShipment,
-  ProductCompliance,
+  StoredProductCompliance,
   ProductPersonalization,
   OrderShipping,
   ShippingRate,
@@ -387,7 +387,7 @@ export const products = pgTable(
     salesChannel: text('sales_channel', { enum: ['any', 'sales_links_only'] }).notNull().default('any'),
     deliveryMethod: text('delivery_method', { enum: ['pickup', 'shipping'] }).notNull().default('pickup'),
     parcelTemplate: text('parcel_template', { enum: ['small', 'medium', 'large'] }).notNull().default('medium'),
-    compliance: jsonb('compliance').$type<ProductCompliance>(),
+    compliance: jsonb('compliance').$type<StoredProductCompliance>(),
     personalization: jsonb('personalization').$type<ProductPersonalization>(),
     variantGroup: text('variant_group'),
     variantLabel: text('variant_label'),

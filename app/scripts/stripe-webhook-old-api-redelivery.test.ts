@@ -1,13 +1,10 @@
 import { createHmac } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
-import {
-  checkoutConsentCaptures, consents, emailOutbox, orderRefundJobs, orders, processedPaymentEvents, productGrants, products, productStock, stockEvents, tenantAdmins, tenants,
-} from '#adapters/db/schema.js';
+import { tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import oldApiLockerFree from '#adapters/payment/fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
 import { createStripePaymentProvider, stripeCheckoutSessionParams } from '#adapters/payment/stripe.js';
@@ -76,21 +73,23 @@ const stripeSignature = (payload: string, secret: string): string => {
 };
 
 const tenantRows = async () => ({
-  orders: await database.db.select({
-    status: orders.status, mode: orders.mode, amountCents: orders.amountCents, cancelReason: orders.cancelReason, fulfilmentStatus: orders.fulfilmentStatus, shipping: orders.shipping,
-  }).from(orders).where(eq(orders.tenantId, 'acme')),
-  levels: await database.db.select({ onHand: productStock.onHand, reserved: productStock.reserved }).from(productStock).where(eq(productStock.tenantId, 'acme')),
-  stockEvents: (await database.db.select({ type: stockEvents.type, occurredAt: stockEvents.occurredAt }).from(stockEvents).where(eq(stockEvents.tenantId, 'acme')))
+  orders: await database.db.query.orders.findMany({
+    columns: { status: true, mode: true, amountCents: true, cancelReason: true, fulfilmentStatus: true, shipping: true },
+    where: (table, { eq }) => eq(table.tenantId, 'acme'),
+  }),
+  levels: await database.db.query.productStock.findMany({ columns: { onHand: true, reserved: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }),
+  stockEvents: (await database.db.query.stockEvents.findMany({ columns: { type: true, occurredAt: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }))
     .map((row) => `${row.occurredAt} ${row.type}`).toSorted(),
-  grants: (await database.db.select({ productId: productGrants.productId, mode: productGrants.mode }).from(productGrants).where(eq(productGrants.tenantId, 'acme')))
+  grants: (await database.db.query.productGrants.findMany({ columns: { productId: true, mode: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }))
     .toSorted((a, b) => a.productId.localeCompare(b.productId)),
-  emails: (await database.db.select({ kind: emailOutbox.kind, to: emailOutbox.to }).from(emailOutbox).where(eq(emailOutbox.tenantId, 'acme')))
+  emails: (await database.db.query.emailOutbox.findMany({ columns: { kind: true, to: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }))
     .toSorted((a, b) => `${a.kind}${a.to}`.localeCompare(`${b.kind}${b.to}`)),
-  refundJobs: await database.db.select({ orderId: orderRefundJobs.orderId }).from(orderRefundJobs).where(eq(orderRefundJobs.tenantId, 'acme')),
-  consents: await database.db.select({ email: consents.email, source: consents.source, termsUrl: consents.termsUrl, privacyUrl: consents.privacyUrl })
-    .from(consents).where(eq(consents.tenantId, 'acme')),
-  processedEvents: await database.db.select({ id: processedPaymentEvents.id, status: processedPaymentEvents.status })
-    .from(processedPaymentEvents).where(eq(processedPaymentEvents.tenantId, 'acme')),
+  refundJobs: await database.db.query.orderRefundJobs.findMany({ columns: { orderId: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }),
+  consents: await database.db.query.consents.findMany({
+    columns: { email: true, source: true, termsUrl: true, privacyUrl: true },
+    where: (table, { eq }) => eq(table.tenantId, 'acme'),
+  }),
+  processedEvents: await database.db.query.processedPaymentEvents.findMany({ columns: { id: true, status: true }, where: (table, { eq }) => eq(table.tenantId, 'acme') }),
 });
 
 beforeAll(async () => {
@@ -146,7 +145,7 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
 
     const course = appliedChange(await catalog.createProduct({ title: 'Course One', slug: 'course-one', type: 'course', priceCents: 4900, currency: 'PLN', vatRate: 23 })).product;
     appliedChange(await catalog.createProductPrice({ productId: course.id, kind: 'one_time', amountCents: 4900, currency: 'PLN' }));
-    await database.db.update(products).set({ published: true }).where(eq(products.id, course.id));
+    await database.db.execute(`update products set published = true where id = '${course.id}'`);
     const book = appliedChange(await catalog.createProduct({
       title: 'Printed book', slug: 'printed-book', type: 'physical', priceCents: 3900, currency: 'PLN', deliveryMethod: 'shipping', vatRate: 5,
     })).product;
@@ -216,11 +215,13 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
       consents: [{ email: buyerEmail, source: 'checkout', termsUrl, privacyUrl }],
       processedEvents: [{ id: 'evt_old_api_bundle', status: 'processed' }],
     });
-    expect(await database.db.select({ capture: checkoutConsentCaptures.capture }).from(checkoutConsentCaptures)
-      .where(eq(checkoutConsentCaptures.id, `stripe:${checkout.sessionId}`))).toStrictEqual([
+    expect(await database.db.query.checkoutConsentCaptures.findMany({
+      columns: { capture: true },
+      where: (table, { eq }) => eq(table.id, `stripe:${checkout.sessionId}`),
+    })).toStrictEqual([
       { capture: expect.objectContaining({ termsAccepted: true, termsUrl, privacyUrl }) },
     ]);
-    expect(await database.db.select({ payload: emailOutbox.payload }).from(emailOutbox).where(eq(emailOutbox.kind, 'welcome-sign-in')))
+    expect(await database.db.query.emailOutbox.findMany({ columns: { payload: true }, where: (table, { eq }) => eq(table.kind, 'welcome-sign-in') }))
       .toStrictEqual([{ payload: expect.objectContaining({ purchase: expect.objectContaining({ totalCents: 8800, currency: 'PLN' }) }) }]);
 
     const replay = await deliver();

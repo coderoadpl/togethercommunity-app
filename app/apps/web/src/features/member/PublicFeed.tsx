@@ -48,9 +48,20 @@ const PublicReactions = ({ reactions }: { reactions: ReactionSummary[] }) => {
   );
 };
 
-const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
+const PostHeader = ({
+  post,
+  underPinnedHeading = false,
+}: {
+  post: DiscussionPost | SpaceFeedItem;
+  underPinnedHeading?: boolean;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const pinChip = post.pinnedAt === null
+    ? null
+    : post.authorIsStaff
+      ? t.community.announcementChip
+      : underPinnedHeading ? null : t.community.pinnedChip;
   return (
     <Stack
       direction="row"
@@ -64,12 +75,7 @@ const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
           {t.discussion.authorChip}
         </AuthorChip>
       )}
-      {post.pinnedAt !== null ? (
-        <Chip
-          size="small"
-          label={post.authorIsStaff ? t.community.announcementChip : t.community.pinnedChip}
-        />
-      ) : null}
+      {pinChip === null ? null : <Chip size="small" label={pinChip} data-testid={`public-pin-chip-${post.id}`} />}
       <PostMetaText component="time" dateTime={post.createdAt}>
         {formatRelativeTime(post.createdAt, language)}
       </PostMetaText>
@@ -88,13 +94,21 @@ const PostText = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
   );
 };
 
-const PublicFeedPost = ({ spaceId, item }: { spaceId: string; item: SpaceFeedItem }) => {
+const PublicFeedPost = ({
+  spaceId,
+  item,
+  underPinnedHeading = false,
+}: {
+  spaceId: string;
+  item: SpaceFeedItem;
+  underPinnedHeading?: boolean;
+}) => {
   const t = useTranslations();
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`public-feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
         <Box>
-          <PostHeader post={item} />
+          <PostHeader post={item} underPinnedHeading={underPinnedHeading} />
           <PostText post={item} />
         </Box>
         <PublicReactions reactions={item.reactions} />
@@ -155,7 +169,7 @@ export const PublicFeedList = ({
         </FeedGroupHeading>
       ) : null}
       {feed.pinned.map((item) => (
-        <PublicFeedPost key={`pinned-${item.id}`} spaceId={spaceId} item={item} />
+        <PublicFeedPost key={`pinned-${item.id}`} spaceId={spaceId} item={item} underPinnedHeading />
       ))}
       {feed.pinned.length > 0 && feed.items.length > 0 ? (
         <FeedGroupHeading component={headingComponent} testId="public-feed-latest-heading">

@@ -1041,7 +1041,10 @@ describe('community pages', () => {
           data: {
             feed: {
               spaceId: 's1',
-              pinned: [{ ...feedItem({ id: 'pin1', body: 'House rules', pinnedAt: '2026-07-19T08:00:00.000Z', authorIsStaff: true }), reactions: [] }],
+              pinned: [
+                { ...feedItem({ id: 'pin1', body: 'House rules', pinnedAt: '2026-07-19T08:00:00.000Z', authorIsStaff: true }), reactions: [] },
+                feedItem({ id: 'pin2', body: 'Camper tips', pinnedAt: '2026-07-18T08:00:00.000Z' }),
+              ],
               items: [
                 feedItem({
                   id: 'p1',
@@ -1080,6 +1083,9 @@ describe('community pages', () => {
     expect(pinnedHeading.compareDocumentPosition(screen.getByTestId('public-feed-post-pin1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(latestHeading.compareDocumentPosition(post) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByTestId('public-feed-post-pin1').compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('public-pin-chip-pin1')).toHaveTextContent(en.community.announcementChip);
+    expect(screen.getByTestId('public-feed-post-pin2')).toBeInTheDocument();
+    expect(screen.queryByTestId('public-pin-chip-pin2')).not.toBeInTheDocument();
   });
 
   it('loads older public posts page by page with the cursor while keeping the earlier ones', async () => {
@@ -1387,6 +1393,7 @@ describe('community pages', () => {
             bodyHtml: '<p><strong>Public</strong> <a href="https://example.com">thread</a></p>',
             bodyPlainText: 'Public thread',
           }),
+          pinnedAt: '2026-07-19T08:00:00.000Z',
           replies: [{ ...feedItem({ id: 'r1', body: 'Reply' }), replies: [], replyCount: 0 }],
           replyCount: 1,
         },
@@ -1401,6 +1408,7 @@ describe('community pages', () => {
     expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Public thread');
     expect(screen.getByRole('heading', { level: 1, name: 'Public thread' })).toBeInTheDocument();
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Reply');
+    expect(screen.getByTestId('public-pin-chip-p1')).toHaveTextContent(en.community.pinnedChip);
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
     const header = screen.getByRole('heading', { level: 1, name: 'Public thread' }).closest('header');
     if (header === null) throw new Error('Expected the thread page header');

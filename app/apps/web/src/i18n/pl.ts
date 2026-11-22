@@ -3048,6 +3048,7 @@ export const pl: Messages = {
     avatarUploading: 'Wgrywanie…',
     avatarRemove: 'Usuń zdjęcie',
     avatarTooLarge: 'Zdjęcie profilowe nie może być większe niż 2 MB.',
+    avatarUnsupportedType: 'Użyj obrazu PNG, JPG lub WebP.',
     editName: 'Edytuj nazwę',
     passwordStatusSet: 'Hasło ustawione',
     passwordStatusUnset: 'Brak hasła',

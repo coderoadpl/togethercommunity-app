@@ -2638,6 +2638,7 @@ export interface Messages {
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    avatarUnsupportedType: string;
     editName: string;
     passwordStatusSet: string;
     passwordStatusUnset: string;

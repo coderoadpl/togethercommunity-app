@@ -363,12 +363,16 @@ export const MemberAccountPage = () => {
                   onUpload={(event) => {
                     const file = event.target.files?.[0];
                     event.target.value = '';
-                    if (file !== undefined && file.size > AVATAR_IMAGE_MAX_BYTES) {
+                    if (file === undefined) return;
+                    if (file.size > AVATAR_IMAGE_MAX_BYTES) {
                       setAvatarError(t.account.avatarTooLarge);
                       return;
                     }
-                    const contentType = file === undefined ? null : avatarContentType(file.type);
-                    if (file === undefined || contentType === null) return;
+                    const contentType = avatarContentType(file.type);
+                    if (contentType === null) {
+                      setAvatarError(t.account.avatarUnsupportedType);
+                      return;
+                    }
                     setAvatarError(null);
                     uploadAvatar.mutate({
                       kind: 'avatar',

@@ -469,6 +469,27 @@ describe('MemberAccountPage', () => {
     expect(requests).toBe(0);
   });
 
+  it('names the accepted image types when the picked file type is unsupported', async () => {
+    let requests = 0;
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/avatar/upload', () => {
+        requests += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'unexpected' } });
+      }),
+    );
+    await renderAccount();
+
+    const input = await screen.findByLabelText(en.account.avatarUpload);
+    expect(input).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp');
+    await userEvent.setup({ applyAccept: false }).upload(input, new File(['gif'], 'avatar.gif', { type: 'image/gif' }));
+
+    expect(await screen.findByText(en.account.avatarUnsupportedType)).toBeInTheDocument();
+    expect(requests).toBe(0);
+  });
+
   it('removes a stored avatar and returns to initials', async () => {
     let removed = false;
     server.use(

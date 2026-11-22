@@ -58,6 +58,8 @@ const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BA
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
 
+type TwoFactorMode = 'app' | 'backup';
+
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
 
@@ -173,6 +175,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     () => new URLSearchParams(window.location.search).get('twoFactor') === 'required',
   );
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -346,12 +349,28 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const submitTwoFactor = (event: FormEvent) => {
     event.preventDefault();
-    verifyTotp.mutate({ code: twoFactorCode.trim() });
+    const code = twoFactorCode.trim();
+    if (code.length === 0 || verifyTotp.isPending || verifyBackupCode.isPending) return;
+    if (twoFactorMode === 'app') {
+      verifyBackupCode.reset();
+      verifyTotp.mutate({ code });
+    } else {
+      verifyTotp.reset();
+      verifyBackupCode.mutate({ code });
+    }
+  };
+
+  const switchTwoFactorMode = (next: TwoFactorMode) => {
+    verifyTotp.reset();
+    verifyBackupCode.reset();
+    setTwoFactorCode('');
+    setTwoFactorMode(next);
   };
 
   const cancelTwoFactor = () => {
     setTwoFactorRequired(false);
     setTwoFactorCode('');
+    setTwoFactorMode('app');
     verifyTotp.reset();
     verifyBackupCode.reset();
     editIdentifier();
@@ -514,60 +533,66 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   }
 
   if (twoFactorRequired) {
-    const twoFactorError = verifyTotp.error ?? verifyBackupCode.error;
+    const backupMode = twoFactorMode === 'backup';
+    const activeVerification = backupMode ? verifyBackupCode : verifyTotp;
+    const twoFactorError = activeVerification.error;
     const twoFactorCodeInvalid = isInvalidTwoFactorCode(twoFactorError);
+    const verifying = verifyTotp.isPending || verifyBackupCode.isPending;
     return shell(
       <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
         <Box>
           <AuthTitle variant="h1">{t.auth.twoFactorTitle}</AuthTitle>
-          <AuthLead component="p">{t.auth.twoFactorIntro}</AuthLead>
+          <AuthLead component="p">{backupMode ? t.auth.twoFactorBackupIntro : t.auth.twoFactorIntro}</AuthLead>
         </Box>
         <FormControl fullWidth error={twoFactorCodeInvalid}>
-          <FormLabel htmlFor="two-factor-code">{t.auth.twoFactorCodeLabel}</FormLabel>
+          <FormLabel htmlFor="two-factor-code">
+            {backupMode ? t.auth.twoFactorBackupCodeLabel : t.auth.twoFactorCodeLabel}
+          </FormLabel>
           <AuthInput
+            key={twoFactorMode}
             id="two-factor-code"
             value={twoFactorCode}
             onChange={(event) => setTwoFactorCode(event.target.value)}
-            autoComplete="one-time-code"
+            autoComplete={backupMode ? 'off' : 'one-time-code'}
             autoFocus
             inputRef={twoFactorCodeRef}
             {...(twoFactorError === null ? {} : { 'aria-describedby': TWO_FACTOR_ERROR_ID })}
-            inputProps={{ 'data-testid': 'two-factor-code', autoCapitalize: 'off', spellCheck: false }}
+            inputProps={{
+              'data-testid': 'two-factor-code',
+              inputMode: backupMode ? 'text' : 'numeric',
+              autoCapitalize: 'off',
+              spellCheck: false,
+            }}
             required
           />
         </FormControl>
+        {twoFactorError === null ? null : (
+          <Alert severity="error" id={TWO_FACTOR_ERROR_ID} data-testid="two-factor-error">
+            {twoFactorCodeInvalid ? t.auth.twoFactorInvalidCode : localizeError(twoFactorError, t)}
+          </Alert>
+        )}
         <Button
           type="submit"
           variant="contained"
           fullWidth
-          disabled={verifyTotp.isPending || verifyBackupCode.isPending || twoFactorCode.trim().length === 0}
-          data-testid="verify-login-totp"
+          disabled={verifying || twoFactorCode.trim().length === 0}
+          data-testid={backupMode ? 'verify-login-backup-code' : 'verify-login-totp'}
         >
-          {verifyTotp.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorVerifyTotp}
+          {verifying
+            ? t.auth.twoFactorVerifying
+            : backupMode ? t.auth.twoFactorVerifyBackupCode : t.auth.twoFactorVerifyTotp}
         </Button>
         <Button
           type="button"
           variant="text"
           size="small"
           sx={{ px: 0, alignSelf: 'flex-start', minHeight: 44 }}
-          disabled={verifyTotp.isPending || verifyBackupCode.isPending}
-          data-testid="verify-login-backup-code"
-          onClick={() => {
-            const code = twoFactorCode.trim();
-            if (code.length === 0) {
-              twoFactorCodeRef.current?.focus();
-              return;
-            }
-            verifyBackupCode.mutate({ code });
-          }}
+          disabled={verifying}
+          data-testid={backupMode ? 'two-factor-use-app' : 'two-factor-use-backup'}
+          onClick={() => switchTwoFactorMode(backupMode ? 'app' : 'backup')}
         >
-          {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
+          {backupMode ? t.auth.twoFactorUseAppCode : t.auth.twoFactorUseBackupCode}
         </Button>
-        {twoFactorError === null ? null : (
-          <Alert severity="error" id={TWO_FACTOR_ERROR_ID} data-testid="two-factor-error">
-            {twoFactorCodeInvalid ? t.auth.twoFactorInvalidCode : localizeError(twoFactorError, t)}
-          </Alert>
-        )}
         <FinePrint variant="caption" component="p">
           <MuiLink
             component="button"

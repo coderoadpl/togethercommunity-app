@@ -452,6 +452,10 @@ export interface Messages {
     twoFactorVerifyTotp: string;
     twoFactorInvalidCode: string;
     twoFactorUseBackupCode: string;
+    twoFactorBackupIntro: string;
+    twoFactorBackupCodeLabel: string;
+    twoFactorVerifyBackupCode: string;
+    twoFactorUseAppCode: string;
     twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;

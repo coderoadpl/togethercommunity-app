@@ -1139,8 +1139,9 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
-    await userEvent.type(await screen.findByLabelText(en.auth.twoFactorCodeLabel), 'backup-once');
-    await userEvent.click(screen.getByTestId('verify-login-backup-code'));
+    await userEvent.click(await screen.findByTestId('two-factor-use-backup'));
+    await userEvent.type(screen.getByLabelText(en.auth.twoFactorBackupCodeLabel), 'backup-once');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.twoFactorVerifyBackupCode }));
 
     await waitFor(() => expect(submitted).toEqual({ code: 'backup-once' }));
   });
@@ -1167,30 +1168,102 @@ describe('LoginPage', () => {
     expect(code).toHaveFocus();
     expect(code).toHaveAttribute('autocapitalize', 'off');
     expect(code).toHaveAttribute('spellcheck', 'false');
-    expect(code).not.toHaveAttribute('inputmode');
-    expect(screen.getByTestId('verify-login-backup-code')).toBeEnabled();
+    expect(code).toHaveAttribute('inputmode', 'numeric');
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveAccessibleName(en.auth.twoFactorCodeLabel);
+    expect(screen.getByTestId('two-factor-use-backup')).toBeEnabled();
+    expect(screen.queryByTestId('verify-login-backup-code')).not.toBeInTheDocument();
     expect(screen.getByTestId('verify-login-totp')).toBeDisabled();
     expect(screen.queryByText(en.auth.registerPrompt)).not.toBeInTheDocument();
     expect(screen.queryByText(en.auth.demoAccount)).not.toBeInTheDocument();
   });
 
-  it('returns an empty backup-code click to the field instead of the API', async () => {
-    let backupCalls = 0;
-    await reachTwoFactor();
+  const countSecondFactorCalls = () => {
+    const calls: string[] = [];
     server.use(
       http.post('*', ({ request }) => {
-        if (!new URL(request.url).pathname.endsWith('/two-factor/verify-backup-code')) {
-          return undefined;
-        }
-        backupCalls += 1;
-        return HttpResponse.json({ token: 'session-token' });
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/two-factor/verify-totp')) calls.push('totp');
+        else if (path.endsWith('/two-factor/verify-backup-code')) calls.push('backup');
+        else return undefined;
+        return HttpResponse.json({ code: 'INVALID_CODE', message: 'provider text' }, { status: 401 });
+      }),
+    );
+    return calls;
+  };
+
+  it('switches to the backup-code form without submitting anything', async () => {
+    await reachTwoFactor();
+    const calls = countSecondFactorCalls();
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456');
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+
+    expect(calls).toEqual([]);
+    const code = screen.getByTestId('two-factor-code');
+    expect(code).toHaveAccessibleName(en.auth.twoFactorBackupCodeLabel);
+    expect(code).toHaveAttribute('inputmode', 'text');
+    expect(code).not.toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveValue('');
+    expect(code).toHaveFocus();
+    expect(screen.getByText(en.auth.twoFactorBackupIntro)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.auth.twoFactorVerifyBackupCode })).toBeDisabled();
+    expect(screen.queryByTestId('verify-login-totp')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: en.auth.twoFactorUseAppCode }));
+
+    expect(calls).toEqual([]);
+    expect(screen.getByTestId('two-factor-code')).toHaveAccessibleName(en.auth.twoFactorCodeLabel);
+    expect(screen.getByTestId('two-factor-code')).toHaveAttribute('inputmode', 'numeric');
+    expect(screen.getByTestId('verify-login-totp')).toHaveTextContent(en.auth.twoFactorVerifyTotp);
+  });
+
+  it('submits the active mode on Enter', async () => {
+    await reachTwoFactor();
+    const calls = countSecondFactorCalls();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    await waitFor(() => expect(calls).toEqual(['totp']));
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'backup-once{Enter}');
+    await waitFor(() => expect(calls).toEqual(['totp', 'backup']));
+  });
+
+  it('shows one alert for the active mode and clears it on a mode change', async () => {
+    await reachTwoFactor();
+    countSecondFactorCalls();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    expect(await screen.findAllByTestId('two-factor-error')).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'backup-once{Enter}');
+    expect(await screen.findAllByTestId('two-factor-error')).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('two-factor-use-app'));
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
+  });
+
+  it('drops the previous failure while a new attempt runs', async () => {
+    await reachTwoFactor();
+    countSecondFactorCalls();
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    await screen.findByTestId('two-factor-error');
+    server.use(
+      http.post('*', async ({ request }) => {
+        if (!new URL(request.url).pathname.endsWith('/two-factor/verify-totp')) return undefined;
+        await delay('infinite');
+        return HttpResponse.json({});
       }),
     );
 
-    await userEvent.click(screen.getByTestId('verify-login-backup-code'));
+    await userEvent.type(screen.getByTestId('two-factor-code'), '{Enter}');
 
-    expect(backupCalls).toBe(0);
-    expect(screen.getByTestId('two-factor-code')).toHaveFocus();
+    expect(await screen.findByRole('button', { name: en.auth.twoFactorVerifying })).toBeDisabled();
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
   });
 
   const answerSecondFactor = (path: string, code: string) =>
@@ -1225,6 +1298,7 @@ describe('LoginPage', () => {
     await reachTwoFactor();
     answerSecondFactor('/two-factor/verify-backup-code', 'INVALID_BACKUP_CODE');
 
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
     await userEvent.type(screen.getByTestId('two-factor-code'), 'abcde-fghij');
     await userEvent.click(screen.getByTestId('verify-login-backup-code'));
 

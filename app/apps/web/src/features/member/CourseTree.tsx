@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useId, useMemo, useState, type Co
 import {
   Box,
   Chip,
-  OutlinedInput,
   Stack,
   Tooltip,
   Typography,
@@ -24,6 +23,7 @@ import type {
 
 import { actions } from '../../api.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
+import { SearchField } from '../../components/ui/SearchField.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   COURSE_TREE_SCROLL_PADDING_REM,
@@ -146,8 +146,8 @@ const ProgressMark = ({ lessons, guest }: { lessons: CourseStructureLesson[]; gu
   );
 };
 
-const matchesLesson = (lesson: CourseStructureLesson, needle: string) =>
-  needle === '' || lesson.name.toLowerCase().includes(needle);
+const matchesName = (name: string, needle: string) =>
+  needle === '' || name.toLowerCase().includes(needle);
 
 type VisibleChapter = CourseStructureChapter & { allLessons: CourseStructureLesson[] };
 type VisibleModule = Omit<CourseStructureModule, 'chapters'> & {
@@ -161,18 +161,24 @@ const filterModules = (
   needle: string,
 ): VisibleModule[] =>
   modules
-    .map((module) => ({
-      ...module,
-      singleChapter: module.chapters.length === 1,
-      allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
-      chapters: module.chapters
-        .map((chapter) => ({
-          ...chapter,
-          allLessons: chapter.lessons,
-          lessons: chapter.lessons.filter((lesson) => matchesLesson(lesson, needle)),
-        }))
-        .filter((chapter) => chapter.lessons.length > 0),
-    }))
+    .map((module) => {
+      const moduleMatches = needle !== '' && matchesName(module.name, needle);
+      return {
+        ...module,
+        singleChapter: module.chapters.length === 1,
+        allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
+        chapters: module.chapters
+          .map((chapter) => {
+            const keepAll = moduleMatches || matchesName(chapter.name, needle);
+            return {
+              ...chapter,
+              allLessons: chapter.lessons,
+              lessons: keepAll ? chapter.lessons : chapter.lessons.filter((lesson) => matchesName(lesson.name, needle)),
+            };
+          })
+          .filter((chapter) => chapter.lessons.length > 0),
+      };
+    })
     .filter((module) => module.chapters.length > 0);
 
 const nearestTreeScroller = (node: HTMLElement): HTMLElement | null =>
@@ -318,7 +324,7 @@ const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChap
         label={
           <>
             <CourseTreeChapterTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
-              {chapter.name}
+              <Highlighted text={chapter.name} query={props.search} />
             </CourseTreeChapterTitle>
             {' '}
             <ProgressMark lessons={chapter.allLessons} guest={props.guest} />
@@ -356,7 +362,7 @@ const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule 
         label={
           <>
             <CourseTreeModuleTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
-              {module.name}
+              <Highlighted text={module.name} query={props.search} />
             </CourseTreeModuleTitle>
             {' '}
             <ProgressMark lessons={module.allLessons} guest={props.guest} />
@@ -439,15 +445,16 @@ export const CourseTree = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
       {showFilter ? (
         <>
-          <OutlinedInput
-            fullWidth
-            size="small"
-            sx={{ mb: '0.75rem', flexShrink: 0 }}
-            value={rawSearch}
-            onChange={(event) => setRawSearch(event.target.value)}
-            placeholder={t.courseTree.filterPlaceholder}
-            inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
-          />
+          <Box sx={{ mb: '0.75rem', flexShrink: 0 }}>
+            <SearchField
+              fullWidth
+              value={rawSearch}
+              onChange={setRawSearch}
+              placeholder={t.courseTree.filterPlaceholder}
+              label={t.courseTree.searchLessons}
+              testId="lesson-search"
+            />
+          </Box>
           <Typography
             variant="caption"
             component="p"

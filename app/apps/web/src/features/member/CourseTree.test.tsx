@@ -467,6 +467,42 @@ describe('CourseTree', () => {
     expect(mark?.textContent).toBe('Scope');
   });
 
+  it('keeps every lesson of a module whose own title matches and highlights the module title', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'Fundamentals');
+
+    await waitFor(() => expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument());
+    for (const id of ['l1', 'l2', 'l3']) expect(screen.getByTestId(`lesson-button-${id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('module-toggle-m1')).getByText('Fundamentals').tagName).toBe('MARK');
+  });
+
+  it('keeps every lesson of a chapter whose own title matches and highlights the chapter title', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'getting');
+
+    await waitFor(() => expect(screen.queryByText('Scope Basics')).not.toBeInTheDocument());
+    expect(screen.getByTestId('lesson-button-l1')).toBeInTheDocument();
+    expect(screen.getByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('module-toggle-m2')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('chapter-toggle-c1')).getByText('Getting').tagName).toBe('MARK');
+  });
+
+  it('uses the shared search field with a placeholder that matches the hint', async () => {
+    await renderTree();
+
+    const input = await screen.findByTestId('lesson-search');
+    expect(input).toHaveAttribute('type', 'search');
+    expect(input).toHaveAccessibleName(en.courseTree.searchLessons);
+    expect(input).toHaveAttribute('placeholder', en.courseTree.filterPlaceholder);
+  });
+
   it('explains the filter plainly and saves the word-stem tip for an empty result', async () => {
     const user = userEvent.setup();
     await renderTree();

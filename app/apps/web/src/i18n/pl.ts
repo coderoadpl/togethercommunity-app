@@ -2726,7 +2726,7 @@ export const pl: Messages = {
     courseNotInLibrary: 'Ten kurs nie jest w Twojej bibliotece. Mógł zostać usunięty albo Twój dostęp wygasł.',
     backToMyCourses: 'Moje kursy',
     searchLessons: 'Szukaj lekcji',
-    filterPlaceholder: 'Filtruj po nazwie lekcji',
+    filterPlaceholder: 'Filtruj lekcje i moduły',
     filterHint: 'Szukaj po tytułach lekcji i modułów — wystarczy początek słowa.',
     noMatches: 'Żadna lekcja nie pasuje do wyszukiwania.',
     loadingCourse: 'Ładowanie kursu…',

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   Stack,
@@ -19,6 +20,8 @@ import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { AuthShell } from './AuthShell.js';
+
+const PASSWORD_HINT_ID = 'reset-password-minimum';
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
@@ -96,9 +99,11 @@ export const ResetPasswordPage = () => {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete="new-password"
+                  aria-describedby={PASSWORD_HINT_ID}
                   inputProps={{ 'data-testid': 'reset-password' }}
                   required
                 />
+                <FormHelperText id={PASSWORD_HINT_ID}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
               </FormControl>
               <FormControl fullWidth>
                 <FormLabel htmlFor="reset-password-confirm">{t.resetPassword.confirmPasswordLabel}</FormLabel>

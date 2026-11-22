@@ -107,6 +107,15 @@ describe('RegisterPage', () => {
     expect(offerCalls).toBe(0);
   });
 
+  it('states the password minimum under the password field and describes the field with it', async () => {
+    server.use(anonymousMe(), noTenantOffer);
+
+    await renderRegisterPage();
+
+    const hint = screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH }));
+    expect(screen.getByLabelText(en.auth.passwordLabel)).toHaveAttribute('aria-describedby', hint.id);
+  });
+
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
     server.use(

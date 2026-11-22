@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   Stack,
@@ -23,6 +24,8 @@ import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
+
+const PASSWORD_HINT_ID = 'register-password-minimum';
 
 const baseDomainUrl = (): string => {
   const { protocol, port } = window.location;
@@ -146,8 +149,10 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="new-password"
+              aria-describedby={PASSWORD_HINT_ID}
               required
             />
+            <FormHelperText id={PASSWORD_HINT_ID}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
           </FormControl>
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />

@@ -41,6 +41,13 @@ describe('ResetPasswordPage', () => {
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
   });
 
+  it('states the password minimum under the new password and describes the field with it', async () => {
+    await renderResetPage('?token=valid-token');
+
+    const hint = screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH }));
+    expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-describedby', hint.id);
+  });
+
   it('resets the password and shows a success state on the happy path', async () => {
     let body: unknown;
     server.use(http.post('*', async ({ request }) => {

@@ -508,11 +508,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       </FinePrint>
     ) : null,
     accessPrompt,
-    platformSurface ? (
-      <Box key="build" sx={{ display: 'flex', justifyContent: 'flex-start' }}>
-        <BuildStamp />
-      </Box>
-    ) : null,
   ].filter((item) => item !== null);
 
   const footer =
@@ -523,7 +518,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
-    <AuthShell title={t.auth.signInTitle} hostname={hostname} footer={pageFooter}>
+    <AuthShell
+      title={t.auth.signInTitle}
+      hostname={hostname}
+      footer={pageFooter}
+      colophon={platformSurface && pageFooter !== null ? (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <BuildStamp />
+        </Box>
+      ) : null}
+    >
       {notices}
       <Box data-testid="sign-in-notice-slot">
         {publicOffer.data?.tenant.signInNotice?.enabled && publicOffer.data.tenant.signInNotice.text.trim() ? (

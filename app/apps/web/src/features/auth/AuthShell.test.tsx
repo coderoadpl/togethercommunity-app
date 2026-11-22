@@ -194,10 +194,8 @@ describe('AuthShell', () => {
 
     const strip = await screen.findByRole('navigation', { name: en.auth.publicNavLabel });
     expect([...strip.querySelectorAll('a')].map((link) => link.textContent)).toEqual([
-      en.auth.publicNavCourses,
       en.auth.publicNavCommunity,
     ]);
-    expect(screen.getByTestId('auth-public-nav-courses')).toHaveAttribute('href', '/');
     expect(screen.getByTestId('auth-public-nav-community')).toHaveAttribute(
       'href',
       '/community/space-1',
@@ -213,15 +211,54 @@ describe('AuthShell', () => {
     expect(footer.lastElementChild).toBe(screen.getByTestId('auth-powered-by'));
   });
 
-  it('drops the navigation row entries the tenant does not publish', async () => {
+  it('drops the Courses entry when the catalogue prompt already links to the courses', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     stubOffer();
     stubNavigation({ defaultHomeSpaceId: null, courseIds: ['course-1'] });
 
     await renderShell(TENANT_HOST);
 
-    expect(await screen.findByTestId('auth-public-nav-courses')).toBeInTheDocument();
-    expect(screen.queryByTestId('auth-public-nav-community')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('auth-footer-courses')).toHaveAttribute('href', '/');
+    expect(screen.queryByTestId('auth-public-nav-courses')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auth-public-nav')).not.toBeInTheDocument();
+  });
+
+  it('keeps the Courses entry while the tenant name for the catalogue prompt is unknown', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    server.use(http.get('*/api/public/offer', () => HttpResponse.json(
+      { ok: false, error: { code: 'unavailable', message: 'down' } },
+      { status: 503 },
+    )));
+    stubNavigation({ defaultHomeSpaceId: null, courseIds: ['course-1'] });
+
+    await renderShell(TENANT_HOST);
+
+    expect(await screen.findByTestId('auth-public-nav-courses')).toHaveAttribute('href', '/');
+    expect(screen.queryByTestId('auth-footer-access')).not.toBeInTheDocument();
+  });
+
+  it('places a colophon after the Together line', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    const rootRoute = createRootRoute({
+      component: () => (
+        <AuthShell hostname="togethercommunity.app" colophon={<span data-testid="colophon">v1</span>}>
+          <h1>Sign in</h1>
+        </AuthShell>
+      ),
+    });
+    const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/login'] }) });
+    await router.load();
+    renderWithProviders(
+      <ThemeModeProvider>
+        <AppChromeProvider>
+          <RouterProvider router={router} />
+        </AppChromeProvider>
+      </ThemeModeProvider>,
+    );
+
+    const footer = await screen.findByRole('contentinfo');
+    expect(footer.lastElementChild).toBe(screen.getByTestId('colophon'));
+    expect(footer.children.item(footer.children.length - 2)).toBe(screen.getByTestId('auth-powered-by'));
   });
 
   it('omits the navigation row when a download is all the tenant publishes', async () => {

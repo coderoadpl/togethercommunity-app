@@ -577,6 +577,16 @@ describe('LoginPage', () => {
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
   });
 
+  it('puts the build stamp below the Powered by row, outside the sign-in actions', async () => {
+    await renderLoginPage();
+
+    const stamp = screen.getByTestId('build-stamp');
+    const footer = screen.getByRole('contentinfo');
+    expect(footer).toContainElement(stamp);
+    expect(screen.getByRole('main')).not.toContainElement(stamp);
+    expect(screen.getByTestId('auth-powered-by').compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('offers the passkey as an icon link under the divider on the identifier step', async () => {
     await renderLoginPage();
 

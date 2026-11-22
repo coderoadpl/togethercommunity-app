@@ -35,7 +35,6 @@ export const changeProposalAppliedLine = (operation: string, appliedResourceId: 
 
 const NOTE_CODE_SEPARATOR = ': ';
 
-/** The reason a proposal could not apply because a file or an image it proposed is gone, without the note's code. */
 export const changeProposalGoneReason = (note: string | null): string | null =>
   note !== null && (isChangeProposalFileMissingNote(note) || isChangeProposalImageMissingNote(note))
     ? note.slice(note.indexOf(NOTE_CODE_SEPARATOR) + NOTE_CODE_SEPARATOR.length)

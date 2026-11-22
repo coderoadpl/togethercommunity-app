@@ -40,7 +40,10 @@ export const TenantHomePage = ({
 }: { renderAnonymousHome?: (visitorEmail: string | null) => ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
-  const me = useQuery(actions.me);
+  const onTenantHost = isTenantHost(hostname);
+  // On a tenant host TenantGate already holds the first session answer; an anonymous
+  // 401 must not refetch on mount, or the home would flash a second splash.
+  const me = useQuery({ ...actions.me, retryOnMount: !onTenantHost });
 
   const unauthorized = me.error instanceof ApiError && me.error.appError.code === 'unauthorized';
   const tenant = me.data?.tenant ?? null;
@@ -49,7 +52,7 @@ export const TenantHomePage = ({
   const visitorEmail = me.data?.tenantAccess === 'none' ? me.data.email : null;
   const anonymousTenantHome =
     (unauthorized || visitorEmail !== null)
-    && tenant === null && renderAnonymousHome !== undefined && isTenantHost(hostname);
+    && tenant === null && renderAnonymousHome !== undefined && onTenantHost;
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
@@ -57,7 +60,7 @@ export const TenantHomePage = ({
   }, [unauthorized, anonymousTenantHome, tenant, navigate]);
 
   if (me.isPending) {
-    return <BrandLoader caption={t.common.loading} />;
+    return <BrandLoader caption={t.common.loading} surface={onTenantHost ? 'member' : 'theme'} />;
   }
   if (anonymousTenantHome && renderAnonymousHome !== undefined) {
     return <>{renderAnonymousHome(visitorEmail)}</>;

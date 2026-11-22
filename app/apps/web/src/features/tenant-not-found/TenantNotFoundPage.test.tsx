@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +17,26 @@ import { server } from '../../test/server.js';
 import { TenantGate } from './TenantNotFoundPage.js';
 
 const children = <div>APP</div>;
+
+const okOffer = () =>
+  http.get('/api/public/offer', () =>
+    HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } }));
+
+const anonymousMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }));
+
+const emptyNavigation = () =>
+  http.get('/api/public/navigation', () =>
+    HttpResponse.json({ ok: true, data: { navigation: { defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] } } }));
+
+const deferred = () => {
+  let release = (): void => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { gate, release };
+};
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -175,9 +195,9 @@ describe('TenantGate', () => {
     const probe = vi.fn(() =>
       HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
     );
-    server.use(http.get('/api/public/offer', probe));
+    server.use(http.get('/api/public/offer', probe), anonymousMe());
 
-    renderWithProviders(<TenantGate hostname="courses.example.org">{children}</TenantGate>);
+    renderWithProviders(<TenantGate hostname="courses.example.org" pathname="/panel">{children}</TenantGate>);
 
     expect(await screen.findByTestId('tenant-not-found')).toBeInTheDocument();
     expect(probe).toHaveBeenCalledOnce();
@@ -185,13 +205,85 @@ describe('TenantGate', () => {
   });
 
   it('renders the app when the tenant subdomain resolves', async () => {
-    server.use(
-      http.get('/api/public/offer', () =>
-        HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } }),
-      ),
-    );
-    renderWithProviders(<TenantGate hostname="acme.localhost">{children}</TenantGate>);
+    server.use(okOffer(), anonymousMe());
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/panel">{children}</TenantGate>);
     expect(await screen.findByText('APP')).toBeInTheDocument();
+  });
+
+  it('starts the session and the home navigation together with the offer', async () => {
+    const offerHeld = deferred();
+    const requested: string[] = [];
+    server.use(
+      http.get('/api/public/offer', async () => {
+        requested.push('offer');
+        await offerHeld.gate;
+        return HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } });
+      }),
+      http.get('/api/me', () => {
+        requested.push('me');
+        return HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 });
+      }),
+      http.get('/api/public/navigation', () => {
+        requested.push('navigation');
+        return HttpResponse.json({ ok: true, data: { navigation: { defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] } } });
+      }),
+    );
+
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/">{children}</TenantGate>);
+
+    await waitFor(() => expect([...requested].sort()).toEqual(['me', 'navigation', 'offer']));
+    expect(screen.getByTestId('tenant-gate-pending')).toBeInTheDocument();
+    offerHeld.release();
+    expect(await screen.findByText('APP')).toBeInTheDocument();
+  });
+
+  it('leaves the public navigation alone outside the home path', async () => {
+    const navigation = vi.fn(() =>
+      HttpResponse.json({ ok: true, data: { navigation: { defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] } } }));
+    server.use(okOffer(), anonymousMe(), http.get('/api/public/navigation', navigation));
+
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/login">{children}</TenantGate>);
+
+    expect(await screen.findByText('APP')).toBeInTheDocument();
+    expect(navigation).not.toHaveBeenCalled();
+  });
+
+  it('keeps one splash mounted until the session answers', async () => {
+    const sessionHeld = deferred();
+    server.use(
+      okOffer(),
+      emptyNavigation(),
+      http.get('/api/me', async () => {
+        await sessionHeld.gate;
+        return HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 });
+      }),
+    );
+
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/">{children}</TenantGate>);
+
+    const splash = screen.getByTestId('tenant-gate-pending');
+    expect(splash).toHaveAccessibleName(en.common.loading);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('tenant-gate-pending')).toBe(splash);
+    expect(screen.queryByText('APP')).not.toBeInTheDocument();
+    sessionHeld.release();
+    expect(await screen.findByText('APP')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-gate-pending')).not.toBeInTheDocument();
+  });
+
+  it('paints the splash on the member background outside the panel and on the theme background inside it', () => {
+    server.use(
+      http.get('/api/public/offer', () => new Promise<never>(() => undefined)),
+      http.get('/api/me', () => new Promise<never>(() => undefined)),
+      http.get('/api/public/navigation', () => new Promise<never>(() => undefined)),
+    );
+
+    const home = renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/">{children}</TenantGate>);
+    expect(screen.getByTestId('tenant-gate-pending')).toHaveAttribute('data-surface', 'member');
+    home.unmount();
+
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/panel/spaces">{children}</TenantGate>);
+    expect(screen.getByTestId('tenant-gate-pending')).toHaveAttribute('data-surface', 'theme');
   });
 
   it('shows a friendly 404 when an unknown subdomain fails to resolve', async () => {
@@ -199,8 +291,10 @@ describe('TenantGate', () => {
       http.get('/api/public/offer', () =>
         HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
       ),
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 })),
     );
-    renderWithProviders(<TenantGate hostname="ghost.localhost">{children}</TenantGate>);
+    renderWithProviders(<TenantGate hostname="ghost.localhost" pathname="/panel">{children}</TenantGate>);
 
     expect(await screen.findByTestId('tenant-not-found')).toBeInTheDocument();
     expect(screen.getByAltText(en.common.appName)).toBeInTheDocument();
@@ -214,8 +308,10 @@ describe('TenantGate', () => {
       http.get('/api/public/offer', () =>
         HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 }),
       ),
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'tenant_not_found', message: 'no such tenant' } }, { status: 404 })),
     );
-    renderWithProviders(<TenantGate hostname="ghost.localhost">{children}</TenantGate>);
+    renderWithProviders(<TenantGate hostname="ghost.localhost" pathname="/panel">{children}</TenantGate>);
 
     const card = await screen.findByTestId('tenant-not-found');
     expect(card).toHaveTextContent(en.tenantNotFound.eyebrow);
@@ -237,9 +333,10 @@ describe('TenantGate', () => {
           ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'boom' } }, { status: 500 })
           : HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Acme' }, contentVersion: 1, products: [] } });
       }),
+      anonymousMe(),
     );
     const user = userEvent.setup();
-    renderWithProviders(<TenantGate hostname="acme.localhost">{children}</TenantGate>);
+    renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/panel">{children}</TenantGate>);
 
     const card = await screen.findByTestId('tenant-gate-error');
     expect(within(card).getByRole('heading', { level: 1, name: en.errors.headingGeneric })).toBeInTheDocument();

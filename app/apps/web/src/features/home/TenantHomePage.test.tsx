@@ -7,10 +7,12 @@ import {
 } from '@tanstack/react-router';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useQuery } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { actions } from '../../api.js';
 import { ToastProvider } from '../../components/ui/Toast.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -66,6 +68,11 @@ const memberTenant = {
 
 const stub = (label: string) => () => <div>{label}</div>;
 
+const SessionHeldAbove = ({ children }: { children: ReactNode }) => {
+  const me = useQuery(actions.me);
+  return me.isPending ? <p>GATE</p> : <>{children}</>;
+};
+
 const renderHome = async (component: () => ReactNode = TenantHomePage) => {
   const rootRoute = createRootRoute();
   const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component });
@@ -112,6 +119,23 @@ describe('TenantHomePage dispatcher', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(en.errors.messageInternal);
     expect(card.querySelectorAll('button')).toHaveLength(1);
     expect(screen.getByRole('button', { name: en.common.retry })).toBeInTheDocument();
+  });
+
+  it('reuses an anonymous session answer held above it on a tenant host instead of loading again', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    const me = vi.fn(() =>
+      HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }));
+    server.use(http.get('/api/me', me));
+
+    await renderHome(() => (
+      <SessionHeldAbove>
+        <TenantHomePage hostname="studio.localhost" renderAnonymousHome={() => <div>Visitor home</div>} />
+      </SessionHeldAbove>
+    ));
+
+    expect(await screen.findByText('Visitor home')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: en.common.loading })).not.toBeInTheDocument();
+    expect(me).toHaveBeenCalledOnce();
   });
 
   it('redirects a staff member to their start page', async () => {

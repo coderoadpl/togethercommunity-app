@@ -554,7 +554,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Opening your workspace…' }).waitFor(visible),
+    ready: (page) => page.getByTestId('tenant-gate-pending').getByText('Loading…').waitFor(visible),
     waitForNetworkIdle: false,
     minBytes: 7 * 1024,
   },

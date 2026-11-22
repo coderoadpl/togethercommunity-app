@@ -2,6 +2,7 @@ import type {
   ImportAuditAction,
   ImportAuditResourceType,
   LessonBlockType,
+  MemberDownloadFailureCode,
   MemberEventType,
   OrderRefundJobView,
   ShipxRejectionError,
@@ -2124,6 +2125,8 @@ export interface Messages {
     productsOtherEmailHint: string;
     browseOffers: string;
     continueCourse: string;
+    downloadPreparing: string;
+    downloadFailures: Record<MemberDownloadFailureCode, string>;
   };
   downloadCopies: {
     showMore: string;

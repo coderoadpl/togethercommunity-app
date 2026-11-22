@@ -2387,6 +2387,12 @@ export const en: Messages = {
     productsOtherEmailHint: 'Bought with another email? Sign in with that address.',
     browseOffers: 'Browse offers',
     continueCourse: 'Continue',
+    downloadPreparing: 'Preparing your file…',
+    downloadFailures: {
+      no_access: 'You no longer have access to this file. Check the access status of the product.',
+      not_found: 'This file is no longer available. A newer version may have replaced it.',
+      failed: 'We could not prepare your file. Try again in a moment.',
+    },
   },
   downloadCopies: {
     showMore: 'Show more copies',

@@ -2408,6 +2408,12 @@ export const pl: Messages = {
     productsOtherEmailHint: 'Kupiłeś na inny adres e-mail? Zaloguj się tym adresem.',
     browseOffers: 'Zobacz ofertę',
     continueCourse: 'Kontynuuj',
+    downloadPreparing: 'Przygotowujemy plik…',
+    downloadFailures: {
+      no_access: 'Nie masz już dostępu do tego pliku. Sprawdź status dostępu do produktu.',
+      not_found: 'Ten plik nie jest już dostępny. Mogła go zastąpić nowsza wersja.',
+      failed: 'Nie udało się przygotować pliku. Spróbuj ponownie za chwilę.',
+    },
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

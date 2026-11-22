@@ -1,12 +1,12 @@
-import { screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProductDownloadAssetView } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
-import { ProductDownloads } from './ProductDownloads.js';
+import { DOWNLOAD_PENDING_MS, ProductDownloads } from './ProductDownloads.js';
 
 const version = {
   lineageId: 'asset-guide', productId: 'product-guide', status: 'ready' as const,
@@ -66,5 +66,41 @@ describe('product downloads', () => {
     expect(screen.getByTestId('download-meta-asset-guide-v1')).toHaveTextContent('PDF · 2 KB · v1');
     expect(screen.getByRole('link', { name: en.student.downloadFileVersion({ name: 'guide.pdf', number: 1 }) }))
       .toHaveAttribute('href', previous.downloadPath);
+  });
+});
+
+describe('product download pending cue', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('says the file is being prepared and ignores a second click for a few seconds', () => {
+    vi.useFakeTimers();
+    renderDownloads();
+    const button = screen.getByTestId('download-asset-guide');
+    const preventedByPage: boolean[] = [];
+    const preventNavigation = (event: Event) => {
+      preventedByPage.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    document.addEventListener('click', preventNavigation);
+
+    try {
+      fireEvent.click(button);
+      expect(button).toHaveTextContent(en.student.downloadPreparing);
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).toHaveAccessibleName(`${en.student.downloadPreparing} guide.pdf`);
+
+      fireEvent.click(button);
+      expect(preventedByPage).toEqual([false, true]);
+
+      act(() => {
+        vi.advanceTimersByTime(DOWNLOAD_PENDING_MS);
+      });
+      expect(button).toHaveTextContent(en.student.downloadButton);
+      expect(button).toHaveAccessibleName(en.student.downloadFileVersion({ name: 'guide.pdf', number: 2 }));
+    } finally {
+      document.removeEventListener('click', preventNavigation);
+    }
   });
 });

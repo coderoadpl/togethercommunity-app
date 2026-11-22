@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Chip,
@@ -8,10 +8,16 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import { orderLineLabel, SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import {
+  MEMBER_DOWNLOAD_FAILURE_PARAMS,
+  MY_PRODUCTS_PATH,
+  orderLineLabel,
+  parseMemberDownloadFailure,
+  SALES_LINK_TIME_ZONE,
+} from '#core/domain/index.js';
 import type {
   GrantWindowStatus,
   MemberFulfilment,
@@ -30,7 +36,7 @@ import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatDate, formatOfferPrice } from '../../lib/format.js';
 import { DataValue, MemberProductLink, VisuallyHidden } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
-import { ProductDownloads } from './ProductDownloads.js';
+import { DownloadFailureAlert, ProductDownloads, type DownloadFailureNotice } from './ProductDownloads.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -113,10 +119,12 @@ const ProductRow = ({
   product,
   billingPortalUrl,
   accessibleCourseIds,
+  downloadFailure,
 }: {
   product: GrantedProductRow;
   billingPortalUrl: string | null;
   accessibleCourseIds: ReadonlySet<string> | null;
+  downloadFailure: DownloadFailureNotice | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -181,7 +189,7 @@ const ProductRow = ({
         <FulfilmentStatusLine fulfilment={product.fulfilment} productId={product.id} />
       ) : null}
       {product.description ? <RichTextContent html={product.description} /> : null}
-      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
+      <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} failure={downloadFailure} />
       {product.grantStatus === 'upcoming' ? (
         <Typography variant="caption" color="text.secondary">
           {t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) })}
@@ -259,10 +267,19 @@ export const MyProductsPage = () => {
   const publicOffer = useQuery({ ...actions.publicOffer, enabled: products.data?.products.length === 0 });
   const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
+  const navigate = useNavigate();
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const [downloadFailure, setDownloadFailure] = useState(() => parseMemberDownloadFailure(new URLSearchParams(searchStr)));
+  const failureSearch = new URLSearchParams(searchStr);
+  const failureInUrl = Object.values(MEMBER_DOWNLOAD_FAILURE_PARAMS).some((name) => failureSearch.has(name));
 
   useEffect(() => {
     if (unauthorized) void redirectToLogin();
   }, [redirectToLogin, unauthorized]);
+
+  useEffect(() => {
+    if (failureInUrl) void navigate({ href: MY_PRODUCTS_PATH, replace: true });
+  }, [failureInUrl, navigate]);
 
   if (products.isPending) {
     return (
@@ -293,9 +310,21 @@ export const MyProductsPage = () => {
   const accessibleCourseIds = courses.data === undefined
     ? null
     : new Set(courses.data.courses.map((course) => course.id));
+  const failureNotice: DownloadFailureNotice | null = downloadFailure === null ? null : {
+    code: downloadFailure.code,
+    assetId: downloadFailure.assetId,
+    onRetry: () => {
+      setDownloadFailure(null);
+      void products.refetch();
+    },
+  };
+  const failedProductListed = products.data.products.some((product) => product.id === downloadFailure?.productId);
 
   return (
     <MemberSurface title={t.student.myProducts}>
+        {failureNotice !== null && !failedProductListed ? (
+          <DownloadFailureAlert failure={failureNotice} retryPath={null} data-testid="download-failure" />
+        ) : null}
         {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
         {products.data.products.length === 0 ? (
           <StatusView
@@ -322,6 +351,7 @@ export const MyProductsPage = () => {
                 product={product}
                 billingPortalUrl={tenantSettings.data?.settings.billingPortalUrl ?? null}
                 accessibleCourseIds={accessibleCourseIds}
+                downloadFailure={product.id === downloadFailure?.productId ? failureNotice : null}
               />
             ))}
           </Stack>

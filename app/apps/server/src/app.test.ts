@@ -4872,6 +4872,77 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+
+  const browserAccept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
+  it('sends a failed browser download back to My products with a fixed error code and the product', async () => {
+    const forbidden = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(forbidden.status).toBe(303);
+    expect(forbidden.headers.get('location')).toBe(`/my/products?downloadError=no_access&product=${downloadProduct.id}&asset=${asset.id}`);
+    expect(forbidden.headers.get('cache-control')).toBe('no-store');
+    expect(await forbidden.text()).toBe('');
+
+    const missing = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      downloadAssets: { ...deps().downloadAssets, findById: async () => null },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(missing.status).toBe(303);
+    expect(missing.headers.get('location')).toBe(`/my/products?downloadError=not_found&product=${downloadProduct.id}&asset=${asset.id}`);
+
+    const unconfigured = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      secretResolver: { resolve: async () => err(notFound('No storage configuration')) },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(unconfigured.status).toBe(303);
+    expect(unconfigured.headers.get('location')).toBe(`/my/products?downloadError=failed&product=${downloadProduct.id}&asset=${asset.id}`);
+  });
+
+  it('never reflects an unsafe product or asset reference into the failure redirect', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(
+      API_PATHS.memberProductDownload.replace(':productId', 'bad%20id%3Cscript%3E').replace(':assetId', asset.id),
+      { headers: { host: 'acme.localhost:48730', accept: browserAccept } },
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/my/products?downloadError=no_access');
+  });
+
+  it('keeps the JSON envelope for clients that ask for JSON', async () => {
+    for (const accept of ['application/json', 'application/json, text/html', undefined]) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', ...(accept === undefined ? {} : { accept }) },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    }
+  });
+
+  it('sends a signed-out browser download to sign-in with a return to My products', async () => {
+    const anonymous = { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } };
+    const browser = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(browser.status).toBe(303);
+    expect(browser.headers.get('location')).toBe('/login?returnTo=%2Fmy%2Fproducts');
+    expect(new URL(browser.headers.get('location') ?? '', 'https://acme.test').origin).toBe('https://acme.test');
+
+    const api = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json' },
+    });
+    expect(api.status).toBe(401);
+    expect(await api.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
+  it('still redirects a successful browser download to its signed object URL', async () => {
+    const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+  });
+
   it('accepts legacy bodyless completion and rejects malformed version JSON', async () => {
     const app = scopedApp('owner', { overrides: overrides(true) });
     const completePath = API_PATHS.productDownloadComplete

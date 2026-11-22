@@ -1,5 +1,6 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
@@ -33,14 +34,14 @@ const mockProducts = (products: unknown[], courses = [course('course-js', 'JavaS
   );
 };
 
-const renderMyProducts = async () => {
+const renderMyProducts = async (path = '/my/products') => {
   const rootRoute = createRootRoute({ component: MyProductsPage });
   const router = createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/my/products'] }),
+    history: createMemoryHistory({ initialEntries: [path] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return { ...renderWithProviders(<RouterProvider router={router} />), router };
 };
 
 describe('my products cards', () => {
@@ -160,5 +161,63 @@ describe('my products empty state', () => {
     const empty = within(await screen.findByTestId('my-products-empty-state'));
     await expect.poll(() => offerRequests).toBeGreaterThan(0);
     expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+  });
+});
+
+const guide = {
+  id: 'asset-guide', lineageId: 'asset-guide', productId: 'product-guide', status: 'ready', createdAt: '2026-07-01T00:00:00.000Z',
+  personalisationSizeExceeded: false, versionNumber: 1, versionNote: null, supersededAt: null, fileName: 'guide.pdf',
+  contentType: 'application/pdf', sizeBytes: 2048, downloadPath: '/api/my/products/product-guide/downloads/asset-guide',
+  previousVersions: [],
+};
+
+const downloadProduct = { ...product, id: 'product-guide', type: 'digital_download', title: 'Field guide', accessItems: [], downloads: [guide] };
+
+describe('my products download failures', () => {
+  it('shows the translated error with Retry on the failed product and drops the parameters from the URL', async () => {
+    mockProducts([downloadProduct, product]);
+
+    const { router } = await renderMyProducts('/my/products?downloadError=failed&product=product-guide&asset=asset-guide');
+
+    const alert = await screen.findByTestId('download-failure-product-guide');
+    expect(alert).toHaveTextContent(en.student.downloadFailures.failed);
+    expect(within(screen.getByTestId('product-downloads-product-guide')).getByRole('alert')).toBe(alert);
+    expect(within(alert).getByRole('link', { name: en.common.retry })).toHaveAttribute('href', guide.downloadPath);
+    expect(screen.queryByTestId('download-failure-product-single')).not.toBeInTheDocument();
+    await expect.poll(() => router.state.location.searchStr).toBe('');
+    expect(router.state.location.pathname).toBe('/my/products');
+  });
+
+  it('keeps the error on the card of a product whose access ended', async () => {
+    mockProducts([{ ...downloadProduct, grantStatus: 'expired', grantExpiresAt: '2026-07-02T00:00:00.000Z', downloads: [] }]);
+
+    await renderMyProducts('/my/products?downloadError=no_access&product=product-guide&asset=asset-guide');
+
+    const alert = await screen.findByTestId('download-failure-product-guide');
+    expect(alert).toHaveTextContent(en.student.downloadFailures.no_access);
+    await userEvent.click(within(alert).getByRole('button', { name: en.common.retry }));
+    expect(screen.queryByTestId('download-failure-product-guide')).not.toBeInTheDocument();
+  });
+
+  it('shows the error above the list when the product is not listed and clears it on Retry', async () => {
+    mockProducts([product]);
+
+    await renderMyProducts('/my/products?downloadError=not_found&product=product-gone');
+
+    const alert = await screen.findByTestId('download-failure');
+    expect(alert).toHaveTextContent(en.student.downloadFailures.not_found);
+    await userEvent.click(within(alert).getByRole('button', { name: en.common.retry }));
+    expect(screen.queryByTestId('download-failure')).not.toBeInTheDocument();
+  });
+
+  it('ignores an error code outside the fixed list and still cleans the URL', async () => {
+    mockProducts([downloadProduct]);
+
+    const { router } = await renderMyProducts('/my/products?downloadError=%3Cscript%3E&product=product-guide');
+
+    await screen.findByTestId('my-product-product-guide');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('<script>');
+    await expect.poll(() => router.state.location.searchStr).toBe('');
   });
 });

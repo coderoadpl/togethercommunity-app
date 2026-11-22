@@ -35,6 +35,7 @@ import { activitySummarySchema, memberActivitySchema, type activitySummaryQueryS
 import { adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/contract/index.js';
 import { API_KEY_HEADER, SHOP_CATALOG_ROUTES, SHOP_ORDER_ROUTES, shopCatalogContracts, shopOrderContracts, TENANT_HEADER } from '#core/contract/index.js';
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
+import { SHOP_DOWNLOAD_ROUTES, shopDownloadContracts } from '#core/contract/index.js';
 import { SHOP_SETTINGS_ROUTES, shopSettingsContracts } from '#core/contract/index.js';
 import { SHOP_INTEGRATION_ROUTES, shopIntegrationContracts } from '#core/contract/index.js';
 import {
@@ -473,6 +474,8 @@ export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest 
 export interface ImageAssetFileUpload extends ImageAssetUploadRequest {
   body: BodyInit;
 }
+
+export type StagedDownloadFileUpload = z.input<typeof shopDownloadContracts.uploadStagedDownload.input> & { body: BodyInit };
 
 const isRedirectFailure = (cause: unknown): boolean => {
   if (!(cause instanceof Error)) return false;
@@ -3208,6 +3211,7 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
     ...shopAssetsMethods(options),
+    ...shopDownloadMethods(options),
     ...shopIntegrationMethods(options),
     ...shopProposalMethods(options),
   };
@@ -3324,6 +3328,43 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
       request(options, routes.updateSalesLink.method, linkPath(routes.updateSalesLink.path, input.id), proposable.updateSalesLink, input, signal, proposalHeaders(proposal)),
     deleteSalesLink: (input: ShopAssetsInput<'deleteSalesLink'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
       request(options, routes.deleteSalesLink.method, linkPath(routes.deleteSalesLink.path, input.id), proposable.deleteSalesLink, undefined, signal, proposalHeaders(proposal)),
+  };
+};
+
+type ShopDownloadInput<K extends 'copyStagedDownload' | 'addProductDownload' | 'replaceProductDownload' | 'removeProductDownload'> =
+  z.input<(typeof shopDownloadContracts)[K]['input']>;
+
+const shopDownloadMethods = (options: ApiClientOptions) => {
+  const routes = SHOP_DOWNLOAD_ROUTES;
+  const contracts = shopDownloadContracts;
+  return {
+    listProductDownloads: (productId: string, signal?: AbortSignal) =>
+      request(options, routes.listProductDownloads.method, routes.listProductDownloads.path.replace(':productId', encodeURIComponent(productId)), contracts.listProductDownloads.output, undefined, signal),
+    stageProductDownload: (input: StagedDownloadFileUpload, signal?: AbortSignal) =>
+      uploadPresignedStorageAsset(
+        input,
+        options.fetchImpl ?? fetch,
+        () => request(options, routes.uploadStagedDownload.method, routes.uploadStagedDownload.path, contracts.uploadStagedDownload.output, {
+          fileName: input.fileName,
+          contentType: input.contentType,
+          sizeBytes: input.sizeBytes,
+        }, signal),
+        (started) => started.upload,
+        (started) => request(options, routes.completeStagedDownload.method, routes.completeStagedDownload.path, contracts.completeStagedDownload.output, { uploadId: started.upload.id }, signal),
+        signal,
+      ),
+    copyProductDownload: (input: ShopDownloadInput<'copyStagedDownload'>, signal?: AbortSignal) =>
+      request(options, routes.copyStagedDownload.method, routes.copyStagedDownload.path, contracts.copyStagedDownload.output, input, signal),
+    listStagedDownloads: (signal?: AbortSignal) =>
+      request(options, routes.listStagedDownloads.method, routes.listStagedDownloads.path, contracts.listStagedDownloads.output, undefined, signal),
+    discardStagedDownload: (id: string, signal?: AbortSignal) =>
+      request(options, routes.discardStagedDownload.method, routes.discardStagedDownload.path.replace(':id', encodeURIComponent(id)), contracts.discardStagedDownload.output, undefined, signal),
+    addProductDownload: (input: ShopDownloadInput<'addProductDownload'>, signal?: AbortSignal) =>
+      request(options, routes.addProductDownload.method, routes.addProductDownload.path, contracts.addProductDownload.output, input, signal),
+    replaceProductDownload: (input: ShopDownloadInput<'replaceProductDownload'>, signal?: AbortSignal) =>
+      request(options, routes.replaceProductDownload.method, routes.replaceProductDownload.path, contracts.replaceProductDownload.output, input, signal),
+    removeProductDownload: (input: ShopDownloadInput<'removeProductDownload'>, signal?: AbortSignal) =>
+      request(options, routes.removeProductDownload.method, routes.removeProductDownload.path, contracts.removeProductDownload.output, input, signal),
   };
 };
 

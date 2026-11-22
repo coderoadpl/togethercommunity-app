@@ -1056,3 +1056,175 @@ describe('shop image CLI with a propose-mode key', () => {
     expect(calls.at(-1)?.headers.get('x-proposal-group')).toBe('group-1');
   });
 });
+
+const stagedFile = {
+  id: 'staged-1', fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 9, sha256: 'b'.repeat(64), copiedFrom: null,
+  createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-11-22T10:00:00.000Z',
+};
+const stagedCopy = { ...stagedFile, id: 'staged-2', sha256: null, copiedFrom: { productId: 'product-1', assetId: 'asset-1', versionNumber: 2 } };
+const downloadAsset = {
+  id: 'staged-1', lineageId: 'staged-1', versionNumber: 1, versionNote: null, supersededAt: null, productId: 'product-1', fileName: 'workbook.pdf',
+  contentType: 'application/pdf', sizeBytes: 9, status: 'ready', createdAt: '2026-11-15T10:00:00.000Z', personalisationSizeExceeded: false,
+};
+const NOT_IN_RELEASE_REFUSAL = 'A propose-mode shop management key cannot call this route (not-in-release): product download files are not available to a propose-mode key yet';
+
+const fileAnswer = (method: string, path: string): unknown => {
+  if (path === '/api/m2m/shop/downloads/upload') {
+    return { upload: { id: 'upload-1', url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'application/pdf', 'content-length': '9' }, expiresAt: '2026-11-15T10:15:00.000Z' } };
+  }
+  if (path === '/api/m2m/shop/downloads/complete') return { file: stagedFile };
+  if (path === '/api/m2m/shop/downloads/copy') return { file: stagedCopy };
+  if (path === '/api/m2m/shop/downloads/staged') return { files: [stagedFile, stagedCopy] };
+  if (path.startsWith('/api/m2m/shop/downloads/staged/')) return { discarded: true };
+  if (method === 'GET') return { assets: [downloadAsset, { ...downloadAsset, id: 'asset-0', supersededAt: '2026-11-15T11:00:00.000Z' }], personalisationMaxBytes: 52428800 };
+  if (path.endsWith('/remove')) return { deleted: true };
+  return { asset: path.endsWith('/replace') ? { ...downloadAsset, versionNumber: 2 } : downloadAsset };
+};
+
+const fileFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  if (!url.pathname.startsWith('/api/m2m/shop/downloads') && !url.pathname.includes('/downloads')) return fetchImpl(input, init);
+  calls.push({ method, path: url.pathname, search: url.search, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body ?? null });
+  return Response.json({ ok: true, data: fileAnswer(method, url.pathname) });
+};
+
+const withPdf = async (test: (file: string) => Promise<void>): Promise<void> => {
+  const directory = await mkdtemp(join(tmpdir(), 'shop-files-cli-'));
+  try {
+    const file = join(directory, 'workbook.pdf');
+    await writeFile(file, '%PDF-1.7\n');
+    await test(file);
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+};
+
+const printedErrorMessage = (printed: unknown): string => {
+  const error: unknown = typeof printed === 'object' && printed !== null ? Reflect.get(printed, 'error') : undefined;
+  const message: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'message') : undefined;
+  return typeof message === 'string' ? message : '';
+};
+
+const failingAt = (path: string, status: number, error: Record<string, unknown>): typeof fetch => async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  if (url.pathname !== path) return fileFetch(input, init);
+  calls.push({ method: init?.method ?? 'GET', path: url.pathname, search: '', headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+  return Response.json({ ok: false, error }, { status });
+};
+
+describe('shop files CLI', () => {
+  beforeEach(() => { h.fetchImpl = fileFetch; });
+
+  it('checks the product, stages the file with a streamed PUT that carries no key, completes it and attaches it with the note', async () => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, '--note', 'First edition');
+      expect(soleJson()).toEqual({ ok: true, data: { asset: downloadAsset, staged: stagedFile } });
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'GET /api/m2m/shop/products/product-1/downloads',
+        'POST /api/m2m/shop/downloads/upload', 'PUT /candidate', 'POST /api/m2m/shop/downloads/complete',
+        'POST /api/m2m/shop/products/downloads',
+      ]);
+      expect(calls[1]?.body).toEqual({ fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 9 });
+      expect(calls[2]?.body).toBeInstanceOf(Blob);
+      expect(calls[2]?.headers.get('content-length')).toBe('9');
+      for (const header of ['x-api-key', 'x-tenant', 'authorization']) expect(calls[2]?.headers.has(header)).toBe(false);
+      expect(calls[3]?.body).toEqual({ uploadId: 'upload-1' });
+      expect(calls[4]?.body).toEqual({ productId: 'product-1', stagedFileId: 'staged-1', versionNote: 'First edition' });
+      for (const call of calls.filter((entry) => entry.path.startsWith('/api/'))) expect(call.headers.get('x-api-key')).toBe('shop-secret-from-env');
+    });
+  });
+
+  it('attaches the upload as the next version of the file named by --replaces', async () => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, '--replaces', 'asset-1');
+      expect(soleJson()).toMatchObject({ ok: true, data: { asset: { versionNumber: 2 } } });
+      expect(calls.at(-1)).toMatchObject({ method: 'POST', path: '/api/m2m/shop/products/downloads/replace', body: { productId: 'product-1', replacesAssetId: 'asset-1', stagedFileId: 'staged-1' } });
+    });
+  });
+
+  it('uploads nothing when the product is not in the workspace or the file type is not allowed', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/products/missing-product/downloads', 404, { code: 'not_found', message: 'No product "missing-product" in this tenant' });
+      await run('shop', 'files', 'upload', 'missing-product', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.not_found);
+      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/products/missing-product/downloads']);
+    });
+    logSpy.mockClear();
+    calls = [];
+    await run('shop', 'files', 'upload', 'product-1', 'notes.txt');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('explains a staging cap and never attaches a file that was not staged', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/downloads/upload', 409, {
+        code: 'conflict', message: 'This key already holds 20 staged or uploading files', details: { changeProposalCap: 'key_staged_files' },
+      });
+      await run('shop', 'files', 'upload', 'product-1', file);
+      const printed = soleJson();
+      expect(printed).toMatchObject({ ok: false, error: { code: 'conflict' } });
+      expect(printedErrorMessage(printed)).toContain('This key already holds 20 staged or uploading files');
+      expect(printedErrorMessage(printed)).toContain('together shop files discard <id>');
+      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/products/product-1/downloads', '/api/m2m/shop/downloads/upload']);
+    });
+  });
+
+  it('names the staged file that stays behind when the attach is refused', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/products/downloads', 409, {
+        code: 'conflict', message: 'This product already has 100 files', details: { changeProposalCap: 'product_files' },
+      });
+      await run('shop', 'files', 'upload', 'product-1', file);
+      const message = printedErrorMessage(soleJson());
+      expect(message).toContain('remove a file of the product first');
+      expect(message).toContain('the file stays staged as staged-1');
+    });
+  });
+
+  it('copies a file on the server after checking the target product and attaches the copy there', async () => {
+    await run('shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2');
+    expect(soleJson()).toEqual({ ok: true, data: { asset: downloadAsset, staged: stagedCopy } });
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /api/m2m/shop/products/product-2/downloads', 'POST /api/m2m/shop/downloads/copy', 'POST /api/m2m/shop/products/downloads',
+    ]);
+    expect(calls[1]?.body).toEqual({ productId: 'product-1', assetId: 'asset-1' });
+    expect(calls[2]?.body).toEqual({ productId: 'product-2', stagedFileId: 'staged-2' });
+  });
+
+  it.each([
+    [['list', 'product-1'], 'GET /api/m2m/shop/products/product-1/downloads'],
+    [['remove', 'product-1', 'asset-1'], 'POST /api/m2m/shop/products/downloads/remove'],
+    [['staged'], 'GET /api/m2m/shop/downloads/staged'],
+    [['discard', 'staged-1'], 'DELETE /api/m2m/shop/downloads/staged/staged-1'],
+  ])('sends shop files %j as one keyed request', async (args, request) => {
+    await run('shop', 'files', ...args);
+    expect(soleJson()).toMatchObject({ ok: true });
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([request]);
+  });
+
+  it('prints the source of a staged copy and never a fingerprint for it without --json', async () => {
+    process.argv = ['node', 'together', 'shop', 'files', 'staged'];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')).toEqual([
+      `- workbook.pdf  application/pdf  9 bytes  sha256 ${'b'.repeat(64)}  expires 2026-11-22T10:00:00.000Z  (staged-1)`,
+      '- workbook.pdf  application/pdf  9 bytes  copy of file asset-1 version 2 of product product-1  expires 2026-11-22T10:00:00.000Z  (staged-2)',
+    ]);
+  });
+
+  it('prints the refusal of a propose-mode key plainly and stops before any upload', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/downloads/upload', 403, { code: 'forbidden', message: NOT_IN_RELEASE_REFUSAL });
+      process.argv = ['node', 'together', 'shop', 'files', 'upload', 'product-1', file];
+      vi.resetModules();
+      await import('./main.js');
+      expect(errorSpy).toHaveBeenCalledWith(`error(forbidden): ${NOT_IN_RELEASE_REFUSAL}`);
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
+      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/products/product-1/downloads', '/api/m2m/shop/downloads/upload']);
+    });
+  });
+});

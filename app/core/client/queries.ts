@@ -689,6 +689,8 @@ export const publicParcelLockerQuery = (api: ApiClient, code: string) =>
   defineQuery({
     queryKey: ['parcel-locker', code] as const,
     call: ({ signal }) => api.publicParcelLocker(code, signal),
+    retry: false,
+    meta: { background: true },
   });
 
 export const removeStripeTestModeMutation = (api: ApiClient) =>

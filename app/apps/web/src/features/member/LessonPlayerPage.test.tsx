@@ -1381,7 +1381,7 @@ describe('LessonPlayerPage', () => {
     await user.click(button);
 
     const unmarkButton = await screen.findByTestId('unmark-complete');
-    expect(within(unmarkButton).getByTestId('completion-mark')).toBeInTheDocument();
+    expect(within(screen.getByTestId('lesson-completed-status')).getByTestId('completion-mark')).toBeInTheDocument();
     expect(unmarkButton).toBeEnabled();
     expect(completeCalls).toBe(1);
     await waitFor(() => expect(progressReads).toBeGreaterThan(readsBefore));
@@ -1491,12 +1491,14 @@ describe('LessonPlayerPage', () => {
 
     const complete = await screen.findByRole('button', { name: en.lesson.markCompleted });
     const previous = screen.getByRole('button', { name: en.lesson.previousLesson });
-    const next = screen.getByRole('link', { name: en.lesson.nextLesson });
+    const next = screen.getByTestId('skip-to-next-lesson');
     for (const action of [previous, next, complete]) {
       expect(action).toHaveClass('MuiButton-outlined');
     }
     expect(previous).toBeDisabled();
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(stylesAt(next, 390)).toMatchObject({ display: 'none' });
+    expect(stylesAt(next, 900)).toMatchObject({ display: 'inline-flex' });
     const primary = screen.getByRole('button', { name: en.lesson.completeContinue });
     expect(primary).toHaveClass('MuiButton-contained');
     expect(stylesAt(complete.parentElement, 390)).toMatchObject({ 'flex-direction': 'row', gap: '0.5rem' });
@@ -1512,15 +1514,30 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
   });
 
-  it('keeps completion compact next to the primary next lesson on mobile', async () => {
+  it('shows completion as a status mark with a labelled undo and drops the Next prefix on mobile', async () => {
     stubMobileViewport();
     server.use(okStructure(), okProgress(['l1']), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const complete = await screen.findByTestId('unmark-complete');
-    expect(complete).toHaveAttribute('data-slot', 'compact');
-    expect(complete).toHaveAccessibleName(expect.stringContaining(en.lesson.unmarkCompleted));
-    expect(screen.getByTestId('next-lesson')).toHaveAttribute('data-slot', 'primary');
+    const undo = await screen.findByRole('button', { name: en.lesson.unmarkCompleted });
+    expect(undo).toHaveAttribute('data-testid', 'unmark-complete');
+    expect(undo).toHaveTextContent(en.lesson.undoCompletion);
+    expect(undo).toHaveClass('MuiButton-text');
+    expect(undo).not.toHaveAttribute('data-slot', 'compact');
+    const status = screen.getByTestId('lesson-completed-status');
+    expect(status.closest('button, a')).toBeNull();
+    expect(within(status).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(status).getByRole('img', { name: en.lesson.completed })).toBeInTheDocument();
+    const next = screen.getByTestId('next-lesson');
+    expect(next).toHaveAttribute('data-slot', 'primary');
+    expect(next).toHaveAccessibleName(en.lesson.next({ name: 'Advanced Variables' }));
+    const prefixed = within(next).getByText(en.lesson.next({ name: 'Advanced Variables' }));
+    const bare = within(next).getByText('Advanced Variables', { exact: true });
+    expect(stylesAt(prefixed, 390)).toMatchObject({ display: 'none' });
+    expect(stylesAt(bare, 390)).toMatchObject({ display: 'inline' });
+    expect(stylesAt(prefixed, 900)).toMatchObject({ display: 'inline' });
+    expect(stylesAt(bare, 900)).toMatchObject({ display: 'none' });
+    expect(screen.queryByTestId('skip-to-next-lesson')).not.toBeInTheDocument();
   });
 
   it('gives mark-as-completed the full row on the final lesson', async () => {
@@ -1602,7 +1619,7 @@ describe('LessonPlayerPage', () => {
     expect(primary).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(primary).toHaveTextContent('Advanced Variables');
     expect(primary.className).toContain('MuiButton-contained');
-    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-outlined');
+    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-text');
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
   });
 

@@ -2200,7 +2200,6 @@ export interface Messages {
     markCompleted: string;
     completed: string;
     unmarkCompleted: string;
-    unmarkCompletedHint: string;
     completeContinue: string;
     completing: string;
     previousLesson: string;
@@ -2232,6 +2231,7 @@ export interface Messages {
     lockedSkipped: (params: { count: number }) => string;
     notForSaleTitle: string;
     notForSaleBody: string;
+    undoCompletion: string;
   };
   discussion: {
     heading: string;

@@ -2464,7 +2464,6 @@ export const en: Messages = {
     markCompleted: 'Mark as completed',
     completed: 'Completed',
     unmarkCompleted: 'Completed — undo',
-    unmarkCompletedHint: 'Click to unmark this lesson as completed',
     completeContinue: 'Complete & continue',
     completing: 'Saving…',
     previousLesson: 'Previous lesson',
@@ -2497,6 +2496,7 @@ export const en: Messages = {
     lockedSkipped: ({ count }) => format(plural(count, '{count} locked lesson skipped — unlock', '{count} locked lessons skipped — unlock'), { count }),
     notForSaleTitle: 'This lesson is not for sale',
     notForSaleBody: 'No offer includes it right now. If you think you should have access, contact the course creator.',
+    undoCompletion: 'Undo',
   },
   discussion: {
     heading: 'Discussion',

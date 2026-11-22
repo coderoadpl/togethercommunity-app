@@ -2485,7 +2485,6 @@ export const pl: Messages = {
     markCompleted: 'Oznacz jako ukończoną',
     completed: 'Ukończono',
     unmarkCompleted: 'Ukończona — cofnij oznaczenie',
-    unmarkCompletedHint: 'Kliknij, aby cofnąć oznaczenie lekcji jako ukończonej',
     completeContinue: 'Ukończ i przejdź dalej',
     completing: 'Zapisuję…',
     previousLesson: 'Poprzednia lekcja',
@@ -2518,6 +2517,7 @@ export const pl: Messages = {
     lockedSkipped: ({ count }) => format(plural(count, 'Pominięto {count} zablokowaną lekcję — odblokuj', 'Pominięto {count} zablokowane lekcje — odblokuj', 'Pominięto {count} zablokowanych lekcji — odblokuj'), { count }),
     notForSaleTitle: 'Tej lekcji nie można kupić',
     notForSaleBody: 'Obecnie nie ma jej w żadnej ofercie. Jeśli ta lekcja powinna być dla Ciebie dostępna, skontaktuj się z osobą prowadzącą kurs.',
+    undoCompletion: 'Cofnij',
   },
   discussion: {
     heading: 'Dyskusja',

@@ -38,6 +38,7 @@ import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js
 import {
   Eyebrow,
   LessonActionLabel,
+  LessonCompletionStatus,
   LessonFooterBar,
   LessonMediaFrame,
   LessonNavLabel,
@@ -718,23 +719,28 @@ export const LessonPlayerPage = ({
                 variant="outlined"
                 data-testid="skip-to-next-lesson"
                 data-slot="compact"
+                sx={{ display: { xs: 'none', md: 'inline-flex' } }}
               >
                 <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLesson}</LessonNavLabel>
               </Button>
             )}
             <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
             {!continuing && progress.isSuccess && completed && (
-              <Button
-                variant="outlined"
-                data-testid="unmark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => uncomplete.mutate({ lessonId })}
-                disabled={uncomplete.isPending}
-                startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
-                title={t.lesson.unmarkCompletedHint}
-              >
-                {compactCompletion ? <LessonNavLabel>{t.lesson.unmarkCompleted}</LessonNavLabel> : <LessonActionLabel>{t.lesson.unmarkCompleted}</LessonActionLabel>}
-              </Button>
+              <>
+                <LessonCompletionStatus data-testid="lesson-completed-status">
+                  <CompletionMark label={t.lesson.completed} />
+                  <LessonNavLabel aria-hidden>{t.lesson.completed}</LessonNavLabel>
+                </LessonCompletionStatus>
+                <Button
+                  variant="text"
+                  data-testid="unmark-complete"
+                  onClick={() => uncomplete.mutate({ lessonId })}
+                  disabled={uncomplete.isPending}
+                  aria-label={t.lesson.unmarkCompleted}
+                >
+                  {t.lesson.undoCompletion}
+                </Button>
+              </>
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
@@ -769,8 +775,12 @@ export const LessonPlayerPage = ({
                 variant="contained"
                 data-testid="next-lesson"
                 data-slot="primary"
+                aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonActionLabel>{t.lesson.next({ name: nextLesson.name })}</LessonActionLabel>
+                <LessonActionLabel>
+                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name: nextLesson.name })}</Box>
+                  <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{nextLesson.name}</Box>
+                </LessonActionLabel>
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (

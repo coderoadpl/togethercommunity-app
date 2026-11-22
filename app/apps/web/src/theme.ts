@@ -4246,6 +4246,15 @@ export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
   [theme.breakpoints.up('md')]: { display: 'none' },
 }));
 
+export const LessonCompletionStatus = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.375rem',
+  flex: '0 0 auto',
+  color: theme.palette.text.secondary,
+}));
+
 export const LessonLockIcon = styled(SvgIcon)({
   fontSize: '1.15rem',
   color: 'inherit',

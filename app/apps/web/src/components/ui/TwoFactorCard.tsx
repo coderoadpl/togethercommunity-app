@@ -249,6 +249,10 @@ export const TwoFactorCard = ({
     if (step === 'codes' && enrollmentCodes.length > 0 && !codesSaved) setConfirmingLeave(true);
     else close();
   };
+  const closeRegenerated = () => {
+    if (backupCodes.length > 0 && !codesSaved) setConfirmingLeave(true);
+    else close();
+  };
 
   return (
     <Card
@@ -354,7 +358,7 @@ export const TwoFactorCard = ({
         ) : null}
       </AccountDialog>
       <ConfirmDialog
-        open={mode === 'enable' && confirmingLeave}
+        open={(mode === 'enable' || mode === 'regenerated') && confirmingLeave}
         title={t.security.leaveWithoutCodesTitle}
         body={<Typography variant="body2">{t.security.leaveWithoutCodesBody}</Typography>}
         confirmLabel={t.security.leaveWithoutCodesConfirm}
@@ -378,7 +382,7 @@ export const TwoFactorCard = ({
         onConfirm={submitManagement}
         onClose={close}
       />
-      <AccountDialog open={mode === 'regenerated'} title={t.security.regenerateBackupCodes} onClose={close}>
+      <AccountDialog open={mode === 'regenerated'} title={t.security.regenerateBackupCodes} onClose={closeRegenerated}>
         {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.common.close} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
       </AccountDialog>
       <ConfirmDialog

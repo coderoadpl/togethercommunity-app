@@ -313,6 +313,45 @@ describe('MemberAccountPage', () => {
     expect(await findToast('success')).toHaveTextContent(en.security.backupCodesRegenerated);
   });
 
+  it('asks before closing regenerated backup codes that are not marked as saved', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { twoFactorEnabled: true }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ backupCodes: ['fresh-code'] })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('regenerate-backup-codes'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes-confirm'));
+    const dialogCloseButton = async () => {
+      const [close] = within(await screen.findByRole('dialog')).getAllByRole('button', { name: en.common.close });
+      if (close === undefined) throw new Error('dialog close button missing');
+      return close;
+    };
+    await screen.findByTestId('backup-codes');
+
+    await userEvent.click(await dialogCloseButton());
+    const leave = await screen.findByTestId('two-factor-leave-dialog');
+    expect(within(leave).getByText(en.security.leaveWithoutCodesTitle)).toBeVisible();
+    await userEvent.click(within(leave).getByRole('button', { name: en.security.leaveWithoutCodesCancel }));
+    await waitFor(() => expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('fresh-code')).toBeVisible();
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(await screen.findByTestId('two-factor-leave-dialog')).getByTestId('two-factor-leave-confirm'));
+    await waitFor(() => expect(screen.queryByTestId('backup-codes')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes'));
+    await userEvent.type(screen.getByTestId('enable-2fa-password'), 'account-password');
+    await userEvent.click(screen.getByTestId('regenerate-backup-codes-confirm'));
+    await userEvent.click(await screen.findByRole('checkbox', { name: en.security.backupCodesSaved }));
+    await userEvent.click(await dialogCloseButton());
+    await waitFor(() => expect(screen.queryByTestId('backup-codes')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument();
+  });
+
   it('confirms a two-factor disable with a toast', async () => {
     server.use(
       stubMe(true, {}, null, null, { twoFactorEnabled: true }),

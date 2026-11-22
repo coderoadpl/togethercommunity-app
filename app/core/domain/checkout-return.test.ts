@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkoutReturnLink, checkoutReturnOriginsSchema, checkoutReturnUrlSchema, resolveCheckoutReturnUrl } from './checkout-return.js';
+import { checkoutReturnLink, checkoutReturnOriginsSchema, checkoutReturnUrlSchema, resolveCheckoutReturnUrl, resolveHostedCheckoutReturnUrl } from './checkout-return.js';
 import { checkoutCartInputSchema, checkoutSessionInputSchema } from './payment.js';
 import { updateTenantSettingsInputSchema } from './tenant.js';
 
@@ -78,6 +78,36 @@ describe('checkout return and cancel addresses', () => {
       }
     }
     expect(checkoutReturnUrlSchema.safeParse(`https://shop.example.test/${'a'.repeat(1975)}`).success).toBe(false);
+  });
+});
+
+describe('hosted checkout return parameter', () => {
+  it.each([
+    ['https://shop.example.test/cart?order=8812#top', 'https://shop.example.test/cart?order=8812'],
+    ['https://SHOP.EXAMPLE.TEST:443/', 'https://shop.example.test/'],
+    ['https://shop.example.test', 'https://shop.example.test/'],
+  ])('accepts and normalizes %s on an allowed origin', (requested, expected) => {
+    expect(resolveHostedCheckoutReturnUrl(requested, allowed)).toBe(expected);
+  });
+
+  it.each([
+    null,
+    'not a URL',
+    '/cart',
+    '//shop.example.test/cart',
+    'https:shop.example.test/cart',
+    'https:///shop.example.test/cart',
+    'http://shop.example.test/cart',
+    'https://buyer:secret@shop.example.test/cart',
+    'https://buyer@shop.example.test/cart',
+    'https://shop.example.test:8443/cart',
+    'https://shop.example.test.elsewhere.example.test/cart',
+  ])('ignores %s', (requested) => {
+    expect(resolveHostedCheckoutReturnUrl(requested, allowed)).toBeNull();
+  });
+
+  it('ignores an otherwise valid address when no origins are configured', () => {
+    expect(resolveHostedCheckoutReturnUrl('https://shop.example.test/cart', [])).toBeNull();
   });
 });
 

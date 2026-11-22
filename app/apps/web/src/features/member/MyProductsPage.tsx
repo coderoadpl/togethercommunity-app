@@ -24,11 +24,12 @@ import type {
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { ExternalLinkIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatDate, formatOfferPrice } from '../../lib/format.js';
-import { DataValue, MemberProductLink } from '../../theme.js';
+import { DataValue, MemberProductLink, VisuallyHidden } from '../../theme.js';
 import { MemberSurface } from './MemberSurface.js';
 import { ProductDownloads } from './ProductDownloads.js';
 
@@ -181,9 +182,11 @@ const ProductRow = ({
             href={billingPortalUrl}
             target="_blank"
             rel="noopener noreferrer"
+            endIcon={<ExternalLinkIcon />}
             data-testid={`subscription-portal-${product.id}`}
           >
             {t.student.manageSubscription}
+            <VisuallyHidden> {t.student.opensInNewTab}</VisuallyHidden>
           </Button>
         </Box>
       ) : null}

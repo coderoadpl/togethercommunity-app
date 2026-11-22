@@ -2118,6 +2118,7 @@ export interface Messages {
     downloadFileVersion: (params: { name: string; number: number }) => string;
     downloadsGroupLabel: (params: { title: string }) => string;
     downloadVersionShort: (params: { number: number }) => string;
+    opensInNewTab: string;
   };
   downloadCopies: {
     showMore: string;

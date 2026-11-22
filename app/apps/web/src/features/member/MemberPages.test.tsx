@@ -157,7 +157,12 @@ describe('member pages', () => {
     expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent(
       en.student.subscriptionAccessUntil({ date: '' }),
     );
-    expect(screen.getAllByRole('link', { name: en.student.manageSubscription })).toHaveLength(3);
+    const portalLinks = screen.getAllByRole('link', {
+      name: (name) => name.startsWith(en.student.manageSubscription) && name.endsWith(en.student.opensInNewTab),
+    });
+    expect(portalLinks).toHaveLength(3);
+    expect(portalLinks[0]).toHaveAttribute('target', '_blank');
+    expect(within(screen.getByTestId('subscription-portal-active')).getByText(en.student.opensInNewTab)).toBeInTheDocument();
   });
 
   it('renders latest and collapsed previous versions with their own links', async () => {

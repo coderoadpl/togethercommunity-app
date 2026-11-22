@@ -442,6 +442,14 @@ export const CourseTree = ({
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
+  const [filterShown, setFilterShown] = useState(showFilter);
+  if (filterShown !== showFilter) {
+    setFilterShown(showFilter);
+    if (!showFilter) {
+      setRawSearch('');
+      setSearch('');
+    }
+  }
   const [flips, setFlips] = useState<{ focus: string | null; ids: ReadonlySet<string> }>(() => ({
     focus: focusLessonId,
     ids: NO_FLIPS,

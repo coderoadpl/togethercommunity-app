@@ -411,7 +411,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const switchMethod = (next: SignInMethod) => {
     signIn.reset();
-    requestMagicLink.reset();
+    if (errorCodeOf(requestMagicLink.error) !== 'rate_limited') requestMagicLink.reset();
     setResolveFailure(null);
     setPassword('');
     setMethod(next);

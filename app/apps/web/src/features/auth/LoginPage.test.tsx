@@ -1011,6 +1011,35 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('magic-link-error')).not.toHaveTextContent(en.errors.messageRateLimited);
   });
 
+  it('shows the rate-limited link card as unavailable and keeps its countdown while the password card is open', async () => {
+    server.use(http.post('*', ({ request }) => new URL(request.url).pathname.endsWith('/sign-in/magic-link')
+      ? HttpResponse.json(
+        { ok: false, error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 583 } } },
+        { status: 429 },
+      )
+      : undefined));
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link']);
+    await continueWithEmail();
+    const linkCard = await screen.findByTestId('send-magic-link');
+    const chevronOf = (card: HTMLElement) => card.querySelector('.AuthMethod-chevron');
+    expect(window.getComputedStyle(linkCard).opacity).not.toBe('0.6');
+    expect(window.getComputedStyle(chevronOf(linkCard) ?? linkCard).visibility).not.toBe('hidden');
+
+    await userEvent.click(linkCard);
+
+    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }));
+    expect(linkCard).toBeDisabled();
+    expect(window.getComputedStyle(linkCard).opacity).toBe('0.6');
+    expect(chevronOf(linkCard)).not.toBeNull();
+    expect(window.getComputedStyle(chevronOf(linkCard) ?? linkCard).visibility).toBe('hidden');
+
+    await userEvent.click(screen.getByTestId('use-password'));
+
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveFocus();
+    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }));
+    expect(screen.getByTestId('send-magic-link')).toBeDisabled();
+  });
+
   it('opens the password step after a failed lookup', async () => {
     await renderLoginPage();
     failSignInMethods();

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, createApiClient, unwrap } from '#core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
+// eslint-disable-next-line boundaries/element-types -- only the bound client marks a failure as network-stage, and the reporting policy must be tested on the real singleton
+import { actions } from './api.js';
 import { refreshToastStore } from './refresh-toast.js';
 
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
@@ -14,6 +16,7 @@ const failingQuery = async (error: Error): Promise<never> => {
 };
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   queryClient.clear();
   refreshToastStore.dismiss();
   reportError.mockClear();
@@ -55,12 +58,12 @@ describe('error reporting policy', () => {
   });
 
   it('does not report a parcel locker lookup that never reached the server, but reports the same failure on another query', async () => {
-    const api = createApiClient({ baseUrl: 'https://shop.example.test', fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
-    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: async () => unwrap(await api.publicParcelLocker('WAW01M')), retry: false }))
-      .rejects.toBeInstanceOf(ApiError);
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await expect(queryClient.fetchQuery({ ...actions.publicParcelLocker('WAW01M'), retry: false })).rejects.toBeInstanceOf(ApiError);
     expect(reportError).not.toHaveBeenCalled();
-    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: async () => unwrap(await api.publicPaymentConfig()), retry: false }))
-      .rejects.toBeInstanceOf(ApiError);
+    await expect(queryClient.fetchQuery({ ...actions.publicPaymentConfig, retry: false })).rejects.toBeInstanceOf(ApiError);
     expect(reportError).toHaveBeenCalledOnce();
   });
 

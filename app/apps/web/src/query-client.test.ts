@@ -8,14 +8,12 @@ vi.mock('./observability.js', () => ({ reportError }));
 
 const { queryClient } = await import('./query-client.js');
 
+const rejectWith = (error: ApiError) => () => Promise.reject(error);
+
 const failWith = async (queryKey: readonly unknown[], code: ErrorCode): Promise<ApiError> => {
   const error = new ApiError(appError(code, `${code} failure`));
   await expect(
-    queryClient.fetchQuery({
-      queryKey,
-      queryFn: () => Promise.reject(error),
-      retry: false,
-    }),
+    queryClient.fetchQuery({ queryKey, queryFn: rejectWith(error), retry: false }),
   ).rejects.toBe(error);
   return error;
 };

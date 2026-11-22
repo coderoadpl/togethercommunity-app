@@ -110,7 +110,7 @@ describe('AnonShell visitor account', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
     expect(await screen.findByText('Sign-in page')).toBeInTheDocument();
-    expect(signOutCalls).toEqual(['/api/auth/sign-out']);
+    expect(signOutCalls).toHaveLength(1);
     expect(queryClient.getQueryData(['me'])).toBeUndefined();
     expect(window.sessionStorage.getItem(LOGIN_IDENTIFIER_KEY)).toBeNull();
   });

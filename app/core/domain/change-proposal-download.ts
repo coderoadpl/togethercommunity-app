@@ -273,3 +273,6 @@ export const keyDownloadTypeMismatch = (contentType: KeyDownloadContentType): Ap
     formErrors: [],
     fieldErrors: { contentType: ['Must match the first bytes of the file'] },
   });
+
+export const keyDownloadFilesBusy = (): AppError =>
+  appError('unavailable', 'Staged files of this workspace are busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });

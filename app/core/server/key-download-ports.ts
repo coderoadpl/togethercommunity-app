@@ -87,6 +87,8 @@ export interface KeyDownloadFileRepository {
   listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<string[]>;
   /** The rows of one workspace the sweep selects, each kind ordered by its attempt time or else its creation time. */
   listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<KeyDownloadSweepBatch>;
+  /** Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others. */
+  markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string): Promise<void>;
   /** Deletes settled records started before `settledStartedBefore`; they own no object. */
   purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs): Promise<number>;
 }

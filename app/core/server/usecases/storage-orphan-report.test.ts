@@ -35,6 +35,7 @@ const fixture = () => {
     attachments: [{ storageKey: pendingKey, status: 'pending' }, { storageKey: legacyKey, status: 'ready' }],
     downloads: [{ storageKey: earlierDownload, status: 'ready', supersededAt: OLD }],
     quarantinedImages: [],
+    stagedDownloads: [],
     currentDocuments: [{ imageUrl: `/api/public/assets/course-cover/${imageId}.png` }],
     historyDocuments: [{ coverUrl: `/api/public/assets/product-cover/${imageId}.png` }],
   };
@@ -100,7 +101,7 @@ describe('reportStorageOrphans', () => {
     const result = await reportStorageOrphans({ tenantId: 'tenant-b' }, {
       ...deps,
       references: { readInventory: async () => ({
-        lessonIds: ['shared'], productIds: [], attachments: [], downloads: [], quarantinedImages: [], currentDocuments: [], historyDocuments: [],
+        lessonIds: ['shared'], productIds: [], attachments: [], downloads: [], quarantinedImages: [], stagedDownloads: [], currentDocuments: [], historyDocuments: [],
       }) },
     });
     expect(result.ok).toBe(true);
@@ -178,5 +179,20 @@ describe('reportStorageOrphans', () => {
     expect(classified[recorded]).toBe('pending');
     expect(classified[forgotten]).toBe('unreferenced-candidate');
     expect(classified[published]).toBe('referenced');
+  });
+
+  it('counts the staged download objects the database records as pending and leaves forgotten ones to the candidates', async () => {
+    const { deps, inventory, objects } = fixture();
+    const staged = 'tenant-a/product-downloads/key-files/key-1/file-1/workbook.pdf';
+    const candidate = 'tenant-a/product-downloads/key-uploads/key-1/upload-1';
+    const forgotten = 'tenant-a/product-downloads/key-files/key-1/file-2/old.pdf';
+    inventory.stagedDownloads.push({ storageKey: staged }, { storageKey: candidate });
+    objects.push(...[staged, candidate, forgotten].map((key) => ({ key, sizeBytes: 10, lastModified: OLD })));
+    const result = await reportStorageOrphans({ tenantId: 'tenant-a' }, deps);
+    if (!result.ok) throw new Error(result.error.message);
+    const classified = Object.fromEntries(result.value.objects.map((object) => [object.key, object.classification]));
+    expect(classified[staged]).toBe('pending');
+    expect(classified[candidate]).toBe('pending');
+    expect(classified[forgotten]).toBe('unreferenced-candidate');
   });
 });

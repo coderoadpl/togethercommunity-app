@@ -35,7 +35,7 @@ import { createShipxHttpClient } from '#adapters/shipx/http.js';
 import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, sweepQuarantinedImages, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, sweepKeyDownloadFiles, sweepQuarantinedImages, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -63,6 +63,7 @@ import {
 } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
 import { createQuarantinedImageRepository } from '#adapters/db/change-proposal-images.js';
+import { createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import type {
   ChangeProposalEventRepository,
@@ -1442,6 +1443,7 @@ export const createDeps = (
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
   const quarantinedImages = createQuarantinedImageRepository(db, options.changeProposalBounds);
+  const keyDownloadFiles = createKeyDownloadFileRepository(db, options.changeProposalBounds);
   const changeProposalTransaction = createChangeProposalTransaction(
     db,
     logger,
@@ -1801,7 +1803,13 @@ export const createDeps = (
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     stock,
     releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
-    sweepQuarantinedImages: throttledSweep(clock, () => sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock })),
+    sweepQuarantinedImages: throttledSweep(clock, async () => {
+      const images = await sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock });
+      const files = await sweepKeyDownloadFiles({ keyDownloadFiles, storage, secretResolver, logger, clock });
+      if (!images.ok) return images;
+      if (!files.ok) return files;
+      return ok({ tenants: images.value.tenants + files.value.tenants, removed: images.value.removed + files.value.removed });
+    }),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

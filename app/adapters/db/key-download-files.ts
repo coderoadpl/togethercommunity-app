@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   KEY_DOWNLOAD_FILE_LIMITS,
@@ -302,7 +302,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
       if (row === undefined) return 'gone';
       const attempt = selection.kind === 'attempt';
-      if (attempt && (row.attemptId !== selection.attemptId || row.state === 'completed')) return 'kept';
+      if (attempt && row.attemptId !== selection.attemptId) return 'kept';
       if (!attempt) {
         const [selected] = await tx.select({ id: records.id }).from(records).where(and(recordOf(tenantId, uploadId), recordSweepable(selection.cutoffs)));
         if (selected === undefined) return 'kept';
@@ -378,6 +378,20 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       deletions: (await db.select().from(deletions).where(eq(deletions.tenantId, tenantId))
         .orderBy(asc(waitingSince(deletions.sweepAttemptedAt, deletions.createdAt)), asc(deletions.objectKey)).limit(limit)).map(parseDeletion),
     }),
+    markAttempted: async (tenantId, batch, now) => {
+      if (batch.records.length > 0) {
+        await db.update(records).set({ sweepAttemptedAt: now })
+          .where(and(eq(records.tenantId, tenantId), inArray(records.id, batch.records.map((row) => row.id))));
+      }
+      if (batch.stagedFiles.length > 0) {
+        await db.update(stagedFiles).set({ sweepAttemptedAt: now })
+          .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, batch.stagedFiles.map((row) => row.id))));
+      }
+      if (batch.deletions.length > 0) {
+        await db.update(deletions).set({ sweepAttemptedAt: now })
+          .where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, batch.deletions.map((row) => row.objectKey))));
+      }
+    },
     purgeSettled: async (tenantId, cutoffs) =>
       (await db.delete(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs))).returning({ id: records.id })).length,
   };

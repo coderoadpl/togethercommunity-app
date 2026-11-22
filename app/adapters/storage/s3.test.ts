@@ -933,3 +933,108 @@ describe('image publication storage operations', () => {
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
 });
+
+describe('download file storage operations', () => {
+  const AWS: StorageConfiguration = {
+    provider: 'aws_s3', endpoint: 'https://s3.us-east-1.amazonaws.com', region: 'us-east-1', bucket: 'examplebucket',
+    accessKeyId: DOCS_EXAMPLE.accessKeyId, secretAccessKey: DOCS_EXAMPLE.secretAccessKey,
+  };
+
+  it('signs a server-side copy whose metadata the server replaces, with the copy source and every header in the canonical request', async () => {
+    const sent: Array<{ url: string; headers: Record<string, string> | undefined; method: string }> = [];
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date('2013-05-24T00:00:00.000Z'),
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        sent.push({ url, headers: init.headers, method: init.method });
+        return storageResponse(200, '<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>');
+      },
+    });
+    const result = await storage.copyObject({
+      configuration: AWS, sourceKey: 'acme/product-downloads/key-uploads/key 1/upload-1', key: 'acme/product-downloads/key-files/key-1/file-1/a.pdf', deadlineMs: 1_000,
+    });
+    expect(result).toEqual({ ok: true, value: undefined });
+    const [request] = sent;
+    if (request === undefined) throw new Error('no request');
+    const headers = {
+      'cache-control': 'no-store',
+      'content-disposition': 'attachment',
+      'content-type': 'application/octet-stream',
+      'x-amz-copy-source': '/examplebucket/acme/product-downloads/key-uploads/key%201/upload-1',
+      'x-amz-metadata-directive': 'REPLACE',
+    };
+    expect(request.method).toBe('PUT');
+    expect(request.headers).toEqual(headers);
+    const signedHeaders = 'cache-control;content-disposition;content-type;host;x-amz-copy-source;x-amz-metadata-directive';
+    const query = 'X-Amz-Algorithm=AWS4-HMAC-SHA256'
+      + '&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request'
+      + `&X-Amz-Date=20130524T000000Z&X-Amz-Expires=60&X-Amz-SignedHeaders=${encodeURIComponent(signedHeaders)}`;
+    const path = '/acme/product-downloads/key-files/key-1/file-1/a.pdf';
+    const canonicalRequest = ['PUT', path, query,
+      'cache-control:no-store', 'content-disposition:attachment', 'content-type:application/octet-stream',
+      'host:examplebucket.s3.us-east-1.amazonaws.com', `x-amz-copy-source:${headers['x-amz-copy-source']}`, 'x-amz-metadata-directive:REPLACE',
+      '', signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
+    const stringToSign = ['AWS4-HMAC-SHA256', '20130524T000000Z', '20130524/us-east-1/s3/aws4_request',
+      createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+    const key = ['20130524', 'us-east-1', 's3', 'aws4_request']
+      .reduce<Buffer | string>((current, part) => createHmac('sha256', current).update(part).digest(), `AWS4${DOCS_EXAMPLE.secretAccessKey}`);
+    const signature = createHmac('sha256', key).update(stringToSign).digest('hex');
+    expect(request.url).toBe(`https://examplebucket.s3.us-east-1.amazonaws.com${path}?${query}&X-Amz-Signature=${signature}`);
+  });
+
+  it.each([
+    [404, '', 'not_found'],
+    [200, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable'],
+    [403, '<Error><Code>AccessDenied</Code></Error>', 'integration_unavailable'],
+  ] as const)('reports a copy answered %s %s as %s', async (status, body, code) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(status, body),
+    });
+    expect(await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 }))
+      .toMatchObject({ ok: false, error: { code } });
+  });
+
+  it('streams an object through SHA-256 and answers its size and first bytes without a buffer of the whole object', async () => {
+    const chunks = [new Uint8Array([37, 80, 68, 70]), new Uint8Array([45, 49, 46, 55]), new Uint8Array([10])];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        expect(init.headers?.['Accept-Encoding']).toBe('identity');
+        let index = 0;
+        return {
+          ok: true, status: 200, headers: { get: (name) => name === 'content-length' ? '9' : null },
+          body: { cancel: async () => undefined, getReader: () => ({
+            read: async () => {
+              const value = chunks[index];
+              index += 1;
+              return value === undefined ? { done: true } : { done: false, value };
+            },
+            cancel: async () => undefined, releaseLock: () => undefined,
+          }) },
+          text: async () => '',
+        };
+      },
+    });
+    const digest = await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 9, headBytes: 6 });
+    const expected = createHash('sha256').update(Buffer.from([37, 80, 68, 70, 45, 49, 46, 55, 10])).digest('hex');
+    expect(digest).toEqual({ ok: true, value: { sha256: expected, sizeBytes: 9, head: new Uint8Array([37, 80, 68, 70, 45, 49]) } });
+    expect(await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 8, headBytes: 6 }))
+      .toMatchObject({ ok: false });
+  });
+
+  it('gives up a HEAD, a delete, a copy and a digest whose storage never answers once the deadline passes', async () => {
+    const pending = () => new Promise<never>(() => undefined);
+    const storage = createS3StorageProvider(resolver, { lookupAddresses: async () => ['93.184.216.34'], fetchStorage: pending });
+    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 };
+    const outcomes = await Promise.all([
+      storage.head(target),
+      storage.delete(target),
+      storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 20 }),
+      storage.digestObject(target, { maxBytes: 10, headBytes: 4 }),
+    ]);
+    for (const outcome of outcomes) {
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+    }
+  });
+});

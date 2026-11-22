@@ -180,6 +180,19 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
     },
   },
   product: {
+    12: {
+      id: 'product-fixture-12', tenantId: 'tenant-fixture', type: 'physical', slug: 'gallery-desk-lamp',
+      title: 'Gallery desk lamp', description: '',
+      coverUrl: '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000004.webp',
+      images: [
+        { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000005.webp', alt: 'Lamp, front view' },
+        { url: 'https://cdn.example.test/lamp-side.jpg', alt: '' },
+      ],
+      priceCents: 11900, vatRate: 23, vatExemptionBasis: null, currency: 'PLN', published: true,
+      visibility: 'listed', salesChannel: 'any', deliveryMethod: 'shipping', parcelTemplate: 'medium',
+      compliance: null, variantGroup: null, variantLabel: null,
+      accessItems: [], legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+    },
     11: {
       id: 'product-fixture-11', tenantId: 'tenant-fixture', type: 'physical', slug: 'imported-desk-lamp',
       title: 'Imported desk lamp', description: '', coverUrl: null, priceCents: 10900,

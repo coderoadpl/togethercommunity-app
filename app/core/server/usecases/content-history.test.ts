@@ -643,6 +643,18 @@ describe('restoring a content version', () => {
     expect(harness.writtenVersions.at(-1)?.payload).not.toHaveProperty('personalization');
   });
 
+  it.each([
+    ['restores the gallery of a v12 snapshot', 12, { ...productSnapshotPayload, images: [{ url: 'https://cdn.example.test/old.jpg', alt: 'Old view' }] }, [{ url: 'https://cdn.example.test/old.jpg', alt: 'Old view' }]],
+    ['clears the gallery when restoring a snapshot from before galleries', 11, productSnapshotPayload, []],
+  ] as const)('%s', async (_label, schemaVersion, payload, expected) => {
+    const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', schemaVersion, payload })]);
+    harness.products[0] = { ...productRow, images: [{ url: 'https://cdn.example.test/current.jpg', alt: '' }] };
+    const result = await restoreContentVersion({ identity: identity('t-acme', 'owner') }, { versionId: 'v9' }, harness.deps);
+    expect(result.ok).toBe(true);
+    expect(harness.products[0]).toMatchObject({ title: 'Older title', images: expected });
+    expect(harness.writtenVersions.at(-1)?.payload).toMatchObject({ images: [{ url: 'https://cdn.example.test/current.jpg', alt: '' }] });
+  });
+
   it('refuses a restore without the write capability', async () => {
     const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9' })]);
 

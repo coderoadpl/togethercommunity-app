@@ -25,7 +25,7 @@ const collectReferences = (tenantId: string, documents: JsonDocument[]): Set<str
         || value.startsWith('lesson-attachments/') || value.startsWith('product-downloads/')) {
         keys.add(value);
       }
-      for (const match of value.matchAll(/\/api\/public\/assets\/(course-cover|product-cover|logo-dark|logo|favicon|share-image|avatar)\/([0-9a-f-]{36}\.(?:png|jpg|webp|svg|ico))/gi)) {
+      for (const match of value.matchAll(/\/api\/public\/assets\/(course-cover|product-cover|product-image|logo-dark|logo|favicon|share-image|avatar)\/([0-9a-f-]{36}\.(?:png|jpg|webp|svg|ico))/gi)) {
         keys.add(`image-assets/${tenantId}/${match[1]}/${match[2]}`);
       }
     } else if (Array.isArray(value)) {

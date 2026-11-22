@@ -124,6 +124,7 @@ export const createProduct = async (
     title: parsed.data.title,
     description: parsed.data.description,
     coverUrl: parsed.data.coverUrl,
+    images: parsed.data.images,
     priceCents: parsed.data.priceCents,
     currency: parsed.data.currency,
     published: false,
@@ -202,6 +203,7 @@ export const updateProduct = async (
     title: parsed.data.title ?? existing.title,
     description: parsed.data.description ?? existing.description,
     coverUrl: parsed.data.coverUrl === undefined ? existing.coverUrl : parsed.data.coverUrl,
+    images: parsed.data.images ?? existing.images ?? [],
   };
   const saved = await deps.products.update(tenant.value, updated, snapshot.value);
   if (!saved) return err(notFound(`No product "${parsed.data.id}" in this tenant`));

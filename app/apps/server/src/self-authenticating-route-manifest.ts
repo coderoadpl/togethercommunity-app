@@ -115,6 +115,8 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_SETTINGS_ROUTES.brandingAssetComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:settings:write' },
   { path: SHOP_ASSETS_ROUTES.productCoverUpload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.productCoverComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.productImageUpload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_ASSETS_ROUTES.productImageComplete.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.listSalesLinks.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
   { path: SHOP_ASSETS_ROUTES.getSalesLink.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
   { path: SHOP_ASSETS_ROUTES.createSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },

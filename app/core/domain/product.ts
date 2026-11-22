@@ -44,6 +44,29 @@ export const productCoverUrlSchema = z.union([
   z.string().trim().regex(/^\/\S+$/),
 ]);
 
+export const PRODUCT_IMAGES_MAX = 12;
+const PRODUCT_IMAGE_ALT_MAX_LENGTH = 250;
+
+export const productImageSchema = z.object({
+  url: productCoverUrlSchema,
+  alt: z.string().trim().max(PRODUCT_IMAGE_ALT_MAX_LENGTH, 'Image alt text too long').default(''),
+});
+
+export type ProductImage = z.infer<typeof productImageSchema>;
+
+export const productImagesSchema = z
+  .array(productImageSchema)
+  .max(PRODUCT_IMAGES_MAX, `A product holds at most ${String(PRODUCT_IMAGES_MAX)} images`)
+  .superRefine((images, ctx) => {
+    const seen = new Set<string>();
+    images.forEach((image, index) => {
+      if (seen.has(image.url)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'url'], message: 'Each product image URL may appear only once' });
+      }
+      seen.add(image.url);
+    });
+  });
+
 export const productSlugFromTitle = (title: string): string => slugify(title, { maxLength: 100 });
 
 const PRICE_MAJOR_PATTERN = /^\d+([.,]\d{1,2})?$/;
@@ -116,6 +139,7 @@ export const productContentSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string(),
   coverUrl: productCoverUrlSchema.nullable(),
+  images: productImagesSchema.optional(),
   priceCents: z.number().int().nonnegative(),
   currency: currencySchema,
   published: z.boolean(),
@@ -164,6 +188,7 @@ export const newProductSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long'),
   description: newProductDescriptionSchema.default(''),
   coverUrl: productCoverUrlSchema.nullable().default(null),
+  images: productImagesSchema.default([]),
   priceCents: z.number().int('Price must be a whole number of cents').nonnegative('Price must not be negative'),
   currency: currencySchema.default('PLN'),
   accessItems: z.array(accessItemSchema).default([]),
@@ -185,6 +210,7 @@ export const updateProductInputSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),
   description: newProductDescriptionSchema.optional(),
   coverUrl: productCoverUrlSchema.nullable().optional(),
+  images: productImagesSchema.optional(),
 });
 
 export type UpdateProductInput = z.input<typeof updateProductInputSchema>;

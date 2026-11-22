@@ -14,6 +14,8 @@ const WRITE = 'shop:catalog:write' satisfies ShopManagementScope;
 export const SHOP_ASSETS_ROUTES = {
   productCoverUpload: { method: 'POST', path: '/api/m2m/shop/image-assets/product-cover/upload', scope: WRITE },
   productCoverComplete: { method: 'POST', path: '/api/m2m/shop/image-assets/product-cover/complete', scope: WRITE },
+  productImageUpload: { method: 'POST', path: '/api/m2m/shop/image-assets/product-image/upload', scope: WRITE },
+  productImageComplete: { method: 'POST', path: '/api/m2m/shop/image-assets/product-image/complete', scope: WRITE },
   listSalesLinks: { method: 'GET', path: '/api/m2m/shop/sales-links', scope: READ },
   getSalesLink: { method: 'GET', path: '/api/m2m/shop/sales-links/:id', scope: READ },
   createSalesLink: { method: 'POST', path: '/api/m2m/shop/sales-links', scope: WRITE },
@@ -24,6 +26,8 @@ export const SHOP_ASSETS_ROUTES = {
 export const shopAssetsContracts = {
   productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
   productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
+  productImageUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
+  productImageComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
   listSalesLinks: salesLinkContracts.listSalesLinks,
   createSalesLink: { ...salesLinkContracts.createSalesLink, input: strictSalesLinkInputSchema },
   getSalesLink: salesLinkContracts.getSalesLink,

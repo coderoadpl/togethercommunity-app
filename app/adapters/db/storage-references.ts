@@ -28,7 +28,7 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
     await tx.execute(sql`set transaction isolation level repeatable read, read only`);
     const lessonRows = await tx.select({ id: courseLessons.id, contents: courseLessons.contents })
       .from(courseLessons).where(eq(courseLessons.tenantId, tenantId));
-    const productRows = await tx.select({ id: products.id, coverUrl: products.coverUrl, description: products.description })
+    const productRows = await tx.select({ id: products.id, coverUrl: products.coverUrl, images: products.images, description: products.description })
       .from(products).where(eq(products.tenantId, tenantId));
     const courseRows = await tx.select({ imageUrl: courses.imageUrl, description: courses.description })
       .from(courses).where(eq(courses.tenantId, tenantId));

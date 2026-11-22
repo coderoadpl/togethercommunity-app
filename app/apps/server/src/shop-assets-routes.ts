@@ -2,10 +2,12 @@ import type { Context } from 'hono';
 import type { z } from 'zod';
 
 import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js';
-import { err, internal, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import { err, internal, ok, validation, type AppError, type Result, type ShopManagementScope } from '#core/domain/index.js';
 import {
   beginProductCoverUpload,
+  beginProductImageUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   createSalesLink,
   deleteSalesLink,
   getSalesLink,
@@ -34,14 +36,25 @@ const salesLinkUpdateInput = async (c: Context<AppVars>): Promise<Result<SalesLi
 
 const salesLinkDeleteInput = (c: Context<AppVars>): { id: string } => ({ id: c.req.param('id') ?? '' });
 
-export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
+type ImageAssetUseCases = {
+  begin: typeof beginProductCoverUpload;
+  complete: typeof completeProductCoverUpload;
+};
+
+type ImageAssetRoute = { method: 'POST'; path: string; scope: ShopManagementScope };
+
+const imageAssetRoutes = (
+  deps: AppDeps,
+  routes: { upload: ImageAssetRoute; complete: ImageAssetRoute },
+  useCases: ImageAssetUseCases,
+): readonly ShopMachineRoute[] => [
   {
-    ...SHOP_ASSETS_ROUTES.productCoverUpload,
+    ...routes.upload,
     proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopAssetsContracts.productCoverUpload.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
-      const result = await beginProductCoverUpload(ctx, parsed.data, deps);
+      const result = await useCases.begin(ctx, parsed.data, deps);
       return respond(result.ok
         ? ok({
             key: result.value.key,
@@ -56,14 +69,27 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
     },
   },
   {
-    ...SHOP_ASSETS_ROUTES.productCoverComplete,
+    ...routes.complete,
     proposeMode: { kind: 'refuse', reason: 'not-in-release' },
     handler: async (c, { ctx }) => {
       const parsed = shopAssetsContracts.productCoverComplete.input.safeParse(await readJson(c.req.raw));
       if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
-      return respond(await completeProductCoverUpload(ctx, parsed.data, deps));
+      return respond(await useCases.complete(ctx, parsed.data, deps));
     },
   },
+];
+
+export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
+  ...imageAssetRoutes(
+    deps,
+    { upload: SHOP_ASSETS_ROUTES.productCoverUpload, complete: SHOP_ASSETS_ROUTES.productCoverComplete },
+    { begin: beginProductCoverUpload, complete: completeProductCoverUpload },
+  ),
+  ...imageAssetRoutes(
+    deps,
+    { upload: SHOP_ASSETS_ROUTES.productImageUpload, complete: SHOP_ASSETS_ROUTES.productImageComplete },
+    { begin: beginProductImageUpload, complete: completeProductImageUpload },
+  ),
   {
     ...SHOP_ASSETS_ROUTES.listSalesLinks,
     handler: async (_c, { ctx }) => deps.salesLinkManagement === undefined

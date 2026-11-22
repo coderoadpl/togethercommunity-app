@@ -292,6 +292,8 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/image-assets/branding/complete': 'refuse not-in-release',
       'POST /api/m2m/shop/image-assets/product-cover/upload': 'refuse not-in-release',
       'POST /api/m2m/shop/image-assets/product-cover/complete': 'refuse not-in-release',
+      'POST /api/m2m/shop/image-assets/product-image/upload': 'refuse not-in-release',
+      'POST /api/m2m/shop/image-assets/product-image/complete': 'refuse not-in-release',
       'GET /api/m2m/shop/sales-links': 'read',
       'GET /api/m2m/shop/sales-links/:id': 'read',
       'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
@@ -348,7 +350,7 @@ describe('a propose-mode key on every registered shop route', () => {
     }
     expect(await liveState()).toBe(before);
     expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(18);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
     expect(stored).toHaveLength(14);
   });

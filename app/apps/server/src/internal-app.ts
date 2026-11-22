@@ -213,6 +213,7 @@ import {
   beginCourseCoverUpload,
   beginLessonAttachmentUpload,
   beginProductCoverUpload,
+  beginProductImageUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   authLinkBaseUrl,
@@ -251,6 +252,7 @@ import {
   completeCourseCoverUpload,
   completeLessonAttachmentUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -2210,6 +2212,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   app.post(API_PATHS.productCoverComplete, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     return respondImageAssetCompletion(completeProductCoverUpload, ctxOf(c), body, deps);
+  });
+
+  app.post(API_PATHS.productImageUpload, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetUpload(beginProductImageUpload, ctxOf(c), body, deps);
+  });
+
+  app.post(API_PATHS.productImageComplete, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetCompletion(completeProductImageUpload, ctxOf(c), body, deps);
   });
 
   app.post(API_PATHS.brandingAssetUpload, async (c) => {

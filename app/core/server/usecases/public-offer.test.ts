@@ -227,6 +227,7 @@ describe('getPublicOffer', () => {
             title: 'Product published',
             description: '<p>Description published</p>',
             coverUrl: 'https://cdn.test/published.jpg',
+            images: [],
             priceCents: 1000,
             vatRate: null,
             vatExemptionBasis: null,
@@ -247,6 +248,7 @@ describe('getPublicOffer', () => {
             title: 'Product download',
             description: '<p>Description download</p>',
             coverUrl: 'https://cdn.test/download.jpg',
+            images: [],
             priceCents: 1000,
             vatRate: null,
             vatExemptionBasis: null,
@@ -267,6 +269,7 @@ describe('getPublicOffer', () => {
             title: 'Product club',
             description: '<p>Description club</p>',
             coverUrl: 'https://cdn.test/club.jpg',
+            images: [],
             priceCents: 1000,
             vatRate: null,
             vatExemptionBasis: null,
@@ -300,6 +303,22 @@ describe('getPublicOffer', () => {
     });
     if (!result.ok) throw new Error('offer failed');
     expect(result.value.products.map((item) => item.personalization)).toEqual([personalization, null]);
+  });
+
+  it('returns the ordered gallery of a product in the same URL form as the cover', async () => {
+    const images = [
+      { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000003.webp', alt: 'Front view' },
+      { url: 'https://cdn.example.test/side.jpg', alt: '' },
+    ];
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([{ ...product('book', 't-acme', true, 'physical'), images }, product('poster', 't-acme', true, 'physical')]),
+      prices: noPrices,
+      lessons: noLessons,
+      courses: noCourses,
+      tenants: fakeTenants(),
+    });
+    if (!result.ok) throw new Error('offer failed');
+    expect(result.value.products.map((item) => item.images)).toEqual([images, []]);
   });
 
   it('leaves the stored responsible person out of a product whose manufacturer is in the EU and keeps it when outside the EU', async () => {

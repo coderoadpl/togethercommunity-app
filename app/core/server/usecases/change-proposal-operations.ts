@@ -124,6 +124,7 @@ const productFields = (product: Product) => ({
   title: product.title,
   description: product.description,
   coverUrl: product.coverUrl,
+  images: product.images ?? [],
   priceCents: product.priceCents,
   currency: product.currency,
   published: product.published,

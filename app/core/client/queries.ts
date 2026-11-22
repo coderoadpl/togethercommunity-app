@@ -872,6 +872,12 @@ export const uploadProductCoverMutation = (api: ApiClient) =>
     call: (input: ImageAssetFileUpload) => api.uploadProductCover(input),
   });
 
+export const uploadProductImageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'product-image', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadProductImage(input),
+  });
+
 export const uploadBrandingAssetMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...imageAssetsScopes.all(), 'branding', 'upload'],

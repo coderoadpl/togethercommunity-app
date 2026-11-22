@@ -89,6 +89,17 @@ describe('shop manifest v1', () => {
     expect(diffManifestProduct(desired, { ...current, stock: null }).stock).toBe('enable');
   });
 
+  it('manages the gallery only when the manifest lists it and compares it in order', () => {
+    const front = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front' };
+    const side = { url: 'https://cdn.example.test/side.jpg', alt: '' };
+    const withGallery = { ...current, product: { ...current.product, images: [front, side] } };
+    expect(diffManifestProduct(shopManifestProductSchema.parse(productInput), withGallery)).toMatchObject({ product: 'unchanged', managedFields: ['title'] });
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [] }), current)).toMatchObject({ product: 'unchanged', managedFields: ['title', 'images'] });
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [front, side] }), withGallery).product).toBe('unchanged');
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [side, front] }), withGallery)).toMatchObject({ product: 'update', fields: ['images'] });
+    expect(shopManifestProductSchema.safeParse({ ...productInput, images: [front, front] }).success).toBe(false);
+  });
+
   it('keeps one matching active non-imported price and retires alternatives', () => {
     const desired = shopManifestProductSchema.parse(productInput);
     const price = current.prices[0];

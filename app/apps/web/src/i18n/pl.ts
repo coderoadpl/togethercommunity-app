@@ -814,6 +814,7 @@ export const pl: Messages = {
       title: 'Tytuł',
       description: 'Opis',
       coverUrl: 'Okładka',
+      images: 'Galeria zdjęć',
       priceCents: 'Cena',
       currency: 'Waluta',
       published: 'Opublikowany',

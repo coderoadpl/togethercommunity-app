@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   newProductSchema,
+  PRODUCT_IMAGES_MAX,
+  productImagesSchema,
   updateProductInputSchema,
   priceMajorSchema,
   productSchema,
@@ -148,5 +150,48 @@ describe('product visibility', () => {
   it('rejects unknown visibility values', () => {
     expect(newProductSchema.safeParse({ title: 'Course', priceCents: 0, visibility: 'private' }).success).toBe(false);
     expect(updateProductInputSchema.safeParse({ id: 'p1', visibility: 'private' }).success).toBe(false);
+  });
+});
+
+describe('product images', () => {
+  const imageUrl = (index: number): string => `/api/public/assets/product-image/00000000-0000-4000-8000-${String(index).padStart(12, '0')}.webp`;
+
+  it('defaults a new product to an empty gallery and leaves the gallery out of an update without it', () => {
+    expect(newProductSchema.parse({ title: 'Course', priceCents: 0 }).images).toEqual([]);
+    expect(updateProductInputSchema.parse({ id: 'p1' })).not.toHaveProperty('images');
+    expect(updateProductInputSchema.parse({ id: 'p1', images: [] }).images).toEqual([]);
+  });
+
+  it('keeps the order, trims alt text and defaults it to empty', () => {
+    expect(productImagesSchema.parse([
+      { url: 'https://cdn.example.test/back.jpg', alt: '  Back view  ' },
+      { url: imageUrl(1) },
+    ])).toEqual([
+      { url: 'https://cdn.example.test/back.jpg', alt: 'Back view' },
+      { url: imageUrl(1), alt: '' },
+    ]);
+  });
+
+  it('accepts the same URL forms as the cover and nothing else', () => {
+    for (const url of ['javascript:alert(1)', 'data:image/png;base64,AA==', 'ftp://cdn.example.test/a.jpg', 'relative/a.jpg']) {
+      expect(productImagesSchema.safeParse([{ url, alt: '' }]).success).toBe(false);
+    }
+  });
+
+  it('limits alt text to 250 characters', () => {
+    expect(productImagesSchema.safeParse([{ url: imageUrl(1), alt: 'a'.repeat(250) }]).success).toBe(true);
+    expect(productImagesSchema.safeParse([{ url: imageUrl(1), alt: 'a'.repeat(251) }]).success).toBe(false);
+  });
+
+  it('holds at most twelve images', () => {
+    const images = Array.from({ length: PRODUCT_IMAGES_MAX + 1 }, (_, index) => ({ url: imageUrl(index), alt: '' }));
+    expect(productImagesSchema.safeParse(images.slice(0, PRODUCT_IMAGES_MAX)).success).toBe(true);
+    expect(newProductSchema.safeParse({ title: 'Course', priceCents: 0, images }).success).toBe(false);
+  });
+
+  it('rejects a URL listed twice', () => {
+    const result = updateProductInputSchema.safeParse({ id: 'p1', images: [{ url: imageUrl(1), alt: 'Front' }, { url: imageUrl(1), alt: 'Again' }] });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['images', 1, 'url']);
   });
 });

@@ -41,6 +41,7 @@ export const shopManifestProductSchema = newProductSchema.omit({
   salesChannel: newProductSchema.shape.salesChannel.removeDefault().optional(),
   personalization: newProductSchema.shape.personalization.removeDefault().optional(),
   coverUrl: newProductSchema.shape.coverUrl.removeDefault().optional(),
+  images: newProductSchema.shape.images.removeDefault().optional(),
   price: z.object({ amountCents: z.number().int().nonnegative(), currency: newProductSchema.shape.currency.removeDefault() }).strict(),
   stock: z.object({ onHand: z.number().int().min(0).max(MAX_STOCK_QUANTITY) }).strict().optional(),
   published: z.boolean(),
@@ -217,6 +218,8 @@ export const productVatConvergenceError = (product: Pick<ShopManifestProduct, 'v
   return product.vatRate === 'exempt' ? null : 'Product vatExemptionBasis requires vatRate "exempt"';
 };
 
+const STORED_PRODUCT_DEFAULTS: Record<string, unknown> = { parcelTemplate: DEFAULT_PARCEL_TEMPLATE, images: [] };
+
 export const diffManifestProduct = (
   desired: ShopManifestProduct,
   current: { product: Product; prices: ProductPrice[]; stock: ProductStock | null } | null,
@@ -224,7 +227,7 @@ export const diffManifestProduct = (
   const stored: Record<string, unknown> = current?.product ?? {};
   const managed = Object.entries(productMetadata(desired)).filter(([, value]) => value !== undefined);
   const fields = managed
-    .filter(([key, value]) => !manifestValuesEqual(value, stored[key] ?? (key === 'parcelTemplate' ? DEFAULT_PARCEL_TEMPLATE : null)))
+    .filter(([key, value]) => !manifestValuesEqual(value, stored[key] ?? STORED_PRODUCT_DEFAULTS[key] ?? null))
     .map(([key]) => key);
   const active = current?.prices.filter((price) => price.active) ?? [];
   const matching = active.find((price) => price.kind === 'one_time' && !price.imported &&

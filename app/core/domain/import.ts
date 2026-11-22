@@ -12,6 +12,8 @@ import { redirectPathSchema } from './tenant-redirect.js';
 import { productPersonalizationSchema } from './personalization.js';
 import {
   currencySchema,
+  productImageSchema,
+  productImagesSchema,
   productSalesChannelSchema,
   productSlugSchema,
   productTypeSchema,
@@ -66,6 +68,10 @@ export const importPublicAssetPathSchema = z.string().trim().refine((value) => {
 const importAbsoluteUrlSchema = z.string().trim().max(2_048).url().regex(/^https?:\/\//iu);
 
 const importAssetUrlSchema = z.union([importAbsoluteUrlSchema, importPublicAssetPathSchema]);
+
+const importProductImagesSchema = z
+  .array(productImageSchema.extend({ url: importAssetUrlSchema }).strict())
+  .pipe(productImagesSchema);
 
 const importedRecordFields = {
   importKey: importKeySchema,
@@ -214,6 +220,7 @@ export const importProductRecordSchema = z
     title: z.string().trim().min(1).max(200),
     description: z.string().max(50_000),
     coverUrl: importAssetUrlSchema.nullable(),
+    images: importProductImagesSchema.optional(),
     priceCents: z.number().int().nonnegative(),
     currency: currencySchema,
     accessItems: z.array(importAccessItemSchema),

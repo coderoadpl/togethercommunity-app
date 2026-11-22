@@ -2055,6 +2055,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     uploadImageAsset(options, API_ROUTES.courseCoverUpload, API_ROUTES.courseCoverComplete, input, signal),
   uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
     uploadImageAsset(options, API_ROUTES.productCoverUpload, API_ROUTES.productCoverComplete, input, signal),
+  uploadProductImage: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+    uploadImageAsset(options, API_ROUTES.productImageUpload, API_ROUTES.productImageComplete, input, signal),
   uploadBrandingAsset: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
     uploadImageAsset(options, API_ROUTES.brandingAssetUpload, API_ROUTES.brandingAssetComplete, input, signal),
   deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
@@ -3316,6 +3318,8 @@ const shopAssetsMethods = (options: ApiClientOptions) => {
   return {
     uploadProductCover: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
       uploadImageAsset(options, routes.productCoverUpload, routes.productCoverComplete, input, signal),
+    uploadProductImage: (input: ImageAssetFileUpload, signal?: AbortSignal) =>
+      uploadImageAsset(options, routes.productImageUpload, routes.productImageComplete, input, signal),
     listSalesLinks: (signal?: AbortSignal) =>
       request(options, routes.listSalesLinks.method, routes.listSalesLinks.path, contracts.listSalesLinks.output, undefined, signal),
     getSalesLink: (input: ShopAssetsInput<'getSalesLink'>, signal?: AbortSignal) =>

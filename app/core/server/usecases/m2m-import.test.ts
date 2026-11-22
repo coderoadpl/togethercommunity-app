@@ -27,6 +27,7 @@ const NOW = '1998-08-14T10:00:00.000Z';
 const TENANT_ID = 'tenant-1';
 const COURSE_ASSET_PATH = '/api/public/assets/course-cover/00000000-0000-4000-8000-000000000001.jpg';
 const PRODUCT_ASSET_PATH = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000002.webp';
+const GALLERY_ASSET_PATH = '/api/public/assets/product-image/00000000-0000-4000-8000-000000000003.webp';
 
 const apiKey: TenantApiKey = {
   id: 'key-1',
@@ -479,6 +480,37 @@ describe('m2m content import', () => {
     }, h.deps);
     expect(cleared).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
     expect(lastProduct()).toMatchObject({ personalization: null });
+  });
+
+  it('imports an ordered gallery with normalized URLs, keeps it when an update omits it and clears it with an empty list', async () => {
+    const h = harness();
+    h.domains.push(customDomain());
+    const write = (images?: unknown) => importM2mContent(ctx, apiKey, 'product', {
+      datasetVersion: 'together-import/v1',
+      records: [{ ...productRecord(), accessItems: [], ...(images === undefined ? {} : { images }) }],
+    }, h.deps);
+    const stored = [
+      { url: GALLERY_ASSET_PATH, alt: 'Front view' },
+      { url: 'https://cdn.example.org/side.jpg', alt: '' },
+    ];
+
+    expect(await write([
+      { url: `https://courses.example.org${GALLERY_ASSET_PATH}`, alt: ' Front view ' },
+      { url: 'https://cdn.example.org/side.jpg' },
+    ])).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.products.get('product-source')?.images).toEqual(stored);
+
+    expect(await write()).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(h.products.get('product-source')?.images).toEqual(stored);
+
+    expect(await write([{ url: GALLERY_ASSET_PATH }, { url: `https://courses.example.org${GALLERY_ASSET_PATH}` }]))
+      .toMatchObject({ ok: true, value: { results: [{ action: 'error', error: { code: 'validation' } }] } });
+    expect(await write([{ url: GALLERY_ASSET_PATH, caption: 'Front' }]))
+      .toMatchObject({ ok: true, value: { results: [{ action: 'error', error: { code: 'validation' } }] } });
+    expect(h.products.get('product-source')?.images).toEqual(stored);
+
+    expect(await write([])).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
+    expect(h.products.get('product-source')?.images).toEqual([]);
   });
 
   it('refuses a personalised membership and a personalisation record with unknown fields', async () => {

@@ -725,6 +725,7 @@ export interface Messages {
       title: string;
       description: string;
       coverUrl: string;
+      images: string;
       priceCents: string;
       currency: string;
       published: string;

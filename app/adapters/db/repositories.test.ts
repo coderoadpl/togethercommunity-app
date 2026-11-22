@@ -353,6 +353,33 @@ describe('product repository', () => {
     }))).resolves.toBe('slug_taken');
   });
 
+  it('stores the ordered gallery, defaults it to empty, and keeps the order through updates', async () => {
+    const repo = createProductRepository(db);
+    const gallery = [
+      { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back view' },
+      { url: 'https://cdn.example.test/front.jpg', alt: '' },
+    ];
+    await repo.create(GLOBEX, product({ id: 'prod-globex-gallery', tenantId: GLOBEX, images: gallery }));
+    await db.insert(products).values({
+      id: 'prod-globex-gallery-default', tenantId: GLOBEX, slug: 'prod-globex-gallery-default', title: 'Raw insert', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW,
+    });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery')).toMatchObject({ images: gallery });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery-default')).toMatchObject({ images: [] });
+
+    const stored = await repo.findById(GLOBEX, 'prod-globex-gallery');
+    if (stored === null) throw new Error('Gallery product missing');
+    const version = {
+      id: 'version-gallery', entityKind: 'product' as const, entityId: stored.id, schemaVersion: 12,
+      payload: stored, createdAt: NOW, createdBy: null,
+    };
+    const reordered = [...gallery].reverse();
+    expect(await repo.update(GLOBEX, { ...stored, images: reordered }, version)).toMatchObject({ images: reordered });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery')).toMatchObject({ images: reordered });
+    expect(await repo.update(GLOBEX, { ...stored, images: [] }, { ...version, id: 'version-gallery-2' })).toMatchObject({ images: [] });
+    expect(await repo.findById(ACME, 'prod-globex-gallery')).toBeNull();
+  });
+
   it('stores the sales channel, defaults it to any, and returns it on every product read', async () => {
     const repo = createProductRepository(db);
     await repo.create(GLOBEX, product({ id: 'prod-globex-link-only', tenantId: GLOBEX, salesChannel: 'sales_links_only' }));

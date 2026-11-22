@@ -776,6 +776,7 @@ export const en: Messages = {
       title: 'Title',
       description: 'Description',
       coverUrl: 'Cover image',
+      images: 'Gallery images',
       priceCents: 'Price',
       currency: 'Currency',
       published: 'Published',

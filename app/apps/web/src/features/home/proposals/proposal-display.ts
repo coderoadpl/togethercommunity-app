@@ -71,7 +71,7 @@ const ENUM_FIELDS = new Set([
 const FIELD_ORDER = [
   'title', 'name', 'heading', 'type', 'description', 'slug', 'priceCents', 'amountCents', 'currency', 'kind', 'interval',
   'activePrices', 'prices', 'published', 'active', 'listed', 'visibility', 'productIds', 'validFrom', 'validTo',
-  'tracked', 'onHand', 'reserved', 'lowStockThreshold', 'coverUrl',
+  'tracked', 'onHand', 'reserved', 'lowStockThreshold', 'coverUrl', 'images',
 ];
 
 const PUBLIC_ASSET_PATH = /^\/api\/public\/assets(\/[A-Za-z0-9][A-Za-z0-9._-]*)+$/;

@@ -337,7 +337,7 @@ const supportLink = (settings: TenantSettings | null, t: PublicMarketingMessages
   return url === null ? null : `<a href="${escapeHtml(url)}">${escapeHtml(t.supportLink)}</a>`;
 };
 
-export type StatusCue = 'success' | 'info' | 'error';
+type StatusCue = 'success' | 'info' | 'error';
 
 const statusCueIcons: Record<StatusCue, string> = {
   success: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
@@ -392,7 +392,7 @@ const renderPage = (input: {
   return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main></body></html>`;
 };
 
-export interface StatusLink {
+interface StatusLink {
   label: string;
   href: string;
 }
@@ -430,7 +430,7 @@ export const renderStatusPage = (input: {
   });
 };
 
-export type HostedErrorKind = 'link_invalid' | 'document_not_found' | 'request_failed';
+type HostedErrorKind = 'link_invalid' | 'document_not_found' | 'request_failed';
 
 export const renderHostedErrorPage = (input: {
   nonce: string;

@@ -2389,6 +2389,7 @@ export interface Messages {
   };
   lesson: {
     enlargeImage: string;
+    enlargeNamedImage: (params: { alt: string }) => string;
     editionLabel: (params: { number: string }) => string;
     editionsTitle: string;
     editionCurrentVersion: string;

@@ -206,7 +206,7 @@ describe('LessonReadingContent', () => {
     const user = userEvent.setup();
     render(<LessonReadingContent html="<figure><img src='/diagram.svg' alt='Diagram'><figcaption>Complete caption.</figcaption></figure><p>Long text.</p>" />);
     const preview = screen.getByTestId('lesson-reading-preview');
-    const image = screen.getByRole('button', { name: en.lesson.enlargeImage });
+    const image = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) });
     expect(preview).toHaveAttribute('data-collapsed', 'true');
 
     if (activation === 'click') await user.click(image);
@@ -217,7 +217,7 @@ describe('LessonReadingContent', () => {
       await user.keyboard(activation === 'Enter' ? '{Enter}' : ' ');
     }
 
-    const dialog = screen.getByRole('dialog', { name: en.lesson.enlargeImage });
+    const dialog = screen.getByRole('dialog', { name: 'Diagram' });
     expect(dialog).toHaveAccessibleDescription('Complete caption.');
     expect(within(dialog).getByRole('img', { name: 'Diagram' })).toBeVisible();
     await user.keyboard('{Escape}');

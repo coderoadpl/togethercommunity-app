@@ -2757,6 +2757,7 @@ export const pl: Messages = {
   },
   lesson: {
     enlargeImage: 'Powiększ obraz',
+    enlargeNamedImage: ({ alt }) => format('{alt}. Powiększ obraz', { alt }),
     editionLabel: ({ number }) => format('Wydanie {number}', { number }),
     editionsTitle: 'Wydania lekcji',
     editionCurrentVersion: 'Aktualna wersja',

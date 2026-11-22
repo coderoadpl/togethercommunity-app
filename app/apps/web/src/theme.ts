@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4223,37 +4223,69 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   },
 }));
 
+export const LessonLightboxBackdrop = styled(Backdrop)(({ theme }) => ({
+  backgroundColor: alpha(theme.palette.common.black, 0.9),
+}));
+
 export const LessonImageLightbox = styled(Box)(({ theme }) => ({
-  position: 'absolute',
-  inset: '1rem',
-  margin: 'auto',
-  maxWidth: 'calc(100vw - 2rem)',
-  maxHeight: 'calc(100dvh - 2rem)',
-  padding: '1rem',
+  position: 'fixed',
+  inset: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: '1rem',
-  backgroundColor: theme.palette.background.paper,
-  color: theme.palette.text.primary,
-  borderRadius: theme.shape.borderRadius,
-  '& > .MuiButton-root': { alignSelf: 'flex-end', flexShrink: 0, minHeight: 44 },
+  paddingTop: `calc(${String(TOUCH_TARGET_MIN)}px + 1.5rem + env(safe-area-inset-top))`,
+  paddingBottom: 'env(safe-area-inset-bottom)',
+  color: theme.palette.common.white,
+  outline: 'none',
+  '& [data-slot="close"]': {
+    position: 'absolute',
+    top: 'calc(0.75rem + env(safe-area-inset-top))',
+    right: 'calc(0.75rem + env(safe-area-inset-right))',
+    zIndex: 1,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    backgroundColor: theme.palette.common.white,
+    color: theme.palette.common.black,
+    '&:hover': { backgroundColor: theme.palette.grey[200] },
+    '&:focus-visible': {
+      outline: `3px solid ${theme.palette.common.white}`,
+      outlineOffset: 3,
+      boxShadow: 'none',
+    },
+  },
+  '& [data-slot="stage"]': {
+    flex: '1 1 0',
+    minHeight: 0,
+    containerType: 'size',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   '& [data-slot="caption"]': {
     flexShrink: 0,
+    width: '100%',
+    maxWidth: '44rem',
     maxHeight: '20dvh',
+    marginInline: 'auto',
+    padding: '0.75rem 1rem 1rem',
     overflowY: 'auto',
     overflowWrap: 'anywhere',
     textAlign: 'center',
+    color: alpha(theme.palette.common.white, 0.92),
+  },
+  [theme.breakpoints.up('sm')]: {
+    paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+    '& [data-slot="stage"]': { paddingInline: '2rem' },
   },
 }));
 
-export const LessonLightboxImage = styled('img')({
+export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' })<{ fillRatio: number | null }>(({ theme, fillRatio }) => ({
   display: 'block',
-  width: '100%',
-  height: '100%',
-  flex: '1 1 0',
-  minHeight: 0,
-  objectFit: 'contain',
-});
+  width: fillRatio === null ? 'auto' : `min(100cqw, calc(100cqh * ${String(fillRatio)}))`,
+  height: 'auto',
+  maxWidth: '100cqw',
+  maxHeight: '100cqh',
+  backgroundColor: theme.palette.common.white,
+}));
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',

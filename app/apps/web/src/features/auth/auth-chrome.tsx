@@ -124,6 +124,12 @@ export const AuthHelp = styled(Typography)<{ component?: ElementType }>(({ theme
   color: theme.palette.text.secondary,
 }));
 
+export const AuthSecondaryAction = styled(Typography)<{ component?: ElementType }>(({ theme }) => ({
+  marginTop: '1.5rem',
+  fontSize: '0.875rem',
+  color: theme.palette.text.secondary,
+}));
+
 export const AuthInput = styled(OutlinedInput)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
   '& .MuiOutlinedInput-input': { minHeight: '1.6rem' },

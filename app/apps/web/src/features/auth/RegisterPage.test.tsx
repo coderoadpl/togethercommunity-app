@@ -64,6 +64,16 @@ const noTenantOffer = http.get('/api/public/offer', () =>
 
 afterEach(() => vi.unstubAllEnvs());
 
+const expectSecondaryLink = (link: HTMLElement) => {
+  const style = window.getComputedStyle(link);
+  expect([style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
+    '0.875rem', 'underline', '44px', '44px',
+  ]);
+  const row = link.closest('p');
+  if (row === null) throw new Error('expected the link to sit in a paragraph');
+  expect(window.getComputedStyle(row).marginTop).toBe('1.5rem');
+};
+
 describe('RegisterPage', () => {
   it('redirects a signed-in tenant member to home', async () => {
     server.use(memberMe());
@@ -105,6 +115,14 @@ describe('RegisterPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: en.auth.createAccount })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.auth.createAccount })).toBeEnabled();
     expect(offerCalls).toBe(0);
+  });
+
+  it('sizes the sign-in link as a 14px underlined 44px target after the form', async () => {
+    server.use(anonymousMe(), noTenantOffer);
+
+    await renderRegisterPage();
+
+    expectSecondaryLink(screen.getByRole('link', { name: en.auth.signInLink }));
   });
 
   it('states the password minimum under the password field and describes the field with it', async () => {

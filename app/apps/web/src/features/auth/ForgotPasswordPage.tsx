@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
@@ -16,8 +15,7 @@ import { z } from 'zod';
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { returnToFromSearch } from '../../lib/auth-return.js';
-import { FinePrint } from '../../theme.js';
-import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
@@ -56,9 +54,11 @@ export const ForgotPasswordPage = () => {
   };
 
   const footer = (
-    <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
-      <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.forgotPassword.backToLogin}</MuiLink>
-    </FinePrint>
+    <AuthSecondaryAction component="p">
+      <AuthAccentLink standalone component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>
+        {t.forgotPassword.backToLogin}
+      </AuthAccentLink>
+    </AuthSecondaryAction>
   );
 
   return (

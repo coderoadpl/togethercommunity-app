@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
@@ -17,8 +16,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
-import { FinePrint } from '../../theme.js';
-import { AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { AuthShell } from './AuthShell.js';
@@ -70,9 +68,16 @@ export const ResetPasswordPage = () => {
     resetPassword.mutate({ token, newPassword: password });
   };
 
+  const linkUnusable = !token || invalidToken || providerRejectedToken;
+  const footer = linkUnusable || resetPassword.isSuccess ? null : (
+    <AuthSecondaryAction component="p">
+      <AuthAccentLink standalone component={Link} to="/login">{t.resetPassword.goToLogin}</AuthAccentLink>
+    </AuthSecondaryAction>
+  );
+
   return (
-    <AuthShell title={t.resetPassword.title}>
-        {!token || invalidToken || providerRejectedToken ? (
+    <AuthShell title={t.resetPassword.title} footer={footer}>
+        {linkUnusable ? (
           <StatusView
             state={{
               kind: 'not-found',
@@ -157,9 +162,6 @@ export const ResetPasswordPage = () => {
                 {localizeError(resetPassword.error, t)}
               </Alert>
             ) : null}
-            <FinePrint variant="caption" component="p" sx={{ mt: '1rem' }}>
-              <MuiLink component={Link} to="/login">{t.resetPassword.goToLogin}</MuiLink>
-            </FinePrint>
           </>
         )}
     </AuthShell>

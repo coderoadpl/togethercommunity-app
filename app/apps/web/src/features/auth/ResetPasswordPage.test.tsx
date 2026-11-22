@@ -33,7 +33,23 @@ afterEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
+const expectSecondaryLink = (link: HTMLElement) => {
+  const style = window.getComputedStyle(link);
+  expect([style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
+    '0.875rem', 'underline', '44px', '44px',
+  ]);
+  const row = link.closest('p');
+  if (row === null) throw new Error('expected the link to sit in a paragraph');
+  expect(window.getComputedStyle(row).marginTop).toBe('1.5rem');
+};
+
 describe('ResetPasswordPage', () => {
+  it('sizes the go-to-sign-in link as a 14px underlined 44px target after the form', async () => {
+    await renderResetPage('?token=valid-token');
+
+    expectSecondaryLink(screen.getByRole('link', { name: en.resetPassword.goToLogin }));
+  });
+
   it('sits on the auth shell, signed once with the Together wordmark', async () => {
     await renderResetPage('?token=valid-token');
 

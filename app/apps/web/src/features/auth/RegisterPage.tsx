@@ -21,7 +21,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
-import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
@@ -144,9 +144,12 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       title={t.auth.createAccount}
       hostname={hostname}
       footer={
-        <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
-          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.signInLink}</MuiLink>
-        </FinePrint>
+        <AuthSecondaryAction component="p">
+          {t.auth.alreadyHaveAccount}{' '}
+          <AuthAccentLink standalone component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>
+            {t.auth.signInLink}
+          </AuthAccentLink>
+        </AuthSecondaryAction>
       }
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}

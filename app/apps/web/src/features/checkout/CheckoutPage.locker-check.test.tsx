@@ -1,8 +1,9 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { onlineManager } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PICKUP_POINT_REJECTION_MESSAGES } from '#core/domain/index.js';
 
@@ -11,6 +12,7 @@ import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
+import { SUBMIT_LOCKER_CHECK_WAIT_MS } from './use-locker-check.js';
 
 const offer = {
   tenant: { slug: 'acme', name: 'Acme School' },
@@ -106,6 +108,8 @@ describe('typed parcel locker code check', () => {
   afterEach(() => {
     document.getElementById('inpost-geowidget-script')?.remove();
     document.getElementById('inpost-geowidget-style')?.remove();
+    onlineManager.setOnline(true);
+    vi.useRealTimers();
   });
 
   it('shows the locker name and address in a polite live region after the buyer leaves the field', async () => {
@@ -272,6 +276,40 @@ describe('typed parcel locker code check', () => {
     expect(h.sessions).toHaveLength(1);
     expect(h.lookups).toEqual(['WAW01M']);
     expect(h.sessions[0]).toMatchObject({ email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+  });
+
+  it('asks the carrier on submit while the browser reports being offline instead of pausing the check', async () => {
+    const h = serve();
+    renderCheckout();
+    const field = await typeCode('waw01m');
+    onlineManager.setOnline(false);
+    if (!(field instanceof HTMLInputElement) || field.form === null) throw new Error('Expected the code field inside the checkout form');
+    fireEvent.submit(field.form);
+    await waitFor(() => expect(h.lookups).toEqual(['WAW01M']));
+    await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerCheckFound));
+    onlineManager.setOnline(true);
+    await waitFor(() => expect(h.sessions).toHaveLength(1));
+    expect(h.lookups).toEqual(['WAW01M']);
+  });
+
+  it('stops waiting for a slow submit-time check, lets the server decide and never starts the payment again when the answer comes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const h = serve();
+    const release = holdLookups(h.lookups);
+    renderCheckout();
+    const field = await typeCode('waw01m');
+    const pay = screen.getByTestId('checkout-pay-cta');
+    if (!(field instanceof HTMLInputElement) || field.form === null) throw new Error('Expected the code field inside the checkout form');
+    fireEvent.submit(field.form);
+    await waitFor(() => expect(pay).toHaveTextContent(en.checkout.payPending));
+    act(() => { vi.advanceTimersByTime(SUBMIT_LOCKER_CHECK_WAIT_MS); });
+    await waitFor(() => expect(h.sessions).toHaveLength(1));
+    await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+    expect(field).toBeEnabled();
+    release();
+    await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerCheckFound));
+    expect(h.sessions).toHaveLength(1);
+    expect(h.lookups).toEqual(['WAW01M']);
   });
 
   it.each([

@@ -690,6 +690,7 @@ export const publicParcelLockerQuery = (api: ApiClient, code: string) =>
     queryKey: ['parcel-locker', code] as const,
     call: ({ signal }) => api.publicParcelLocker(code, signal),
     retry: false,
+    networkMode: 'always',
     meta: { background: true },
   });
 

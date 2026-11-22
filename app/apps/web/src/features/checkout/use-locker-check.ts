@@ -17,6 +17,17 @@ import {
 export type CheckLocker = () => Promise<LockerCheck | null>;
 type ProceedToCheckout = () => void;
 
+export const SUBMIT_LOCKER_CHECK_WAIT_MS = 5_000;
+
+const settleWithin = (check: Promise<LockerCheck | null>, code: string): Promise<LockerCheck | null> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ status: 'unavailable', code }), SUBMIT_LOCKER_CHECK_WAIT_MS);
+    void check.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
+
 export const useLockerCheck = (state: CheckoutState, dispatch: (event: CheckoutEvent) => void): CheckLocker => {
   const queryClient = useQueryClient();
   const running = useRef(new Map<string, Promise<LockerCheck>>());
@@ -65,7 +76,7 @@ export const useLockerHold = (input: LockerHoldInput): { holding: boolean; submi
     }
     const requestKey = input.requestKey;
     setHeldCode(code);
-    void input.checkLocker().then((check) => {
+    void settleWithin(input.checkLocker(), code).then((check) => {
       setHeldCode(null);
       const current = latest.current;
       if (current === null || check?.status === 'rejected' || !current.ready || current.requestKey !== requestKey ||

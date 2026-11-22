@@ -38,6 +38,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
+import type { KeyDownloadFileRepository } from '../key-download-ports.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
@@ -61,6 +62,7 @@ import type {
   TenantSecretResolver,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
+import { noProposedFiles } from './key-download-fakes.js';
 
 export interface FakeCatalogState {
   products: Product[];
@@ -303,6 +305,16 @@ const catalogRepositoriesOver = (
         if (target.kind === 'sales-link') return state.salesLinks.some((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted);
         return product(tenantId, target.id) !== null;
       },
+    },
+    keyDownloadAttach: { attach: unavailable('keyDownloadAttach.attach'), remove: unavailable('keyDownloadAttach.remove') },
+    productFiles: {
+      listReady: async (tenantId, productId) => state.downloadAssets
+        .filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready')
+        .map((asset) => ({
+          id: asset.id, lineageId: asset.lineageId, versionNumber: asset.versionNumber, latest: asset.supersededAt === null,
+          fileName: asset.fileName, contentType: asset.contentType, sizeBytes: asset.sizeBytes, fingerprint: null, versionNote: asset.versionNote,
+        })),
+      lockStaged: async () => null,
     },
     quarantinedImages: {
       inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
@@ -728,7 +740,11 @@ type FakeTargetLabel = Awaited<ReturnType<ChangeProposalTargetLabelReader['label
 export const changeProposalOwnerViewFakes = (
   state: FakeCatalogState,
   accounts: readonly FakeProposalAccount[] = [],
-): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & { changeProposalPeople: FakeChangeProposalPeople } => ({
+): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & {
+  changeProposalPeople: FakeChangeProposalPeople;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'proposable' | 'release' | 'listProposed' | 'findStaged' | 'finishDeletion'>;
+} => ({
+  ...noProposedFiles(),
   changeProposalTargetLabels: {
     labels: async (tenantId, targets) => targets.flatMap((target): FakeTargetLabel[] => {
       const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;

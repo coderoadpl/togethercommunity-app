@@ -40,6 +40,7 @@ import {
 } from './change-proposal-bounds.js';
 import { quarantinedImagesPresent } from './change-proposal-images.js';
 import type { Db } from './client.js';
+import { holdProposedFiles, linkProposedFiles, lockProductFiles } from './key-download-files.js';
 import {
   changeProposalEvents,
   changeProposals,
@@ -328,7 +329,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
 };
 
 const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalRepository => ({
-  create: async (tenantId, proposal, event, now, images = []) => {
+  create: async (tenantId, proposal, event, now, images = [], files = []) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
@@ -337,9 +338,12 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
       if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
+      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, now)) return { kind: 'file_unavailable' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
-      return { kind: 'created', proposal: await insertProposal(tx, tenantId, parsed, event) };
+      const created = await insertProposal(tx, tenantId, parsed, event);
+      await linkProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, created.id);
+      return { kind: 'created', proposal: created };
     }), { kind: 'busy' } as const);
   },
   countCapReached: (tenantId, keyId, now) => countCapReached(db, tenantId, keyId, now),
@@ -492,6 +496,7 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
       case 'product': {
         if (target.id === null) return true;
         if (purpose === 'delete') return lockProductForDeletion(db, tenantId, target.id);
+        if (purpose === 'files') return await lockProductFiles(db, tenantId, target.id) !== null;
         const found = await lockedRowExists(db.select({ id: products.id }).from(products)
           .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('no key update'));
         if (found) {

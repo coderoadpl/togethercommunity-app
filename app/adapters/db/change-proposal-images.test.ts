@@ -41,6 +41,7 @@ import { createQuarantinedImageLocks, createQuarantinedImageRepository, quaranti
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
@@ -346,6 +347,7 @@ const endToEnd = (lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(database.db),
     realtimeBus: { publish: () => undefined },
     quarantinedImages: createQuarantinedImageRepository(database.db, lockWait),
+    keyDownloadFiles: createKeyDownloadFileRepository(database.db, lockWait),
     storage: objects.storage,
     secretResolver,
     contentHash: createContentHash(),

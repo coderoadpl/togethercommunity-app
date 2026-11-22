@@ -361,7 +361,7 @@ describe('the image addresses a propose-mode key may propose', () => {
     const update = CHANGE_PROPOSAL_OPERATIONS['settings.update'].prepare({ checkoutAppearance: { ...live, iconUrl: 'https://cdn.example.test/new-icon.png' } });
     if (!update.ok) throw new Error(update.error.message);
     for (const ctx of [ownerSession, keyCtx(KEY_ID, TENANT, 'direct')]) {
-      expect(await h.transaction.run(TENANT, (scope) => update.value.run(ctx, scope, h.deps))).toEqual({ ok: true, value: null });
+      expect(await h.transaction.run(TENANT, (scope) => update.value.run(ctx, scope, h.deps, { keyId: KEY_ID }))).toEqual({ ok: true, value: null });
     }
     expect(h.state.settings.find((entry) => entry.tenantId === TENANT)?.settings.checkoutAppearance).toMatchObject({ iconUrl: 'https://cdn.example.test/new-icon.png' });
   });
@@ -389,7 +389,7 @@ describe('the image addresses a propose-mode key may propose', () => {
     const update = CHANGE_PROPOSAL_OPERATIONS['product.update'].prepare({ id: 'product-mug', coverUrl: foreign });
     if (!update.ok) throw new Error(update.error.message);
     for (const ctx of [ownerSession, keyCtx(KEY_ID, TENANT, 'direct')]) {
-      const ran = await h.transaction.run(TENANT, (scope) => update.value.run(ctx, scope, h.deps));
+      const ran = await h.transaction.run(TENANT, (scope) => update.value.run(ctx, scope, h.deps, { keyId: KEY_ID }));
       expect(ran).toEqual({ ok: true, value: 'product-mug' });
     }
     expect(liveCover(h, 'product-mug')).toBe(foreign);

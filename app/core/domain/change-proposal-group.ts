@@ -7,15 +7,15 @@ import {
   changeProposalIdentifierSchema,
   changeProposalKeyReceiptSchema,
   changeProposalKeyStateSchema,
-  changeProposalOperationSchema,
   changeProposalOwnerDetailSchema,
   changeProposalTimestampSchema,
-  knownChangeProposalOperation,
+  registeredChangeProposalOperation,
+  registeredChangeProposalOperationSchema,
   type ChangeProposal,
   type ChangeProposalInput,
   type ChangeProposalKeyReceipt,
-  type ChangeProposalOperation,
   type ChangeProposalOwnerDetail,
+  type RegisteredChangeProposalOperation,
 } from './change-proposal.js';
 import { appError, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
@@ -53,7 +53,7 @@ export type CreateChangeProposalGroupInput = z.input<typeof createChangeProposal
 
 export const submitGroupedChangeProposalInputSchema = z.object({
   groupId: changeProposalIdentifierSchema,
-  operation: changeProposalOperationSchema,
+  operation: registeredChangeProposalOperationSchema,
   input: z.unknown(),
 }).strict();
 
@@ -141,7 +141,7 @@ interface ReferencePosition {
 
 const productId = (field: string): ReferencePosition => ({ field, list: false, kind: 'product' });
 
-const REFERENCE_POSITIONS: Readonly<Record<ChangeProposalOperation, readonly ReferencePosition[]>> = {
+const REFERENCE_POSITIONS: Readonly<Record<RegisteredChangeProposalOperation, readonly ReferencePosition[]>> = {
   'product.create': [],
   'product.update': [productId('id')],
   'product.publish': [productId('id')],
@@ -156,16 +156,19 @@ const REFERENCE_POSITIONS: Readonly<Record<ChangeProposalOperation, readonly Ref
   'sales-link.update': [{ field: 'id', list: false, kind: 'sales-link' }, { field: 'productIds', list: true, kind: 'product' }],
   'sales-link.delete': [{ field: 'id', list: false, kind: 'sales-link' }],
   'settings.update': [],
+  'download.add': [productId('productId')],
+  'download.replace': [productId('productId')],
+  'download.remove': [productId('productId')],
 };
 
-const CREATED_KIND: Readonly<Partial<Record<ChangeProposalOperation, ChangeProposalReferenceKind>>> = {
+const CREATED_KIND: Readonly<Partial<Record<RegisteredChangeProposalOperation, ChangeProposalReferenceKind>>> = {
   'product.create': 'product',
   'price.create': 'price',
   'sales-link.create': 'sales-link',
 };
 
 export const changeProposalCreatedKind = (operation: string): ChangeProposalReferenceKind | null => {
-  const known = knownChangeProposalOperation(operation);
+  const known = registeredChangeProposalOperation(operation);
   return known === null ? null : CREATED_KIND[known] ?? null;
 };
 
@@ -183,7 +186,7 @@ const pathKey = (path: InputPath): string => JSON.stringify(path);
 
 const pathLabel = (path: InputPath): string => path.map(String).join('.');
 
-const positionPaths = (operation: ChangeProposalOperation, input: Record<string, unknown>): Map<string, ChangeProposalReferenceKind> => {
+const positionPaths = (operation: RegisteredChangeProposalOperation, input: Record<string, unknown>): Map<string, ChangeProposalReferenceKind> => {
   const paths = new Map<string, ChangeProposalReferenceKind>();
   for (const position of REFERENCE_POSITIONS[operation]) {
     const value = input[position.field];
@@ -212,7 +215,7 @@ const referenceLikeStrings = (value: unknown, path: InputPath, found: Array<{ pa
 
 const referenceRefused = (message: string): Result<never, AppError> => err(validation(message));
 
-const referenceUses = (operation: ChangeProposalOperation, input: unknown): Result<ReferenceUse[], AppError> => {
+const referenceUses = (operation: RegisteredChangeProposalOperation, input: unknown): Result<ReferenceUse[], AppError> => {
   if (!isRecord(input)) return ok([]);
   const positions = positionPaths(operation, input);
   const found: Array<{ path: InputPath; value: string }> = [];
@@ -231,7 +234,7 @@ const referenceUses = (operation: ChangeProposalOperation, input: unknown): Resu
 };
 
 export const checkChangeProposalReferences = (
-  operation: ChangeProposalOperation,
+  operation: RegisteredChangeProposalOperation,
   input: unknown,
   earlierItems: readonly Pick<ChangeProposal, 'id' | 'operation'>[],
 ): Result<void, AppError> => {
@@ -251,7 +254,7 @@ export const checkChangeProposalReferences = (
 };
 
 export const resolveChangeProposalReferences = (
-  operation: ChangeProposalOperation,
+  operation: RegisteredChangeProposalOperation,
   input: ChangeProposalInput,
   createdIdOf: (proposalId: string) => string | null,
 ): ChangeProposalInput | null => {

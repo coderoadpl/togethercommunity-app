@@ -26,6 +26,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
+import { noProposedFiles } from '../testing/key-download-fakes.js';
 import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
@@ -228,7 +229,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   const ownerViews = changeProposalOwnerViewFakes(state, accounts);
   const notifications = createUnreadNotificationsFake(accounts);
   const logger = { error: vi.fn<(message: string) => void>() };
-  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger };
+  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger, ...noProposedFiles() };
   return {
     notifications,
     state,

@@ -38,6 +38,7 @@ import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } f
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
@@ -119,6 +120,7 @@ const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, lockWait),
     realtimeBus: { publish: () => undefined },
     quarantinedImages: createQuarantinedImageRepository(db, lockWait),
+    keyDownloadFiles: createKeyDownloadFileRepository(db, lockWait),
     secretResolver: createTenantSecretResolver(createTenantSecretRepository(db), secretCrypto),
     contentHash: createContentHash(),
     storage,

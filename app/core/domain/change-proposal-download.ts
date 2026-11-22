@@ -364,3 +364,44 @@ export const keyDownloadCopyRefused = (): AppError => validation('This file cann
 
 export const keyDownloadFilesBusy = (): AppError =>
   appError('unavailable', 'Staged files of this workspace are busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });
+
+const ATTACHING_OPERATIONS: ReadonlySet<string> = new Set(['download.add', 'download.replace']);
+
+export const changeProposalStagedFileId = (operation: string, input: Readonly<Record<string, unknown>>): string | null => {
+  if (!ATTACHING_OPERATIONS.has(operation)) return null;
+  const id = input['stagedFileId'];
+  return typeof id === 'string' && id.length > 0 ? id : null;
+};
+
+export const changeProposalStagedFileIds = (
+  proposals: ReadonlyArray<{ operation: string; input: Readonly<Record<string, unknown>> }>,
+): string[] => [...new Set(proposals.flatMap((proposal) => {
+  const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+  return id === null ? [] : [id];
+}))];
+
+export const changeProposalFileUnavailable = (invalidInputMessage: string): AppError => validation(invalidInputMessage, {
+  formErrors: [],
+  fieldErrors: { stagedFileId: ['Must be a file this key staged that no other pending proposal attaches'] },
+});
+
+const CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE = 'file_unavailable';
+
+export const changeProposalFileMissingNote = (stagedFileId: string): string =>
+  `${CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE}: The proposed file ${stagedFileId} is no longer available, so the proposal cannot be applied; nothing was changed`;
+
+export const isChangeProposalFileMissingNote = (note: string | null): boolean =>
+  note !== null && note.startsWith(`${CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE}: `);
+
+export const CHANGE_PROPOSAL_FILE_LINK_TTL_SECONDS = 60;
+
+export const changeProposalFileInputSchema = z.object({
+  id: z.string().min(1).max(200),
+  fileId: z.string().min(1).max(200),
+}).strict();
+
+export type ChangeProposalFileInput = z.input<typeof changeProposalFileInputSchema>;
+
+export interface ChangeProposalFileLink {
+  download: { url: string; expiresAt: string; fileName: string; sizeBytes: number };
+}

@@ -13,6 +13,7 @@ import {
   changeProposalKeyReceiptSchema,
   changeProposalKeyState,
   changeProposalOperationSchema,
+  changeProposalOwnerDetailSchema,
   changeProposalSchema,
   changeProposalStatusSchema,
   changeProposalSubmitCapability,
@@ -219,7 +220,16 @@ describe('change proposal views', () => {
     decidedBy: { email: 'owner@example.test', formerTeamMember: false },
     targetLabel: 'Live title',
     targetPrice: { kind: 'recurring' as const, interval: 'month' as const, intervalCount: 1, amountCents: 1900, currency: 'EUR' },
+    proposedFiles: [],
   };
+
+  it('adds the proposed files only to a view of a proposal that attaches one, so other views keep their shape', () => {
+    expect(toChangeProposalOwnerDetail(proposal(), facts, [], NOW)).not.toHaveProperty('proposedFiles');
+    const file = { id: 'staged-1', available: true, copiedFrom: { productId: 'guide', productTitle: 'Field Guide', versionNumber: 2 } };
+    const withFile = toChangeProposalOwnerDetail(proposal(), { ...facts, proposedFiles: [file] }, [], NOW);
+    expect(withFile.proposedFiles).toEqual([file]);
+    expect(changeProposalOwnerDetailSchema.safeParse(withFile).success).toBe(true);
+  });
 
   it('gives the owner the full effect, the key and issuer state, the live label and the ordered events', () => {
     const detail = toChangeProposalOwnerDetail(proposal(), facts, [

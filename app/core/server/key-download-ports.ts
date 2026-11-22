@@ -140,7 +140,54 @@ export interface KeyDownloadFileRepository {
   markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string): Promise<void>;
   /** Deletes settled records started before `settledStartedBefore`, which own no object, and events older than `eventsBefore`. */
   purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs): Promise<number>;
+  /**
+   * Read-only: whether every one of `ids` is a staged file of `apiKeyId` that no pending proposal unexpired at `now`
+   * attaches. One answer for an unknown, another key's, discarded or attached file, so a key learns nothing more.
+   */
+  proposable(tenantId: string, apiKeyId: string, ids: readonly string[], now: string): Promise<boolean>;
+  /**
+   * In one transaction holding the staged rows: `proposals` releases (moves to the owed deletions) the files each decided
+   * proposal held when `release`, and otherwise only clears their hold, so the key can propose them again; `key` releases
+   * every file of a key, and `ended_holds` every file held by a proposal that was rejected or withdrawn or expired by
+   * `now`. A file a pending proposal unexpired at `now` holds is never released.
+   */
+  release(tenantId: string, selection: KeyDownloadFileRelease, now: string): Promise<KeyDownloadRelease>;
+  /** The staged rows among `ids`, whoever holds them, for the owner view. */
+  listProposed(tenantId: string, ids: readonly string[]): Promise<KeyDownloadProposedFile[]>;
 }
+
+/** A ready product file as a proposal snapshot shows it: no timestamp, the fingerprint of a key-staged file or null. */
+interface ChangeProposalFileSnapshotRow {
+  id: string;
+  lineageId: string;
+  versionNumber: number;
+  latest: boolean;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  fingerprint: string | null;
+  versionNote: string | null;
+}
+
+/** Inside a change proposal transaction: the file reads of a snapshot and the staged file locks of an approval. */
+export interface ChangeProposalProductFiles {
+  listReady(tenantId: string, productId: string): Promise<ChangeProposalFileSnapshotRow[]>;
+  /** Locks the staged row of `apiKeyId` until the surrounding transaction ends; null when that key holds no such file. */
+  lockStaged(tenantId: string, apiKeyId: string, id: string): Promise<KeyDownloadStagedFile | null>;
+}
+
+export type KeyDownloadRelease = { kind: 'released'; owed: KeyDownloadPendingDeletion[] } | { kind: 'busy' };
+
+/** What the owner view shows of a staged file a proposal attaches, with the live title of the product a copy came from. */
+interface KeyDownloadProposedFile {
+  file: KeyDownloadStagedFile;
+  copiedFromTitle: string | null;
+}
+
+export type KeyDownloadFileRelease =
+  | { kind: 'proposals'; decisions: ReadonlyArray<{ proposalId: string; apiKeyId: string; release: boolean }> }
+  | { kind: 'key'; apiKeyId: string }
+  | { kind: 'ended_holds' };
 
 export type KeyDownloadAttachment =
   | { kind: 'attached'; asset: ProductDownloadAsset }

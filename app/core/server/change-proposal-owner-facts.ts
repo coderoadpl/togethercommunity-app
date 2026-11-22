@@ -1,12 +1,15 @@
 import {
   changeProposalKeyState,
+  changeProposalStagedFileId,
   isChangeProposalReference,
   type ChangeProposal,
   type ChangeProposalOwnerFacts,
+  type ChangeProposalProposedFile,
   type ChangeProposalTargetPrice,
 } from '#core/domain/index.js';
 
 import { keyNamed } from './change-proposal-access.js';
+import type { KeyDownloadFileRepository } from './key-download-ports.js';
 import type {
   ChangeProposalGroupRepository,
   ChangeProposalPeopleReader,
@@ -20,6 +23,7 @@ export interface ChangeProposalOwnerViewDeps {
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'listByIds'>;
   changeProposalTargetLabels: ChangeProposalTargetLabelReader;
   changeProposalPeople: ChangeProposalPeopleReader;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed'>;
 }
 
 export interface ChangeProposalPersonFacts {
@@ -30,7 +34,7 @@ export interface ChangeProposalPersonFacts {
 
 type FactsSubject = Pick<
   ChangeProposal,
-  'operation' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
+  'id' | 'operation' | 'input' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
 >;
 
 const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest | null => {
@@ -39,8 +43,36 @@ const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest 
   const applied = proposal.status === 'applied' ? proposal.appliedResourceId : null;
   if (proposal.operation === 'price.create' && applied !== null) return { kind: 'price', id: applied };
   if (id !== null && !isChangeProposalReference(id)) return { kind, id };
-  if (proposal.operation === 'price.create' || applied === null) return null;
+  if (proposal.operation === 'price.create' || applied === null || changeProposalStagedFileId(proposal.operation, proposal.input) !== null) return null;
   return { kind, id: applied };
+};
+
+type ProposedFileSubject = Pick<ChangeProposal, 'id' | 'operation' | 'input' | 'proposedByKeyId'>;
+
+/** Display facts read at view time; `available` says whether the proposal still holds its staged file, not whether the storage has it. */
+const readProposedFiles = async (
+  tenantId: string,
+  proposals: readonly ProposedFileSubject[],
+  deps: Pick<ChangeProposalOwnerViewDeps, 'keyDownloadFiles'>,
+): Promise<(proposal: ProposedFileSubject) => ChangeProposalProposedFile[]> => {
+  const ids = proposals.flatMap((proposal) => {
+    const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+    return id === null ? [] : [id];
+  });
+  const rows = ids.length === 0 ? [] : await deps.keyDownloadFiles.listProposed(tenantId, ids);
+  return (proposal) => {
+    const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+    if (id === null) return [];
+    const row = rows.find((candidate) => candidate.file.id === id && candidate.file.apiKeyId === proposal.proposedByKeyId);
+    const source = row?.file.copiedFrom ?? null;
+    return [{
+      id,
+      available: row?.file.proposalId === proposal.id,
+      copiedFrom: source === null || row === undefined
+        ? null
+        : { productId: source.productId, productTitle: row.copiedFromTitle, versionNumber: source.versionNumber },
+    }];
+  };
 };
 
 const labelKey = ({ kind, id }: ChangeProposalTargetLabelRequest): string => `${kind}:${id}`;
@@ -84,6 +116,7 @@ export const changeProposalOwnerFacts = async (
     (requests.size === 0 ? [] : await deps.changeProposalTargetLabels.labels(tenantId, [...requests.values()]))
       .map((entry) => [labelKey(entry), { label: entry.label, price: entry.price }]),
   );
+  const proposedFilesOf = await readProposedFiles(tenantId, proposals, deps);
   const person = await readChangeProposalPeople(
     tenantId,
     [...proposals.flatMap((proposal) => [proposal.proposedByIssuerUserId, proposal.decidedByUserId]), ...otherPeople],
@@ -101,6 +134,7 @@ export const changeProposalOwnerFacts = async (
       decidedBy: { email: decider.email, formerTeamMember: decider.formerTeamMember },
       targetLabel: label?.label ?? null,
       targetPrice: label?.price ?? null,
+      proposedFiles: proposedFilesOf(proposal),
     };
   };
   return { factsOf, person };

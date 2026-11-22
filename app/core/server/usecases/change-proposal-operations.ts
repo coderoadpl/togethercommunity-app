@@ -11,17 +11,18 @@ import {
   type Capability,
   type ChangeProposalEffect,
   type ChangeProposalInput,
-  type ChangeProposalOperation,
   type ChangeProposalTarget,
   type Product,
   type ProductDownloadAsset,
   type ProductPrice,
+  type RegisteredChangeProposalOperation,
   type Result,
   type SalesLink,
 } from '#core/domain/index.js';
 
 import { storageWithDeletesAfterCommit } from '../change-proposal-effects.js';
 import type { Ctx } from '../context.js';
+import type { KeyDownloadFileRepository } from '../key-download-ports.js';
 import type {
   ChangeProposalRepositories,
   ChangeProposalTargetLockPurpose,
@@ -30,6 +31,7 @@ import type {
   IdGenerator,
   StorageProvider,
 } from '../ports.js';
+import { attachStagedProductDownload, removeProductDownloadFile } from './product-download-files.js';
 import { createProductPrice, deactivateProductPrice } from './product-prices.js';
 import { deleteProductDraft } from './product-drafts.js';
 import { createProduct, publishProduct, unpublishProduct, updateProduct } from './products.js';
@@ -47,6 +49,11 @@ export interface ChangeProposalRunDeps {
   logger: { error(message: string): void };
 }
 
+/** The key that made the proposal; an operation that attaches a staged file attaches only a file of this key. */
+export interface ChangeProposalProposer {
+  keyId: string;
+}
+
 export interface PreparedChangeProposalOperation {
   input: ChangeProposalInput;
   target: ChangeProposalTarget;
@@ -55,7 +62,7 @@ export interface PreparedChangeProposalOperation {
   /** Orders the snapshot's unordered collections by the id each entry finally carries, so it must run after any id replacement. */
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
-  run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
+  run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
 }
 
 interface ChangeProposalOperationEntry {
@@ -76,7 +83,7 @@ interface ChangeProposalOperationDefinition<I> {
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, input: I, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   unorderedById?: readonly string[];
   effect?(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
-  run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps): Promise<Result<string | null, AppError>>;
+  run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
 }
 
 const jsonRoundTrip = (value: unknown): unknown => {
@@ -266,6 +273,25 @@ const settingsSnapshot = async (repositories: ChangeProposalRepositories, tenant
   return toSnapshot(Object.fromEntries(SHOP_SETTINGS_FIELDS.map((field) => [field, settings[field] ?? null])));
 };
 
+const productFilesSnapshot = async (
+  repositories: ChangeProposalRepositories,
+  tenantId: string,
+  productId: string,
+): Promise<ChangeProposalSnapshot> => {
+  const product = await repositories.products.findById(tenantId, productId);
+  if (product === null) return { exists: false };
+  return toSnapshot({ exists: true, type: product.type, files: await repositories.productFiles.listReady(tenantId, productId) });
+};
+
+// The removal's owed deletion was written in the uncommitted transaction, which no other connection may see or wait
+// for: its storage delete waits for the commit, and the sweep removes the owed row once a delete succeeds.
+const owedDeletionsLeftToTheSweep: Pick<KeyDownloadFileRepository, 'finishDeletion'> = {
+  finishDeletion: async (_tenantId, _objectKey, _now, remove) => {
+    await remove();
+    return 'kept';
+  },
+};
+
 const resourceIdOf = <T extends { id: string }>(result: Result<T, AppError>): Result<string | null, AppError> =>
   result.ok ? ok(result.value.id) : result;
 
@@ -293,7 +319,7 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
     canonical: (snapshot) => sortedById(snapshot, definition.unorderedById ?? []),
     effect: definition.effect ?? changeProposalFieldDiff,
-    run: (ctx, scope, deps) => definition.run(ctx, input, scope, deps),
+    run: (ctx, scope, deps, proposer) => definition.run(ctx, input, scope, deps, proposer),
   });
 };
 
@@ -323,13 +349,19 @@ const settingsDeps = (scope: ChangeProposalTransactionScope) => ({
   products: scope.repositories.products,
 });
 
-const entry = <I>(operation: ChangeProposalOperation, definition: ChangeProposalOperationDefinition<I>): ChangeProposalOperationEntry => ({
+const fileAttachDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer) => ({
+  keyDownloadAttach: scope.repositories.keyDownloadAttach,
+  clock: deps.clock,
+  stagedByKeyId: proposer.keyId,
+});
+
+const entry = <I>(operation: RegisteredChangeProposalOperation, definition: ChangeProposalOperationDefinition<I>): ChangeProposalOperationEntry => ({
   capability: changeProposalSubmitCapability(operation),
   invalidInputMessage: definition.invalidInputMessage,
   prepare: define(definition),
 });
 
-export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation, ChangeProposalOperationEntry>> = {
+export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposalOperation, ChangeProposalOperationEntry>> = {
   'product.create': entry('product.create', {
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.create'],
     invalidInputMessage: 'Invalid product payload',
@@ -435,5 +467,39 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<ChangeProposalOperation
     target: () => ({ kind: 'settings', id: null }),
     snapshot: (repositories, tenantId) => settingsSnapshot(repositories, tenantId),
     run: async (ctx, input, scope) => withoutResourceId(await updateShopSettings(ctx, input, settingsDeps(scope))),
+  }),
+  'download.add': entry('download.add', {
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.add'],
+    invalidInputMessage: 'Invalid product file attachment',
+    target: (input) => ({ kind: 'product', id: input.productId }),
+    lockPurpose: 'files',
+    snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
+    unorderedById: ['files'],
+    run: async (ctx, input, scope, deps, proposer) => resourceIdOf(await attachStagedProductDownload(ctx, input, fileAttachDeps(scope, deps, proposer))),
+  }),
+  'download.replace': entry('download.replace', {
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.replace'],
+    invalidInputMessage: 'Invalid product file attachment',
+    target: (input) => ({ kind: 'product', id: input.productId }),
+    lockPurpose: 'files',
+    snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
+    unorderedById: ['files'],
+    run: async (ctx, input, scope, deps, proposer) => resourceIdOf(await attachStagedProductDownload(ctx, input, fileAttachDeps(scope, deps, proposer))),
+  }),
+  'download.remove': entry('download.remove', {
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.remove'],
+    invalidInputMessage: 'Invalid product file removal',
+    target: (input) => ({ kind: 'product', id: input.productId }),
+    lockPurpose: 'files',
+    snapshot: (repositories, tenantId, input) => productFilesSnapshot(repositories, tenantId, input.productId),
+    unorderedById: ['files'],
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.productId, await removeProductDownloadFile(ctx, input, {
+      keyDownloadAttach: scope.repositories.keyDownloadAttach,
+      keyDownloadFiles: owedDeletionsLeftToTheSweep,
+      storage: storageWithDeletesAfterCommit(deps.storage, scope.afterCommit, deps.logger),
+      secretResolver: scope.secretResolver,
+      clock: deps.clock,
+      logger: deps.logger,
+    })),
   }),
 };

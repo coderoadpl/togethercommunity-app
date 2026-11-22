@@ -6,16 +6,16 @@ import {
   checkChangeProposalReferences,
   describesTheRequest,
   err,
-  knownChangeProposalOperation,
   mapChangeProposalSnapshotStrings,
   ok,
+  registeredChangeProposalOperation,
   resolveChangeProposalReferences,
   unknownChangeProposalOperationNote,
   type AppError,
   type ChangeProposal,
   type ChangeProposalEffect,
   type ChangeProposalInput,
-  type ChangeProposalOperation,
+  type RegisteredChangeProposalOperation,
   type Result,
 } from '#core/domain/index.js';
 
@@ -26,6 +26,7 @@ import {
   CHANGE_PROPOSAL_OPERATIONS,
   changeProposalTouchedFieldsMoved,
   sameChangeProposalEffect,
+  type ChangeProposalProposer,
   type ChangeProposalRunDeps,
   type PreparedChangeProposalOperation,
 } from './change-proposal-operations.js';
@@ -48,7 +49,7 @@ type ChangeProposalGroupReferences = ReturnType<typeof changeProposalGroupRefere
 
 interface GroupItemContext {
   proposalId: string;
-  operation: ChangeProposalOperation;
+  operation: RegisteredChangeProposalOperation;
   references: ChangeProposalGroupReferences;
 }
 
@@ -70,10 +71,11 @@ export const previewChangeProposal = async (
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalRunDeps,
   group: GroupItemContext | null,
+  proposer: ChangeProposalProposer,
 ): Promise<Result<ChangeProposalEffect, AppError>> => {
   await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
   const before = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
-  const ran = await operation.run(ctx, scope, deps);
+  const ran = await operation.run(ctx, scope, deps, proposer);
   if (!ran.ok) return ran;
   recordCreated(group, ran.value);
   const after = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, ran.value ?? operation.target.id));
@@ -87,7 +89,7 @@ interface GroupContext {
 
 const runnableOperation = (
   proposal: ChangeProposal,
-  known: ChangeProposalOperation,
+  known: RegisteredChangeProposalOperation,
   group: GroupContext | null,
 ): PreparedChangeProposalOperation | null => {
   if (group !== null && !checkChangeProposalReferences(known, proposal.input, group.earlier).ok) return null;
@@ -109,7 +111,7 @@ export const applyLockedProposal = async (
 ): Promise<ApprovalOutcome> => {
   const afterProposalLock = deps.clock.nowIso();
   if (changeProposalExpired(proposal, afterProposalLock)) return { status: 'expired', at: afterProposalLock };
-  const known = knownChangeProposalOperation(proposal.operation);
+  const known = registeredChangeProposalOperation(proposal.operation);
   if (known === null) return { status: 'stale', note: unknownChangeProposalOperationNote(proposal.operation), at: afterProposalLock };
   const operation = runnableOperation(proposal, known, group);
   if (operation === null) return { status: 'stale', note: null, at: afterProposalLock };
@@ -122,7 +124,7 @@ export const applyLockedProposal = async (
   if (changeProposalTouchedFieldsMoved(proposal.effect, before)) return { status: 'stale', note: null, at };
   const effectChanged = appError('conflict', 'The live state changed since this change was proposed');
   const applied = await scope.savepoint(async (nested) => {
-    const ran = await operation.run(ctx, nested, deps);
+    const ran = await operation.run(ctx, nested, deps, { keyId: proposal.proposedByKeyId });
     if (!ran.ok) return ran;
     recordCreated(itemContext, ran.value);
     const after = storedForm(operation, itemContext, await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id));

@@ -24,6 +24,7 @@ import {
   createChangeProposalTargetLocks,
 } from './change-proposals.js';
 import type { Db } from './client.js';
+import { createChangeProposalProductFiles, createKeyDownloadAttachRepository } from './key-download-files.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import {
   createProductDownloadAssetRepository,
@@ -66,6 +67,8 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
     changeProposalGroups: createChangeProposalGroupRepository(tx, bounds),
     targets: createChangeProposalTargetLocks(tx),
     quarantinedImages: createQuarantinedImageLocks(tx),
+    keyDownloadAttach: createKeyDownloadAttachRepository(tx),
+    productFiles: createChangeProposalProductFiles(tx),
   };
 };
 

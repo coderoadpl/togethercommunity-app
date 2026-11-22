@@ -19,9 +19,24 @@ export const unusedKeyDownloadRepositories = (): { keyDownloadFiles: KeyDownload
     listToSweep: unused('listToSweep'),
     markAttempted: unused('markAttempted'),
     purgeSettled: unused('purgeSettled'),
+    proposable: unused('proposable'),
+    release: unused('release'),
+    listProposed: unused('listProposed'),
   },
   keyDownloadAttach: {
     attach: unused('attach'),
     remove: unused('remove'),
+  },
+});
+
+export const noProposedFiles = (): {
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'proposable' | 'release' | 'listProposed' | 'findStaged' | 'finishDeletion'>;
+} => ({
+  keyDownloadFiles: {
+    proposable: async () => false,
+    release: async () => ({ kind: 'released', owed: [] }),
+    listProposed: async () => [],
+    findStaged: async () => null,
+    finishDeletion: async () => 'gone',
   },
 });

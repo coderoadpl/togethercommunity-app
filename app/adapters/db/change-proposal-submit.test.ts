@@ -25,6 +25,7 @@ import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import { createNotificationRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
@@ -99,6 +100,7 @@ const deps = (
   changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
   realtimeBus: { publish: (event) => { published.push(event); } },
   quarantinedImages: createQuarantinedImageRepository(db, bounds),
+  keyDownloadFiles: createKeyDownloadFileRepository(db, bounds),
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },

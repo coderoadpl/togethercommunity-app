@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 
-import { changeProposalIdInputSchema, changeProposalProductIdInputSchema, type ChangeProposalOperation } from './change-proposal.js';
+import { changeProposalIdInputSchema, changeProposalProductIdInputSchema, type RegisteredChangeProposalOperation } from './change-proposal.js';
+import { keyDownloadAddInputSchema, keyDownloadRemoveInputSchema, keyDownloadReplaceInputSchema } from './change-proposal-download.js';
 import { newProductPriceSchema } from './commerce.js';
 import { newProductSchema, updateProductInputSchema } from './product.js';
 import { salesLinkDeleteInputSchema, salesLinkInputSchema, salesLinkUpdateSchema } from './sales-link.js';
@@ -33,4 +34,7 @@ export const CHANGE_PROPOSAL_INPUT_SCHEMAS = {
   'sales-link.update': strictSalesLinkUpdateInputSchema,
   'sales-link.delete': strictInput(salesLinkDeleteInputSchema),
   'settings.update': strictShopSettingsPatchInputSchema,
-} as const satisfies Record<ChangeProposalOperation, z.ZodTypeAny>;
+  'download.add': strictInput(keyDownloadAddInputSchema),
+  'download.replace': strictInput(keyDownloadReplaceInputSchema),
+  'download.remove': strictInput(keyDownloadRemoveInputSchema),
+} as const satisfies Record<RegisteredChangeProposalOperation, z.ZodTypeAny>;

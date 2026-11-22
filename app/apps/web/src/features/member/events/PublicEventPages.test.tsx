@@ -110,6 +110,20 @@ const rootPost = (): DiscussionPost => ({
   replyCount: 0,
 });
 
+const emptyOffer = (supportUrl: string | null) => ({
+  ok: true,
+  data: {
+    tenant: { slug: 'acme', name: 'Acme', support: { url: supportUrl } },
+    contentVersion: 1,
+    products: [],
+    salesLinks: [],
+    previewLessons: [],
+  },
+});
+
+const okOffer = (supportUrl: string | null) =>
+  http.get('/api/public/offer', () => HttpResponse.json(emptyOffer(supportUrl)));
+
 const okPublicThread = () =>
   http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
     HttpResponse.json({
@@ -199,7 +213,7 @@ describe('public event surface', () => {
     expect(screen.getByTestId('public-event-going-count')).toHaveTextContent(
       en.events.goingCount({ count: 4 }),
     );
-    expect(screen.getByTestId('public-event-sign-in')).toHaveAttribute(
+    expect(await screen.findByTestId('public-event-sign-in')).toHaveAttribute(
       'href',
       '/login?returnTo=%2Fcommunity%2Fs1%2Fevents%2Fe1',
     );
@@ -219,30 +233,62 @@ describe('public event surface', () => {
   });
 
   it('leads with sign-in on the event details when the workspace sells nothing', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicEvent(), okPublicThread(), okOffer(null));
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const signIn = await screen.findByTestId('public-event-sign-in');
+    expect(signIn).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-visitor-contact')).not.toBeInTheDocument();
+  });
+
+  it('offers the creator contact beside sign-in when the workspace sells nothing and has a support link', async () => {
     server.use(
       anonMe(),
       okPublicNavigation(),
       okPublicEvent(),
       okPublicThread(),
-      http.get('/api/public/offer', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            tenant: { slug: 'acme', name: 'Acme', support: { url: null } },
-            contentVersion: 1,
-            products: [],
-            salesLinks: [],
-            previewLessons: [],
-          },
-        }),
-      ),
+      okOffer('https://studio.example.org/contact'),
     );
 
     await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
 
-    const signIn = await screen.findByTestId('public-event-sign-in');
-    await waitFor(() => expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument());
-    expect(signIn).toHaveClass('MuiButton-contained');
+    const details = await screen.findByTestId('public-event-details');
+    const contact = await within(details).findByTestId('anon-visitor-contact');
+    expect(contact).toHaveAttribute('href', 'https://studio.example.org/contact');
+    expect(contact).toHaveAttribute('target', '_blank');
+    expect(contact).toHaveTextContent(en.anon.contactCreator);
+    expect(within(details).getByTestId('public-event-sign-in')).toHaveClass('MuiButton-contained');
+  });
+
+  it('holds the event actions until the offer settles so the sign-in button never changes style', async () => {
+    let releaseOffer: () => void = () => undefined;
+    const offerGate = new Promise<void>((resolve) => {
+      releaseOffer = resolve;
+    });
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      http.get('/api/public/offer', async () => {
+        await offerGate;
+        return HttpResponse.json(emptyOffer(null));
+      }),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const placeholder = await screen.findByTestId('public-event-actions-pending');
+    expect(placeholder).toHaveAttribute('aria-hidden', 'true');
+    expect(placeholder).toHaveStyle({ visibility: 'hidden' });
+    expect(screen.queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument();
+
+    releaseOffer();
+    expect(await screen.findByTestId('public-event-sign-in')).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('public-event-actions-pending')).not.toBeInTheDocument();
   });
 
   it('plays the live stream of a public event without offering an RSVP', async () => {

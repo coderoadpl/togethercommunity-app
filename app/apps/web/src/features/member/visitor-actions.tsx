@@ -29,7 +29,8 @@ export const usePublicOfferPrice = () => {
 export type VisitorJoinTarget =
   | { kind: 'checkout'; productId: string }
   | { kind: 'offer' }
-  | { kind: 'none' };
+  | { kind: 'none' }
+  | { kind: 'pending' };
 
 type JoinSpace = Pick<PublicNavigation['spaces'][number], 'visibility' | 'products'>;
 
@@ -37,14 +38,17 @@ export const visitorJoinTarget = ({
   space,
   offer,
   lockedSpaceCount,
+  settled,
 }: {
   space: JoinSpace | undefined;
   offer: Pick<PublicOfferOutput, 'products' | 'salesLinks'> | undefined;
   lockedSpaceCount: number | undefined;
+  settled: boolean;
 }): VisitorJoinTarget => {
   const products = space?.visibility === 'product' ? space.products ?? [] : [];
   const [onlyProduct] = products;
   if (products.length === 1 && onlyProduct !== undefined) return { kind: 'checkout', productId: onlyProduct.id };
+  if (!settled) return { kind: 'pending' };
   const nothingForSale =
     offer !== undefined &&
     lockedSpaceCount === 0 &&
@@ -63,6 +67,7 @@ export const useVisitorJoin = (spaceId: string) => {
       space: visitorNavigation?.spaces.find((candidate) => candidate.id === spaceId),
       offer: offer.data,
       lockedSpaceCount: visitorNavigation?.lockedSpaces.length,
+      settled: !navigation.isPending && !offer.isPending,
     }),
     supportUrl: offer.data?.tenant.support.url ?? null,
     signedIn: me.data?.tenantAccess === 'none',
@@ -79,7 +84,7 @@ export const VisitorJoinButton = ({
   sx?: SxProps<Theme>;
 }) => {
   const t = useTranslations();
-  if (target.kind === 'none') return null;
+  if (target.kind === 'none' || target.kind === 'pending') return null;
   const link = target.kind === 'checkout'
     ? { to: `/checkout/${encodeURIComponent(target.productId)}` }
     : { to: anonHomePath(), hash: PUBLIC_OFFER_ANCHOR };
@@ -87,6 +92,21 @@ export const VisitorJoinButton = ({
     <EmberCtaLink component={Link} {...link} variant="contained" data-testid={testId} sx={sx}>
       {target.kind === 'checkout' ? t.anon.unlockCta : t.anon.salesCta}
     </EmberCtaLink>
+  );
+};
+
+export const VisitorContactLink = ({ supportUrl }: { supportUrl: string }) => {
+  const t = useTranslations();
+  const external = !supportUrl.toLowerCase().startsWith('mailto:');
+  return (
+    <MuiLink
+      href={supportUrl}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
+      data-testid="anon-visitor-contact"
+    >
+      {t.anon.contactCreator}
+    </MuiLink>
   );
 };
 
@@ -99,7 +119,6 @@ export const VisitorContactLinks = ({
 }) => {
   const t = useTranslations();
   const loginLink = useLoginLinkWithReturn();
-  const external = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
   if (signedIn && supportUrl === null) return null;
   return (
     <Stack
@@ -113,16 +132,7 @@ export const VisitorContactLinks = ({
           {t.auth.signInLink}
         </RouterTextLink>
       )}
-      {supportUrl === null ? null : (
-        <MuiLink
-          href={supportUrl}
-          target={external ? '_blank' : undefined}
-          rel={external ? 'noopener noreferrer' : undefined}
-          data-testid="anon-visitor-contact"
-        >
-          {t.anon.contactCreator}
-        </MuiLink>
-      )}
+      {supportUrl === null ? null : <VisitorContactLink supportUrl={supportUrl} />}
     </Stack>
   );
 };

@@ -1,4 +1,4 @@
-import { Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
@@ -14,7 +14,7 @@ import { anonCrumbs } from '../anon-crumbs.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { PublicThreadView } from '../PublicFeed.js';
 import { useLoginLinkWithReturn } from '../use-login-redirect.js';
-import { RouterButton, useVisitorJoin, VisitorJoinButton } from '../visitor-actions.js';
+import { RouterButton, useVisitorJoin, VisitorContactLink, VisitorJoinButton } from '../visitor-actions.js';
 import { formatEventRange } from './event-time.js';
 import { EventMedia } from './EventMedia.js';
 
@@ -77,16 +77,27 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
           {t.events.notGoingCount({ count: event.notGoingCount })}
         </FinePrint>
       </Stack>
-      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-        <VisitorJoinButton target={join.target} testId="public-event-join" />
-        <RouterButton
-          {...loginLink}
-          variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
-          data-testid="public-event-sign-in"
-        >
-          {t.events.signInToRsvp}
-        </RouterButton>
-      </Stack>
+      {join.target.kind === 'pending' ? (
+        <Box aria-hidden sx={{ visibility: 'hidden' }} data-testid="public-event-actions-pending">
+          <Button variant="outlined" disabled tabIndex={-1}>
+            {t.events.signInToRsvp}
+          </Button>
+        </Box>
+      ) : (
+        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+          <VisitorJoinButton target={join.target} testId="public-event-join" />
+          <RouterButton
+            {...loginLink}
+            variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
+            data-testid="public-event-sign-in"
+          >
+            {t.events.signInToRsvp}
+          </RouterButton>
+          {join.target.kind === 'none' && join.supportUrl !== null ? (
+            <VisitorContactLink supportUrl={join.supportUrl} />
+          ) : null}
+        </Stack>
+      )}
     </SectionCard>
   );
 

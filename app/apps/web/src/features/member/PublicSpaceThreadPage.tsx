@@ -89,7 +89,7 @@ export const PublicSpaceThreadPage = ({
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"
-      actions={join.target.kind === 'none' ? undefined : (
+      actions={join.target.kind === 'none' || join.target.kind === 'pending' ? undefined : (
         <VisitorJoinButton target={join.target} testId="anon-join-cta-header" />
       )}
       breadcrumbs={anonCrumbs(

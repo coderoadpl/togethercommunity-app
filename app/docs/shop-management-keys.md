@@ -1499,11 +1499,14 @@ Run it with `pnpm exec vitest run scripts/shop-machine-replay.test.ts`.
 
 `scripts/key-download-replay.test.ts` replays the [download file](#download-files)
 flow of a direct-mode key the same way, through the typed client: it uploads a
-file with a streamed `PUT` the fake storage accepts only at the signed length,
-attaches it, lists it, uploads and attaches a second version, removes that
-version, and copies the first file to a second product, reading the file rows,
-the staged files, the upload records, the owed deletions and the stored objects
-back after each step.
+file, attaches it, lists it, uploads and attaches a second version, removes
+that version, and copies the first file to a second product. Each upload body
+is an in-memory `Blob` that the fake storage reads whole and accepts only at
+the signed length, so the replay does not show a body streamed from disk. At
+five checkpoints (after the first upload, the attach, the replacement, the
+removal, and the copy with its attach) it reads back the file rows each time
+and, at some of them, the staged files, the upload records, the owed deletions
+or the stored objects.
 
 ## CLI-first evidence
 

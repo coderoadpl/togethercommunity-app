@@ -488,12 +488,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
         <Box>
           {identityChip}
-          <AuthTitle
-            variant="h1"
-            ref={magicLinkSentTitleRef}
-            tabIndex={-1}
-            sx={{ '&:focus': { outline: 'none' } }}
-          >
+          <AuthTitle variant="h1" ref={magicLinkSentTitleRef} tabIndex={-1}>
             {t.auth.checkInboxTitle}
           </AuthTitle>
           <AuthLead component="p">

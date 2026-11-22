@@ -69,7 +69,7 @@ describe('download product page', () => {
     await userEvent.click(screen.getByText(en.products.previousVersions));
     expect(screen.getByText('First edition')).toBeVisible();
     expect(screen.getByTestId('download-previous')).toHaveAttribute('href', previousDownload.downloadPath);
-    expect(screen.getByText(en.student.downloadNoCopyIdentifier)).toBeVisible();
+    expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
   });
 
   it('shows downloads without a description even when the unrelated courses request fails', async () => {

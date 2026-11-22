@@ -2396,11 +2396,9 @@ export const pl: Messages = {
     manageSubscription: 'Zarządzaj płatnościami',
     coursesEmptyRenewHint:
       'Masz już produkt? Sprawdź status dostępu w sekcji „Moje produkty” — jeśli wygasł, możesz go tam odnowić.',
-    downloadProductBody: 'Ten produkt daje dostęp do materiałów online do pobrania. Gdy wydamy nowe wydanie, zaktualizowane pliki pojawią się poniżej.',
+    downloadProductBody: 'Ten produkt zawiera pliki do pobrania. Gdy pojawi się nowa wersja, znajdziesz ją poniżej.',
     downloadsHeading: 'Pliki do pobrania',
     downloadFile: ({ name }) => `Pobierz ${name}`,
-    downloadNoCopyIdentifier:
-      'Kopie tego pliku są dostarczane bez osadzonego identyfikatora kopii, ponieważ plik przekracza limit.',
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

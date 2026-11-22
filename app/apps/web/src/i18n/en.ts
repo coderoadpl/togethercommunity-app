@@ -2375,11 +2375,9 @@ export const en: Messages = {
     manageSubscription: 'Manage payments',
     coursesEmptyRenewHint:
       'Already have a product? Check its access status in your products — if it has expired, you can renew it there.',
-    downloadProductBody: 'This product gives you access to online materials to download. When we release a new edition, the updated files will appear below.',
+    downloadProductBody: 'This product contains files to download. When a new version is published, it will appear below.',
     downloadsHeading: 'Downloads',
     downloadFile: ({ name }) => `Download ${name}`,
-    downloadNoCopyIdentifier:
-      'Copies of this file are delivered without an embedded copy identifier because it is larger than the limit.',
   },
   downloadCopies: {
     showMore: 'Show more copies',

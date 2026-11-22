@@ -2115,7 +2115,6 @@ export interface Messages {
     downloadProductBody: string;
     downloadsHeading: string;
     downloadFile: (params: { name: string }) => string;
-    downloadNoCopyIdentifier: string;
   };
   downloadCopies: {
     showMore: string;

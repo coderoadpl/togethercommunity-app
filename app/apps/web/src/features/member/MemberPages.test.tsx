@@ -210,12 +210,12 @@ describe('member pages', () => {
     await userEvent.click(screen.getByText(en.products.previousVersions));
     expect(screen.getByText('First edition')).toBeVisible();
     expect(screen.getByTestId('download-previous')).toHaveAttribute('href', '/api/my/products/download-1/downloads/previous');
-    expect(screen.getByText(en.student.downloadNoCopyIdentifier)).toBeVisible();
+    expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Creator workbook' }))
       .toHaveAttribute('href', '/my/course/download-1');
   });
 
-  it('shows when a buyer download is delivered without a copy identifier', async () => {
+  it('keeps the copy-identifier size limit out of the buyer view', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({
         ok: true,
@@ -288,7 +288,7 @@ describe('member pages', () => {
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-2');
     expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'regular-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-3');
-    expect(screen.getAllByText(en.student.downloadNoCopyIdentifier)).toHaveLength(1);
+    expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
   });
 
   it('renders the coming-soon stub when the member can access no course yet', async () => {

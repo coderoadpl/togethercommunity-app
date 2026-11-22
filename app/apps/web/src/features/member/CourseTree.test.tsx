@@ -547,6 +547,31 @@ describe('CourseTree', () => {
     expect(screen.queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
   });
 
+  it('shows the no-content message without a filter or a no-match tip for an empty course', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={{ ...structure, modules: [] }} />);
+
+    expect(await screen.findByTestId('tree-empty')).toHaveTextContent(en.courseTree.noPublishedContent);
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
+  });
+
+  it('treats modules without any lesson as an empty course', async () => {
+    const hollow: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+      })),
+    };
+    await renderNode(<CourseTree courseId="course-1" structure={hollow} />);
+
+    expect(await screen.findByTestId('tree-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+  });
+
   it('renders no filter when the caller leaves filtering to another tree', async () => {
     await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll showFilter={false} />);
 

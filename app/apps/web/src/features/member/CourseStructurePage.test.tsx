@@ -408,13 +408,17 @@ describe('CourseStructurePage', () => {
     scrollIntoView.mockRestore();
   });
 
-  it('drops the small-screen program for a course without modules', async () => {
+  it('drops the small-screen program, progress card and stat tiles for a course without modules', async () => {
     stubViewport(true);
     mockPage({ body: { ...structure, modules: [] } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    await screen.findByTestId('course-progress-card');
+    expect(await screen.findByTestId('course-empty-state')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-cover')).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.courseOverview.completedOf({ done: 0, total: 0 }))).not.toBeInTheDocument();
   });
 
   it('puts the desktop program in the main column under the stat tiles, inside a card', async () => {
@@ -439,13 +443,17 @@ describe('CourseStructurePage', () => {
     expect(within(program).getByText('Closures Deep Dive')).toBeInTheDocument();
   });
 
-  it('drops the desktop program for a course without modules', async () => {
+  it('drops the desktop program, rail progress card and stat tiles for a course without modules', async () => {
     stubViewport(false);
     mockPage({ body: { ...structure, modules: [] } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByTestId('course-empty-state')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-cover')).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
   });
 
   it('keeps desktop progress and discussion search in the rail', async () => {

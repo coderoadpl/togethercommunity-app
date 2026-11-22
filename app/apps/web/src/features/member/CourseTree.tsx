@@ -471,11 +471,12 @@ export const CourseTree = ({
     });
 
   const modules = useMemo(() => filterModules(structure.modules, search), [structure.modules, search]);
+  const hasContent = structure.modules.some((module) => module.chapters.some((chapter) => chapter.lessons.length > 0));
   const scrollLessonId = scrollFocusIntoView ? focusLessonId : null;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
-      {showFilter ? (
+      {showFilter && hasContent ? (
         <>
           <Box sx={{ mb: '0.75rem', flexShrink: 0 }}>
             <SearchField
@@ -504,7 +505,11 @@ export const CourseTree = ({
         data-course-tree-scroll=""
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
       >
-        {modules.length === 0 ? (
+        {!hasContent ? (
+          <Typography variant="body2" component="p" color="text.secondary" sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-empty">
+            {t.courseTree.noPublishedContent}
+          </Typography>
+        ) : modules.length === 0 && searchActive ? (
           <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">
             <CourseTreeChapterTitle>{t.courseTree.noMatches}</CourseTreeChapterTitle>
             <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: '0.35rem' }}>

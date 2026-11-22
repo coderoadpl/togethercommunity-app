@@ -255,14 +255,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const discussionSearch = hasModules ? (
     <CourseDiscussionSearch courseId={courseId} structure={course} />
   ) : null;
-  const progressCard = (
+  const progressCard = hasModules ? (
     <CourseProgressCard
       courseId={courseId}
       structure={course}
       resume={progress.data?.progress.resume}
     />
-  );
-  const statTiles = <CourseStatTiles structure={course} />;
+  ) : null;
+  const statTiles = hasModules ? <CourseStatTiles structure={course} /> : null;
   const cover = catalogEntry === undefined ? null : (
     <Cover
       src={catalogEntry.imageUrl}
@@ -320,7 +320,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       eyebrow={t.student.courseEyebrow}
       width="wide"
       mobileRail="split"
-      railLeading={isCompact ? undefined : progressCard}
+      railLeading={hasModules && !isCompact ? progressCard : undefined}
       rail={hasModules && !isCompact ? discussionSearch : undefined}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>

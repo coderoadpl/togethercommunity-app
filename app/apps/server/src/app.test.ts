@@ -8866,7 +8866,7 @@ describe('checkout consent ordering', () => {
       const timestamp = Math.floor(Date.now() / 1000);
       return `t=${timestamp},v1=${createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex')}`;
     };
-    const deliver = async (signatureHeader: string | undefined) => {
+    const deliver = async (signatureHeader: string | undefined, configure: (base: AppDeps) => void = () => undefined) => {
       const base = deps({ tenants: [acme] });
       base.payment = createStripePaymentProvider({
         resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
@@ -8876,6 +8876,7 @@ describe('checkout consent ordering', () => {
         ...base.tenantAccess,
         listStaffForTenant: async () => [{ userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'en' }],
       };
+      configure(base);
       const record = vi.spyOn(base.paymentEventRejections, 'record');
       const resolve = vi.spyOn(base.paymentEventRejections, 'resolve');
       const enqueue = vi.spyOn(base.emailOutbox, 'enqueue');
@@ -8898,6 +8899,23 @@ describe('checkout consent ordering', () => {
         id: `payment-event-rejected:${acme.id}:evt_refused_paid:owner-1`, to: 'owner@togethercommunity.app',
       }));
       expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);
+    });
+
+    it('keeps the 500 for Stripe and records the event with the masked reason when processing throws', async () => {
+      const { response, record, enqueue } = await deliver(signed('plaintext'), (base) => {
+        base.processedPaymentEvents = {
+          ...base.processedPaymentEvents,
+          claim: async () => { throw new Error('connection reset while reading buyer@togethercommunity.app'); },
+        };
+      });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'internal' } });
+      expect(record).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+        eventId: 'evt_refused_paid', reasonCode: 'internal', reasonMessage: 'Payment processing failed unexpectedly',
+      }));
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(enqueue.mock.calls)).not.toContain('buyer@togethercommunity.app');
     });
 
     it.each<[string, string | undefined]>([

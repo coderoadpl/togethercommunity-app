@@ -2358,6 +2358,8 @@ export const pl: Messages = {
     emptyBody: 'Twórca nie udostępnił gościom żadnej przestrzeni ani kursu.',
     courseNotFoundBody: 'Tego kursu nie ma albo nie jest dostępny dla gości.',
     lockedSpaceBody: 'Wpisy w tej przestrzeni są dla kupujących. Odblokuj dostęp, aby je czytać i dołączyć do rozmowy.',
+    courseNotOnSale: 'Ten kurs nie jest teraz w sprzedaży.',
+    courseHaveAccessSignIn: 'Masz już dostęp? Zaloguj się',
   },
   search: {
     title: 'Szukaj',

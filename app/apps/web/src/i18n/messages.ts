@@ -2076,6 +2076,8 @@ export interface Messages {
     emptyBody: string;
     courseNotFoundBody: string;
     lockedSpaceBody: string;
+    courseNotOnSale: string;
+    courseHaveAccessSignIn: string;
   };
   search: {
     title: string;

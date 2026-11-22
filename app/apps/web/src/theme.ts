@@ -3226,6 +3226,8 @@ export const LedgerTitle = styled(Typography, {
 
 export const FinePrint = styled(Typography)<AsElement & { dateTime?: string }>({ fontSize: '0.75rem' });
 
+export const CartStockNote = styled(FinePrint)(({ theme }) => ({ fontWeight: 600, color: theme.palette.text.primary }));
+
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
   whiteSpace: 'nowrap',
@@ -4056,10 +4058,12 @@ export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const EmptyStateContent = styled(Stack)({
-  alignItems: 'center',
-  textAlign: 'center',
-});
+export const EmptyStateContent = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'align',
+})<{ align?: 'center' | 'start' }>(({ align = 'center' }) => ({
+  alignItems: align === 'start' ? 'flex-start' : 'center',
+  textAlign: align,
+}));
 
 export const LESSON_CARD_PADDING_X = { xs: '0.75rem', sm: '1.5rem' } as const;
 

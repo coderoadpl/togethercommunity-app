@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   Stack,
@@ -17,10 +18,12 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { returnToFromSearch } from '../../lib/auth-return.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { describedBy } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
 const emailSchema = z.string().email();
+const EMAIL_ERROR_ID = 'forgot-password-email-error';
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
@@ -29,15 +32,20 @@ export const ForgotPasswordPage = () => {
   const search = useRouterState({ select: (state) => state.location.searchStr });
   const returnTo = returnToFromSearch(search);
   const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setLocalError(null);
+    requestPasswordReset.reset();
     const normalizedEmail = email.trim();
-    if (!emailSchema.safeParse(normalizedEmail).success) {
-      setLocalError(t.forgotPassword.invalidEmail);
+    const error = normalizedEmail === ''
+      ? t.forgotPassword.emailRequired
+      : emailSchema.safeParse(normalizedEmail).success ? null : t.forgotPassword.invalidEmail;
+    setEmailError(error);
+    if (error !== null) {
+      emailRef.current?.focus();
       return;
     }
     requestPasswordReset.mutate({
@@ -68,22 +76,31 @@ export const ForgotPasswordPage = () => {
           </Box>
           <Stack
             component="form"
+            noValidate
             onSubmit={submit}
             useFlexGap
             spacing="1rem"
             data-testid="forgot-password-form"
           >
-            <FormControl fullWidth>
+            <FormControl fullWidth error={emailError !== null}>
               <FormLabel htmlFor="forgot-password-email">{t.forgotPassword.emailLabel}</FormLabel>
               <AuthInput
                 id="forgot-password-email"
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailError(null);
+                }}
                 autoComplete="email"
+                inputRef={emailRef}
+                {...describedBy(emailError === null ? null : EMAIL_ERROR_ID)}
                 inputProps={{ 'data-testid': 'forgot-password-email', inputMode: 'email' }}
                 required
               />
+              {emailError === null ? null : (
+                <FormHelperText id={EMAIL_ERROR_ID} data-testid="forgot-password-email-error">{emailError}</FormHelperText>
+              )}
             </FormControl>
             <Button
               type="submit"
@@ -97,7 +114,6 @@ export const ForgotPasswordPage = () => {
                 : t.forgotPassword.submitIdle}
             </Button>
           </Stack>
-          {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
           {requestPasswordReset.isError ? (
             <Alert severity="error" sx={{ mt: '0.6rem' }}>{localizeError(requestPasswordReset.error, t)}</Alert>
           ) : null}

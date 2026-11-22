@@ -70,7 +70,37 @@ describe('ResetPasswordPage', () => {
     await userEvent.type(screen.getByTestId('reset-password-confirm'), 'different123');
     await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(en.resetPassword.mismatch);
+    const error = await screen.findByTestId('reset-password-confirm-error');
+    const confirm = screen.getByTestId('reset-password-confirm');
+    expect(error).toHaveTextContent(en.resetPassword.mismatch);
+    expect(confirm).toHaveAttribute('aria-invalid', 'true');
+    expect(confirm).toHaveAttribute('aria-describedby', error.id);
+    expect(confirm).toHaveFocus();
+    expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('binds both empty field errors and focuses the new password first', async () => {
+    let requested = false;
+    server.use(http.post('*', () => {
+      requested = true;
+      return HttpResponse.json({ status: true });
+    }));
+    await renderResetPage('?token=valid-token');
+    await userEvent.click(screen.getByTestId('reset-submit'));
+
+    const password = screen.getByTestId('reset-password');
+    const passwordError = await screen.findByTestId('reset-password-error');
+    const confirmError = screen.getByTestId('reset-password-confirm-error');
+    const hint = screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH }));
+    expect(passwordError).toHaveTextContent(en.resetPassword.passwordRequired);
+    expect(confirmError).toHaveTextContent(en.resetPassword.confirmRequired);
+    expect(password).toHaveAttribute('aria-invalid', 'true');
+    expect(password).toHaveAttribute('aria-describedby', `${passwordError.id} ${hint.id}`);
+    expect(screen.getByTestId('reset-password-confirm')).toHaveAttribute('aria-invalid', 'true');
+    expect(password).toHaveFocus();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(requested).toBe(false);
   });
 
   it('blocks a password below the shared minimum', async () => {
@@ -79,9 +109,12 @@ describe('ResetPasswordPage', () => {
     await userEvent.type(screen.getByTestId('reset-password-confirm'), 'short');
     await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(
+    expect(await screen.findByTestId('reset-password-error')).toHaveTextContent(
       en.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
     );
+    expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('reset-password')).toHaveFocus();
+    expect(screen.getByTestId('reset-password-error')).not.toHaveTextContent('short');
   });
 
   it('guards a missing token before showing the password form', async () => {
@@ -136,6 +169,25 @@ describe('ResetPasswordPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(screen.getByTestId('reset-password')).toBeInTheDocument();
+    expect(screen.getByTestId('reset-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('drops a previous provider error when the form is submitted again', async () => {
+    server.use(http.post('*', () => HttpResponse.json(
+      { code: 'PASSWORD_TOO_LONG', message: 'Password too long' },
+      { status: 400 },
+    )));
+    await renderResetPage('?token=valid-token');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
+    await userEvent.click(screen.getByTestId('reset-submit'));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByTestId('reset-password-confirm'));
+    await userEvent.click(screen.getByTestId('reset-submit'));
+
+    expect(await screen.findByTestId('reset-password-confirm-error')).toHaveTextContent(en.resetPassword.confirmRequired);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('disables submission while the provider reset is pending', async () => {

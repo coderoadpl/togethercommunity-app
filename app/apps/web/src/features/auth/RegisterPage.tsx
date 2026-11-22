@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type RefObject } from 'react';
 import {
   Alert,
   Box,
@@ -22,10 +22,18 @@ import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
 const PASSWORD_HINT_ID = 'register-password-minimum';
+const REGISTER_FIELDS = ['name', 'email', 'password', 'terms'] as const;
+type RegisterField = (typeof REGISTER_FIELDS)[number];
+type RegisterFieldErrors = Record<RegisterField, string | null>;
+const NO_FIELD_ERRORS: RegisterFieldErrors = { name: null, email: null, password: null, terms: null };
+const fieldErrorId = (field: RegisterField): string => `register-${field}-error`;
+const errorIdOf = (field: RegisterField, errors: RegisterFieldErrors): string | null =>
+  errors[field] === null ? null : fieldErrorId(field);
 
 const baseDomainUrl = (): string => {
   const { protocol, port } = window.location;
@@ -41,7 +49,17 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<RegisterFieldErrors>(NO_FIELD_ERRORS);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const termsRef = useRef<HTMLInputElement>(null);
+  const fieldRefs: Record<RegisterField, RefObject<HTMLInputElement | null>> = {
+    name: nameRef,
+    email: emailRef,
+    password: passwordRef,
+    terms: termsRef,
+  };
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [registeredOnTenant, setRegisteredOnTenant] = useState(false);
   const queryClient = useQueryClient();
@@ -65,16 +83,32 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
     },
   });
 
+  const clearFieldError = (field: RegisterField) =>
+    setFieldErrors((current) => (current[field] === null ? current : { ...current, [field]: null }));
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setLocalError(null);
-    if (!passwordMeetsMinimumLength(password)) {
-      setLocalError(t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }));
+    signUp.reset();
+    const normalizedEmail = email.trim();
+    const errors: RegisterFieldErrors = {
+      name: name.trim() === '' ? t.auth.nameRequired : null,
+      email: normalizedEmail === ''
+        ? t.auth.emailRequired
+        : EMAIL_PATTERN.test(normalizedEmail) ? null : t.auth.emailInvalid,
+      password: password === ''
+        ? t.auth.passwordRequired
+        : passwordMeetsMinimumLength(password) ? null : t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }),
+      terms: consentRequired && !termsAccepted ? t.consent.required : null,
+    };
+    setFieldErrors(errors);
+    const firstInvalid = REGISTER_FIELDS.find((field) => errors[field] !== null);
+    if (firstInvalid !== undefined) {
+      fieldRefs[firstInvalid].current?.focus();
       return;
     }
     signUp.mutate({
       name,
-      email,
+      email: normalizedEmail,
       password,
       callbackURL: loginCallbackUrl(returnTo),
       ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
@@ -119,43 +153,75 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           <AuthTitle variant="h1">{t.auth.createAccount}</AuthTitle>
           <AuthLead component="p">{t.auth.createAccountLead}</AuthLead>
         </Box>
-        <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
-          <FormControl fullWidth>
+        <Stack component="form" noValidate onSubmit={submit} useFlexGap spacing="1rem">
+          <FormControl fullWidth error={fieldErrors.name !== null}>
             <FormLabel htmlFor="register-name">{t.auth.nameLabel}</FormLabel>
             <AuthInput
               id="register-name"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value);
+                clearFieldError('name');
+              }}
               autoComplete="name"
+              inputRef={nameRef}
+              {...describedBy(errorIdOf('name', fieldErrors))}
               required
             />
+            {fieldErrors.name === null ? null : (
+              <FormHelperText id={fieldErrorId('name')}>{fieldErrors.name}</FormHelperText>
+            )}
           </FormControl>
-          <FormControl fullWidth>
+          <FormControl fullWidth error={fieldErrors.email !== null}>
             <FormLabel htmlFor="register-email">{t.auth.emailLabel}</FormLabel>
             <AuthInput
               id="register-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                clearFieldError('email');
+              }}
               autoComplete="email"
+              inputRef={emailRef}
+              {...describedBy(errorIdOf('email', fieldErrors))}
               required
             />
+            {fieldErrors.email === null ? null : (
+              <FormHelperText id={fieldErrorId('email')}>{fieldErrors.email}</FormHelperText>
+            )}
           </FormControl>
-          <FormControl fullWidth>
+          <FormControl fullWidth error={fieldErrors.password !== null}>
             <FormLabel htmlFor="register-password">{t.auth.passwordLabel}</FormLabel>
             <AuthInput
               id="register-password"
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                clearFieldError('password');
+              }}
               autoComplete="new-password"
-              aria-describedby={PASSWORD_HINT_ID}
+              inputRef={passwordRef}
+              {...describedBy(errorIdOf('password', fieldErrors), PASSWORD_HINT_ID)}
               required
             />
-            <FormHelperText id={PASSWORD_HINT_ID}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
+            {fieldErrors.password === null ? null : (
+              <FormHelperText id={fieldErrorId('password')}>{fieldErrors.password}</FormHelperText>
+            )}
+            <FormHelperText id={PASSWORD_HINT_ID} error={false}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
           </FormControl>
           {consentRequired ? (
-            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+            <TermsConsentField
+              legal={legal}
+              checked={termsAccepted}
+              onChange={(checked) => {
+                setTermsAccepted(checked);
+                clearFieldError('terms');
+              }}
+              error={fieldErrors.terms}
+              inputRef={termsRef}
+            />
           ) : null}
           <Button
             type="submit"
@@ -167,11 +233,10 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
           </Button>
         </Stack>
         {signUp.isError ? (
-          <Alert severity="error" sx={{ mt: '0.6rem' }}>
+          <Alert severity="error" sx={{ mt: '0.6rem' }} data-testid="register-error">
             {localizeError(signUp.error, t)}
           </Alert>
         ) : null}
-        {localError ? <Alert severity="error" sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
     </AuthShell>
   );
 };

@@ -422,9 +422,12 @@ export interface Messages {
     emailHelper: string;
     orSeparator: string;
     emailInvalid: string;
+    emailRequired: string;
     passwordLabel: string;
     passwordTooShort: (params: { min: number }) => string;
+    passwordRequired: string;
     nameLabel: string;
+    nameRequired: string;
     signInIdle: string;
     signInPending: string;
     identifierContinue: string;
@@ -496,6 +499,7 @@ export interface Messages {
     terms: string;
     privacy: string;
     and: string;
+    required: string;
   };
   tenant: {
     visitorNotice: (params: { email: string }) => string;
@@ -2479,6 +2483,7 @@ export interface Messages {
     intro: string;
     emailLabel: string;
     invalidEmail: string;
+    emailRequired: string;
     submitIdle: string;
     submitPending: string;
     successTitle: string;
@@ -2494,6 +2499,8 @@ export interface Messages {
     submitPending: string;
     mismatch: string;
     tooShort: (params: { min: number }) => string;
+    passwordRequired: string;
+    confirmRequired: string;
     missingTokenTitle: string;
     missingToken: string;
     successTitle: string;

@@ -82,12 +82,23 @@ describe('durable Meta consent and outbox', () => {
     const access = await makeOrder('denied');
     const repo = repository();
     await repo.decide('workspace', access, async () => ok({ decision: 'denied', capture }));
-    expect(await repo.listMemberConsents('workspace', 'buyer')).toContainEqual({ orderId: 'denied', consent: 'denied', consentAt: now, withdrawnAt: null });
+    expect(await repo.listMemberConsents('workspace', 'buyer')).toContainEqual({ orderId: 'denied', consent: 'denied', consentAt: now, withdrawnAt: null, productName: 'Book', purchasedAt: now });
     expect(await repo.listMemberConsents('other', 'buyer')).toEqual([]);
     expect(await repo.listMemberConsents('workspace', 'stranger')).toEqual([]);
     expect(await database.db.select().from(metaCapiOutbox).where(eq(metaCapiOutbox.orderId, 'denied'))).toEqual([]);
     expect((await database.db.select().from(metaCapiEvents).where(eq(metaCapiEvents.transactionId, 'denied')))[0]).toMatchObject({ status: 'blocked', fieldsSent: [] });
     expect((await database.db.select().from(metaCapiConsentEvidence).where(eq(metaCapiConsentEvidence.orderId, 'denied')))[0]).toMatchObject({ textSnapshot: capture.textSnapshot, source: 'return-page' });
+  });
+
+  it('names member consent rows by the purchased products and the purchase date', async () => {
+    const access = await makeOrder('named');
+    await database.db.update(orders).set({ lines: [
+      { productId: 'book', name: 'Book', productType: 'digital_download', quantity: 2, grossCents: 9000, netCents: 9000, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+      { productId: 'courier', name: 'Courier', productType: 'shipping', grossCents: 900, netCents: 900, vatRate: null, vatCents: 0, vatExemptionBasis: null, issuedCount: null },
+    ] }).where(eq(orders.id, 'named'));
+    const repo = repository();
+    await repo.decide('workspace', access, async () => ok({ decision: 'denied', capture }));
+    expect(await repo.listMemberConsents('workspace', 'buyer')).toContainEqual({ orderId: 'named', consent: 'denied', consentAt: now, withdrawnAt: null, productName: '2 × Book', purchasedAt: now });
   });
 });
 
@@ -263,7 +274,9 @@ it('normalizes offset timestamps and applies stable bounded event and consent or
   await database.db.insert(metaCapiEvents).values(ids.map((id) => ({ tenantId: 'workspace', orderId: id, transactionId: id,
     consentAt: now, eventTime: now, recordedAt: '2026-11-02T12:00:00+02:00', sentAt: null, status: 'blocked' as const, fieldsSent: [] })));
   const expected = [...ids].reverse().slice(0, 100);
-  expect((await repo.listMemberConsents('workspace', 'lists')).map((row) => row.orderId)).toEqual(expected);
+  const listed = await repo.listMemberConsents('workspace', 'lists');
+  expect(listed.map((row) => row.orderId)).toEqual(expected);
+  expect(listed[0]).toMatchObject({ productName: 'Book', purchasedAt: '2026-11-02T10:00:00.000Z' });
   const events = await repo.listEvents('workspace');
   expect(events.map((row) => row.transactionId)).toEqual(expected);
   expect(events[0]?.recordedAt).toBe('2026-11-02T10:00:00.000Z');

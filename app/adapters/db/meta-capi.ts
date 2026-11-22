@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, lte, ne, sql } from 'drizzle-orm';
-import { err, metaCapiEventSchema, metaCapiRetryAt, notFound, ok, orderSchema } from '#core/domain/index.js';
+import { err, metaCapiEventSchema, metaCapiRetryAt, notFound, ok, orderLineLabel, orderSchema, productLines } from '#core/domain/index.js';
 import type { MetaCapiJobOutcome, MetaCapiOrder, MetaCapiOrderAccess, MetaCapiRepository, MetaCapiWorkspaceReaders } from '#core/server/meta-capi-ports.js';
 import type { Db } from './client.js';
 import { members, orders, products } from './app-schema.js';
@@ -126,9 +126,15 @@ export const createMetaCapiRepository = (
         ...row, consentAt: iso(row.consentAt), eventTime: iso(row.eventTime), sentAt: iso(row.sentAt), recordedAt: iso(row.recordedAt),
       }))),
     listMemberConsents: async (tenantId, memberId) => protectIdentifiers(async () => (await db.select({ orderId: orders.id, consent: orders.metaCapiConsent,
-      withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt }).from(orders)
+      withdrawnAt: orders.metaCapiConsentWithdrawnAt, consentAt: orders.metaCapiConsentAt, lines: orders.lines, productTitle: products.title,
+      paidAt: orders.paidAt, createdAt: orders.createdAt }).from(orders)
+      .leftJoin(products, and(eq(products.tenantId, orders.tenantId), eq(products.id, orders.productId)))
       .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId), ne(orders.metaCapiConsent, 'undecided')))
       .orderBy(desc(sql`(${orders.metaCapiConsent} = 'granted' AND ${orders.metaCapiConsentWithdrawnAt} IS NULL)`), desc(orders.createdAt), desc(orders.id))
-      .limit(100)).map((row) => ({ ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt) }))),
+      .limit(100)).map(({ lines, productTitle, paidAt, createdAt, ...row }) => {
+        const purchased = productLines(lines);
+        return { ...row, withdrawnAt: iso(row.withdrawnAt), consentAt: iso(row.consentAt),
+          productName: purchased.length > 0 ? purchased.map(orderLineLabel).join(', ') : productTitle, purchasedAt: iso(paidAt ?? createdAt) };
+      })),
   };
 };

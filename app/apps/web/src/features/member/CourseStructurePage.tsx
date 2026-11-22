@@ -20,7 +20,7 @@ import {
 } from '../../theme.js';
 import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
-import { focusLesson } from './course-tree-state.js';
+import { focusLesson, nextLessonOf } from './course-tree-state.js';
 import { CourseTree } from './CourseTree.js';
 import { CourseLoading } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -290,7 +290,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       courseId={courseId}
       structure={course}
       focusLessonId={focusLessonId}
-      nextLessonId={progress.data?.progress.resume?.target?.id ?? null}
+      nextLessonId={nextLessonOf(progress.data?.progress.resume)}
     />
   ) : null;
   const emptyState = !hasModules ? (

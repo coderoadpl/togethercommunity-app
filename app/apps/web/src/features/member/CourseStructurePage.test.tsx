@@ -379,6 +379,17 @@ describe('CourseStructurePage', () => {
     expect(within(inlineProgram).getAllByText(en.courseTree.nextLesson)).toHaveLength(1);
   });
 
+  it('leaves the next-lesson mark out of the program when the resume is a review', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2', resume: { target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: null, isReview: true } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(within(inlineProgram).queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
+    expect(within(inlineProgram).queryByText(en.courseTree.nextLesson)).not.toBeInTheDocument();
+  });
+
   it('holds the small-screen program closed until the last viewed lesson is known', async () => {
     stubViewport(true);
     mockPage({ progressPending: true });

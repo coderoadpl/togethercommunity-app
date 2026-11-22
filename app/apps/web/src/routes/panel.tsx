@@ -22,6 +22,7 @@ export {
   PanelProductsRoute,
   PanelProductCreateRoute,
   PanelProductDetailRoute,
+  PanelProposalsRoute,
   PanelSalesRoute,
   PanelOrderDetailRoute,
   PanelOrderVerificationRoute,

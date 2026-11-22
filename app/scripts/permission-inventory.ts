@@ -646,7 +646,7 @@ const marketingTenantContextUseCases = new Set([
   'withdrawMarketingConsent',
 ]);
 
-const ownerSideChangeProposalUseCases = new Set(['approveChangeProposal', 'getChangeProposal', 'listChangeProposals', 'rejectChangeProposal']);
+const ownerSideChangeProposalUseCases = new Set(['approveChangeProposal', 'getChangeProposal', 'getChangeProposalSummary', 'listChangeProposals', 'rejectChangeProposal']);
 
 const ownerSideChangeProposalGroupUseCases = new Set(['approveChangeProposalGroup', 'getChangeProposalGroup', 'rejectChangeProposalGroup']);
 

@@ -14,7 +14,6 @@ import {
   type ChangeProposal,
   type ChangeProposalInput,
   type ChangeProposalKeyReceipt,
-  type ChangeProposalKeyState,
   type ChangeProposalOperation,
   type ChangeProposalOwnerDetail,
 } from './change-proposal.js';
@@ -125,6 +124,8 @@ const REFERENCE_LIKE_PREFIX = '$proposal';
 const referenceIdPattern = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
 export const changeProposalReference = (proposalId: string): string => `${CHANGE_PROPOSAL_REFERENCE_PREFIX}${proposalId}`;
+
+export const isChangeProposalReference = (value: string): boolean => value.startsWith(CHANGE_PROPOSAL_REFERENCE_PREFIX);
 
 const referencedProposalId = (value: string): string | null => {
   if (!value.startsWith(CHANGE_PROPOSAL_REFERENCE_PREFIX)) return null;
@@ -292,8 +293,13 @@ const groupProposerSchema = z.object({
   keyId: z.string(),
   keyName: z.string().nullable(),
   issuerUserId: z.string().nullable(),
+  issuerEmail: z.string().nullable(),
+  issuerIsVerifiedOwner: z.boolean(),
+  issuerIsFormerTeamMember: z.boolean(),
   keyState: changeProposalKeyStateSchema,
 }).strict();
+
+export type ChangeProposalGroupProposer = Omit<z.output<typeof groupProposerSchema>, 'keyId'>;
 
 export const changeProposalGroupOwnerViewSchema = z.object({
   id: z.string(),
@@ -335,7 +341,7 @@ export const toChangeProposalGroupKeyReceipt = (
 export const toChangeProposalGroupOwnerView = (
   group: ChangeProposalGroup,
   items: readonly ChangeProposal[],
-  proposer: { keyName: string | null; issuerUserId: string | null; keyState: ChangeProposalKeyState },
+  proposer: ChangeProposalGroupProposer,
   details: readonly ChangeProposalOwnerDetail[],
   now: string,
 ): ChangeProposalGroupOwnerView => ({

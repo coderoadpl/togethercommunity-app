@@ -1785,6 +1785,7 @@ export const notifications = pgTable(
         'space-event',
         'tenant-domain-verified',
         'tenant-domain-error',
+        'change-proposal',
       ],
     }).notNull(),
     payload: jsonb('payload').notNull(),

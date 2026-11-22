@@ -1,4 +1,4 @@
-import { productComplianceSchema, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
+import { productComplianceObjectSchema, requireResponsiblePerson, variantGroupSchema, variantLabelSchema } from './product-compliance.js';
 import { productVatFields } from './product-vat.js';
 import { z } from 'zod';
 
@@ -217,9 +217,9 @@ export const importProductRecordSchema = z
     priceCents: z.number().int().nonnegative(),
     currency: currencySchema,
     accessItems: z.array(importAccessItemSchema),
-    compliance: productComplianceSchema.extend({
-      instructionsUrl: productComplianceSchema.shape.instructionsUrl.unwrap().unwrap().max(2_048).nullable().optional(),
-    }).nullable().optional(),
+    compliance: productComplianceObjectSchema.extend({
+      instructionsUrl: productComplianceObjectSchema.shape.instructionsUrl.unwrap().unwrap().max(2_048).nullable().optional(),
+    }).superRefine(requireResponsiblePerson).nullable().optional(),
     variantGroup: variantGroupSchema.nullable().optional(),
     variantLabel: variantLabelSchema.nullable().optional(),
     salesChannel: productSalesChannelSchema.optional(),

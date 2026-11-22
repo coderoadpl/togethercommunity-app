@@ -149,10 +149,11 @@ import type {
   ChangeProposal,
   ChangeProposalCap,
   ChangeProposalCountCap,
-  ChangeProposalDisplayStatus,
+  ChangeProposalListStatus,
   ChangeProposalEvent,
   ChangeProposalGroup,
   ChangeProposalTarget,
+  ChangeProposalTargetPrice,
   ChangeProposalTerminalStatus,
   SalesLink,
   TenantAuditEventListQuery,
@@ -2983,7 +2984,7 @@ export interface ChangeProposalEventDraft {
 }
 
 export interface ChangeProposalListQuery {
-  status?: ChangeProposalDisplayStatus;
+  status?: ChangeProposalListStatus;
   cursor?: string;
   groupId?: string;
   limit: number;
@@ -3020,6 +3021,16 @@ export interface ChangeProposalTransitionGuard {
 /** A write whose lock wait or statement time ran out has rolled back completely and answers busy. */
 export type ChangeProposalWrite<T> = { kind: 'written'; value: T } | { kind: 'busy' };
 
+export type ChangeProposalDecision =
+  | { kind: 'move'; at: string; transition: ChangeProposalTransition }
+  | { kind: 'record_expiry'; at: string; event: ChangeProposalEventDraft }
+  | { kind: 'refuse'; at: string };
+
+type ChangeProposalDecisionOutcome =
+  | { kind: 'decided'; decision: ChangeProposalDecision; proposal: ChangeProposal }
+  | { kind: 'not_found' }
+  | { kind: 'busy' };
+
 /**
  * Proposals are tenant-scoped; key-side reads also take the proposing key, so a key reaches only its own rows.
  * Every status change and its event commit together, and events get the next per-proposal sequence.
@@ -3038,7 +3049,20 @@ export interface ChangeProposalRepository {
     transition: ChangeProposalTransition,
     guard?: ChangeProposalTransitionGuard,
   ): Promise<ChangeProposalWrite<ChangeProposal | null>>;
+  /**
+   * Locks the proposal row whatever its status, then asks `decide` what to do with exactly the locked row, so the
+   * decision and the time it reads come after the lock wait: move a pending row, record its expiry, or change nothing.
+   */
+  decide(
+    tenantId: string,
+    id: string,
+    guard: Pick<ChangeProposalTransitionGuard, 'keyId'>,
+    decide: (locked: ChangeProposal) => ChangeProposalDecision,
+  ): Promise<ChangeProposalDecisionOutcome>;
   recordExpiry(tenantId: string, id: string, event: ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
+  /** Pending, unexpired proposals at `now`, and the distinct groups they belong to. */
+  countPending(tenantId: string, now: string): Promise<{ proposals: number; groups: number }>;
+  hasAny(tenantId: string): Promise<boolean>;
 }
 
 export interface ChangeProposalEventRepository {
@@ -3118,6 +3142,55 @@ export interface ChangeProposalGroupRepository {
   recordExpiry(tenantId: string, id: string, event: (proposalId: string) => ChangeProposalEventDraft): Promise<ChangeProposalWrite<boolean>>;
   /** Deletes a group of the key that never received an item; false when it has items or is not the key's. */
   deleteEmpty(tenantId: string, keyId: string, id: string): Promise<ChangeProposalWrite<boolean>>;
+}
+
+export interface ChangeProposalTargetLabelRequest {
+  kind: 'product' | 'price' | 'sales-link';
+  id: string;
+}
+
+interface ChangeProposalTargetLabel extends ChangeProposalTargetLabelRequest {
+  label: string;
+  price: ChangeProposalTargetPrice | null;
+}
+
+export interface ChangeProposalTargetLabelReader {
+  /**
+   * The live title of each existing target; a price answers its product's title and its own terms. A missing or deleted
+   * target has no entry.
+   */
+  labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
+}
+
+interface ChangeProposalPerson {
+  userId: string;
+  email: string;
+  emailVerified: boolean;
+  /** The effective grant in the workspace: a direct staff row or one derived from the owning organisation. */
+  staffRole: StaffRole | null;
+}
+
+export interface ChangeProposalPeopleReader {
+  /** Every existing account among `userIds`, read in a fixed number of queries whatever their count. */
+  read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
+}
+
+export type ChangeProposalOwnerNotice = 'raise' | 'signal';
+
+export interface ChangeProposalOwnerNotifier {
+  /** How long a submission waits for `raiseForOwners` in all, the wait for a connection included. */
+  readonly deadlineMs: number;
+  /**
+   * In one short transaction of its own, bounded in lock wait and statement time: finds every effective owner of the
+   * workspace (direct or organisation-derived) and answers, per owner, the notification under the source key of
+   * `build(owner)`: inserted when the owner has none; with `raise`, a read one is made unread again under the new id,
+   * kind, payload and time; any other is answered as it is. Busy, having written nothing, when a bound ran out.
+   */
+  raiseForOwners(
+    tenantId: string,
+    build: (recipientUserId: string) => Notification,
+    notice: ChangeProposalOwnerNotice,
+  ): Promise<ChangeProposalWrite<Notification[]>>;
 }
 
 export type ChangeProposalTargetLockPurpose = 'change' | 'delete';

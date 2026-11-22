@@ -50,6 +50,7 @@ import {
   changeProposalGroupOutputSchema,
   changeProposalRejectOutputSchema,
   changeProposalShowOutputSchema,
+  changeProposalSummaryOutputSchema,
   changeProposalsListOutputSchema,
   PROPOSAL_GROUP_HEADER,
   proposableOutputSchema,
@@ -2725,6 +2726,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.changeProposals.method,
       withQuery(API_ROUTES.changeProposals.path, input),
       changeProposalsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  getChangeProposalSummary: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalSummary.method,
+      API_ROUTES.changeProposalSummary.path,
+      changeProposalSummaryOutputSchema,
       undefined,
       signal,
     ),

@@ -1352,6 +1352,11 @@ export const notificationsListOutputSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+export const notificationStreamFrameSchema = z.object({
+  id: z.string(),
+  kind: z.string().min(1).optional(),
+});
+
 export const notificationReadInputSchema = notificationMarkReadInputSchema;
 
 export type NotificationReadInput = z.input<typeof notificationReadInputSchema>;
@@ -2241,6 +2246,7 @@ export const API_ROUTES = {
   apiKeysEntitlementCreate: { method: 'POST', path: '/api/api-keys/entitlement' },
   apiKeysEntitlementRevoke: { method: 'DELETE', path: '/api/api-keys/entitlement/:id' },
   changeProposals: { method: 'GET', path: '/api/change-proposals' },
+  changeProposalSummary: { method: 'GET', path: '/api/change-proposals/summary' },
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
@@ -2660,6 +2666,7 @@ export const API_PATHS = {
   apiKeysEntitlement: API_ROUTES.apiKeysEntitlement.path,
   apiKeysEntitlementRevoke: API_ROUTES.apiKeysEntitlementRevoke.path,
   changeProposals: API_ROUTES.changeProposals.path,
+  changeProposalSummary: API_ROUTES.changeProposalSummary.path,
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,

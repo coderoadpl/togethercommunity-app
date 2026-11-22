@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { orderRefundJobStatusSchema, type Order, type OrderStatus } from './commerce.js';
 import { appError, validation, type AppError } from './errors.js';
+import { stripeModeSchema } from './integration.js';
 import type { ClaimedOrderRefundJob, OrderRefundJob } from './order-refund-job.js';
 import { currencySchema } from './product.js';
 import type { ProviderRefund } from './refund.js';
@@ -113,7 +114,7 @@ const currencyFractionDigits = (currency: string): number => {
   return digits;
 };
 
-const formatMinorUnits = (amountCents: number, currency: string): string => {
+export const formatMinorUnits = (amountCents: number, currency: string): string => {
   const digits = currencyFractionDigits(currency);
   const sign = amountCents < 0 ? '-' : '';
   const absolute = Math.abs(amountCents);
@@ -152,12 +153,34 @@ export const resolveStaffRefundAmount = (input: { amountCents?: number | undefin
   return ok({ kind: 'amount', amountCents: input.amountCents });
 };
 
-export interface StaffRefundFulfilmentOptions {
-  restockOffered: boolean;
-  restockDefault: boolean;
-  removeFromPackingListOffered: boolean;
-  removeFromPackingListDefault: boolean;
-}
+const staffRefundFulfilmentOptionsSchema = z.object({
+  restockOffered: z.boolean(),
+  restockDefault: z.boolean(),
+  removeFromPackingListOffered: z.boolean(),
+  removeFromPackingListDefault: z.boolean(),
+});
+
+export type StaffRefundFulfilmentOptions = z.output<typeof staffRefundFulfilmentOptionsSchema>;
+
+export const staffRefundPreviewSchema = z.object({
+  orderId: z.string().min(1),
+  refundable: z.boolean(),
+  blockedReason: z.string().nullable(),
+  paidCents: z.number().int().nonnegative(),
+  refundedCents: z.number().int().nonnegative(),
+  remainderCents: z.number().int().nonnegative(),
+  currency: currencySchema,
+  mode: stripeModeSchema,
+  remainderSource: z.enum(['provider', 'platform']),
+  returnableStock: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().nonnegative() })),
+  onPackingList: z.boolean(),
+  hasShipment: z.boolean(),
+  hasInvoice: z.boolean(),
+  fullRefundOptions: staffRefundFulfilmentOptionsSchema,
+  waitingRefundId: z.string().nullable(),
+});
+
+export type StaffRefundPreview = z.output<typeof staffRefundPreviewSchema>;
 
 export const staffRefundFulfilmentOptions = (
   order: Pick<Order, 'fulfilmentStatus' | 'shipment'>,
@@ -252,7 +275,7 @@ export const newOrderStaffRefund = (input: {
   updatedAt: input.now,
 });
 
-const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
+export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   id: true,
   kind: true,
   status: true,
@@ -276,7 +299,7 @@ export type OrderStaffRefundView = z.output<typeof orderStaffRefundViewSchema>;
 
 export const orderStaffRefundView = (refund: OrderStaffRefund): OrderStaffRefundView => orderStaffRefundViewSchema.parse(refund);
 
-const orderRefundTotalsSchema = z.object({
+export const orderRefundTotalsSchema = z.object({
   paidCents: z.number().int().nonnegative(),
   refundedCents: z.number().int().nonnegative(),
   remainingCents: z.number().int().nonnegative(),

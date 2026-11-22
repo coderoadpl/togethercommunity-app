@@ -1,0 +1,91 @@
+{
+  "id": "evt_test_clover_address",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1795000000,
+  "data": {
+    "object": {
+      "id": "cs_test_clover_address",
+      "object": "checkout.session",
+      "allow_promotion_codes": false,
+      "amount_subtotal": 8800,
+      "amount_total": 9519,
+      "billing_address_collection": null,
+      "cancel_url": "https://studio.togethercommunity.app/offer/book-bundle?status=cancelled",
+      "client_reference_id": null,
+      "collected_information": {
+        "business_name": null,
+        "individual_name": null,
+        "shipping_details": {
+          "address": {
+            "city": "Cracow",
+            "country": "PL",
+            "line1": "Market Square 1",
+            "line2": "Flat 2",
+            "postal_code": "31-001",
+            "state": null
+          },
+          "name": "Test Buyer"
+        },
+        "tax_ids": null
+      },
+      "consent": { "promotions": null, "terms_of_service": "accepted" },
+      "consent_collection": { "promotions": "none", "terms_of_service": "required" },
+      "currency": "pln",
+      "customer": null,
+      "customer_creation": "if_required",
+      "customer_details": {
+        "address": {
+          "city": "Cracow",
+          "country": "PL",
+          "line1": "Market Square 1",
+          "line2": "Flat 2",
+          "postal_code": "31-001",
+          "state": null
+        },
+        "business_name": null,
+        "email": "test.buyer@example.com",
+        "individual_name": null,
+        "name": "Test Buyer",
+        "phone": "+48500100300",
+        "tax_exempt": "none",
+        "tax_ids": []
+      },
+      "customer_email": null,
+      "livemode": true,
+      "locale": "en",
+      "metadata": {
+        "tenantId": "tenant-a",
+        "productId": "product-course",
+        "priceId": "",
+        "memberEmail": "",
+        "language": "en",
+        "salesLinkId": "link-book-bundle",
+        "checkoutSnapshotId": "snapshot-clover-address",
+        "checkoutConsentCaptureId": "capture-clover-address"
+      },
+      "mode": "payment",
+      "payment_intent": "pi_test_clover_address",
+      "payment_method_types": ["card"],
+      "payment_status": "paid",
+      "shipping_address_collection": { "allowed_countries": ["PL"] },
+      "shipping_cost": {
+        "amount_subtotal": 1599,
+        "amount_tax": 0,
+        "amount_total": 1599,
+        "shipping_rate": "shr_test_clover_address"
+      },
+      "shipping_options": [{ "shipping_amount": 1599, "shipping_rate": "shr_test_clover_address" }],
+      "status": "complete",
+      "submit_type": null,
+      "subscription": null,
+      "success_url": "https://studio.togethercommunity.app/offer/book-bundle?status=success",
+      "total_details": { "amount_discount": 880, "amount_shipping": 1599, "amount_tax": 0 },
+      "url": null
+    }
+  },
+  "livemode": true,
+  "pending_webhooks": 1,
+  "request": { "id": null, "idempotency_key": null },
+  "type": "checkout.session.completed"
+}

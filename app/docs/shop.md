@@ -249,11 +249,15 @@ its name, gross, net and VAT split at the option's VAT rate and
 and the allowed countries at checkout start, so later edits to the option do not
 change an order in flight.
 
-When Stripe reports the completed session, the webhook requires the collected
-shipping cost to equal the shipping line and a delivery address in an allowed
-country; otherwise the event is rejected as a validation failure. The total check
-compares `amount_total + amount_discount` with the sum of all snapshot lines,
-shipping included. The paid order stores:
+When Stripe reports the completed session, the webhook requires a shipping fee
+reported by the event (`shipping_cost.amount_total`, or
+`total_details.amount_shipping` in older API versions) to equal the shipping line,
+and a delivery address in an allowed country; otherwise the event is rejected as
+a validation failure. When the event reports no fee, the session is accepted only
+when its total matches every snapshot line, and a session without `amount_total`
+is rejected (see [Webhook API version](payments.md#webhook-api-version)). The
+total check compares `amount_total + amount_discount` with the sum of all
+snapshot lines, shipping included. The paid order stores:
 
 - `orders.lines` with the shipping line last;
 - `orders.shipping`: the frozen option, the pickup point or `null`, the

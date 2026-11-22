@@ -26,6 +26,7 @@ const pln = (cents: number) => formatPrice(cents, 'PLN', 'en');
 const eur = (cents: number) => formatPrice(cents, 'EUR', 'en');
 const exact = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+')}$`, 'u');
 const lockerOption = new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u');
+const shopReturnUrl = 'https://shop.example.test/cart?order=88&lang=en';
 const analyticsConfig = { cookieScope: 'host' as const, metaPixelId: '12345678', tagId: 'G-ABC1234', consentCookieName: 'consent', consentCookieValue: null, loadWithoutConsent: true };
 
 const products = {
@@ -78,6 +79,7 @@ const shippingRates = [
 
 const serve = (input: {
   token?: string | null;
+  checkoutReturnOrigins?: string[];
   canTest?: boolean;
   testEnabled?: boolean;
   missing?: readonly string[];
@@ -105,6 +107,7 @@ const serve = (input: {
       record(request);
       return HttpResponse.json({ ok: true, data: {
         stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, analytics: analyticsConfig,
+        checkoutReturnOrigins: input.checkoutReturnOrigins ?? [],
         inpostGeowidgetToken: input.token ?? null, canTest: input.canTest ?? false,
         testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
       } });
@@ -164,6 +167,32 @@ describe('hosted cart checkout', () => {
   afterEach(() => {
     document.getElementById('inpost-geowidget-script')?.remove();
     document.getElementById('inpost-geowidget-style')?.remove();
+  });
+
+  it.each([
+    [shopReturnUrl, shopReturnUrl],
+    ['https://other.example.test/cart', null],
+  ])('only links and submits the hosted cart return address when allowed: %s', async (requested, accepted) => {
+    const bodies: unknown[] = [];
+    serve({ checkoutReturnOrigins: ['https://shop.example.test'], onSession: (body) => bodies.push(body) });
+    renderCart(`${HOSTED_CART_PATH}?lines=${ebook}.1&return=${encodeURIComponent(requested)}`);
+    await screen.findByRole('heading', { name: en.checkout.cartTitle });
+
+    const link = screen.queryByRole('link', { name: en.checkout.backToShop });
+    if (accepted === null) {
+      expect(link).not.toBeInTheDocument();
+    } else {
+      expect(link).toBeInstanceOf(HTMLAnchorElement);
+      expect(link).toHaveAttribute('href', accepted);
+    }
+
+    await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.test');
+    await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    if (accepted === null) expect(bodies[0]).not.toHaveProperty('returnUrl');
+    else expect(bodies[0]).toHaveProperty('returnUrl', accepted);
+    expect(bodies[0]).not.toHaveProperty('cancelUrl');
   });
 
   it('renders the lines of the query string and posts the cart payload through the client', async () => {
@@ -638,14 +667,15 @@ describe('hosted cart checkout', () => {
     await waitFor(() => expect(analytics.loadGoogleTag).toHaveBeenCalledExactlyOnceWith(analyticsConfig));
   });
 
-  it('offers the same cart again after a cancelled payment', async () => {
-    serve();
-    renderCart(`${HOSTED_CART_PATH}?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta`);
+  it('offers the same cart and return link again after a cancelled payment', async () => {
+    serve({ checkoutReturnOrigins: ['https://shop.example.test'] });
+    renderCart(`${HOSTED_CART_PATH}?status=cancelled&lines=${poster}.2~${ebook}.1&code=CART&utm_source=meta&return=${encodeURIComponent(shopReturnUrl)}`);
     expect(await screen.findByRole('heading', { name: en.checkout.cancelledTitle })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.checkout.retry }));
     expect(await screen.findByRole('heading', { name: en.checkout.cartTitle })).toBeInTheDocument();
     expect(line(poster).getByTestId(`cart-quantity-${poster}`)).toHaveTextContent('2');
-    expect(window.location.search).toBe(`?lines=${poster}.2~${ebook}.1&utm_source=meta&code=CART`);
+    expect(window.location.search).toBe(`?lines=${poster}.2~${ebook}.1&utm_source=meta&code=CART&return=${encodeURIComponent(shopReturnUrl)}`);
+    expect(screen.getByRole('link', { name: en.checkout.backToShop })).toHaveAttribute('href', shopReturnUrl);
     expect(screen.getByTestId('checkout-coupon-input')).toHaveValue('CART');
     expect(analytics.loadGoogleTag).not.toHaveBeenCalled();
   });

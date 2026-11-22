@@ -447,6 +447,7 @@ export const pl: Messages = {
     twoFactorCodeLabel: 'Kod weryfikacyjny',
     twoFactorVerifying: 'Weryfikowanie…',
     twoFactorVerifyTotp: 'Zweryfikuj kod z aplikacji',
+    twoFactorInvalidCode: 'Ten kod jest nieprawidłowy. Sprawdź go i spróbuj ponownie.',
     twoFactorUseBackupCode: 'Nie masz dostępu do aplikacji? Użyj kodu zapasowego',
     twoFactorBackToLogin: 'Wróć do logowania',
     continueWithGoogle: 'Kontynuuj z Google',

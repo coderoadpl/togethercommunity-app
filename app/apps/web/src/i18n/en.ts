@@ -440,6 +440,7 @@ export const en: Messages = {
     twoFactorCodeLabel: 'Verification code',
     twoFactorVerifying: 'Verifying…',
     twoFactorVerifyTotp: 'Verify authenticator code',
+    twoFactorInvalidCode: 'This code is not valid. Check it and try again.',
     twoFactorUseBackupCode: 'No access to the app? Use a backup code',
     twoFactorBackToLogin: 'Back to sign-in',
     continueWithGoogle: 'Continue with Google',

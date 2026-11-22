@@ -450,6 +450,7 @@ export interface Messages {
     twoFactorCodeLabel: string;
     twoFactorVerifying: string;
     twoFactorVerifyTotp: string;
+    twoFactorInvalidCode: string;
     twoFactorUseBackupCode: string;
     twoFactorBackToLogin: string;
     continueWithGoogle: string;

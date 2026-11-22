@@ -1193,6 +1193,60 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('two-factor-code')).toHaveFocus();
   });
 
+  const answerSecondFactor = (path: string, code: string) =>
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith(path)
+          ? HttpResponse.json({ code, message: 'provider text' }, { status: 401 })
+          : undefined,
+      ),
+    );
+
+  it('names a wrong authenticator code on the field and selects it for retyping', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-totp', 'INVALID_CODE');
+
+    const code = screen.getByTestId('two-factor-code');
+    await userEvent.type(code, '654321');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    const alert = await screen.findByTestId('two-factor-error');
+    expect(alert).toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(alert).not.toHaveTextContent(en.errors.messageUnauthorized);
+    expect(alert).not.toHaveTextContent('654321');
+    expect(code).toHaveAttribute('aria-invalid', 'true');
+    expect(code).toHaveAccessibleDescription(en.auth.twoFactorInvalidCode);
+    expect(code).toHaveFocus();
+    expect(code).toHaveProperty('selectionStart', 0);
+    expect(code).toHaveProperty('selectionEnd', '654321'.length);
+  });
+
+  it('names a wrong backup code with the same invalid-code copy', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-backup-code', 'INVALID_BACKUP_CODE');
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'abcde-fghij');
+    await userEvent.click(screen.getByTestId('verify-login-backup-code'));
+
+    expect(await screen.findByTestId('two-factor-error')).toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(screen.getByTestId('two-factor-error')).not.toHaveTextContent('abcde-fghij');
+  });
+
+  it('keeps the session-ended copy for an expired challenge, not a wrong code', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-totp', 'INVALID_TWO_FACTOR_COOKIE');
+
+    const code = screen.getByTestId('two-factor-code');
+    await userEvent.type(code, '123456');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    const alert = await screen.findByTestId('two-factor-error');
+    expect(alert).toHaveTextContent(en.errors.messageUnauthorized);
+    expect(alert).not.toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(code).toHaveAttribute('aria-invalid', 'false');
+    expect(code).toHaveAccessibleDescription(en.errors.messageUnauthorized);
+  });
+
   it('cancels the challenge back to the identifier without the twoFactor query', async () => {
     window.history.pushState({}, '', '/login?twoFactor=required');
     await reachTwoFactor();

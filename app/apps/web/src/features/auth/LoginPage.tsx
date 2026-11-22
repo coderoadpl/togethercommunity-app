@@ -20,7 +20,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { errorCodeOf, localizeError, providerCodeOf, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
@@ -53,6 +53,8 @@ import { AuthShell } from './AuthShell.js';
 const IDENTITY_ID = 'login-identity';
 const EMAIL_ERROR_ID = 'login-email-error';
 const EMAIL_HELPER_ID = 'login-email-helper';
+const TWO_FACTOR_ERROR_ID = 'two-factor-error';
+const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -82,6 +84,11 @@ const ChevronIcon = () => (
     <path d="M9.29 6.71a1 1 0 0 0 0 1.41L13.17 12l-3.88 3.88a1 1 0 1 0 1.42 1.41l4.58-4.58a1 1 0 0 0 0-1.42L10.71 6.71a1 1 0 0 0-1.42 0Z" />
   </SvgIcon>
 );
+
+const isInvalidTwoFactorCode = (error: unknown): boolean => {
+  const providerCode = providerCodeOf(error);
+  return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
+};
 
 const initialsOf = (email: string): string =>
   (email.match(/[a-z0-9]/giu)?.slice(0, 2).join('') ?? '?').toUpperCase();
@@ -248,13 +255,19 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     queryClient.clear();
     await navigate({ href: postLoginTarget });
   };
+  const selectTwoFactorCode = () => {
+    twoFactorCodeRef.current?.focus();
+    twoFactorCodeRef.current?.select();
+  };
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
     onSuccess: completeTwoFactor,
+    onError: selectTwoFactorCode,
   });
   const verifyBackupCode = useMutation({
     ...actions.verifyBackupCode,
     onSuccess: completeTwoFactor,
+    onError: selectTwoFactorCode,
   });
 
   const requestMagicLink = useMutation({
@@ -501,13 +514,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   }
 
   if (twoFactorRequired) {
+    const twoFactorError = verifyTotp.error ?? verifyBackupCode.error;
+    const twoFactorCodeInvalid = isInvalidTwoFactorCode(twoFactorError);
     return shell(
       <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
         <Box>
           <AuthTitle variant="h1">{t.auth.twoFactorTitle}</AuthTitle>
           <AuthLead component="p">{t.auth.twoFactorIntro}</AuthLead>
         </Box>
-        <FormControl fullWidth>
+        <FormControl fullWidth error={twoFactorCodeInvalid}>
           <FormLabel htmlFor="two-factor-code">{t.auth.twoFactorCodeLabel}</FormLabel>
           <AuthInput
             id="two-factor-code"
@@ -516,6 +531,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             autoComplete="one-time-code"
             autoFocus
             inputRef={twoFactorCodeRef}
+            {...(twoFactorError === null ? {} : { 'aria-describedby': TWO_FACTOR_ERROR_ID })}
             inputProps={{ 'data-testid': 'two-factor-code', autoCapitalize: 'off', spellCheck: false }}
             required
           />
@@ -547,8 +563,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         >
           {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
         </Button>
-        {verifyTotp.isError ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
-        {verifyBackupCode.isError ? <Alert severity="error">{localizeError(verifyBackupCode.error, t)}</Alert> : null}
+        {twoFactorError === null ? null : (
+          <Alert severity="error" id={TWO_FACTOR_ERROR_ID} data-testid="two-factor-error">
+            {twoFactorCodeInvalid ? t.auth.twoFactorInvalidCode : localizeError(twoFactorError, t)}
+          </Alert>
+        )}
         <FinePrint variant="caption" component="p">
           <MuiLink
             component="button"

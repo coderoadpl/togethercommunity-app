@@ -1517,6 +1517,48 @@ describe('LoginPage', () => {
     expect(screen.queryByText(en.auth.invalidCredentials)).not.toBeInTheDocument();
   });
 
+  it('drops the expired-link marker once a new link is requested and keeps returnTo', async () => {
+    let callbackURL: unknown = null;
+    server.use(http.post('*', async ({ request }) => {
+      if (new URL(request.url).pathname.endsWith('/sign-in/magic-link')) {
+        const body: unknown = await request.json();
+        callbackURL = typeof body === 'object' && body !== null ? Reflect.get(body, 'callbackURL') : null;
+      }
+      return HttpResponse.json({ status: true });
+    }));
+    const { router } = await renderLoginPage(
+      false,
+      '/login?error=INVALID_TOKEN&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
+      undefined,
+      ['magic-link'],
+    );
+    await continueWithEmail('member@example.com');
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+    await screen.findByTestId('magic-link-sent');
+
+    await waitFor(() => expect(router.state.location.search).toEqual({ returnTo: '/my/courses/course-1/lessons/lesson-1' }));
+    expect(router.state.location.href).not.toContain('INVALID_TOKEN');
+    expect(callbackURL).toBe(
+      `${window.location.origin}/login?verification=verified&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1`,
+    );
+
+    await userEvent.click(screen.getByTestId('login-change-email'));
+
+    expect(await screen.findByLabelText(en.auth.emailLabel)).toHaveValue('member@example.com');
+    expect(screen.queryByText(en.auth.magicLinkExpired)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: en.auth.identifierContinue }));
+    expect(await screen.findByTestId('send-magic-link')).toBeInTheDocument();
+    expect(screen.queryByTestId('magic-link-expired-step')).not.toBeInTheDocument();
+  });
+
+  it('tells the expired-link visitor which button sends a new link', async () => {
+    await renderLoginPage(false, '/login?error=INVALID_TOKEN');
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('magic-link-expired-step')).toHaveTextContent(en.auth.methodMagicLinkTitle);
+    expect(screen.getByTestId('send-magic-link')).toHaveTextContent(en.auth.methodMagicLinkTitle);
+  });
+
   it('explains the expired link again on the magic-link step', async () => {
     await renderLoginPage(false, '/login?error=INVALID_TOKEN');
     await continueWithEmail();

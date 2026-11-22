@@ -67,9 +67,6 @@ const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS 
 
 type TwoFactorMode = 'app' | 'backup';
 
-const invalidTokenFromLocation = (): boolean =>
-  new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
-
 const MailIcon = () => (
   <SvgIcon aria-hidden>
     <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v.4l8 5 8-5V7H4Zm16 10V9.7l-8 5-8-5V17h16Z" />
@@ -196,7 +193,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
   const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
   const me = useRedirectSignedInWithTenant(postLoginTarget);
-  const magicLinkExpired = invalidTokenFromLocation();
+  const magicLinkExpired = search.error === 'INVALID_TOKEN';
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
   const [method, setMethod] = useState<SignInMethod | null>(null);
@@ -324,6 +321,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     ...actions.requestMagicLink,
     onSuccess: (_data, variables) => {
       setRequestedMagicEmail(variables.email);
+      if (magicLinkExpired) {
+        void navigate({ to: '.', search: (previous) => ({ ...previous, error: undefined }), replace: true });
+      }
     },
   });
 

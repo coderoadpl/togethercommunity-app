@@ -247,6 +247,13 @@ export const PICKUP_POINT_REJECTION_MESSAGES: Readonly<Record<PickupPointRejecti
 export const pickupPointRejected = (reason: PickupPointRejectionReason): AppError =>
   validation(PICKUP_POINT_REJECTION_MESSAGES[reason], { pickupPointReason: reason });
 
+const pickupPointRejectionDetailsSchema = z.object({ pickupPointReason: pickupPointRejectionReasonSchema });
+
+export const pickupPointRejectionReason = (details: unknown): PickupPointRejectionReason | null => {
+  const parsed = pickupPointRejectionDetailsSchema.safeParse(details);
+  return parsed.success ? parsed.data.pickupPointReason : null;
+};
+
 export interface InpostPoint {
   name: string;
   status: string;

@@ -1,10 +1,14 @@
 export {
   createCheckoutState,
   geowidgetAccess,
+  lockerCheckDue,
+  lockerCheckFrom,
+  lockerRefusal,
   parseGeowidgetPoint,
   pickedPickupPoint,
   reduceCheckoutState,
   selectDelivery,
+  typedLockerCheck,
   type CheckoutState,
   type GeowidgetAccess,
 } from './checkout-state.js';

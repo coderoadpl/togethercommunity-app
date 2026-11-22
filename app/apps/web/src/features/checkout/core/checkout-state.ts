@@ -2,11 +2,14 @@ import {
   inpostGeowidgetPointSchema,
   normalizePickupPointCode,
   pickupPointCodeValid,
+  pickupPointDetails,
+  pickupPointRejectionReason,
   type CheckoutShippingInput,
+  type ParcelLockerLookup,
   type PublicShippingRate,
 } from '#core/domain/index.js';
 
-import type { CheckoutEvent, PickedPickupPoint } from './events.js';
+import type { CheckoutEvent, LockerCheck, PickedPickupPoint } from './events.js';
 
 export interface CheckoutState {
   selectedPriceId: string | null;
@@ -15,6 +18,7 @@ export interface CheckoutState {
   shippingRateId: string | null;
   pickupPointCode: string;
   pickupPoint: PickedPickupPoint | null;
+  lockerCheck: LockerCheck | null;
 }
 
 export const createCheckoutState = (couponCode: string): CheckoutState => ({
@@ -24,6 +28,7 @@ export const createCheckoutState = (couponCode: string): CheckoutState => ({
   shippingRateId: null,
   pickupPointCode: '',
   pickupPoint: null,
+  lockerCheck: null,
 });
 
 export const reduceCheckoutState = (
@@ -43,15 +48,40 @@ export const reduceCheckoutState = (
       return { ...state, pickupPointCode: event.code.toUpperCase() };
     case 'pickupPointSelected':
       return { ...state, pickupPointCode: event.point.code, pickupPoint: event.point };
+    case 'lockerCheckChanged':
+      return event.check.code === normalizePickupPointCode(state.pickupPointCode) ? { ...state, lockerCheck: event.check } : state;
   }
 };
 
 export const pickedPickupPoint = (state: CheckoutState): PickedPickupPoint | null =>
   state.pickupPoint !== null && normalizePickupPointCode(state.pickupPointCode) === state.pickupPoint.code ? state.pickupPoint : null;
 
+export const typedLockerCheck = (state: CheckoutState): LockerCheck | null =>
+  pickedPickupPoint(state) === null && state.lockerCheck !== null && state.lockerCheck.code === normalizePickupPointCode(state.pickupPointCode)
+    ? state.lockerCheck
+    : null;
+
+export const lockerCheckDue = (state: CheckoutState): string | null => {
+  if (pickedPickupPoint(state) !== null || !pickupPointCodeValid(state.pickupPointCode)) return null;
+  const check = typedLockerCheck(state);
+  return check === null || check.status === 'checking' ? normalizePickupPointCode(state.pickupPointCode) : null;
+};
+
+export const lockerCheckFrom = (code: string, lookup: ParcelLockerLookup | null): LockerCheck => {
+  if (lookup === null || lookup.status === 'unavailable') return { status: 'unavailable', code };
+  if (lookup.status === 'not_found') return { status: 'rejected', code, reason: 'not_found', name: null, address: null };
+  const point = { code, name: lookup.name, address: lookup.address };
+  return lookup.reason === null ? { status: 'found', ...point } : { status: 'rejected', ...point, reason: lookup.reason };
+};
+
+export const lockerRefusal = (code: string, details: unknown): LockerCheck | null => {
+  const reason = pickupPointRejectionReason(details);
+  return reason === null ? null : { status: 'rejected', code: normalizePickupPointCode(code), reason, name: null, address: null };
+};
+
 export type DeliverySelection =
   | { status: 'not_required' }
-  | { status: 'incomplete'; missing: 'rate' | 'pickup_point' }
+  | { status: 'incomplete'; missing: 'rate' | 'pickup_point' | 'pickup_point_rejected' }
   | { status: 'ready'; shipping: CheckoutShippingInput };
 
 export const selectDelivery = (
@@ -65,6 +95,7 @@ export const selectDelivery = (
   if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
   const code = normalizePickupPointCode(state.pickupPointCode);
   const picked = pickedPickupPoint(state);
+  if (typedLockerCheck(state)?.status === 'rejected') return { status: 'incomplete', missing: 'pickup_point_rejected' };
   return {
     status: 'ready',
     shipping: {
@@ -82,15 +113,11 @@ export const selectDelivery = (
 export const parseGeowidgetPoint = (detail: unknown): PickedPickupPoint | null => {
   const parsed = inpostGeowidgetPointSchema.safeParse(detail);
   if (!parsed.success || !pickupPointCodeValid(parsed.data.name)) return null;
-  const address = [parsed.data.address?.line1, parsed.data.address?.line2]
-    .filter((line): line is string => typeof line === 'string' && line.trim() !== '')
-    .map((line) => line.trim())
-    .join(', ');
-  return {
-    code: normalizePickupPointCode(parsed.data.name),
-    name: parsed.data.location_description == null || parsed.data.location_description === '' ? null : parsed.data.location_description,
-    address: address === '' ? null : address,
-  };
+  return pickupPointDetails({
+    name: parsed.data.name,
+    locationDescription: parsed.data.location_description ?? null,
+    address: parsed.data.address == null ? null : { line1: parsed.data.address.line1 ?? null, line2: parsed.data.address.line2 ?? null },
+  });
 };
 
 export type GeowidgetAccess =

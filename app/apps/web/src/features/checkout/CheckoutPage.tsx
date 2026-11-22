@@ -52,7 +52,8 @@ import {
   CheckoutVariantGroup,
   FinePrint,
 } from '../../theme.js';
-import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { useLockerCheck } from './use-locker-check.js';
 
 type OfferPrice = {
   id: string;
@@ -185,6 +186,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     initialCouponCode,
     createCheckoutState,
   );
+  const checkLocker = useLockerCheck(checkoutState, dispatchCheckout);
+  const submittingAfterLockerCheck = useRef(false);
   const { couponVisible, couponCode, selectedPriceId } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
@@ -334,9 +337,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   });
   const simulate = () => simulatePurchase.mutate({ email: buyerEmail ?? email, ...purchaseRequest() });
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete' || personalization.blocked) return;
+  const proceed = () => {
     if (stripeConfigured || payableCents === 0) {
       const codeAtSubmit = appliedCoupon === undefined ? null : couponCode;
       const keyAtSubmit = autoValidationKey;
@@ -346,6 +347,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...purchaseRequest(),
       }, {
         onError: (error) => {
+          const refusal = error instanceof ApiError ? lockerRefusal(checkoutState.pickupPointCode, error.appError.details) : null;
+          if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
           if (codeAtSubmit === null || !stripeTermsRefused(error)) return;
           setAutoCouponCode(codeAtSubmit);
           setAutoValidatedFor(keyAtSubmit);
@@ -354,6 +357,20 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       return;
     }
     simulate();
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (couponResolving || delivery.status === 'incomplete' || personalization.blocked || submittingAfterLockerCheck.current) return;
+    if (lockerCheckDue(checkoutState) === null) {
+      proceed();
+      return;
+    }
+    submittingAfterLockerCheck.current = true;
+    void checkLocker().then((check) => {
+      submittingAfterLockerCheck.current = false;
+      if (check?.status !== 'rejected') proceed();
+    });
   };
 
   const togetherCheckout = new URLSearchParams(window.location.search).get('checkout') === 'together';
@@ -598,7 +615,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
   const payDisabled = soldOut || pending || testSession.isPending || delivery.status === 'incomplete' ||
     personalization.blocked || couponResolving || testModeFreeOrder || paymentUnavailable;
   const payBlockedReason = soldOut || pending ? null
-    : delivery.status === 'incomplete' ? delivery.missing === 'rate' ? t.checkout.payBlockedDelivery : t.checkout.payBlockedLocker
+    : delivery.status === 'incomplete' ? delivery.missing === 'rate' ? t.checkout.payBlockedDelivery
+      : delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected : t.checkout.payBlockedLocker
       : personalization.reason === 'text' ? t.checkout.payBlockedPersonalizationText
         : personalization.reason === 'condition' ? t.checkout.payBlockedPersonalizationCondition
           : couponResolving ? t.checkout.payBlockedCoupon
@@ -761,6 +779,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               rates={shippingRates}
               state={checkoutState}
               dispatch={dispatchCheckout}
+              checkLocker={checkLocker}
               currency={selectedCurrency}
               language={language}
               geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({

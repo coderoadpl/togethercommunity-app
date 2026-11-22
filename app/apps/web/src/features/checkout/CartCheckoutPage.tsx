@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useReducer, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -45,7 +45,8 @@ import { CheckoutPage } from './CheckoutPage.js';
 import { checkoutRefusal, checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo } from './ProductSafetyInfo.js';
-import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { useLockerCheck } from './use-locker-check.js';
 
 type Translations = ReturnType<typeof useTranslations>;
 type OfferProduct = PublicOfferOutput['products'][number];
@@ -246,6 +247,8 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const invoice = useInvoiceFields();
   const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
   const [checkoutState, dispatchCheckout] = useReducer(reduceCheckoutState, initialCouponCode, createCheckoutState);
+  const checkLocker = useLockerCheck(checkoutState, dispatchCheckout);
+  const submittingAfterLockerCheck = useRef(false);
   const { couponVisible, couponCode } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
@@ -283,7 +286,10 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     ...actions.createCartCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
     onError: (error) => {
-      if (error instanceof ApiError && error.appError.code === 'sold_out') for (const { offer } of offers) void offer.refetch();
+      if (!(error instanceof ApiError)) return;
+      if (error.appError.code === 'sold_out') for (const { offer } of offers) void offer.refetch();
+      const refusal = lockerRefusal(checkoutState.pickupPointCode, error.appError.details);
+      if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
     },
   });
   const couponValidation = useMutation({ ...actions.validateCartCouponForCheckout });
@@ -368,20 +374,30 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   };
   const formDisabled = checkoutSession.isPending;
 
+  const startCheckout = () => checkoutSession.mutate({
+    lines: cartLines,
+    attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
+    email,
+    language,
+    ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
+    ...consent,
+    ...invoice.billing,
+    ...shipping,
+    ...(appliedCoupon === undefined ? {} : { couponCode }),
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete' || !allReady || currency === null) return;
+    if (couponResolving || delivery.status === 'incomplete' || !allReady || currency === null || submittingAfterLockerCheck.current) return;
     if (!stripeConfigured && payableCents > 0) return;
-    checkoutSession.mutate({
-      lines: cartLines,
-      attribution: attributionFromSearchParams(new URLSearchParams(window.location.search)),
-      email,
-      language,
-      ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
-      ...consent,
-      ...invoice.billing,
-      ...shipping,
-      ...(appliedCoupon === undefined ? {} : { couponCode }),
+    if (lockerCheckDue(checkoutState) === null) {
+      startCheckout();
+      return;
+    }
+    submittingAfterLockerCheck.current = true;
+    void checkLocker().then((check) => {
+      submittingAfterLockerCheck.current = false;
+      if (check?.status !== 'rejected') startCheckout();
     });
   };
 
@@ -474,6 +490,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             rates={shippingRates}
             state={checkoutState}
             dispatch={dispatchCheckout}
+            checkLocker={checkLocker}
             currency={currency}
             language={language}
             geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({

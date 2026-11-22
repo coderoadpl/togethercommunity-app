@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PublicShippingRate } from '#core/domain/index.js';
 
-import { createCheckoutState, geowidgetAccess, parseGeowidgetPoint, pickedPickupPoint, reduceCheckoutState, selectDelivery } from './checkout-state.js';
+import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerCheckFrom, lockerRefusal, parseGeowidgetPoint, pickedPickupPoint, reduceCheckoutState, selectDelivery, typedLockerCheck } from './checkout-state.js';
 
 const rates: PublicShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker' },
@@ -18,6 +18,7 @@ describe('checkout state', () => {
       shippingRateId: null,
       pickupPointCode: '',
       pickupPoint: null,
+      lockerCheck: null,
     });
   });
 
@@ -98,5 +99,52 @@ describe('delivery selection', () => {
     expect(geowidgetAccess({ token: 'public-map-token', staffSession: false, testMode: true })).toEqual({ status: 'withheld_for_staff' });
     expect(geowidgetAccess({ token: null, staffSession: false, testMode: false })).toEqual({ status: 'unavailable' });
     expect(geowidgetAccess({ token: null, staffSession: true, testMode: true })).toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('typed locker code check', () => {
+  const typed = (code: string) => reduceCheckoutState(
+    reduceCheckoutState(createCheckoutState(''), { type: 'shippingRateSelected', rateId: 'locker' }),
+    { type: 'pickupPointCodeChanged', code },
+  );
+
+  it('asks for a check once per valid typed code and never for a malformed one or a map choice', () => {
+    expect(lockerCheckDue(typed('waw'))).toBeNull();
+    expect(lockerCheckDue(typed('waw01m'))).toBe('WAW01M');
+    const checking = reduceCheckoutState(typed('waw01m'), { type: 'lockerCheckChanged', check: { status: 'checking', code: 'WAW01M' } });
+    expect(lockerCheckDue(checking)).toBe('WAW01M');
+    const found = reduceCheckoutState(checking, { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', {
+      status: 'found', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1', usable: true, reason: null,
+    }) });
+    expect(lockerCheckDue(found)).toBeNull();
+    expect(typedLockerCheck(found)).toEqual({ status: 'found', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1' });
+    const mapped = reduceCheckoutState(typed(''), { type: 'pickupPointSelected', point: { code: 'KRA14A', name: null, address: null } });
+    expect(lockerCheckDue(mapped)).toBeNull();
+  });
+
+  it('blocks the delivery for a refused code and forgets the verdict when the code changes', () => {
+    const refused = reduceCheckoutState(typed('missing1'), { type: 'lockerCheckChanged', check: lockerCheckFrom('MISSING1', { status: 'not_found' }) });
+    expect(selectDelivery(refused, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'pickup_point_rejected' });
+    const edited = reduceCheckoutState(refused, { type: 'pickupPointCodeChanged', code: 'waw01m' });
+    expect(typedLockerCheck(edited)).toBeNull();
+    expect(selectDelivery(edited, { required: true, rates })).toMatchObject({ status: 'ready' });
+  });
+
+  it('lets the buyer pay when the carrier cannot be asked', () => {
+    const unavailable = reduceCheckoutState(typed('waw01m'), { type: 'lockerCheckChanged', check: lockerCheckFrom('WAW01M', null) });
+    expect(typedLockerCheck(unavailable)).toEqual({ status: 'unavailable', code: 'WAW01M' });
+    expect(selectDelivery(unavailable, { required: true, rates })).toMatchObject({ status: 'ready' });
+  });
+
+  it('ignores a verdict for a code the buyer has already replaced', () => {
+    const state = typed('waw01m');
+    expect(reduceCheckoutState(state, { type: 'lockerCheckChanged', check: { status: 'unavailable', code: 'KRA14A' } })).toBe(state);
+  });
+
+  it('turns an unusable point and a server refusal into a refusal reason', () => {
+    expect(lockerCheckFrom('CLOSED01', { status: 'found', code: 'CLOSED01', name: null, address: null, usable: false, reason: 'not_operating' }))
+      .toEqual({ status: 'rejected', code: 'CLOSED01', reason: 'not_operating', name: null, address: null });
+    expect(lockerRefusal(' sendonly1 ', { pickupPointReason: 'not_usable' })).toEqual({ status: 'rejected', code: 'SENDONLY1', reason: 'not_usable', name: null, address: null });
+    expect(lockerRefusal('WAW01M', { fieldErrors: {} })).toBeNull();
   });
 });

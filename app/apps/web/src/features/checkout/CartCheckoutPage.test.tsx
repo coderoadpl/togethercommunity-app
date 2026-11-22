@@ -781,5 +781,34 @@ describe('hosted cart checkout', () => {
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
     });
+
+    it('checks a typed locker code at the carrier and keeps the cart payment disabled for an unknown one', async () => {
+      const bodies: unknown[] = [];
+      const lookups: string[] = [];
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', ({ params }) => {
+        lookups.push(String(params.code));
+        return HttpResponse.json({ ok: true, data: params.code === 'WAW01M'
+          ? { status: 'found', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw', usable: true, reason: null }
+          : { status: 'not_found' } });
+      }));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      await userEvent.type(field, 'missing1');
+      await userEvent.tab();
+      await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found));
+      expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+      await userEvent.clear(field);
+      await userEvent.type(field, 'waw01m');
+      await userEvent.tab();
+      await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent('WAW01M · Next to the main entrance'));
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(lookups).toEqual(['MISSING1', 'WAW01M']);
+    });
   });
 });

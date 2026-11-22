@@ -420,7 +420,7 @@ export const en: Messages = {
     identifierContinue: 'Continue',
     identifierPending: 'Please wait…',
     signingInAs: ({ email }) => format('Signing in as {email}', { email }),
-    changeIdentifier: 'Use a different email',
+    changeIdentifierSuffix: 'email address',
     changeIdentifierShort: 'Change',
     methodTitle: 'How do you want to sign in?',
     methodLead: 'Choose the sign-in method that suits you.',

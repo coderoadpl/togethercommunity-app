@@ -652,7 +652,7 @@ describe('LoginPage', () => {
     expect(within(pill).getByText(email)).toHaveStyle({
       minWidth: '0', flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
     });
-    const change = within(pill).getByRole('button', { name: en.auth.changeIdentifier });
+    const change = within(pill).getByRole('button', { name: `${en.auth.changeIdentifierShort} ${en.auth.changeIdentifierSuffix}` });
     expect(change).toHaveStyle({ minHeight: '44px', minWidth: '44px', flexShrink: '0' });
     await userEvent.click(change);
     expect(await screen.findByTestId('login-email')).toHaveValue(email);
@@ -749,6 +749,20 @@ describe('LoginPage', () => {
       expect([id, style.outlineWidth, style.outlineStyle]).toEqual([id, '3px', 'solid']);
       expect([id, style.outlineColor]).not.toEqual([id, 'rgba(0, 0, 0, 0)']);
     }
+  });
+
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('names the change control starting with its visible word in $language', async ({ language, t }) => {
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'creator@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
+
+    const change = await screen.findByTestId('login-change-email');
+    expect(change).not.toHaveAttribute('aria-label');
+    expect(change).toHaveAccessibleName(`${t.auth.changeIdentifierShort} ${t.auth.changeIdentifierSuffix}`);
+    expect(change.firstChild?.textContent).toBe(t.auth.changeIdentifierShort);
   });
 
   it('returns to the identifier step with the address ready to edit', async () => {

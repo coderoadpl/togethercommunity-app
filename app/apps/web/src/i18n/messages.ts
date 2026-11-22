@@ -430,7 +430,7 @@ export interface Messages {
     identifierContinue: string;
     identifierPending: string;
     signingInAs: (params: { email: string }) => string;
-    changeIdentifier: string;
+    changeIdentifierSuffix: string;
     changeIdentifierShort: string;
     methodTitle: string;
     methodLead: string;

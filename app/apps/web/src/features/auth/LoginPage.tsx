@@ -443,7 +443,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       type="button"
       underline="always"
       data-testid="login-change-email"
-      aria-label={t.auth.changeIdentifier}
       onClick={editIdentifier}
       sx={{
         textUnderlineOffset: '0.15em',
@@ -454,7 +453,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         alignItems: 'center',
       }}
     >
-      {label}
+      {label}{' '}
+      <VisuallyHidden>{t.auth.changeIdentifierSuffix}</VisuallyHidden>
     </MuiLink>
   );
 

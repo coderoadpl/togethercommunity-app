@@ -427,7 +427,7 @@ export const pl: Messages = {
     identifierContinue: 'Kontynuuj',
     identifierPending: 'Chwila…',
     signingInAs: ({ email }) => format('Logujesz się jako {email}', { email }),
-    changeIdentifier: 'Użyj innego adresu e-mail',
+    changeIdentifierSuffix: 'adres e-mail',
     changeIdentifierShort: 'Zmień',
     methodTitle: 'Jak chcesz się zalogować?',
     methodLead: 'Wybierz sposób logowania, który Ci pasuje.',

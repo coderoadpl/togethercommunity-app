@@ -215,7 +215,7 @@ describe('MemberAccountPage', () => {
     expect(successToasts()).toHaveLength(0);
   });
 
-  it('keeps the verification and two-factor failure toasts from replaying on a tab switch', async () => {
+  it('keeps the verification toast from replaying and the two-factor failure inside its dialog', async () => {
     server.use(
       stubMe(false),
       stubSettings(null),
@@ -233,7 +233,8 @@ describe('MemberAccountPage', () => {
     await userEvent.click(screen.getByTestId('enable-2fa-open'));
     await userEvent.type(screen.getByTestId('enable-2fa-password'), 'wrong-password');
     await userEvent.click(screen.getByTestId('enable-2fa'));
-    expect(await findToast('error')).toBeInTheDocument();
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toBeVisible();
+    expect(errorToasts()).toHaveLength(0);
     await userEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }),
     );
@@ -594,6 +595,44 @@ describe('MemberAccountPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await userEvent.click(screen.getByTestId('account-name-open'));
     expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('reports a failed display-name save only inside the dialog', async () => {
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/profile', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'unexpected' } }, { status: 500 })),
+    );
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('account-name-open'));
+    const input = await screen.findByLabelText(en.account.displayNameLabel);
+    await userEvent.type(input, ' Lovelace');
+    await userEvent.click(screen.getByTestId('account-display-name-save'));
+
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toBeVisible();
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('reports a failed password change only inside the dialog', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ code: 'INVALID_PASSWORD', message: 'Invalid password' }, { status: 400 })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('change-password-open'));
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'wrong-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await within(screen.getByRole('dialog')).findByTestId('change-password-remote-error')).toBeVisible();
+    expect(errorToasts()).toHaveLength(0);
   });
 
   it('toggles the direct-message opt-out without dropping the display name', async () => {

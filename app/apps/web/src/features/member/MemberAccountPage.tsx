@@ -26,7 +26,7 @@ import { AccountCard as SectionCard } from './AccountCard.js';
 import { AccountHelp } from '../../components/ui/AccountHelp.js';
 import { ActiveSessions } from '../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
-import { ChangePasswordForm, localizeChangePasswordError } from '../../components/ui/ChangePasswordForm.js';
+import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { useToast } from '../../components/ui/Toast.js';
@@ -122,7 +122,6 @@ export const MemberAccountPage = () => {
       toast.success(t.account.displayNameSaved);
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
-    onError: reportFailure,
   });
   const uploadAvatar = useMutation({
     ...actions.uploadAvatar,
@@ -162,7 +161,6 @@ export const MemberAccountPage = () => {
       setSupportBody('');
       toast.success(t.support.sent);
     },
-    onError: reportFailure,
   });
   const accountSessions = useQuery({ ...actions.accountSessions, enabled: ownAccount });
   const revokeAccountSession = useMutation({
@@ -184,7 +182,6 @@ export const MemberAccountPage = () => {
       toast.success(t.security.passkeyAdded);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
-    onError: reportFailure,
   });
   const removePasskey = useMutation({
     ...actions.removePasskey,
@@ -192,32 +189,25 @@ export const MemberAccountPage = () => {
       toast.success(t.security.passkeyRemoved);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
-    onError: reportFailure,
   });
-  const enableTwoFactor = useMutation({
-    ...actions.enableTwoFactor,
-    onError: reportFailure,
-  });
+  const enableTwoFactor = useMutation(actions.enableTwoFactor);
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
     onSuccess: () => {
       toast.success(t.security.twoFactorOn);
     },
-    onError: reportFailure,
   });
   const disableTwoFactor = useMutation({
     ...actions.disableTwoFactor,
     onSuccess: () => {
       toast.success(t.security.twoFactorOff);
     },
-    onError: reportFailure,
   });
   const regenerateBackupCodes = useMutation({
     ...actions.regenerateBackupCodes,
     onSuccess: () => {
       toast.success(t.security.backupCodesRegenerated);
     },
-    onError: reportFailure,
   });
 
   const unauthorized = isUnauthorized(me.error);
@@ -244,9 +234,6 @@ export const MemberAccountPage = () => {
     ...actions.changePassword,
     onSuccess: () => {
       toast.success(t.changePassword.success);
-    },
-    onError: (error) => {
-      toast.error(localizeChangePasswordError(error, t));
     },
   });
   const resendVerification = useMutation({

@@ -100,6 +100,7 @@ export const PostComposer = ({
   surface = false,
   busy,
   disabled = false,
+  error = null,
   onSubmit,
   onCancel,
   testId,
@@ -115,6 +116,7 @@ export const PostComposer = ({
   surface?: boolean;
   busy: boolean;
   disabled?: boolean;
+  error?: string | null;
   onSubmit: (body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
@@ -180,6 +182,7 @@ export const PostComposer = ({
           {t.markdownEditor.overLimit}
         </Typography>
       ) : null}
+      {error === null ? null : <Alert severity="error" data-testid={`${testId}-error`}>{error}</Alert>}
       <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', alignItems: 'center' }}>
         <Button
           type="submit"
@@ -218,6 +221,10 @@ interface ThreadActions {
   setReplyingTo: (id: string | null) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
+  replyError: (parentId: string) => string | null;
+  editError: (postId: string) => string | null;
+  cancelReply: () => void;
+  cancelEdit: () => void;
   submitReply: (parent: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   submitEdit: (post: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   requestDelete: (post: DiscussionPost) => void;
@@ -274,8 +281,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.editBusy}
             disabled={a.writeDisabled}
+            error={a.editError(post.id)}
             onSubmit={(body, bodyFormat, reset) => a.submitEdit(post, body, bodyFormat, reset)}
-            onCancel={() => a.setEditingId(null)}
+            onCancel={a.cancelEdit}
             testId={`edit-composer-${post.id}`}
           />
         </Box>
@@ -345,8 +353,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.replyBusy}
             disabled={a.writeDisabled}
+            error={a.replyError(post.id)}
             onSubmit={(body, bodyFormat, reset) => a.submitReply(post, body, bodyFormat, reset)}
-            onCancel={() => a.setReplyingTo(null)}
+            onCancel={a.cancelReply}
             testId={`reply-composer-${post.id}`}
           />
         </Box>
@@ -529,6 +538,15 @@ export const ThreadDiscussion = ({
     }
   };
 
+  const errorMessage = (error: Error | null): string | null =>
+    error === null
+      ? null
+      : error instanceof ApiError && error.appError.code === 'rate_limited'
+        ? t.community.postTooFast
+        : localizeError(error, t);
+  const createErrorFor = (parentId: string | undefined) =>
+    create.isError && create.variables.parentPostId === parentId ? errorMessage(create.error) : null;
+
   const threadActions: ThreadActions = {
     viewer,
     language,
@@ -536,6 +554,16 @@ export const ThreadDiscussion = ({
     setReplyingTo,
     editingId,
     setEditingId,
+    replyError: createErrorFor,
+    editError: (postId) => update.isError && update.variables.id === postId ? errorMessage(update.error) : null,
+    cancelReply: () => {
+      create.reset();
+      setReplyingTo(null);
+    },
+    cancelEdit: () => {
+      update.reset();
+      setEditingId(null);
+    },
     submitReply: (parent, body, bodyFormat, reset) => {
       create.mutate(
         { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat },
@@ -567,12 +595,7 @@ export const ThreadDiscussion = ({
   };
 
   const forbidden = isForbidden(discussion.error);
-  const mutationError = [create, update, remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null;
-  const mutationErrorMessage = mutationError instanceof ApiError && mutationError.appError.code === 'rate_limited'
-    ? t.community.postTooFast
-    : mutationError === null
-      ? null
-      : localizeError(mutationError, t);
+  const mutationErrorMessage = errorMessage([remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null);
 
   const goBack = () => {
     if (focus === undefined) {
@@ -670,6 +693,7 @@ export const ThreadDiscussion = ({
               pendingLabel={t.discussion.posting}
               busy={create.isPending}
               disabled={banned}
+              error={createErrorFor(undefined)}
               surface
               onSubmit={(body, bodyFormat, reset) => {
                 create.mutate(

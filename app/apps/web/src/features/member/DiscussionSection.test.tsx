@@ -544,6 +544,70 @@ describe('DiscussionSection', () => {
     );
   });
 
+  it('shows a failed reply inside the reply composer and clears it on cancel', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', body: 'Question' })), asThread(post({ id: 'r2', body: 'Other question' }))]),
+      http.post('/api/posts', () =>
+        HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-r1'));
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-r1-submit'));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(screen.getByTestId('reply-composer-r1')).toContainElement(error);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+
+    await user.click(within(screen.getByTestId('reply-composer-r1')).getByRole('button', { name: en.common.cancel }));
+    await user.click(screen.getByTestId('reply-button-r1'));
+    expect(screen.queryByTestId('reply-composer-r1-error')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed edit inside the edit composer of that post', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'Original', bodyFormat: 'plain' }))]),
+      http.post('/api/posts/update', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('edit-button-r1'));
+    await user.type(screen.getByTestId('edit-composer-r1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-r1-submit'));
+
+    const error = await screen.findByTestId('edit-composer-r1-error');
+    expect(error).toHaveAttribute('role', 'alert');
+    expect(screen.getByTestId('edit-composer-r1')).toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('shows a failed new thread inside the main composer', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', body: 'Question' }))]),
+      http.post('/api/posts', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.type(await screen.findByTestId('discussion-composer-input'), 'New thread');
+    await user.click(screen.getByTestId('discussion-composer-submit'));
+
+    const error = await screen.findByTestId('discussion-composer-error');
+    expect(screen.getByTestId('discussion-composer')).toContainElement(error);
+    expect(screen.queryByTestId('reply-composer-r1-error')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('searches within this lesson, highlights matches and links each hit to its thread', async () => {
     const requestedUrls: string[] = [];
     const root = asThread(post({ id: 'r1', body: 'Base thread' }));

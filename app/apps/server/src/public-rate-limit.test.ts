@@ -20,6 +20,7 @@ describe('selectPublicRateLimitPolicies', () => {
       parcelLockerLookupsPerIp: { limit: 30, windowMs: 60_000 },
       parcelLockerLookupsPerTenant: { limit: 600, windowMs: 60_000 },
       parcelLockerLookupsGlobal: { limit: 1_200, windowMs: 60_000 },
+      parcelLockerLookupsPublic: { limit: 600, windowMs: 60_000 },
     });
   });
 
@@ -35,6 +36,7 @@ describe('selectPublicRateLimitPolicies', () => {
       parcelLockerLookupsPerIp: { limit: 3_000 },
       parcelLockerLookupsPerTenant: { limit: 60_000 },
       parcelLockerLookupsGlobal: { limit: 120_000 },
+      parcelLockerLookupsPublic: { limit: 60_000 },
     });
     expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production', APP_ENV: 'staging' }))
       .toMatchObject({ writesPerIp: { limit: 3_000 } });
@@ -71,6 +73,7 @@ describe('selectPublicRateLimitPolicies', () => {
       parcelLockerLookupsPerIp: { limit: 30, windowMs: 60_000 },
       parcelLockerLookupsPerTenant: { limit: 600, windowMs: 60_000 },
       parcelLockerLookupsGlobal: { limit: 1_200, windowMs: 60_000 },
+      parcelLockerLookupsPublic: { limit: 600, windowMs: 60_000 },
     });
   });
 

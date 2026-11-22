@@ -43,9 +43,9 @@ const harness = (rates: ShippingRate[] = [lockerRate], policies: Partial<PublicR
   const publicRateLimitPolicies = { ...selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), ...policies };
   const pickupPoints = withPickupPointLookupBudget({ lookup }, { buckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal });
   const deps = { tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,
-    singleTenantMode: true, authTrustedProxyHeader, pickupPoints };
+    singleTenantMode: true, authTrustedProxyHeader, pickupPoints, clock, publicRateLimitPolicies, rateLimitBuckets: buckets };
   const app = new Hono<AppVars>();
-  app.use('*', publicRateLimitMiddleware({ ...deps, clock, publicRateLimitPolicies, rateLimitBuckets: buckets }));
+  app.use('*', publicRateLimitMiddleware(deps));
   registerPublicParcelLockerRoutes(app, deps);
   const get = (code: string, clientIp?: string) => app.request(`https://workspace.example.org/api/public/parcel-lockers/${code}`,
     clientIp === undefined ? {} : { headers: { 'x-client-ip': clientIp } });
@@ -82,7 +82,7 @@ describe('public parcel locker lookup route', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.lookup).not.toHaveBeenCalled();
-    expect(h.buckets.claims).not.toContain('parcel-locker:global');
+    expect(h.buckets.claims.filter((scope) => scope === 'parcel-locker:public' || scope === 'parcel-locker:global')).toEqual([]);
   });
 
   it('never forwards extra path segments or a query string', async () => {
@@ -99,7 +99,7 @@ describe('public parcel locker lookup route', () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.lookup).not.toHaveBeenCalled();
-    expect(h.buckets.claims).not.toContain('parcel-locker:global');
+    expect(h.buckets.claims.filter((scope) => scope === 'parcel-locker:public' || scope === 'parcel-locker:global')).toEqual([]);
   });
 
   it('limits lookups per client address before the carrier is asked', async () => {
@@ -121,6 +121,17 @@ describe('public parcel locker lookup route', () => {
     expect(await spent.json()).toEqual({ ok: true, data: { status: 'unavailable' } });
     expect(h.lookup).toHaveBeenCalledTimes(3);
     expect(h.buckets.claims.at(-1)).toBe('parcel-locker:global');
+  });
+
+  it('answers unavailable without asking the carrier once the public share of the budget is spent', async () => {
+    const h = harness([lockerRate], { parcelLockerLookupsPublic: { limit: 2, windowMs: 60_000 } }, 'x-client-ip');
+    for (const clientIp of ['192.0.2.1', '192.0.2.2']) expect((await h.get('WAW01M', clientIp)).status).toBe(200);
+    const spent = await h.get('WAW01M', '192.0.2.3');
+    expect(spent.status).toBe(200);
+    expect(await spent.json()).toEqual({ ok: true, data: { status: 'unavailable' } });
+    expect(h.lookup).toHaveBeenCalledTimes(2);
+    expect(h.buckets.claims.filter((scope) => scope === 'parcel-locker:global')).toHaveLength(2);
+    expect(h.buckets.claims.at(-1)).toBe('parcel-locker:public');
   });
 
   it('is listed as a read-only, same-origin GET in the public route manifest and needs no origin policy', () => {

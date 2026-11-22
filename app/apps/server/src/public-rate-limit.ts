@@ -41,6 +41,7 @@ export interface PublicRateLimitPolicies {
   parcelLockerLookupsPerIp: RateLimitWindow;
   parcelLockerLookupsPerTenant: RateLimitWindow;
   parcelLockerLookupsGlobal: RateLimitWindow;
+  parcelLockerLookupsPublic: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -69,6 +70,7 @@ const PRODUCTION_LIMITS = {
   parcelLockerLookupsPerIp: 30,
   parcelLockerLookupsPerTenant: 600,
   parcelLockerLookupsGlobal: 1_200,
+  parcelLockerLookupsPublic: 600,
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
@@ -86,6 +88,7 @@ const DEVELOPMENT_LIMITS = {
   parcelLockerLookupsPerIp: 3_000,
   parcelLockerLookupsPerTenant: 60_000,
   parcelLockerLookupsGlobal: 120_000,
+  parcelLockerLookupsPublic: 60_000,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -156,6 +159,7 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
     parcelLockerLookupsPerIp: { limit: fallback.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
     parcelLockerLookupsPerTenant: { limit: fallback.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
     parcelLockerLookupsGlobal: { limit: fallback.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
+    parcelLockerLookupsPublic: { limit: fallback.parcelLockerLookupsPublic, windowMs: MINUTE_MS },
   };
 };
 

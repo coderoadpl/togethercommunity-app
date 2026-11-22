@@ -337,7 +337,8 @@ otherwise returns `{ status: 'found', code, name, address, usable, reason }`,
 `Cache-Control: no-store`. It never forwards a query string or another path. It
 is same-origin only (no open CORS) and limited per client address (30 per
 minute in production), per workspace (600 per minute) and across the platform
-(1,200 per minute), see
+(1,200 per minute for every carrier call, of which the page's lookups may use
+600), see
 [Security](security.md#parcel-locker-lookup).
 
 In development, end-to-end runs and the smoke gate (`PAYMENT_PROVIDER=fake`)

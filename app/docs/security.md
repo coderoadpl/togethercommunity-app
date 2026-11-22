@@ -149,7 +149,8 @@ without consuming checkout-start or coupon-validation capacity. The public
 parcel locker lookup has its own `parcel-locker:ip` (30 per minute in
 production) and `parcel-locker:tenant` (600 per minute) buckets, and every
 call to the carrier, from that route or from checkout, draws on the
-platform-wide `parcel-locker:global` budget (1,200 per minute), see
+platform-wide `parcel-locker:global` budget (1,200 per minute), of which the
+route may use at most its `parcel-locker:public` share (600 per minute), see
 [Parcel locker lookup](#parcel-locker-lookup). Expired windows
 are deleted by the hourly KSeF dispatch run.
 
@@ -864,7 +865,9 @@ server call a third party on an anonymous request. Its limits:
   address (`parcel-locker:ip`, 30 per minute in production, 3,000 in
   development and staging) and per workspace (`parcel-locker:tenant`, 600 per
   minute, 60,000 in development and staging). The per-address bucket keys a
-  single address, also for IPv6.
+  single address, also for IPv6. Known limit: a client holding an IPv6 /64 can
+  rotate addresses and get a fresh per-address bucket each time; the
+  per-workspace bucket and the public share below still cap it.
 - Every call to the carrier, from the public route and from checkout session
   creation alike, first claims the platform-wide `parcel-locker:global` budget
   (1,200 per minute, 120,000 in development and staging) in a wrapper around
@@ -874,6 +877,12 @@ server call a third party on an anonymous request. Its limits:
   option, a per-address or per-workspace limit) does not use the budget. When
   the budget is spent the lookup answers `unavailable` without asking the
   carrier, so checkout stores the code as unverified.
+- The public route also claims a platform-wide `parcel-locker:public` share
+  (600 per minute, 60,000 in development and staging) right before the carrier
+  call, after every local refusal, so anonymous lookups can use at most half of
+  the global budget and checkout session creation always keeps the other half.
+  When the share is spent the route answers `unavailable` without asking the
+  carrier. Checkout never claims this share.
 
 Checkout session creation asks the carrier through the same adapter, also
 within the existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).

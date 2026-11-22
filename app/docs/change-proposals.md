@@ -1099,8 +1099,8 @@ proposal `pending`. An address with no row that a live field already shows is
 public already and needs nothing. Every storage request of an approval, of a
 publication withdrawal and of the owner's image preview (the read of the
 quarantined copy, the check and the write of the public copy, a delete) gives up
-after 5 seconds without an answer, the bound a statement of an approval has, and
-counts as a failed storage request: the approval answers
+after 5 seconds without an answer, the lookup of the storage endpoint included,
+the bound a statement of an approval has, and counts as a failed storage request: the approval answers
 `503 integration_unavailable` and the proposal stays `pending`, so no storage
 request holds the workspace's approval lock longer.
 
@@ -1131,9 +1131,17 @@ record is removed in a short transaction of its own under the workspace's
 approval lock, so no concurrent approval can publish the same address in
 between. An object the attempt tried to write is deleted first, except when a
 live field shows the address or an applied proposal carries it in its input; a
-record whose object the attempt never tried to write is only dropped. Once the
-withdrawal succeeds, the attempt has left neither a record nor a public copy
-behind. A record it cannot remove (the lock wait runs out, the storage
+record whose object the attempt never tried to write is only dropped. When the
+write of an image ended without a definite answer (no answer within its 5
+seconds, a connection error, a server error), the storage may still store it
+after this delete, so the withdrawal deletes the object but keeps its record,
+and the minute sweep deletes the object once more after the record's 10 minutes
+and only then removes the record; a write the storage refused (a `4xx` answer)
+is withdrawn like any other. This rests on the storage finishing or abandoning
+a write it accepted within those 10 minutes; the signed write itself expires 60
+seconds after it was signed. Once the withdrawal of an attempt without such a
+write succeeds, the attempt has left neither a record nor a public copy behind.
+A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
 stays, and the minute sweep retries it: it removes every record older than 10
 minutes under the same lock, always deleting its object with the same
@@ -1174,9 +1182,16 @@ and across workspaces. It runs on the existing minute tick
 dispatch, and the Node ticker, beside them), at most once every 50 seconds per
 server process, independently of the [download file
 sweep](storage.md#download-file-prefixes): each has its own failure and its own
-budget of 10 seconds, every storage delete gets at most what is left of it, and
-on the cron route both stop at the latest 55 seconds after the tick started. A
-failing sweep is logged and never stops the tick or the other sweep. The
+budget of 10 seconds, and on the cron route both end at the latest 50 seconds
+after the tick started, 10 seconds before the 60-second function limit. A step
+(a release, an image's removal, a publication record's withdrawal) starts only
+when what is left covers a lock wait of at least 250 milliseconds and 1 second
+for its storage delete; its lock waits get what is left minus that second, and
+its delete, the lookup of the storage endpoint included, gets at most 5 seconds
+and what is left, so the sweep's lock waits and storage requests end by its
+end, and the 10 seconds before the function limit are for its database
+statements and the answer. A failing sweep is logged and never stops the tick
+or the other sweep. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.

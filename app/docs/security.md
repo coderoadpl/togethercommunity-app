@@ -535,11 +535,23 @@ scopes on every shop key.
   `key-uploads/`, signed for the declared size, and a key duplicates a file only through
   `POST /api/m2m/shop/downloads/copy`, a copy the storage makes, which the key
   never downloads. A staged copy shows the key only its name, type, size and
-  source (product, file and version), never a fingerprint, and once the source
-  row was found every failure of the copy answers one refusal without details
-  (a missing, larger, smaller or mistyped stored object, or an unanswered
-  storage request alike), so the key learns from the bytes only whether the
-  copy was staged. Completion copies an upload on the server to a
+  source (product, file and version), never a fingerprint. The answers of a
+  copy depend on the file row and the key's usage until the copy is reserved:
+  an unknown or not ready file answers `404`, a source above 256 MiB its own
+  `400`, a source whose type or name a key could not upload the copy refusal,
+  storage that is not configured its own error, a limit `409 conflict` with its
+  cap, and a busy workspace `503 unavailable`. From the reservation on, every
+  failure of the copy answers one refusal without details (a missing, larger,
+  smaller or mistyped stored object, or an unanswered storage request alike),
+  so the answer tells the key from the bytes only whether the copy was staged.
+  The response time is not uniform: a missing stored object, or one larger than
+  its file row, is refused after the first storage answer, while a smaller or
+  mistyped one is refused only after the server read all of it, which takes
+  longer the more bytes it holds. A key that times its copies can therefore
+  tell a missing or larger stored object from a smaller one or one of the full
+  size that failed the type check, and estimate how many bytes a smaller one
+  holds; it never receives a byte, a fingerprint, a size or a type of the
+  stored object. Completion copies an upload on the server to a
   staged object only the server writes, with its metadata replaced
   (`application/octet-stream`, `attachment`, `no-store`), hashes that copy
   while streaming it and checks its size and its first bytes against the

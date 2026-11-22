@@ -74,6 +74,12 @@ Who deletes them:
   the storage still runs may land after any earlier delete. Until then the
   record keeps the upload object and the destination, and both count against
   the key's limits;
+- the destination of a completion attempt that a later completion took over:
+  the takeover writes a destination of its own under a fresh file id and, in
+  the same transaction, records the earlier destination as an owed deletion
+  that is due 30 minutes after the earlier attempt started. The minute sweep
+  deletes it then, whether or not an object is there, and it counts against the
+  key's limits until the storage confirms the delete;
 - a `key-files/` object that is attached: removing that file version (by a key
   or in the product editor) or deleting the draft product.
 
@@ -92,18 +98,33 @@ workspace's staging limits until the storage confirms the delete
 removal or discard the deletion that follows holds and removes that row; after
 a removal in the product editor or a draft deletion the object is deleted once
 after its row as before, without the owed row, and the minute sweep deletes it
-once more and removes the row. That delete cannot remove a newer file, because
-no path writes to a `key-files/` address again once its file was attached.
+once more and removes the row. That delete cannot remove a newer file: every
+completion attempt and every copy writes a destination of its own under a fresh
+file id, and no path writes to a `key-files/` address that a staged file or a
+product file names. A late copy of a superseded completion attempt lands only on
+that attempt's own destination, which no staged file names and the sweep
+deletes. This rests on one assumption: an S3-compatible provider finishes or
+abandons a CopyObject it accepted within 30 minutes; the signed copy request
+itself expires 60 seconds after it was signed.
 
 The minute sweep never holds back e-mail and refund dispatch: the cron route
-runs it after them and stops it at the latest 55 seconds after the tick
-started, and the Node ticker runs it beside them. It has a budget of 10 seconds
-of its own, and every storage delete gets at most what is left of it. It
-serves workspaces, and inside a workspace one queue of upload and copy
-records, staged files and owed deletions, longest waiting first, by the time of
-a row's last failed delete or else its creation; a failed delete records its
-attempt, so rows whose deletion keeps failing move behind the others. A row
-another request holds is tried again on the next run. Each state change of an
+runs it after them with an end 50 seconds after the tick started, 10 seconds
+before the 60-second function limit, and the Node ticker runs it beside them.
+It has a budget of 10 seconds of its own and stops at the earlier of the two
+ends. It starts a row only when what is left covers a lock wait of at least 250
+milliseconds and 1 second for each of the row's storage deletes (two for an
+upload record that still owns its upload object and its destination). The row's
+lock wait gets what is left minus those seconds, and each delete, the lookup of
+the storage endpoint included, gets at most 10 seconds and what is left minus 1
+second for each delete still to come in that row, so the sweep's lock waits and
+storage requests end by its end; the 10 seconds before the function limit are
+for its database statements and the answer. It serves workspaces, and inside a
+workspace one queue of upload and copy records, staged files and owed deletions
+(an owed deletion with a not-before time only once that time passed), longest
+waiting first, by the time of a row's last failed delete or else its creation;
+a failed delete records its attempt, so rows whose deletion keeps failing move
+behind the others. A row another request holds past the lock wait, and a row
+the budget could not cover, are tried again on the next run. Each state change of an
 upload or copy record is appended, in the same transaction, to
 `change_proposal_download_upload_events` (the record, the key, the attempt, the
 kind of change and a short machine reason), which the sweep deletes 30 days
@@ -118,10 +139,15 @@ A file a key staged is stored as `application/octet-stream` with a bare
 file's type and name instead (`response-content-type`,
 `response-content-disposition`). The storage probe that runs when storage is
 configured or tested signs such a read of its scratch object and reports
-`signedResponseOverrides: "honoured"` or `"ignored"` in its diagnostic; an
-ignoring provider does not fail the configuration. With a provider that ignores the overrides, a buyer receives
-such a file as an `application/octet-stream` download named after the last
-segment of its stored object, the file's sanitised name.
+`signedResponseOverrides` in its diagnostic: `"honoured"` when the answer
+carries the requested type and name, `"ignored"` when the provider answers the
+read without them, and `"refused"` when the read with the overrides fails. None
+of them fails the configuration. With a provider that ignores the overrides, a
+buyer receives such a file as an `application/octet-stream` download named
+after the last segment of its stored object, the file's sanitised name. For a
+provider that refuses them the diagnostic message is a warning that buyer
+download links carry these overrides, so buyers may not be able to download
+files from it.
 
 ## File versions
 

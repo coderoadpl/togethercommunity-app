@@ -615,7 +615,10 @@ earliest a day after it started. Completion also answers:
   or gave no definite answer: nothing was staged, the upload keeps its upload
   object, and a completion sent after the time in the message, when the failed
   attempt's 10-minute lease has ended, completes it, while the upload's 15
-  minutes have not passed;
+  minutes have not passed. That completion copies to a destination of its own
+  under a fresh file id, so whatever the failed attempt's copy still writes
+  lands only on that attempt's destination; of two such completions at once,
+  one completes and the other answers `409 conflict`;
 - `503 integration_unavailable` when that lease ends after the 15 minutes, and
   when the storage refused to copy the upload (start a new upload);
 - `503 unavailable` with `Retry-After: 1` when the upload is held by another
@@ -631,6 +634,10 @@ owned by the upload, counts against the limits, and is deleted by the minute
 sweep. A completion whose storage outcome is unknown deletes nothing, because a
 copy the storage still runs may land later: the minute sweep deletes both
 objects once the upload is 20 minutes old and the attempt's lease has ended.
+When a later completion takes the upload over, the failed attempt's destination
+becomes an owed deletion due 30 minutes after that attempt started; it counts
+against the limits until the minute sweep's delete is confirmed, and the sweep
+deletes it whether or not a late copy landed there.
 
 **Types, names and size.** The type is one of `application/pdf` (`%PDF-`
 within the first 1024 bytes), `application/epub+zip` (a ZIP whose first entry
@@ -657,14 +664,17 @@ SHA-256 to check its size and first bytes, and the bytes never pass through
 the key. A file of another product or workspace, or one that is not ready,
 answers `404`; a source above 256 MiB, or with a type or name a key could not
 upload, answers `400`; nothing is staged then. The copy counts against the
-same limits as an upload. Once the source was found and the copy reserved,
-every failure answers the same `400 validation` `This file cannot be copied by
-a key; nothing was staged`, without details, whether the stored object is
-missing, larger or smaller than its file row says, of another type, or the
-storage did not answer: the cause is logged for the operator. Its staged file
-shows the key the name, type, size and `copiedFrom` (`productId`, `assetId`,
-`versionNumber`), and `sha256` is `null`: a key never receives a fingerprint of
-an existing file. What a key learns is whether the copy was staged.
+same limits as an upload. Before the copy is reserved, a limit answers `409
+conflict` with its cap and a busy workspace `503 unavailable`. Once the copy was
+reserved, every failure answers the same `400 validation` `This file cannot be
+copied by a key; nothing was staged`, without details, whether the stored
+object is missing, larger or smaller than its file row says, of another type,
+or the storage did not answer, and one line naming the cause is logged for the
+operator. Its staged file shows the key the name, type, size and `copiedFrom`
+(`productId`, `assetId`, `versionNumber`), and `sha256` is `null`: a key never
+receives a fingerprint of an existing file. The answer tells a key whether the
+copy was staged; how long a refusal takes can tell it more
+([Security](security.md#shop-management-keys)).
 
 **Attach.** The new product file's id is the staged file's id and its object
 is the staged object; nothing is copied again. The product must be a digital
@@ -675,9 +685,13 @@ must be a ready file of the product, the file joins that file's lineage as its
 next version and supersedes the previous latest version. An attached file is no
 longer listed as staged. The answer is `{ "asset": … }`, the same file
 metadata as the product file list. Attaching again a staged file this key
-already attached to the same product answers that file the same way, so a
-retry after a lost answer adds nothing; any other staged file that is gone
-answers `404`.
+already attached to the same product answers that file the same way when the
+retry asks for what was applied: no `replacesAssetId` for a file added as a new
+file, or a `replacesAssetId` of an older version in the same lineage for a file
+that replaced one, and the same `versionNote`. A retry after a lost answer
+therefore adds nothing; a retry that asks for anything else answers `409
+conflict` and changes nothing, and any other staged file that is gone answers
+`404`.
 
 **Remove.** Removing deletes one version of any file of the product, a file the
 owner uploaded included, and promotes the newest remaining ready version of its
@@ -696,7 +710,9 @@ object, or, when that delete fails, owes the deletion, which the sweep
 retries; the discard answers success either way. An upload that is never
 completed becomes due for the same sweep 20 minutes after it started, and one
 whose last completion attempt is still inside its 10-minute lease once that
-lease has ended. The sweep serves the longest-waiting rows first within its own
+lease has ended. The destination of a completion attempt that a later
+completion took over becomes due 30 minutes after that attempt started. The
+sweep serves the longest-waiting rows first within its own
 time budget, so a due row may wait for a later run
 ([Download file prefixes](storage.md#download-file-prefixes)).
 
@@ -723,8 +739,10 @@ it, at the earliest 20 minutes after it started (a still valid upload URL can
 write it again until then), and the staged copy of an upload or a copy until a
 completion hands it to a staged file or a delete of it is confirmed (by the
 failed attempt, or by the minute sweep when the attempt's outcome was
-unknown). A completed upload's file counts once, as its staged file, its
-owed deletion or the product file it became. The file count adds owed
+unknown); the destination of an attempt that a later completion took over
+counts as an owed deletion. A completed upload's file counts once, as its
+staged file or its owed deletion; a file attached to a product has left the
+staging budget and counts again only if its removal owes a delete. The file count adds owed
 deletions and the uploads and copies, failed ones included, that still own an
 object, without counting a completed upload again. Removing an attached file
 is never refused: when its delete fails, what it owes counts against the key

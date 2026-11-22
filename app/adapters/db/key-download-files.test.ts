@@ -1100,7 +1100,7 @@ describe('a completion that takes over an interrupted upload', () => {
     expect(h.objects.calls.filter((call) => call.method === 'delete' && call.key === superseded)).toHaveLength(1);
   });
 
-  it('lets exactly one of two takeovers that wait for the record at once claim it', async () => {
+  it('lets exactly one of two takeovers that wait for the record at once claim it; the other answers the conflict or, once that one finished, its file', async () => {
     const h = harness();
     const { id } = await h.begin(PDF);
     const copy = late(h);
@@ -1123,10 +1123,12 @@ describe('a completion that takes over an interrupted upload', () => {
       await holder.end();
       await observer.end();
     }
-    expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
-    expect(outcomes.filter((outcome) => !outcome.ok)).toEqual([
-      { ok: false, error: expect.objectContaining({ code: 'conflict', message: expect.stringContaining('another request') }) },
-    ]);
+    const files = outcomes.flatMap((outcome) => outcome.ok ? [outcome.value.file] : []);
+    expect(files.length).toBeGreaterThanOrEqual(1);
+    for (const file of files) expect(file).toEqual(files[0]);
+    for (const outcome of outcomes) {
+      if (!outcome.ok) expect(outcome.error).toMatchObject({ code: 'conflict', message: expect.stringContaining('another request') });
+    }
     expect(await owedRows()).toHaveLength(1);
     expect(await stagedRows()).toHaveLength(1);
     expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toHaveLength(1);
@@ -1225,8 +1227,8 @@ describe('the lock waits of the staged file sweep', () => {
     expect(Date.parse(h.clock.now) - restarted).toBeLessThanOrEqual(KEY_DOWNLOAD_FILE_LIMITS.sweepBudgetMs);
   });
 
-  it('gives up a row whose lock another transaction holds once the shortened lock wait passed', async () => {
-    const files = createKeyDownloadFileRepository(database.db);
+  it('gives up a row whose lock another transaction holds once the lock wait the sweep passes ran out, below a long own bound', async () => {
+    const files = createKeyDownloadFileRepository(database.db, { lockWaitMs: 60_000 });
     const objectKey = `${TENANT}/product-downloads/key-files/${KEY_ID}/held/f.pdf`;
     await database.db.insert(changeProposalDownloadDeletions).values({ tenantId: TENANT, objectKey, apiKeyId: KEY_ID, sizeBytes: 10, createdAt: NOW });
     const holder = await connected();
@@ -1241,5 +1243,5 @@ describe('the lock waits of the staged file sweep', () => {
       await holder.end();
     }
     expect(await owedRows()).toEqual([objectKey]);
-  });
+  }, 15_000);
 });

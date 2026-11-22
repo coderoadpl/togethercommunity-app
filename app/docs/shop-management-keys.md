@@ -618,7 +618,8 @@ earliest a day after it started. Completion also answers:
   minutes have not passed. That completion copies to a destination of its own
   under a fresh file id, so whatever the failed attempt's copy still writes
   lands only on that attempt's destination; of two such completions at once,
-  one completes and the other answers `409 conflict`;
+  one copies and the other answers `409 conflict`, or that staged file once the
+  first finished;
 - `503 integration_unavailable` when that lease ends after the 15 minutes, and
   when the storage refused to copy the upload (start a new upload);
 - `503 unavailable` with `Retry-After: 1` when the upload is held by another

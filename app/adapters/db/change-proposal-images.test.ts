@@ -586,6 +586,32 @@ describe('quarantined rows and objects of one key', () => {
     }
   });
 
+  it('gives up a release, a release finish and a withdrawal transaction once the lock wait a sweep passes ran out, below a long own bound', async () => {
+    const repository = createQuarantinedImageRepository(database.db, { lockWaitMs: 60_000 });
+    const harness = endToEnd({ lockWaitMs: 60_000 });
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      for (const name of [`change-proposal-images:${TENANT}:${KEY_ID}`, `change-proposals:${TENANT}`, `change-proposal-transaction:${TENANT}`]) {
+        await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [name]);
+      }
+      const removeObject = vi.fn(async () => true);
+      expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW, 50)).toBe('busy');
+      expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: NOW, limit: 10 }, NOW, 50)).toEqual({ kind: 'busy' });
+      const operation = vi.fn(async () => ok(true));
+      expect(await harness.deps.changeProposalTransaction.run(TENANT, operation, { lockWaitMs: 50 })).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+      expect(removeObject).not.toHaveBeenCalled();
+      expect(operation).not.toHaveBeenCalled();
+      await holder.query('rollback');
+    } finally {
+      await holder.end();
+    }
+    expect(await releasedRows()).toEqual(['1']);
+  }, 15_000);
+
   it('rolls back the row when its object cannot be written, and keeps a released row released', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     const refused = async () => err(integrationUnavailable('Storage refused the write'));

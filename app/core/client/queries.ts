@@ -118,6 +118,7 @@ import type {
   ProductStockThresholdInput,
   OrdersListQueryInput,
   OrdersReconciliationQueryInput,
+  PaymentEventRejectionsQueryInput,
   OrdersExportQueryInput,
   SimulatePurchaseInput,
   TenantCreateInput,
@@ -301,6 +302,8 @@ const salesScopes = {
   summary: () => ['sales', 'summary'] as const,
   reconciliation: (input: OrdersReconciliationQueryInput) =>
     ['sales', 'reconciliation', input] as const,
+  rejectedPayments: (input: PaymentEventRejectionsQueryInput) =>
+    ['sales', 'rejected-payments', input] as const,
 };
 
 const couponScopes = {
@@ -901,6 +904,15 @@ export const orderReconciliationQuery = (
   defineQuery({
     queryKey: salesScopes.reconciliation(input),
     call: ({ signal }) => api.listOrderReconciliation(input, signal),
+  });
+
+export const paymentEventRejectionsQuery = (
+  api: ApiClient,
+  input: PaymentEventRejectionsQueryInput = {},
+) =>
+  defineQuery({
+    queryKey: salesScopes.rejectedPayments(input),
+    call: ({ signal }) => api.listPaymentEventRejections(input, signal),
   });
 
 export const memberBillingOrdersQuery = (api: ApiClient) =>

@@ -1,11 +1,11 @@
-import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
+import { Button, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { PostBody } from '../../theme.js';
+import { PostBody, QuietNotice } from '../../theme.js';
 import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicSpaceEventsSection } from './events/PublicSpaceEventsSection.js';
@@ -76,27 +76,19 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
     );
   }
 
-  const rail = (
-    <>
-      <SectionCard title={t.anon.guestHeading} data-testid="anon-guest-notice">
-        <PostBody variant="body2" component="p" color="text.secondary" data-testid="anon-read-only">
-          {t.anon.readOnlyBanner}
-        </PostBody>
-        <Box>
-          <Button
-            component={Link}
-            {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
-            variant="contained"
-            fullWidth
-            data-testid="anon-join-cta"
-            sx={{ minHeight: '44px' }}
-          >
-            {t.anon.joinOfferCta}
-          </Button>
-        </Box>
-      </SectionCard>
-      <PublicSpaceEventsSection spaceId={spaceId} />
-    </>
+  const notice = (
+    <QuietNotice variant="outlined" data-testid="anon-guest-notice">
+      <span data-testid="anon-read-only">{t.anon.readOnlyBanner}</span>
+      <Button
+        component={Link}
+        {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
+        variant="contained"
+        data-testid="anon-join-cta"
+        sx={{ minHeight: '44px' }}
+      >
+        {t.anon.joinOfferCta}
+      </Button>
+    </QuietNotice>
   );
 
   return (
@@ -104,7 +96,9 @@ export const PublicSpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
       title={space.name}
       eyebrow={t.anon.eyebrow}
       width="wide"
-      rail={rail}
+      railLeading={notice}
+      rail={<PublicSpaceEventsSection spaceId={spaceId} />}
+      mobileRail="split"
       breadcrumbs={anonCrumbs(t, { label: space.name })}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>

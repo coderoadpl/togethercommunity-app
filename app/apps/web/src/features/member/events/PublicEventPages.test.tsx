@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -139,14 +139,53 @@ describe('public event surface', () => {
     expect(screen.getByTestId('public-space-events')).toBeInTheDocument();
   });
 
-  it('shows an empty events block when the public space has nothing scheduled', async () => {
-    server.use(anonMe(), okPublicNavigation(), okPublicFeed(), okPublicEvents([]));
+  it('renders no events card when the public space has nothing scheduled', async () => {
+    const served = { events: false };
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () => {
+        served.events = true;
+        return HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } });
+      }),
+    );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('public-space-events-empty')).toHaveTextContent(
-      en.events.emptyUpcoming,
+    expect(await screen.findByTestId('public-feed-empty-state')).toBeInTheDocument();
+    await waitFor(() => expect(served.events).toBe(true));
+    await waitFor(() => expect(screen.queryByTestId('public-space-events')).not.toBeInTheDocument());
+    expect(screen.queryByText(en.events.emptyUpcoming)).not.toBeInTheDocument();
+  });
+
+  it('keeps the events card while the list loads', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () => new Promise<never>(() => undefined)),
     );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-space-events')).toHaveTextContent(en.events.loading);
+  });
+
+  it('keeps the events card with a retry when the list fails', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const card = await screen.findByTestId('public-space-events');
+    expect(await within(card).findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });
 
   it('renders the event read-only with counts, a sign-in CTA and the thread', async () => {

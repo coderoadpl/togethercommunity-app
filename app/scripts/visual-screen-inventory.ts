@@ -316,7 +316,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     viewports: ['mobile'],
     ready: async (page) => {
       await page.getByTestId('anon-join-cta').waitFor(visible);
-      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-space-events').waitFor({ state: 'detached' });
       await page.getByTestId('public-post-body-post-community-hello').waitFor(visible);
     },
   },

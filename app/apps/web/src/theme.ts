@@ -3147,6 +3147,7 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
   color: theme.palette.text.secondary,
   ...theme.typography.body2,
   '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
+  '& a.MuiButton-root': { whiteSpace: 'normal' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });

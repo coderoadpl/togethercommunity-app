@@ -362,6 +362,7 @@ export interface Messages {
     headingNotFound: string;
     headingTenantNotFound: string;
     bootEyebrow: string;
+    bootHeading: string;
     backToStart: string;
     headingValidation: string;
     headingConflict: string;

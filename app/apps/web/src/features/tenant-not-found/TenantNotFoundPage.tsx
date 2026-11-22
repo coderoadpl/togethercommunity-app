@@ -98,7 +98,7 @@ export const TenantGate = ({
     return (
       <BootErrorCard
         eyebrow={t.errors.bootEyebrow}
-        title={t.errors.headingGeneric}
+        title={t.errors.bootHeading}
         message={localizeError(offer.error, t)}
         retry={{ label: t.common.retry, onRetry: () => void offer.refetch() }}
         data-testid="tenant-gate-error"

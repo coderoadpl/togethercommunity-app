@@ -360,7 +360,8 @@ describe('TenantGate', () => {
     renderWithProviders(<TenantGate hostname="acme.localhost" pathname="/panel">{children}</TenantGate>);
 
     const card = await screen.findByTestId('tenant-gate-error');
-    expect(within(card).getByRole('heading', { level: 1, name: en.errors.headingGeneric })).toBeInTheDocument();
+    expect(within(card).getByRole('heading', { level: 1, name: en.errors.bootHeading })).toBeInTheDocument();
+    expect(card).toHaveTextContent(en.errors.bootEyebrow);
     expect(within(card).getByRole('alert')).toHaveTextContent(en.errors.messageInternal);
     expect(within(card).getAllByRole('button')).toHaveLength(1);
     await user.click(within(card).getByRole('button', { name: en.common.retry }));

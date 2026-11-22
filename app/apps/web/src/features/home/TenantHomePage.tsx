@@ -70,7 +70,7 @@ export const TenantHomePage = ({
     return (
       <BootErrorCard
         eyebrow={t.errors.bootEyebrow}
-        title={t.errors.headingGeneric}
+        title={t.errors.bootHeading}
         message={localizeError(me.error, t)}
         retry={{ label: t.common.retry, onRetry: () => void me.refetch() }}
         data-testid="tenant-home-error"

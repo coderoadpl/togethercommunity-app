@@ -285,6 +285,17 @@ describe('change proposal reads', () => {
       .toEqual(['p-other', 'p-own-1', 'p-own-2', 'p-own-old']);
   });
 
+  it('lists a pending row past its expiry under decided and not under pending', async () => {
+    await bulkInsert(1, { status: 'rejected', decidedByUserId: OWNER, decidedAt: CREATED });
+
+    const listed = async (status: 'pending' | 'decided') =>
+      (await repo().list(TENANT, { limit: 10, now: NOW, status })).proposals;
+    expect((await listed('pending')).map(({ id }) => id).toSorted()).toEqual(['p-other', 'p-own-1', 'p-own-2']);
+    const decided = await listed('decided');
+    expect(decided.map(({ status }) => status).toSorted()).toEqual(['pending', 'rejected']);
+    expect(decided.find(({ status }) => status === 'pending')).toMatchObject({ id: 'p-own-old', expiresAt: changeProposalExpiresAt('2025-11-01T00:00:00.000Z') });
+  });
+
   it('reads, lists and locks a row whose operation this release does not know', async () => {
     await database.db.insert(changeProposals).values({
       id: 'p-later', tenantId: TENANT, groupId: null, groupPosition: null, operation: 'image.attach-cover',
@@ -304,6 +315,21 @@ describe('change proposal reads', () => {
     expect(await repo().listByKey(TENANT, 'key-propose', { limit: 10, now: NOW, cursor: 'p-other' }))
       .toEqual({ proposals: [], nextCursor: null });
     expect(await repo().list(TENANT, { limit: 10, now: NOW, cursor: 'p-neighbour' })).toEqual({ proposals: [], nextCursor: null });
+  });
+});
+
+describe('change proposal existence', () => {
+  it('says whether the workspace holds any proposal, whatever its status, and ignores other workspaces', async () => {
+    await storeKey({ id: 'key-neighbour', tenantId: NEIGHBOUR });
+    await bulkInsert(1, { tenantId: NEIGHBOUR, proposedByKeyId: 'key-neighbour' });
+    expect(await repo().hasAny(TENANT)).toBe(false);
+    expect(await repo().hasAny(NEIGHBOUR)).toBe(true);
+
+    await bulkInsert(1, { status: 'rejected', decidedByUserId: OWNER, decidedAt: CREATED });
+    expect(await repo().hasAny(TENANT)).toBe(true);
+    await database.db.delete(changeProposals).where(eq(changeProposals.tenantId, TENANT));
+    await bulkInsert(1, { createdAt: '2025-11-01T00:00:00.000Z' });
+    expect(await repo().hasAny(TENANT)).toBe(true);
   });
 });
 

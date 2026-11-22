@@ -1,7 +1,7 @@
 import { Accordion, AccordionDetails, AccordionSummary, Box, Chip, Link, Stack, Typography } from '@mui/material';
 import { useId, type ReactNode } from 'react';
 
-import { attributionFromSearchParams, attributionToSearchParams, type PublicProductCompliance, type PublicProductVariant } from '#core/domain/index.js';
+import { attributionFromSearchParams, attributionToSearchParams, shownResponsiblePerson, type PublicProductCompliance, type PublicProductVariant } from '#core/domain/index.js';
 
 import { ChevronDownIcon } from '../../components/ui/account-icons.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -14,14 +14,27 @@ const Detail = ({ label, children }: { label: string; children: ReactNode }) => 
   </Typography>
 );
 
-const SafetyDetails = ({ compliance }: { compliance: PublicProductCompliance }) => {
+const Party = ({ label, name, address, email, testId }: { label: string; name: string; address: string; email: string; testId: string }) => {
   const t = useTranslations();
   return (
-    <Stack useFlexGap spacing="0.5rem">
-      <Detail label={t.productSafety.manufacturer}>{compliance.manufacturerName}, {compliance.manufacturerAddress}</Detail>
+    <Stack useFlexGap spacing="0.125rem" data-testid={testId}>
+      <Detail label={label}>{name}, {address}</Detail>
       <Detail label={t.productSafety.contact}>
-        <Link href={`mailto:${compliance.manufacturerEmail}`}>{compliance.manufacturerEmail}</Link>
+        <Link href={`mailto:${email}`} sx={{ display: 'inline-block', maxWidth: '100%', overflowWrap: 'anywhere' }}>{email}</Link>
       </Detail>
+    </Stack>
+  );
+};
+
+const SafetyDetails = ({ compliance }: { compliance: PublicProductCompliance }) => {
+  const t = useTranslations();
+  const responsiblePerson = shownResponsiblePerson(compliance);
+  return (
+    <Stack useFlexGap spacing="0.5rem">
+      <Party label={t.productSafety.manufacturer} name={compliance.manufacturerName} address={compliance.manufacturerAddress} email={compliance.manufacturerEmail} testId="product-safety-manufacturer" />
+      {responsiblePerson === null ? null : (
+        <Party label={t.productSafety.responsiblePerson} {...responsiblePerson} testId="product-safety-responsible-person" />
+      )}
       <Detail label={t.productSafety.model}>{compliance.modelIdentifier}</Detail>
       {compliance.batchIdentifier == null ? null : <Detail label={t.productSafety.batch}>{compliance.batchIdentifier}</Detail>}
       {compliance.safetyWarningsHtml.trim() === '' ? null : <RichTextContent html={compliance.safetyWarningsHtml} data-testid="product-safety-warnings" />}

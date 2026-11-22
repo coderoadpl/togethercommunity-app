@@ -46,7 +46,7 @@ export const metaCapiEventSchema = z.object({
 });
 export type MetaCapiEvent = z.infer<typeof metaCapiEventSchema>;
 export const metaCapiEventsOutputSchema = z.object({ events: z.array(metaCapiEventSchema) });
-export const metaCapiMemberConsentSchema = metaCapiStateSchema.extend({
+const metaCapiMemberConsentSchema = metaCapiStateSchema.extend({
   orderId: z.string(), consentAt: z.string().nullable(),
   productName: z.string().nullable().default(null), purchasedAt: z.string().nullable().default(null),
 });

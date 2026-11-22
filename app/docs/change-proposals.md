@@ -51,9 +51,12 @@ A proposal stores two things:
 
 The dry run executes the live use-case with the rights of the owner who issued
 the key, inside a transaction that always rolls back. What a key may propose is
-bounded by the operations registry (the fourteen operations below) and the
+bounded by the operations registry and the
 [route classes](#route-classes), not by the context of the dry run, which
-carries the owner's identity and no capability list of the key.
+carries the owner's identity and no capability list of the key. The registry
+holds the fourteen operations below and three download file operations,
+`download.add`, `download.replace` and `download.remove`, which no route
+proposes yet (see [Not yet available](#not-yet-available)).
 
 The dry run never leaves a row, an event, an outbox message or a content
 version behind, and object storage deletes that a live operation would make

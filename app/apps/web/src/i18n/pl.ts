@@ -2817,6 +2817,8 @@ export const pl: Messages = {
     notForSaleBodyNoContact: 'Obecnie nie ma jej w żadnej ofercie.',
     contactCreator: 'Napisz do osoby prowadzącej kurs',
     undoCompletion: 'Cofnij',
+    unlockNextLesson: 'Odblokuj następną lekcję',
+    lockedSkippedNotForSale: ({ count }) => format(plural(count, 'Pominięto {count} zablokowaną lekcję', 'Pominięto {count} zablokowane lekcje', 'Pominięto {count} zablokowanych lekcji'), { count }),
   },
   discussion: {
     heading: 'Dyskusja',

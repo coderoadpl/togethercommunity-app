@@ -2765,6 +2765,8 @@ export const en: Messages = {
     notForSaleBodyNoContact: 'No offer includes it right now.',
     contactCreator: 'Contact the course creator',
     undoCompletion: 'Undo',
+    unlockNextLesson: 'Unlock the next lesson',
+    lockedSkippedNotForSale: ({ count }) => format(plural(count, '{count} locked lesson skipped', '{count} locked lessons skipped'), { count }),
   },
   discussion: {
     heading: 'Discussion',

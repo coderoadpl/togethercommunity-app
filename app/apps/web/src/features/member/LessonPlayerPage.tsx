@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  type ButtonProps,
   Chip,
   Link as MuiLink,
   Paper,
@@ -12,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createLink, Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import {
@@ -39,6 +40,7 @@ import {
   Eyebrow,
   LessonActionLabel,
   LessonCompletionStatus,
+  LessonDestinationLabel,
   LessonFooterBar,
   LessonMediaFrame,
   LessonNavLabel,
@@ -48,6 +50,7 @@ import {
   LESSON_CARD_PADDING_X,
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
+  LockedLeadText,
   LockedScopeText,
   VisuallyHidden,
 } from '../../theme.js';
@@ -198,6 +201,8 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
 
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
+const ButtonLink = createLink(({ href = '', ...props }: Omit<ButtonProps<'a'>, 'component'>) => <Button href={href} {...props} />);
+
 const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
 const TEXT_BREAK = '\u2029';
 const ENDS_WITH_PUNCTUATION = /[.,;:!?…]$/u;
@@ -221,21 +226,21 @@ const plainText = (html: string): string => {
 };
 
 const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (
-  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'center' }}>
+  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
     <LockedLeadIcon />
-    <Typography variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
+    <LockedLeadText variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
       {children}
-    </Typography>
+    </LockedLeadText>
   </Stack>
 );
 
 const NextLessonName = ({ name }: { name: string }) => {
   const t = useTranslations();
   return (
-    <LessonActionLabel>
+    <LessonDestinationLabel>
       <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
       <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
-    </LessonActionLabel>
+    </LessonDestinationLabel>
   );
 };
 
@@ -297,6 +302,7 @@ const LockedView = ({
   unlockProductId,
   pending,
   supportUrl,
+  supportConfigured,
   neighbours,
 }: {
   courseId: string;
@@ -304,6 +310,7 @@ const LockedView = ({
   unlockProductId?: string;
   pending: boolean;
   supportUrl: string | null | undefined;
+  supportConfigured: boolean;
   neighbours: LessonNeighbours | null;
 }) => {
   const t = useTranslations();
@@ -331,6 +338,7 @@ const LockedView = ({
     });
   const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
   const externalSupport = typeof supportUrl === 'string' && !supportUrl.toLowerCase().startsWith('mailto:');
+  const supportForm = supportUrl === null && supportConfigured;
   const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
@@ -353,7 +361,7 @@ const LockedView = ({
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
               <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
               <Typography variant="body2" color="text.secondary">
-                {typeof supportUrl === 'string' ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
+                {typeof supportUrl === 'string' || supportForm ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
               </Typography>
               <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
                 {t.lesson.backToCourse}
@@ -370,6 +378,17 @@ const LockedView = ({
                 >
                   {t.lesson.contactCreator}
                 </Button>
+              ) : supportForm ? (
+                <ButtonLink
+                  to="/account"
+                  search={{ tab: 'profile', support: 'open' }}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  data-testid="locked-contact-creator"
+                >
+                  {t.lesson.contactCreator}
+                </ButtonLink>
               ) : null}
             </Stack>
           ) : (
@@ -619,6 +638,7 @@ export const LessonPlayerPage = ({
           lessonName={lockedRow?.name}
           pending={structure.isPending}
           supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
+          supportConfigured={tenantSettings.data?.settings.supportConfigured === true}
           neighbours={neighbours}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
@@ -655,7 +675,7 @@ export const LessonPlayerPage = ({
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
-  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.next : null;
+  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.firstUnlockableSkipped ?? neighbours.next : null;
   const completionSlot = nextHref !== null ? 'compact' : nextLockedLesson !== null ? 'wide' : 'fill';
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
@@ -822,7 +842,9 @@ export const LessonPlayerPage = ({
               sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', mb: '0.5rem' }}
             >
               <LockedLessonIcon />
-              {t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })}
+              {firstSkipped.unlockable
+                ? t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })
+                : t.lesson.lockedSkippedNotForSale({ count: neighbours.lockedSkipped })}
             </MuiLink>
           ) : null}
           <Stack
@@ -868,6 +890,7 @@ export const LessonPlayerPage = ({
                   onClick={unmarkComplete}
                   disabled={uncomplete.isPending}
                   aria-label={t.lesson.unmarkCompleted}
+                  data-slot="undo"
                 >
                   {t.lesson.undoCompletion}
                 </Button>
@@ -909,6 +932,7 @@ export const LessonPlayerPage = ({
                 aria-label={t.lesson.next({ name: nextLesson.name })}
               >
                 <NextLessonName name={nextLesson.name} />
+                <NextLessonIcon />
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (
@@ -920,7 +944,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 startIcon={<LockedLessonIcon />}
               >
-                <LessonActionLabel>{t.lesson.nextLocked}</LessonActionLabel>
+                <LessonDestinationLabel>{nextLockedLesson.unlockable ? t.lesson.unlockNextLesson : t.lesson.nextLocked}</LessonDestinationLabel>
               </Button>
             )}
             {atCourseEnd && (

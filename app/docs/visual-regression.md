@@ -261,6 +261,51 @@ refuses a mapped screen without its PNG. Commit a provisional PNG of the right
 viewport under the new name, let the `visual` job fail on it, and replace it
 from that run's artifact under the conditions above.
 
+#### Evidence for the ten baselines accepted on 2026-11-22
+
+The owner decision names ten baselines. Each one is byte for byte the capture
+in `out/visual/current` of the `visual` artifact of the source run below; the
+SHA-256 is that of the committed PNG under `tasks/visual-goldens/`. Both source
+runs ran on the pinned macOS runner with browser 152.0.7977.82, and their
+`measurements.json` reports no capture with a missing fixture call, a fixture
+expectation issue, an unreadable fixture, a rendered error boundary or a page
+error among all 240 captures; the listed captures are the only ones above the
+tolerance in their run. Each baseline commit changes PNG files only. The
+`visual` job passed on head `754e0056` (CI run 44876916294), which carries all
+ten with these bytes.
+
+Six images changed by #448: baseline commit `bd12ca3d`, source run 44868762903
+on head `4d82617e` of that pull request (its `visual` job failed on these six).
+Cause: the purchase confirmation text above the Meta consent row became the
+first of three short lines, so the paragraph is shorter.
+
+| Baseline | Difference measured in the source run | SHA-256 of the committed PNG |
+|---|---|---|
+| `meta-capi-consent--shadcn--desktop` | 31265 px (2.412%) | `6a0adc0d1b5a41e0ae078c69a838846f089fb3233305123cb07d8d4e230bc092` |
+| `meta-capi-consent--shadcn--mobile` | 2885 px (0.876%) | `ed2dc9a72bc42b03ade18152a4d488c54667d2f640168aebbf591cddd390707e` |
+| `meta-capi-expanded--shadcn--desktop` | 1825 px (0.141%) | `1d2a5c9b91f06c1d8210f4f9c1beffac5cee0e30282bb0ac6a2444c6eacab3fd` |
+| `meta-capi-expanded--shadcn--mobile` | 2885 px (0.876%) | `6b0ac9e41bac4508bdee335341c93cbf096eb1a9f269ca691164e5971615d6fe` |
+| `meta-capi-decided--shadcn--desktop` | 34699 px (2.677%) | `117219c048cabb6b1dfef952f6707bbdf757d20227924898f27c7d043824ba20` |
+| `meta-capi-decided--shadcn--mobile` | 36271 px (11.019%) | `f863aeb2d4374feee05c854eec976f4ff1018ff0c4c842a3a8d4f8fdda6380e5` |
+
+Four images first changed by #450 and recorded again in #452: baseline commit
+`754e0056`, source run 44875118318 on head `f2536201` of #452 (its `visual` job
+failed on these four). Cause: the capture shows the composed bundle checkout
+page with its details open instead of the removed standalone summary (#450), and
+on the combined branch the product-safety Details toggle sits below the product
+rows with a picture slot for rows without one, which makes the page 24 px
+taller.
+
+| Baseline | Difference measured in the source run | SHA-256 of the committed PNG |
+|---|---|---|
+| `sales-link-offer-light-desktop--shadcn--desktop` | size 1440x1429 became 1440x1453 | `b9f1a5a1ad1e3b44758b49ed7fe3a23e9626e8f12d7ef9e80661ac8e05eece5f` |
+| `sales-link-offer-dark-desktop--shadcn--desktop` | size 1440x1429 became 1440x1453 | `736ca7a2ca339d80f2e7e27ae8d593df496d669c3b9f3130bc9bbbd7faa91aa3` |
+| `sales-link-offer-light-mobile--shadcn--mobile` | size 390x1550 became 390x1574 | `c70b4c3073717355a47b5c0ab5d5a9dd446ed804ad1c94164909efbb53be3f99` |
+| `sales-link-offer-dark-mobile--shadcn--mobile` | size 390x1550 became 390x1574 | `5f735b2b56d77275c3280ea338e6681e1224d142038196b7016616fab8bd62e2` |
+
+The descriptions of #448, #450 and #452 list these images with their causes but
+do not name the source runs; this section names them.
+
 Pull requests to `staging` that change committed PNGs also receive a sticky
 Before/After gallery from `.github/workflows/visual-golden-gallery.yml`. Its
 images are pinned to the compared commits. The publisher uses trusted base-ref

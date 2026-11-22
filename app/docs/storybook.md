@@ -58,7 +58,7 @@ with the application goldens. `pnpm run storybook:build` verifies that the catal
 compiles; `pnpm run visual` builds and captures the catalogue without a database and
 `pnpm run visual:update` remains the baseline-authoring command; baselines may
 also come from the pull request's own CI capture under the conditions in
-[Baseline ownership](visual-regression.md#baselines-from-the-ci-capture).
+[Baselines from the CI capture](visual-regression.md#baselines-from-the-ci-capture).
 
 ## Merge gate
 

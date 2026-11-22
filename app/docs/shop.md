@@ -84,14 +84,22 @@ its address, or one error for a code the carrier does not know, a point that
 cannot hold parcels for collection, or a locker that is not operating. On an
 error the field is marked `aria-invalid`, the error joins its
 `aria-describedby`, the pay button stays disabled and the line under it reads
-**Fix the parcel locker code to go to payment.**; editing the code clears the
-verdict. When the carrier cannot be asked (it is down, the lookup is
-rate-limited or the workspace answer is refused) the page shows nothing and
-lets the buyer pay, because the server accepts the code as unverified. A code
-chosen on the map is never looked up by the page. When the server still refuses
-the locker on checkout start, the page shows its reason in both the alert and
-under the field. Focus and keyboard rules of the page do not change: Enter in
-the code field still does not submit the form.
+**Choose another parcel locker to go to payment.** (the hosted cart page shows
+the same line under its button); editing the code clears the verdict, and so
+does an answer for a code the field no longer shows. When the carrier cannot be
+asked (it is down, the lookup is rate-limited or the workspace answer is
+refused) the page shows nothing and lets the buyer pay, because the server
+accepts the code as unverified. The page asks its own server once per lookup,
+without retries. A code chosen on the map is never looked up by the page. When
+the server still refuses the locker on checkout start or on a simulated
+purchase, the page shows its reason in the alert and under the field, or under
+the selected point for a map choice, and keeps the pay button disabled until
+the buyer changes the locker. The submit-time check runs only when the chosen
+delivery option needs a locker. While it runs the form is locked and the pay
+button shows its pending label; the payment then starts from the form as it is
+at that moment, and does not start when the locker or the form changed. Focus
+and keyboard rules of the page do not change: Enter in the code field still
+does not submit the form.
 
 ### Parcel locker picker
 

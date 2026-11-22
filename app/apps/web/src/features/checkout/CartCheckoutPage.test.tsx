@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useParams } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -832,6 +832,8 @@ describe('hosted cart checkout', () => {
       await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found));
       expect(field).toHaveAttribute('aria-invalid', 'true');
       expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toHaveAccessibleDescription(en.checkout.payBlockedLockerRejected);
       await userEvent.clear(field);
       await userEvent.type(field, 'waw01m');
       await userEvent.tab();
@@ -839,6 +841,43 @@ describe('hosted cart checkout', () => {
       await userEvent.click(screen.getByTestId('checkout-pay-cta'));
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(lookups).toEqual(['MISSING1', 'WAW01M']);
+      expect(screen.queryByTestId('cart-pay-reason')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['the locker code', () => fireEvent.change(screen.getByLabelText(en.shipping.lockerCodeLabel), { target: { value: 'KRA010' } })],
+      ['the e-mail address', () => fireEvent.change(screen.getByLabelText(en.checkout.emailLabel), { target: { value: 'other@example.org' } })],
+      ['nothing', () => undefined],
+    ])('locks the cart while the submit-time check runs and starts it only from the unchanged form when %s changes', async (change, edit) => {
+      const bodies: unknown[] = [];
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', async () => {
+        await gate;
+        return HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } });
+      }));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      const pay = screen.getByTestId('checkout-pay-cta');
+      await userEvent.click(pay);
+      await waitFor(() => expect(pay).toBeDisabled());
+      expect(pay).toHaveTextContent(en.checkout.payPending);
+      for (const button of line(poster).getAllByRole('button')) expect(button).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: /terms/iu })).toBeDisabled();
+      edit();
+      release?.();
+      await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+      if (change === 'nothing') {
+        await waitFor(() => expect(bodies).toHaveLength(1));
+        expect(bodies[0]).toMatchObject({ email: 'buyer@example.org', termsAccepted: true, lines: [{ productId: poster, quantity: 1 }],
+          shipping: { rateId: 'locker', pickupPoint: { code: 'WAW01M' } } });
+      } else {
+        expect(bodies).toEqual([]);
+      }
     });
   });
 });

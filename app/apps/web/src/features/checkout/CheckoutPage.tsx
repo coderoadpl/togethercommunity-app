@@ -45,6 +45,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatOfferPrice, formatPrice } from '../../lib/format.js';
 import {
   CardTitle,
+  CheckoutFieldset,
   CheckoutNoWrap,
   CheckoutPriceOption,
   CheckoutRowGroup,
@@ -52,8 +53,8 @@ import {
   CheckoutVariantGroup,
   FinePrint,
 } from '../../theme.js';
-import { createCheckoutState, geowidgetAccess, lockerCheckDue, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
-import { useLockerCheck } from './use-locker-check.js';
+import { createCheckoutState, geowidgetAccess, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { useLockerCheck, useLockerHold } from './use-locker-check.js';
 
 type OfferPrice = {
   id: string;
@@ -190,7 +191,6 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     createCheckoutState,
   );
   const checkLocker = useLockerCheck(checkoutState, dispatchCheckout);
-  const submittingAfterLockerCheck = useRef(false);
   const { couponVisible, couponCode, selectedPriceId } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
@@ -338,7 +338,11 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
     ...(appliedCoupon === undefined ? {} : { couponCode }),
   });
-  const simulate = () => simulatePurchase.mutate({ email: buyerEmail ?? email, ...purchaseRequest() });
+  const refuseLocker = (code: string) => (error: unknown) => {
+    const refusal = error instanceof ApiError ? lockerRefusal(code, error.appError.details) : null;
+    if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
+  };
+  const simulate = () => simulatePurchase.mutate({ email: buyerEmail ?? email, ...purchaseRequest() }, { onError: refuseLocker(checkoutState.pickupPointCode) });
 
   const proceed = () => {
     if (stripeConfigured || payableCents === 0) {
@@ -351,8 +355,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
         ...purchaseRequest(),
       }, {
         onError: (error) => {
-          const refusal = error instanceof ApiError ? lockerRefusal(checkoutState.pickupPointCode, error.appError.details) : null;
-          if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
+          refuseLocker(checkoutState.pickupPointCode)(error);
           if (codeAtSubmit === null || !stripeTermsRefused(error)) return;
           setAutoCouponCode(codeAtSubmit);
           setAutoValidatedFor(keyAtSubmit);
@@ -363,18 +366,17 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     simulate();
   };
 
+  const lockerHold = useLockerHold({
+    state: checkoutState,
+    delivery,
+    checkLocker,
+    ready: !couponResolving && delivery.status !== 'incomplete' && !personalization.blocked,
+    requestKey: JSON.stringify({ email: buyerEmail ?? email, payableCents, stripeConfigured, request: purchaseRequest() }),
+    start: proceed,
+  });
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete' || personalization.blocked || submittingAfterLockerCheck.current) return;
-    if (lockerCheckDue(checkoutState) === null) {
-      proceed();
-      return;
-    }
-    submittingAfterLockerCheck.current = true;
-    void checkLocker().then((check) => {
-      submittingAfterLockerCheck.current = false;
-      if (check?.status !== 'rejected') proceed();
-    });
+    lockerHold.submit();
   };
 
   const togetherCheckout = search.get('checkout') === 'together';
@@ -614,7 +616,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     );
   }
 
-  const pending = simulatePurchase.isPending || checkoutSession.isPending;
+  const pending = simulatePurchase.isPending || checkoutSession.isPending || lockerHold.holding;
   const paymentUnavailable = payableCents > 0 && !stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled;
   const testModeFreeOrder = testEnabled && payableCents === 0;
   const payDisabled = soldOut || pending || testSession.isPending || delivery.status === 'incomplete' ||
@@ -629,8 +631,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               : null;
   const payLabel = soldOut ? t.checkout.soldOut
     : payableCents === 0 ? pending ? t.checkout.freePending : t.checkout.freeOrderIdle
-      : stripeConfigured ? checkoutSession.isPending ? t.checkout.payPending : t.checkout.goToPayment({ price: formattedPayable })
-        : simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.payIdle({ price: formattedPayable });
+      : stripeConfigured ? checkoutSession.isPending || lockerHold.holding ? t.checkout.payPending : t.checkout.goToPayment({ price: formattedPayable })
+        : simulatePurchase.isPending || lockerHold.holding ? t.checkout.submitPending : t.checkout.payIdle({ price: formattedPayable });
   const simulatedPrimary = payableCents > 0 && !stripeConfigured && paymentConfig.data.simulatedPaymentsEnabled;
   const payNote = payBlockedReason !== null ? null : viaStripe
     ? t.checkout.nextStep({ email: buyerEmail === undefined && !testEnabled, address: shippingRequired, terms: stripeCollectsBuyer })
@@ -667,6 +669,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
       onSubmit={submit}
       onKeyDown={checkoutFormKeyDown(payDisabled)}
     >
+      <CheckoutFieldset role="presentation" disabled={lockerHold.holding}>
         <Stack useFlexGap spacing="1.25rem">
           {viaStripe ? (
             <CheckoutSteps
@@ -882,7 +885,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               <>
                 {paymentUnavailable ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
                 {checkoutSession.isError && !stripeTermsRefused(checkoutSession.error) ? <Alert severity="error">{checkoutSessionError(checkoutSession.error, t)}</Alert> : null}
-                {simulatePurchase.isError ? <Alert severity="error">{localizeError(simulatePurchase.error, t)}</Alert> : null}
+                {simulatePurchase.isError ? <Alert severity="error">{checkoutSessionError(simulatePurchase.error, t)}</Alert> : null}
               </>
             )}
           />
@@ -908,6 +911,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             </Stack>
           ) : null}
         </Stack>
+      </CheckoutFieldset>
     </FocusCard>
   );
 };

@@ -2826,6 +2826,8 @@ export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
   fontWeight: 600,
 }));
 
+export const CheckoutFieldset = styled('fieldset')({ border: 0, margin: 0, padding: 0, minWidth: 0 });
+
 export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
   flexDirection: 'row',
   alignItems: 'center',

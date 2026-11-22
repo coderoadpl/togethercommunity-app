@@ -39,6 +39,7 @@ import {
   Eyebrow,
   LessonActionLabel,
   LessonCompletionStatus,
+  LessonDestinationLabel,
   LessonFooterBar,
   LessonMediaFrame,
   LessonNavLabel,
@@ -772,6 +773,7 @@ export const LessonPlayerPage = ({
                   onClick={() => uncomplete.mutate({ lessonId })}
                   disabled={uncomplete.isPending}
                   aria-label={t.lesson.unmarkCompleted}
+                  data-slot="undo"
                 >
                   {t.lesson.undoCompletion}
                 </Button>
@@ -812,10 +814,11 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonActionLabel>
+                <LessonDestinationLabel>
                   <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name: nextLesson.name })}</Box>
                   <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{nextLesson.name}</Box>
-                </LessonActionLabel>
+                </LessonDestinationLabel>
+                <NextLessonIcon />
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (
@@ -827,7 +830,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 startIcon={<LockedLessonIcon />}
               >
-                <LessonActionLabel>{t.lesson.nextLocked}</LessonActionLabel>
+                <LessonDestinationLabel>{t.lesson.nextLocked}</LessonDestinationLabel>
               </Button>
             )}
             {atCourseEnd && (

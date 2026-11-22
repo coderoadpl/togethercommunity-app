@@ -158,6 +158,21 @@ const stubMobileViewport = () => {
   }));
 };
 
+const MAX_WIDTH = /max-width:\s*([\d.]+)px/u;
+
+const stylesBelow = (element: Element, viewportWidth: number): Record<string, string> => Object.fromEntries(
+  [...document.styleSheets]
+    .flatMap((sheet) => [...sheet.cssRules])
+    .flatMap((rule) => {
+      if (!(rule instanceof CSSMediaRule)) return [];
+      const maxWidth = MAX_WIDTH.exec(rule.conditionText);
+      return maxWidth !== null && Number(maxWidth[1]) >= viewportWidth ? [...rule.cssRules] : [];
+    })
+    .flatMap((rule) => rule instanceof CSSStyleRule && element.matches(rule.selectorText)
+      ? Array.from({ length: rule.style.length }, (_, index) => rule.style.item(index)).map((property) => [property, rule.style.getPropertyValue(property)] as const)
+      : []),
+);
+
 const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = false) => {
   if (shell) server.use(http.get('/api/public/offer', () => HttpResponse.json({
     ok: true, data: { tenant: { slug: 'acme', name: 'Acme', socialLinks: [] }, products: [], contentVersion: 1 },
@@ -1539,6 +1554,16 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(prefixed, 900)).toMatchObject({ display: 'inline' });
     expect(stylesAt(bare, 900)).toMatchObject({ display: 'none' });
     expect(screen.queryByTestId('skip-to-next-lesson')).not.toBeInTheDocument();
+    const chevron = within(next).getByTestId('lesson-nav-icon');
+    expect(bare.compareDocumentPosition(chevron)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(stylesAt(chevron, 390)).not.toMatchObject({ display: 'none' });
+    expect(stylesAt(chevron, 900)).toMatchObject({ display: 'none' });
+    expect(stylesBelow(next, 390)).toMatchObject({ 'min-height': '44px' });
+    const label = bare.parentElement;
+    if (label === null) throw new Error('next-lesson label has no wrapper');
+    expect(stylesBelow(label, 390)).toMatchObject({ display: '-webkit-box', '-webkit-line-clamp': '2' });
+    expect(stylesBelow(label, 390)['white-space']).toBeUndefined();
+    expect(stylesBelow(undo, 390)).toMatchObject({ 'min-width': '44px', 'padding-inline': '0.5rem' });
   });
 
   it('gives mark-as-completed the full row on the final lesson', async () => {
@@ -1705,6 +1730,8 @@ describe('LessonPlayerPage', () => {
     expect(within(nextLocked).getByTestId('lock-closed')).toBeInTheDocument();
     const label = within(nextLocked).getByText(en.lesson.nextLocked);
     expect(stylesAt(label, 390)).not.toMatchObject({ position: 'absolute' });
+    expect(stylesBelow(label, 390)).toMatchObject({ '-webkit-line-clamp': '2' });
+    expect(stylesBelow(within(screen.getByTestId('mark-complete')).getByText(en.lesson.markCompleted), 390)).toMatchObject({ 'white-space': 'nowrap' });
     const markComplete = screen.getByTestId('mark-complete');
     expect(markComplete).toHaveClass('MuiButton-outlined');
     expect(markComplete).toHaveAttribute('data-slot', 'wide');

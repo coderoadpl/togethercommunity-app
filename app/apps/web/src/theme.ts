@@ -4254,6 +4254,8 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
       minWidth: 0,
       paddingInline: '0.75rem',
     },
+    '& [data-slot="primary"] > svg': { flexShrink: 0, marginInlineStart: '0.25rem' },
+    '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
 }));
@@ -4301,6 +4303,19 @@ export const LessonNavLabel = styled('span')(({ theme }) => ({
 export const LessonActionLabel = styled('span')(({ theme }) => ({
   [theme.breakpoints.down('md')]: {
     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+}));
+
+export const LessonDestinationLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    minWidth: 0,
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.25,
+    textAlign: 'center',
   },
 }));
 

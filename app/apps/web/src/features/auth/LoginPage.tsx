@@ -20,6 +20,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import {
   errorCodeOf,
+  formatRetryDelay,
   localizeError,
   providerCodeOf,
   retryAfterSecondsOf,
@@ -102,19 +103,30 @@ const isInvalidTwoFactorCode = (error: unknown): boolean => {
   return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
 };
 
+// Hidden tabs throttle timers, so the remaining time is read from the clock, never counted down.
 const useRetryCountdown = (error: unknown): number => {
   const [countdown, setCountdown] = useState<{ error: unknown; seconds: number }>({ error: null, seconds: 0 });
   if (countdown.error !== error) setCountdown({ error, seconds: retryAfterSecondsOf(error) ?? 0 });
-  const { seconds } = countdown;
   useEffect(() => {
-    if (seconds === 0) return undefined;
-    const timer = window.setTimeout(
-      () => setCountdown((current) => ({ ...current, seconds: Math.max(0, current.seconds - 1) })),
-      1000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [seconds]);
-  return countdown.error === error ? seconds : retryAfterSecondsOf(error) ?? 0;
+    const initial = retryAfterSecondsOf(error) ?? 0;
+    if (initial === 0) return undefined;
+    const endsAt = Date.now() + initial * 1000;
+    let timer: number | undefined;
+    const tick = () => {
+      window.clearTimeout(timer);
+      const left = Math.max(0, endsAt - Date.now());
+      const seconds = Math.ceil(left / 1000);
+      setCountdown({ error, seconds });
+      if (seconds > 0) timer = window.setTimeout(tick, left % 1000 || 1000);
+    };
+    timer = window.setTimeout(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [error]);
+  return countdown.error === error ? countdown.seconds : retryAfterSecondsOf(error) ?? 0;
 };
 
 // Assistive technology hears the delay once; only the visible copy ticks.
@@ -124,8 +136,8 @@ const RateLimitMessage = ({ error, remaining }: { error: unknown; remaining: num
   if (initial === null || remaining === 0) return <>{t.errors.messageRateLimited}</>;
   return (
     <>
-      <span aria-hidden data-testid="rate-limit-countdown">{t.auth.signInRateLimitedRetryIn({ seconds: remaining })}</span>
-      <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ seconds: initial })}</VisuallyHidden>
+      <span aria-hidden data-testid="rate-limit-countdown">{t.auth.signInRateLimitedRetryIn({ delay: formatRetryDelay(remaining) })}</span>
+      <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ delay: formatRetryDelay(initial) })}</VisuallyHidden>
     </>
   );
 };
@@ -597,7 +609,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           onClick={resendMagicLink}
         >
           {resendWait > 0
-            ? t.auth.magicLinkResendCooldown({ seconds: resendWait })
+            ? t.auth.magicLinkResendCooldown({ delay: formatRetryDelay(resendWait) })
             : t.auth.magicLinkResend}
         </Button>
         {requestMagicLink.isError ? (

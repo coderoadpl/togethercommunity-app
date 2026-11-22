@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError, retryAfterSecondsOf } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError, formatRetryDelay, retryAfterSecondsOf } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
@@ -138,5 +138,23 @@ describe('retryAfterSecondsOf', () => {
     expect([0, -3, 1.5, '42', null, 601, 1e21].map((value) => retryAfterSecondsOf(withDelay(value)))).toEqual([null, null, null, null, null, null, null]);
     expect(retryAfterSecondsOf({ appError: { code: 'rate_limited' } })).toBeNull();
     expect(retryAfterSecondsOf(null)).toBeNull();
+  });
+});
+
+describe('formatRetryDelay', () => {
+  it('states seconds under a minute and minutes with any remaining seconds from a minute', () => {
+    expect([1, 42, 59, 60, 61, 120, 583, 600].map(formatRetryDelay)).toEqual([
+      '1 s', '42 s', '59 s', '1 min', '1 min 1 s', '2 min', '9 min 43 s', '10 min',
+    ]);
+  });
+
+  it.each([
+    [42, 'Too many attempts. Try again in 42 s.', 'Zbyt wiele pr\u00f3b. Spr\u00f3buj ponownie za 42 s.', 'Send again (42 s)', 'Wy\u015blij ponownie (42 s)'],
+    [60, 'Too many attempts. Try again in 1 min.', 'Zbyt wiele pr\u00f3b. Spr\u00f3buj ponownie za 1 min.', 'Send again (1 min)', 'Wy\u015blij ponownie (1 min)'],
+    [583, 'Too many attempts. Try again in 9 min 43 s.', 'Zbyt wiele pr\u00f3b. Spr\u00f3buj ponownie za 9 min 43 s.', 'Send again (9 min 43 s)', 'Wy\u015blij ponownie (9 min 43 s)'],
+  ])('reads a %i s delay the same way in the English and Polish alerts and resend button', (seconds, enAlert, plAlert, enResend, plResend) => {
+    const delay = formatRetryDelay(seconds);
+    expect([en.auth.signInRateLimitedRetryIn({ delay }), pl.auth.signInRateLimitedRetryIn({ delay })]).toEqual([enAlert, plAlert]);
+    expect([en.auth.magicLinkResendCooldown({ delay }), pl.auth.magicLinkResendCooldown({ delay })]).toEqual([enResend, plResend]);
   });
 });

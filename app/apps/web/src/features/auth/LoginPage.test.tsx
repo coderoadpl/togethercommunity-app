@@ -910,15 +910,38 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
   });
 
-  it('uses calm copy when the resolver rate-limits the visitor with a retry delay', async () => {
-    await renderLoginPage();
-    rateLimitSignInMethods(42);
-    await continueWithEmail();
+  it.each([
+    { language: 'en', t: en, seconds: 42, delay: '42 s' },
+    { language: 'en', t: en, seconds: 60, delay: '1 min' },
+    { language: 'en', t: en, seconds: 583, delay: '9 min 43 s' },
+    { language: 'pl', t: pl, seconds: 42, delay: '42 s' },
+    { language: 'pl', t: pl, seconds: 60, delay: '1 min' },
+    { language: 'pl', t: pl, seconds: 583, delay: '9 min 43 s' },
+  ] as const)('states a $seconds s lookup delay as $delay in $language', async ({ language, t, seconds, delay }) => {
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link'], [], anonymousMe(), null, language);
+    rateLimitSignInMethods(seconds);
+    await userEvent.type(screen.getByTestId('login-email'), 'creator@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
 
-    expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
-      en.auth.signInRateLimitedRetryIn({ seconds: 42 }),
-    );
+    const message = await screen.findByTestId('sign-in-rate-limited-message');
+    expect(within(message).getByTestId('rate-limit-countdown')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ delay }));
+    expect(message).toHaveTextContent(delay);
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+  });
+
+  it('ends a countdown that ran out while the tab was hidden as soon as the tab is shown again', async () => {
+    await renderLoginPage();
+    rateLimitSignInMethods(583);
+    await continueWithEmail();
+    expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent('9 min 43 s');
+    expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 584_000);
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled());
+    expect(screen.queryByTestId('rate-limit-countdown')).not.toBeInTheDocument();
   });
 
   it('counts the lookup delay down and enables the retry when it ends', async () => {
@@ -927,7 +950,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent(
-      en.auth.signInRateLimitedRetryIn({ seconds: 1 }),
+      en.auth.signInRateLimitedRetryIn({ delay: '1 s' }),
     );
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
 
@@ -961,7 +984,7 @@ describe('LoginPage', () => {
     await userEvent.type(await screen.findByTestId('login-password'), 'some-password');
     await userEvent.click(screen.getByTestId('signin-submit'));
 
-    expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('signin-submit')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('signin-submit')).toBeEnabled(), { timeout: 3000 });
     expect(screen.getByTestId('signin-error')).toHaveTextContent(t.errors.messageRateLimited);
@@ -978,7 +1001,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
-    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('send-magic-link')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('send-magic-link')).toBeEnabled(), { timeout: 3000 });
     expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.errors.messageRateLimited);
@@ -1588,7 +1611,7 @@ describe('LoginPage', () => {
     await waitFor(() => expect(magicLinkCalls).toBe(2));
     expect(screen.getByTestId('resend-magic-link')).toBeDisabled();
     expect(screen.getByTestId('resend-magic-link')).toHaveTextContent(
-      en.auth.magicLinkResendCooldown({ seconds: 30 }),
+      en.auth.magicLinkResendCooldown({ delay: '30 s' }),
     );
 
     await userEvent.click(screen.getByTestId('login-change-email'));

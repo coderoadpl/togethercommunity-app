@@ -50,6 +50,13 @@ export const retryAfterSecondsOf = (error: unknown): number | null => {
     : null;
 };
 
+export const formatRetryDelay = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `${rest} s`;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+};
+
 const isAdoptionRefusal = (value: string): value is StripeAdoptionRefusal =>
   STRIPE_ADOPTION_REFUSALS.some((candidate) => candidate === value);
 

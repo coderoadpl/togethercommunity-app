@@ -59,7 +59,7 @@ describe('i18n dictionaries', () => {
       /does not exist/iu,
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
-      messages.auth.signInRateLimitedRetryIn({ seconds: 30 }),
+      messages.auth.signInRateLimitedRetryIn({ delay: '30 s' }),
       messages.auth.signInRateLimitedTitle,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,

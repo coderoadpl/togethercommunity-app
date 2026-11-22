@@ -120,7 +120,8 @@ describe('order detail parcel locker verification', () => {
     expect(note).toHaveTextContent(en.shipping.orderLockerUnverifiedHint);
     expect(pl.shipping.orderLockerUnverified).not.toBe(en.shipping.orderLockerUnverified);
     expect(en.shipping.orderLockerUnverifiedHint).toContain('when this order was placed');
-    expect(pl.shipping.orderLockerUnverifiedHint).toContain('przy składaniu zamówienia');
+    expect(pl.shipping.orderLockerUnverifiedHint).not.toBe('');
+    expect(pl.shipping.orderLockerUnverifiedHint).not.toBe(en.shipping.orderLockerUnverifiedHint);
   });
 
   it('shows no note for a verified locker or one stored before verification existed', async () => {

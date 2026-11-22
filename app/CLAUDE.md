@@ -76,20 +76,17 @@ Story titles, names, descriptions, and fixtures must be English. Localized Polis
 product copy comes from translation dictionaries.
 
 Visual baselines from the CI capture (owner decision 2026-11-22): a pull request
-may take its baselines from the `visual` job artifact of a CI run on its own
-head, under the conditions in `docs/visual-regression.md` (Baselines from the CI
-capture); `pnpm run visual:update` stays the authoring command on a macOS host.
+may take its baselines from the `visual` job artifact of a `pull_request` CI run
+for its own head commit (the run renders that head merged into its base), under
+the conditions in `docs/visual-regression.md` (Baselines from the CI capture);
+`pnpm run visual:update` stays the authoring command on a macOS host.
 The ten baselines changed by #448 and #450 and re-recorded in #452 were authored
 this way and are accepted. Risk accepted by the owner: the conditions are checked
 by a reviewer instead of being enforced by the command.
 
-In that decision, "a CI run on its own head" is the `pull_request` run of
-`ci.yml` for the pull request's head commit. Its `visual` job renders that head
-merged into the base branch, not the head alone; the conditions in
-`docs/visual-regression.md` name the commits to record and what a moved base
-requires. The ten baselines are six changed by #448 and four changed by #450 and
-re-recorded in #452. The owner's approving review of 2026-11-22 on pull request
-#454 is the record of the decision.
+The conditions in `docs/visual-regression.md` name the commits to record and
+what a moved base requires. The ten baselines are six changed by #448 and four
+changed by #450 and re-recorded in #452.
 
 ## Alerting (owner decision 2026-09-06 — HARD RULE)
 

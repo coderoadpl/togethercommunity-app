@@ -66,6 +66,16 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   const [picker, sendPicker] = useReducer(reduceLockerPicker, closedLockerPicker);
   const [codeShown, setCodeShown] = useState(() => state.pickupPointCode !== '' && picked === null);
   const entry = lockerEntry(geowidget, picker);
+  const rejectedCheck = check?.status === 'rejected' ? check : null;
+  const [seenRejection, setSeenRejection] = useState(rejectedCheck);
+  const [openedBy, setOpenedBy] = useState<typeof rejectedCheck>(null);
+  if (rejectedCheck !== seenRejection) {
+    setSeenRejection(rejectedCheck);
+    if (rejectedCheck !== null && entry.kind === 'map' && !codeShown) {
+      setCodeShown(true);
+      setOpenedBy(rejectedCheck);
+    }
+  }
   const pickerHistory = useHistoryEntry(() => sendPicker({ type: 'pickerCancelled' }));
   const opener = useRef<HTMLButtonElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
@@ -82,6 +92,10 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   const cancelPicker = () => {
     pickerHistory.leave();
     sendPicker({ type: 'pickerCancelled' });
+  };
+  const toggleCode = () => {
+    setOpenedBy(null);
+    setCodeShown((shown) => !shown);
   };
   const typeCode = () => {
     codeAfterExit.current = true;
@@ -116,7 +130,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   }[entry.reason];
   const checkLine = codeInvalid || check === null || check.status === 'unavailable' ? null
     : check.status === 'checking' ? <Typography variant="body2" color="text.secondary">{t.shipping.lockerChecking}</Typography>
-      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2"><RejectionIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
+      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2" role={check === openedBy ? 'alert' : undefined}><RejectionIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
         : (
           <>
             <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerCheckFound}</CheckoutLockerChosenCaption>
@@ -180,7 +194,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
-          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
+          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={toggleCode} data-testid="checkout-locker-know-code">
             {t.shipping.lockerKnowCode}
             <ChevronDownIcon />
           </CheckoutInlineToggle>

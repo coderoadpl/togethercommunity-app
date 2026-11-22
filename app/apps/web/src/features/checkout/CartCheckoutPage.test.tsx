@@ -900,6 +900,29 @@ describe('hosted cart checkout', () => {
       expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
     });
 
+    it('opens the collapsed code field when the server refuses the typed locker of the cart, with the reason once and no alert under the payment', async () => {
+      serve({ token: 'public-map-token', sessionRefusal: { status: 400, error: { code: 'validation', message: 'This InPost parcel locker is not operating',
+        details: { pickupPointReason: 'not_operating' } } } });
+      server.use(http.get('/api/public/parcel-lockers/:code', () =>
+        HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } })));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
+      await userEvent.click(toggle);
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      await userEvent.click(toggle);
+      expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+      expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    });
+
     it('does not start the cart payment when the price changes while the submit-time check runs', async () => {
       const bodies: unknown[] = [];
       let release: (() => void) | undefined;

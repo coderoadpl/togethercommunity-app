@@ -245,6 +245,53 @@ describe('typed parcel locker code check', () => {
     expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
   });
 
+  it('opens the collapsed code field when the server refuses a typed locker at payment, with the reason once and no pay-bar alert', async () => {
+    const h = serve({ token: 'public-map-token', sessionError: { message: PICKUP_POINT_REJECTION_MESSAGES.not_operating, details: { pickupPointReason: 'not_operating' } } });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
+    await userEvent.click(toggle);
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(h.sessions).toHaveLength(1));
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+    const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription(en.shipping.lockerRejected.not_operating);
+    expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+  });
+
+  it('opens the collapsed code field when the carrier refuses a typed locker after the buyer closed it', async () => {
+    const h = serve({ token: 'public-map-token' });
+    const release = holdLookups(h.lookups);
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
+    await userEvent.click(toggle);
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'missing1');
+    await userEvent.click(toggle);
+    await waitFor(() => expect(h.lookups).toEqual(['MISSING1']));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    release();
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_found);
+    expect(screen.getAllByText(en.shipping.lockerRejected.not_found)).toHaveLength(1);
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+    expect(h.sessions).toEqual([]);
+  });
+
   it('does not ask the carrier about a locker chosen on the map', async () => {
     const h = serve({ token: 'public-map-token' });
     renderCheckout();

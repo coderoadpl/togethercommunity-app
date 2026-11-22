@@ -278,9 +278,16 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .page h1{margin:0;font-family:var(--font-display);font-size:1.75rem;font-weight:700;line-height:1.14;letter-spacing:-.03em}
 .lede{margin:.5rem 0 0;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}
 .card{margin-top:1.75rem;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--shadow);padding:1.25rem}
-.card h2{margin:0 0 .35rem;font-family:var(--font-display);font-size:1.125rem;font-weight:600;letter-spacing:-.015em;line-height:1.4}
+.card h2,.card legend{margin:0 0 .35rem;font-family:var(--font-display);font-size:1.125rem;font-weight:600;letter-spacing:-.015em;line-height:1.4}
 .actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem}
-.danger-zone{border-color:color-mix(in srgb,var(--danger) 50%,transparent)}
+.choices{min-width:0;margin:0;padding:0;border:0}
+.choices legend{padding:0}
+.unsubscribe-option{display:grid;justify-items:start;gap:.75rem;margin-top:.75rem}
+.unsubscribe-option + .unsubscribe-option{margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--line)}
+.unsubscribe-option .fine{margin:0}
+.state-line{margin:0;font-weight:500;overflow-wrap:anywhere}
+button.secondary.danger-text{color:var(--danger)}
+button.secondary.danger-text:hover{color:var(--danger-strong)}
 .fine{margin:.25rem 0 0;color:var(--muted);font-size:.875rem;overflow-wrap:anywhere}
 .choice{display:grid;grid-template-columns:auto 1fr;align-items:start;gap:.15rem .75rem;min-height:44px;padding:.85rem 0;border-bottom:1px solid var(--line)}
 .choice:last-of-type{border-bottom:0}
@@ -314,7 +321,7 @@ button:disabled{border-color:transparent;background:var(--pressed);color:var(--m
 .social-links{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.875rem}
 .social-links a{display:inline-flex;align-items:center;min-height:44px;color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
 @media(min-width:600px){.shell{padding:2.5rem 0 5rem}.page{padding-top:3.5rem}.page > h1{font-size:2.5rem}.brand-name{font-size:1.5rem}.card{padding:1.75rem}}
-@media(max-width:520px){.brand{gap:.75rem}.brand img{max-width:8rem}.brand-name{font-size:1.125rem}.actions{flex-direction:column;align-items:stretch}.actions button,.actions .button-link{width:100%}}
+@media(max-width:520px){.brand{gap:.75rem}.brand img{max-width:8rem}.brand-name{font-size:1.125rem}.actions{flex-direction:column;align-items:stretch}.actions button,.actions .button-link,.unsubscribe-option form,.unsubscribe-option button{width:100%}}
 @media(prefers-color-scheme:dark){.brand-logo--light{display:none}.brand-logo--dark{display:block}}`;
 
 export type StatusCue = 'success' | 'info' | 'error';
@@ -437,6 +444,15 @@ export const renderHostedErrorPage = (input: {
   });
 };
 
+const supportLink = (settings: TenantSettings | null, t: PublicMarketingMessages): string | null => {
+  if (settings == null) return null;
+  if (settings.supportEmail !== null) {
+    return `<a href="${escapeHtml(`mailto:${settings.supportEmail}`)}">${escapeHtml(settings.supportEmail)}</a>`;
+  }
+  const url = settings.supportUrl === null ? null : safeHref(settings.supportUrl);
+  return url === null ? null : `<a href="${escapeHtml(url)}">${escapeHtml(t.supportLink)}</a>`;
+};
+
 export const renderPreferencesPage = (input: {
   nonce: string;
   brand: PublicBrand;
@@ -449,19 +465,36 @@ export const renderPreferencesPage = (input: {
   definitions: PublicPreferenceDefinition[];
 }): string => {
   const t = messages[input.language];
+  const tenant = input.brand.tenant.name;
   const path = `/u/${encodeURIComponent(input.token)}`;
   const formSuffix = `?lang=${input.language}`;
-  const scope = input.scope === 'all_marketing'
-    ? t.scopeAll
-    : t.scopeNamed({ scope: input.scopeLabel ?? input.scope.slice('consent:'.length) });
+  const lede = `<p class="lede">${escapeHtml(t.preferencesFor({ email: input.email }))}</p>`;
+  const page = (body: string): string => renderPage({
+    nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle,
+    eyebrow: t.preferencesEyebrow, body: `${lede}${body}`, testId: 'marketing-preferences',
+  });
+  if (input.globallySuppressed) {
+    const contact = supportLink(input.brand.settings, t);
+    return page(`<section class="card" data-state="unsubscribed-all"><p class="state-line">${escapeHtml(t.unsubscribedEverything({ tenant }))}</p><p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>${contact === null ? '' : `<p class="fine">${contact}</p>`}</section>`);
+  }
+  const allMarketing = input.scope === 'all_marketing';
+  const scopedDefinition = allMarketing
+    ? undefined
+    : input.definitions.find((definition) => `consent:${definition.id}` === input.scope);
+  const scopedWithdrawn = scopedDefinition !== undefined && !scopedDefinition.active && !scopedDefinition.pendingConfirmation;
+  const everythingForm = (className: string): string =>
+    `<form method="post" action="${path}/all${formSuffix}"><button${className === '' ? '' : ` class="${className}"`} type="submit">${escapeHtml(t.unsubscribeAllSubmit)}</button></form>`;
+  const everythingWarning = `<p class="fine">${escapeHtml(t.unsubscribeAllWarning({ tenant }))}</p>`;
+  const scopedOption = scopedWithdrawn
+    ? `<div class="unsubscribe-option"><p class="state-line">${escapeHtml(t.consentWithdrawn({ label: scopedDefinition.label }))}</p></div>`
+    : `<div class="unsubscribe-option"><p class="fine">${escapeHtml(input.scopeLabel === null ? t.unsubscribeListBody : t.unsubscribeConsentBody({ label: input.scopeLabel }))}</p><form method="post" action="${path}/confirm${formSuffix}"><button type="submit">${escapeHtml(t.unsubscribeSubmit)}</button></form></div>`;
+  const options = allMarketing
+    ? `<div class="unsubscribe-option">${everythingWarning}${everythingForm('')}</div>`
+    : `${scopedOption}<div class="unsubscribe-option">${everythingWarning}${everythingForm('secondary danger-text')}</div>`;
   const choices = input.definitions.length === 0
     ? `<p class="fine">${escapeHtml(t.noOptionalConsents)}</p>`
-    : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : ''}${input.globallySuppressed ? ' disabled' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
-  const preferenceForm = input.globallySuppressed
-    ? `<p class="notice">${escapeHtml(t.globallyUnsubscribed({ tenant: input.brand.tenant.name }))}</p>`
-    : `<form method="post" action="${path}/preferences${formSuffix}">${choices}<div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form>`;
-  const body = `<p class="lede">${escapeHtml(t.preferencesFor({ email: input.email }))}</p><p class="notice">${escapeHtml(t.scopeIntro({ scope }))}</p><section class="card danger-zone"><h2>${escapeHtml(t.unsubscribeScope)}</h2><p class="fine">${escapeHtml(t.unsubscribeWarning)}</p><div class="actions"><form method="post" action="${path}/confirm${formSuffix}"><button class="danger" type="submit">${escapeHtml(t.unsubscribeScope)}</button></form><form method="post" action="${path}/all${formSuffix}"><button class="secondary" type="submit">${escapeHtml(t.unsubscribeEverything({ tenant: input.brand.tenant.name }))}</button></form></div></section><section class="card"><h2>${escapeHtml(t.consentsTitle)}</h2><p class="fine">${escapeHtml(t.consentsIntro)}</p>${preferenceForm}</section>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preferences' });
+    : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
+  return page(`<section class="card" data-state="${allMarketing ? 'all-marketing-link' : scopedWithdrawn ? 'consent-withdrawn' : 'consent-link'}"><h2>${escapeHtml(t.unsubscribeTitle)}</h2>${options}</section><div class="card"><form method="post" action="${path}/preferences${formSuffix}"><fieldset class="choices"><legend>${escapeHtml(t.consentsTitle)}</legend><p class="fine">${escapeHtml(t.consentsIntro)}</p>${choices}</fieldset><div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form></div>`);
 };
 
 export const renderPreferenceResultPage = (input: {

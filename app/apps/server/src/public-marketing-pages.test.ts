@@ -55,8 +55,14 @@ describe('public marketing pages', () => {
     expect(html).toContain(
       '<a href="https://youtube.com/@studio" target="_blank" rel="noreferrer">YouTube</a>',
     );
-    expect(html).toContain('Unsubscribe me from this scope');
-    expect(html).toContain('Unsubscribe me from everything from Studio Demo');
+    expect(html).toContain('<section class="card" data-state="consent-link"><h2>Unsubscribe</h2>');
+    expect(html).toContain('<p class="fine">You will stop receiving messages sent under the consent “Product news”.</p><form method="post" action="/u/token_1234567890123456789012/confirm?lang=en"><button type="submit">Unsubscribe</button></form>');
+    expect(html).toContain('<p class="fine">Stops every marketing e-mail from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing e-mails</button></form>');
+    expect(html).toContain('<fieldset class="choices"><legend>Optional consents</legend>');
+    expect(html).not.toContain('scope');
+    expect(html).not.toContain('class="danger"');
+    expect(html).not.toContain('danger-zone');
+    expect(html).not.toContain('class="notice"');
     expect(html).toContain('name="present-consent" value="newsletter"');
     expect(html).toContain('name="present-consent" value="events"');
     expect(html).toContain('name="present-consent" value="offers"');
@@ -82,6 +88,94 @@ describe('public marketing pages', () => {
     expect(html).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(html).toContain(':root{color-scheme:light dark;');
     expect(html).not.toContain('together-theme-mode');
+  });
+
+  const preferenceInput = (overrides: Partial<Parameters<typeof renderPreferencesPage>[0]> = {}) => ({
+    nonce: 'test-nonce',
+    brand, language: 'en' as const, token: 'token_1234567890123456789012', email: 'member@example.test',
+    scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
+    definitions: [
+      { id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false },
+      { id: 'offers', label: 'Partner offers', active: false, pendingConfirmation: false },
+    ],
+    ...overrides,
+  });
+
+  it('shows only the unsubscribed status and the way to reach the sender once the address left everything', () => {
+    if (brand.settings == null) throw new Error('Missing brand settings');
+    const html = renderPreferencesPage(preferenceInput({
+      globallySuppressed: true,
+      brand: { ...brand, settings: { ...brand.settings, supportEmail: 'help@studio.test' } },
+    }));
+    expect(html).toContain('<section class="card" data-state="unsubscribed-all"><p class="state-line">You are unsubscribed from all marketing e-mails from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p><p class="fine"><a href="mailto:help@studio.test">help@studio.test</a></p></section>');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('Select the messages');
+    expect(html).not.toContain('<h2>Unsubscribe</h2>');
+    const polish = renderPreferencesPage(preferenceInput({ globallySuppressed: true, language: 'pl' }));
+    expect(polish).toContain('Ten adres jest wypisany ze wszystkich wiadomości marketingowych od nadawcy Studio Demo.');
+    expect(polish).toContain('Na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.');
+    expect(polish).not.toContain('<a href="mailto:');
+  });
+
+  it('links the support page when the workspace has no support address', () => {
+    if (brand.settings == null) throw new Error('Missing brand settings');
+    const withUrl = renderPreferencesPage(preferenceInput({
+      globallySuppressed: true,
+      brand: { ...brand, settings: { ...brand.settings, supportUrl: 'https://studio.test/help' } },
+    }));
+    expect(withUrl).toContain('<p class="fine"><a href="https://studio.test/help">Help and contact</a></p>');
+    const unsafe = renderPreferencesPage(preferenceInput({
+      globallySuppressed: true,
+      brand: { ...brand, settings: { ...brand.settings, supportUrl: 'javascript:alert(1)' } },
+    }));
+    expect(unsafe).not.toContain('javascript:');
+  });
+
+  it('replaces the scoped button with the withdrawn state and keeps the rest', () => {
+    const html = renderPreferencesPage(preferenceInput({
+      definitions: [{ id: 'newsletter', label: 'Product news', active: false, pendingConfirmation: false }],
+    }));
+    expect(html).toContain('data-state="consent-withdrawn"');
+    expect(html).toContain('<p class="state-line">You are unsubscribed from “Product news”.</p>');
+    expect(html).not.toContain('/confirm?lang=en');
+    expect(html).toContain('/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing e-mails</button>');
+    expect(html).toContain('<fieldset class="choices">');
+    const pending = renderPreferencesPage(preferenceInput({
+      definitions: [{ id: 'newsletter', label: 'Product news', active: false, pendingConfirmation: true }],
+    }));
+    expect(pending).toContain('data-state="consent-link"');
+    expect(pending).toContain('/confirm?lang=en');
+  });
+
+  it('offers one unsubscribe button on a link issued for all marketing', () => {
+    const html = renderPreferencesPage(preferenceInput({ scope: 'all_marketing', scopeLabel: null }));
+    expect(html).toContain('data-state="all-marketing-link"');
+    expect(html.match(/<button[^>]*>Unsubscribe from all marketing e-mails<\/button>/g)).toHaveLength(1);
+    expect(html).toContain('<p class="fine">Stops every marketing e-mail from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button type="submit">');
+    expect(html).not.toContain('/confirm?lang=en');
+  });
+
+  it('names a consent without a label as this list and never shows its id', () => {
+    const html = renderPreferencesPage(preferenceInput({ scope: 'consent:archived-definition', scopeLabel: null }));
+    expect(html).toContain('You will stop receiving messages from this list.');
+    expect(html).not.toContain('archived-definition');
+    const polish = renderPreferencesPage(preferenceInput({ scope: 'consent:archived-definition', scopeLabel: null, language: 'pl' }));
+    expect(polish).toContain('Przestaniesz otrzymywać wiadomości z tej listy.');
+    expect(polish).toContain('<h2>Wypisz się</h2>');
+    expect(polish).toContain('>Wypisz mnie</button>');
+    expect(polish).toContain('>Wypisz mnie ze wszystkich wiadomości marketingowych</button>');
+    expect(polish).toContain('Zatrzymuje wszystkie wiadomości marketingowe od nadawcy Studio Demo. Tego wyboru nie cofniesz na tej stronie.');
+  });
+
+  it('escapes consent labels and the workspace name in every preference state', () => {
+    const html = renderPreferencesPage(preferenceInput({
+      brand: { ...brand, tenant: { ...brand.tenant, name: 'Studio <b>' } },
+      scopeLabel: 'News <script>',
+      definitions: [{ id: 'newsletter', label: 'News <script>', active: false, pendingConfirmation: false }],
+    }));
+    expect(html).toContain('You are unsubscribed from “News &lt;script&gt;”.');
+    expect(html).toContain('from Studio &lt;b&gt;. You cannot undo');
+    expect(html).not.toContain('<script>');
   });
 
   it('wraps long unbroken text and names each language in its own language', () => {

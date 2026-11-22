@@ -2619,7 +2619,9 @@ describe('marketing HTTP surfaces', () => {
     expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
     expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
     const page = await app.request(post.headers.get('location') ?? '', { headers: { host: 'acme.localhost:48730' } });
-    expect(await page.text()).toContain('data-testid="marketing-preferences"');
+    const html = await page.text();
+    expect(html).toContain('You are unsubscribed from all marketing e-mails from Acme.');
+    expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
   });
 
   it('answers a missing hosted document or version with a branded page in the workspace language', async () => {

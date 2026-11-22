@@ -433,9 +433,7 @@ export const LessonPlayerPage = ({
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
   const [continuing, setContinuing] = useState(false);
-  useEffect(() => {
-    setContinuing(false);
-  }, [lessonId]);
+  const [completionIntent, setCompletionIntent] = useState<'mark' | 'continue' | 'unmark'>('mark');
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -470,6 +468,14 @@ export const LessonPlayerPage = ({
     onError: () => setOptimisticDone(null),
     onSettled: settleCompletion,
   });
+
+  const { reset: resetComplete } = complete;
+  const { reset: resetUncomplete } = uncomplete;
+  useEffect(() => {
+    setContinuing(false);
+    resetComplete();
+    resetUncomplete();
+  }, [lessonId, resetComplete, resetUncomplete]);
 
   useEffect(() => {
     if (unauthorized) void redirectToLogin();
@@ -588,8 +594,8 @@ export const LessonPlayerPage = ({
         tenantSettings.data.settings,
         me.data?.tenant?.videoAutoplay ?? null,
       );
-  const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
-    .some((query) => query.isError);
+  const hasSideErrors = [tenantSettings, structure, attachments].some((query) => query.isError);
+  const completionError = complete.error ?? uncomplete.error;
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
@@ -605,7 +611,21 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const markComplete = () => {
+    setCompletionIntent('mark');
+    uncomplete.reset();
+    complete.mutate({ lessonId });
+  };
+
+  const unmarkComplete = () => {
+    setCompletionIntent('unmark');
+    complete.reset();
+    uncomplete.mutate({ lessonId });
+  };
+
   const continueToNext = () => {
+    setCompletionIntent('continue');
+    uncomplete.reset();
     setContinuing(true);
     complete.mutate(
       { lessonId },
@@ -649,8 +669,6 @@ export const LessonPlayerPage = ({
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-            {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
-            {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>
         ) : null}
         <Stack component="section" useFlexGap spacing="1.5rem">
@@ -712,6 +730,26 @@ export const LessonPlayerPage = ({
         ) : null}
 
         {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+          {completionError === null ? null : (
+            <Alert
+              severity="error"
+              role="alert"
+              data-testid="lesson-completion-error"
+              sx={{ mb: '0.5rem' }}
+              action={(
+                <Button
+                  color="inherit"
+                  size="small"
+                  data-testid="lesson-completion-retry"
+                  onClick={completionIntent === 'continue' ? continueToNext : completionIntent === 'unmark' ? unmarkComplete : markComplete}
+                >
+                  {t.common.retry}
+                </Button>
+              )}
+            >
+              <strong>{t.lesson.completionFailed}</strong> {localizeError(completionError, t)}
+            </Alert>
+          )}
           {firstSkipped !== null && neighbours !== null ? (
             <MuiLink
               component={Link}
@@ -772,7 +810,7 @@ export const LessonPlayerPage = ({
                 <Button
                   variant="text"
                   data-testid="unmark-complete"
-                  onClick={() => uncomplete.mutate({ lessonId })}
+                  onClick={unmarkComplete}
                   disabled={uncomplete.isPending}
                   aria-label={t.lesson.unmarkCompleted}
                 >
@@ -785,7 +823,7 @@ export const LessonPlayerPage = ({
                 variant={completionSlot === 'fill' ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
                 data-slot={completionSlot}
-                onClick={() => complete.mutate({ lessonId })}
+                onClick={markComplete}
                 disabled={complete.isPending}
               >
                 {completionSlot === 'compact' ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}

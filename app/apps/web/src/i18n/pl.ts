@@ -2486,6 +2486,7 @@ export const pl: Messages = {
     unmarkCompleted: 'Ukończona — cofnij oznaczenie',
     completeContinue: 'Ukończ i przejdź dalej',
     completing: 'Zapisywanie…',
+    completionFailed: 'Nie udało się zapisać postępu.',
     previousLesson: 'Poprzednia lekcja',
     nextLesson: 'Następna lekcja',
     firstLesson: 'To pierwsza lekcja',

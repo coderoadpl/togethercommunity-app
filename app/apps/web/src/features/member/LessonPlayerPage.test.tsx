@@ -1444,6 +1444,95 @@ describe('LessonPlayerPage', () => {
     expect(uncompleteCalls).toBe(1);
   });
 
+  it.each([
+    ['mark-complete', '/api/student/lessons/complete', [], 'unmark-complete'],
+    ['unmark-complete', '/api/student/lessons/uncomplete', ['l2'], 'mark-complete'],
+  ] as const)('shows a failed %s at the footer bar with a retry', async (trigger, endpoint, initiallyDone, settledTestId) => {
+    let calls = 0;
+    let done: readonly string[] = initiallyDone;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', () => HttpResponse.json({ ok: true, data: { progress: progress([...done]) } })),
+      http.post(endpoint, () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+        }
+        done = initiallyDone.length === 0 ? ['l2'] : [];
+        return HttpResponse.json({ ok: true, data: { progress: progress([...done]) } });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    await user.click(await screen.findByTestId(trigger));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveAttribute('data-testid', 'lesson-completion-error');
+    expect(error).toHaveTextContent(en.lesson.completionFailed);
+    expect(error.closest('footer')).not.toBeNull();
+    expect(screen.getByTestId('lesson-block-0').compareDocumentPosition(error)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId(trigger)).toBeInTheDocument();
+
+    await user.click(within(error).getByRole('button', { name: en.common.retry }));
+
+    expect(await screen.findByTestId(settledTestId)).toBeInTheDocument();
+    expect(calls).toBe(2);
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+  });
+
+  it('retries a failed complete and continue and then moves on', async () => {
+    let completeCalls = 0;
+    server.use(
+      okStructure(),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', ({ params }) => {
+        const id = String(params.lessonId);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: { ...lesson([{ type: 'html', html: `<p>${id} body</p>` }]), id, name: id === 'l2' ? 'Advanced Variables' : 'Intro to Variables' },
+            authenticated: true,
+          },
+        });
+      }),
+      http.post('/api/student/lessons/complete', () => {
+        completeCalls += 1;
+        return completeCalls === 1
+          ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 })
+          : HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
+      }),
+    );
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: LessonRouteComponent,
+      })]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    const user = userEvent.setup();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByTestId('complete-continue'));
+    const error = await screen.findByTestId('lesson-completion-error');
+    expect(screen.getByTestId('complete-continue')).toHaveTextContent(en.lesson.completeContinue);
+    expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1');
+
+    await user.click(within(error).getByRole('button', { name: en.common.retry }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l2'));
+    expect(completeCalls).toBe(2);
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+  });
+
   it('holds a pending state on continue until the next lesson is on screen', async () => {
     let releaseComplete: () => void = () => undefined;
     const completeGate = new Promise<void>((resolve) => {

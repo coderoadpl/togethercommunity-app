@@ -2201,6 +2201,7 @@ export interface Messages {
     unmarkCompleted: string;
     completeContinue: string;
     completing: string;
+    completionFailed: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;

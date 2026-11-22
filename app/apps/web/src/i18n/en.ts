@@ -2465,6 +2465,7 @@ export const en: Messages = {
     unmarkCompleted: 'Completed — undo',
     completeContinue: 'Complete & continue',
     completing: 'Saving…',
+    completionFailed: 'Your progress could not be saved.',
     previousLesson: 'Previous lesson',
     nextLesson: 'Next lesson',
     firstLesson: 'This is the first lesson',

@@ -2627,25 +2627,91 @@ describe('marketing HTTP surfaces', () => {
     expect(await known.text()).toBe('');
   });
 
-  it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
-    const marketing = await memberSurfaceMarketing();
+  const suppress = async (marketing: MarketingAppDeps, reason: 'manual' | 'hard_bounce' | 'unsubscribe_global') => {
     await marketing.suppressions.record('t-acme', {
-      id: 'suppression-member', tenantId: 't-acme', email: 'member@example.test',
-      emailHmac: marketing.hmac.compute('t-acme', 'member@example.test'), reason: 'unsubscribe_global',
+      id: `suppression-member-${reason}`, tenantId: 't-acme', email: 'member@example.test',
+      emailHmac: marketing.hmac.compute('t-acme', 'member@example.test'), reason,
       sourceRef: 'unsubscribe-news', meta: null, createdAt: '1998-07-02T00:00:00.000Z', liftedAt: null, liftedBy: null,
     });
-    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
-    const app = marketingApp(marketing);
-    const post = await app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+  };
+  const postPreferences = (app: ReturnType<typeof marketingApp>, fields: Array<[string, string]>) =>
+    app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
       method: 'POST',
       headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams([['present-consent', 'definition-news'], ['consent', 'definition-news']]),
+      body: new URLSearchParams(fields),
     });
+  const preferencePage = async (app: ReturnType<typeof marketingApp>, path = '/u/unsubscribe_token_123456789012345?lang=en') =>
+    (await app.request(path, { headers: { host: 'acme.localhost:48730' } })).text();
+
+  it.each(['manual', 'hard_bounce'] as const)('lets a %s-suppressed address withdraw a consent that is still active', async (reason) => {
+    const marketing = await memberSurfaceMarketing();
+    await suppress(marketing, reason);
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('You are unsubscribed from all marketing e-mails from Acme.');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('name="consent" value="definition-news" checked');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+    const kept = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(kept.status).toBe(200);
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed']);
+    const withdrawn = await postPreferences(app, [['present-consent', 'definition-news']]);
+    expect(withdrawn.status).toBe(200);
+    expect(await withdrawn.text()).toContain('Preferences saved');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+    const after = await preferencePage(app);
+    expect(after).toContain('data-state="unsubscribed-all"');
+    expect(after).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
+  });
+
+  it('sends a refused re-subscription back to a page that still offers every withdrawal', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'], ['consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
     expect(post.status).toBe(303);
     expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
     expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
-    const page = await app.request(post.headers.get('location') ?? '', { headers: { host: 'acme.localhost:48730' } });
-    const html = await page.text();
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+  });
+
+  it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.marketingConsents.record('t-acme', {
+      id: 'consent-news-withdrawn', tenantId: 't-acme', memberId: null, email: 'member@example.test',
+      definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+      documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'withdrawn',
+      previousId: 'consent-news', source: 'preference_page', evidence: { collectedAt: '1998-07-02T00:00:00.000Z' },
+      occurredAt: '1998-07-02T00:00:00.000Z',
+    });
+    await suppress(marketing, 'unsubscribe_global');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
     expect(html).toContain('You are unsubscribed from all marketing e-mails from Acme.');
     expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
   });
@@ -2667,7 +2733,7 @@ describe('marketing HTTP surfaces', () => {
       expect(page).toContain('data-testid="hosted-legal-not-found"');
       expect(page).toContain('Document not found');
       expect(page).toContain('This document does not exist or has been withdrawn.');
-      expect(page).toContain('href="/"');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
       expect(page).not.toContain('class="languages"');
     }
   });

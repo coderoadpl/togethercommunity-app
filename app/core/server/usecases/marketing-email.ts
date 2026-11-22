@@ -471,17 +471,19 @@ export const saveMarketingConsentPreferences = async (
   }
   const selectedIds = new Set(input.selectedDefinitionIds);
   const presentIds = new Set(input.presentDefinitionIds.filter((definitionId) => allowedIds.has(definitionId)));
+  const current = await Promise.all(definitions.map(async (definition) => ({
+    definition,
+    state: deriveConsentState(await deps.consents.listByEmail(tenantId.value, token.email, definition.id), definition),
+  })));
+  const subscribing = current.some(({ definition, state }) =>
+    selectedIds.has(definition.id) && state.state !== 'active' && state.state !== 'pending_confirmation');
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
-  if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
+  if (subscribing && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
     return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
   }
   const resolveLanguage = consentEmailLanguage(tenantId.value, token.email, deps);
   let pendingConfirmations = 0;
-  for (const definition of definitions) {
-    const state = deriveConsentState(
-      await deps.consents.listByEmail(tenantId.value, token.email, definition.id),
-      definition,
-    );
+  for (const { definition, state } of current) {
     const selected = selectedIds.has(definition.id);
     if (presentIds.has(definition.id) && !selected && state.state !== 'none' && state.state !== 'withdrawn') {
       const withdrawn = await withdrawMarketingConsent(ctx, {

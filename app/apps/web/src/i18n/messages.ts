@@ -369,6 +369,7 @@ export interface Messages {
     headingSoldOut: string;
     detailGeneric: string;
     traceId: string;
+    traceIdHint: string;
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;

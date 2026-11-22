@@ -47,11 +47,14 @@ describe('RootErrorFallback', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       `${en.errors.traceId} 0af7651916cd43dd8448eb211c80319c`,
     );
+    expect(screen.getByTestId('root-error-trace-hint')).toHaveTextContent(en.errors.traceIdHint);
   });
 
   it('omits the trace id line when tracing is inactive', () => {
     render(<RootErrorFallback error={new Error('boom')} traceId={undefined} />);
 
     expect(screen.getByRole('alert')).not.toHaveTextContent(en.errors.traceId);
+    expect(screen.queryByTestId('root-error-trace-hint')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).not.toHaveTextContent(en.errors.traceIdHint);
   });
 });

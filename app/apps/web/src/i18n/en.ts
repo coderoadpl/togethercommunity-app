@@ -3079,7 +3079,7 @@ export const en: Messages = {
     send: 'Send message',
     sending: 'Sending…',
     sent: 'Your message has been sent.',
-    notConfigured: 'The creator has not configured a support address.',
+    notConfigured: 'The creator has not set up a contact form yet.',
     externalLink: 'Open external support',
     emailLabel: 'Support email',
     urlLabel: 'External support URL',

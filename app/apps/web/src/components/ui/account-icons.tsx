@@ -39,6 +39,8 @@ export const MailCheckIcon = (props: IconProps) => (<Glyph {...props}><path d="M
   <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
   <path d="m16 19 2 2 4-4" /></Glyph>);
 
+export const MessageSquareIcon = (props: IconProps) => (<Glyph {...props}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Glyph>);
+
 export const LockKeyholeIcon = (props: IconProps) => (<Glyph {...props}><circle cx="12" cy="16" r="1" />
   <rect x="3" y="10" width="18" height="12" rx="2" />
   <path d="M7 10V7a5 5 0 0 1 10 0v3" /></Glyph>);

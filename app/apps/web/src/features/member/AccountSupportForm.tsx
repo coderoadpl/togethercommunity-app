@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AccountDialog } from '../../components/ui/AccountDialog.js';
+import { MessageSquareIcon } from '../../components/ui/account-icons.js';
 import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput, Stack, Typography } from '@mui/material';
 import { AccountCard as SectionCard } from './AccountCard.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
@@ -17,6 +18,7 @@ export const AccountSupportForm = ({ configured = true, externalUrl = null, supp
   }, [success]);
   return (
           <SectionCard
+            icon={<MessageSquareIcon />}
             title={t.support.heading}
             description={configured ? t.support.intro : undefined}
             data-testid="account-support"

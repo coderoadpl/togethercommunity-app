@@ -3133,7 +3133,7 @@ export const pl: Messages = {
     send: 'Wyślij wiadomość',
     sending: 'Wysyłanie…',
     sent: 'Twoja wiadomość została wysłana.',
-    notConfigured: 'Ta platforma nie ma jeszcze adresu do kontaktu.',
+    notConfigured: 'Twórca nie udostępnił jeszcze formularza kontaktowego.',
     externalLink: 'Otwórz stronę pomocy',
     emailLabel: 'E-mail do kontaktu',
     urlLabel: 'Link do zewnętrznej pomocy (opcjonalnie)',

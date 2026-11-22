@@ -5,7 +5,7 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
-  collectedShippingFromStripe,
+  checkoutShippingFromStripe,
   orderBillingDataSchema,
   nipSchema,
   err,
@@ -17,7 +17,6 @@ import {
   stripeCancelErrorSchema,
   stripeRequestErrorSchema,
   stripeTermsUrlMissing,
-  stripeCheckoutShippingSchema,
   stripePermissionMissing,
   stripeRefundFailure,
   stripeRefundObjectSchema,
@@ -35,7 +34,6 @@ import {
   stripeKeyModeConflicts,
   type AppError,
   type CheckoutBranding,
-  type CollectedShipping,
   type ProviderRefund,
   type Result,
   type StripePermissionCheck,
@@ -120,15 +118,6 @@ const checkoutShippingParams = (
         }),
       },
     }],
-  };
-};
-
-const checkoutShipping = (session: unknown): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
-  const parsed = stripeCheckoutShippingSchema.safeParse(session);
-  if (!parsed.success) return { shipping: null, shippingCostCents: null };
-  return {
-    shipping: collectedShippingFromStripe(parsed.data, parsed.data.customer_details?.phone ?? null),
-    shippingCostCents: parsed.data.shipping_cost?.amount_total ?? null,
   };
 };
 
@@ -323,7 +312,7 @@ const toCheckoutSessionEvent = (
     invoiceId: idOrNull(session.invoice),
     amountTotalCents: session.amount_total,
     discountTotalCents: session.total_details?.amount_discount ?? null,
-    ...checkoutShipping(session),
+    ...checkoutShippingFromStripe(session),
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,

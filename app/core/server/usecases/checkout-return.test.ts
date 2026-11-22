@@ -78,11 +78,37 @@ describe('checkout return and cancel addresses', () => {
     expect({ ...h.snapshotRows[0], returnUrl: undefined }).toStrictEqual({ ...plain.snapshotRows[0], returnUrl: undefined });
   });
 
-  it('keeps the workspace cancel URL when only a returnUrl is given', async () => {
+  it.each([
+    ['single product', '/checkout/poster-1', null],
+    ['cart', '/checkout/cart/pay', `${CART_POSTER}.2`],
+  ])('keeps the return address on the workspace cancel URL for %s', async (flow, pathname, lines) => {
     const h = harness(ORIGINS);
-    expect((await legacyCheckout(h, { ...posterRequest, returnUrl: 'https://shop.example.test/thanks' })).ok).toBe(true);
-    expect(h.paymentInputs[0]?.cancelUrl).toBe('https://acme.togethercommunity.app/checkout/poster-1?status=cancelled');
-    expect(h.snapshotRows[0]?.returnUrl).toBe('https://shop.example.test/thanks');
+    const addresses = { returnUrl: 'https://shop.example.test/thanks?order=88&lang=en#top', attribution: { utmSource: 'shop' } };
+    const started = flow === 'cart' ? await cartCheckout(h, { ...posterCart, ...addresses }) : await legacyCheckout(h, { ...posterRequest, ...addresses });
+    expect(started.ok).toBe(true);
+    const cancelUrl = new URL(h.paymentInputs[0]?.cancelUrl ?? '');
+    expect(cancelUrl.origin).toBe(new URL(legacyBaseUrl).origin);
+    expect(cancelUrl.pathname).toBe(pathname);
+    expect(cancelUrl.searchParams.get('status')).toBe('cancelled');
+    expect(cancelUrl.searchParams.get('lines')).toBe(lines);
+    expect(cancelUrl.searchParams.get('utm_source')).toBe('shop');
+    expect(cancelUrl.searchParams.get('return')).toBe('https://shop.example.test/thanks?order=88&lang=en');
+    expect(cancelUrl.searchParams.has('lang')).toBe(false);
+    expect(h.snapshotRows[0]?.returnUrl).toBe(cancelUrl.searchParams.get('return'));
+  });
+
+  it('does not keep the return address on the sales-link cancel URL', async () => {
+    const h = harness(ORIGINS);
+    const returnUrl = 'https://shop.example.test/thanks';
+    const started = await legacyCheckout(h, {
+      productId: 'course-1', salesLinkSlug: 'collection', email: 'buyer@example.com', language: 'en', termsAccepted: true, returnUrl,
+    });
+    expect(started.ok).toBe(true);
+    expect(h.paymentInputs).toHaveLength(1);
+    const cancelUrl = new URL(h.paymentInputs[0]?.cancelUrl ?? '');
+    expect(cancelUrl.pathname).toBe('/offer/collection');
+    expect(cancelUrl.searchParams.has('return')).toBe(false);
+    expect(h.snapshotRows[0]?.returnUrl).toBe(returnUrl);
   });
 
   it('accepts both addresses on the cart form', async () => {

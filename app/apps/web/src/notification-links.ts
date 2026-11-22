@@ -12,6 +12,7 @@ export type NotificationTarget =
   | { kind: 'dm-reports' }
   | { kind: 'space-event'; spaceId: string; eventId: string }
   | { kind: 'tenant-domains' }
+  | { kind: 'change-proposals' }
   | { kind: 'none' };
 
 const TENANT_DOMAIN_KINDS: readonly Notification['kind'][] = [
@@ -23,6 +24,7 @@ export const notificationTarget = (notification: Notification): NotificationTarg
   const { contextKind, contextId, rootPostId, courseId, eventId } = notification.payload;
   if (TENANT_DOMAIN_KINDS.includes(notification.kind)) return { kind: 'tenant-domains' };
   if (notification.kind === 'dm-report') return { kind: 'dm-reports' };
+  if (notification.kind === 'change-proposal') return { kind: 'change-proposals' };
   if (contextId === null) return { kind: 'none' };
   if (notification.kind === 'space-event') {
     return eventId === null
@@ -55,6 +57,8 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
   ? t.notifications.tenantDomainError({ domain: subject })
   : notification.kind === 'dm-report'
   ? t.notifications.dmReport({ reporter: subject })
+  : notification.kind === 'change-proposal'
+  ? t.notifications.changeProposal({ key: subject })
   : notification.kind === 'space-event'
     ? t.notifications.spaceEvent({ space: subject })
     : notification.kind === 'dm-message'
@@ -66,11 +70,36 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
         : t.notifications.threadReply({ author: subject, lesson: lessonName });
 };
 
-export const notificationTitle = (t: Messages, notification: Notification): string =>
-  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
+export const notificationSnippet = (t: Messages, notification: Notification): string => {
+  const { snippet } = notification.payload;
+  if (snippet.length === 0) return '';
+  return notification.kind === 'change-proposal'
+    ? t.notifications.changeProposalGroup({ title: snippet })
+    : translateDeletedContent(snippet, t);
+};
 
 /** A placeholder no message bundle and no user-supplied name can contain. */
 const SUBJECT_SLOT = '\u0000';
+
+interface IsolatedLine {
+  before: string;
+  isolated: string;
+  after: string;
+}
+
+export const notificationSnippetParts = (t: Messages, notification: Notification): IsolatedLine => {
+  const { snippet } = notification.payload;
+  if (notification.kind !== 'change-proposal' || snippet.length === 0) {
+    return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  }
+  const sentence = t.notifications.changeProposalGroup({ title: SUBJECT_SLOT });
+  const slot = sentence.indexOf(SUBJECT_SLOT);
+  if (slot === -1) return { before: notificationSnippet(t, notification), isolated: '', after: '' };
+  return { before: sentence.slice(0, slot), isolated: snippet, after: sentence.slice(slot + 1) };
+};
+
+export const notificationTitle = (t: Messages, notification: Notification): string =>
+  titleWithSubject(t, notification, translateDeletedContent(notificationSubject(notification), t));
 
 export const notificationTitleParts = (
   t: Messages,
@@ -105,6 +134,8 @@ export const useNotificationNavigation = () => {
       });
     } else if (target.kind === 'dm-reports') {
       void navigate({ to: '/panel/reports' });
+    } else if (target.kind === 'change-proposals') {
+      void navigate({ to: '/panel/proposals' });
     } else if (target.kind === 'tenant-domains') {
       void navigate({ to: '/panel/settings', hash: 'company' });
     } else if (target.kind === 'space-event') {

@@ -6,7 +6,10 @@ import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
+  CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS,
   isChangeProposalFileMissingNote,
+  KEY_DOWNLOAD_FILE_LIMITS,
+  KEY_DOWNLOAD_STORAGE_DEADLINES,
   type AppError,
   type Identity,
   type Result,
@@ -23,7 +26,10 @@ import {
   discardKeyDownloadFile,
   getChangeProposal,
   getChangeProposalFileLink,
+  purgeShopManagementKeys,
   rejectChangeProposal,
+  rejectChangeProposalGroup,
+  removeProductDownloadFile,
   revokeShopManagementKey,
   shopManagementKeyCapabilities,
   submitChangeProposal,
@@ -33,6 +39,7 @@ import {
   type ChangeProposalTransaction,
   type ChangeProposalTransactionScope,
   type Ctx,
+  type StorageProvider,
 } from '#core/server/index.js';
 import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
 
@@ -239,6 +246,33 @@ const removeStagedObjects = (h: Harness): void => {
   for (const objectKey of h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)) h.objects.objects.delete(objectKey);
 };
 
+const seedUploadingFile = async (h: Harness, id: string): Promise<string> => {
+  const storageKey = `${TENANT}/product-downloads/${WORKBOOK}/${id}/draft.pdf`;
+  await database.db.insert(productDownloadAssets).values({
+    id, tenantId: TENANT, productId: WORKBOOK, lineageId: id, versionNumber: 1, versionNote: null, supersededAt: null, replacesAssetId: null,
+    fileName: 'draft.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength, storageKey, status: 'pending', createdAt: NOW, sha256: null,
+  });
+  h.objects.objects.set(storageKey, { bytes: PDF, contentType: 'application/pdf' });
+  return storageKey;
+};
+
+const MAX_STAGED_ROW_BYTES = KEY_DOWNLOAD_FILE_LIMITS.maxBytes;
+
+const fillStaging = async (apiKeyId: string, bytes: number, rows = Math.ceil(bytes / MAX_STAGED_ROW_BYTES)): Promise<void> => {
+  let left = bytes;
+  for (let row = 0; row < rows; row += 1) {
+    const sizeBytes = row === rows - 1 ? left : Math.min(MAX_STAGED_ROW_BYTES, left - (rows - row - 1));
+    left -= sizeBytes;
+    const id = `filler-${apiKeyId}-${String(row)}`;
+    await database.db.insert(changeProposalDownloadFiles).values({
+      tenantId: TENANT, id, apiKeyId, fileName: 'filler.pdf', contentType: 'application/pdf', sizeBytes, sha256: 'a'.repeat(64),
+      objectKey: `${TENANT}/product-downloads/key-files/${apiKeyId}/${id}/filler.pdf`, createdAt: NOW,
+    });
+  }
+};
+
+const beginStaging = (h: Harness) => beginKeyDownloadUpload(keyCtx(), { fileName: 'next.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength }, h.deps);
+
 describe('a proposed download file', () => {
   it('changes no live file list until approval, which attaches the staged object in place under the staged id and nothing else', async () => {
     const h = harness();
@@ -403,8 +437,12 @@ describe('a proposed download file', () => {
     expect(JSON.stringify(shown.value.effect)).toContain(sha256(PDF));
   });
 
-  it('ends stale as an unknown operation on a release that does not know it, and applies nothing', async () => {
+  it('ends a proposal of an operation this release does not register stale with the unknown-operation note, and changes no file and no staged row', async () => {
     const h = harness();
+    await seedOwnerFile(h, 'owner-file');
+    const loose = await h.stage();
+    const filesBefore = await assetsOf(WORKBOOK);
+    const stagedBefore = await stagedRow(loose.id);
     await database.db.insert(changeProposals).values({
       id: 'later-operation', tenantId: TENANT, operation: 'download.rename', input: { productId: WORKBOOK, assetId: 'a', fileName: 'b.pdf' }, effect: {},
       targetKind: 'product', targetId: WORKBOOK, status: 'pending', proposedByKeyId: PROPOSER, proposedByKeyName: 'Agent',
@@ -412,6 +450,39 @@ describe('a proposed download file', () => {
     });
     expect(await approveChangeProposal(ownerSession, { id: 'later-operation' }, h.deps)).toMatchObject({ ok: true, value: { status: 'stale' } });
     expect(await lastNote('later-operation')).toContain('does not know the operation "download.rename"');
+    expect(await assetsOf(WORKBOOK)).toEqual(filesBefore);
+    expect(await stagedRow(loose.id)).toEqual(stagedBefore);
+    expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([`${TENANT}/product-downloads/${WORKBOOK}/owner-file/guide.pdf`, stagedKeyOf(loose.id)].sort());
+  });
+
+  it('refuses to propose removing a file that is not ready, alone or in a group, and leaves the owner’s upload in place', async () => {
+    const h = harness();
+    const uploadingKey = await seedUploadingFile(h, 'uploading');
+    const alone = await submitChangeProposal(keyCtx(), { operation: 'download.remove', input: { productId: WORKBOOK, assetId: 'uploading' } }, h.deps);
+    expect(alone).toMatchObject({ ok: false, error: { code: 'validation', message: 'Only a ready file can be removed by a proposal' } });
+    const group = await createChangeProposalGroup(keyCtx(), { title: 'Tidy the workbook' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    expect(await submitGroupedChangeProposal(keyCtx(), { groupId: group.value.id, operation: 'download.remove', input: { productId: WORKBOOK, assetId: 'uploading' } }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
+    expect((await assetsOf(WORKBOOK)).map((asset) => asset.id)).toEqual(['uploading']);
+    expect(h.objects.objects.has(uploadingKey)).toBe(true);
+
+    expect(await removeProductDownloadFile(keyCtx(DIRECT, 'direct'), { productId: WORKBOOK, assetId: 'uploading' }, h.deps)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await assetsOf(WORKBOOK)).toEqual([]);
+  });
+
+  it('ends a removal stale when the ready files changed between submission and approval, and removes nothing', async () => {
+    const h = harness();
+    await seedOwnerFile(h, 'owner-file');
+    const removal = await h.propose('download.remove', { productId: WORKBOOK, assetId: 'owner-file' });
+    const shown = await getChangeProposal(ownerSession, { id: removal.id }, h.deps);
+    expect(shown.ok && Object.keys(shown.value.effect)).toEqual(['files']);
+    const live = await h.stage(PDF, keyCtx(DIRECT, 'direct'));
+    expect(await attachStagedProductDownload(keyCtx(DIRECT, 'direct'), { productId: WORKBOOK, stagedFileId: live.id }, h.deps)).toMatchObject({ ok: true });
+
+    expect(await approveChangeProposal(ownerSession, { id: removal.id }, h.deps)).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect((await assetsOf(WORKBOOK)).map((asset) => asset.id).sort()).toEqual(['owner-file', live.id].sort());
   });
 });
 
@@ -461,6 +532,64 @@ describe('releasing proposed files on decisions', () => {
     expect(await stagedRow(held.id)).toBeNull();
     expect(await stagedRow(loose.id)).toBeNull();
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/${PROPOSER}/`)).toEqual([]);
+  });
+
+  it.each([
+    ['the key’s staged file count', async () => { await fillStaging(PROPOSER, 19, 19); }],
+    ['the key’s staged bytes', async () => { await fillStaging(PROPOSER, KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerKey - 3 * PDF.byteLength); }],
+    ['the workspace’s staged bytes', async () => { await fillStaging(OTHER_PROPOSER, KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerWorkspace - 3 * PDF.byteLength); }],
+  ])('keeps a rejected file in %s until the storage confirmed its deletion', async (_limit, fill) => {
+    const h = harness();
+    const file = await h.stage();
+    const receipt = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id });
+    await fill();
+    h.objects.failDeletes = (objectKey) => objectKey === stagedKeyOf(file.id);
+    expect(await rejectChangeProposal(ownerSession, { id: receipt.id }, h.deps)).toMatchObject({ ok: true, value: { status: 'rejected' } });
+    expect(await owedRows()).toEqual([stagedKeyOf(file.id)]);
+    expect(await beginStaging(h)).toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: expect.any(String) } } });
+
+    h.objects.failDeletes = () => false;
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await owedRows()).toEqual([]);
+    expect(await beginStaging(h)).toMatchObject({ ok: true });
+  });
+
+  it('keeps the staged file of an approval that failed, so the key can propose it again', async () => {
+    const h = harness();
+    const file = await h.stage();
+    const receipt = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id });
+    for (let index = 0; index < KEY_DOWNLOAD_FILE_LIMITS.filesPerProduct; index += 1) await seedUploadingFile(h, `uploading-${String(index)}`);
+    expect(await approveChangeProposal(ownerSession, { id: receipt.id }, h.deps)).toMatchObject({ ok: true, value: { status: 'failed' } });
+    expect(await stagedRow(file.id)).toMatchObject({ id: file.id, proposalId: null });
+    expect(h.objects.objects.has(stagedKeyOf(file.id))).toBe(true);
+    expect(await owedRows()).toEqual([]);
+  });
+
+  it('releases the file of every item when the owner rejects a group', async () => {
+    const h = harness();
+    const first = await h.stage();
+    const second = await h.stage(LONGER_PDF);
+    const group = await createChangeProposalGroup(keyCtx(), { title: 'Two editions' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    for (const [productId, file] of [[WORKBOOK, first], [GUIDE, second]] as const) {
+      expect(await submitGroupedChangeProposal(keyCtx(), { groupId: group.value.id, operation: 'download.add', input: { productId, stagedFileId: file.id } }, h.deps))
+        .toMatchObject({ ok: true });
+    }
+    expect(await rejectChangeProposalGroup(ownerSession, { id: group.value.id }, h.deps)).toMatchObject({ ok: true, value: { status: 'rejected' } });
+    expect(await stagedRow(first.id)).toBeNull();
+    expect(await stagedRow(second.id)).toBeNull();
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+    expect(await owedRows()).toEqual([]);
+  });
+
+  it('releases the files that withdrawn proposals held when the owner purges the keys', async () => {
+    const h = harness();
+    const held = await h.stage();
+    const receipt = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: held.id });
+    expect(await purgeShopManagementKeys(ownerSession, h.deps)).toMatchObject({ ok: true });
+    expect(await statusOf(receipt.id)).toBe('withdrawn');
+    expect(await stagedRow(held.id)).toBeNull();
+    expect(h.objects.objects.has(stagedKeyOf(held.id))).toBe(false);
   });
 
   it('keeps a file a pending, unexpired proposal holds past its seven days, and sweeps it once that proposal ended', async () => {
@@ -532,6 +661,32 @@ describe('a group with a proposed file', () => {
   });
 });
 
+describe('the storage checks of a group’s files before its approval', () => {
+  it('answers a retry when the storage answers too slowly for the budget, and leaves the group open and every item pending', async () => {
+    const h = harness();
+    const files = [];
+    for (let index = 0; index < 6; index += 1) files.push(await h.stage());
+    const group = await createChangeProposalGroup(keyCtx(), { title: 'Six editions' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    const itemIds = [];
+    for (const file of files) {
+      const added = await submitGroupedChangeProposal(keyCtx(), { groupId: group.value.id, operation: 'download.add', input: { productId: WORKBOOK, stagedFileId: file.id } }, h.deps);
+      if (!added.ok) throw new Error(added.error.message);
+      itemIds.push(added.value.items.at(-1)?.id ?? '');
+    }
+    const slowHead: StorageProvider['head'] = async (input) => {
+      h.clock.now = new Date(Date.parse(h.clock.now) + KEY_DOWNLOAD_STORAGE_DEADLINES.headMs - 100).toISOString();
+      return h.deps.storage.head(input);
+    };
+    const approval = await approveChangeProposalGroup(ownerSession, { id: group.value.id, itemIds }, { ...h.deps, storage: { ...h.deps.storage, head: slowHead } });
+    expect(approval).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } });
+    expect((await database.db.select().from(changeProposalGroups)).map((row) => row.id)).toEqual([group.value.id]);
+    for (const id of itemIds) expect(await statusOf(id)).toBe('pending');
+    expect(await assetsOf(WORKBOOK)).toEqual([]);
+    for (const file of files) expect((await stagedRow(file.id))?.proposalId).not.toBeNull();
+  });
+});
+
 describe('the owner file link', () => {
   it('answers a 60-second signed download of the proposed file that forces an opaque attachment', async () => {
     const h = harness();
@@ -547,6 +702,17 @@ describe('the owner file link', () => {
     expect(url.searchParams.get('response-content-type')).toBe('application/octet-stream');
     expect(url.searchParams.get('response-cache-control')).toBe('no-store');
     expect(h.objects.calls.map((call) => call.method)).toEqual(['head', 'presignGet']);
+  });
+
+  it('finds nothing for a proposal past its expiry whose row is still pending', async () => {
+    const h = harness();
+    const file = await h.stage();
+    const receipt = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id });
+    h.clock.now = '2026-04-01T10:00:00.000Z';
+    h.objects.calls.length = 0;
+    expect(await getChangeProposalFileLink(ownerSession, { id: receipt.id, fileId: file.id }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await statusOf(receipt.id)).toBe('pending');
+    expect(h.objects.calls).toEqual([]);
   });
 
   it('is refused to every key, an admin, an impersonating or unverified owner, and finds nothing for another workspace, another file, a gone object or a decided proposal', async () => {

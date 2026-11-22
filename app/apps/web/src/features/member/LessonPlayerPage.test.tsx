@@ -1737,9 +1737,17 @@ describe('LessonPlayerPage', () => {
     expect(markComplete).toHaveAttribute('data-slot', 'wide');
     expect(markComplete).toHaveTextContent(en.lesson.markCompleted);
     expect(within(markComplete).queryByTestId('lesson-nav-icon')).not.toBeInTheDocument();
-    expect(stylesAt(markComplete, 390)).toMatchObject({ order: '-1', 'flex-basis': '100%' });
-    expect(stylesAt(markComplete, 900)).toMatchObject({ order: '0', 'flex-basis': 'auto' });
-    expect(stylesAt(nextLocked, 390)).not.toMatchObject({ 'flex-basis': '100%' });
+    const previous = screen.getByTestId('prev-lesson');
+    expect(previous.compareDocumentPosition(markComplete)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(markComplete.compareDocumentPosition(nextLocked)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const width of [390, 900]) {
+      expect(stylesAt(markComplete, width)).not.toHaveProperty('order');
+      expect(stylesAt(markComplete, width)).not.toHaveProperty('flex-basis');
+      expect(stylesAt(nextLocked, width)).not.toMatchObject({ 'flex-basis': '100%' });
+    }
+    expect(stylesBelow(markComplete, 390)).toMatchObject({ 'min-width': '0px' });
+    expect(stylesBelow(markComplete, 390)).not.toHaveProperty('order');
+    expect(stylesBelow(nextLocked, 390)).toMatchObject({ 'flex-basis': '100%' });
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
     expect(screen.queryByTestId('locked-lessons-skipped')).not.toBeInTheDocument();

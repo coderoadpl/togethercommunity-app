@@ -2582,7 +2582,12 @@ export const en: Messages = {
     emptyFeed: 'Nobody has posted in this space yet. Start the conversation!',
     emptyFeedReadOnly: 'Nobody has posted in this space yet.',
     openThread: 'Open thread',
+    openThreadAria: ({ author, excerpt }) =>
+      excerpt === ''
+        ? format('Open the thread by {author}', { author })
+        : format('Open the thread by {author}: {excerpt}', { author, excerpt }),
     reactAria: ({ emoji }) => format('React: {emoji}', { emoji }),
+    reactionCountAria: ({ emoji, count }) => format('{emoji} reactions: {count}', { emoji, count: String(count) }),
     addReaction: 'Add a reaction',
     postMenu: 'More post options',
     copyLink: 'Copy link',
@@ -2595,6 +2600,7 @@ export const en: Messages = {
     backToSpaces: 'Back to spaces',
     backToFeed: 'Back to the space',
     pinnedHeading: 'Pinned',
+    latestHeading: 'Latest',
     pinnedChip: 'Pinned',
     announcementChip: 'Announcement',
     pin: 'Pin',

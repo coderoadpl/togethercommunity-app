@@ -2603,7 +2603,12 @@ export const pl: Messages = {
     emptyFeed: 'Nikt jeszcze nic nie napisał w tej przestrzeni. Zacznij rozmowę!',
     emptyFeedReadOnly: 'Nikt jeszcze nic nie napisał w tej przestrzeni.',
     openThread: 'Otwórz wątek',
+    openThreadAria: ({ author, excerpt }) =>
+      excerpt === ''
+        ? format('Otwórz wątek – {author}', { author })
+        : format('Otwórz wątek – {author}: {excerpt}', { author, excerpt }),
     reactAria: ({ emoji }) => format('Zareaguj: {emoji}', { emoji }),
+    reactionCountAria: ({ emoji, count }) => format('Reakcje {emoji}: {count}', { emoji, count: String(count) }),
     addReaction: 'Dodaj reakcję',
     postMenu: 'Więcej opcji wpisu',
     copyLink: 'Kopiuj link',
@@ -2616,6 +2621,7 @@ export const pl: Messages = {
     backToSpaces: 'Wróć do listy przestrzeni',
     backToFeed: 'Wróć do przestrzeni',
     pinnedHeading: 'Przypięte',
+    latestHeading: 'Najnowsze',
     pinnedChip: 'Przypięty',
     announcementChip: 'Ogłoszenie',
     pin: 'Przypnij',

@@ -1003,6 +1003,60 @@ describe('community pages', () => {
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
   });
 
+  it('gives the public feed avatars, plain reaction counts, named thread links and group headings', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/feed', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            feed: {
+              spaceId: 's1',
+              pinned: [{ ...feedItem({ id: 'pin1', body: 'House rules', pinnedAt: '2026-07-19T08:00:00.000Z', authorIsStaff: true }), reactions: [] }],
+              items: [
+                feedItem({
+                  id: 'p1',
+                  body: 'One two three four five six seven eight nine ten',
+                  reactions: [{ emoji: '👍', count: 3, viewerReacted: false }],
+                }),
+              ],
+              nextCursor: null,
+              isFollowing: false,
+            },
+          },
+        })),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const post = await screen.findByTestId('public-feed-post-p1');
+    expect(within(post).getByTestId('user-avatar')).toHaveTextContent('OA');
+    const reaction = within(post).getByRole('img', {
+      name: en.community.reactionCountAria({ emoji: '👍', count: 3 }),
+    });
+    expect(reaction).toHaveTextContent('👍 3');
+    expect(reaction).not.toHaveClass('MuiChip-root');
+    expect(within(post).getByTestId('public-open-thread-p1')).toHaveAccessibleName(
+      en.community.openThreadAria({ author: 'Olivia Author', excerpt: 'One two three four five six seven eight…' }),
+    );
+    const pinnedHeading = screen.getByRole('heading', { level: 2, name: en.community.pinnedHeading });
+    const latestHeading = screen.getByRole('heading', { level: 2, name: en.community.latestHeading });
+    expect(pinnedHeading.compareDocumentPosition(screen.getByTestId('public-feed-post-pin1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(latestHeading.compareDocumentPosition(post) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('public-feed-post-pin1').compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('leaves the latest heading out when the public feed has no pinned posts', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-p1');
+    expect(screen.queryByTestId('public-feed-latest-heading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('public-feed-pinned-heading')).not.toBeInTheDocument();
+  });
+
   it('leads a phone visitor with a compact notice, then the description and the feed, events last', async () => {
     server.use(
       anonMe(),

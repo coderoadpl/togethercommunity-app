@@ -2315,7 +2315,9 @@ export interface Messages {
     emptyFeed: string;
     emptyFeedReadOnly: string;
     openThread: string;
+    openThreadAria: (params: { author: string; excerpt: string }) => string;
     reactAria: (params: { emoji: string }) => string;
+    reactionCountAria: (params: { emoji: string; count: number }) => string;
     addReaction: string;
     postMenu: string;
     copyLink: string;
@@ -2328,6 +2330,7 @@ export interface Messages {
     backToSpaces: string;
     backToFeed: string;
     pinnedHeading: string;
+    latestHeading: string;
     pinnedChip: string;
     announcementChip: string;
     pin: string;

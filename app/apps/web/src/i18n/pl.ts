@@ -489,9 +489,9 @@ export const pl: Messages = {
     signInLink: 'Zaloguj się',
     registeredTitle: 'Konto utworzone',
     signUpConfirmationSent: ({ email }) => format('Wysłaliśmy link potwierdzający na adres {email}.', { email }),
-    registeredOnTenantBody: ({ host }) =>
-      `${host} to platforma innego twórcy — Twoje nowe konto nie ma tu jeszcze dostępu do żadnego kursu.`,
-    registeredCreateOwnCta: 'Przejdź do strony głównej i załóż własną platformę',
+    registeredOnTenantBody: ({ workspace }) =>
+      `${workspace} to platforma innego twórcy — Twoje nowe konto nie ma tu jeszcze dostępu do żadnego kursu.`,
+    registeredCreateOwnCta: 'Załóż własną platformę',
     registeredBoughtHint: 'Masz tu kupiony kurs? Zaloguj się linkiem do logowania wysłanym na Twój e-mail.',
     registeredUseMagicLinkCta: 'Użyj linku do logowania',
   },

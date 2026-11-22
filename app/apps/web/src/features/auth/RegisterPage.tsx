@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,8 +20,7 @@ import { useToast } from '../../components/ui/Toast.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
-import { FinePrint } from '../../theme.js';
-import { AuthAccentLink, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthHelp, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
@@ -126,22 +124,30 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       <AuthShell title={t.auth.registeredTitle} hostname={hostname}>
         <Box sx={{ mb: '1.5rem' }}>
           <AuthTitle variant="h1">{t.auth.registeredTitle}</AuthTitle>
-          <AuthLead component="p">{t.auth.registeredOnTenantBody({ host: hostname })}</AuthLead>
+          <AuthLead component="p">
+            {t.auth.registeredOnTenantBody({ workspace: offer.data?.tenant.name ?? hostname })}
+          </AuthLead>
           <AuthLead component="p" data-testid="register-confirmation-sent">
             {t.auth.signUpConfirmationSent({ email: registeredOnTenantAs })}
           </AuthLead>
         </Box>
         <Stack useFlexGap spacing="0.9rem">
-          <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
-            {t.auth.registeredCreateOwnCta}
+          <AuthHelp component="p">{t.auth.registeredBoughtHint}</AuthHelp>
+          <Button
+            variant="contained"
+            fullWidth
+            component={Link}
+            to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}
+            data-testid="register-use-sign-in-link"
+          >
+            {t.auth.registeredUseMagicLinkCta}
           </Button>
-          <Box>
-            <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
-              {t.auth.registeredBoughtHint}
-            </FinePrint>
-            <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registeredUseMagicLinkCta}</MuiLink>
-          </Box>
         </Stack>
+        <AuthSecondaryAction component="p">
+          <AuthAccentLink standalone href={baseDomainUrl()} data-testid="register-create-own-workspace">
+            {t.auth.registeredCreateOwnCta}
+          </AuthAccentLink>
+        </AuthSecondaryAction>
       </AuthShell>
     );
   }

@@ -491,7 +491,7 @@ export interface Messages {
     signInLink: string;
     registeredTitle: string;
     signUpConfirmationSent: (params: { email: string }) => string;
-    registeredOnTenantBody: (params: { host: string }) => string;
+    registeredOnTenantBody: (params: { workspace: string }) => string;
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;

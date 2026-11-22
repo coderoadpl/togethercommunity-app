@@ -482,9 +482,9 @@ export const en: Messages = {
     signInLink: 'Sign in',
     registeredTitle: 'Account created',
     signUpConfirmationSent: ({ email }) => format('We sent a confirmation link to {email}.', { email }),
-    registeredOnTenantBody: ({ host }) =>
-      `${host} is another creator's workspace — your new account does not have access to any course here yet.`,
-    registeredCreateOwnCta: 'Go to the home page to create your own workspace',
+    registeredOnTenantBody: ({ workspace }) =>
+      `${workspace} is another creator's workspace — your new account does not have access to any course here yet.`,
+    registeredCreateOwnCta: 'Create your own workspace',
     registeredBoughtHint: 'Bought a course here? Sign in with the sign-in link sent to your email.',
     registeredUseMagicLinkCta: 'Use a sign-in link',
   },

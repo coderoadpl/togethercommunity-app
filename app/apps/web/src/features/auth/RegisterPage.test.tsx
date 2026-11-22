@@ -469,6 +469,52 @@ describe('RegisterPage', () => {
     expect(signupLanguages).toEqual([null]);
   });
 
+  it('makes the sign-in link the primary action on a creator\'s domain and names the workspace', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    server.use(
+      anonymousMe(),
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({ ok: true, data: tenantOffer({ termsUrl: null, privacyUrl: null }) })),
+      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
+    );
+
+    await renderRegisterPage(
+      'akademia.localhost',
+      '/register?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+    await userEvent.type(await screen.findByLabelText(en.auth.nameLabel), 'New Member');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'member@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: en.auth.registeredTitle })).toBeInTheDocument();
+    expect(screen.getByText(en.auth.registeredOnTenantBody({ workspace: 'Akademia' }))).toBeInTheDocument();
+    const primary = screen.getByRole('link', { name: en.auth.registeredUseMagicLinkCta });
+    expect(primary).toHaveClass('MuiButton-contained');
+    expect(primary).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1',
+    );
+    const createOwn = screen.getByRole('link', { name: en.auth.registeredCreateOwnCta });
+    expect(createOwn).not.toHaveClass('MuiButton-root');
+    expect(createOwn).toHaveAttribute('href', 'http://localhost:3000');
+    expectSecondaryLink(createOwn);
+  });
+
+  it('names the creator\'s domain by its host when the workspace name is unavailable', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    server.use(anonymousMe(), noTenantOffer, http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })));
+
+    await renderRegisterPage('courses.example.org');
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Member');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'member@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(await screen.findByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByText(en.auth.registeredOnTenantBody({ workspace: 'courses.example.org' }))).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.auth.registeredUseMagicLinkCta })).toHaveAttribute('href', '/login');
+  });
+
   it('shows no consent checkbox on a tenant without configured documents', async () => {
     server.use(
       anonymousMe(),

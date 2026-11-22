@@ -4,6 +4,7 @@ import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
@@ -3382,6 +3383,39 @@ describe('public rate limiting', () => {
     claim: async () => false,
     purgeExpired: async () => 0,
   };
+
+  it('answers a per-IP over-limit sign-up form post with a minimal page before any workspace lookup', async () => {
+    const configured = deps({
+      rateLimitBuckets: { claim: async (input) => input.scope !== 'signup:ip', purgeExpired: async () => 0 },
+    });
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const app = buildApp(configured);
+    const submit = (contentType: string, body: string) => app.request('/api/public/marketing/forms/newsletter/submit?lang=pl', {
+      method: 'POST', headers: { host: 'acme.localhost:48730', 'content-type': contentType }, body,
+    });
+    const formPost = await submit('application/x-www-form-urlencoded', new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString());
+    expect(formPost.status).toBe(429);
+    expect(Number(formPost.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(formPost.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(formPost.headers.get('cache-control')).toBe('no-store');
+    const html = await formPost.text();
+    expect(html).toContain('<html lang="pl">');
+    expect(html).toContain(`<p role="alert">${publicMarketingMessagesPl.signupRateLimited}</p>`);
+    expect(html).not.toContain('reader@example.org');
+    for (const lookup of lookups) expect(lookup).not.toHaveBeenCalled();
+    for (const [contentType, body] of [['application/json', JSON.stringify({ email: 'reader@example.org' })], ['text/plain', '{}']] as const) {
+      const rejected = await submit(contentType, body);
+      expect(rejected.status).toBe(429);
+      expect(rejected.headers.get('content-type')).toBe('application/json');
+      expect(await rejected.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    }
+  });
 
   it('answers a throttled checkout with 429 and Retry-After', async () => {
     const app = buildApp(deps({ rateLimitBuckets: exhausted }));

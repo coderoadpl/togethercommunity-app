@@ -9,7 +9,7 @@ import {
   BETTER_AUTH_PASSWORD_RESET_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
-import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
+import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
 import { err, isProductionEnvironment, type AppError } from '#core/domain/index.js';
 import {
   claimRateLimitWindow,
@@ -24,6 +24,7 @@ import type { AppVars } from './app-vars.js';
 import { trustedClientIp } from './auth-network.js';
 import { isPublicFormPath, isMarketingSignupSubmissionPath, isSurveySubmissionPath } from './body-limits.js';
 import { type Env } from './env.js';
+import { languageFromRequest, renderSignupRateLimitedPage } from './public-marketing-pages.js';
 import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {
@@ -222,16 +223,33 @@ const rateLimitedResponse = (error: AppError): Response => {
 const isFormEncoded = (c: Context): boolean =>
   (c.req.header('content-type') ?? '').split(';')[0]?.trim().toLowerCase() === 'application/x-www-form-urlencoded';
 
-const claimSignupRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps, clientIp: string): Promise<AppError | null> => {
+interface SignupRateLimit {
+  bucket: 'ip' | 'address';
+  error: AppError;
+}
+
+const claimSignupRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps, clientIp: string): Promise<SignupRateLimit | null> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
   const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp, window: deps.publicRateLimitPolicies.signupsPerIp }, limiter);
-  if (!ip.ok) return ip.error;
+  if (!ip.ok) return { bucket: 'ip', error: ip.error };
   const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
   const email = await requestEmail(c);
   if (!tenant.ok || tenant.value === null || email === null) return null;
   const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
   const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: deps.publicRateLimitPolicies.signupsPerEmail }, limiter);
-  return claimed.ok ? null : claimed.error;
+  return claimed.ok ? null : { bucket: 'address', error: claimed.error };
+};
+
+const signupRateLimitedPage = (c: Context, error: AppError): Response => {
+  const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
+  return new Response(renderSignupRateLimitedPage(languageFromRequest(c.req.raw)), {
+    status: HTTP_STATUS_BY_ERROR_CODE.rate_limited,
+    headers: {
+      'content-type': 'text/html; charset=UTF-8',
+      'cache-control': 'no-store',
+      ...(typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {}),
+    },
+  });
 };
 
 const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
@@ -258,12 +276,12 @@ const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimit
   if (isMarketingSignupSubmissionPath(c.req.path)) {
     const limited = await claimSignupRateLimit(c, deps, clientIp());
     if (limited === null) return null;
+    if (!isFormEncoded(c)) return rateLimitedResponse(limited.error);
+    // A per-IP rejection is answered here without tenant or form lookups, so flooding the submit path stays cheap.
+    if (limited.bucket === 'ip') return signupRateLimitedPage(c, limited.error);
     // The submit handler answers an HTML form post with the form page itself, so it needs the error instead of a JSON response.
-    if (isFormEncoded(c)) {
-      c.set('signupRateLimit', limited);
-      return null;
-    }
-    return rateLimitedResponse(limited);
+    c.set('signupRateLimit', limited.error);
+    return null;
   }
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;

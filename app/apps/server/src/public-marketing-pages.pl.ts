@@ -14,6 +14,7 @@ export const publicMarketingMessagesPl = {
   signupEmailInvalid: 'Wpisz pełny adres e-mail, na przykład imie@example.com.',
   signupFailed: 'Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.',
   signupRateLimited: 'Zbyt wiele prób zapisu. Odczekaj kilka minut i spróbuj ponownie.',
+  signupRateLimitedTitle: 'Spróbuj ponownie później',
   signupUnavailableTitle: 'Ten formularz zapisu nie jest już dostępny',
   signupUnavailableBody: 'Formularz został zamknięty albo zmienił adres.',
   signupThanks: 'Dziękujemy za zapis',

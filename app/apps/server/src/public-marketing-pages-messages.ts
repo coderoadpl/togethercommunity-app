@@ -12,6 +12,7 @@ export interface PublicMarketingMessages {
   signupEmailInvalid: string;
   signupFailed: string;
   signupRateLimited: string;
+  signupRateLimitedTitle: string;
   signupUnavailableTitle: string;
   signupUnavailableBody: string;
   signupThanks: string;

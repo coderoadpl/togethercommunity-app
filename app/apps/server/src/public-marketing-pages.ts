@@ -649,6 +649,11 @@ export const renderSignupUnavailablePage = (input: {
   });
 };
 
+export const renderSignupRateLimitedPage = (language: Language): string => {
+  const t = messages[language];
+  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escapeHtml(t.signupRateLimitedTitle)}</title><style>body{max-width:40rem;margin:0 auto;padding:2.5rem 1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6}h1{font-size:1.75rem;line-height:1.2}</style></head><body><main data-testid="marketing-signup-rate-limited"><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><p role="alert">${escapeHtml(t.signupRateLimited)}</p></main></body></html>`;
+};
+
 export const renderSignupFormPage = (input: {
   nonce: string; brand: PublicBrand; language: Language; form: MarketingSignupForm;
   wording: string; doubleOptIn: boolean; thanks: boolean; consentDocument?: SignupConsentDocument | null;

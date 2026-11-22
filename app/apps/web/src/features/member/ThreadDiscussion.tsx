@@ -572,16 +572,36 @@ export const ThreadDiscussion = ({
         : localizeError(error, t);
   const createErrorFor = (parentId: string | undefined) =>
     create.isError && create.variables.parentPostId === parentId ? errorMessage(create.error) : null;
+  const editErrorFor = (postId: string) =>
+    update.isError && update.variables.id === postId ? errorMessage(update.error) : null;
+
+  const changeReplyTarget = (id: string | null) => {
+    if (id !== replyingTo && create.isError && create.variables.parentPostId !== undefined) create.reset();
+    setReplyingTo(id);
+  };
+  const changeEditTarget = (id: string | null) => {
+    if (id !== editingId && update.isError) update.reset();
+    setEditingId(id);
+  };
+
+  const topComposerOpen = subthreadRoot === null;
+  const createErrorOwned = create.isError && (create.variables.parentPostId === undefined
+    ? topComposerOpen
+    : create.variables.parentPostId === replyingTo);
+  const updateErrorOwned = update.isError && update.variables.id === editingId;
+  const orphanWriteError =
+    (create.isError && !createErrorOwned ? create.error : null) ??
+    (update.isError && !updateErrorOwned ? update.error : null);
 
   const threadActions: ThreadActions = {
     viewer,
     language,
     replyingTo,
-    setReplyingTo,
+    setReplyingTo: changeReplyTarget,
     editingId,
-    setEditingId,
+    setEditingId: changeEditTarget,
     replyError: createErrorFor,
-    editError: (postId) => update.isError && update.variables.id === postId ? errorMessage(update.error) : null,
+    editError: editErrorFor,
     cancelReply: () => {
       create.reset();
       setReplyingTo(null);
@@ -621,7 +641,9 @@ export const ThreadDiscussion = ({
   };
 
   const forbidden = isForbidden(discussion.error);
-  const mutationErrorMessage = errorMessage([remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null);
+  const mutationErrorMessage = errorMessage(
+    orphanWriteError ?? [remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null,
+  );
 
   const goBack = () => {
     if (focus === undefined) {

@@ -609,6 +609,76 @@ describe('DiscussionSection', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('drops a failed reply or edit once another Reply or Edit closes its composer', async () => {
+    server.use(
+      okMe(),
+      okDiscussion([
+        asThread(post({ id: 'r1', isOwn: true, body: 'Own question', bodyFormat: 'plain' })),
+        asThread(post({ id: 'r2', body: 'Other question' })),
+      ]),
+      http.post('/api/posts', () =>
+        HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 })),
+      http.post('/api/posts/update', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 })),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-r1'));
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-r1-submit'));
+    expect(await screen.findByTestId('reply-composer-r1-error')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('reply-button-r2'));
+    await user.click(screen.getByTestId('reply-button-r1'));
+    expect(screen.getByTestId('reply-composer-r1')).toBeInTheDocument();
+    expect(screen.queryByTestId('reply-composer-r1-error')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('edit-button-r1'));
+    await user.type(screen.getByTestId('edit-composer-r1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-r1-submit'));
+    expect(await screen.findByTestId('edit-composer-r1-error')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('reply-button-r1'));
+    await user.click(screen.getByTestId('edit-button-r1'));
+    expect(screen.getByTestId('edit-composer-r1')).toBeInTheDocument();
+    expect(screen.queryByTestId('edit-composer-r1-error')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows a reply that fails after the member switched composers in the discussion alert', async () => {
+    let releasePost: ((value: undefined) => void) | undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', body: 'Question' })), asThread(post({ id: 'r2', body: 'Other question' }))]),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-r1'));
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-r1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('reply-button-r2'));
+    expect(screen.queryByTestId('reply-composer-r1')).not.toBeInTheDocument();
+    releasePost?.(undefined);
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(screen.getByTestId('reply-composer-r2')).not.toContainElement(error);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('hides a childless deleted reply from members and counts only the replies on screen', async () => {
     const deletedAt = '2026-07-15T09:00:00.000Z';
     server.use(okMe(), okDiscussion([{

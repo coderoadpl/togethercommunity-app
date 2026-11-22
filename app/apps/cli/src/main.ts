@@ -4216,8 +4216,13 @@ const changeProposalGroupLabel = (proposal: Pick<ChangeProposalOwnerView, 'group
 const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
   `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t${changeProposalGroupLabel(proposal)}\t(${proposal.id})`;
 
+const changeProposalFileState = (pending: boolean, available: boolean): string => {
+  if (!pending) return '';
+  return available ? ': held by this proposal' : ': no longer available; approving changes nothing';
+};
+
 const changeProposalFileLines = (proposal: ChangeProposalOwnerView): string[] => (proposal.proposedFiles ?? []).flatMap((file) => [
-  `  ${file.id}: ${file.available ? 'held by this proposal' : 'no longer available; approving changes nothing'}${file.copiedFrom === null
+  `  ${file.id}${changeProposalFileState(proposal.status === 'pending', file.available)}${file.copiedFrom === null
     ? ''
     : `; copy of version ${String(file.copiedFrom.versionNumber)} of ${file.copiedFrom.productTitle ?? 'a deleted product'} (${file.copiedFrom.productId})`}`,
   ...(file.available && proposal.status === 'pending' ? [`    download it with: together proposals file ${proposal.id} ${file.id} --out <path>`] : []),

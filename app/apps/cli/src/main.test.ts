@@ -2662,7 +2662,7 @@ describe('owner change proposal commands', () => {
     expect(printed).toContain('proposed by key: Catalogue agent (shop-key, active), issued by owner-1');
     expect(printed).toContain('  1998-08-01T00:00:00.000Z\tproposed\tshop-key');
   });
-  it('lists the file a proposal attaches, its copy source and how to download it while it is pending', async () => {
+  it('lists the file a proposal attaches, its copy source and, while it is pending, whether it is held and how to download it', async () => {
     h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', events: [], proposedFiles: [
       { id: 'staged-1', available: true, copiedFrom: { productId: 'product-2', productTitle: 'Field guide', versionNumber: 2 } },
     ] } }));
@@ -2672,13 +2672,21 @@ describe('owner change proposal commands', () => {
     expect(printed).toContain('  staged-1: held by this proposal; copy of version 2 of Field guide (product-2)');
     expect(printed).toContain('    download it with: together proposals file proposal-1 staged-1 --out <path>');
     logSpy.mockClear();
-    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', status: 'stale', events: [], proposedFiles: [
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', events: [], proposedFiles: [
       { id: 'staged-1', available: false, copiedFrom: null },
     ] } }));
     await run('proposals', 'show', 'proposal-1');
     const gone = String(logSpy.mock.calls[0]?.[0]);
     expect(gone).toContain('  staged-1: no longer available; approving changes nothing');
     expect(gone).not.toContain('download it with');
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', status: 'applied', events: [], proposedFiles: [
+      { id: 'staged-1', available: false, copiedFrom: null },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const applied = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(applied).toContain('  staged-1');
+    expect(applied.join('\n')).not.toContain('no longer available');
   });
   it('downloads a proposed file through the short-lived link to --out, never printing the link, and refuses to overwrite without --force', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));

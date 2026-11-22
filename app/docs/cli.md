@@ -156,9 +156,9 @@ not check a `'$proposal:<id>'` product first; see
 `proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
 before/after effect, approve it or reject it. `proposals show` also lists the
-staged file a download file proposal attaches, whether the proposal still
-holds it, where a copy comes from and, while it is pending, the command that
-downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
+staged file a download file proposal attaches, where a copy comes from and,
+while the proposal is pending, whether it still holds the file and the command
+that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
 server for a 60-second link and streams the file from the storage to `--out`
 without printing the link, refuses to overwrite an existing file without
 `--force`, and removes what it wrote when the download breaks off or its size

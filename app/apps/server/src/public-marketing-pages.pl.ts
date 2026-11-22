@@ -2,8 +2,13 @@ import type { PublicMarketingMessages } from './public-marketing-pages-messages.
 
 export const publicMarketingMessagesPl = {
   signupEyebrow: 'Bądźmy w kontakcie',
+  signupTitle: ({ tenant }) => `Zapisz się na wiadomości e-mail od nadawcy ${tenant}`,
   signupEmail: 'Adres e-mail',
-  signupName: 'Wyświetlana nazwa (opcjonalnie)',
+  signupName: 'Imię (opcjonalnie)',
+  signupConsent: ({ tenant, wording }) => `Zapisując się, zgadzasz się na otrzymywanie od nadawcy ${tenant}: ${wording}.`,
+  signupConsentConfirm: 'Wyślemy Ci e-mail z linkiem do potwierdzenia.',
+  signupConsentUnsubscribe: 'W każdej chwili możesz się wypisać.',
+  signupConsentDocument: 'Więcej informacji:',
   signupSubmit: 'Zapisuję się',
   signupThanks: 'Dziękujemy za zapis',
   signupPending: 'Sprawdź skrzynkę odbiorczą i potwierdź adres e-mail, aby dokończyć zapis.',

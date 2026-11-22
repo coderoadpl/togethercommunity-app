@@ -590,14 +590,37 @@ export const renderConfirmationPage = (input: {
   });
 };
 
+export interface SignupConsentDocument {
+  title: string;
+  href: string;
+}
+
+const consentWording = (wording: string): string => wording.trim().replace(/\.+$/, '');
+
+const renderSignupConsent = (input: {
+  t: PublicMarketingMessages; tenant: string; wording: string; doubleOptIn: boolean; document: SignupConsentDocument | null;
+}): string => {
+  const sentences = [
+    input.t.signupConsent({ tenant: input.tenant, wording: consentWording(input.wording) }),
+    ...(input.doubleOptIn ? [input.t.signupConsentConfirm] : []),
+    input.t.signupConsentUnsubscribe,
+  ].map(escapeHtml).join(' ');
+  const document = input.document === null
+    ? ''
+    : ` ${escapeHtml(input.t.signupConsentDocument)} <a href="${escapeHtml(input.document.href)}">${escapeHtml(input.document.title)}</a>`;
+  return `<p class="signup-consent">${sentences}${document}</p>`;
+};
+
 export const renderSignupFormPage = (input: {
   nonce: string; brand: PublicBrand; language: Language; form: MarketingSignupForm;
-  wording: string; doubleOptIn: boolean; thanks: boolean;
+  wording: string; doubleOptIn: boolean; thanks: boolean; consentDocument?: SignupConsentDocument | null;
 }): string => {
   const t = messages[input.language];
+  const tenant = input.brand.tenant.name;
   const path = `/marketing/forms/${encodeURIComponent(input.form.slug)}`;
+  const consent = renderSignupConsent({ t, tenant, wording: input.wording, doubleOptIn: input.doubleOptIn, document: input.consentDocument ?? null });
   const body = input.thanks
     ? `<div class="status"><p class="lede">${escapeHtml(input.form.successText[input.language])}</p>${input.doubleOptIn ? `<p class="notice">${escapeHtml(t.signupPending)}</p>` : ''}</div>`
-    : `<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}"><p class="signup-consent">${escapeHtml(input.wording)}</p><div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.thanks ? `${path}/thanks` : path, title: input.thanks ? t.signupThanks : input.form.name, eyebrow: t.signupEyebrow, body, testId: input.thanks ? 'marketing-signup-thanks' : 'marketing-signup-form' });
+    : `<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.thanks ? `${path}/thanks` : path, title: input.thanks ? t.signupThanks : t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: input.thanks ? 'marketing-signup-thanks' : 'marketing-signup-form' });
 };

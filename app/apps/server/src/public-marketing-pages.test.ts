@@ -500,6 +500,37 @@ describe('sign-up pages', () => {
     expect(html).toContain('.signup-form .actions{margin-top:.75rem}');
     expect(html).not.toContain('var(--text)');
   });
+
+  it('states the consent as a sentence above the button and links the hosted document', () => {
+    const html = renderSignupFormPage({
+      nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'the monthly newsletter.', doubleOptIn: true, thanks: false,
+      consentDocument: { title: 'Privacy policy', href: '/legal/privacy/v/2' },
+    });
+    expect(html).toContain('<h1>Sign up for e-mails from Studio Demo</h1>');
+    expect(html).not.toContain('Internal newsletter form');
+    expect(html).toContain('<p class="signup-consent">By signing up you agree to receive from Studio Demo: the monthly newsletter. We will e-mail you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/2">Privacy policy</a></p><div class="actions"><button type="submit">Sign up</button></div>');
+  });
+
+  it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'newsletter', doubleOptIn: false, thanks: false });
+    expect(html).toContain(`<h1>${publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })}</h1>`);
+    expect(html).toContain(`<p class="signup-consent">${publicMarketingMessagesPl.signupConsent({ tenant: 'Studio Demo', wording: 'newsletter' })} ${publicMarketingMessagesPl.signupConsentUnsubscribe}</p>`);
+    expect(html).not.toContain(publicMarketingMessagesPl.signupConsentConfirm);
+    expect(html).toContain(`${publicMarketingMessagesPl.signupName}<input id="signup-name"`);
+    expect(publicMarketingMessagesPl.signupName).toBe('Imię (opcjonalnie)');
+  });
+
+  it('escapes the workspace name, the wording and the document reference in the consent sentence', () => {
+    const html = renderSignupFormPage({
+      nonce: 'test-nonce', brand: { ...brand, tenant: { ...brand.tenant, name: 'Studio <b>&</b>' } }, language: 'en', form: signupForm,
+      wording: '<img src=x onerror=alert(1)>', doubleOptIn: true, thanks: false,
+      consentDocument: { title: '<script>alert(1)</script>', href: '/legal/privacy/v/2?a="b"' },
+    });
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('from Studio &lt;b&gt;&amp;&lt;/b&gt;: &lt;img src=x onerror=alert(1)&gt;.');
+    expect(html).toContain('<a href="/legal/privacy/v/2?a=&quot;b&quot;">&lt;script&gt;alert(1)&lt;/script&gt;</a>');
+  });
 });
 
 const signupHttpFixture = async (doubleOptIn: boolean) => {
@@ -545,6 +576,24 @@ describe('public signup persistence and confirmation', () => {
       expect(await thanks.text()).toContain('Thank you');
       expect(await fixture.snapshot()).toEqual(before);
       expect(await fixture.deps.marketing?.suppressions.findActive('directory-a', fixture.contact.emailHmac)).toEqual(suppression);
+    } finally { await fixture.close(); }
+  });
+  it('links the hosted legal document referenced by the consent version on the form page', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const marketing = fixture.deps.marketing;
+      if (marketing === undefined || fixture.deps.marketingSignup === undefined) throw new Error('Missing marketing dependencies');
+      await marketing.documents.create('directory-a', { id: 'privacy-doc', tenantId: 'directory-a', slug: 'privacy', title: 'Privacy & data', status: 'draft', createdAt: fixture.now, updatedAt: fixture.now }, { id: 'privacy-v1', tenantId: 'directory-a', documentId: 'privacy-doc', version: 1, content: 'Policy text', publishedAt: null, createdAt: fixture.now, createdBy: null });
+      const published = await marketing.documents.publishDraft('directory-a', 'privacy-doc', fixture.now);
+      const definition = await marketing.definitions.findById('directory-a', 'newsletter');
+      if (published === null || definition === null) throw new Error('Missing hosted document fixture');
+      await marketing.definitions.create('directory-a', { ...definition, id: 'hosted', key: 'hosted', documentRef: { mode: 'hosted', documentId: 'privacy-doc' } }, { id: 'hosted-v1', tenantId: 'directory-a', definitionId: 'hosted', version: 1, label: 'Hosted news', documentVersionRef: { mode: 'hosted', documentVersionId: published.version.id }, createdAt: fixture.now, createdBy: 'owner' });
+      directoryValue(await createMarketingSignupForm(directoryCtx(), { slug: 'hosted', name: 'Hosted', consentDefinitionId: 'hosted', successText: { en: 'Thank you', pl: 'Thank you' } }, fixture.deps.marketingSignup));
+      const hosted = await (await fixture.request('/marketing/forms/hosted?lang=en')).text();
+      expect(hosted).toContain(`Hosted news. We will e-mail you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
+      const linked = await (await fixture.request('/marketing/forms/newsletter?lang=en')).text();
+      expect(linked).toContain('Newsletter consent. We will e-mail you a link to confirm. You can unsubscribe at any time.</p>');
+      expect(linked).not.toContain('More information:');
     } finally { await fixture.close(); }
   });
   it('rolls back token consumption, consent and contact effects when membership fails', async () => {

@@ -2,7 +2,7 @@ import type { Hono, Context, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 
 import { API_PATHS, marketingSignupContracts } from '#core/contract/index.js';
-import { err, internal, notFound, tenantNotFound, validation } from '#core/domain/index.js';
+import { err, internal, notFound, tenantNotFound, validation, type MarketingSignupForm } from '#core/domain/index.js';
 import { resolveTenant, authLinkBaseUrl, createMarketingSignupForm, getMarketingSignupForm, listMarketingSignupForms, updateMarketingSignupForm, submitMarketingSignupForm } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -37,6 +37,21 @@ const resolveForm = async (c: Context<AppVars>, deps: AppDeps) => {
   const settings = await deps.tenants.findSettings(resolved.value.tenant.id);
   return { ok: true, value: { resolved: resolved.value, form, brand: { tenant: resolved.value.tenant, settings }, language: languageFromRequest(c.req.raw, settings?.defaultLanguage) } } as const;
 };
+const formPageData = async (deps: AppDeps, form: MarketingSignupForm) => {
+  const definition = await deps.marketing?.definitions.findById(form.tenantId, form.consentDefinitionId);
+  if (definition === undefined || definition === null || definition.status !== 'active' || form.consentVersion === undefined) return null;
+  const reference = form.consentVersion.documentVersionRef;
+  const document = reference.mode === 'hosted'
+    ? await deps.marketing?.documents.findPublishedVersionById(form.tenantId, reference.documentVersionId) ?? null
+    : null;
+  return {
+    wording: form.consentVersion.label,
+    doubleOptIn: definition.doubleOptIn,
+    consentDocument: document === null
+      ? null
+      : { title: document.document.title, href: `/legal/${encodeURIComponent(document.document.slug)}/v/${String(document.version.version)}` },
+  };
+};
 const submissionSlug = (path: string): string => decodeURIComponent(path.split('/').at(-2) ?? '');
 const submissionOriginAllowed = async (c: Context<AppVars>, deps: AppDeps, origin: string): Promise<boolean> => {
   const resolved = await resolveTenant(c.req.header('host') ?? '', null, deps);
@@ -61,10 +76,9 @@ export const registerPublicMarketingSignupRoutes = (app: Hono<AppVars>, deps: Ap
     if (!context.ok) return respond(context);
     const { form, brand, language } = context.value;
     if (form.redirectUrl !== null) c.set('signupRedirectOrigin', new URL(form.redirectUrl).origin);
-    const definition = await deps.marketing?.definitions.findById(form.tenantId, form.consentDefinitionId);
-    const version = form.consentVersion;
-    if (definition === undefined || definition === null || definition.status !== 'active' || version === undefined) return respond(err(notFound('Signup form was not found')));
-    return c.html(renderSignupFormPage({ nonce: c.get('secureHeadersNonce') ?? '', brand, language, form, wording: version.label, doubleOptIn: definition.doubleOptIn, thanks }), 200, { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+    const data = await formPageData(deps, form);
+    if (data === null) return respond(err(notFound('Signup form was not found')));
+    return c.html(renderSignupFormPage({ nonce: c.get('secureHeadersNonce') ?? '', brand, language, form, ...data, thanks }), 200, { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   };
   app.get('/marketing/forms/:slug', (c) => page(c, false));
   app.get('/marketing/forms/:slug/thanks', (c) => page(c, true));

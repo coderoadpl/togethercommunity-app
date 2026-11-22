@@ -1,7 +1,12 @@
 export interface PublicMarketingMessages {
   signupEyebrow: string;
+  signupTitle: (input: { tenant: string }) => string;
   signupEmail: string;
   signupName: string;
+  signupConsent: (input: { tenant: string; wording: string }) => string;
+  signupConsentConfirm: string;
+  signupConsentUnsubscribe: string;
+  signupConsentDocument: string;
   signupSubmit: string;
   signupThanks: string;
   signupPending: string;

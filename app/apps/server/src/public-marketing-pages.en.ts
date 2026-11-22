@@ -2,8 +2,13 @@ import type { PublicMarketingMessages } from './public-marketing-pages-messages.
 
 export const publicMarketingMessagesEn = {
   signupEyebrow: 'Stay in touch',
+  signupTitle: ({ tenant }) => `Sign up for e-mails from ${tenant}`,
   signupEmail: 'Email address',
   signupName: 'Name (optional)',
+  signupConsent: ({ tenant, wording }) => `By signing up you agree to receive from ${tenant}: ${wording}.`,
+  signupConsentConfirm: 'We will e-mail you a link to confirm.',
+  signupConsentUnsubscribe: 'You can unsubscribe at any time.',
+  signupConsentDocument: 'More information:',
   signupSubmit: 'Sign up',
   signupThanks: 'Thank you for signing up',
   signupPending: 'Check your inbox and confirm your email address to complete your signup.',

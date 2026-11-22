@@ -2394,10 +2394,24 @@ describe('fulfilment CLI', () => {
     await run('--json', 'product', 'create', '--title', 'Printed stand', '--type', 'physical', '--price-cents', '4900',
       '--compliance', JSON.stringify(compliance), '--variant-group', 'printed-stand', '--variant-label', 'Black · ASA');
     expect(h.createProduct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      compliance: { ...compliance, safetyWarnings: '' }, variantGroup: 'printed-stand', variantLabel: 'Black · ASA',
+      compliance: { ...compliance, manufacturerOutsideEu: false, safetyWarnings: '' }, variantGroup: 'printed-stand', variantLabel: 'Black · ASA',
     }));
     await run('--json', 'product', 'update', 'product-1', '--compliance', 'null', '--clear-variant');
     expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', compliance: null, variantGroup: null, variantLabel: null });
+  });
+
+  it('passes the responsible person of a manufacturer outside the EU and refuses it missing', async () => {
+    const compliance = {
+      manufacturerName: 'Example Lamp Works', manufacturerAddress: '1 Example Road', manufacturerEmail: 'safety@example.com', modelIdentifier: 'LAMP-2',
+      manufacturerOutsideEu: true,
+    };
+    const responsiblePerson = { responsiblePersonName: 'Example EU Representative', responsiblePersonAddress: 'Example Street 1, Warsaw', responsiblePersonEmail: 'eu-rep@example.com' };
+    await run('--json', 'product', 'create', '--title', 'Lamp', '--type', 'physical', '--price-cents', '4900', '--compliance', JSON.stringify(compliance));
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+    await run('--json', 'product', 'update', 'product-1', '--compliance', JSON.stringify({ ...compliance, ...responsiblePerson }));
+    expect(h.updateProduct).toHaveBeenCalledExactlyOnceWith({ id: 'product-1', compliance: { ...compliance, ...responsiblePerson, safetyWarnings: '' } });
   });
 
   it('rejects invalid product safety information before calling the server', async () => {

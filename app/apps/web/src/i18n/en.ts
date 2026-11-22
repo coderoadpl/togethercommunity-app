@@ -2382,6 +2382,8 @@ export const en: Messages = {
     downloadsGroupLabel: ({ title }) => `Downloads: ${title}`,
     downloadVersionShort: ({ number }) => `v${number}`,
     opensInNewTab: '(opens in a new tab)',
+    openCourse: 'Open course',
+    viewCourses: 'View courses',
   },
   downloadCopies: {
     showMore: 'Show more copies',

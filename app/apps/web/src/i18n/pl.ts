@@ -2403,6 +2403,8 @@ export const pl: Messages = {
     downloadsGroupLabel: ({ title }) => `Pliki do pobrania: ${title}`,
     downloadVersionShort: ({ number }) => `v${number}`,
     opensInNewTab: '(otwiera się w nowej karcie)',
+    openCourse: 'Przejdź do kursu',
+    viewCourses: 'Zobacz kursy',
   },
   downloadCopies: {
     showMore: 'Pokaż więcej kopii',

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import {
-  Box,
   Button,
   Chip,
   Link as MuiLink,
@@ -41,6 +40,7 @@ const isForbidden = (error: Error | null) =>
 
 type GrantedProductRow = {
   id: string;
+  accessItems: ReadonlyArray<{ courseId: string }>;
   type: ProductType;
   title: string;
   description: string;
@@ -93,16 +93,36 @@ const statusLabel = (t: Messages, product: GrantedProductRow, language: string):
   });
 };
 
+type CourseTarget = { kind: 'open' | 'view'; to: string };
+
+const courseTarget = (
+  product: GrantedProductRow,
+  accessibleCourseIds: ReadonlySet<string> | null,
+): CourseTarget | null => {
+  if (product.type === 'physical' || product.grantStatus !== 'active') return null;
+  const granted = [...new Set(product.accessItems.map((item) => item.courseId))];
+  const courseIds = accessibleCourseIds === null ? granted : granted.filter((id) => accessibleCourseIds.has(id));
+  const [onlyCourseId] = courseIds;
+  if (onlyCourseId === undefined) return null;
+  return courseIds.length === 1
+    ? { kind: 'open', to: `/my/courses/${encodeURIComponent(onlyCourseId)}` }
+    : { kind: 'view', to: `/my/course/${encodeURIComponent(product.id)}` };
+};
+
 const ProductRow = ({
   product,
   billingPortalUrl,
+  accessibleCourseIds,
 }: {
   product: GrantedProductRow;
   billingPortalUrl: string | null;
+  accessibleCourseIds: ReadonlySet<string> | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const inactive = product.grantStatus !== 'active';
+  const target = courseTarget(product, accessibleCourseIds);
+  const portalUrl = product.subscription === null ? null : billingPortalUrl;
   const subscription = product.subscription;
   const subscriptionEnds = subscription?.status === 'canceled' || subscription?.cancelAtPeriodEnd;
   const subscriptionDate = subscription
@@ -124,9 +144,13 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        {product.type === 'physical' ? <Typography variant="h3">{orderLineLabel({ name: product.title, quantity: product.quantity })}</Typography> : <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
-          {product.title}
-        </MemberProductLink>}
+        <Typography variant="h3" component="h2">
+          {product.type === 'physical' ? orderLineLabel({ name: product.title, quantity: product.quantity }) : (
+            <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+              {product.title}
+            </MemberProductLink>
+          )}
+        </Typography>
         {product.type === 'physical' || subscription !== null && product.grantStatus === 'active' ? null : (
           <Chip
             size="small"
@@ -156,9 +180,6 @@ const ProductRow = ({
       {product.type === 'physical' && product.fulfilment != null ? (
         <FulfilmentStatusLine fulfilment={product.fulfilment} productId={product.id} />
       ) : null}
-      <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
-        <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
-      </Typography>
       {product.description ? <RichTextContent html={product.description} /> : null}
       <ProductDownloads productId={product.id} productTitle={product.title} downloads={product.downloads} />
       {product.grantStatus === 'upcoming' ? (
@@ -173,26 +194,39 @@ const ProductRow = ({
             : t.student.subscriptionRenewalDate({ date: subscriptionDate })}
         </Typography>
       ) : null}
-      {subscription && billingPortalUrl ? (
-        <Box>
-          <Button
-            variant="outlined"
-            size="small"
-            component="a"
-            href={billingPortalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            endIcon={<ExternalLinkIcon />}
-            data-testid={`subscription-portal-${product.id}`}
-          >
-            {t.student.manageSubscription}
-            <VisuallyHidden> {t.student.opensInNewTab}</VisuallyHidden>
-          </Button>
-        </Box>
+      {target !== null || portalUrl !== null ? (
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {target === null ? null : (
+            <Button
+              variant="contained"
+              size="small"
+              component={Link}
+              to={target.to}
+              data-testid={`open-course-${product.id}`}
+            >
+              {target.kind === 'open' ? t.student.openCourse : t.student.viewCourses}
+            </Button>
+          )}
+          {portalUrl === null ? null : (
+            <Button
+              variant="outlined"
+              size="small"
+              component="a"
+              href={portalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<ExternalLinkIcon />}
+              data-testid={`subscription-portal-${product.id}`}
+            >
+              {t.student.manageSubscription}
+              <VisuallyHidden> {t.student.opensInNewTab}</VisuallyHidden>
+            </Button>
+          )}
+        </Stack>
       ) : null}
       {product.grantStatus === 'expired' ? (
         product.purchasable ? (
-          <Box>
+          <Stack direction="row" useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: '0.75rem', rowGap: '0.5rem' }}>
             <Button
               variant="contained"
               size="small"
@@ -202,7 +236,10 @@ const ProductRow = ({
             >
               {t.student.renewAccess}
             </Button>
-          </Box>
+            <Typography variant="body2" component="span" data-testid={`renew-price-${product.id}`}>
+              <DataValue>{formatOfferPrice(product.priceCents, product.currency, language, t.common.free)}</DataValue>
+            </Typography>
+          </Stack>
         ) : (
           <Typography variant="caption" color="text.secondary">
             {t.student.renewalUnavailable}
@@ -217,6 +254,8 @@ export const MyProductsPage = () => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
   const tenantSettings = useQuery(actions.memberSettings);
+  const grantsCourses = products.data?.products.some((product) => product.accessItems.length > 0) ?? false;
+  const courses = useQuery({ ...actions.studentCourses, enabled: grantsCourses });
   const redirectToLogin = useRedirectToLogin();
   const unauthorized = isUnauthorized(products.error);
 
@@ -248,6 +287,10 @@ export const MyProductsPage = () => {
     );
   }
 
+  const accessibleCourseIds = courses.data === undefined
+    ? null
+    : new Set(courses.data.courses.map((course) => course.id));
+
   return (
     <MemberSurface title={t.student.myProducts}>
         {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
@@ -266,6 +309,7 @@ export const MyProductsPage = () => {
                 key={product.id}
                 product={product}
                 billingPortalUrl={tenantSettings.data?.settings.billingPortalUrl ?? null}
+                accessibleCourseIds={accessibleCourseIds}
               />
             ))}
           </Stack>

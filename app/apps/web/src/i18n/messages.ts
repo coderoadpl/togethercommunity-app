@@ -2119,6 +2119,8 @@ export interface Messages {
     downloadsGroupLabel: (params: { title: string }) => string;
     downloadVersionShort: (params: { number: number }) => string;
     opensInNewTab: string;
+    openCourse: string;
+    viewCourses: string;
   };
   downloadCopies: {
     showMore: string;

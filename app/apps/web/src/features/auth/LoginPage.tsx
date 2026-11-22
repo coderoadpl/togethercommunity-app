@@ -338,7 +338,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     onSuccess: (_data, variables) => {
       setRequestedMagicEmail(variables.email);
       if (magicLinkExpired) {
-        void navigate({ to: '.', search: (previous) => ({ ...previous, error: undefined }), replace: true });
+        void navigate({
+          to: '.',
+          search: (previous) => {
+            const next = { ...previous };
+            delete next.error;
+            return next;
+          },
+          replace: true,
+        });
       }
     },
   });

@@ -157,4 +157,25 @@ describe('formatRetryDelay', () => {
     expect([en.auth.signInRateLimitedRetryIn({ delay }), pl.auth.signInRateLimitedRetryIn({ delay })]).toEqual([enAlert, plAlert]);
     expect([en.auth.magicLinkResendCooldown({ delay }), pl.auth.magicLinkResendCooldown({ delay })]).toEqual([enResend, plResend]);
   });
+
+  it('keeps the rate-limit cause in the heading and only the wait in the lead', () => {
+    const delay = formatRetryDelay(583);
+    expect([
+      en.auth.signInRateLimitedTitle,
+      en.auth.signInRateLimitedLeadRetryIn({ delay }),
+      en.auth.signInRateLimitedRetryNow,
+      en.auth.signInRateLimitedLeadWait,
+    ]).toEqual(['Too many attempts', 'Try again in 9 min 43 s.', 'You can try again now.', 'Wait a moment, then try again.']);
+    expect([
+      pl.auth.signInRateLimitedTitle,
+      pl.auth.signInRateLimitedLeadRetryIn({ delay }),
+      pl.auth.signInRateLimitedRetryNow,
+      pl.auth.signInRateLimitedLeadWait,
+    ]).toEqual([
+      'Zbyt wiele pr\u00f3b',
+      'Spr\u00f3buj ponownie za 9 min 43 s.',
+      'Mo\u017cesz spr\u00f3bowa\u0107 ponownie.',
+      'Odczekaj chwil\u0119 i spr\u00f3buj ponownie.',
+    ]);
+  });
 });

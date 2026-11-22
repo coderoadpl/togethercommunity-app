@@ -924,7 +924,8 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByTestId('login-continue'));
 
     const message = await screen.findByTestId('sign-in-rate-limited-message');
-    expect(within(message).getByTestId('rate-limit-countdown')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ delay }));
+    expect(within(message).getByTestId('rate-limit-countdown')).toHaveTextContent(t.auth.signInRateLimitedLeadRetryIn({ delay }));
+    expect(message).not.toHaveTextContent(t.auth.signInRateLimitedTitle);
     expect(message).toHaveTextContent(delay);
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
   });
@@ -942,6 +943,7 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled());
     expect(screen.queryByTestId('rate-limit-countdown')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
   });
 
   it('counts the lookup delay down and enables the retry when it ends', async () => {
@@ -950,12 +952,12 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent(
-      en.auth.signInRateLimitedRetryIn({ delay: '1 s' }),
+      en.auth.signInRateLimitedLeadRetryIn({ delay: '1 s' }),
     );
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
 
     await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.errors.messageRateLimited);
+    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
   });
 
   it('states a rate limit without a delay when the resolver sends none', async () => {
@@ -964,7 +966,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
-      en.errors.messageRateLimited,
+      en.auth.signInRateLimitedLeadWait,
     );
     expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled();
   });
@@ -987,7 +989,8 @@ describe('LoginPage', () => {
     expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('signin-submit')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('signin-submit')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('signin-error')).toHaveTextContent(t.errors.messageRateLimited);
+    expect(screen.getByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryNow);
+    expect(screen.getByTestId('signin-error')).not.toHaveTextContent(t.errors.messageRateLimited);
   });
 
   it('holds the sign-in link card until the rate-limit delay ends', async () => {
@@ -1004,7 +1007,8 @@ describe('LoginPage', () => {
     expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('send-magic-link')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('send-magic-link')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.errors.messageRateLimited);
+    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
+    expect(screen.getByTestId('magic-link-error')).not.toHaveTextContent(en.errors.messageRateLimited);
   });
 
   it('opens the password step after a failed lookup', async () => {

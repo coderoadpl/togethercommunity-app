@@ -130,14 +130,16 @@ const useRetryCountdown = (error: unknown): number => {
 };
 
 // Assistive technology hears the delay once; only the visible copy ticks.
-const RateLimitMessage = ({ error, remaining }: { error: unknown; remaining: number }) => {
+const RateLimitMessage = ({ error, remaining, lead = false }: { error: unknown; remaining: number; lead?: boolean }) => {
   const t = useTranslations();
   const initial = retryAfterSecondsOf(error);
-  if (initial === null || remaining === 0) return <>{t.errors.messageRateLimited}</>;
+  if (initial === null) return <>{lead ? t.auth.signInRateLimitedLeadWait : t.errors.messageRateLimited}</>;
+  if (remaining === 0) return <>{t.auth.signInRateLimitedRetryNow}</>;
+  const retryIn = lead ? t.auth.signInRateLimitedLeadRetryIn : t.auth.signInRateLimitedRetryIn;
   return (
     <>
-      <span aria-hidden data-testid="rate-limit-countdown">{t.auth.signInRateLimitedRetryIn({ delay: formatRetryDelay(remaining) })}</span>
-      <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ delay: formatRetryDelay(initial) })}</VisuallyHidden>
+      <span aria-hidden data-testid="rate-limit-countdown">{retryIn({ delay: formatRetryDelay(remaining) })}</span>
+      <VisuallyHidden>{retryIn({ delay: formatRetryDelay(initial) })}</VisuallyHidden>
     </>
   );
 };
@@ -722,7 +724,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             {t.auth.signInRateLimitedTitle}
           </AuthTitle>
           <AuthLead component="p" data-testid="sign-in-rate-limited-message">
-            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} />
+            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} lead />
           </AuthLead>
         </Box>
         <Button

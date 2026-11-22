@@ -61,6 +61,9 @@ describe('i18n dictionaries', () => {
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
       messages.auth.signInRateLimitedRetryIn({ delay: '30 s' }),
       messages.auth.signInRateLimitedTitle,
+      messages.auth.signInRateLimitedRetryNow,
+      messages.auth.signInRateLimitedLeadRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedLeadWait,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,

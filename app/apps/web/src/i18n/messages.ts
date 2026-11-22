@@ -418,6 +418,9 @@ export interface Messages {
     invalidCredentials: string;
     signInRateLimitedRetryIn: (params: { delay: string }) => string;
     signInRateLimitedTitle: string;
+    signInRateLimitedRetryNow: string;
+    signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedLeadWait: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;

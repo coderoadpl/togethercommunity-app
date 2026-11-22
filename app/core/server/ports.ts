@@ -56,6 +56,7 @@ import type {
   ProductGrant,
   ProductPrice,
   ProcessedPaymentEvent,
+  PaymentEventRejection,
   Result,
   StaffRole,
   StreamVideo,
@@ -1831,6 +1832,16 @@ export interface ProcessedPaymentEventRepository {
   ): Promise<void>;
   /** Undoes a claim whose effects did not apply, so a later redelivery can reprocess it. */
   release(tenantId: string, eventId: string, workerId: string): Promise<void>;
+}
+
+export interface PaymentEventRejectionRepository {
+  /** Upserts by event id: the first delivery sets firstSeenAt, every later one bumps attempts and reopens a resolved row. */
+  record(
+    tenantId: string,
+    rejection: Pick<PaymentEventRejection, 'eventId' | 'eventType' | 'checkoutSessionId' | 'reasonCode' | 'reasonMessage'> & { seenAt: string },
+  ): Promise<PaymentEventRejection>;
+  resolve(tenantId: string, eventId: string, resolvedAt: string): Promise<void>;
+  listUnresolved(tenantId: string, limit: number): Promise<PaymentEventRejection[]>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */

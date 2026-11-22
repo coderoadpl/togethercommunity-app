@@ -114,7 +114,10 @@ export const ChangePasswordForm = ({
           id="change-new-password"
           type="password"
           value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
+          onChange={(event) => {
+            setNewPassword(event.target.value);
+            setLocalError(null);
+          }}
           autoComplete="new-password"
           inputProps={{ 'data-testid': 'change-new-password', 'aria-describedby': newPasswordError === null ? 'change-password-minimum' : 'change-password-minimum change-new-password-error' }}
           required
@@ -128,7 +131,10 @@ export const ChangePasswordForm = ({
           id="change-confirm-password"
           type="password"
           value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
+          onChange={(event) => {
+            setConfirmPassword(event.target.value);
+            if (localError?.field === 'confirm') setLocalError(null);
+          }}
           autoComplete="new-password"
           inputProps={{ 'data-testid': 'change-confirm-password', 'aria-describedby': confirmPasswordError === null ? undefined : 'change-confirm-password-error' }}
           required

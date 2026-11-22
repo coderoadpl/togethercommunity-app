@@ -244,6 +244,7 @@ export const TwoFactorCard = ({
     </FormControl>
   );
   const enrollment = enableTwoFactor.data;
+  const verifyError = verifyTotp.submittedAt > startedAt ? verifyTotp.error : null;
   const enrollmentCodes = enrollment?.backupCodes ?? [];
   const closeEnrollment = () => {
     if (step === 'codes' && enrollmentCodes.length > 0 && !codesSaved) setConfirmingLeave(true);
@@ -315,7 +316,7 @@ export const TwoFactorCard = ({
         ) : null}
         {step === 'verify' ? (
           <Box component="form" onSubmit={(event) => { event.preventDefault(); submitCode(code); }} sx={{ display: 'grid', gap: '1rem' }}>
-            <FormControl fullWidth error={verifyTotp.error !== null}>
+            <FormControl fullWidth error={verifyError !== null}>
               <FormLabel htmlFor="verify-totp-code">{t.security.authenticatorCodeLabel}</FormLabel>
               <OutlinedInput
                 id="verify-totp-code"
@@ -330,7 +331,7 @@ export const TwoFactorCard = ({
                 inputProps={{ 'data-testid': 'verify-totp-code', inputMode: 'numeric', maxLength: 6 }}
               />
             </FormControl>
-            {verifyTotp.error ? <Alert severity="error" data-testid="verify-totp-error">{localizeError(verifyTotp.error, t)}</Alert> : null}
+            {verifyError ? <Alert severity="error" data-testid="verify-totp-error">{localizeError(verifyError, t)}</Alert> : null}
             <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               <Button variant="text" data-testid="two-factor-back" disabled={verifyTotp.pending} onClick={() => { setCode(''); setStep('qr'); }}>{t.security.wizardBack}</Button>
               <Button variant="contained" type="submit" data-testid="verify-totp" disabled={verifyTotp.pending || code.length !== 6}>{verifyTotp.pending ? t.security.verifying : t.security.verifyCode}</Button>

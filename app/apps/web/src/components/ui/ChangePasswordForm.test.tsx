@@ -125,6 +125,37 @@ describe('ChangePasswordForm', () => {
     expect(screen.getByTestId('change-new-password')).toHaveAttribute('aria-invalid', 'false');
   });
 
+  it('clears the too-short error once the new password changes', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', 'short', 'short');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'x');
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-new-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-new-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('clears the mismatch error once either new password field changes', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', VALID_PASSWORD, 'other-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+
+    await userEvent.type(screen.getByTestId('change-current-password'), 'x');
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-new-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-confirm-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
   it('describes the revocation checkbox with its scope hint', () => {
     renderForm();
 

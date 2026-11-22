@@ -315,6 +315,27 @@ describe('Account dialogs', () => {
     expect(screen.getByTestId('verify-totp-code')).toHaveValue('');
     expect(props.verifyTotp.run).not.toHaveBeenCalled();
   });
+  it('drops the wrong-code alert from an earlier attempt after going back', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    const enabled = { ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } };
+    view.rerender(tree(enabled));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '123456');
+    const failed = { ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, error: failure } };
+    view.rerender(tree(failed));
+    expect(screen.getByTestId('verify-totp-error')).toBeVisible();
+    expect(screen.getByTestId('verify-totp-code')).toHaveAttribute('aria-invalid', 'true');
+
+    await userEvent.click(screen.getByTestId('two-factor-back'));
+    await userEvent.click(screen.getByTestId('two-factor-next'));
+    expect(screen.getByTestId('verify-totp-code')).toHaveValue('');
+    expect(screen.queryByTestId('verify-totp-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('verify-totp-code')).toHaveAttribute('aria-invalid', 'false');
+  });
   it('provides a finish path when enrollment returns no backup codes', async () => {
     const refresh = vi.fn();
     const props = propsWith({ onSecurityRefresh: refresh });

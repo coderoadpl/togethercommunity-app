@@ -67,7 +67,6 @@ const storableJson = (value: unknown): boolean => {
 };
 
 const readPoint = (code: string, body: unknown): PickupPointLookup => {
-  if (!storableJson(body)) return UNAVAILABLE;
   const point = wirePointSchema.safeParse(body);
   if (!point.success || normalizePickupPointCode(point.data.name) !== code) return UNAVAILABLE;
   return {
@@ -106,6 +105,7 @@ export const createInpostPointsDirectory = (options: InpostPointsDirectoryOption
         const text = await readBoundedText(response);
         if (text === null) return UNAVAILABLE;
         const body = parseJson(text);
+        if (!storableJson(body)) return UNAVAILABLE;
         if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
         return response.status === 200 ? readPoint(code, body) : UNAVAILABLE;
       } catch {

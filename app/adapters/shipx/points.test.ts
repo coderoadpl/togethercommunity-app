@@ -125,6 +125,16 @@ describe('InPost points directory', () => {
     });
   });
 
+  it.each([200, 404])('answers unavailable, not a refusal, for a not-found body with an unstorable error message under HTTP %i', async (status) => {
+    const damaged = fixture('point-not-found.json').replace('"Point not found."', JSON.stringify(`Point not found.${String.fromCharCode(0)}`));
+    const lookup = await directory(answering(() => json(damaged, status))).lookup('KRA14A');
+    expect(lookup).toEqual({ kind: 'unavailable' });
+    expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
+    expect(applyPickupPointLookup(typedSelection, lookup)).toEqual({
+      ok: true, value: { ...typedSelection, pickupPoint: { ...typedSelection.pickupPoint, verified: false } },
+    });
+  });
+
   it('reads an answer with ordinary non-ASCII text and a paired surrogate', async () => {
     const lookup = await directory(answering(() => json(replacing('"Next to the main entrance"', 'By the café 📦')))).lookup('KRA14A');
     expect(lookup).toMatchObject({ kind: 'found', point: { locationDescription: 'By the café 📦' } });

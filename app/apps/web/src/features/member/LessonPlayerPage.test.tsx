@@ -1449,6 +1449,61 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 
+  it('moves to the address of the course the completion was recorded under, so a fresh visit reads it and can undo it', async () => {
+    const written = new Map<string, string[]>();
+    const uncompleted: unknown[] = [];
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
+      }),
+      http.post('/api/student/lessons/complete', () => {
+        written.set('course-other', ['l1']);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } });
+      }),
+      http.post('/api/student/lessons/uncomplete', async ({ request }) => {
+        const body = lessonCompleteInputSchema.parse(await request.json());
+        uncompleted.push(body);
+        written.set(body.courseId ?? '', []);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), courseId: body.courseId ?? '' } } });
+      }),
+    );
+    const mount = async (path: string) => {
+      const rootRoute = createRootRoute();
+      const LessonRouteComponent = () => {
+        const params = useParams({ strict: false });
+        return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+      };
+      const router = createRouter({
+        routeTree: rootRoute.addChildren([createRoute({
+          getParentRoute: () => rootRoute,
+          path: '/my/courses/$courseId/lessons/$lessonId',
+          component: LessonRouteComponent,
+        })]),
+        history: createMemoryHistory({ initialEntries: [path] }),
+      });
+      await router.load();
+      return { router, ...renderWithProviders(<RouterProvider router={router} />) };
+    };
+
+    const user = userEvent.setup();
+    const first = await mount('/my/courses/course-1/lessons/l1');
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(first.router.state.location.pathname).toBe('/my/courses/course-other/lessons/l1'));
+    expect(first.router.history.length).toBe(1);
+    const recordedPath = first.router.state.location.pathname;
+    first.unmount();
+
+    await mount(recordedPath);
+    await user.click(await screen.findByTestId('unmark-complete'));
+
+    await waitFor(() => expect(uncompleted).toEqual([{ lessonId: 'l1', courseId: 'course-other' }]));
+    expect(await screen.findByTestId('mark-complete')).toBeEnabled();
+  });
+
   it('follows the recorded progress after settling instead of holding what it wrote', async () => {
     const written = new Map<string, string[]>([['course-1', ['l1']]]);
     let posts = 0;

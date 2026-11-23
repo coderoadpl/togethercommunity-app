@@ -540,6 +540,22 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const followRecordedCourse = (recordedCourseId: string) => {
+    if (recordedCourseId === courseId) return;
+    const search = threadRootPostId === null ? {} : { thread: threadRootPostId };
+    void navigate(editionNumber === undefined ? {
+      to: '/my/courses/$courseId/lessons/$lessonId',
+      params: { courseId: recordedCourseId, lessonId },
+      search,
+      replace: true,
+    } : {
+      to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+      params: { courseId: recordedCourseId, lessonId, number: editionNumber },
+      search,
+      replace: true,
+    });
+  };
+
   const continueToNext = () => {
     setContinuing(true);
     complete.mutate(
@@ -699,7 +715,7 @@ export const LessonPlayerPage = ({
                 variant={nextHref === null ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
                 data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => complete.mutate({ lessonId, courseId })}
+                onClick={() => complete.mutate({ lessonId, courseId }, { onSuccess: (data) => followRecordedCourse(data.progress.courseId) })}
                 disabled={complete.isPending}
               >
                 {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}

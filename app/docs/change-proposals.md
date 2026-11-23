@@ -1961,7 +1961,10 @@ progress is recorded follows a course that opens the lesson for them:
   lesson, or that belongs to another workspace, is never written. Once the
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is
-  another one, each read again from the server;
+  another one, each read again from the server. After a completion from
+  **Mark as completed** recorded under another course, the player replaces its
+  address with that course's address of the lesson (no new history entry), so
+  a reload or a later visit reads the completion there and can undo it;
 - the last-viewed position (`POST /api/student/progress/last-viewed` and the
   CLI's `student last-viewed`) is recorded for a member only when the named
   course opens the lesson for them, in the named module when one is sent;

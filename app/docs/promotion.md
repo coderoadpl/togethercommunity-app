@@ -57,7 +57,10 @@ Production is promoted through a pull request from `staging` to `main`.
 The `promotion-guard` workflow rejects production promotion pull requests unless
 the head branch is `staging`, the head SHA still matches `origin/staging`, and
 `STAGING_FREEZE=true`. It also requires successful `ci.yml` and
-`staging-smoke.yml` runs for that exact staging SHA.
+`staging-smoke.yml` runs of the `staging` branch for that exact SHA. Runs
+started by a `pull_request` or `pull_request_target` event never count, so the
+promotion pull request's own CI run is neither waited on nor taken as evidence;
+`push`, `schedule` and `workflow_dispatch` runs count.
 
 When the source, tip and freeze checks pass but a required workflow has no
 successful run for the SHA yet, the guard waits and re-reads the runs every 30

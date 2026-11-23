@@ -24,6 +24,7 @@ export type RequiredWorkflow = 'ci.yml' | 'staging-smoke.yml';
 
 export type WorkflowRun = {
   workflow: RequiredWorkflow;
+  event: string;
   status: string;
   conclusion: string | null;
   url: string;
@@ -101,6 +102,7 @@ const runtimeEnvSchema = z.object({
 
 const workflowRunResponseSchema = z.object({
   workflow_runs: z.array(z.object({
+    event: z.string(),
     conclusion: z.string().nullable(),
     status: z.string().nullable(),
     html_url: z.string().url(),
@@ -120,6 +122,7 @@ const issueCommentsSchema = z.array(z.object({
 const paginatedIssueCommentsSchema = z.array(issueCommentsSchema);
 
 const requiredWorkflows: RequiredWorkflow[] = ['ci.yml', 'staging-smoke.yml'];
+const pullRequestEvents: ReadonlySet<string> = new Set(['pull_request', 'pull_request_target']);
 
 export const defaultWaitPolicy: WaitPolicy = {
   pollMs: 30_000,
@@ -165,9 +168,13 @@ export function evaluateStagingFreeze(value: string | undefined): GuardReason[] 
     }];
 }
 
+export function stagingRunsOf(runs: WorkflowRun[], workflow: RequiredWorkflow): WorkflowRun[] {
+  return runs.filter((run) => run.workflow === workflow && !pullRequestEvents.has(run.event));
+}
+
 export function evaluateWorkflowRuns(runs: WorkflowRun[]): WorkflowEvidence[] {
   return requiredWorkflows.map((workflow) => {
-    const workflowRuns = runs.filter((run) => run.workflow === workflow);
+    const workflowRuns = stagingRunsOf(runs, workflow);
     const successful = workflowRuns.find((run) => run.conclusion === 'success');
     const reported = successful ?? workflowRuns[0];
 
@@ -182,7 +189,7 @@ export function evaluateWorkflowRuns(runs: WorkflowRun[]): WorkflowEvidence[] {
 
 export function unfinishedWorkflows(runs: WorkflowRun[]): UnfinishedWorkflow[] {
   return requiredWorkflows.flatMap((workflow): UnfinishedWorkflow[] => {
-    const workflowRuns = runs.filter((run) => run.workflow === workflow);
+    const workflowRuns = stagingRunsOf(runs, workflow);
     if (workflowRuns.some((run) => run.conclusion === 'success')) return [];
     if (workflowRuns.some((run) => run.status !== 'completed')) return [{ workflow, state: 'running' }];
     return workflowRuns.length === 0 ? [{ workflow, state: 'missing' }] : [];
@@ -448,6 +455,7 @@ function readWorkflowRuns(env: RuntimeEnv): WorkflowRun[] {
 
     return parsed.workflow_runs.map((run) => ({
       workflow,
+      event: run.event,
       status: run.status ?? (run.conclusion === null ? 'unknown' : 'completed'),
       conclusion: run.conclusion,
       url: run.html_url,

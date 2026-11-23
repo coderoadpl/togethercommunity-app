@@ -14,8 +14,15 @@ import {
   type WorkflowRun,
 } from './promotion-guard.js';
 
-const run = (workflow: WorkflowRun['workflow'], status: string, conclusion: string | null, id: number): WorkflowRun => ({
+const run = (
+  workflow: WorkflowRun['workflow'],
+  status: string,
+  conclusion: string | null,
+  id: number,
+  event = 'push',
+): WorkflowRun => ({
   workflow,
+  event,
   status,
   conclusion,
   url: `https://github.com/example/repo/actions/runs/${String(id)}`,
@@ -86,12 +93,14 @@ describe('promotion guard', () => {
     const evidence = evaluateWorkflowRuns([
       {
         workflow: 'ci.yml',
+        event: 'push',
         status: 'completed',
         conclusion: 'success',
         url: 'https://github.com/example/repo/actions/runs/1',
       },
       {
         workflow: 'staging-smoke.yml',
+        event: 'push',
         status: 'completed',
         conclusion: 'failure',
         url: 'https://github.com/example/repo/actions/runs/2',
@@ -327,6 +336,53 @@ describe('promotion guard waiting for the staging runs', () => {
 
     expect((await awaitWorkflowRuns(deps)).waitedMs).toBe(0);
     expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('ignores the promotion pull request run of ci.yml when the push run already failed', async () => {
+    const pushFailure = run('ci.yml', 'completed', 'failure', 1);
+    const { deps, sleep } = waitHarness([[pushFailure, run('ci.yml', 'in_progress', null, 3, 'pull_request'), smokeSuccess]]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(wait.waitedMs).toBe(0);
+    expect(evaluateWorkflowRuns(wait.runs)).toEqual([
+      { workflow: 'ci.yml', passed: false, url: pushFailure.url, conclusion: 'failure' },
+      { workflow: 'staging-smoke.yml', passed: true, url: smokeSuccess.url, conclusion: 'success' },
+    ]);
+    expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([{
+      check: 'ci.yml',
+      message: 'No successful staging branch run found for ci.yml at the PR head SHA.',
+    }]);
+  });
+
+  it.each(['pull_request', 'pull_request_target'])('never takes a successful %s run as staging evidence', (event) => {
+    const pushFailure = run('ci.yml', 'completed', 'failure', 1);
+
+    expect(evaluateWorkflowRuns([run('ci.yml', 'completed', 'success', 3, event), pushFailure, smokeSuccess])[0]).toEqual({
+      workflow: 'ci.yml',
+      passed: false,
+      url: pushFailure.url,
+      conclusion: 'failure',
+    });
+  });
+
+  it('does not wait for a pull request run when no staging run exists beyond the grace period', async () => {
+    const { deps } = waitHarness([[run('ci.yml', 'in_progress', null, 3, 'pull_request'), smokeSuccess]]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(wait.waitedMs).toBe(defaultWaitPolicy.graceMs);
+    expect(wait.unfinished).toEqual([{ workflow: 'ci.yml', state: 'missing' }]);
+  });
+
+  it.each(['push', 'schedule', 'workflow_dispatch'])('counts a successful %s run as before', async (event) => {
+    const { deps } = waitHarness([[run('ci.yml', 'completed', 'success', 1, event), smokeSuccess]]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(wait.waitedMs).toBe(0);
+    expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([]);
   });
 
   it('says in the comment how long it waited', () => {

@@ -12,8 +12,10 @@ import type {
 } from '#core/domain/index.js';
 
 import type { AuthPort, ProductRepository, PurchaseRepository, TenantRepository } from '../ports.js';
+import { createPickupPointDirectoryFake } from '../testing/pickup-point-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
-import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
+import { validateCheckoutSelection } from './checkout.js';
+import { simulatePurchase, simulateValidatedPurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
 const product = (id: string, tenantId: string, published: boolean): Product => ({
   id,
@@ -423,6 +425,7 @@ describe('simulated shipped purchase', () => {
       changeSettings: async () => null, createTenantWithOwnerGrant: async () => { throw new Error('Unused'); }, hasAny: async () => true,
     };
     h.deps.paymentTransaction = { run: async (operation) => operation({ members: h.deps.members, orders: h.deps.orders, grants: h.deps.grants, emailOutbox: { enqueue: async (message) => ok({ id: message.id }) } }) };
+    h.deps.pickupPoints = createPickupPointDirectoryFake();
     return h;
   };
 
@@ -437,11 +440,23 @@ describe('simulated shipped purchase', () => {
       amountCents: 6399, fulfilmentStatus: 'to_pack',
       lines: [{ productId: 'accessory', productType: 'physical', grossCents: 4900 }, { productId: 'shipping:locker', productType: 'shipping', grossCents: 1499, vatRate: 23, issuedCount: null }],
       shipping: {
-        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' },
         address: { country: 'PL' }, phone: expect.any(String),
       },
     });
     expect(h.grants.size).toBe(0);
+  });
+
+  it('executes an already validated selection without asking the carrier again', async () => {
+    const h = shippedHarness();
+    const directory = createPickupPointDirectoryFake();
+    h.deps.pickupPoints = directory;
+    const input = { email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code: 'waw01m' } } };
+    const selection = await validateCheckoutSelection('t-acme', input, h.deps);
+    if (!selection.ok) throw new Error('Expected a valid selection');
+    expect(await simulateValidatedPurchase('t-acme', input, selection.value, h.deps)).toMatchObject({ ok: true });
+    expect(directory.lookups).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ shipping: { pickupPoint: { code: 'WAW01M' } } });
   });
 
   it('requires a delivery choice for a shipped product', async () => {

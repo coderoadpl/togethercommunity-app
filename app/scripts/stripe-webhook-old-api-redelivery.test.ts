@@ -202,7 +202,7 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
         shipping: {
           rateId: 'locker', label: 'Parcel locker', amountCents: 0, vatRatePercent: 23, carrier: 'inpost', phone: '+48500100200',
           address: { name: 'Test Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
-          pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+          pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' },
         },
       }],
       levels: [{ onHand: 48, reserved: 0 }],

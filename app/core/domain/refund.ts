@@ -63,8 +63,6 @@ const refundFailureDetailsSchema = z.object({
   diagnosticToken: z.string().nullable().default(null),
 });
 
-// The provider's own words, or a neutral token where the adapter wrote the message: a staff refund stores only this,
-// because Studio and the staff alerts word the explanation in the reader's language.
 type RefundFailureDiagnostic = { providerMessage: string } | { token: string };
 
 // A refund failure's message is stored on the refund, shown in Studio and copied into staff e-mails, so a key the

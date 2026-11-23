@@ -1555,10 +1555,17 @@ webhook, the Node ticker) gets 30 seconds from its own start.
 The worst case of a job: a job makes at most two Stripe calls (the refund list
 and the create call, or one refund list for a status read) while the payment
 has at most 100 refunds. A longer refund list is read page by page (100
-refunds a page, at most 10 pages), one more call per page; such a job can
-outlast the worst case below, and a run the function limit cuts off leaves the
-job to its lease. A list longer than 1,000 refunds counts as a list that could
-not be read (a temporary failure), never as Stripe refusing the refund. Every refund call has a 5-second
+refunds a page, at most 10 pages), one more call per page, and never past a
+deadline: the job's deadline is the run's deadline, and on the cron tick at
+most 21 seconds after the job was claimed. The first page is read at once (claiming
+the job already made room for it); the list stops before any further page that
+could not end by that deadline less the worst case of the create call (a status
+read keeps no time for one), so the job still ends by its deadline. A
+list cut short this way, or longer than 1,000 refunds, counts as a list that
+could not be read (a temporary failure, retried on the schedule below), never
+as Stripe refusing the refund. On the cron tick this leaves a payment with more
+than 100 refunds to be refunded by the kick after a webhook or the Node ticker,
+whose 30-second runs leave room for more pages. Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a

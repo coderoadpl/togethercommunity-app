@@ -643,7 +643,9 @@ against the refundable remainder and makes waiting staff refunds of that order
 due at once. The buyer's refund notice is stored pre-rendered as an
 `m2m-transactional` message with source `staff-refunds` (see
 [the shop guide](shop.md#staff-refunds)). The refund list is read page by page
-(`starting_after`, 100 refunds a page, at most 10 pages).
+(`starting_after`, 100 refunds a page, at most 10 pages); the refund dispatcher
+gives the read a deadline, and a page that could not end before it is not
+started (see [the shop guide](shop.md#staff-refunds)).
 
 ## Order and subscription e-mail subjects
 

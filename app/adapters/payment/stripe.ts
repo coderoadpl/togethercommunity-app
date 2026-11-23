@@ -22,6 +22,7 @@ import {
   stripeRefundObjectSchema,
   REFUND_REQUEST_MAX_NETWORK_RETRIES,
   REFUND_REQUEST_TIMEOUT_MS,
+  REFUND_REQUEST_WORST_CASE_MS,
   stripeAdoptionObjectSchema,
   stripeSubscriptionListEntrySchema,
   stripeSubscriptionSnapshotSchema,
@@ -792,6 +793,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       const refunds: ProviderRefund[] = [];
       let startingAfter: string | undefined;
       for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
+        if (pageCount > 0 && input.deadlineAt !== undefined && Date.now() + REFUND_REQUEST_WORST_CASE_MS > input.deadlineAt) {
+          return err(refundFailure('transient', 'The refund list of the payment could not be read in full before the run deadline'));
+        }
         let page: { data: unknown[]; has_more: boolean };
         try {
           page = await client.value.refunds.list({

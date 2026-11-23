@@ -6,6 +6,7 @@ import {
   orderListItemSchema,
   outOfStockRefundJob,
   refundFailure,
+  REFUND_REQUEST_WORST_CASE_MS,
   type OrderListItem,
   type ProviderRefund,
 } from '#core/domain/index.js';
@@ -860,6 +861,23 @@ describe('order refund dispatcher', () => {
     expect(claimed).toStrictEqual(['job-1', 'job-2', 'job-3']);
     expect(untouched).toBe(3);
     expect(warnings).toStrictEqual(['[order-refund] run stopped by deadline, 3 due refund jobs left for the next run']);
+  });
+
+  it.each([
+    ['the run deadline', {}, Date.parse(createdAt) + 30_000],
+    ['the job budget of the cron tick', { jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS }, Date.parse(createdAt) + ORDER_REFUND_JOB_WORST_CASE_MS],
+  ] as const)('reads the refunds only until %s, keeping time for the refund request, and at a status check until its run deadline', async (_name, budget, jobDeadline) => {
+    const h = harness();
+    const deadlines: Array<number | undefined> = [];
+    const { createRefund, listRefunds } = h.deps.payment;
+    if (createRefund === undefined || listRefunds === undefined) throw new Error('Refund methods missing');
+    h.deps.payment = { createRefund, listRefunds: async (call) => { deadlines.push(call.deadlineAt); return listRefunds(call); } };
+    await h.queue();
+
+    expect(await dispatchOrderRefundJobs(h.deps, { deadlineAt: Date.parse(createdAt) + 30_000, ...budget })).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(await h.tick(at(hours(24)))).toMatchObject({ processedCount: 1 });
+
+    expect(deadlines).toStrictEqual([jobDeadline - REFUND_REQUEST_WORST_CASE_MS, Date.parse(at(hours(24))) + ORDER_REFUND_DISPATCH_BUDGET_MS]);
   });
 
   it('claims one job on the cron tick although the deadline leaves time for more, and names the cap in the warning', async () => {

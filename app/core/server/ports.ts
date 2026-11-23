@@ -1298,6 +1298,7 @@ export interface PaymentProvider {
     mode: 'live' | 'test';
     tenantId: string;
     paymentIntentId: string;
+    deadlineAt?: number;
   }): Promise<Result<ProviderRefund[], AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;

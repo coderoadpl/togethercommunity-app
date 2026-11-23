@@ -476,6 +476,7 @@ import {
   validateCouponForCheckout,
   validateTermsConsent,
   ORDER_REFUND_CRON_TICK_MAX_JOBS,
+  ORDER_REFUND_JOB_WORST_CASE_MS,
   ORDER_REFUND_TICK_BUDGET_MS,
   type AuthenticatedUser,
   type Ctx,
@@ -827,7 +828,7 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
 const dispatchDueOrderRefunds = async (
   deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
   tickStartedAt: number,
-  limits: { maxJobs?: number } = {},
+  limits: { maxJobs?: number; jobBudgetMs?: number } = {},
 ): Promise<void> => {
   try {
     const result = await deps.dispatchOrderRefundJobs({ deadlineAt: tickStartedAt + ORDER_REFUND_TICK_BUDGET_MS, ...limits });
@@ -865,7 +866,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
-    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
+    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS, jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
     return respond(emails);
   });

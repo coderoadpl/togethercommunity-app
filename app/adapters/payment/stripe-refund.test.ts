@@ -297,6 +297,33 @@ describe('Stripe listRefunds', () => {
     expect(h.requests).toHaveLength(10);
   });
 
+  it('reads the first page at once, starts no further page that could not finish before the deadline it is given and reports the list as unread, never as a refusal', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const startedAt = Date.now();
+      let page = 0;
+      const h = providerOverFetch(() => {
+        page += 1;
+        vi.setSystemTime(Date.now() + 4_000);
+        return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+      });
+      const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: startedAt + 30_000 });
+      if (result.ok) throw new Error('Expected a read failure');
+      expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: false });
+      expect(result.error.message).toBe('The refund list of the payment could not be read in full before the run deadline');
+      expect(h.requests).toHaveLength(5);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the first page even when the deadline it is given leaves no time for a worst-case request', async () => {
+    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [refundObject()] }));
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: Date.now() });
+    expect(result.ok ? result.value.map((refund) => refund.refundId) : result.error.message).toStrictEqual(['re_123']);
+  });
+
   it('maps a missing permission', async () => {
     const h = providerOverFetch(() => stripeError(403, { message: 'The provided key does not have the required permissions for this endpoint' }));
     const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });

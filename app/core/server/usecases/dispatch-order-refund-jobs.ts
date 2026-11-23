@@ -68,6 +68,7 @@ interface Settlement {
 export interface DispatchOrderRefundJobsOptions {
   deadlineAt?: number;
   maxJobs?: number;
+  jobBudgetMs?: number;
 }
 
 const MAX_JOBS_PER_DISPATCH = 25;
@@ -254,10 +255,10 @@ const markCreateAttempt = async (claim: ClaimedRefundJob, keyGeneration: number,
   return deps.refundJobs.markCreateAttempt(claim.job.tenantId, claim.job.id, claim.lease, { keyGeneration, now: deps.clock.nowIso() });
 };
 
-const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   const { createRefund, listRefunds } = deps.payment;
   if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
-  const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
+  const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId, deadlineAt: deadlineAt - REFUND_REQUEST_WORST_CASE_MS });
   if (!listed.ok) return settleListFailure(job, order, listed.error, now);
   const refunds = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
@@ -309,17 +310,17 @@ const settleAttempt = (settlement: Settlement): Settlement => {
   return { ...settlement, update: { transientFailureStreak: 0, ...(refundCovered ? { permissionBlockedAt: null } : {}), ...settlement.update } };
 };
 
-const refundJob = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+const refundJob = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem | null, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   if (job.source === 'staff') {
     if (order === null) return finalFailure('The order was not found');
-    return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deps));
+    return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deadlineAt, deps));
   }
   if (order === null) return finalFailure('The cancelled order was not found');
   const refundable = order.cancelReason === job.reason && job.paymentIntentId !== null;
   if (!refundable && order.status === 'refunded') return skippedRefunded();
   if (order.cancelReason !== job.reason) return finalFailure('The order is not cancelled for this refund reason');
   if (job.paymentIntentId === null) return finalFailure('The order has no payment intent to refund');
-  return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deps));
+  return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deadlineAt, deps));
 };
 
 const settleReadFailure = (submittedAt: string, lastError: string, now: string): Settlement => {
@@ -341,13 +342,13 @@ const waitForOtherStaffRefund = (reopen: Settlement, now: string): Settlement =>
   alert: null,
 });
 
-const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   if (job.submittedAt === null || job.paymentIntentId === null) {
     return { update: { nextAttemptAt: null }, outcome: 'checked', alert: null };
   }
   const listed = deps.payment.listRefunds === undefined
     ? err(providerUnavailable)
-    : await deps.payment.listRefunds({ mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId });
+    : await deps.payment.listRefunds({ mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId, deadlineAt });
   if (!listed.ok) return settleReadFailure(job.submittedAt, listed.error.message, now);
   if (job.providerRefundId !== null && !listed.value.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleReadFailure(job.submittedAt, ownRefundNotListed(job.providerRefundId).message, now);
@@ -450,13 +451,13 @@ const deferSettlement = async (claim: ClaimedRefundJob, cause: unknown, deps: Di
   return 'deferred';
 };
 
-const processClaim = async (claim: ClaimedRefundJob, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
+const processClaim = async (claim: ClaimedRefundJob, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
   const job = refundJobOfClaim(claim);
   const now = deps.clock.nowIso();
   const order = await deps.orderDetails.findById(job.tenantId, job.orderId);
   const settlement = claim.phase === 'refund'
-    ? await refundJob(claim, job, order, now, deps)
-    : await checkRefundStatus(job, order, now, deps);
+    ? await refundJob(claim, job, order, now, deadlineAt, deps)
+    : await checkRefundStatus(job, order, now, deadlineAt, deps);
   if (settlement.outcome === 'lease_lost') {
     deps.logger.error(`[order-refund] lease lost before the refund request tenant=${job.tenantId} order=${job.orderId} job=${job.id}`);
     return 'lease_lost';
@@ -510,9 +511,11 @@ export const dispatchOrderRefundJobs = async (
       await warnDueJobsLeft('deadline', deps);
       break;
     }
+    const claimedAt = Date.parse(deps.clock.nowIso());
     const claim = await deps.refundJobs.claimDue({ now: deps.clock.nowIso(), leaseMs: LEASE_MS });
     if (claim === null) break;
-    const outcome = await processClaim(claim, deps);
+    const jobDeadlineAt = options.jobBudgetMs === undefined ? deadlineAt : Math.min(deadlineAt, claimedAt + options.jobBudgetMs);
+    const outcome = await processClaim(claim, jobDeadlineAt, deps);
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
     processedCount += 1;
   }

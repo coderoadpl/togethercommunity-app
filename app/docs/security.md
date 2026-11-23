@@ -862,15 +862,14 @@ server call a third party on an anonymous request. Its limits:
 - The route answers only in a workspace with an active parcel locker option (a
   `not_found` error otherwise, with no carrier call), is same-origin only (no
   open CORS), returns `Cache-Control: no-store` and is limited per client
-  address (`parcel-locker:ip`, 30 per minute in production, 3,000 in
-  development and staging) and per workspace (`parcel-locker:tenant`, 600 per
-  minute, 60,000 in development and staging). The per-address bucket keys a
+  address (`parcel-locker:ip`, 30 per minute) and per workspace
+  (`parcel-locker:tenant`, 600 per minute). The per-address bucket keys a
   single address, also for IPv6. Known limit: a client holding an IPv6 /64 can
   rotate addresses and get a fresh per-address bucket each time; the
   per-workspace bucket and the public share below still cap it.
 - Every call to the carrier, from the public route and from checkout session
   creation alike, first claims the platform-wide `parcel-locker:global` budget
-  (1,200 per minute, 120,000 in development and staging) in a wrapper around
+  (1,200 per minute) in a wrapper around
   the adapter, so lookups from many addresses, workspaces and checkouts cannot
   add up at the carrier from the platform's one egress address. A lookup
   refused before the carrier would be asked (malformed code, no parcel locker
@@ -878,11 +877,17 @@ server call a third party on an anonymous request. Its limits:
   the budget is spent the lookup answers `unavailable` without asking the
   carrier, so checkout stores the code as unverified.
 - The public route also claims a platform-wide `parcel-locker:public` share
-  (600 per minute, 60,000 in development and staging) right before the carrier
+  (600 per minute) right before the carrier
   call, after every local refusal, so anonymous lookups can use at most half of
   the global budget and checkout session creation always keeps the other half.
   When the share is spent the route answers `unavailable` without asking the
   carrier. Checkout never claims this share.
+- These four figures hold on every deployment that asks the real carrier
+  (`PAYMENT_PROVIDER=stripe`), whatever its `APP_ENV`, so a staging that runs
+  Stripe test mode cannot send InPost more than production does. Only a
+  deployment with the fake directory (`PAYMENT_PROVIDER=fake`) uses the
+  development values (3,000 per address, 60,000 per workspace, 120,000 global,
+  60,000 public), and none of them reaches the carrier.
 
 Checkout session creation asks the carrier through the same adapter, also
 within the existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).

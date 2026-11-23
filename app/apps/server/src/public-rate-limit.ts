@@ -107,10 +107,17 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES'
+  | 'PAYMENT_PROVIDER'
 >;
+
+export const wiresRealPickupPointDirectory = (env: Pick<Env, 'PAYMENT_PROVIDER'>): boolean =>
+  env.PAYMENT_PROVIDER === 'stripe';
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
+  const parcelLockers = isProductionEnvironment(env) || wiresRealPickupPointDirectory(env)
+    ? PRODUCTION_LIMITS
+    : DEVELOPMENT_LIMITS;
   return {
     redirectHitsPerRedirect: {
       limit: env.PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE
@@ -156,10 +163,10 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       limit: env.PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE ?? fallback.deepHealthPerIp,
       windowMs: MINUTE_MS,
     },
-    parcelLockerLookupsPerIp: { limit: fallback.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
-    parcelLockerLookupsPerTenant: { limit: fallback.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
-    parcelLockerLookupsGlobal: { limit: fallback.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
-    parcelLockerLookupsPublic: { limit: fallback.parcelLockerLookupsPublic, windowMs: MINUTE_MS },
+    parcelLockerLookupsPerIp: { limit: parcelLockers.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
+    parcelLockerLookupsPerTenant: { limit: parcelLockers.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
+    parcelLockerLookupsGlobal: { limit: parcelLockers.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
+    parcelLockerLookupsPublic: { limit: parcelLockers.parcelLockerLookupsPublic, windowMs: MINUTE_MS },
   };
 };
 

@@ -423,7 +423,7 @@ import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesce
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
-import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { selectPublicRateLimitPolicies, wiresRealPickupPointDirectory, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
@@ -1634,7 +1634,7 @@ export const createDeps = (
       wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
     pickupPoints: withPickupPointLookupBudget(
-      env.PAYMENT_PROVIDER === 'stripe' ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
+      wiresRealPickupPointDirectory(env) ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
       { buckets: publicRateLimitBuckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
     ),
     paymentRefunds: createPaymentRefundRepository(db),

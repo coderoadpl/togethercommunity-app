@@ -350,7 +350,9 @@ end-to-end runs and the smoke gate) uses the fake directory in
 `adapters/shipx/fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
 `CLOSED01` is not operating, `SENDONLY1` is a send-only point, `OUTAGE01`
 simulates the carrier being down, and every other code, such as `MISSING1`, is
-not found.
+not found. The lookup limits above follow the directory too: every deployment
+that asks InPost, staging included, uses the production figures, and only one
+with the fake directory uses the higher development values.
 
 ## Order data
 

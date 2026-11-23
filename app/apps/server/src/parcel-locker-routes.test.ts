@@ -4,24 +4,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { createFakePickupPointDirectory, FAKE_PICKUP_POINT_CODES } from '#adapters/shipx/fake.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { tenantSchema, tenantSettingsSchema, type ShippingRate } from '#core/domain/index.js';
-import { withPickupPointLookupBudget, type PublicRateLimitRepository, type TenantRepository } from '#core/server/index.js';
+import { verifyCheckoutPickupPoint, withPickupPointLookupBudget, type PublicRateLimitRepository, type TenantRepository } from '#core/server/index.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import type { AppVars } from './app-vars.js';
-import { registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
+import { lookupBudgetSpentOnError, registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
 import { publicRateLimitMiddleware, selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { publicRouteManifestEntry } from './public-route-manifest.js';
 import { requestOriginPolicy } from './request-origin-policy.js';
 
 const lockerRate: ShippingRate = { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true };
 
-const countingBuckets = (): PublicRateLimitRepository & { claims: string[] } => {
+const countingBuckets = (failing: ReadonlySet<string> = new Set()): PublicRateLimitRepository & { claims: string[] } => {
   const counts = new Map<string, number>();
   const claims: string[] = [];
   return {
     claims,
     claim: async (input) => {
       claims.push(input.scope);
+      if (failing.has(input.scope)) throw new Error('canceling statement due to lock timeout');
       const key = `${input.scope}:${input.key}`;
       const count = (counts.get(key) ?? 0) + 1;
       counts.set(key, count);
@@ -31,25 +32,33 @@ const countingBuckets = (): PublicRateLimitRepository & { claims: string[] } => 
   };
 };
 
-const harness = (rates: ShippingRate[] = [lockerRate], policies: Partial<PublicRateLimitPolicies> = {}, authTrustedProxyHeader: string | null = null) => {
+const harness = (
+  rates: ShippingRate[] = [lockerRate],
+  policies: Partial<PublicRateLimitPolicies> = {},
+  authTrustedProxyHeader: string | null = null,
+  failingScopes: ReadonlySet<string> = new Set(),
+) => {
   const tenant = tenantSchema.parse({ id: 'workspace', slug: 'workspace', name: 'Workspace', status: 'active', plan: 'hosted', contentVersion: 1 });
   const settings = tenantSettingsSchema.parse({ name: 'Workspace', billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: rates });
   const tenants: TenantRepository = { findById: async () => tenant, findBySlug: async () => tenant, findSole: async () => tenant,
     findSettings: async () => settings, changeSettings: async () => null, createTenantWithOwnerGrant: async () => tenant, hasAny: async () => true };
   const fake = createFakePickupPointDirectory();
   const lookup = vi.fn(fake.lookup);
-  const buckets = countingBuckets();
+  const buckets = countingBuckets(failingScopes);
+  const logger = { error: vi.fn<(message: string) => void>() };
   const clock = { nowIso: () => '2026-11-22T10:00:00.000Z' };
   const publicRateLimitPolicies = { ...selectPublicRateLimitPolicies({ NODE_ENV: 'production' }), ...policies };
-  const pickupPoints = withPickupPointLookupBudget({ lookup }, { buckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal });
+  const pickupPoints = withPickupPointLookupBudget({ lookup }, {
+    buckets: lookupBudgetSpentOnError(buckets, logger), clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal,
+  });
   const deps = { tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,
-    singleTenantMode: true, authTrustedProxyHeader, pickupPoints, clock, publicRateLimitPolicies, rateLimitBuckets: buckets };
+    singleTenantMode: true, authTrustedProxyHeader, pickupPoints, clock, publicRateLimitPolicies, rateLimitBuckets: buckets, logger };
   const app = new Hono<AppVars>();
   app.use('*', publicRateLimitMiddleware(deps));
   registerPublicParcelLockerRoutes(app, deps);
   const get = (code: string, clientIp?: string) => app.request(`https://workspace.example.org/api/public/parcel-lockers/${code}`,
     clientIp === undefined ? {} : { headers: { 'x-client-ip': clientIp } });
-  return { get, lookup, buckets };
+  return { get, lookup, buckets, logger, pickupPoints };
 };
 
 describe('public parcel locker lookup route', () => {
@@ -132,6 +141,37 @@ describe('public parcel locker lookup route', () => {
     expect(h.lookup).toHaveBeenCalledTimes(2);
     expect(h.buckets.claims.filter((scope) => scope === 'parcel-locker:global')).toHaveLength(2);
     expect(h.buckets.claims.at(-1)).toBe('parcel-locker:public');
+  });
+
+  it.each(['parcel-locker:public', 'parcel-locker:global'])('answers unavailable without asking the carrier and reports the error when the %s budget claim throws', async (scope) => {
+    const h = harness([lockerRate], {}, null, new Set([scope]));
+    const response = await h.get('WAW01M');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, data: { status: 'unavailable' } });
+    expect(h.lookup).not.toHaveBeenCalled();
+    expect(h.logger.error).toHaveBeenCalledExactlyOnceWith(
+      `[parcel-locker] the ${scope} lookup budget could not be claimed, so the locker is not verified: canceling statement due to lock timeout`,
+    );
+  });
+
+  it('sells a checkout locker unverified without asking the carrier when the platform-wide budget claim throws', async () => {
+    const h = harness([lockerRate], {}, null, new Set(['parcel-locker:global']));
+    const selection = {
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const,
+      pickupPoint: { provider: 'inpost' as const, code: 'WAW01M', name: 'Next to the main entrance', address: null }, allowedCountries: ['PL'],
+    };
+    expect(await verifyCheckoutPickupPoint(selection, h.pickupPoints)).toEqual({
+      ok: true, value: { ...selection, pickupPoint: { ...selection.pickupPoint, verified: false } },
+    });
+    expect(h.lookup).not.toHaveBeenCalled();
+    expect(h.logger.error).toHaveBeenCalledOnce();
+  });
+
+  it('still fails the request when the per-address limit itself throws', async () => {
+    const h = harness([lockerRate], {}, null, new Set(['parcel-locker:ip']));
+    expect((await h.get('WAW01M')).status).toBe(500);
+    expect(h.lookup).not.toHaveBeenCalled();
+    expect(h.logger.error).not.toHaveBeenCalled();
   });
 
   it('is listed as a read-only, same-origin GET in the public route manifest and needs no origin policy', () => {

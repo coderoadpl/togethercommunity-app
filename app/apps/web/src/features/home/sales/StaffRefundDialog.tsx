@@ -182,6 +182,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       orderId: order.id,
       requestKey,
       ...(partial ? { amountCents: check.amountCents } : { expectedAmountCents: remainderCents }),
+      expectedRemainderCents: remainderCents,
       ...(note === '' ? {} : { reason: note }),
       expectedShipmentState: { onPackingList: preview.onPackingList, hasShipmentOrLabel: preview.hasShipment },
       ...(partial

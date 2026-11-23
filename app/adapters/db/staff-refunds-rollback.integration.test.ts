@@ -135,7 +135,7 @@ beforeAll(async () => {
   const orderDetails = createOrderRepository(database.db);
   const staffRefunds = createOrderStaffRefundRepository(database.db);
   const deps = { orderDetails, staffRefunds, payment: provider.payment, ids: { nextId: () => { sequence += 1; return `refund-${String(sequence)}`; } }, clock: { nowIso: () => now }, logger };
-  for (const [orderId, body] of [['order-full', { requestKey: 'req-full', expectedAmountCents: 4099 }], ['order-partial', { requestKey: 'req-partial', amountCents: 1000 }], ['order-failing', { requestKey: 'req-failing', expectedAmountCents: 4099 }]] as const) {
+  for (const [orderId, body] of [['order-full', { requestKey: 'req-full', expectedAmountCents: 4099 }], ['order-partial', { requestKey: 'req-partial', amountCents: 1000, expectedRemainderCents: 4099 }], ['order-failing', { requestKey: 'req-failing', expectedAmountCents: 4099 }]] as const) {
     const created = await createStaffRefund(owner, orderId, body, deps);
     if (!created.ok) throw new Error(created.error.message);
   }

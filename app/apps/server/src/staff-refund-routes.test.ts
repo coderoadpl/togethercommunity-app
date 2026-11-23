@@ -185,10 +185,10 @@ describe('staff refund HTTP routes', () => {
 
   it('lets an admin refund part of the order and refuses a second refund while the first waits for the provider', async () => {
     const h = harness({ viewer: admin });
-    const partial = await h.refund({ requestKey: 'partial-1', amountCents: 1000 });
+    const partial = await h.refund({ requestKey: 'partial-1', amountCents: 1000, expectedRemainderCents: 4099 });
     expect(partial.status).toBe(200);
     expect(envelope(staffRefundContracts.orderRefundCreate.output).parse(await partial.json()).data.refund).toMatchObject({ kind: 'amount', amountCents: 1000, restocked: false, removedFromPackingList: false, requestedByUserId: 'admin-1' });
-    const second = await h.refund({ requestKey: 'partial-2', amountCents: 500 });
+    const second = await h.refund({ requestKey: 'partial-2', amountCents: 500, expectedRemainderCents: 3099 });
     expect(second.status).toBe(409);
     expect(failure.parse(await second.json()).error.code).toBe('conflict');
     expect(h.refunds).toHaveLength(1);
@@ -196,7 +196,7 @@ describe('staff refund HTTP routes', () => {
 
   it('refuses an amount above the remainder, an unknown field and a body that is not JSON without writing', async () => {
     const h = harness();
-    const above = await h.refund({ requestKey: 'too-much', amountCents: 4100 });
+    const above = await h.refund({ requestKey: 'too-much', amountCents: 4100, expectedRemainderCents: 4099 });
     expect(above.status).toBe(400);
     expect(failure.parse(await above.json()).error.message).toContain('40.99 PLN');
     expect((await h.refund({ requestKey: 'extra', orderId: 'order-2' })).status).toBe(400);
@@ -206,7 +206,7 @@ describe('staff refund HTTP routes', () => {
     expect(h.dispatchOrderRefunds).not.toHaveBeenCalled();
   });
 
-  it('refuses a full refund that names no remainder or a remainder that changed, and a partial refund that expects another amount, without writing', async () => {
+  it('refuses a full or partial refund that names no remainder or a remainder that changed, and a partial refund that expects another amount, without writing', async () => {
     const h = harness();
     expect((await h.refund({ requestKey: 'unnamed-1' })).status).toBe(400);
     const changed = await h.refund({ requestKey: 'stale-1', expectedAmountCents: 3000 });
@@ -214,7 +214,11 @@ describe('staff refund HTTP routes', () => {
     expect(await changed.json()).toMatchObject({
       ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', details: { remainderCents: 4099 } },
     });
-    expect((await h.refund({ requestKey: 'partial-1', amountCents: 1000, expectedAmountCents: 2000 })).status).toBe(400);
+    expect((await h.refund({ requestKey: 'partial-1', amountCents: 1000, expectedAmountCents: 2000, expectedRemainderCents: 4099 })).status).toBe(400);
+    const stalePartial = await h.refund({ requestKey: 'stale-partial-1', amountCents: 1000, expectedRemainderCents: 3000 });
+    expect(stalePartial.status).toBe(409);
+    expect(await stalePartial.json()).toMatchObject({ ok: false, error: { code: 'conflict', details: { remainderCents: 4099 } } });
+    expect((await h.refund({ requestKey: 'unnamed-partial-1', amountCents: 1000 })).status).toBe(400);
     expect(h.refunds).toEqual([]);
     expect(h.dispatchOrderRefunds).not.toHaveBeenCalled();
   });

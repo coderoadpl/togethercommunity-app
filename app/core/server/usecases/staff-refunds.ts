@@ -168,6 +168,7 @@ const decideStaffRefund = (
     requestKey: string;
     amountCents?: number | undefined;
     expectedAmountCents?: number | undefined;
+    expectedRemainderCents?: number | undefined;
     reason?: string | undefined;
     restock?: boolean | undefined;
     removeFromPackingList?: boolean | undefined;
@@ -192,7 +193,13 @@ const decideStaffRefund = (
     providerUncommittedCents: request.provider.uncommittedCents,
     platformCommittedCents: state.platformCommittedCents,
   });
-  const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, expectedAmountCents: request.expectedAmountCents, remainderCents, currency: state.order.currency });
+  const amount = resolveStaffRefundAmount({
+    amountCents: request.amountCents,
+    expectedAmountCents: request.expectedAmountCents,
+    expectedRemainderCents: request.expectedRemainderCents,
+    remainderCents,
+    currency: state.order.currency,
+  });
   if (!amount.ok) return amount;
   const choices = resolveStaffRefundChoices(
     staffRefundFulfilmentOptions(state.order, { coversRemainder: amount.value.amountCents === remainderCents, hasLabel: state.hasLabel }),

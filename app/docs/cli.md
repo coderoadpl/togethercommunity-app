@@ -99,8 +99,10 @@ order's currency (whole numbers for zero-decimal currencies). A full refund
 needs `--remainder <decimal>`, the remainder you confirm: without it the
 command refuses, prints the preview and names the `--remainder <decimal>` to
 add, and never confirms a remainder it just read. The request carries that
-remainder, and when it changed in the meantime the server refuses with
-`conflict` naming the current remainder. It also carries the packing-list and
+remainder (with `--amount`, the remainder of the preview the command read), and
+when it changed in the meantime the server refuses with `conflict` naming the
+current remainder; the command then reads the preview again and prints it (with
+`--json`, under `error.details.preview`). It also carries the packing-list and
 label state of the preview the command read, and the server refuses with
 `conflict` when a label was bought or the order was packed since. Without `--yes` the command prints
 what it would refund and the flags to repeat it with. `--reason <text>`

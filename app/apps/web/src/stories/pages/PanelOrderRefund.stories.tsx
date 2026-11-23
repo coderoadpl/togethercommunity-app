@@ -83,7 +83,7 @@ const REFUSED_REQUEST_KEY = 'story-refused-request';
 export const Paid: Story = refundStory({
   order: {}, staffRefunds: [], refunded: 0, preview: {},
   calls: {
-    [`createOrderRefund:[{"expectedAmountCents":24900,"expectedShipmentState":{"hasShipmentOrLabel":false,"onPackingList":true},"orderId":"${ORDER_ID}","removeFromPackingList":true,"requestKey":"${REFUSED_REQUEST_KEY}","restock":true}]`]: {
+    [`createOrderRefund:[{"expectedAmountCents":24900,"expectedRemainderCents":24900,"expectedShipmentState":{"hasShipmentOrLabel":false,"onPackingList":true},"orderId":"${ORDER_ID}","removeFromPackingList":true,"requestKey":"${REFUSED_REQUEST_KEY}","restock":true}]`]: {
       ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', details: { waitingRefund: true } },
     },
   },

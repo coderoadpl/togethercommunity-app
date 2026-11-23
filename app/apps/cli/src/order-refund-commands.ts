@@ -63,20 +63,32 @@ const retryHint = (requestKey: string): string =>
 
 const detailsSchema = z.record(z.string(), z.unknown());
 
-const withRequestKey = (error: AppError, requestKey: string): AppError => {
+const withRequestKey = (error: AppError, requestKey: string, preview: StaffRefundPreview | null): AppError => {
   const details = detailsSchema.safeParse(error.details);
-  return appError(error.code, error.message, { ...(details.success ? details.data : {}), requestKey });
+  return appError(error.code, error.message, { ...(details.success ? details.data : {}), requestKey, ...(preview === null ? {} : { preview }) });
+};
+
+const changedStateSchema = z.union([z.object({ remainderCents: z.number() }), z.object({ shipmentState: z.unknown() })]);
+
+const changedPreview = async (ctx: OrderRefundCliContext, orderId: string, error: AppError): Promise<StaffRefundPreview | null> => {
+  if (error.code !== 'conflict' || !changedStateSchema.safeParse(error.details).success) return null;
+  const fresh = await ctx.api.orderRefundPreview({ orderId });
+  return fresh.ok ? fresh.value : null;
 };
 
 type RefundRequest = {
   requestKey: string;
   amountCents?: number;
   expectedAmountCents?: number;
+  expectedRemainderCents?: number;
   reason?: string;
   restock?: boolean;
   removeFromPackingList?: boolean;
   expectedShipmentState: { onPackingList: boolean; hasShipmentOrLabel: boolean };
 };
+
+// Nothing left means the request can only replay a stored refund by its key, which needs no remainder.
+const seenRemainder = (cents: number): { expectedRemainderCents?: number } => (cents > 0 ? { expectedRemainderCents: cents } : {});
 
 const refundRequest = (
   options: z.output<typeof refundOptionsSchema>,
@@ -94,6 +106,7 @@ const refundRequest = (
   return ok({
     requestKey: options.requestKey ?? newRequestKey(),
     ...(amount !== null ? { amountCents: amount.value } : remainder !== null && remainder.value > 0 ? { expectedAmountCents: remainder.value } : {}),
+    ...seenRemainder(amount === null && remainder !== null ? remainder.value : preview.remainderCents),
     ...(options.reason === undefined ? {} : { reason: options.reason }),
     ...(options.restock ? {} : { restock: false }),
     ...(options.keepOnPackingList === true ? { removeFromPackingList: false } : {}),
@@ -129,8 +142,10 @@ export const runOrderRefund = async (
   const { requestKey } = request.value;
   if (options.data.requestKey === undefined && !ctx.json) console.error(retryHint(requestKey));
   const created = await ctx.api.createOrderRefund({ orderId, ...request.value });
+  const fresh = created.ok ? null : await changedPreview(ctx, orderId, created.error);
+  if (fresh !== null && !ctx.json) console.error(refundPreviewLines(fresh));
   emit(
-    created.ok ? ok({ ...created.value, requestKey }) : err(withRequestKey(created.error, requestKey)),
+    created.ok ? ok({ ...created.value, requestKey }) : err(withRequestKey(created.error, requestKey, fresh)),
     ctx.json,
     (data) => [
       data.created ? refundLine(data.refund) : `${refundLine(data.refund)} (already requested with this request key)`,

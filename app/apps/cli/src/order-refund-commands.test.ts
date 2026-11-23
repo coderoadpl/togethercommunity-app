@@ -55,7 +55,7 @@ describe('order refund command', () => {
     h.orderRefundPreview.mockResolvedValueOnce(ok(preview({ refundable: false, refundedCents: 4099, remainderCents: 0 })));
     h.createOrderRefund.mockResolvedValueOnce(ok({ refund: refundView(), created: false }));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'lost-full' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('(already requested with this request key)');
     expect(process.exitCode).toBeUndefined();
   });
@@ -63,7 +63,7 @@ describe('order refund command', () => {
   it('refunds the whole remainder with --yes and --remainder, leaving restock and packing to the server defaults', async () => {
     const h = harness();
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'retry-7' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('refund refund-1: 30.99 PLN (full), pending, stock returned, off the packing list\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
     expect(process.exitCode).toBeUndefined();
   });
@@ -72,7 +72,7 @@ describe('order refund command', () => {
     const h = harness();
     await h.refund({ amount: '12,50', reason: 'Damaged cover', restock: false, keepOnPackingList: true, yes: true, requestKey: 'part-1' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
-      orderId: 'order-1', requestKey: 'part-1', amountCents: 1250, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
+      orderId: 'order-1', requestKey: 'part-1', amountCents: 1250, expectedRemainderCents: 3099, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
       expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
     });
   });
@@ -85,7 +85,7 @@ describe('order refund command', () => {
     })));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'label-1' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
-      orderId: 'order-1', requestKey: 'label-1', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: false, hasShipmentOrLabel: true },
+      orderId: 'order-1', requestKey: 'label-1', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: false, hasShipmentOrLabel: true },
     });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
@@ -138,9 +138,33 @@ describe('order refund command', () => {
     expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --yes --remainder 30.99 to confirm');
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', { remainderCents: 4099 })));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'full-1' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.99 PLN; check the refund again before confirming it');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('sends the remainder its preview showed with a partial amount and prints the new preview when the server says it changed', async () => {
+    const h = harness();
+    h.orderRefundPreview
+      .mockResolvedValueOnce(ok(preview({ refundedCents: 0, remainderCents: 10_000, paidCents: 10_000 })))
+      .mockResolvedValueOnce(ok(preview({ refundedCents: 6000, remainderCents: 4000, paidCents: 10_000 })));
+    h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.00 PLN; check the refund again before confirming it', { remainderCents: 4000 })));
+    await h.refund({ amount: '40', yes: true, requestKey: 'typed-1' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-1', requestKey: 'typed-1', amountCents: 4000, expectedRemainderCents: 10_000, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    });
+    expect(h.orderRefundPreview).toHaveBeenCalledTimes(2);
+    expect(errorSpy.mock.calls.map((call) => String(call[0]))).toContain(refundPreviewLines(preview({ refundedCents: 6000, remainderCents: 4000, paidCents: 10_000 })));
+    expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.00 PLN; check the refund again before confirming it');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('puts the new preview into the error envelope with --json when the remainder changed', async () => {
+    const h = harness(true);
+    h.orderRefundPreview.mockResolvedValueOnce(ok(preview())).mockResolvedValueOnce(ok(preview({ remainderCents: 1000 })));
+    h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 10.00 PLN; check the refund again before confirming it', { remainderCents: 1000 })));
+    await h.refund({ amount: '5', yes: true, requestKey: 'typed-json' });
+    expect(printed()).toMatchObject({ ok: false, error: { code: 'conflict', details: { remainderCents: 1000, requestKey: 'typed-json', preview: { remainderCents: 1000 } } } });
   });
 
   it('refuses --keep-on-packing-list without --no-restock before any request', async () => {
@@ -162,7 +186,7 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
     const human = harness();
     await human.refund({ yes: true, amount: '5' }, () => 'made-1');
-    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(errorSpy).toHaveBeenCalledWith('request key: made-1 (after a network error repeat with --request-key made-1; the same key never refunds twice)');
   });
 

@@ -211,7 +211,7 @@ describe('staff refunds against a real database', () => {
 
   it('lets one of two refunds requested at once with different keys win and refuses the other', async () => {
     const h = harness();
-    const results = await Promise.all([h.refund('order-1', { requestKey: 'req-a', expectedAmountCents: 4099 }), h.refund('order-1', { requestKey: 'req-b', amountCents: 1000 })]);
+    const results = await Promise.all([h.refund('order-1', { requestKey: 'req-a', expectedAmountCents: 4099 }), h.refund('order-1', { requestKey: 'req-b', amountCents: 1000, expectedRemainderCents: 4099 })]);
 
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.flatMap((result) => (result.ok ? [] : [result.error.code]))).toStrictEqual(['conflict']);
@@ -235,7 +235,7 @@ describe('staff refunds against a real database', () => {
       await holder.query('ALTER TABLE order_staff_refunds DISABLE TRIGGER order_staff_refunds_record_status');
       await holder.query('BEGIN');
       await holder.query("UPDATE order_staff_refunds SET status = 'pending' WHERE id = 'reopened'");
-      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500 });
+      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500, expectedRemainderCents: 3099 });
       for (;;) {
         const waiting = await observer.query<{ count: number }>("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
         if ((waiting.rows[0]?.count ?? 0) >= 1) break;
@@ -276,7 +276,7 @@ describe('staff refunds against a real database', () => {
          VALUES ('held', 'tenant-a', 'order-2', 'pi_order-2', 1000, 'PLN', 'remainder', 'req-1', 'staff-refund-held', 'failed', 'staff', 'staff@example.com', $1, $1)`,
         [start],
       );
-      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500 });
+      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500, expectedRemainderCents: 3099 });
       await lockWaiters(1);
       const reopened = createRefundJobQueue(database.db)
         .release('tenant-a', 'reopened', { status: 'submitted', lockedAt: minutes(1), source: 'staff' }, { status: 'pending', nextAttemptAt: minutes(2), now: minutes(2) })
@@ -297,7 +297,7 @@ describe('staff refunds against a real database', () => {
 
   it('returns the committed refund for a retried request after it settled and refuses the key for another amount', async () => {
     const h = harness();
-    const first = unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    const first = unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     await database.db.update(orders).set({ status: 'partially_refunded' }).where(eq(orders.id, 'order-1'));
 
@@ -335,7 +335,7 @@ describe('staff refunds against a real database', () => {
   it('keeps the request key after a provider server error, so the refund the error hid is taken over and never made twice', async () => {
     const serverError = refundFailure('transient', 'Stripe rejected the refund: Something went wrong', null, false, true);
     const h = harness({ steps: [{ outcome: 'error', error: serverError, createsRefund: true }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.hideLists(true);
 
     await h.dispatch(minutes(1));
@@ -351,7 +351,7 @@ describe('staff refunds against a real database', () => {
 
   it('ends a staff refund whose create outcome was unknown as unconfirmed, still counted, when its refunds cannot be read until the retries end', async () => {
     const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     h.provider.failLists(...Array.from({ length: 60 }, () => refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout')));
 
@@ -365,7 +365,7 @@ describe('staff refunds against a real database', () => {
 
   it('ends a staff refund the provider accepted before its worker was lost as unconfirmed, still counted, when its refunds cannot be read until the retries end', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.crashAfterEachCreate(true);
     await expect(h.dispatch(minutes(1))).rejects.toThrow('Worker lost after the provider answered');
     h.crashAfterEachCreate(false);
@@ -382,7 +382,7 @@ describe('staff refunds against a real database', () => {
 
   it('sends no refund request when another worker took the staff refund over before its attempt was recorded', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
 
     expect(await h.dispatch(minutes(1), { refundJobs: { ...h.dispatchDeps.refundJobs, markCreateAttempt: async () => false } })).toMatchObject({ outcomes: { lease_lost: 1 } });
     expect(h.provider.calls).toStrictEqual([]);
@@ -391,7 +391,7 @@ describe('staff refunds against a real database', () => {
 
   it('takes the refund a lost worker made over with the key it recorded once the refunds can be read again', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.crashAfterEachCreate(true);
     await expect(h.dispatch(minutes(1))).rejects.toThrow('Worker lost after the provider answered');
     h.crashAfterEachCreate(false);
@@ -411,7 +411,7 @@ describe('staff refunds against a real database', () => {
     ['permission_missing', refundFailure('permission_missing', 'Stripe could not list the refunds: The provided key does not have the required permissions', 'permission_denied')],
   ] as const)('never reads a %s refund list answer after an unknown create outcome as a refusal, and takes the refund over once the list is readable', async (_kind, listFailure) => {
     const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     h.provider.failLists(listFailure);
 
@@ -428,7 +428,7 @@ describe('staff refunds against a real database', () => {
 
   it('tells the buyer only once the provider holds the refund as pending or succeeded, not while it requires action', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'requires_action' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
 
     await h.dispatch(minutes(1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundStatus: 'requires_action', buyerNotifiedAt: null }]);
@@ -441,7 +441,7 @@ describe('staff refunds against a real database', () => {
 
   it('tells the buyer once when the last scheduled check first sees the refund pending, and still ends it unconfirmed for staff', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'requires_action' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     await h.dispatch(minutes(60 * 24 + 1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundStatus: 'requires_action', buyerNotifiedAt: null }]);
@@ -496,11 +496,11 @@ describe('staff refunds against a real database', () => {
 
   it('issues partial, partial and then the full remainder, and refuses anything above what is left', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
-    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500, expectedRemainderCents: 3099 }));
     await h.dispatch(minutes(2));
-    expect(await h.refund('order-1', { requestKey: 'req-3', amountCents: 2600 })).toMatchObject({
+    expect(await h.refund('order-1', { requestKey: 'req-3', amountCents: 2600, expectedRemainderCents: 2599 })).toMatchObject({
       ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 25.99 PLN' },
     });
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-4', expectedAmountCents: 2599 })).refund).toMatchObject({ kind: 'remainder', amountCents: 2599 });
@@ -539,7 +539,7 @@ describe('staff refunds against a real database', () => {
 
   it('lets the provider refuse a partial refund above what a dashboard refund left on the charge, with a staff alert and no buyer e-mail', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3000, expectedRemainderCents: 4099 }));
     h.provider.refundByHand(handRefund(2000));
     await h.dispatch(minutes(1));
 
@@ -553,7 +553,7 @@ describe('staff refunds against a real database', () => {
 
   it('skips a partial refund of a charge the dashboard already refunded in full, without telling the buyer', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.provider.refundByHand(handRefund(4099));
     await h.dispatch(minutes(1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: null }]);
@@ -566,7 +566,7 @@ describe('staff refunds against a real database', () => {
 
   it('keeps watching a partial refund while a pending dashboard refund covers the charge and issues it once that refund fails', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.provider.refundByHand({ ...handRefund(4099), status: 'pending' });
     await h.dispatch(minutes(1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: null }]);
@@ -583,7 +583,7 @@ describe('staff refunds against a real database', () => {
 
   it('leaves the shortfall of a failed partial staff refund to that refund instead of paying it again with the full refund', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }, { outcome: 'refund' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     unwrap(await h.refund('order-1', { requestKey: 'req-2', expectedAmountCents: 3099 }));
     await h.dispatch(minutes(2));
@@ -603,7 +603,7 @@ describe('staff refunds against a real database', () => {
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 3099 })).refund).toMatchObject({ kind: 'remainder', amountCents: 3099 });
     await h.dispatch(minutes(1));
     h.provider.failRefund('re_hand', 'expired_or_canceled_card');
-    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000 })).refund).toMatchObject({ kind: 'amount', amountCents: 1000 });
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000, expectedRemainderCents: 1000 })).refund).toMatchObject({ kind: 'amount', amountCents: 1000 });
     await h.dispatch(minutes(2));
 
     await h.dispatch(minutes(60 * 24 + 1));
@@ -631,7 +631,7 @@ describe('staff refunds against a real database', () => {
 
   it('pays the whole remainder of a full refund requested after a partial staff refund failed', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
 
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', expectedAmountCents: 4099 })).refund).toMatchObject({ kind: 'remainder', amountCents: 4099 });
@@ -645,7 +645,7 @@ describe('staff refunds against a real database', () => {
 
   it('pays the rest of a full refund requested after a failed partial staff refund was refunded again by hand', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     h.provider.refundByHand(handRefund(1000));
 
@@ -657,10 +657,10 @@ describe('staff refunds against a real database', () => {
 
   it('issues exactly the typed amount after a partial staff refund failed', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
 
-    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 2500 })).refund).toMatchObject({ kind: 'amount', amountCents: 2500 });
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 2500, expectedRemainderCents: 4099 })).refund).toMatchObject({ kind: 'amount', amountCents: 2500 });
     await h.dispatch(minutes(2));
     expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 2500]);
   });
@@ -683,7 +683,7 @@ describe('staff refunds against a real database', () => {
   it('pays each staff refund exactly its own amount when a failed sibling was refunded again and a dashboard refund fails later', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     h.provider.refundByHand(handRefund(1000));
-    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 500 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 500, expectedRemainderCents: 3099 }));
     await h.dispatch(minutes(1));
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-r', expectedAmountCents: 2599 })).refund).toMatchObject({ kind: 'remainder', amountCents: 2599 });
     h.provider.failRefund('re_1', 'expired_or_canceled_card');
@@ -708,7 +708,7 @@ describe('staff refunds against a real database', () => {
   it('pays a full refund exactly its amount when a dashboard refund and a sibling that failed at the provider before its status check shaped the remainder', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     h.provider.refundByHand(handRefund(2000));
-    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 1000, expectedRemainderCents: 2099 }));
     await h.dispatch(minutes(1));
     h.provider.failRefund('re_1', 'expired_or_canceled_card');
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-r', expectedAmountCents: 2099 })).refund).toMatchObject({ kind: 'remainder', amountCents: 2099 });
@@ -721,9 +721,23 @@ describe('staff refunds against a real database', () => {
     expect(await buyerEmails()).toHaveLength(2);
   });
 
+  it('refuses a typed partial amount confirmed for a remainder that a dashboard refund shrank meanwhile, so it never becomes the whole charge unseen', async () => {
+    await insertOrder('order-2', { amountCents: 10_000 });
+    const h = harness();
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-2', h.deps)).remainderCents).toBe(10_000);
+    h.provider.refundByHand({ ...handRefund(6000), paymentIntentId: 'pi_order-2' });
+
+    expect(await h.refund('order-2', { requestKey: 'req-1', amountCents: 4000, expectedRemainderCents: 10_000 })).toMatchObject({
+      ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 40.00 PLN; check the refund again before confirming it', details: { remainderCents: 4000 } },
+    });
+    expect(await refundRows('order-2')).toStrictEqual([]);
+    expect(await h.refund('order-2', { requestKey: 'req-2', amountCents: 4000 })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(unwrap(await h.refund('order-2', { requestKey: 'req-1', amountCents: 4000, expectedRemainderCents: 4000 })).refund).toMatchObject({ kind: 'amount', amountCents: 4000 });
+  });
+
   it('refuses a full refund confirmed for a remainder that grew because a sibling failed meanwhile, and pays the new remainder once confirmed', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-s', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps)).remainderCents).toBe(3099);
     h.provider.failRefund('re_1', 'expired_or_canceled_card');
@@ -762,12 +776,12 @@ describe('staff refunds against a real database', () => {
   it('keeps a watched partial refund that must be issued after all as it is while another refund of the order waits, and checks again an hour later', async () => {
     const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
     const h = harness({ steps: [{ outcome: 'refund' }, ...Array.from({ length: 30 }, () => ({ outcome: 'error' as const, error: permissionMissing }))] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     h.provider.refundByHand({ ...handRefund(4099), status: 'pending' });
     await h.dispatch(minutes(1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: null }]);
     h.provider.failRefund('re_hand', 'expired_or_canceled_card');
-    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500, expectedRemainderCents: 3099 }));
     await h.dispatch(minutes(2));
 
     await h.dispatch(minutes(60 * 24 + 1));
@@ -781,7 +795,7 @@ describe('staff refunds against a real database', () => {
 
   it('renders the staff alert of a staff refund in each recipient\'s language and stores it in the shape every release renders', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Refund declined') }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1), {
       tenantAccess: { listStaffForTenant: async () => [
         { userId: 'owner', email: 'owner@acme.example.com', staffRole: 'owner' as const, language: 'en' as const },
@@ -819,7 +833,7 @@ describe('staff refunds against a real database', () => {
 
   it('keeps an API key from a provider error out of the stored refund, the Studio view and the staff alert', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Invalid API Key provided: rk_live_51SYNTHETICmarker99 for charge ch_3Visible01') }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
 
     const [stored] = await database.db.select({ lastError: orderStaffRefunds.lastError }).from(orderStaffRefunds);
@@ -833,14 +847,14 @@ describe('staff refunds against a real database', () => {
   it('waits on a missing refund permission, refuses a second refund meanwhile and succeeds once the permission is granted', async () => {
     const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
     const h = harness({ steps: [{ outcome: 'error', error: permissionMissing }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
 
     expect(await refundRows('order-1')).toMatchObject([{ status: 'blocked_permission', nextAttemptAt: minutes(61) }]);
     expect(await alertPayloads()).toMatchObject([{ alert: 'blocked_permission', text: expect.stringContaining('A staff member asked to refund PLN\u00a010.00 of order order-1.') }]);
     const blockedDetail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
     expect(blockedDetail.staffRefunds).toMatchObject([{ status: 'blocked_permission', permissionBlockedAt: minutes(1) }]);
-    expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500, expectedRemainderCents: 3099 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await buyerEmails()).toStrictEqual([]);
 
     await h.dispatch(minutes(61));
@@ -905,7 +919,7 @@ describe('staff refunds against a real database', () => {
   it('refunds no more than a typed amount equal to the remainder when a dashboard refund fails before it is issued, and offers the full refund choices with it', async () => {
     const h = harness();
     h.provider.refundByHand({ ...handRefund(1000), status: 'pending' });
-    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3099 })).refund)
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3099, expectedRemainderCents: 3099 })).refund)
       .toMatchObject({ kind: 'amount', amountCents: 3099, restocked: true, removedFromPackingList: true });
     expect(await fulfilmentOf('order-1')).toBeNull();
     h.provider.failRefund('re_hand', 'expired_or_canceled_card');
@@ -1008,8 +1022,8 @@ describe('staff refunds against a real database', () => {
 
   it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {
     const h = harness();
-    expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });
-    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000 }));
+    expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000, expectedRemainderCents: 4099 }));
     expect(await fulfilmentOf('order-1')).toBe('to_pack');
   });
 
@@ -1043,7 +1057,7 @@ describe('staff refunds against a real database', () => {
 
   it('makes a waiting staff refund due at once when the charge is refunded and logs its changes on the order feed', async () => {
     const h = harness({ steps: [{ outcome: 'error', error: refundFailure('transient', 'Stripe is unavailable') }] });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     await h.dispatch(minutes(1));
     expect(await refundRows('order-1')).toMatchObject([{ status: 'pending', nextAttemptAt: minutes(2) }]);
 
@@ -1056,7 +1070,7 @@ describe('staff refunds against a real database', () => {
 
   it('shows the most recent unsettled staff refund on the Studio orders list in its own field and leaves the sold-out refund field and machine keys alone', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     const listDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
     const listed = unwrap(await listOrders(staff('tenant-a'), {}, listDeps));
     expect(listed.orders.map((order) => [order.id, order.staffRefundStatus, order.staffRefundAmountCents, order.refundJobStatus])).toStrictEqual([['order-1', 'pending', 1000, undefined]]);
@@ -1073,7 +1087,7 @@ describe('staff refunds against a real database', () => {
     const h = harness();
     await insertOrder('order-2', { status: 'refunded', createdAt: minutes(-1) });
     await insertOrder('order-3', { createdAt: minutes(-2) });
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     const exportDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
 
     const [header = '', ...lines] = unwrap(await exportOrders(staff('tenant-a'), { format: 'csv' }, exportDeps)).content.split('\n');
@@ -1102,7 +1116,7 @@ describe('staff refunds against a real database', () => {
 
   it('sums committed staff refunds for more order ids than one statement can bind', async () => {
     const h = harness();
-    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
     const orderIds = [...Array.from({ length: 66_000 }, (_value, index) => `order-x-${String(index)}`), 'order-1'];
 
     expect(await h.deps.staffRefunds.committedCentsByOrder('tenant-a', orderIds)).toStrictEqual(new Map([['order-1', 1000]]));

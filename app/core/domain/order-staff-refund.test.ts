@@ -79,11 +79,11 @@ describe('staff refund rules', () => {
 
   it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {
     expect(resolveStaffRefundAmount({ expectedAmountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 3000 } });
-    expect(resolveStaffRefundAmount({ amountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 3000 } });
-    expect(resolveStaffRefundAmount({ amountCents: 1200, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1200 } });
-    expect(resolveStaffRefundAmount({ amountCents: 3001, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 30.00 PLN' } });
-    expect(resolveStaffRefundAmount({ amountCents: 0, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(resolveStaffRefundAmount({ amountCents: 1.5, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundAmount({ amountCents: 3000, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 3000 } });
+    expect(resolveStaffRefundAmount({ amountCents: 1200, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1200 } });
+    expect(resolveStaffRefundAmount({ amountCents: 3001, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 30.00 PLN' } });
+    expect(resolveStaffRefundAmount({ amountCents: 0, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundAmount({ amountCents: 1.5, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(resolveStaffRefundAmount({ remainderCents: 0, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
@@ -93,8 +93,19 @@ describe('staff refund rules', () => {
       ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 30.00 PLN; check the refund again before confirming it', details: { remainderCents: 3000 } },
     });
     expect(resolveStaffRefundAmount({ expectedAmountCents: 2000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 1000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1000 } });
-    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 1000, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1000 } });
+    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 3000, expectedRemainderCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('refuses a partial refund confirmed for a remainder that changed since, so a typed part never becomes the whole charge unseen', () => {
+    expect(resolveStaffRefundAmount({ amountCents: 4000, expectedRemainderCents: 10_000, remainderCents: 4000, currency: 'PLN' })).toMatchObject({
+      ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 40.00 PLN; check the refund again before confirming it', details: { remainderCents: 4000 } },
+    });
+    expect(resolveStaffRefundAmount({ amountCents: 4000, remainderCents: 4000, currency: 'PLN' })).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'A refund must name the remainder it was confirmed for in expectedRemainderCents' },
+    });
+    expect(resolveStaffRefundAmount({ expectedAmountCents: 4000, expectedRemainderCents: 4000, remainderCents: 4000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 4000 } });
+    expect(resolveStaffRefundAmount({ expectedAmountCents: 4000, expectedRemainderCents: 5000, remainderCents: 4000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('converts decimals to minor units with the decimals the currency allows', () => {

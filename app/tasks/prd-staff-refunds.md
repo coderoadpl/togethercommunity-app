@@ -159,7 +159,9 @@ workspace's restricted key and what to do about it.
   staff confirmed in `expectedAmountCents` (required without `amountCents`); when it differs from
   the remainder computed under the lock the request is refused with `conflict`, a message naming
   the current remainder and `details.remainderCents`. A partial refund may leave
-  `expectedAmountCents` out or must set it to `amountCents`. A repeated `requestKey` for the
+  `expectedAmountCents` out or must set it to `amountCents`, and names the remainder staff saw
+  in `expectedRemainderCents`, checked the same way (D19); only a replay by request key may leave
+  it out. A repeated `requestKey` for the
   same order returns the existing refund when the amount, restock and packing choices match and
   `conflict` otherwise. At most one staff refund per order may be waiting to reach the provider
   (`pending`, `running`, `blocked_permission`); a second one is refused with `conflict` until the
@@ -396,3 +398,14 @@ guard against refunding more than the charge.
   language as `m2m-transactional` rows with source `staff-refunds`; sold-out alerts are
   unchanged. Why: the sold-out wording says the order was cancelled and was English-only for the
   staff-specific notes. Revert: "undo D17 → sold-out alert payload".
+- D18. The carrier claim and a staff refund serialise on the order row: the InPost create
+  use-case re-reads the order under `SELECT … FOR UPDATE` while it takes its claim and refuses
+  with `conflict` before any carrier call once the order is no longer `to_pack`; a refund counts
+  any carrier shipment row, a fresh claim included, as a possible label. Why: a claim taken before
+  the refund could otherwise buy a label for an order whose goods went back to stock. Revert:
+  "undo D18 → label only after the create attempt".
+- D19. Every new refund request, partial as well as full, names the remainder staff saw
+  (`expectedRemainderCents`; a full refund may name it in `expectedAmountCents`) and is refused
+  with `conflict` when it changed; only a replay by request key may leave it out. Why: a typed
+  amount that a dashboard refund turned into the whole remainder would end access and cancel a
+  subscription without the warning. Revert: "undo D19 → partial refunds without the remainder".

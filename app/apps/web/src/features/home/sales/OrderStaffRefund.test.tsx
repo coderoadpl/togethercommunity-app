@@ -61,6 +61,7 @@ const requestBodySchema = z.object({
   requestKey: z.string(),
   amountCents: z.number().optional(),
   expectedAmountCents: z.number().optional(),
+  expectedRemainderCents: z.number(),
   reason: z.string().optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
@@ -225,7 +226,7 @@ describe('staff refund dialog', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, expectedRemainderCents: 24900, reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(calls.detail).toBeGreaterThan(1));
   });
@@ -251,7 +252,7 @@ describe('staff refund dialog', () => {
     expect(removeBox()).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, expectedRemainderCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('requests a partial refund of the typed amount that keeps stock and packing as they are even if the remainder shrank meanwhile', async () => {
@@ -269,7 +270,7 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByText(messages.consequenceAccessStays)).toBeVisible();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(5050) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050, expectedRemainderCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it.each([
@@ -312,7 +313,7 @@ describe('staff refund dialog', () => {
     expect(info).toHaveTextContent(messages.partialFullInfoBody);
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 24900, expectedRemainderCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('reuses the request key of the dialog when a failed request is retried and takes a new one on the next opening', async () => {
@@ -422,6 +423,30 @@ describe('staff refund dialog', () => {
     await waitFor(() => expect(calls.refunds).toHaveLength(2));
     expect(calls.refunds.map((body) => body.expectedAmountCents)).toStrictEqual([24900, 19900]);
     expect(calls.refunds[1]?.requestKey).toBe(calls.refunds[0]?.requestKey);
+  });
+
+  it('refuses a typed partial amount once the remainder changed under it, shows the new remainder and sends the refund again only for that remainder', async () => {
+    const calls = serve({ order: paidOrder });
+    server.use(http.get('/api/orders/o1/refund-preview', () => {
+      calls.preview += 1;
+      return HttpResponse.json({ ok: true, data: calls.preview === 1 ? preview : { ...preview, refundedCents: 19850, remainderCents: 5050 } });
+    }));
+    acceptRefunds(calls, (attempt) => attempt === 1
+      ? HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 50.50 PLN', details: { remainderCents: 5050 } } }, { status: 409 })
+      : undefined);
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('switch', { name: new RegExp(messages.partialSwitch) }));
+    const amount = within(dialog).getByLabelText(messages.amountLabel);
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '50,5');
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(5050) })) }));
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(messages.errorRemainderChanged({ remainder: pln(5050) }));
+    await waitFor(() => expect(within(dialog).queryByText(messages.consequenceAccessStays)).toBeNull());
+
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(5050) })) }));
+    await waitFor(() => expect(calls.refunds).toHaveLength(2));
+    expect(calls.refunds.map((body) => [body.amountCents, body.expectedRemainderCents])).toStrictEqual([[5050, 24900], [5050, 5050]]);
   });
 
   it('reloads the refund after a label was bought since it was opened, shows the new choices and confirms them for the new state', async () => {
@@ -539,7 +564,7 @@ describe('staff refund dialog', () => {
     expect(within(consequences).queryByText(messages.consequenceEmail({ buyer: 'Alex Smith' }))).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, expectedRemainderCents: 24900, restock: false, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('warns about a shipment and offers the packing option disabled with its reason', async () => {

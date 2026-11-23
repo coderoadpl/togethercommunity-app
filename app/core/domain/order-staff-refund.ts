@@ -164,18 +164,23 @@ export const minorUnitsFromDecimal = (value: string, currency: string): Result<n
 export const resolveStaffRefundAmount = (input: {
   amountCents?: number | undefined;
   expectedAmountCents?: number | undefined;
+  expectedRemainderCents?: number | undefined;
   remainderCents: number;
   currency: string;
 }): Result<{ kind: StaffRefundKind; amountCents: number }, AppError> => {
   if (input.remainderCents <= 0) return err(appError('conflict', 'Nothing is left to refund on this order'));
   const remainder = formatMinorUnits(input.remainderCents, input.currency);
-  if (input.amountCents === undefined) {
-    if (input.expectedAmountCents === undefined) return err(validation('A full refund must name the remainder it was confirmed for in expectedAmountCents'));
-    if (input.expectedAmountCents !== input.remainderCents) {
-      return err(appError('conflict', `The refundable remainder is now ${remainder}; check the refund again before confirming it`, { remainderCents: input.remainderCents }));
-    }
-    return ok({ kind: 'remainder', amountCents: input.remainderCents });
+  const full = input.amountCents === undefined;
+  if (full && input.expectedAmountCents === undefined) return err(validation('A full refund must name the remainder it was confirmed for in expectedAmountCents'));
+  if (full && input.expectedRemainderCents !== undefined && input.expectedRemainderCents !== input.expectedAmountCents) {
+    return err(validation('expectedRemainderCents must equal expectedAmountCents for a full refund'));
   }
+  const seenRemainderCents = input.expectedRemainderCents ?? (full ? input.expectedAmountCents : undefined);
+  if (seenRemainderCents === undefined) return err(validation('A refund must name the remainder it was confirmed for in expectedRemainderCents'));
+  if (seenRemainderCents !== input.remainderCents) {
+    return err(appError('conflict', `The refundable remainder is now ${remainder}; check the refund again before confirming it`, { remainderCents: input.remainderCents }));
+  }
+  if (input.amountCents === undefined) return ok({ kind: 'remainder', amountCents: input.remainderCents });
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
     return err(validation(`Refund amount must be a positive whole number of minor units, at most ${remainder}`, { remainderCents: input.remainderCents }));
   }
@@ -249,6 +254,7 @@ export const createStaffRefundInputSchema = z.object({
   requestKey: staffRefundRequestKeySchema,
   amountCents: z.number().int().positive().optional(),
   expectedAmountCents: z.number().int().positive().optional(),
+  expectedRemainderCents: z.number().int().positive().optional(),
   reason: staffRefundNoteSchema.optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),

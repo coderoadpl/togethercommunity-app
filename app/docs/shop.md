@@ -1838,6 +1838,16 @@ list cannot be read have nothing left to refund.
 - **Partial refund** (any typed amount, also one equal to the remainder):
   stored as an amount refund; `expectedAmountCents` may be left out or must
   equal the amount. Partial refunds may follow each other.
+- **Remainder seen**: every new request names the remainder staff saw in
+  `expectedRemainderCents` (a full refund may name it in `expectedAmountCents`
+  alone; when it sends both they must be equal). Under the order lock a request
+  whose remainder differs is refused with `conflict`, a message naming the
+  current remainder and `details.remainderCents`, and nothing is stored, so a
+  typed amount that a dashboard refund made after the preview turned into the
+  whole remainder never ends access or a subscription without staff seeing it.
+  Studio reloads the preview and the CLI prints the new one. A request without
+  the field is refused with `validation`, except a replay of a stored refund by
+  its request key.
 - **Already refunded**: when Stripe answers that the charge is already refunded
   (dashboard refunds cover it), the staff refund has no refund of its own and
   keeps watching. Once dashboard refunds that have succeeded cover the whole
@@ -1970,7 +1980,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 | Method and path | Purpose |
 |---|---|
 | `GET /api/orders/:orderId/refund-preview` | Paid, refunded and remaining amounts, currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether a full refund cancels a subscription, the default choices and any refund still waiting |
-| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`) → `{ refund, created }` |
+| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
 The routes follow the origin and CSRF policy of other Studio writes and are
@@ -2005,9 +2015,11 @@ took off the packing list. The **Refund** action appears only to an owner or
 admin with a verified e-mail outside impersonation, for an order the preview
 can refund; while another refund of the order waits for Stripe it stays
 disabled with the reason. The dialog refunds the whole remainder it shows by
-default and sends that remainder as `expectedAmountCents`; when the server
-answers that the remainder changed, the dialog reloads the preview, names the
-new remainder and lets staff confirm it. When it answers that the packing list
+default and sends that remainder as `expectedAmountCents`, and with a partial
+amount too as `expectedRemainderCents`; when the server answers that the
+remainder changed, the dialog reloads the preview, names the new remainder and
+lets staff confirm it, with the consequences of the new remainder (a typed
+amount that now covers it says access ends). When it answers that the packing list
 or label changed, the dialog reloads the preview, resets the stock and packing
 choices to the new defaults, says what happened and lets staff confirm again.
 The consequences say that access ends unless another purchase keeps it and,

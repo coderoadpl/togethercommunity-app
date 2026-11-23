@@ -2373,7 +2373,7 @@ describe('staff refund CLI', () => {
     await run('order', 'refund', 'order-number', '--amount', '12.50', '--reason', 'Damaged cover', '--no-restock', '--keep-on-packing-list', '--request-key', 'retry-7', '--yes');
     expect(h.orderRefundPreview).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
-      orderId: 'order-number', requestKey: 'retry-7', amountCents: 1250, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
+      orderId: 'order-number', requestKey: 'retry-7', amountCents: 1250, expectedRemainderCents: 4099, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
       expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
     });
     expect(logSpy).toHaveBeenCalledWith('refund refund-1: 12.50 PLN (partial), pending\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
@@ -2387,7 +2387,7 @@ describe('staff refund CLI', () => {
     process.exitCode = 0;
     logSpy.mockClear();
     await run('order', 'refund', 'order-number', '--yes', '--remainder', '40.99');
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099, expectedRemainderCents: 4099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('prints the refund preview and puts an order back on the packing list', async () => {

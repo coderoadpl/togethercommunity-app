@@ -1,0 +1,47 @@
+name: Service container
+description: >-
+  Pull a service image with a bounded retry on registry throttling, start it detached with a published port and
+  wait until it reports healthy. Runs app/scripts/service-container.ts, so Node 24 must already be on PATH.
+inputs:
+  name:
+    description: Container name, also the suffix of the calling step name.
+    required: true
+  image:
+    description: Image reference, pinned by digest.
+    required: true
+  port:
+    description: Published port as host:container.
+    required: true
+  container-env:
+    description: Container environment, one KEY=VALUE pair per line.
+    required: false
+    default: ''
+  health-cmd:
+    description: Health check command run inside the container.
+    required: true
+  health-interval:
+    description: Time between health checks.
+    required: false
+    default: 10s
+  health-timeout:
+    description: Time one health check may take.
+    required: false
+    default: 5s
+  health-retries:
+    description: Consecutive failed health checks before the container is unhealthy.
+    required: false
+    default: '5'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SERVICE_CONTAINER_NAME: ${{ inputs.name }}
+        SERVICE_CONTAINER_IMAGE: ${{ inputs.image }}
+        SERVICE_CONTAINER_PORT: ${{ inputs.port }}
+        SERVICE_CONTAINER_ENV: ${{ inputs.container-env }}
+        SERVICE_CONTAINER_HEALTH_CMD: ${{ inputs.health-cmd }}
+        SERVICE_CONTAINER_HEALTH_INTERVAL: ${{ inputs.health-interval }}
+        SERVICE_CONTAINER_HEALTH_TIMEOUT: ${{ inputs.health-timeout }}
+        SERVICE_CONTAINER_HEALTH_RETRIES: ${{ inputs.health-retries }}
+      run: node "$GITHUB_WORKSPACE/app/scripts/service-container.ts"

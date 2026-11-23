@@ -6,11 +6,11 @@ import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
 import { createPendingWork } from './graceful-shutdown.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
-import { contrastRatio, deriveLightAccent, type MarketingSignupForm } from '#core/domain/index.js';
+import { contrastRatio, deriveLightAccent, err, validation, type MarketingSignupForm } from '#core/domain/index.js';
 
 import {
   languageFromRequest,
@@ -1084,6 +1084,56 @@ describe('public signup persistence and confirmation', () => {
       expect(Date.parse(confirmed.confirmations[0]?.usedAt ?? '')).toBe(Date.parse(fixture.now));
       expect(await (await fixture.request(path, { method: 'POST' })).text()).toContain('You are subscribed');
       expect(await fixture.snapshot()).toEqual(confirmed);
+    } finally { await fixture.close(); }
+  });
+  const pendingConfirmation = async (fixture: Awaited<ReturnType<typeof signupHttpFixture>>) => {
+    expect((await fixture.submit()).status).toBe(303);
+    const consent = (await fixture.snapshot()).consents[0];
+    const marketing = fixture.deps.marketing;
+    if (consent === undefined || marketing === undefined) throw new Error('Missing consent');
+    const token = await signupConfirmationToken(fixture.db, 'directory-a', consent.id);
+    return { consent, marketing, path: `/marketing/confirm/${token}?lang=en` };
+  };
+  it('answers a confirmation post that lost the race for an already used token with success and confirms once', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const { consent, marketing, path } = await pendingConfirmation(fixture);
+      const transaction = marketing.confirmationTransaction;
+      const run = transaction.run.bind(transaction);
+      vi.spyOn(transaction, 'run').mockImplementationOnce(async (tenantId, operation) => {
+        const winner = await run(tenantId, operation);
+        expect(winner.ok).toBe(true);
+        return err(validation('Consent confirmation token is expired or already used'));
+      });
+      const html = await (await fixture.request(path, { method: 'POST' })).text();
+      expect(html).toContain('data-testid="marketing-confirmation-success"');
+      expect(html).not.toContain('Sign up again');
+      const confirmed = await fixture.snapshot();
+      expect(confirmed.consents.filter((row) => row.status === 'confirmed' && row.previousId === consent.id)).toHaveLength(1);
+      expect(confirmed.confirmations[0]?.usedAt).not.toBeNull();
+    } finally { await fixture.close(); }
+  });
+  it('answers overlapping confirmation posts with success for both and records one confirmation', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const { consent, path } = await pendingConfirmation(fixture);
+      const pages = await Promise.all([1, 2].map(async () => (await fixture.request(path, { method: 'POST' })).text()));
+      for (const html of pages) expect(html).toContain('data-testid="marketing-confirmation-success"');
+      const confirmed = await fixture.snapshot();
+      expect(confirmed.consents.filter((row) => row.status === 'confirmed' && row.previousId === consent.id)).toHaveLength(1);
+      expect(confirmed.memberships).toHaveLength(1);
+    } finally { await fixture.close(); }
+  });
+  it('keeps the expired answer when a confirmation post fails on a token that is still unused', async () => {
+    const fixture = await signupHttpFixture(true);
+    try {
+      const { marketing, path } = await pendingConfirmation(fixture);
+      const before = await fixture.snapshot();
+      vi.spyOn(marketing.confirmationTransaction, 'run').mockResolvedValueOnce(err(validation('Consent confirmation token is expired or already used')));
+      const html = await (await fixture.request(path, { method: 'POST' })).text();
+      expect(html).toContain('data-testid="marketing-confirmation-expired"');
+      expect(html).toContain('<a class="button-link button-link--primary" href="/marketing/forms/newsletter?lang=en">Sign up again</a>');
+      expect(await fixture.snapshot()).toEqual(before);
     } finally { await fixture.close(); }
   });
 });

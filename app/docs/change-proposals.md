@@ -1115,10 +1115,16 @@ answer), the row is rolled back. When the write ends without a definite answer
 the second commit, the row stays pending, and the minute sweep deletes its
 object and the row once it has been pending for 10 minutes, on the assumption
 that the storage finishes or abandons a write within that time. Either way the
-candidate is deleted and the storage error is answered. Two concurrent
+candidate is deleted and the storage error is answered. A completion of bytes
+the key already holds in a written row asks the storage, under the same lock,
+whether the quarantined object is there with the recorded size (a metadata
+request), and writes it again only when it is missing or has another size; a
+failed metadata request answers its error and writes nothing. Two concurrent
 completions therefore cannot both take the last slot, and every quarantined
 object a completion writes is accounted for by a counted row until the sweep
-or a release has removed it.
+or a release has removed it, with one exception: such a repair write whose
+answer is lost can land after a release deleted the object and its row, and
+that late copy is then neither counted nor swept.
 
 **Attaching.** The key then proposes `product.update` with `coverUrl`,
 `product.create` with `coverUrl`, or `settings.update` with `logoUrl`,

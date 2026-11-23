@@ -671,7 +671,7 @@ export const createQuarantinedImagesFake = (
       if (released.some((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset) && unresolved.has(row))) return { kind: 'busy' };
       const existing = rows.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
       if (existing !== undefined) {
-        const stored = await storeObject();
+        const stored = await storeObject({ ...existing });
         return stored.ok ? { kind: 'existing', asset: { ...existing } } : { kind: 'store_failed', error: stored.error };
       }
       const keyRows = [...rows, ...released]
@@ -684,7 +684,7 @@ export const createQuarantinedImagesFake = (
       if (revived !== undefined) released.splice(released.indexOf(revived), 1);
       const row = { ...asset };
       rows.push(row);
-      const stored = await storeObject();
+      const stored = await storeObject(null);
       if (!stored.ok) {
         rows.splice(rows.indexOf(row), 1);
         if (revived !== undefined) released.push(revived);

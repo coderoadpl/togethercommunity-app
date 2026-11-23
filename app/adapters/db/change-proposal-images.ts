@@ -266,7 +266,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         if (row !== undefined && row.pendingSince !== null) return { kind: 'busy' };
         if (row !== undefined && row.releasedAt !== null && row.deleteUnresolvedAt !== null) return { kind: 'busy' };
         if (row !== undefined && row.releasedAt === null) {
-          const stored = await store();
+          const stored = await store(parseImage(row));
           return stored.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: stored.error };
         }
         const [usage] = await tx
@@ -283,7 +283,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined };
       });
       if (reserved.kind !== 'reserved') return reserved;
-      const stored = await store();
+      const stored = await store(null);
       if (!stored.ok && !storageFailureIsDefinite(stored.error)) return { kind: 'store_failed', error: stored.error };
       return db.transaction(async (tx): Promise<QuarantinedImageInsertion> => {
         await lockKey(tx);

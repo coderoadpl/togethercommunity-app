@@ -238,12 +238,15 @@ const completeProposedImageUpload = async (
     ...image,
     sizeBytes: bytes.byteLength,
     createdAt: deps.clock.nowIso(),
-  }, () => deps.storage.putObject({
-    url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString(),
-    ...credentials,
-    body: bytes,
-    contentType,
-  }));
+  }, async (existing): Promise<Result<void, AppError>> => {
+    const url = deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString();
+    if (existing !== null) {
+      const found = await deps.storage.head({ url, ...credentials, deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
+      if (found.ok && found.value.sizeBytes === existing.sizeBytes) return ok(undefined);
+      if (!found.ok && found.error.code !== 'not_found') return err(found.error);
+    }
+    return deps.storage.putObject({ url, ...credentials, body: bytes, contentType });
+  });
   if (inserted.kind === 'busy') return err(changeProposalsBusy());
   if (inserted.kind === 'cap_exceeded' || inserted.kind === 'store_failed') {
     const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });

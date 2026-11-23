@@ -3289,11 +3289,16 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * lock again, marks the row written, or on a refused write rolls the row back. A write without a definite answer, or
    * a process that dies before the second commit, leaves the row pending and counted: no lookup sees it, and the sweep
    * removes its object and the row once `unresolvedDeleteGraceMs` passed. A pending row answers `busy`. The same bytes
-   * again answer the unreleased row already there, after `store` rewrote its object. A released row
+   * again answer the unreleased row already there, after `store`, given that row, made sure of its object: it writes
+   * the object only when the storage no longer holds it with the recorded size. A released row
    * whose object delete ended without a definite answer answers `busy` and is not revived, so a late delete cannot
    * remove a new object, until the sweep has deleted it again.
    */
-  insert(tenantId: string, asset: QuarantinedImageAsset, store: () => Promise<Result<void, AppError>>): Promise<QuarantinedImageInsertion>;
+  insert(
+    tenantId: string,
+    asset: QuarantinedImageAsset,
+    store: (existing: QuarantinedImageAsset | null) => Promise<Result<void, AppError>>,
+  ): Promise<QuarantinedImageInsertion>;
   find(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
   /**
    * Under the workspace proposal lock, locks the selected rows and marks released those no pending, unexpired proposal

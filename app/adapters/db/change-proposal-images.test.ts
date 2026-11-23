@@ -811,6 +811,31 @@ describe('quarantined rows and objects of one key', () => {
   });
 });
 
+describe('a completion of bytes the key already holds', () => {
+  it('writes the quarantined object again only when the storage no longer has it with the recorded size', async () => {
+    const harness = endToEnd();
+    const complete = async () => {
+      const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: PNG_BYTES.byteLength }, harness.deps);
+      if (!started.ok) throw new Error(started.error.message);
+      harness.objects.objects.set(started.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+      return completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, harness.deps);
+    };
+    const quarantinedKey = `image-asset-quarantine/${TENANT}/${KEY_ID}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
+    const writes = () => harness.objects.calls.filter((call) => call.method === 'putObject' && call.key === quarantinedKey).length;
+    expect(await complete()).toMatchObject({ ok: true });
+    expect(writes()).toBe(1);
+    expect(await complete()).toMatchObject({ ok: true });
+    expect(writes()).toBe(1);
+    harness.objects.objects.set(quarantinedKey, { bytes: PNG_BYTES.slice(0, 4), contentType: 'image/png' });
+    expect(await complete()).toMatchObject({ ok: true });
+    expect(writes()).toBe(2);
+    harness.objects.objects.delete(quarantinedKey);
+    expect(await complete()).toMatchObject({ ok: true });
+    expect(writes()).toBe(3);
+    expect(harness.objects.objects.get(quarantinedKey)?.bytes).toEqual(PNG_BYTES);
+  });
+});
+
 describe('a delete the storage refuses', () => {
   it('leaves no unresolved mark on a released row or a publication record when the S3 storage answers AccessDenied', async () => {
     const harness = endToEnd();

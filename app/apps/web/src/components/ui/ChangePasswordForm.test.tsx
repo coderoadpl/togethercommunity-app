@@ -1,11 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/password.js';
 
 import { en } from '../../i18n/en.js';
-import { LanguageProvider, type Language } from '../../i18n/index.js';
+import { LanguageProvider, useLanguage, type Language } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
 import { languagePreference } from '../../theme-mode.js';
 import { ChangePasswordForm } from './ChangePasswordForm.js';
@@ -26,6 +26,31 @@ const renderForm = (
           pending={false}
           success={false}
           error={error}
+          onSubmit={onSubmit}
+        />
+      </ToastProvider>
+    </LanguageProvider>,
+  );
+  return onSubmit;
+};
+
+const SwitchToPolish = () => {
+  const { setLanguage } = useLanguage();
+  return <button type="button" data-testid="switch-language" onClick={() => setLanguage('pl')}>switch</button>;
+};
+
+const renderDialogForm = (onSubmit = vi.fn()) => {
+  languagePreference.save('en');
+  render(
+    <LanguageProvider>
+      <ToastProvider>
+        <SwitchToPolish />
+        <ChangePasswordForm
+          dialog
+          revokeOtherSessionsByDefault
+          pending={false}
+          success={false}
+          error={null}
           onSubmit={onSubmit}
         />
       </ToastProvider>
@@ -176,6 +201,36 @@ describe('ChangePasswordForm', () => {
       en.changePassword.invalidCurrentPassword,
     );
   });
+  it('restores the configured revocation default when the dialog opens again after a cancel', async () => {
+    renderDialogForm();
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).toBeChecked();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions }));
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).not.toBeChecked();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).toBeChecked();
+  });
+
+  it('shows a visible validation error in the newly chosen language', async () => {
+    renderDialogForm();
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    await fillPasswordChange('current-password', 'short', 'short');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toHaveTextContent(
+      en.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+    );
+
+    await userEvent.click(screen.getByTestId('switch-language'));
+
+    expect(screen.getByTestId('change-password-local-error')).toHaveTextContent(
+      pl.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+    );
+  });
+
   it('keeps the submit button at content width', () => {
     renderForm();
 

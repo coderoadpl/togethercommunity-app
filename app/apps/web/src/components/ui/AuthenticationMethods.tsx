@@ -103,6 +103,8 @@ export const AuthenticationMethods = ({
   };
   const passwordSetupErrorFor = (origin: 'twoFactor' | 'passkey') =>
     passwordSetupOrigin === origin ? requestPasswordSetup.error : null;
+  const passwordSetupSentFor = (origin: 'twoFactor' | 'passkey') =>
+    passwordSetupOrigin === origin && requestPasswordSetup.success;
   const passkeyPasswordSetupError = presentation === 'account' ? passwordSetupErrorFor('passkey') : null;
   const passwordSetupLabel = (idle: string) => requestPasswordSetup.pending ? t.security.resetSending : idle;
   const closeAddPasskey = () => {
@@ -170,13 +172,13 @@ export const AuthenticationMethods = ({
   const passkeyHelp = (
 <AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
           <Typography variant="body2">{t.security.passkeyIntro}</Typography>
-        {passwordlessHint}
+        {presentation === 'embedded' ? passwordlessHint : null}
         </AccountHelp>
   );
   const passwordlessDialogBody = (
     <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'flex-start' }} data-testid="passkey-passwordless">
       <Typography variant="body2">{t.security.passkeyPasswordlessHint}</Typography>
-      <Button
+      {passwordSetupSentFor('passkey') ? <Typography variant="body2" role="status" data-testid="passkey-set-password-sent">{t.security.resetSent}</Typography> : <Button
         type="button"
         variant="contained"
         autoFocus
@@ -185,7 +187,7 @@ export const AuthenticationMethods = ({
         onClick={() => requestPasswordSetupFrom('passkey')}
       >
         {passwordSetupLabel(t.security.setOrResetPassword)}
-      </Button>
+      </Button>}
       {passkeyPasswordSetupError ? <Alert severity="error" data-testid="passkey-set-password-error">{localizeError(passkeyPasswordSetupError, t)}</Alert> : null}
     </Stack>
   );
@@ -283,7 +285,7 @@ export const AuthenticationMethods = ({
         enrollTwoFactor={enrollTwoFactor}
         submitTotp={submitTotp}
         backupCodes={backupCodes}
-      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} requestPasswordSetup={{ ...requestPasswordSetup, error: passwordSetupErrorFor('twoFactor'), run: () => requestPasswordSetupFrom('twoFactor') }} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} hasPassword={hasPassword} onSecurityRefresh={onSecurityRefresh} />;
+      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} requestPasswordSetup={{ ...requestPasswordSetup, success: passwordSetupSentFor('twoFactor'), error: passwordSetupErrorFor('twoFactor'), run: () => requestPasswordSetupFrom('twoFactor') }} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} hasPassword={hasPassword} onSecurityRefresh={onSecurityRefresh} />;
   return <Box sx={{ display: 'grid', gap: '1rem', alignItems: 'start', '@media (min-width: 1024px)': { gridTemplateColumns: presentation === 'account' ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: '1.5rem' } }}>
     {presentation === 'account' ? <>
       <Stack spacing="1rem" sx={{ minWidth: 0 }}>{passwordCard}{twoFactorCard}</Stack>

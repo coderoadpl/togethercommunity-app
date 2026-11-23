@@ -1059,10 +1059,10 @@ describe('MemberAccountPage', () => {
     expect(screen.getByRole('button', { name: en.support.send })).toBeDisabled();
   });
 
-  it('requests password setup from member passkey management', async () => {
+  it('requests password setup from the passkey dialog of a passwordless member', async () => {
     let body: unknown;
     server.use(
-      stubMe(),
+      stubMe(true, {}, null, null, { hasPassword: false }),
       stubSettings(null),
       stubBillingOrders(),
       http.post('*', async ({ request }) => {
@@ -1073,18 +1073,46 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=security');
 
     await userEvent.click(await screen.findByTestId('add-passkey-open'));
-    await userEvent.click(await screen.findByText(en.security.passkeyHelp));
-    await userEvent.click(screen.getByTestId('passkey-set-password'));
-    expect(await findToast('success')).toHaveTextContent(
-      en.account.resetSent,
-    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByTestId('passkey-set-password'));
+    expect(await within(dialog).findByTestId('passkey-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(within(dialog).queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-reset-password-sent')).not.toBeInTheDocument();
+    expect(successToasts()).toHaveLength(0);
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
     });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    const reopened = await screen.findByRole('dialog');
+    expect(within(reopened).queryByTestId('passkey-set-password-sent')).not.toBeInTheDocument();
+    expect(within(reopened).getByTestId('passkey-set-password')).toBeEnabled();
   });
 
-  it('requests an account password setup link and confirms it with a toast', async () => {
+  it('shows the sent password link once, under the button that sent it, and clears it on the next request', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { hasPassword: false }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('two-factor-set-password'));
+    expect(await screen.findByTestId('two-factor-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.queryByTestId('account-reset-password-sent')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('account-reset-password'));
+    expect(await screen.findByTestId('account-reset-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    expect(successToasts()).toHaveLength(0);
+  });
+
+  it('requests an account password setup link and confirms it under the button', async () => {
     let body: unknown;
     server.use(
       stubMe(),
@@ -1099,7 +1127,8 @@ describe('MemberAccountPage', () => {
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
 
-    expect(await findToast('success')).toHaveTextContent(en.account.resetSent);
+    expect(await screen.findByTestId('account-reset-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(successToasts()).toHaveLength(0);
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
@@ -1159,6 +1188,35 @@ describe('MemberAccountPage', () => {
     expect(screen.getByText(en.account.passwordLinkHelp)).toBeInTheDocument();
     expect(screen.getByTestId('change-password-open')).toHaveClass('MuiButton-contained');
     expect(screen.getByTestId('account-reset-password')).toHaveClass('MuiButton-text');
+  });
+
+  it.each([
+    { revokeOtherSessions: true, refetches: 1 },
+    { revokeOtherSessions: false, refetches: 0 },
+  ])('refetches the session list after a password change only when other sessions were signed out ($revokeOtherSessions)', async ({ revokeOtherSessions, refetches }) => {
+    let sessionCalls = 0;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.get('*/api/me/sessions', () => {
+        sessionCalls += 1;
+        return HttpResponse.json({ ok: true, data: { sessions: [] } });
+      }),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+    await waitFor(() => expect(sessionCalls).toBe(1));
+
+    await userEvent.click(await screen.findByTestId('change-password-open'));
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
+    if (!revokeOtherSessions) await userEvent.click(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions }));
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await findToast('success')).toHaveTextContent(en.changePassword.success);
+    await waitFor(() => expect(sessionCalls).toBe(1 + refetches));
   });
 
   it('keeps the reset path available for a passwordless account', async () => {

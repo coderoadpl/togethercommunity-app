@@ -288,6 +288,7 @@ export const TwoFactorCard = ({
           >
             {requestPasswordSetup.pending ? t.security.resetSending : t.security.setOrResetPassword}
           </Button>
+          {requestPasswordSetup.success ? <Typography variant="body2" role="status" data-testid="two-factor-set-password-sent">{t.security.resetSent}</Typography> : null}
           {requestPasswordSetup.error ? <Alert severity="error" data-testid="two-factor-set-password-error">{localizeError(requestPasswordSetup.error, t)}</Alert> : null}
         </Stack>
       )}
@@ -383,8 +384,8 @@ export const TwoFactorCard = ({
         onConfirm={submitManagement}
         onClose={close}
       />
-      <AccountDialog open={mode === 'regenerated'} title={t.security.regenerateBackupCodes} onClose={closeRegenerated}>
-        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.common.close} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
+      <AccountDialog open={mode === 'regenerated'} title={t.security.regeneratedBackupCodesTitle} onClose={closeRegenerated}>
+        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.security.regeneratedBackupCodesDone} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
       </AccountDialog>
       <ConfirmDialog
         open={mode === 'disable'}

@@ -1497,6 +1497,8 @@ export interface Messages {
     twoFactorOff: string;
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
+    regeneratedBackupCodesTitle: string;
+    regeneratedBackupCodesDone: string;
     backupCodesRegenerated: string;
     sessionsHeading: string;
     sessionsIntro: string;
@@ -2669,7 +2671,6 @@ export interface Messages {
     forgotPasswordPrompt: string;
     forgotPasswordEmailLink: string;
     resetSending: string;
-    resetSent: string;
     billingHeading: string;
     billingIntro: string;
     managePayments: string;

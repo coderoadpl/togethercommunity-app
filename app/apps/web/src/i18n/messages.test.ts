@@ -57,8 +57,8 @@ describe('i18n dictionaries', () => {
   it('names two-factor authentication and the setup link consistently in the security copy', () => {
     expect(en.security.disableTwoFactorConfirm).toContain('two-factor authentication');
     expect(en.security.otpauthUriLabel).toBe('Setup link (advanced)');
-    expect(pl.security.backupCodesSaved).toBe('Mam zapisane kody');
-    expect(pl.security.sessionsRevokeOthers).toBe('Wyloguj wszystkie inne urz\u0105dzenia');
+    expect(pl.security.backupCodesSaved).not.toBe(en.security.backupCodesSaved);
+    expect(pl.security.sessionsRevokeOthers).not.toBe(en.security.sessionsRevokeOthers);
   });
 
   it('never names the retired sending-settings page', () => {

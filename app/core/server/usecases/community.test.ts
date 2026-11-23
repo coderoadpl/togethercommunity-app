@@ -866,11 +866,13 @@ describe('a lesson whose module two courses share, for a member who holds only t
     });
     const root = await createPostAndDrain(member, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     if (!root.ok) throw new Error('root failed');
-    expect(await subscriberCanAccessContext('t1', 'm1', root.value, d)).toBe(true);
+    const stored = await d.posts.findById('t1', root.value.id);
+    if (stored === null) throw new Error('root not stored');
+    expect(await subscriberCanAccessContext('t1', 'm1', stored, d)).toBe(true);
     await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2', name: 'Two' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
     expect(delivered).toEqual([{ recipient: 'u1', courseId: 'c2', url: 'http://tenant.localhost/my/courses/c2/lessons/l1' }]);
     const excluded = sharedDeps([grant('m1', 'first-without')]);
-    expect(await subscriberCanAccessContext('t1', 'm1', root.value, excluded)).toBe(false);
+    expect(await subscriberCanAccessContext('t1', 'm1', stored, excluded)).toBe(false);
   });
 });
 

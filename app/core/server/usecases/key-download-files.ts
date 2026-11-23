@@ -118,7 +118,7 @@ const reservationError = (reservation: Awaited<ReturnType<KeyDownloadFileReposit
   return null;
 };
 
-/** Signed only after the reservation committed, so no write URL exists for bytes the limits did not count. */
+/** The signed URL reaches the key only once the reservation committed, so a key never holds a write URL for bytes the limits did not count. */
 export const beginKeyDownloadUpload = async (
   ctx: Ctx,
   input: KeyDownloadUploadInput,

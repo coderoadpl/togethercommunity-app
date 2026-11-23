@@ -175,7 +175,7 @@ describe('my products empty state', () => {
     expect(empty.getByRole('heading', { name: en.student.noProducts })).toBeVisible();
     expect(empty.getByText(en.student.productsWillAppear)).toBeVisible();
     expect(empty.getByText(en.student.productsOtherEmailHint)).toBeVisible();
-    expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+    expect(empty.queryByRole('link', { name: en.student.viewOffer })).not.toBeInTheDocument();
   });
 
   it('links to the offer when the workspace lists one', async () => {
@@ -185,7 +185,7 @@ describe('my products empty state', () => {
     await renderMyProducts();
 
     const empty = within(await screen.findByTestId('my-products-empty-state'));
-    expect(await empty.findByRole('link', { name: en.student.browseOffers })).toHaveAttribute('href', '/offer/complete-bundle');
+    expect(await empty.findByRole('link', { name: en.student.viewOffer })).toHaveAttribute('href', '/offer/complete-bundle');
   });
 
   it('lists one link per offer, named after it, when the workspace lists several offers', async () => {
@@ -195,12 +195,12 @@ describe('my products empty state', () => {
     await renderMyProducts();
 
     const empty = within(await screen.findByTestId('my-products-empty-state'));
-    const offers = await empty.findByRole('list', { name: en.student.browseOffers });
+    const offers = await empty.findByRole('list', { name: en.student.availableOffers });
     expect(within(offers).getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
       ['Starter kit', '/offer/starter-kit'],
       ['Complete bundle', '/offer/complete-bundle'],
     ]);
-    expect(empty.queryByRole('link', { name: en.student.browseOffers })).not.toBeInTheDocument();
+    expect(empty.queryByRole('link', { name: en.student.viewOffer })).not.toBeInTheDocument();
     expect(empty.getAllByRole('link').map((link) => link.getAttribute('href'))).not.toContain('/');
   });
 });

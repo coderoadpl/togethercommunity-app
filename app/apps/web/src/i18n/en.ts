@@ -2658,7 +2658,8 @@ export const en: Messages = {
     openCourse: 'Open course',
     viewCourses: 'View courses',
     productsOtherEmailHint: 'Bought with another email? Sign in with that address.',
-    browseOffers: 'Browse offers',
+    viewOffer: 'View offer',
+    availableOffers: 'Available offers',
     continueCourse: 'Continue',
     downloadPreparing: 'Preparing your file…',
     downloadFailures: {

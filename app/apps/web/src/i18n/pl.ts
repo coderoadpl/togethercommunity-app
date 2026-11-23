@@ -2710,7 +2710,8 @@ export const pl: Messages = {
     openCourse: 'Przejdź do kursu',
     viewCourses: 'Zobacz kursy',
     productsOtherEmailHint: 'Zakup jest przypisany do innego adresu e-mail? Zaloguj się tym adresem.',
-    browseOffers: 'Zobacz ofertę',
+    viewOffer: 'Zobacz ofertę',
+    availableOffers: 'Dostępne oferty',
     continueCourse: 'Kontynuuj',
     downloadPreparing: 'Przygotowujemy plik…',
     downloadFailures: {

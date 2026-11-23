@@ -2340,7 +2340,8 @@ export interface Messages {
     openCourse: string;
     viewCourses: string;
     productsOtherEmailHint: string;
-    browseOffers: string;
+    viewOffer: string;
+    availableOffers: string;
     continueCourse: string;
     downloadPreparing: string;
     downloadFailures: Record<MemberDownloadFailureCode, string>;

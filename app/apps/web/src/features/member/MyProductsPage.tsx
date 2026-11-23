@@ -278,11 +278,11 @@ const OfferLinks = ({ offers }: { offers: ReadonlyArray<{ id: string; slug: stri
   const labelId = useId();
   const [onlyOffer] = offers;
   if (offers.length === 1 && onlyOffer !== undefined) {
-    return <MuiLink href={offerPath(onlyOffer.slug)}>{t.student.browseOffers}</MuiLink>;
+    return <MuiLink href={offerPath(onlyOffer.slug)}>{t.student.viewOffer}</MuiLink>;
   }
   return (
     <Stack useFlexGap spacing="0.25rem">
-      <Typography variant="body2" component="p" id={labelId}>{t.student.browseOffers}</Typography>
+      <Typography variant="body2" component="p" id={labelId}>{t.student.availableOffers}</Typography>
       <Stack component="ul" useFlexGap spacing="0.25rem" aria-labelledby={labelId} sx={{ listStyle: 'none', m: 0, p: 0 }}>
         {offers.map((offer) => (
           <li key={offer.id}>

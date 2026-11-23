@@ -49,6 +49,9 @@ export const server = setupServer(
   http.post('*/api/orders/:orderId/shipx/refresh', () =>
     HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
   ),
+  http.get('*/api/public/parcel-lockers/:code', () =>
+    HttpResponse.json({ ok: true, data: { status: 'unavailable' } }),
+  ),
   http.get('*/api/public/payment-config', () =>
     HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: false } }),
   ),

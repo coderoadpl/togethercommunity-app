@@ -24,6 +24,14 @@ describe('checkoutShippingFromStripe', () => {
     expect(checkoutShippingFromStripe({ shipping: { name: 'Test Buyer', address: address('Old Street 1') } }).shipping?.phone).toBeNull();
   });
 
+  it('keeps the delivery address when the delivery hash carries a phone of an unexpected shape', () => {
+    const session = { shipping: { name: 'Test Buyer', phone: 48500100900, address: address('Old Street 1') } };
+    expect(checkoutShippingFromStripe({ ...session, customer_details: { phone: '+48500100200' } }).shipping).toEqual({
+      name: 'Test Buyer', phone: '+48500100200', address: { line1: 'Old Street 1', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null },
+    });
+    expect(checkoutShippingFromStripe(session).shipping).toMatchObject({ address: { line1: 'Old Street 1' }, phone: null });
+  });
+
   it('reads the shipping cost from shipping_cost and falls back to total_details.amount_shipping', () => {
     const shipping = { name: 'Test Buyer', address: address('Old Street 1') };
     expect(checkoutShippingFromStripe({ shipping, shipping_cost: { amount_total: 1599 }, total_details: { amount_shipping: 999 } }).shippingCostCents).toBe(1599);

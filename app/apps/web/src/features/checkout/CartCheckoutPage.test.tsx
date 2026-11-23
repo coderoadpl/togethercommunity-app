@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useParams } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -810,6 +810,144 @@ describe('hosted cart checkout', () => {
       await userEvent.click(screen.getByTestId('checkout-pay-cta'));
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+    });
+
+    it('checks a typed locker code at the carrier and keeps the cart payment disabled for an unknown one', async () => {
+      const bodies: unknown[] = [];
+      const lookups: string[] = [];
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', ({ params }) => {
+        lookups.push(String(params.code));
+        return HttpResponse.json({ ok: true, data: params.code === 'WAW01M'
+          ? { status: 'found', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw', usable: true, reason: null }
+          : { status: 'not_found' } });
+      }));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      await userEvent.type(field, 'missing1');
+      await userEvent.tab();
+      await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found));
+      expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toHaveAccessibleDescription(en.checkout.payBlockedLockerRejected);
+      await userEvent.clear(field);
+      await userEvent.type(field, 'waw01m');
+      await userEvent.tab();
+      await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent('WAW01M · Next to the main entrance'));
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(lookups).toEqual(['MISSING1', 'WAW01M']);
+      expect(screen.queryByTestId('cart-pay-reason')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['the locker code', () => fireEvent.change(screen.getByLabelText(en.shipping.lockerCodeLabel), { target: { value: 'KRA010' } })],
+      ['the e-mail address', () => fireEvent.change(screen.getByLabelText(en.checkout.emailLabel), { target: { value: 'other@example.org' } })],
+      ['nothing', () => undefined],
+    ])('locks the cart while the submit-time check runs and starts it only from the unchanged form when %s changes', async (change, edit) => {
+      const bodies: unknown[] = [];
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', async () => {
+        await gate;
+        return HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } });
+      }));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      const pay = screen.getByTestId('checkout-pay-cta');
+      await userEvent.click(pay);
+      await waitFor(() => expect(pay).toBeDisabled());
+      expect(pay).toHaveTextContent(en.checkout.payPending);
+      for (const button of line(poster).getAllByRole('button')) expect(button).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: /terms/iu })).toBeDisabled();
+      edit();
+      release?.();
+      await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+      if (change === 'nothing') {
+        await waitFor(() => expect(bodies).toHaveLength(1));
+        expect(bodies[0]).toMatchObject({ email: 'buyer@example.org', termsAccepted: true, lines: [{ productId: poster, quantity: 1 }],
+          shipping: { rateId: 'locker', pickupPoint: { code: 'WAW01M' } } });
+      } else {
+        expect(bodies).toEqual([]);
+      }
+    });
+
+    it('shows a server refusal of the typed locker once, next to the field, with no alert under the cart payment', async () => {
+      serve({ sessionRefusal: { status: 400, error: { code: 'validation', message: 'This InPost parcel locker is not operating',
+        details: { pickupPointReason: 'not_operating' } } } });
+      server.use(http.get('/api/public/parcel-lockers/:code', () =>
+        HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } })));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      await userEvent.type(field, 'waw01m');
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
+      expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+      expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    });
+
+    it('opens the collapsed code field when the server refuses the typed locker of the cart, with the reason once and no alert under the payment', async () => {
+      serve({ token: 'public-map-token', sessionRefusal: { status: 400, error: { code: 'validation', message: 'This InPost parcel locker is not operating',
+        details: { pickupPointReason: 'not_operating' } } } });
+      server.use(http.get('/api/public/parcel-lockers/:code', () =>
+        HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } })));
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
+      await userEvent.click(toggle);
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      await userEvent.click(toggle);
+      expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+      await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+      expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getAllByText(en.shipping.lockerRejected.not_operating)).toHaveLength(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerRejected.not_operating);
+      expect(screen.getByTestId('cart-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerRejected);
+      expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    });
+
+    it('does not start the cart payment when the price changes while the submit-time check runs', async () => {
+      const bodies: unknown[] = [];
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      serve({ onSession: (body) => bodies.push(body) });
+      server.use(http.get('/api/public/parcel-lockers/:code', async () => {
+        await gate;
+        return HttpResponse.json({ ok: true, data: { status: 'found', code: 'WAW01M', name: null, address: null, usable: true, reason: null } });
+      }));
+      const { queryClient } = renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
+      const pay = screen.getByTestId('checkout-pay-cta');
+      await userEvent.click(pay);
+      await waitFor(() => expect(pay).toHaveTextContent(en.checkout.payPending));
+      serve({ onSession: (body) => bodies.push(body), overrides: { [poster]: {
+        priceCents: 3900, prices: [{ id: 'price-poster', kind: 'one_time', interval: null, amountCents: 3900, currency: 'PLN' }],
+      } } });
+      await act(() => queryClient.refetchQueries({ type: 'active' }));
+      await waitFor(() => expect(summaryAmount('total')).toHaveTextContent(exact(pln(3900 + 1499))));
+      release?.();
+      await waitFor(() => expect(pay).not.toHaveTextContent(en.checkout.payPending));
+      expect(bodies).toEqual([]);
     });
   });
 });

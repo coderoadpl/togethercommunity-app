@@ -1,0 +1,61 @@
+import {
+  applyPickupPointLookup,
+  err,
+  hasActiveParcelLockerRate,
+  notFound,
+  ok,
+  parcelLockerLookupView,
+  pickupPointCodeSchema,
+  validation,
+  type AppError,
+  type CheckoutShippingSelection,
+  type ParcelLockerLookup,
+  type PickupPointLookup,
+  type Result,
+} from '#core/domain/index.js';
+
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
+import type { TenantRepository } from '../ports.js';
+import { claimRateLimitWindow, type PublicRateLimitDeps, type RateLimitWindow } from './public-rate-limit.js';
+
+const UNAVAILABLE: PickupPointLookup = { kind: 'unavailable' };
+
+export const PICKUP_POINT_LOOKUP_BUDGET_SCOPE = 'parcel-locker:global';
+export const PUBLIC_PICKUP_POINT_LOOKUP_SCOPE = 'parcel-locker:public';
+
+type PlatformBudget = PublicRateLimitDeps & { window: RateLimitWindow };
+
+export const withPickupPointLookupBudget = (
+  directory: PickupPointDirectory,
+  budget: PlatformBudget,
+): PickupPointDirectory => ({
+  lookup: async (code) => {
+    const claimed = await claimRateLimitWindow({ scope: PICKUP_POINT_LOOKUP_BUDGET_SCOPE, key: 'platform', window: budget.window }, budget);
+    return claimed.ok ? directory.lookup(code) : UNAVAILABLE;
+  },
+});
+
+const lookUp = async (code: string, directory: PickupPointDirectory | undefined): Promise<PickupPointLookup> =>
+  directory === undefined ? UNAVAILABLE : directory.lookup(code);
+
+export const verifyCheckoutPickupPoint = async (
+  shipping: CheckoutShippingSelection,
+  directory: PickupPointDirectory | undefined,
+): Promise<Result<CheckoutShippingSelection, AppError>> => {
+  if (shipping.pickupPoint === null) return ok(shipping);
+  return applyPickupPointLookup(shipping, await lookUp(shipping.pickupPoint.code, directory));
+};
+
+export const lookupParcelLocker = async (
+  tenantId: string,
+  input: { code: string },
+  deps: { tenants: Pick<TenantRepository, 'findSettings'>; pickupPoints?: PickupPointDirectory | undefined; publicShare: PlatformBudget },
+): Promise<Result<ParcelLockerLookup, AppError>> => {
+  const code = pickupPointCodeSchema.safeParse(input.code);
+  if (!code.success) return err(validation('Invalid parcel locker code', code.error.flatten()));
+  const settings = await deps.tenants.findSettings(tenantId);
+  if (!hasActiveParcelLockerRate(settings?.shippingRates)) return err(notFound('Parcel locker lookup is not available in this workspace'));
+  if (deps.pickupPoints === undefined) return ok(parcelLockerLookupView(UNAVAILABLE));
+  const claimed = await claimRateLimitWindow({ scope: PUBLIC_PICKUP_POINT_LOOKUP_SCOPE, key: 'platform', window: deps.publicShare.window }, deps.publicShare);
+  return ok(parcelLockerLookupView(claimed.ok ? await deps.pickupPoints.lookup(code.data) : UNAVAILABLE));
+};

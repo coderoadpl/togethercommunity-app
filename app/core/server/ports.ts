@@ -3186,7 +3186,7 @@ export interface ChangeProposalTargetLabelReader {
   accessTitles(tenantId: string, ids: AccessItemIds): Promise<ChangeProposalAccessTitles>;
 }
 
-export interface ChangeProposalAccessTitles {
+interface ChangeProposalAccessTitles {
   courses: ReadonlyArray<{ id: string; title: string }>;
   modules: ReadonlyArray<{ id: string; title: string }>;
   lessons: ReadonlyArray<{ id: string; title: string }>;

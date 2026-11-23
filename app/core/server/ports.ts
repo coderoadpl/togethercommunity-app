@@ -1483,6 +1483,7 @@ export interface StaffRefundCreationState {
   platformCommittedCents: number;
   sameRequest: OrderStaffRefund | null;
   waiting: OrderStaffRefund | null;
+  latest: OrderStaffRefund | null;
   hasLabel: boolean;
 }
 

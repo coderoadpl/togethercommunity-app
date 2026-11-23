@@ -135,7 +135,9 @@ export const previewStaffRefund = async (
     fullRefundCancelsSubscription(tenant.value, order, deps),
   ]);
   const shipmentState = staffRefundShipmentState(order, hasLabel);
-  const remainderCents = staffRefundRemainderCents(order, { providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents });
+  const remainderCents = staffRefundRemainderCents(order, {
+    providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents, latestStaffRefund: refunds[0] ?? null,
+  });
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
   const blocker = staffRefundOrderBlocker(order)
     ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
@@ -192,6 +194,7 @@ const decideStaffRefund = (
     providerCommittedCents: request.provider.cents,
     providerUncommittedCents: request.provider.uncommittedCents,
     platformCommittedCents: state.platformCommittedCents,
+    latestStaffRefund: state.latest,
   });
   const amount = resolveStaffRefundAmount({
     amountCents: request.amountCents,

@@ -476,7 +476,7 @@ describe('staff refunds against a real database', () => {
     })]);
 
     h.provider.failLists(refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout'));
-    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'platform' });
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: true, remainderCents: 4099, remainderSource: 'platform' });
     expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: true, remainderCents: 4099, remainderSource: 'provider' });
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', expectedAmountCents: 4099 })).refund).toMatchObject({ kind: 'remainder', amountCents: 4099 });
     await h.dispatch(minutes(60 * 24 + 2));
@@ -490,6 +490,20 @@ describe('staff refunds against a real database', () => {
     expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'provider' });
     expect(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await refundRows('order-1')).toStrictEqual([]);
+  });
+
+  it('keeps an order a dispute marked refunded unrefundable although a partial staff refund of it failed at the provider earlier', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_1', 'expired_or_canceled_card');
+    await h.dispatch(minutes(60 * 24 + 1));
+    expect(await refundRows('order-1')).toMatchObject([{ kind: 'amount', status: 'failed', providerRefundStatus: 'failed' }]);
+    await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
+
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'provider' });
+    expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000, expectedRemainderCents: 1000 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await refundRows('order-1')).toHaveLength(1);
   });
 
   it('refunds a test-mode order in test mode without a buyer e-mail', async () => {

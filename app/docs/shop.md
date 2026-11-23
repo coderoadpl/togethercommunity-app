@@ -1818,11 +1818,13 @@ paid amount minus the larger of the refunds Stripe lists for the payment (not
 `failed` or `canceled`) and the staff refunds the platform recorded that may
 still move money; when Stripe's list cannot be read, the platform's records
 decide and the preview says so, and Stripe still refuses anything above the
-charge. An order marked `refunded` keeps a remainder only when Stripe's list, read at
-request time, shows refunds that failed or were canceled (a full refund that
-failed after Stripe reported it), and at most their sum; an order marked
-`refunded` without such a refund (for example after a dispute) and one whose
-list cannot be read have nothing left to refund.
+charge. An order marked `refunded` keeps a remainder only when its latest staff
+refund is a full refund that Stripe failed or canceled after it was issued
+(the platform saw it fail, decision D21): the remainder is at most that refund's
+amount and, when Stripe's list can be read, at most the sum of the failed or
+canceled refunds it shows. Any other order marked `refunded`, for example after
+a dispute, also one whose older partial staff refund failed, has nothing left
+to refund.
 
 - **Every staff refund issues exactly its stored amount, once.** Its own
   Stripe refund is the one whose metadata `refundJobId` names the staff refund,
@@ -1936,7 +1938,8 @@ list cannot be read have nothing left to refund.
   outcome within a minute. Access revoked that way is not given back when the
   refund fails later: the `failed_after_submission` alert of a staff refund
   tells staff to grant it again on the member page, and the order can be
-  refunded again once Stripe's list shows the money left.
+  refunded again when that refund was the order's latest staff refund and a
+  full one.
 - **Buyer e-mail**: one refund notice per staff refund (outbox id
   `order-refund-issued:<refundId>`), queued in the transaction that records
   that Stripe holds the platform's own refund as `pending` or `succeeded`; a

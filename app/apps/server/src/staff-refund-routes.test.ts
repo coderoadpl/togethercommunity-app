@@ -61,6 +61,7 @@ const staffRefundsFake = (order: OrderListItem) => {
         platformCommittedCents: committed(),
         sameRequest: refunds.find((refund) => refund.requestKey === input.requestKey) ?? null,
         waiting: refunds.find((refund) => isIn(STAFF_REFUND_WAITING_STATUSES, refund.status)) ?? null,
+        latest: refunds.at(-1) ?? null,
         hasLabel: false,
       });
       if (!decision.ok) return decision;

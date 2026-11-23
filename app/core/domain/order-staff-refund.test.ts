@@ -63,18 +63,27 @@ describe('staff refund rules', () => {
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: 5000, platformCommittedCents: 0 })).toBe(0);
   });
 
-  it('leaves an order marked refunded refundable only for the provider refunds that failed or were canceled', () => {
+  it('leaves an order marked refunded refundable only after its latest staff refund, a full one, failed after it was issued', () => {
     const refunded = { status: 'refunded' as const, amountCents: 4099 };
     const failed = { status: 'failed' as const, amountCents: 4099 };
     const canceled = { status: 'canceled' as const, amountCents: 1000 };
     const succeeded = { status: 'succeeded' as const, amountCents: 1000 };
+    const failedFull = { kind: 'remainder' as const, status: 'failed' as const, providerRefundStatus: 'failed', amountCents: 4099 };
+    const failedPartial = { kind: 'amount' as const, status: 'failed' as const, providerRefundStatus: 'failed', amountCents: 1000 };
+    const refusedFull = { kind: 'remainder' as const, status: 'failed' as const, providerRefundStatus: null, amountCents: 4099 };
+    const remainder = (input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; latestStaffRefund: typeof failedFull | typeof failedPartial | typeof refusedFull | null }) =>
+      staffRefundRemainderCents(refunded, { ...input, platformCommittedCents: 0 });
     expect(uncommittedProviderRefundCents([failed, canceled, succeeded])).toBe(5099);
-    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0 })).toBe(0);
-    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: null, providerUncommittedCents: null, platformCommittedCents: 0 })).toBe(0);
-    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 0, providerUncommittedCents: 4099, platformCommittedCents: 0 })).toBe(4099);
-    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 1000, providerUncommittedCents: 1000, platformCommittedCents: 0 })).toBe(1000);
-    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 4099, providerUncommittedCents: 4099, platformCommittedCents: 0 })).toBe(0);
-    expect(staffRefundRemainderCents({ status: 'paid', amountCents: 4099 }, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0 })).toBe(4099);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: failedFull })).toBe(4099);
+    expect(remainder({ providerCommittedCents: null, providerUncommittedCents: null, latestStaffRefund: failedFull })).toBe(4099);
+    expect(remainder({ providerCommittedCents: 1000, providerUncommittedCents: 1000, latestStaffRefund: { ...failedFull, amountCents: 3099 } })).toBe(1000);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: { ...failedFull, amountCents: 3099 } })).toBe(3099);
+    expect(remainder({ providerCommittedCents: 4099, providerUncommittedCents: 4099, latestStaffRefund: failedFull })).toBe(0);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 1000, latestStaffRefund: failedPartial })).toBe(0);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: refusedFull })).toBe(0);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: null })).toBe(0);
+    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 0, latestStaffRefund: null })).toBe(0);
+    expect(staffRefundRemainderCents({ status: 'paid', amountCents: 4099 }, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0, latestStaffRefund: null })).toBe(4099);
   });
 
   it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {

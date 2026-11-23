@@ -84,16 +84,23 @@ export const uncommittedProviderRefundCents = (refunds: readonly Pick<ProviderRe
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
 
-// A refund that fails after charge.refunded leaves the order marked refunded; only the provider's own list can show the
-// money is still there, through the refunds that failed or were canceled. An order marked refunded without one, such as
-// after a dispute, has nothing left to refund.
+type LatestStaffRefund = Pick<OrderStaffRefund, 'kind' | 'status' | 'providerRefundStatus' | 'amountCents'>;
+
+const failedAfterSubmission = (refund: LatestStaffRefund): boolean =>
+  refund.kind === 'remainder' && refund.status === 'failed' && (refund.providerRefundStatus === 'failed' || refund.providerRefundStatus === 'canceled');
+
+// An order marked refunded is refunded again only when the platform itself saw why the money is still there: its latest
+// staff refund was a full refund the provider failed or canceled after charge.refunded. A failed or canceled refund in
+// the provider's list alone may predate what marked the order refunded, such as a dispute, so it only caps the amount.
 export const staffRefundRemainderCents = (
   order: Pick<Order, 'status' | 'amountCents'>,
-  input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; platformCommittedCents: number },
+  input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; platformCommittedCents: number; latestStaffRefund: LatestStaffRefund | null },
 ): number => {
   const remainder = refundableRemainderCents({ paidCents: order.amountCents, ...input });
   if (order.status !== 'refunded') return remainder;
-  return input.providerCommittedCents === null || input.providerUncommittedCents === null ? 0 : Math.min(remainder, input.providerUncommittedCents);
+  if (input.latestStaffRefund === null || !failedAfterSubmission(input.latestStaffRefund)) return 0;
+  const offered = Math.min(remainder, input.latestStaffRefund.amountCents);
+  return input.providerUncommittedCents === null ? offered : Math.min(offered, input.providerUncommittedCents);
 };
 
 export const staffRefundWaitingConflict = (): AppError =>

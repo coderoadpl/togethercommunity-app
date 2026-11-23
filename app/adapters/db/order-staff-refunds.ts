@@ -90,11 +90,16 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
     const [waiting] = await tx.select().from(orderStaffRefunds)
       .where(and(ofOrder(tenantId, input.orderId), inArray(orderStaffRefunds.status, [...STAFF_REFUND_WAITING_STATUSES])))
       .limit(1);
+    const [latest] = await tx.select().from(orderStaffRefunds)
+      .where(ofOrder(tenantId, input.orderId))
+      .orderBy(desc(orderStaffRefunds.createdAt), desc(orderStaffRefunds.id))
+      .limit(1);
     const decision = input.decide({
       order,
       platformCommittedCents: await committedCents(tx, tenantId, input.orderId),
       sameRequest: sameRequest === undefined ? null : toStaffRefund(sameRequest),
       waiting: waiting === undefined ? null : toStaffRefund(waiting),
+      latest: latest === undefined ? null : toStaffRefund(latest),
       hasLabel: await labelBought(tx, tenantId, input.orderId),
     });
     if (!decision.ok) return decision;

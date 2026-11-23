@@ -142,10 +142,11 @@ workspace's restricted key and what to do about it.
 - FR-3: An order is refundable by staff when: `status` is `paid`, `partially_refunded` or
   `refunded`; `provider` is `stripe`; it has a payment intent id; `amountCents > 0`;
   `cancelReason` is null (a sold-out order is refunded by its own job); and the refundable
-  remainder is above zero. A `refunded` order has a remainder only when the provider's refund
-  list, read at request time, shows refunds that failed or were canceled (a full refund that
-  failed after `charge.refunded`), and at most their sum; one marked refunded without such a
-  refund (for example after a dispute) and one whose list cannot be read have none. Access the webhook
+  remainder is above zero. A `refunded` order has a remainder only when its latest staff refund
+  is a full refund the provider failed or canceled after it was issued (D21): at most that
+  refund's amount and, when the provider's list can be read, at most the sum of the failed or
+  canceled refunds it shows. Any other order marked refunded, for example after a dispute, also
+  one with an older failed partial refund, has none. Access the webhook
   revoked is not restored automatically; the staff alert of a refund that failed after
   submission says to grant it again on the member page.
   Anything else is refused with `conflict` or `validation` and a sentence naming the reason.
@@ -414,3 +415,9 @@ guard against refunding more than the charge.
   complete list; sold-out jobs keep needing the whole list. Why: on cron ticks alone a payment
   with more than 100 refunds could never be read in full, and the staff refund's own refund is
   always among the newest. Revert: "undo D20 → staff refunds need the whole list".
+- D21. An order marked `refunded` is refunded again only when its latest staff refund is a full
+  refund that failed or was canceled at the provider after it was issued; the offer is that
+  refund's amount, capped by the provider's failed and canceled refunds when the list can be
+  read. Why: a failed refund in the provider's list alone cannot tell a failed full refund from
+  a dispute that marked the order refunded after an unrelated failed partial refund. Revert:
+  "undo D21 → any failed provider refund reopens".

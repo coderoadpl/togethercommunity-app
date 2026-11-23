@@ -208,6 +208,8 @@ describe('staged file keys and views', () => {
     expect(keyDownloadObjectOwner('acme', file.objectKey)).toBe('key-1');
     expect(keyDownloadObjectOwner('studio', file.objectKey)).toBeNull();
     expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/product-1/asset-1/a.pdf')).toBeNull();
+    expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/key-files/asset-1/a.pdf')).toBeNull();
+    expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/key-files/key-1/file-1/sub/a.pdf')).toBeNull();
   });
 
   it('shows the fingerprint of an uploaded file and never one of a copy', () => {

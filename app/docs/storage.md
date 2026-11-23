@@ -135,7 +135,9 @@ there and counts as a confirmed delete; any other `404` (an empty or unreadable
 body, a proxy page, a missing bucket `NoSuchBucket`) does not. A read, a digest
 or a copy answered `404` with `NoSuchBucket`, or with a body that cannot be
 read, is a storage error, not a missing object. Removing a file version or deleting a draft product whose file
-object is under `key-files/`, discarding a staged file, and the minute sweep of
+object a key staged (`key-files/<key id>/<file>/<name>`; an owner file of a
+product whose id is `key-files` has one segment less and is not one),
+discarding a staged file, and the minute sweep of
 a staged file record the object's deletion in
 `change_proposal_download_deletions` in the transaction that deletes the file's
 row, before any storage delete, owed by the key whose `key-files/` prefix holds the object,

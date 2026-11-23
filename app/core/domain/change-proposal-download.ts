@@ -349,11 +349,13 @@ export const keyDownloadDestinationForFile = (stagedKey: string, apiKeyId: strin
   return slash < 1 ? null : `${stagedKey.slice(0, at + marker.length)}${fileId}${rest.slice(slash)}`;
 };
 
+/** An owner upload of a product whose id is `key-files` shares the prefix, but has two segments after it, not three. */
 export const keyDownloadObjectOwner = (tenantId: string, objectKey: string): string | null => {
   const prefix = `${tenantId}${KEY_FILES_SEGMENT}`;
   if (!objectKey.startsWith(prefix)) return null;
-  const owner = objectKey.slice(prefix.length).split('/')[0];
-  return owner === undefined || owner.length === 0 ? null : owner;
+  const [owner, fileId, name, ...rest] = objectKey.slice(prefix.length).split('/');
+  return owner === undefined || fileId === undefined || name === undefined || rest.length > 0
+    || owner.length === 0 || fileId.length === 0 || name.length === 0 ? null : owner;
 };
 
 export const keyDownloadStagedFileViewSchema = keyDownloadStagedFileSchema.pick({

@@ -452,6 +452,24 @@ describe('removing staged objects durably', () => {
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
   });
 
+  it('owes nothing for an owner file of a product whose id is key-files, so deleting a large owner file or its draft product commits', async () => {
+    const h = harness();
+    const session: Ctx = { identity: identity(TENANT) };
+    await database.db.insert(products).values({
+      id: 'key-files', tenantId: TENANT, slug: 'key-files', title: 'Imported', type: 'digital_download', description: '', priceCents: 0, currency: 'EUR', createdAt: NOW, everPublished: false,
+    });
+    const ownerFile = (id: string) => ({
+      id, tenantId: TENANT, productId: 'key-files', lineageId: id, fileName: 'video.pdf', contentType: 'application/pdf',
+      sizeBytes: 512 * MIB, storageKey: `${TENANT}/product-downloads/key-files/${id}/video.pdf`, status: 'ready' as const, createdAt: NOW,
+    });
+    await database.db.insert(productDownloadAssets).values([ownerFile('asset-removed'), ownerFile('asset-drafted')]);
+    expect(await deleteProductDownloadAsset(session, 'key-files', 'asset-removed', h.deps)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await deleteProductDraft(session, { productId: 'key-files' }, { ...h.deps, productDrafts: createProductDraftRepository(database.db) }))
+      .toEqual({ ok: true, value: { deleted: true } });
+    expect(await database.db.select().from(productDownloadAssets)).toEqual([]);
+    expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([]);
+  });
+
   it('owes the deletion of a swept staged file in a commit before its delete is sent, so a deletion that fails after the delete leaves no file to attach or propose', async () => {
     const h = harness();
     const staged = await h.stage();

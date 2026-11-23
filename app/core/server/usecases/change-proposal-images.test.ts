@@ -865,7 +865,7 @@ describe('releasing quarantined images', () => {
     expect(h.quarantinedKeys()).toEqual([]);
   });
 
-  it('gives each lock wait and each delete of the sweep, endpoint lookup included, only what is left of its budget', async () => {
+  it('gives each lock wait and each delete of the sweep, endpoint lookup included, only what is left of its stage\'s share of the budget', async () => {
     const h = harness();
     for (const marker of [1, 2, 3, 4]) await h.upload(PNG(marker));
     h.clock.now = '2026-03-08T10:00:01.000Z';
@@ -897,9 +897,35 @@ describe('releasing quarantined images', () => {
     };
     const started = Date.parse(h.clock.now);
     expect(await sweepQuarantinedImages({ ...h.deps, quarantinedImages, storage })).toMatchObject({ ok: true, value: { removed: 2 } });
-    expect(waits).toEqual([9_000, 8_000, 4_000]);
-    expect(deadlines).toEqual([5_000, 4_000]);
+    expect(waits).toEqual([4_000, 3_000]);
+    expect(deadlines).toEqual([3_000, 5_000, 2_000]);
     expect(Date.parse(h.clock.now) - started).toBeLessThanOrEqual(10_000);
+  });
+
+  it('leaves the publication records of one workspace their share of the budget while quarantined deletes of another hang', async () => {
+    const h = harness();
+    const image = { kind: 'product-cover' as const, digest: sha256HexOfBytes(PNG(3)), extension: 'png' as const };
+    const publicKey = `image-assets/${TENANT}/product-cover/${image.digest}.png`;
+    h.objects.objects.set(publicKey, { bytes: PNG(3), contentType: 'image/png' });
+    h.store.imagePublications.push({ tenantId: TENANT, attemptId: 'attempt-crashed', image, startedAt: NOW });
+    for (const marker of [1, 2]) {
+      h.store.releasedImageRows.push({
+        tenantId: NEIGHBOUR, apiKeyId: NEIGHBOUR_KEY_ID, kind: 'product-cover', digest: sha256HexOfBytes(PNG(marker)), extension: 'png', sizeBytes: 10, createdAt: NOW,
+      });
+    }
+    h.clock.now = '2026-03-01T10:11:00.000Z';
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      delete: async (input) => {
+        if (!input.url.includes('/image-asset-quarantine/')) return h.objects.storage.delete(input);
+        h.clock.now = new Date(Date.parse(h.clock.now) + (input.deadlineMs ?? 0)).toISOString();
+        return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+      },
+    };
+
+    expect(await sweepQuarantinedImages({ ...h.deps, storage })).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(h.objects.keysUnder('image-assets/')).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
   });
 
   it('sweeps images never attached past the age bound and every image of a revoked key, keeping attached and young ones', async () => {

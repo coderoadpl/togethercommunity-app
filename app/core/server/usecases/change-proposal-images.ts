@@ -58,7 +58,7 @@ import type {
 } from '../ports.js';
 import { beginCandidateUpload, readCandidateImage, type ImageAssetDeps, type ImageAssetUploadStart } from './image-assets.js';
 import { resolveStorageConfiguration } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStageBudget, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
 
 type ProposedImageFamily = 'catalog' | 'settings';
 
@@ -677,23 +677,29 @@ export const sweepQuarantinedImages = async (
   const limit = QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun;
   const tenants = new Set<string>();
   let removed = 0;
-  for (const tenantId of await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit)) {
-    if (spent(budget)) break;
-    tenants.add(tenantId);
-    removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps, budget);
-  }
   const uploadsBefore = before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs);
-  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit)) {
-    if (spent(budget)) break;
+  const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
+  const releaseTenants = await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit);
+  const uploadTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit);
+  const publicationTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit);
+  const stagesFrom = (lists: ReadonlyArray<readonly string[]>): number => lists.filter((list) => list.length > 0).length;
+  const releases = sweepStageBudget(budget, stagesFrom([releaseTenants, uploadTenants, publicationTenants]));
+  for (const tenantId of releaseTenants) {
+    if (spent(releases)) break;
+    tenants.add(tenantId);
+    removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps, releases);
+  }
+  const uploads = sweepStageBudget(budget, stagesFrom([uploadTenants, publicationTenants]));
+  for (const tenantId of uploadTenants) {
+    if (spent(uploads)) break;
     tenants.add(tenantId);
     try {
-      removed += await sweepUploads(tenantId, uploadsBefore, budget, deps);
+      removed += await sweepUploads(tenantId, uploadsBefore, uploads, deps);
     } catch (cause) {
       logImageFailure(deps, tenantId, 'expired image upload sweep failed', cause);
     }
   }
-  const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
-  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit)) {
+  for (const tenantId of publicationTenants) {
     if (spent(budget)) break;
     tenants.add(tenantId);
     const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);

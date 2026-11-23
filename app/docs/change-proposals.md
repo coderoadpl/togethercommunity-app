@@ -1299,7 +1299,13 @@ dispatch, and the Node ticker, beside them), at most once every 50 seconds per
 server process, independently of the [download file
 sweep](storage.md#download-file-prefixes): each has its own failure and its own
 budget of 10 seconds, and on the cron route both end at the latest 50 seconds
-after the tick started, 10 seconds before the 60-second function limit. A step
+after the tick started, 10 seconds before the 60-second function limit. Within
+its budget the three kinds of work, in this order, quarantined images, upload
+candidates and publication records, each get an equal share of what is left
+among the kinds that have work at the start of the run, and what one kind
+leaves unspent goes to the kinds after it, so deletes that keep hanging in one
+workspace's quarantine cannot keep the sweep from the publication records of
+another. A step
 (a release, an image's removal, a publication record's withdrawal) starts only
 when what is left covers a lock wait of at least 250 milliseconds and 1 second
 for its storage delete; its lock waits get what is left minus that second, and

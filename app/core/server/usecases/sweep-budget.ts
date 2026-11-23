@@ -19,5 +19,15 @@ export const sweepLockWait = (budget: SweepBudget, deletes: number): number | nu
   return wait < SWEEP_MINIMUM_LOCK_WAIT_MS ? null : wait;
 };
 
+/**
+ * The part of what is left that one of `stagesLeft` stages may spend; what it leaves unspent stays for the stages after
+ * it, so a stage whose requests keep hanging cannot take the time of the others.
+ */
+export const sweepStageBudget = (budget: SweepBudget, stagesLeft: number): SweepBudget => {
+  if (!bounded(budget) || stagesLeft < 1) return budget;
+  const reserved = budget() - budget() / stagesLeft;
+  return () => budget() - reserved;
+};
+
 export const sweepDeleteDeadline = (budget: SweepBudget, deleteMs: number, deletesAfter: number): number =>
   Math.max(1, Math.min(deleteMs, Math.floor(budget() - deletesAfter * SWEEP_MINIMUM_DELETE_MS)));

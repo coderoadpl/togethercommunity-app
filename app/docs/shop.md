@@ -1733,6 +1733,21 @@ the platform-recorded refunds, or the paid amount for a `refunded` order. The
 shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
+In Studio the order detail shows a **Payment** card with the paid, refunded and
+remaining amounts (refunds not yet confirmed by Stripe are counted and named),
+a **Refund history** with each refund's amount, requester, time, staff-only
+reason and state, and **Ship anyway** in the delivery card of an order a refund
+took off the packing list. The **Refund** action appears only to an owner or
+admin with a verified e-mail outside impersonation, for an order the preview
+can refund; while another refund of the order waits for Stripe it stays
+disabled with the reason. The dialog refunds the whole remainder by default;
+**Partial amount** takes a decimal amount in the order's currency and names the
+remainder when the amount is refused. The stock option is hidden when nothing
+can return to stock (a test-mode order). One request key is generated per
+opening of the dialog and reused on a retry, so a double click or a repeated
+request returns the same refund. The orders list shows the state of the latest
+unsettled staff refund next to the order status.
+
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview <orderId>
 pnpm --silent run cli --tenant acme order refund <orderId> --yes

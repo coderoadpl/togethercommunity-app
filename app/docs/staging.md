@@ -40,6 +40,15 @@ would run every migration again from `0000`. Recreate staging as an empty
 database on the protected staging branch. See
 [migration journal](deployment-environments.md#migration-journal).
 
+If a push to `staging` gets no build from the hosting provider, the commit
+shows no build status and the `staging-smoke` run fails its `deployment-alias`
+check because the alias still serves the previous commit. Nothing in the
+repository can start a staging deployment and agents hold no hosting access, so
+the owner redeploys the `staging` branch in the hosting provider's dashboard.
+Afterwards the smoke is re-run for that commit with
+`gh workflow run staging-smoke.yml --ref staging -f expected_sha=<commit>`.
+A later push to `staging` also deploys and makes the stale commit moot.
+
 ## Promotion to Production
 
 Production promotions are pull requests from `staging` itself to `main` while

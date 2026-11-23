@@ -73,7 +73,7 @@ import type {
   QuarantinedImageRepository,
   ShopManagementKeyRepository,
 } from '../ports.js';
-import { applyLockedProposal, changeProposalGroupReferences, previewChangeProposal } from './change-proposal-apply.js';
+import { applyLockedProposal, changeProposalGroupReferences, lockGroupCourses, previewChangeProposal } from './change-proposal-apply.js';
 import {
   checkApprovalFiles,
   checkProposedFiles,
@@ -277,6 +277,7 @@ export const submitGroupedChangeProposal = async (
     if (!changeProposalGroupOpen(inside.group, inside.items, readAt)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt));
     if (!sameItemIds(inside.items, earlier)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt, GROUP_CHANGED_MESSAGE));
     const references = changeProposalGroupReferences();
+    await lockGroupCourses(tenantId, [...earlier, { operation: operationName, input: prepared.value.input }], scope);
     for (const [index, item] of earlier.entries()) {
       const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
       if (outcome.status === 'aborted') return err(outcome.error);
@@ -521,6 +522,7 @@ export const approveChangeProposalGroup = async (
     const afterLock = deps.clock.nowIso();
     if (locked.items.some((item) => item.status !== 'pending')) return err(changeProposalGroupConflict(locked.group, locked.items, afterLock));
     if (shownItemsDiffer(locked.items, itemIds)) return err(itemsChangedSinceShown(locked.items));
+    await lockGroupCourses(tenantId, locked.items, scope);
     const references = changeProposalGroupReferences();
     const halted = appError('conflict', 'An item of the group did not apply');
     const halt: { current: GroupHalt | null } = { current: null };

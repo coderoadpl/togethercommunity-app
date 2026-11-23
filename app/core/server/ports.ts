@@ -284,7 +284,7 @@ export interface ProductRepository {
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
     checkoutConsentDefinitionIds?: string[],
-  ): Promise<Product | null | 'course_unavailable'>;
+  ): Promise<Product | null | 'course_unavailable' | 'busy'>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
 }
@@ -3188,7 +3188,7 @@ export interface ChangeProposalTargetLabelReader {
 
 interface ChangeProposalAccessTitles {
   courses: ReadonlyArray<{ id: string; title: string }>;
-  modules: ReadonlyArray<{ id: string; title: string }>;
+  modules: ReadonlyArray<{ id: string; title: string; courseIds: readonly string[] }>;
   lessons: ReadonlyArray<{ id: string; title: string }>;
 }
 

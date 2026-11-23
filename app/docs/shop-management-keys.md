@@ -470,10 +470,14 @@ key gets `403 forbidden` there and changes nothing. A propose-mode key with
 `shop:catalog:write` gets `202` with a receipt: the request becomes a
 `product.set-access` [change proposal](change-proposals.md#product-access) that
 only the owner can approve. A direct-mode key still sets what a new product
-grants through `accessItems` on `POST /api/m2m/shop/products`, and every path
-that writes access items runs the same check: each course exists in the
-workspace and is not archived, each module belongs to its item's course, and
-each lesson sits in a module of its item's course. No shop route serves a
+grants through `accessItems` on `POST /api/m2m/shop/products`. Product
+creation, the owner's editor and `product.set-access` run the same check: each
+course exists in the workspace and is not archived, each module belongs to its
+item's course, and each lesson sits in a module of its item's course. The
+content import, the legacy importer and lesson deletion write access items
+without it ([Product access](change-proposals.md#product-access)). A
+`product.set-access` proposal may not repeat an item or an id, nor exclude a
+module that is attached to more than one course. No shop route serves a
 course, module or lesson; a key sees their ids in the access items of the
 products it lists.
 

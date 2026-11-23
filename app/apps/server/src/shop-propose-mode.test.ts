@@ -873,7 +873,7 @@ describe('the owner approval route', () => {
     const shown = await sessionRequest(ownerToken, 'GET', API_PATHS.changeProposal.replace(':id', proposal.id));
     const view = envelope(changeProposalShowOutputSchema).parse(await shown.json()).data.proposal;
     expect(view.effect).toEqual({ accessItems: { before, after: accessItems } });
-    expect(view.accessLabels).toEqual({ courses: [{ id: ACCESS_COURSE, title: 'Field course' }], modules: [], lessons: [] });
+    expect(view.accessLabels).toEqual({ courses: [{ id: ACCESS_COURSE, title: 'Field course' }], modules: [], lessons: [], excludedModulesInOtherCourses: [] });
     const receipt = await (await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id))).text();
     expect(receipt).not.toContain('Field course');
     expect((await approved(proposal.id)).status).toBe('applied');

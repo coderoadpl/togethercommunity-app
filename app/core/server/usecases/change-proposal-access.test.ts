@@ -115,6 +115,7 @@ const harness = () => {
   state.modules.push(
     module('module-basics', 'Basics', ['course-intro'], ['lesson-welcome']),
     module('module-deep', 'Deep dive', ['course-advanced'], ['lesson-deep']),
+    module('module-shared', 'Shared extras', ['course-intro', 'course-advanced'], []),
     module('module-neighbour', 'Neighbour module', ['course-neighbour'], ['lesson-neighbour'], NEIGHBOUR),
   );
   state.lessons.push(lesson('lesson-welcome', 'Welcome'), lesson('lesson-deep', 'Going deeper'), lesson('lesson-neighbour', 'Neighbour lesson', NEIGHBOUR));
@@ -152,6 +153,24 @@ const accessOf = (h: Harness, id: string) => h.state.products.find((candidate) =
 
 const ADVANCED = [{ level: 'course' as const, courseId: 'course-advanced' }];
 
+const setStored = (h: Harness, id: string, accessItems: Product['accessItems']) => {
+  const stored = h.state.products.find((candidate) => candidate.id === id);
+  if (stored === undefined) throw new Error(`No product ${id}`);
+  stored.accessItems = accessItems;
+};
+
+const attachModule = (h: Harness, moduleId: string, courseId: string) => {
+  const found = h.state.modules.find((candidate) => candidate.id === moduleId);
+  if (found === undefined) throw new Error(`No module ${moduleId}`);
+  found.courseIds = [...found.courseIds, courseId];
+};
+
+const SHARED_EXCLUSION_REFUSAL = {
+  code: 'validation',
+  message: 'Product access excludedModuleIds: this module cannot be excluded through a proposal',
+  details: { formErrors: [], fieldErrors: { excludedModuleIds: ['This module cannot be excluded through a proposal'] } },
+};
+
 describe('proposing what a product grants', () => {
   it('stores the access lists before and after, changes nothing live and locks the courses before the product', async () => {
     const h = harness();
@@ -177,9 +196,28 @@ describe('proposing what a product grants', () => {
     ['the list the product already grants', { id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro' }] }, 'validation'],
     ['checkout consent definitions', { id: 'product-guide', accessItems: ADVANCED, checkoutConsentDefinitionIds: ['consent-1'] }, 'validation'],
     ['access for a physical product', { id: 'product-mug', accessItems: ADVANCED }, 'validation'],
+    ['a repeated item', { id: 'product-guide', accessItems: [...ADVANCED, { level: 'course', courseId: 'course-advanced', excludedModuleIds: [] }] }, 'validation'],
+    ['a repeated id inside an item', { id: 'product-guide', accessItems: [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-deep', 'lesson-deep'] }] }, 'validation'],
   ])('refuses %s and stores nothing', async (_label, input, code) => {
     const h = harness();
     expect(await h.submit(input)).toMatchObject({ ok: false, error: { code } });
+    expect(h.store.proposals).toEqual([]);
+  });
+
+  it('refuses the list the product already grants in another order as a change of nothing', async () => {
+    const h = harness();
+    setStored(h, 'product-guide', [{ level: 'course', courseId: 'course-intro' }, { level: 'modules', courseId: 'course-advanced', moduleIds: ['module-deep', 'module-shared'] }]);
+    expect(await h.submit({
+      id: 'product-guide',
+      accessItems: [{ level: 'modules', courseId: 'course-advanced', moduleIds: ['module-shared', 'module-deep'] }, { level: 'course', courseId: 'course-intro', excludedModuleIds: [] }],
+    })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Invalid product access payload: it would change nothing the owner can see' } });
+    expect(h.store.proposals).toEqual([]);
+  });
+
+  it('refuses to exclude a module that another course also uses, names nothing about that course and stores nothing', async () => {
+    const h = harness();
+    const result = await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared'] }] });
+    expect(result).toEqual({ ok: false, error: SHARED_EXCLUSION_REFUSAL });
     expect(h.store.proposals).toEqual([]);
   });
 
@@ -198,10 +236,36 @@ describe('approving what a product grants', () => {
   it('applies exactly the stored list as the approving owner', async () => {
     const h = harness();
     const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: ADVANCED }));
+    const targetLocksBefore = h.transaction.locks.length;
+    const courseLocksBefore = h.transaction.courseLocks.length;
 
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied', appliedResourceId: 'product-guide' } });
     expect(accessOf(h, 'product-guide')).toEqual(ADVANCED);
     expect(h.state.entityVersionAuthors).toEqual([OWNER]);
+    expect(h.transaction.courseLocks.slice(courseLocksBefore)).toEqual([{ courseIds: ['course-advanced'], targetLocksBefore }]);
+    expect(h.transaction.locks.slice(targetLocksBefore)).toEqual([{ kind: 'product', id: 'product-guide' }]);
+  });
+
+  it('applies the list as sent when the stored list only changed its order since the proposal', async () => {
+    const h = harness();
+    const before = [{ level: 'course' as const, courseId: 'course-intro' }, { level: 'lessons' as const, courseId: 'course-advanced', lessonIds: ['lesson-deep'] }];
+    setStored(h, 'product-guide', before);
+    const sent = [{ level: 'modules' as const, courseId: 'course-advanced', moduleIds: ['module-shared', 'module-deep'] }];
+    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: sent }));
+    setStored(h, 'product-guide', before.toReversed());
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(accessOf(h, 'product-guide')).toEqual(sent);
+  });
+
+  it('fails with the validation error and applies nothing once an excluded module is attached to another course', async () => {
+    const h = harness();
+    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-basics'] }] }));
+    attachModule(h, 'module-basics', 'course-advanced');
+
+    const approved = await approveChangeProposal(ownerSession, { id }, h.deps);
+    expect(approved).toMatchObject({ ok: true, value: { status: 'failed', failureCode: 'validation', failureMessage: SHARED_EXCLUSION_REFUSAL.message } });
+    expect(accessOf(h, 'product-guide')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
   });
 
   it('is stale and applies nothing once the list moved', async () => {
@@ -240,8 +304,21 @@ describe('the owner view of a proposed access change', () => {
       courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-advanced', title: 'Advanced course' }],
       modules: [{ id: 'module-basics', title: 'Basics' }],
       lessons: [{ id: 'lesson-deep', title: null }],
+      excludedModulesInOtherCourses: [],
     });
     expect(JSON.stringify(unwrap(await getOwnChangeProposal(keyCtx(), { id }, h.deps)))).not.toMatch(/Intro course|Basics|accessLabels/u);
+  });
+
+  it('marks every excluded module of both lists that another course also uses', async () => {
+    const h = harness();
+    setStored(h, 'product-guide', [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared', 'module-basics'] }]);
+    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-advanced', excludedModuleIds: ['module-deep'] }] }));
+    expect(changeProposalOwnerDetailSchema.parse(unwrap(await getChangeProposal(ownerSession, { id }, h.deps))).accessLabels?.excludedModulesInOtherCourses)
+      .toEqual(['module-shared']);
+
+    attachModule(h, 'module-deep', 'course-intro');
+    expect(changeProposalOwnerDetailSchema.parse(unwrap(await getChangeProposal(ownerSession, { id }, h.deps))).accessLabels?.excludedModulesInOtherCourses)
+      .toEqual(['module-shared', 'module-deep']);
   });
 
   it('carries no access labels for any other operation', async () => {
@@ -266,9 +343,29 @@ describe('what a product grants in a group', () => {
       target: { kind: 'product', id: reference }, effect: { accessItems: { before: [], after: ADVANCED } },
     });
     const items = unwrap(await getChangeProposalGroup(ownerSession, { id: groupId }, h.deps)).items;
-    expect(items.find((item) => item.id === access)?.accessLabels).toEqual({ courses: [{ id: 'course-advanced', title: 'Advanced course' }], modules: [], lessons: [] });
+    expect(items.find((item) => item.id === access)?.accessLabels).toEqual({
+      courses: [{ id: 'course-advanced', title: 'Advanced course' }], modules: [], lessons: [], excludedModulesInOtherCourses: [],
+    });
 
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [created, access] }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(h.state.products.find((candidate) => candidate.slug === 'starter-pack')?.accessItems).toEqual(ADVANCED);
+  });
+
+  it('locks the courses of every item once, in id order, before any item locks a product', async () => {
+    const h = harness();
+    const groupId = unwrap(await createChangeProposalGroup(keyCtx(), { title: 'Launch' }, h.deps)).id;
+    const submit = async (operation: 'product.create' | 'product.update' | 'product.set-access', input: unknown) =>
+      unwrap(await submitGroupedChangeProposal(keyCtx(), { groupId, operation, input }, h.deps)).items.at(-1)?.id ?? '';
+    const updated = await submit('product.update', { id: 'product-guide', title: 'Pocket guide' });
+    const created = await submit('product.create', { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR' });
+    const access = await submit('product.set-access', {
+      id: changeProposalReference(created), accessItems: [{ level: 'course', courseId: 'course-intro' }, { level: 'course', courseId: 'course-advanced' }],
+    });
+    const targetLocksBefore = h.transaction.locks.length;
+    const courseLocksBefore = h.transaction.courseLocks.length;
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [updated, created, access] }, h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.transaction.courseLocks[courseLocksBefore]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore });
   });
 });

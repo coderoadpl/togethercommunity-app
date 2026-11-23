@@ -25,6 +25,7 @@ import {
   createChangeProposalGroup,
   discardKeyDownloadFile,
   getChangeProposal,
+  getChangeProposalGroup,
   shopManagementKeyCapabilities,
   submitChangeProposal,
   submitGroupedChangeProposal,
@@ -301,6 +302,28 @@ const changeProposalOwnerDetailSchema = changeProposalOwnerViewSchema.extend({
   events: z.array(changeProposalEventViewSchema),
 }).strict();
 
+const changeProposalGroupStatusSchema = z.enum(['open', 'expired', 'applied', 'rejected', 'withdrawn', 'stale', 'failed']);
+
+const groupProposerSchema = z.object({
+  keyId: z.string(),
+  keyName: z.string().nullable(),
+  issuerUserId: z.string().nullable(),
+  issuerEmail: z.string().nullable(),
+  issuerIsVerifiedOwner: z.boolean(),
+  issuerIsFormerTeamMember: z.boolean(),
+  keyState: changeProposalKeyStateSchema,
+}).strict();
+
+const changeProposalGroupOwnerViewSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: changeProposalGroupStatusSchema,
+  proposedBy: groupProposerSchema,
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  items: z.array(changeProposalOwnerDetailSchema),
+}).strict();
+
 const providerDiagnosticCodeSchema = z.enum([
   'storage.available',
   'email.available',
@@ -558,9 +581,46 @@ describe('release 8141fd15 reading what product access proposals store', () => {
     const h = harness();
     const view = await getChangeProposal(ownerSession, { id: await proposeAccess(h) }, h.deps);
     if (!view.ok) throw new Error(view.error.message);
-    expect(view.value.accessLabels).toEqual({ courses: [{ id: COURSE, title: 'Rollback course' }], modules: [], lessons: [] });
+    expect(view.value.accessLabels).toEqual({ courses: [{ id: COURSE, title: 'Rollback course' }], modules: [], lessons: [], excludedModulesInOtherCourses: [] });
     expect(changeProposalOwnerDetailSchema.safeParse(view.value).success).toBe(false);
     const withoutTheNewKey = Object.fromEntries(Object.entries(view.value).filter(([field]) => field !== 'accessLabels'));
     expect(changeProposalOwnerDetailSchema.parse(withoutTheNewKey).operation).toBe('product.set-access');
+
+    const updated = await submitChangeProposal(keyCtx, { operation: 'product.update', input: { id: WORKBOOK, title: 'Workbook, second edition' } }, h.deps);
+    if (!updated.ok) throw new Error(updated.error.message);
+    const other = await getChangeProposal(ownerSession, { id: updated.value.id }, h.deps);
+    if (!other.ok) throw new Error(other.error.message);
+    expect(changeProposalOwnerDetailSchema.parse(other.value).operation).toBe('product.update');
+  });
+
+  it('fails, as a client of that release, on a group view whose item names courses, and reads a group view without one', async () => {
+    const h = harness();
+    const groupView = async (items: ReadonlyArray<{ operation: 'product.create' | 'product.set-access'; input: (created: string) => unknown }>) => {
+      const group = await createChangeProposalGroup(keyCtx, { title: 'Access group' }, h.deps);
+      if (!group.ok) throw new Error(group.error.message);
+      let created = '';
+      for (const item of items) {
+        const submitted = await submitGroupedChangeProposal(keyCtx, { groupId: group.value.id, operation: item.operation, input: item.input(created) }, h.deps);
+        if (!submitted.ok) throw new Error(submitted.error.message);
+        created = submitted.value.items.at(-1)?.id ?? '';
+      }
+      const view = await getChangeProposalGroup(ownerSession, { id: group.value.id }, h.deps);
+      if (!view.ok) throw new Error(view.error.message);
+      return view.value;
+    };
+    const create = (slug: string) => ({
+      operation: 'product.create' as const, input: () => ({ title: 'Group pack', slug, type: 'course', priceCents: 0, currency: 'EUR' }),
+    });
+
+    const plain = await groupView([create('plain-pack')]);
+    expect(changeProposalGroupOwnerViewSchema.parse(plain).items.map((item) => item.operation)).toEqual(['product.create']);
+
+    const withAccess = await groupView([create('access-pack'), {
+      operation: 'product.set-access', input: (created) => ({ id: `$proposal:${created}`, accessItems: [{ level: 'course', courseId: COURSE }] }),
+    }]);
+    expect(changeProposalGroupOwnerViewSchema.safeParse(withAccess).success).toBe(false);
+    const itemsWithoutTheNewKey = withAccess.items.map((item) => Object.fromEntries(Object.entries(item).filter(([field]) => field !== 'accessLabels')));
+    expect(changeProposalGroupOwnerViewSchema.parse({ ...withAccess, items: itemsWithoutTheNewKey }).items.map((item) => item.operation))
+      .toEqual(['product.create', 'product.set-access']);
   });
 });

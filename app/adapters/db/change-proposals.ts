@@ -475,10 +475,12 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
   accessTitles: async (tenantId, ids) => ({
     courses: ids.courseIds.length === 0 ? [] : await db.select({ id: courses.id, title: courses.name }).from(courses)
       .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, ids.courseIds))),
-    modules: ids.moduleIds.length === 0 ? [] : (await db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
+    modules: ids.moduleIds.length === 0 ? [] : (await db.select({
+      id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title, courseIds: courseModules.courseIds,
+    })
       .from(courseModules)
       .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, ids.moduleIds))))
-      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title) })),
+      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title), courseIds: row.courseIds })),
     lessons: ids.lessonIds.length === 0 ? [] : await db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
       .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids.lessonIds))),
   }),

@@ -731,25 +731,41 @@ scopes on every shop key.
   consent definitions), and only an owner approval applies it, running the
   use-case with the approving owner's session after locking the courses the
   list names and then the product, and ending `stale` when the product's list
-  moved after the proposal. A direct-mode key can still set what a new product
-  grants with `accessItems` on product creation. Every use-case that writes
-  access items (the owner's editor, product creation for a session, a key or a
-  `product.create` proposal, and `product.set-access`) runs one check,
+  no longer grants what it granted when the proposal was made. A direct-mode
+  key can still set what a new product grants with `accessItems` on product
+  creation. The owner's editor, product creation for a session, a key or a
+  `product.create` proposal, and `product.set-access` run one check,
   `checkProductAccessItems`: every course exists in the workspace and is not
   archived, every module is attached to its item's course, and every lesson
   sits in a chapter of a module attached to its item's course; a course,
-  module or lesson of another workspace is never found. A module or lesson item
-  opens that module or lesson wherever it is used, so the check only keeps the
-  course shown next to it true. The content import writes the access items it
-  resolves by key without this check. Access is resolved from a product's
-  current list on every request, so an applied change reaches everyone who
-  already holds the product at once. No shop route serves a course, module or
-  lesson to a key, and the receipt carries only the ids the key sent; a
-  refusal of the check names no title but tells the key whether an id it sent
-  is an active course of the workspace and whether a module or lesson belongs
-  to the course it named. The course, module and lesson titles of the owner
-  view (`accessLabels`) are read at read time for display only and never take
-  part in a decision. See [Product access](change-proposals.md#product-access).
+  module or lesson of another workspace is never found. The owner's editor
+  skips the check when the list it is sent grants the same as the stored one,
+  so a consent save does not fail on a stored list the check would refuse,
+  unless that list names an archived course. A module
+  or lesson item opens that module or lesson wherever it is used, so the check
+  only keeps the course shown next to it true. It is a point-in-time check:
+  the write locks only the courses, and a later module detach or lesson move
+  is not prevented. The content import, the legacy importer and lesson
+  deletion write access items without this check; an import key can thereby
+  change, with no owner approval, what members with active grants to an
+  unpublished product it imported open. Excluded modules are pooled across
+  courses in access resolution (`buildAccessLookup`): a module that every
+  `course` item for one course excludes stays closed in every course the
+  member holds in full unless a `modules` item names it, even when another
+  product grants that course in full. A `product.set-access` proposal therefore may not exclude a module
+  attached to more than one course (`400 validation` at submit, `failed` at
+  approval); the owner's editor and product creation still may. Access is
+  resolved from a product's current list on every request, so an applied
+  change reaches everyone who already holds the product at once. No shop route
+  serves a course, module or lesson to a key, and the receipt carries only the
+  ids the key sent; a refusal of the check names no title but tells the key
+  whether an id it sent is an active course of the workspace and whether a
+  module or lesson belongs to the course it named, and the refusal of an
+  excluded module tells it only that the module is attached to more than one
+  course. The course, module and lesson titles of the owner view
+  (`accessLabels`) and its `excludedModulesInOtherCourses` are read at read
+  time for display only and never take part in a decision. See
+  [Product access](change-proposals.md#product-access).
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

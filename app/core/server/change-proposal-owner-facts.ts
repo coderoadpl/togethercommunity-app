@@ -4,6 +4,7 @@ import {
   changeProposalKeyState,
   changeProposalStagedFileId,
   isChangeProposalReference,
+  type AccessItem,
   type ChangeProposal,
   type ChangeProposalAccessLabels,
   type ChangeProposalOwnerFacts,
@@ -85,10 +86,21 @@ const distinct = (values: ReadonlyArray<string | null>): string[] =>
 
 type AccessSubject = Pick<ChangeProposal, 'operation' | 'effect'>;
 
-const accessIdsOf = (proposal: AccessSubject) => {
+type AccessModuleTitles = Awaited<ReturnType<ChangeProposalTargetLabelReader['accessTitles']>>['modules'];
+
+const accessItemsOf = (proposal: AccessSubject): AccessItem[] | null => {
   const change = changeProposalAccessChange(proposal);
-  return change === null ? null : accessItemIds([...change.before, ...change.after]);
+  return change === null ? null : [...change.before, ...change.after];
 };
+
+const accessIdsOf = (proposal: AccessSubject) => {
+  const items = accessItemsOf(proposal);
+  return items === null ? null : accessItemIds(items);
+};
+
+const excludedModulesInOtherCourses = (items: readonly AccessItem[], modules: AccessModuleTitles): string[] =>
+  distinct(items.flatMap((item) => item.level !== 'course' ? [] : (item.excludedModuleIds ?? []).filter((moduleId) =>
+    modules.find((module) => module.id === moduleId)?.courseIds.some((courseId) => courseId !== item.courseId) === true)));
 
 /** Read at view time for display only; the titles never take part in a decision. */
 const readAccessLabels = async (
@@ -105,12 +117,14 @@ const readAccessLabels = async (
   const labelled = (ids: readonly string[], found: ReadonlyArray<{ id: string; title: string }>) =>
     ids.map((id) => ({ id, title: found.find((entry) => entry.id === id)?.title ?? null }));
   return (proposal) => {
-    const ids = accessIdsOf(proposal);
-    if (ids === null || titles === null) return null;
+    const items = accessItemsOf(proposal);
+    if (items === null || titles === null) return null;
+    const ids = accessItemIds(items);
     return {
       courses: labelled(ids.courseIds, titles.courses),
       modules: labelled(ids.moduleIds, titles.modules),
       lessons: labelled(ids.lessonIds, titles.lessons),
+      excludedModulesInOtherCourses: excludedModulesInOtherCourses(items, titles.modules),
     };
   };
 };

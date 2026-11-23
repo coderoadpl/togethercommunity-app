@@ -1059,3 +1059,85 @@ describe('archived product access', () => {
     expect(await updateProductAccessItems(ctx, input, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });
+
+describe('saving a product whose stored access list the check refuses', () => {
+  const ctx = { identity: identity('t1', 'owner') };
+  const inCourse = (id: string, courseId: string, lessonId: string): CourseModule => ({
+    ...module(id, 't1', [courseId]),
+    chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: [{ id: `${id}-content`, lessonId, name: 'Lesson' }] }],
+  });
+  const stored = [
+    { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l2'] },
+    { level: 'course' as const, courseId: 'c2' },
+  ];
+  const setup = () => {
+    const products = [{ ...product('p1', 't1'), accessItems: structuredClone(stored) }];
+    const d = deps({
+      courses: [course('c1', 't1'), course('c2', 't1')],
+      modules: [inCourse('m1', 'c1', 'l1'), inCourse('m2', 'c2', 'l2')],
+      lessons: [lesson('l1', 't1'), lesson('l2', 't1')],
+      products,
+      ids: ['snapshot-1', 'snapshot-2'],
+    });
+    return { products, d };
+  };
+
+  it('saves the checkout consents with the stored list resent, in any order and with repeats', async () => {
+    const { products, d } = setup();
+    const resent = [{ level: 'course' as const, courseId: 'c2' }, { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l2', 'l2'] }];
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: resent, checkoutConsentDefinitionIds: ['consent-1'] }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual(resent);
+  });
+
+  it('refuses the list itself until the item is corrected', async () => {
+    const { products, d } = setup();
+    const refusal = { ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } };
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: [...stored, { level: 'course', courseId: 'c1' }] }, d)).toMatchObject(refusal);
+    expect(products[0]?.accessItems).toEqual(stored);
+    const corrected = [{ level: 'lessons' as const, courseId: 'c2', lessonIds: ['l2'] }, { level: 'course' as const, courseId: 'c2' }];
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: corrected }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual(corrected);
+  });
+});
+
+describe('excluding a module that other courses also use', () => {
+  const ctx = { identity: identity('t1', 'owner') };
+  const excluding = [{ level: 'course' as const, courseId: 'c1', excludedModuleIds: ['m-shared'] }];
+  const setup = () => {
+    const products = [product('p1', 't1')];
+    const d = deps({ courses: [course('c1', 't1'), course('c2', 't1')], modules: [module('m-shared', 't1', ['c1', 'c2'])], products });
+    return { products, d };
+  };
+
+  it('stays open to the owner editor', async () => {
+    const { products, d } = setup();
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: excluding }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual(excluding);
+  });
+
+  it('is refused for a proposal with an answer on excludedModuleIds that names nothing else', async () => {
+    const { products, d } = setup();
+    const result = await updateProductAccessItems(ctx, { id: 'p1', accessItems: excluding }, d, { proposed: true });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Product access excludedModuleIds: this module cannot be excluded through a proposal',
+        details: { formErrors: [], fieldErrors: { excludedModuleIds: ['This module cannot be excluded through a proposal'] } },
+      },
+    });
+    expect(products[0]?.accessItems).toEqual([]);
+  });
+});
+
+describe('a product access write that the database aborts', () => {
+  it('answers busy and changes nothing', async () => {
+    const ctx = { identity: identity('t1', 'owner') };
+    const d = deps({ courses: [course('c1', 't1')], products: [product('p1', 't1')] });
+    d.products.updateAccessItems = async () => 'busy';
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: [{ level: 'course', courseId: 'c1' }] }, d)).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'The product is busy; nothing was changed, retry the request', details: { retryAfterSeconds: 1 } },
+    });
+  });
+});

@@ -366,6 +366,8 @@ describe('shop catalog routes with a shop management key', () => {
       [SHOP_CATALOG_ROUTES.deleteProductDraft.path, { productId: product.id, cascade: true }],
       [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [], checkoutConsentDefinitionIds: [] }],
       [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'course', courseId: 'any', moduleIds: ['any'] }] }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'course', courseId: 'any' }, { level: 'course', courseId: 'any' }] }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'modules', courseId: 'any', moduleIds: ['m', 'm'] }] }],
     ] as const) {
       const response = await keyed(secret, 'POST', path, body);
       expect(response.status, path).toBe(400);

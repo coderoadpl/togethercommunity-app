@@ -70,6 +70,24 @@ const lockTarget = async (operation: PreparedChangeProposalOperation, tenantId: 
   await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
 };
 
+const coursesLockedBy = (item: Pick<ChangeProposal, 'operation' | 'input'>): readonly string[] => {
+  const known = registeredChangeProposalOperation(item.operation);
+  if (known === null) return [];
+  const prepared = CHANGE_PROPOSAL_OPERATIONS[known].prepare(item.input);
+  return prepared.ok ? prepared.value.lockedCourseIds : [];
+};
+
+// The live write of a product's access items locks its courses before the product row; taking the courses of every
+// item before any item locks a product keeps that order, so a group never waits on it in a cycle.
+export const lockGroupCourses = async (
+  tenantId: string,
+  items: ReadonlyArray<Pick<ChangeProposal, 'operation' | 'input'>>,
+  scope: ChangeProposalTransactionScope,
+): Promise<void> => {
+  const courseIds = [...new Set(items.flatMap(coursesLockedBy))].sort();
+  if (courseIds.length > 0) await scope.repositories.targets.lockCourses(tenantId, courseIds);
+};
+
 export const previewChangeProposal = async (
   operation: PreparedChangeProposalOperation,
   tenantId: string,
@@ -131,14 +149,14 @@ export const applyLockedProposal = async (
   const at = deps.clock.nowIso();
   if (changeProposalExpired(proposal, at)) return { status: 'expired', at };
   const before = storedForm(operation, itemContext, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
-  if (changeProposalTouchedFieldsMoved(proposal.effect, before)) return { status: 'stale', note: null, at };
+  if (changeProposalTouchedFieldsMoved(proposal.effect, before, operation.comparable)) return { status: 'stale', note: null, at };
   const effectChanged = appError('conflict', 'The live state changed since this change was proposed');
   const applied = await scope.savepoint(async (nested) => {
     const ran = await operation.run(ctx, nested, deps, { keyId: proposal.proposedByKeyId });
     if (!ran.ok) return ran;
     recordCreated(itemContext, ran.value);
     const after = storedForm(operation, itemContext, await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id));
-    return sameChangeProposalEffect(operation.effect(before, after), proposal.effect) ? ran : err(effectChanged);
+    return sameChangeProposalEffect(operation.effect(before, after), proposal.effect, operation.comparable) ? ran : err(effectChanged);
   });
   if (applied.ok) return { status: 'applied', appliedResourceId: applied.value, at };
   if (applied.error === effectChanged) return { status: 'stale', note: null, at };

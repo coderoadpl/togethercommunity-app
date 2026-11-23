@@ -8,7 +8,7 @@ import { Isolated, Sentence } from './proposal-text.js';
 
 type Labels = ChangeProposalAccessLabels | undefined;
 
-type NamedKind = keyof ChangeProposalAccessLabels;
+type NamedKind = keyof Pick<ChangeProposalAccessLabels, 'courses' | 'modules' | 'lessons'>;
 
 const AccessName = ({ kind, id, labels }: { kind: NamedKind; id: string; labels: Labels }) => {
   const t = useTranslations().changeProposals;

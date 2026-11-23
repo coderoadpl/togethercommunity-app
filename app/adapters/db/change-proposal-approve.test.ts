@@ -39,7 +39,7 @@ import { createChangeProposalTransaction } from './change-proposal-transaction.j
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
 import { createKeyDownloadFileRepository } from './key-download-files.js';
-import { createTenantSecretRepository } from './repositories.js';
+import { createProductRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
@@ -435,6 +435,39 @@ describe('approving what a product grants over the database', () => {
     expect(await approve(moved)).toMatchObject({ ok: true, value: { status: 'stale', appliedResourceId: null } });
     expect(await accessOf('workbook')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
   });
+
+  it('fails with the validation error and applies nothing once a course of the list is archived after the proposal', async () => {
+    const id = await submit('product.set-access', { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
+    await database.db.update(courses).set({ archivedAt: NOW }).where(eq(courses.id, 'course-advanced'));
+    try {
+      expect(await approve(id)).toMatchObject({
+        ok: true, value: { status: 'failed', failureCode: 'validation', failureMessage: 'Product access items may only reference existing, active courses' },
+      });
+    } finally {
+      await database.db.update(courses).set({ archivedAt: null }).where(eq(courses.id, 'course-advanced'));
+    }
+    expect(await accessOf('draft')).toEqual([]);
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:apply_failed']);
+  });
+
+  it('answers busy from the live access write that the database picks as a deadlock victim, and writes nothing', async () => {
+    const other = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await other.query('begin');
+      await other.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'draft']);
+      const write = createProductRepository(database.db).updateAccessItems(TENANT, 'draft', [{ level: 'course', courseId: 'course-intro' }]);
+      await untilLockWaiters(observer, 1);
+      const crossing = other.query('select id from courses where tenant_id = $1 and id = $2 for update', [TENANT, 'course-intro']);
+      expect(await write).toBe('busy');
+      await crossing;
+      await other.query('rollback');
+    } finally {
+      await other.end();
+      await observer.end();
+    }
+    expect(await accessOf('draft')).toEqual([]);
+  }, 30_000);
 
   it('refuses at submission a lesson that sits in no module of the named course and stores nothing', async () => {
     const result = await submitChangeProposal(keyCtx, {

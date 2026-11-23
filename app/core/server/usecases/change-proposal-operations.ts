@@ -2,6 +2,7 @@ import {
   CHANGE_PROPOSAL_INPUT_SCHEMAS,
   changeProposalInputSchema,
   changeProposalSubmitCapability,
+  comparableAccessList,
   err,
   ok,
   shopSettingsSchema,
@@ -64,6 +65,7 @@ export interface PreparedChangeProposalOperation {
   /** Orders the snapshot's unordered collections by the id each entry finally carries, so it must run after any id replacement. */
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
+  comparable: ChangeProposalComparable;
   /** Set when a run that changes nothing can only mean the input names what the snapshot does not show. */
   refusesEmptyEffect: boolean;
   invalidInputMessage: string;
@@ -90,6 +92,7 @@ interface ChangeProposalOperationDefinition<I> {
   unorderedById?: readonly string[];
   refusesEmptyEffect?: true;
   effect?(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
+  comparable?: ChangeProposalComparable;
   run(ctx: Ctx, input: I, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
 }
 
@@ -106,24 +109,42 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, neste
   return Object.fromEntries(Object.entries(nested).sort(([left], [right]) => left.localeCompare(right)));
 });
 
-const changeProposalFieldDiff = (before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect => {
+export type ChangeProposalComparable = (field: string, value: unknown) => unknown;
+
+const asStored: ChangeProposalComparable = (_field, value) => value;
+
+const fieldDiff = (comparable: ChangeProposalComparable) => (before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect => {
   const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
   const effect: ChangeProposalEffect = {};
   for (const field of fields) {
     const was = before[field] ?? null;
     const becomes = after[field] ?? null;
-    if (canonical(was) !== canonical(becomes)) effect[field] = { before: was, after: becomes };
+    if (canonical(comparable(field, was)) !== canonical(comparable(field, becomes))) effect[field] = { before: was, after: becomes };
   }
   return effect;
 };
 
-export const sameChangeProposalEffect = (left: ChangeProposalEffect, right: ChangeProposalEffect): boolean =>
-  canonical(left) === canonical(right);
+const changeProposalFieldDiff = fieldDiff(asStored);
 
-export const changeProposalTouchedFieldsMoved = (stored: ChangeProposalEffect, before: ChangeProposalSnapshot): boolean =>
+const comparableEffect = (effect: ChangeProposalEffect, comparable: ChangeProposalComparable) =>
+  Object.fromEntries(Object.entries(effect).map(([field, change]) => [field, 'delta' in change
+    ? change
+    : { before: comparable(field, change.before), after: comparable(field, change.after) }]));
+
+export const sameChangeProposalEffect = (
+  left: ChangeProposalEffect,
+  right: ChangeProposalEffect,
+  comparable: ChangeProposalComparable = asStored,
+): boolean => canonical(comparableEffect(left, comparable)) === canonical(comparableEffect(right, comparable));
+
+export const changeProposalTouchedFieldsMoved = (
+  stored: ChangeProposalEffect,
+  before: ChangeProposalSnapshot,
+  comparable: ChangeProposalComparable = asStored,
+): boolean =>
   Object.entries(stored).some(([field, change]) => 'delta' in change
     ? typeof before[field] !== 'number'
-    : canonical(before[field] ?? null) !== canonical(change.before));
+    : canonical(comparable(field, before[field] ?? null)) !== canonical(comparable(field, change.before)));
 
 const stockDeltaEffect = (before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect => {
   const { onHand: onHandBefore, ...restBefore } = before;
@@ -335,7 +356,8 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
     lockedCourseIds: definition.lockedCourseIds?.(input) ?? [],
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
     canonical: (snapshot) => sortedById(snapshot, definition.unorderedById ?? []),
-    effect: definition.effect ?? changeProposalFieldDiff,
+    effect: definition.effect ?? fieldDiff(definition.comparable ?? asStored),
+    comparable: definition.comparable ?? asStored,
     refusesEmptyEffect: definition.refusesEmptyEffect === true,
     invalidInputMessage: definition.invalidInputMessage,
     run: (ctx, scope, deps, proposer) => definition.run(ctx, input, scope, deps, proposer),
@@ -496,6 +518,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     target: (input) => ({ kind: 'product', id: input.id }),
     lockedCourseIds: (input) => input.accessItems.map((item) => item.courseId),
     snapshot: (repositories, tenantId, input) => productAccessSnapshot(repositories, tenantId, input.id),
+    comparable: (field, value) => field === 'accessItems' ? comparableAccessList(value) : value,
     refusesEmptyEffect: true,
     run: async (ctx, input, scope, deps) => idOnSuccess(input.id, await updateProductAccessItems(ctx, { id: input.id, accessItems: input.accessItems }, {
       products: scope.repositories.products,
@@ -504,7 +527,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
       lessons: scope.repositories.lessons,
       ids: deps.ids,
       clock: deps.clock,
-    })),
+    }, { proposed: true })),
   }),
   'download.add': entry('download.add', {
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.add'],

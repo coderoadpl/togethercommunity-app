@@ -212,6 +212,19 @@ export const updateLastViewed = async (
 
   const course = await deps.courses.findById(scope.value.tenantId, parsed.data.courseId);
   if (!course) return err(notFound(`No course "${parsed.data.courseId}" in this tenant`));
+  const { lessonId, moduleId } = parsed.data;
+  if (ctx.identity.staffRole === null && lessonId !== undefined) {
+    const [courses, modules, lookup] = await Promise.all([
+      deps.courses.list(scope.value.tenantId),
+      deps.modules.list(scope.value.tenantId),
+      resolveMemberAccessLookup(scope.value, deps),
+    ]);
+    const opensHere = lessonLocations(lessonId, courses, modules).some((location) =>
+      location.course.id === course.id &&
+      (moduleId === undefined || location.moduleId === moduleId) &&
+      isLessonAccessibleByLookup(lookup, { courseId: course.id, moduleId: location.moduleId, lessonId }));
+    if (!opensHere) return err(forbidden('This lesson is not accessible in this course'));
+  }
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),

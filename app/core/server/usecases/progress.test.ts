@@ -659,6 +659,24 @@ describe('updateLastViewed', () => {
     });
   });
 
+  it('refuses a lesson that the named course does not open for the member and writes nothing', async () => {
+    const store = makeProgressStore();
+    const other = course('c-other', 't1');
+    const shared: CourseModule = { ...m1, courseIds: ['c1', 'c2'] };
+    const d = deps(
+      store.repo, [activeGrant],
+      [{ ...pCourse, accessItems: [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }, { level: 'course', courseId: 'c2' }] }],
+      [c1, course('c2', 't1'), other], [shared],
+    );
+    expect(await updateLastViewed(ctx({}), { courseId: 'c-other', lessonId: 'l1' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l1', moduleId: 'm1' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateLastViewed(ctx({}), { courseId: 'c2', lessonId: 'l1', moduleId: 'm-other' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.rows).toHaveLength(0);
+
+    expect(await updateLastViewed(ctx({}), { courseId: 'c2', lessonId: 'l1', moduleId: 'm1', chapterId: 'ch1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c2', lastViewedLessonId: 'l1' } });
+    expect(await updateLastViewed(ctx({ staffRole: 'admin' }), { courseId: 'c1', lessonId: 'l1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+  });
+
   it('is not found for an unknown course', async () => {
     const store = makeProgressStore();
     const result = await updateLastViewed(ctx({}), { courseId: 'nope' }, deps(store.repo));

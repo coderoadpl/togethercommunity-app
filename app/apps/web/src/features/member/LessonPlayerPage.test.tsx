@@ -2108,6 +2108,28 @@ describe('LessonPlayerPage', () => {
     );
   });
 
+  it.each([
+    ['is missing from the course tree', structureOf([entry('l2', 'Advanced Variables')])],
+    ['is locked in the course tree', structureOf([entry('l1', 'Intro to Variables', false), entry('l2', 'Advanced Variables')])],
+  ])('records no last-viewed position when the lesson %s', async (_label, tree) => {
+    let lastViewedCalls = 0;
+    server.use(
+      okLesson(allBlocks),
+      okStructureOf(tree),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', () => {
+        lastViewedCalls += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await screen.findByTestId('mark-complete');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lastViewedCalls).toBe(0);
+  });
+
   it.each([403, 500])('keeps background %s failures off the lesson page', async (status) => {
     let lastViewedCalls = 0;
     server.use(

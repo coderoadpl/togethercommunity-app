@@ -1827,6 +1827,12 @@ progress is recorded follows a course that opens the lesson for them:
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is
   another one, each read again from the server;
+- the last-viewed position (`POST /api/student/progress/last-viewed` and the
+  CLI's `student last-viewed`) is recorded for a member only when the named
+  course opens the lesson for them, in the named module when one is sent;
+  otherwise it is refused as `forbidden` and nothing is written. Staff, and a
+  request without a lesson, are not checked. The lesson player sends it only
+  when the lesson is an open row of the course tree it shows;
 - a lesson hit on the search page links only into a course of the member's
   navigation whose tree opens the lesson. While course trees are still
   loading, a hit that no loaded tree opens is held back; once loading ends, a

@@ -342,11 +342,17 @@ export const LessonPlayerPage = ({
       structure.isPending
     ) return;
     lastViewedRef.current = lessonId;
+    if (
+      location === null ||
+      location.module === null ||
+      location.chapter === null ||
+      location.row?.accessStatus !== 'fully-accessible'
+    ) return;
     lastViewed.mutate({
       courseId,
       lessonId,
-      moduleId: location?.module?.id,
-      chapterId: location?.chapter?.id,
+      moduleId: location.module.id,
+      chapterId: location.chapter.id,
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 

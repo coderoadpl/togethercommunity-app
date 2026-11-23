@@ -311,10 +311,9 @@ describe('staff refund dialog', () => {
   });
 
   it.each([
-    { code: 'conflict', status: 409, details: undefined, shown: messages.errorConflict },
     { code: 'rate_limited', status: 429, details: undefined, shown: messages.errorRateLimited },
     { code: 'validation', status: 400, details: { remainderCents: 10000 }, shown: messages.amountTooHigh({ remainder: pln(10000) }) },
-  ])('shows a $code refusal inside the dialog', async ({ code, status, details, shown }) => {
+  ])('shows a $code refusal inside the dialog and lets the refund be sent again', async ({ code, status, details, shown }) => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code, message: 'Refused', ...(details === undefined ? {} : { details }) } }, { status }));
     await renderDetail();
@@ -322,6 +321,26 @@ describe('staff refund dialog', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(shown);
     expect(screen.getByRole('dialog')).toBeVisible();
+    expect(within(dialog).getByTestId('staff-refund-submit')).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: en.common.cancel })).toBeEnabled();
+  });
+
+  it('shows a conflict refusal with the refund button disabled and a close button until the request changes', async () => {
+    const calls = serve({ order: paidOrder });
+    acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Refused' } }, { status: 409 }));
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(messages.errorConflict);
+    expect(within(dialog).getByTestId('staff-refund-submit')).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: en.common.close })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: en.common.cancel })).toBeNull();
+
+    await userEvent.click(within(dialog).getByTestId('staff-refund-partial'));
+    expect(within(dialog).queryByTestId('staff-refund-error')).toBeNull();
+    expect(within(dialog).getByTestId('staff-refund-submit')).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: en.common.cancel })).toBeEnabled();
+    expect(calls.refunds).toHaveLength(1);
   });
 
   it('keeps the refusal outside the scrolling content, right above the buttons', async () => {

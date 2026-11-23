@@ -179,10 +179,11 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
     if (!pending) onClose();
   };
 
+  const conflict = refund.isError && errorCodeOf(refund.error) === 'conflict';
   const submitError = (() => {
     if (!refund.isError) return null;
+    if (conflict) return messages.errorConflict;
     const code = errorCodeOf(refund.error);
-    if (code === 'conflict') return messages.errorConflict;
     if (code === 'rate_limited') return messages.errorRateLimited;
     if (code === 'validation') {
       const detail = remainderDetailSchema.safeParse(errorDetailsOf(refund.error));
@@ -240,14 +241,14 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       <Typography variant="body2">{messages.footerFinal}</Typography>
     </RefundFinalNote>
   );
-  const cancelButton = <Button key="cancel" variant="outlined" onClick={close} disabled={pending}>{t.common.cancel}</Button>;
+  const cancelButton = <Button key="cancel" variant="outlined" onClick={close} disabled={pending}>{conflict ? t.common.close : t.common.cancel}</Button>;
   const submitButton = (
     <Button
       key="submit"
       variant="contained"
       color="primary"
       startIcon={<RefundIcon />}
-      disabled={pending || (partial && !check.ok)}
+      disabled={pending || conflict || (partial && !check.ok)}
       onClick={submit}
       data-testid="staff-refund-submit"
     >

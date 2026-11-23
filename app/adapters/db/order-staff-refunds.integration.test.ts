@@ -757,6 +757,23 @@ describe('staff refunds against a real database', () => {
     expect(json).toMatchObject([{ id: 'order-1', refundedCents: 1000 }, { id: 'order-2', refundedCents: 4099 }, { id: 'order-3', refundedCents: 0 }]);
   });
 
+  it('adds the amount of a sold-out refund the provider accepted to the export before charge.refunded marks the order refunded', async () => {
+    const h = harness();
+    await insertOrder('order-sold-out', { cancelReason: 'out_of_stock', createdAt: minutes(-1) });
+    await database.db.insert(orderRefundJobs).values({
+      ...outOfStockRefundJob(
+        { id: 'order-sold-out', tenantId: 'tenant-a', amountCents: 4099, currency: 'PLN', providerObjectIds: { paymentIntent: 'pi_order-sold-out' } },
+        { id: 'sold-out-job', now: start },
+      ),
+      status: 'succeeded',
+    });
+    const exportDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
+
+    expect(await h.deps.staffRefunds.committedCentsByOrder('tenant-a', ['order-1', 'order-sold-out'])).toStrictEqual(new Map([['order-sold-out', 4099]]));
+    const json: unknown = JSON.parse(unwrap(await exportOrders(staff('tenant-a'), { format: 'json' }, exportDeps)).content);
+    expect(json).toMatchObject([{ id: 'order-1', refundedCents: 0 }, { id: 'order-sold-out', status: 'paid', refundedCents: 4099 }]);
+  });
+
   it('sums committed staff refunds for more order ids than one statement can bind', async () => {
     const h = harness();
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));

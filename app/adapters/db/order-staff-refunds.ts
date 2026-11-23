@@ -127,15 +127,24 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
   committedCentsByOrder: async (tenantId, orderIds) => {
     const committed = new Map<string, number>();
     for (let start = 0; start < orderIds.length; start += ORDER_ID_CHUNK_SIZE) {
-      const rows = await db.select({ orderId: orderStaffRefunds.orderId, cents: sql<string>`sum(${orderStaffRefunds.amountCents})` })
+      const chunk = orderIds.slice(start, start + ORDER_ID_CHUNK_SIZE);
+      const staff = await db.select({ orderId: orderStaffRefunds.orderId, cents: sql<string>`sum(${orderStaffRefunds.amountCents})` })
         .from(orderStaffRefunds)
         .where(and(
           eq(orderStaffRefunds.tenantId, tenantId),
-          inArray(orderStaffRefunds.orderId, orderIds.slice(start, start + ORDER_ID_CHUNK_SIZE)),
+          inArray(orderStaffRefunds.orderId, chunk),
           inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]),
         ))
         .groupBy(orderStaffRefunds.orderId);
-      for (const row of rows) committed.set(row.orderId, Number(row.cents));
+      const soldOut = await db.select({ orderId: orderRefundJobs.orderId, cents: sql<string>`sum(${orderRefundJobs.amountCents})` })
+        .from(orderRefundJobs)
+        .where(and(
+          eq(orderRefundJobs.tenantId, tenantId),
+          inArray(orderRefundJobs.orderId, chunk),
+          inArray(orderRefundJobs.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]),
+        ))
+        .groupBy(orderRefundJobs.orderId);
+      for (const row of [...staff, ...soldOut]) committed.set(row.orderId, (committed.get(row.orderId) ?? 0) + Number(row.cents));
     }
     return committed;
   },

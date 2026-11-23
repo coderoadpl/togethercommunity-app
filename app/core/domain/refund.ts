@@ -58,14 +58,28 @@ const refundFailureDetailsSchema = z.object({
   refundFailure: refundFailureKindSchema,
   providerCode: z.string().nullable(),
   outcomeUnknown: z.boolean().default(false),
+  providerServerError: z.boolean().default(false),
 });
 
-export const refundFailure = (kind: RefundFailureKind, message: string, providerCode: string | null = null, outcomeUnknown = false): AppError =>
-  appError(REFUND_FAILURE_ERROR_CODE[kind], message, { refundFailure: kind, providerCode, outcomeUnknown });
+export const refundFailure = (
+  kind: RefundFailureKind,
+  message: string,
+  providerCode: string | null = null,
+  outcomeUnknown = false,
+  providerServerError = false,
+): AppError =>
+  appError(REFUND_FAILURE_ERROR_CODE[kind], message, { refundFailure: kind, providerCode, outcomeUnknown, providerServerError });
 
-export const refundFailureOf = (error: AppError): { kind: RefundFailureKind; providerCode: string | null; outcomeUnknown: boolean } | null => {
+export const refundFailureOf = (error: AppError): {
+  kind: RefundFailureKind;
+  providerCode: string | null;
+  outcomeUnknown: boolean;
+  providerServerError: boolean;
+} | null => {
   const parsed = refundFailureDetailsSchema.safeParse(error.details);
-  return parsed.success ? { kind: parsed.data.refundFailure, providerCode: parsed.data.providerCode, outcomeUnknown: parsed.data.outcomeUnknown } : null;
+  return parsed.success
+    ? { kind: parsed.data.refundFailure, providerCode: parsed.data.providerCode, outcomeUnknown: parsed.data.outcomeUnknown, providerServerError: parsed.data.providerServerError }
+    : null;
 };
 
 const stripeApiFailureSchema = z.object({
@@ -102,5 +116,6 @@ export const stripeRefundFailure = (prefix: string, cause: unknown): AppError =>
   const parsed = stripeApiFailureSchema.safeParse(cause);
   const failure = parsed.success ? parsed.data : {};
   const reason = failure.message ?? (cause instanceof Error ? cause.message : String(cause));
-  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null, stripeOutcomeUnknown(failure));
+  const serverError = failure.statusCode !== undefined && failure.statusCode >= 500;
+  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null, stripeOutcomeUnknown(failure), serverError);
 };

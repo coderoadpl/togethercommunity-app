@@ -27,6 +27,7 @@ export const orderStaffRefunds = pgTable('order_staff_refunds', {
   keyGeneration: integer('key_generation').notNull().default(0),
   permissionBlockedAt: timestamp('permission_blocked_at', { withTimezone: true, mode: 'string' }),
   transientFailureStreak: integer('transient_failure_streak').notNull().default(0),
+  createOutcomeUnknown: boolean('create_outcome_unknown').notNull().default(false),
   requestedByUserId: text('requested_by_user_id').notNull(),
   requestedByEmail: text('requested_by_email').notNull(),
   note: text('note'),

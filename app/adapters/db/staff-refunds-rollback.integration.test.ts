@@ -1,5 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { refundFailure, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
 import { createStaffRefund, dispatchOrderRefundJobs, shipRefundedOrderAnyway, type Ctx } from '#core/server/index.js';
@@ -9,7 +10,9 @@ import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenan
 import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
 import { createRefundJobQueue } from './refund-job-queue.js';
 import { createMemberRepository, createOrderRepository } from './repositories.js';
-import { emailOutbox, members, orderChanges, orderRefundJobs, orders, orderStaffRefunds, products, productStock, stockEvents, tenants, user } from './schema.js';
+import {
+  emailOutbox, members, notifications, orderChanges, orderRefundJobs, orders, orderStaffRefunds, products, productStock, stockEvents, tenantAuditEvents, tenants, user,
+} from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 // Literal copies of what the release on production (8141fd15) parses; they must not follow this release's schemas.
@@ -26,23 +29,69 @@ const previousEmailPayloadKinds = [
   'support-message', 'thread-reply', 'verify-email', 'welcome-sign-in',
 ] as const;
 const previousRefundAlerts = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission', 'unconfirmed'] as const;
-const previousRefundAlertKeys = ['alert', 'amountCents', 'currency', 'error', 'kind', 'language', 'orderId', 'orderUrl', 'tenantName'] as const;
+const previousCurrencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter uppercase code');
+const previousRefundAlertSchema = z.object({ kind: z.literal('order-refund-alert'), language: z.string(), tenantName: z.string(), alert: z.enum(previousRefundAlerts), orderId: z.string().min(1), amountCents: z.number().int().nonnegative(), currency: previousCurrencySchema, error: z.string(), orderUrl: z.string().url() });
+// The m2m-transactional member of the previous discriminated union and its render branch; a stored m2m-transactional row reaches only these.
+const previousM2mFields = {
+  subject: z.string().trim().min(1).max(200),
+  html: z.string().min(1).max(1_000_000).optional(),
+  text: z.string().min(1).max(500_000).optional(),
+  replyTo: z.string().email().optional(),
+};
+const previousM2mPayloadSchema = z.object({
+  kind: z.literal('m2m-transactional'),
+  subject: previousM2mFields.subject,
+  html: previousM2mFields.html,
+  text: previousM2mFields.text,
+  replyTo: previousM2mFields.replyTo,
+}).strict();
+const previousEmailMessageSchema = z.object({ subject: z.string().min(1), html: z.string().min(1), text: z.string().min(1) });
+const previousTextFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
+const previousHtmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;',
+})[character] ?? character)}</pre>`;
+const previousRenderM2m = (raw: unknown) => {
+  const parsed = previousM2mPayloadSchema.safeParse(raw);
+  if (!parsed.success) return parsed;
+  const value = parsed.data;
+  if (value.html === undefined && value.text === undefined) return previousEmailMessageSchema.safeParse({});
+  return previousEmailMessageSchema.safeParse({
+    subject: value.subject,
+    html: value.html ?? previousHtmlFromText(value.text ?? ''),
+    text: value.text ?? previousTextFromHtml(value.html ?? ''),
+  });
+};
 // The tables holding this test's rows, in the order the previous release's demo and smoke reseed wipes them; its list has no order_staff_refunds.
 const previousReseedWipeOrder = ['order_refund_jobs', 'stock_events', 'product_stock', 'order_changes', 'email_outbox', 'orders'] as const;
 
 const listed = (values: readonly string[], value: unknown): boolean => values.some((candidate) => candidate === value);
 
-const previousRefundAlertParses = (payload: unknown): boolean => {
-  if (typeof payload !== 'object' || payload === null) return false;
-  const entries = new Map(Object.entries(payload));
-  const amountCents = entries.get('amountCents');
-  return previousRefundAlertKeys.every((key) => entries.has(key))
-    && entries.get('kind') === 'order-refund-alert'
-    && listed(previousRefundAlerts, entries.get('alert'))
-    && typeof amountCents === 'number' && Number.isInteger(amountCents) && amountCents >= 0
-    && /^[A-Z]{3}$/.test(String(entries.get('currency')))
-    && ['language', 'tenantName', 'error', 'orderId'].every((key) => typeof entries.get(key) === 'string')
-    && URL.canParse(String(entries.get('orderUrl')));
+// What the previous Sent e-mails reader keeps of a row: kinds outside its union are dropped after the page is fetched.
+const previousRenders = (row: { kind: string; payload: unknown }): boolean =>
+  row.kind === 'm2m-transactional' ? previousRenderM2m(row.payload).success : listed(previousEmailPayloadKinds, row.kind);
+
+// The previous transactional Sent page: limit + 1 rows newest first, unrenderable rows dropped, the cursor taken from what is left.
+const previousSentPage = async (tenantId: string, limit: number, cursor: { createdAt: string; key: string } | undefined) => {
+  const filters = [eq(emailOutbox.tenantId, tenantId)];
+  if (cursor !== undefined) {
+    filters.push(or(
+      lt(emailOutbox.createdAt, cursor.createdAt),
+      and(eq(emailOutbox.createdAt, cursor.createdAt), sql`(${'transactional:'} || ${emailOutbox.id}) < ${cursor.key}`),
+    ) ?? sql`false`);
+  }
+  const rows = await database.db.select().from(emailOutbox)
+    .where(and(...filters))
+    .orderBy(desc(emailOutbox.createdAt), desc(emailOutbox.id))
+    .limit(limit + 1);
+  const kept = rows.filter(previousRenders);
+  const sends = kept.slice(0, limit);
+  const lastSend = sends.at(-1);
+  return {
+    ids: sends.map((send) => send.id),
+    nextCursor: kept.length > limit && lastSend !== undefined
+      ? { createdAt: new Date(lastSend.createdAt).toISOString(), key: `transactional:${lastSend.id}` }
+      : undefined,
+  };
 };
 
 const previousSoldOutOwnRefund = (job: { orderId: string; reason: 'out_of_stock'; providerRefundId: string | null }, refund: ProviderRefund): boolean =>
@@ -135,13 +184,34 @@ describe('rows written by staff refunds, read by the previous release', () => {
     expect(rows).toContainEqual({ type: 'returned', reference: { orderId: 'order-full', reason: 'staff_refund' } });
   });
 
-  it('queues staff alerts the previous release renders and buyer e-mails only it fails to render, as the PRD accepts', async () => {
-    const rows = await database.db.select({ kind: emailOutbox.kind, payload: emailOutbox.payload }).from(emailOutbox);
-    const unknownToPrevious = rows.filter((row) => !listed(previousEmailPayloadKinds, row.kind));
-    expect(unknownToPrevious.map((row) => row.kind).toSorted()).toStrictEqual(['order-refund-issued', 'order-refund-issued']);
+  it('queues staff alerts and buyer notices the previous release parses and renders', async () => {
+    const rows = await database.db.select({ id: emailOutbox.id, kind: emailOutbox.kind, payload: emailOutbox.payload }).from(emailOutbox);
+    expect(rows.filter((row) => !listed(previousEmailPayloadKinds, row.kind))).toStrictEqual([]);
     const alerts = rows.filter((row) => row.kind === 'order-refund-alert');
     expect(alerts).toHaveLength(1);
-    for (const alert of alerts) expect(previousRefundAlertParses(alert.payload)).toBe(true);
+    for (const alert of alerts) expect(previousRefundAlertSchema.safeParse(alert.payload).success).toBe(true);
+    const notices = rows.filter((row) => row.id.startsWith('order-refund-issued:'));
+    expect(notices.map((row) => row.kind)).toStrictEqual(['m2m-transactional', 'm2m-transactional']);
+    for (const notice of notices) expect(previousRenderM2m(notice.payload)).toMatchObject({ success: true, data: { subject: expect.stringContaining('Acme') } });
+  });
+
+  it('lets the previous Sent e-mails list page past the buyer notices to every older e-mail', async () => {
+    const all = await database.db.select({ id: emailOutbox.id }).from(emailOutbox).where(eq(emailOutbox.tenantId, 'tenant-a'));
+    expect(all.length).toBeGreaterThan(2);
+    const seen: string[] = [];
+    let cursor: { createdAt: string; key: string } | undefined;
+    for (let page = 0; page < all.length + 1; page += 1) {
+      const result = await previousSentPage('tenant-a', 1, cursor);
+      seen.push(...result.ids);
+      cursor = result.nextCursor;
+      if (cursor === undefined) break;
+    }
+    expect(seen.toSorted()).toStrictEqual(all.map((row) => row.id).toSorted());
+  });
+
+  it('writes no audit event and no notification', async () => {
+    expect(await database.db.select().from(tenantAuditEvents)).toStrictEqual([]);
+    expect(await database.db.select().from(notifications)).toStrictEqual([]);
   });
 
   it('logs each staff refund change on the order feed with the columns the previous release reads', async () => {

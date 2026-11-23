@@ -93,7 +93,8 @@ describe('staff refund rules', () => {
   it('names why an order cannot be refunded', () => {
     expect(staffRefundOrderBlocker(paidOrder)).toBeNull();
     expect(staffRefundOrderBlocker({ ...paidOrder, status: 'partially_refunded' })).toBeNull();
-    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'refunded' })).toMatchObject({ code: 'conflict' });
+    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'refunded' })).toBeNull();
+    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'pending' })).toMatchObject({ code: 'conflict' });
     expect(staffRefundOrderBlocker({ ...paidOrder, cancelReason: 'out_of_stock' })).toMatchObject({ code: 'conflict' });
     expect(staffRefundOrderBlocker({ ...paidOrder, provider: 'simulated' })).toMatchObject({ code: 'validation' });
     expect(staffRefundOrderBlocker({ ...paidOrder, providerObjectIds: { checkoutSession: 'cs_1' } })).toMatchObject({ code: 'validation' });

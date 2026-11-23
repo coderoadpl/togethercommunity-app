@@ -1,6 +1,6 @@
 {
-  "hash": "55d72e19d7e0b0ae3a14252c91fa4b02032599fe39e515fa53f80f6e98122ab6",
-  "shortId": "55d72e19d7e0",
+  "hash": "c88464e340bcf0e0b8618faad2606c1d05b9a2ef07f2217908d40635079a0496",
+  "shortId": "c88464e340bc",
   "schema": {
     "constraints": [
       {
@@ -6608,6 +6608,14 @@
             "name": "transient_failure_streak",
             "notNull": true,
             "type": "integer"
+          },
+          {
+            "default": "false",
+            "generated": "",
+            "identity": "",
+            "name": "create_outcome_unknown",
+            "notNull": true,
+            "type": "boolean"
           },
           {
             "default": "false",

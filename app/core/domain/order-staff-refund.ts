@@ -45,6 +45,7 @@ export const orderStaffRefundSchema = z.object({
   keyGeneration: z.number().int().nonnegative(),
   permissionBlockedAt: z.string().datetime().nullable(),
   transientFailureStreak: z.number().int().nonnegative(),
+  createOutcomeUnknown: z.boolean(),
   requestedByUserId: z.string().min(1),
   requestedByEmail: z.string().min(1),
   note: staffRefundNoteSchema.nullable(),
@@ -81,16 +82,25 @@ export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefu
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
 
+// A refund that fails after charge.refunded leaves the order marked refunded; only the provider's own list can show the money is still there.
+export const staffRefundRemainderCents = (
+  order: Pick<Order, 'status' | 'amountCents'>,
+  input: { providerCommittedCents: number | null; platformCommittedCents: number },
+): number =>
+  order.status === 'refunded' && input.providerCommittedCents === null
+    ? 0
+    : refundableRemainderCents({ paidCents: order.amountCents, ...input });
+
 export const staffRefundWaitingConflict = (): AppError =>
   appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', { waitingRefund: true });
 
-const STAFF_REFUNDABLE_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded'];
+const STAFF_REFUNDABLE_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded', 'refunded'];
 
 type RefundableOrder = Pick<Order, 'status' | 'provider' | 'providerObjectIds' | 'amountCents' | 'cancelReason'>;
 
 export const staffRefundOrderBlocker = (order: RefundableOrder): AppError | null => {
   if (order.cancelReason != null) return appError('conflict', 'The order was cancelled because its goods sold out and is refunded by its own refund job');
-  if (!STAFF_REFUNDABLE_STATUSES.includes(order.status)) return appError('conflict', `The order is ${order.status}; only paid or partially refunded orders can be refunded`);
+  if (!STAFF_REFUNDABLE_STATUSES.includes(order.status)) return appError('conflict', `The order is ${order.status}; only paid or refunded orders can be refunded`);
   if (order.provider !== 'stripe') return validation('The order was not paid through the payment provider and cannot be refunded here');
   if ((order.providerObjectIds['paymentIntent'] ?? '') === '') return validation('The order has no payment to refund');
   if (order.amountCents <= 0) return validation('The order was free; there is nothing to refund');
@@ -295,6 +305,7 @@ export const newOrderStaffRefund = (input: {
   keyGeneration: 0,
   permissionBlockedAt: null,
   transientFailureStreak: 0,
+  createOutcomeUnknown: false,
   requestedByUserId: input.requestedByUserId,
   requestedByEmail: input.requestedByEmail,
   note: input.note === null || input.note.trim() === '' ? null : input.note.trim(),

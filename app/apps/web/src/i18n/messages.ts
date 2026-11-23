@@ -3499,7 +3499,6 @@ export interface Messages {
       orderOutOfStock: string;
       orderRefundAlert: string;
       orderSoldOutRefund: string;
-      orderRefundIssued: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

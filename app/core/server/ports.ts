@@ -1438,6 +1438,8 @@ export interface AutoInvoiceJobRepository {
 export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
   'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
 
+export type RefundJobUpdate = OrderRefundJobUpdate & Partial<Pick<OrderStaffRefund, 'createOutcomeUnknown'>>;
+
 export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
   findByOrderId(tenantId: string, orderId: string): Promise<OrderRefundJob | null>;
@@ -1461,7 +1463,7 @@ export interface RefundJobQueue {
     tenantId: string,
     jobId: string,
     lease: ClaimedRefundJob['lease'],
-    update: OrderRefundJobUpdate & { now: string },
+    update: RefundJobUpdate & { now: string },
     staffAlerts?: readonly EmailOutboxEnqueueInput[],
     buyerNotice?: EmailOutboxEnqueueInput,
   ): Promise<OrderRefundJob | OrderStaffRefund | null>;

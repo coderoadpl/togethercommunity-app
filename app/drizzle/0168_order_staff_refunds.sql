@@ -20,6 +20,7 @@ CREATE TABLE "order_staff_refunds" (
   "key_generation" integer DEFAULT 0 NOT NULL,
   "permission_blocked_at" timestamp with time zone,
   "transient_failure_streak" integer DEFAULT 0 NOT NULL,
+  "create_outcome_unknown" boolean DEFAULT false NOT NULL,
   "requested_by_user_id" text NOT NULL,
   "requested_by_email" text NOT NULL,
   "note" text CONSTRAINT "order_staff_refunds_note_check" CHECK (char_length("note") <= 500),

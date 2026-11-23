@@ -5,7 +5,7 @@ import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
 import { currencySchema } from './product.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, orderShipped, orderShippedEmailDetailsSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, orderOutOfStockEmail, orderRefundAlertEmail, orderRefundIssuedEmail, orderSoldOutRefundEmail, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, type EmailMessage, orderShipped, orderShippedEmailDetailsSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, orderOutOfStockEmail, orderRefundAlertEmail, orderSoldOutRefundEmail, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -13,9 +13,11 @@ const brandingSchema = z.object({
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
 });
 
+const M2M_SUBJECT_MAX_LENGTH = 200;
+
 const m2mTransactionalMessageFields = {
   to: z.string().email(),
-  subject: z.string().trim().min(1).max(200),
+  subject: z.string().trim().min(1).max(M2M_SUBJECT_MAX_LENGTH),
   html: z.string().min(1).max(1_000_000).optional(),
   text: z.string().min(1).max(500_000).optional(),
   replyTo: z.string().email().optional(),
@@ -36,6 +38,14 @@ const m2mTransactionalPayloadSchema = z.object({
   text: m2mTransactionalMessageFields.text,
   replyTo: m2mTransactionalMessageFields.replyTo,
 }).strict();
+
+// A message rendered when it is queued, stored in the shape every release already renders and lists.
+export const prerenderedTransactionalPayload = (message: EmailMessage): EmailOutboxPayload => m2mTransactionalPayloadSchema.parse({
+  kind: 'm2m-transactional',
+  subject: message.subject.length > M2M_SUBJECT_MAX_LENGTH ? `${message.subject.slice(0, M2M_SUBJECT_MAX_LENGTH - 1)}…` : message.subject,
+  html: message.html,
+  text: message.text,
+});
 
 const redactedAuthEmailKindSchema = z.enum([
   'auth-magic-link',
@@ -71,7 +81,6 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('reputation-alert'), language: z.string(), tenantName: z.string(), status: z.enum(['warn', 'critical']), hardBounceRate: z.number().nonnegative().nullable(), complaintRate: z.number().nonnegative().nullable(), windowStart: z.string().datetime(), windowEnd: z.string().datetime(), dashboardUrl: z.string().url() }),
   z.object({ kind: z.literal('order-out-of-stock'), language: z.string(), tenantName: z.string(), orderId: z.string().min(1), buyerEmail: z.string().email(), amountCents: z.number().int().nonnegative(), currency: currencySchema, productTitles: z.array(z.string()).min(1), orderUrl: z.string().url() }),
   z.object({ kind: z.literal('order-sold-out-refund'), language: z.string(), tenantName: z.string(), orderId: z.string().min(1), amountCents: z.number().int().nonnegative(), currency: currencySchema, productTitles: z.array(z.string()).min(1), shopUrl: z.string().url(), branding: brandingSchema.optional() }),
-  z.object({ kind: z.literal('order-refund-issued'), language: z.string(), tenantName: z.string(), orderId: z.string().min(1), amountCents: z.number().int().positive(), currency: currencySchema, shopUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('order-refund-alert'), language: z.string(), tenantName: z.string(), alert: z.enum(ORDER_REFUND_ALERTS), orderId: z.string().min(1), amountCents: z.number().int().nonnegative(), currency: currencySchema, error: z.string(), orderUrl: z.string().url() }),
   z.object({ kind: z.literal('stock-low'), language: z.string(), tenantName: z.string(), productTitle: z.string(), available: z.number().int().nonnegative(), threshold: z.number().int().nonnegative().nullable(), oversold: z.boolean(), studioUrl: z.string().url() }),
   z.object({ kind: z.literal('marketing-consent-confirmation'), language: z.string().default(DEFAULT_LANGUAGE), wording: z.string().min(1), confirmationUrl: z.string().url() }),
@@ -102,7 +111,6 @@ const AUTH_BEARING_EMAIL_KINDS = {
   'order-out-of-stock': false,
   'order-refund-alert': false,
   'order-sold-out-refund': false,
-  'order-refund-issued': false,
   'stock-low': false,
   'marketing-consent-confirmation': false,
   'm2m-transactional': false,
@@ -215,15 +223,6 @@ const renderParsedEmailOutboxPayload = (value: EmailOutboxPayload) => {
                               amountCents: value.amountCents,
                               currency: value.currency,
                               productTitles: value.productTitles,
-                              shopUrl: value.shopUrl,
-                              ...(value.branding === undefined ? {} : { branding: value.branding }),
-                            })
-                        : value.kind === 'order-refund-issued'
-                          ? orderRefundIssuedEmail(value.language, {
-                              tenantName: value.tenantName,
-                              orderId: value.orderId,
-                              amountCents: value.amountCents,
-                              currency: value.currency,
                               shopUrl: value.shopUrl,
                               ...(value.branding === undefined ? {} : { branding: value.branding }),
                             })

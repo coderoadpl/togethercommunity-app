@@ -103,7 +103,7 @@ export const RefundedOffPackingList: Story = refundStory({
   order: { status: 'refunded', fulfilmentStatus: null },
   staffRefunds: [refund({ kind: 'remainder', amountCents: 24900, restocked: true, removedFromPackingList: true, note: 'The buyer cancelled before shipping' })],
   refunded: 24900,
-  preview: { refundable: false, blockedReason: 'The order is refunded; only paid or partially refunded orders can be refunded', refundedCents: 24900, remainderCents: 0, onPackingList: false },
+  preview: { refundable: false, blockedReason: 'Nothing is left to refund on this order', refundedCents: 24900, remainderCents: 0, onPackingList: false },
 });
 
 export const BlockedPermission: Story = refundStory({

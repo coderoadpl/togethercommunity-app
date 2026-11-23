@@ -9,13 +9,13 @@ import {
   ok,
   orderRefundTotals,
   orderStaffRefundView,
-  refundableRemainderCents,
   resolveStaffRefundAmount,
   resolveStaffRefundChoices,
   shipAnywayBlocker,
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
+  staffRefundRemainderCents,
   staffRefundWaitingConflict,
   validation,
   type AppError,
@@ -100,9 +100,7 @@ export const previewStaffRefund = async (
     deps.invoices?.findCurrentByOrder(tenant.value, order.id) ?? null,
     deps.staffRefunds.listByOrder(tenant.value, order.id),
   ]);
-  const remainderCents = order.status === 'refunded'
-    ? 0
-    : refundableRemainderCents({ paidCents: order.amountCents, providerCommittedCents: provider.cents, platformCommittedCents });
+  const remainderCents = staffRefundRemainderCents(order, { providerCommittedCents: provider.cents, platformCommittedCents });
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
   const blocker = staffRefundOrderBlocker(order)
     ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
@@ -150,8 +148,7 @@ const decideStaffRefund = (
   const blocker = staffRefundOrderBlocker(state.order);
   if (blocker !== null) return err(blocker);
   if (state.waiting !== null) return err(staffRefundWaitingConflict());
-  const remainderCents = refundableRemainderCents({
-    paidCents: state.order.amountCents,
+  const remainderCents = staffRefundRemainderCents(state.order, {
     providerCommittedCents: request.providerCommittedCents,
     platformCommittedCents: state.platformCommittedCents,
   });

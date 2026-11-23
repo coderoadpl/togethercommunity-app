@@ -77,6 +77,7 @@ export const createRefundJobQueue = (db: Db): RefundJobQueue => ({
   release: async (tenantId, jobId, lease, update, staffAlerts = [], buyerNotice) => {
     if (!('source' in lease)) {
       if (buyerNotice !== undefined) throw new Error(`Sold-out refund job ${jobId} cannot carry a buyer notice`);
+      if (update.createOutcomeUnknown !== undefined) throw new Error(`Sold-out refund job ${jobId} does not record a create outcome`);
       return createOrderRefundJobRepository(db).release(tenantId, jobId, lease, update, staffAlerts);
     }
     const { now, ...fields } = update;

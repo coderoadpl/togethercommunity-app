@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { contrastRatio, deriveLightAccent } from './color.js';
-import { emailOutboxPayloadSchema, renderEmailOutboxPayload } from './email-outbox.js';
+import { emailOutboxPayloadSchema, prerenderedTransactionalPayload, renderEmailOutboxPayload } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
 import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedPurchasePersonalizationPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
@@ -797,10 +797,17 @@ describe('order refund issued email', () => {
     expect(orderRefundIssuedEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderRefundIssuedEmail);
   });
 
-  it('round-trips through the outbox payload and refuses a zero amount', () => {
-    const payload = emailOutboxPayloadSchema.parse({ kind: 'order-refund-issued', language: 'pl', ...input });
-    expect(renderEmailOutboxPayload(payload)).toMatchObject({ success: true, data: { subject: expectedTransactionalEmailPl.orderRefundIssuedEmail?.subject } });
-    expect(emailOutboxPayloadSchema.safeParse({ kind: 'order-refund-issued', language: 'pl', ...input, amountCents: 0 }).success).toBe(false);
+  it('is stored rendered, in the shape every release renders, and never under a kind of its own', () => {
+    const message = orderRefundIssuedEmail('pl', input);
+    const payload = prerenderedTransactionalPayload(message);
+    expect(payload).toStrictEqual({ kind: 'm2m-transactional', ...message });
+    expect(renderEmailOutboxPayload(payload)).toMatchObject({ success: true, data: message });
+    expect(emailOutboxPayloadSchema.safeParse({ kind: 'order-refund-issued', language: 'pl', ...input }).success).toBe(false);
+  });
+
+  it('shortens a subject longer than a stored message may carry', () => {
+    const payload = prerenderedTransactionalPayload({ subject: 'x'.repeat(250), html: '<p>x</p>', text: 'x' });
+    expect(payload.kind === 'm2m-transactional' ? payload.subject : '').toBe(`${'x'.repeat(199)}…`);
   });
 });
 

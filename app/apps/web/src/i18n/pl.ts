@@ -3925,7 +3925,6 @@ export const pl: Messages = {
       orderOutOfStock: 'Zamówienie anulowane z braku towaru',
       orderRefundAlert: 'Alert automatycznego zwrotu',
       orderSoldOutRefund: 'Zamówienie anulowane: towar wyprzedany',
-      orderRefundIssued: 'Zwrot zlecony',
       marketingConsentConfirmation: 'Potwierdzenie zgody',
       m2mTransactional: 'Wiadomość transakcyjna z API',
       marketingCampaign: 'Kampania marketingowa',

@@ -98,7 +98,7 @@ describe('Stripe createRefund', () => {
     const result = await h.createRefund({ ...refundInput, amountCents });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false });
+    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false, providerServerError: false });
     expect(h.requests).toHaveLength(0);
   });
 
@@ -158,7 +158,7 @@ describe('Stripe createRefund', () => {
     const h = providerOverFetch(() => stripeError(status, error));
     const result = await h.createRefund(refundInput);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)?.outcomeUnknown).toBe(outcomeUnknown);
+    expect(refundFailureOf(result.error)).toMatchObject({ outcomeUnknown, providerServerError: status >= 500 });
   });
 
   it('maps an unparseable refund response to transient', async () => {

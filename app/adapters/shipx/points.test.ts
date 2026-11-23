@@ -95,6 +95,29 @@ describe('InPost points directory', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  const streamOf = (...chunks: Uint8Array[]): Response => new Response(new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  it('answers unavailable, not a refusal, when a byte inside the collect function name is not valid UTF-8', async () => {
+    const [before = '', after = ''] = fixture('point-operating.json').split('"parcel_collect"');
+    const encoder = new TextEncoder();
+    const damaged = streamOf(encoder.encode(`${before}"parcel_c`), Uint8Array.of(0xff), encoder.encode(`ollect"${after}`));
+    const lookup = await directory(answering(() => damaged)).lookup('KRA14A');
+    expect(lookup).toEqual({ kind: 'unavailable' });
+    expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
+  });
+
+  it('still reads a valid multi-byte character split across two chunks', async () => {
+    const bytes = new TextEncoder().encode(fixture('point-operating.json').replace('Next to the main entrance', 'Next to the café'));
+    const split = bytes.indexOf(0xc3) + 1;
+    const lookup = await directory(answering(() => streamOf(bytes.slice(0, split), bytes.slice(split)))).lookup('KRA14A');
+    expect(lookup).toMatchObject({ kind: 'found', point: { locationDescription: 'Next to the café' } });
+  });
+
   it('stops reading an oversized body at 64 KiB and cancels the rest of the stream', async () => {
     let pulled = 0;
     let cancelled = false;

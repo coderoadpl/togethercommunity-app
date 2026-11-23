@@ -43,7 +43,7 @@ const readBoundedText = async (response: Response): Promise<string | null> => {
   }
   if (response.body === null) return '';
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let size = 0;
   let text = '';
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {

@@ -352,32 +352,37 @@ const readVerified = async (
   return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
 };
 
+/** `etag` is the strong entity tag of the read whose bytes hashed to the digest, null when that read carried none. */
 interface ReusedPublicCopy {
   image: ProposalImageReference;
   sizeBytes: number;
   etag: string | null;
 }
 
+const strongEntityTag = (etag: string | null): string | null => etag === null || etag.startsWith('W/') ? null : etag;
+
+/** Without a strong entity tag, equal metadata says nothing about the bytes, so the copy is read and hashed again. */
 const stillTheReusedCopy = async (
   tenantId: string,
   configuration: StorageConfiguration,
   copy: ReusedPublicCopy,
   deps: ChangeProposalImagePrepareDeps,
 ): Promise<Result<boolean, AppError>> => {
-  const head = await deps.storage.head({
-    url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, copy.image)).toString(),
-    ...credentialsOf(configuration),
-    deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs,
-  });
+  const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, copy.image)).toString();
+  if (copy.etag === null) {
+    const read = await deps.storage.getObject({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+    if (!read.ok) return read.error.code === 'not_found' ? ok(false) : err(read.error);
+    return ok(deps.contentHash.sha256(read.value) === copy.image.digest);
+  }
+  const head = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
   if (!head.ok) return head.error.code === 'not_found' ? ok(false) : err(head.error);
-  return ok(head.value.sizeBytes === copy.sizeBytes && (copy.etag === null || head.value.etag === copy.etag));
+  return ok(head.value.sizeBytes === copy.sizeBytes && head.value.etag === copy.etag);
 };
 
 /**
  * An address that is no longer quarantined is fine only when a live field already shows it and its public copy hashed
- * to the digest before the transaction, the copy the owner preview showed. A public copy checked before the transaction
- * is checked again here by its size and entity tag only, never read again; one that changed meanwhile makes an address
- * without a quarantined copy stale and answers busy for one with a quarantined copy.
+ * to the digest before the transaction, the copy the owner preview showed. A public copy that changed since that check
+ * makes an address without a quarantined copy stale and answers busy for one with a quarantined copy.
  */
 export const prepareApprovalImages = async (
   tenantId: string,
@@ -430,10 +435,6 @@ export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepa
   clock: Clock;
 }
 
-/**
- * The entity tag is read before the bytes, so a copy replaced after the read never passes the check under the lock
- * with the metadata of the copy that was hashed.
- */
 const checkPublicCopy = async (
   tenantId: string,
   configuration: StorageConfiguration,
@@ -446,21 +447,22 @@ const checkPublicCopy = async (
     const remaining = left();
     return remaining < PROPOSAL_IMAGE_REUSE_CHECKS.minimumRequestMs ? null : Math.min(requestMs, remaining);
   };
-  const headMs = deadline(PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs);
-  if (headMs === null) return err(changeProposalImageChecksOutOfTime());
-  const head = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: headMs });
-  if (!head.ok) return head.error.code === 'not_found' ? ok(null) : err(head.error);
   const getMs = deadline(PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs);
   if (getMs === null) return err(changeProposalImageChecksOutOfTime());
-  const read = await deps.storage.getObject({ url, ...credentialsOf(configuration), deadlineMs: getMs }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+  const request = { url, ...credentialsOf(configuration), deadlineMs: getMs };
+  const options = { maxBytes: IMAGE_ASSET_MAX_BYTES };
+  const read = deps.storage.getObjectVersion === undefined
+    ? await deps.storage.getObject(request, options).then((bytes) => bytes.ok ? ok({ bytes: bytes.value, etag: null }) : bytes)
+    : await deps.storage.getObjectVersion(request, options);
   if (!read.ok) return read.error.code === 'not_found' ? ok(null) : err(read.error);
-  if (read.value.byteLength !== head.value.sizeBytes || deps.contentHash.sha256(read.value) !== image.digest) return ok(null);
-  return ok({ image, sizeBytes: head.value.sizeBytes, etag: head.value.etag ?? null });
+  if (deps.contentHash.sha256(read.value.bytes) !== image.digest) return ok(null);
+  return ok({ image, sizeBytes: read.value.bytes.byteLength, etag: strongEntityTag(read.value.etag) });
 };
 
 /**
  * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
- * holds one, and no full read of a public copy runs under the workspace's approval lock. It checks the public copy of
+ * holds one, and a public copy whose read carried a strong entity tag is not read again under the workspace's approval
+ * lock. It checks the public copy of
  * each image the effect sets, `PROPOSAL_IMAGE_REUSE_CHECKS.concurrency` at a time within its budget, and records, in a
  * commit of its own, the attempt's intent to write each image whose public object is missing or no longer hashes to
  * the digest; an object that does is never written or recorded. What a record leaves behind when the attempt does not

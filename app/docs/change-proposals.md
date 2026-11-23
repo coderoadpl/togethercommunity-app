@@ -1213,7 +1213,7 @@ usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
 public already: approval accepts it only when its public copy passed the check
-before the transaction and still passes the metadata check under the lock
+before the transaction and still passes the check under the lock
 (below); otherwise the proposal is `stale` with the same note, as the owner
 preview refuses it. Every storage request of an approval, of a
 publication withdrawal and of the owner's image preview (the read of the
@@ -1225,9 +1225,9 @@ request holds the workspace's approval lock longer.
 
 Before the approval transaction opens, the approval checks, for each image the
 effect sets, its public object
-`image-assets/<workspace>/<kind>/<sha256>.<ext>`: a metadata request (`HEAD`)
-for its size and entity tag, then a read of its bytes, whose length must be
-that size and whose hash must be the digest. These checks run at most 4 at a
+`image-assets/<workspace>/<kind>/<sha256>.<ext>`: a read of its bytes, whose
+hash must be the digest, keeping their size and the entity tag of that same
+response when it is a strong one (not `W/…`). These checks run at most 4 at a
 time (`PROPOSAL_IMAGE_REUSE_CHECKS.concurrency`), each request within its 5
 seconds, and every request starts and ends within one wall-clock budget of 15
 seconds (`PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs`): a request that cannot start
@@ -1251,16 +1251,12 @@ in `change_proposal_image_publications` (workspace, attempt, kind, digest,
 extension, start time). This single insert runs on its own before the
 transaction, so the approval never waits for a second database connection while
 it holds one. Under the workspace's approval lock, each public copy that passed
-is checked again by a metadata request only, never read again: its size must be
-the size seen before the transaction and, when the storage sent an entity tag
-then, its entity tag must be the same. Only a change these metadata show is
-detected: a copy whose size or entity tag changed makes an address without a
-quarantined copy `stale`, and answers `503 unavailable` for one with a
-quarantined copy. Other bytes of the same size pass when the storage sends no
-entity tag or an unchanged weak one, and the entity tag compared is the one the
-metadata request returned before the read, not one of the read whose bytes were
-hashed, so other bytes that held the address at that request and are back at
-the lock pass as well. When every item applied, the approval locks the records of the
+is checked again: one whose read carried a strong entity tag by a metadata
+request (`HEAD`) only, whose size and entity tag must be those of that read;
+one whose read carried no entity tag or only a weak one is read and hashed
+again within the 5 seconds of a read, since equal metadata say nothing about
+its bytes. A copy that changed makes an address without a quarantined copy
+`stale`, and answers `503 unavailable` for one with a quarantined copy. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
@@ -1274,9 +1270,8 @@ every address with an unresolved delete (below), keep each reused public copy
 there until the commit. Publishing before the commit, and checking every reused
 address under that lock, mean committed live state never points at an object
 that was missing at the commit, also after a crash; a reused copy is known to
-match by its hash before the transaction and by its size and entity tag at the
-commit, so a copy replaced in between by other bytes of the same size on a
-storage that sends no entity tag is not detected. Only a delete outside the
+match by its hash before the transaction and, at the commit, by the strong
+entity tag of the response that was hashed or by hashing it again. Only a delete outside the
 application, a loss in the storage, or an application delete that the storage
 carries out more than 10 minutes after it was sent can remove a committed
 object later: an application delete of a public copy is sent only after its

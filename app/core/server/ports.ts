@@ -1682,6 +1682,14 @@ export interface StorageProvider {
     region?: string;
     deadlineMs?: number;
   }, options: { maxBytes: number; range?: boolean }): Promise<Result<Uint8Array, AppError>>;
+  /** `getObject` together with the entity tag the storage sent with those bytes, null when it sent none. */
+  getObjectVersion?(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+    deadlineMs?: number;
+  }, options: { maxBytes: number }): Promise<Result<{ bytes: Uint8Array; etag: string | null }, AppError>>;
   /** With `deadlineMs`, a request still unanswered then fails as `integration_unavailable`. */
   putObject(input: {
     url: string;

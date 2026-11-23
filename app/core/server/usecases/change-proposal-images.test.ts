@@ -844,7 +844,7 @@ describe('a group with images', () => {
     return { groupId, itemIds };
   };
 
-  it('verifies the reused public copies of a 20-item group four at a time before the transaction and only by metadata under the lock', async () => {
+  it('verifies the reused public copies of a 20-item group four at a time before the transaction and, by their strong entity tags, only by metadata under the lock', async () => {
     const h = harness();
     const { groupId, itemIds } = await reusingGroup(h, 20);
     const get = h.objects.storage.getObject;
@@ -862,7 +862,7 @@ describe('a group with images', () => {
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
     const publicCalls = (method: string) => h.objects.calls.filter((call) => call.method === method && call.key.startsWith('image-assets/')).length;
     expect({ reads: publicCalls('getObject'), heads: publicCalls('head'), writes: publicCalls('putObject'), mostInFlight })
-      .toEqual({ reads: 20, heads: 40, writes: 0, mostInFlight: 4 });
+      .toEqual({ reads: 20, heads: 20, writes: 0, mostInFlight: 4 });
     expect(liveCover(h, 'target-20')).toBe(pathOf(PNG(20)));
   });
 
@@ -897,6 +897,71 @@ describe('a group with images', () => {
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, { ...h.deps, changeProposalTransaction: transaction }))
       .toMatchObject({ ok: true, value: { status: 'stale' } });
     expect(liveCover(h, 'target-1')).toBeNull();
+  });
+
+  const swappingInTransaction = (h: Harness, key: string, bytes: Uint8Array) => {
+    const run = h.deps.changeProposalTransaction.run;
+    return {
+      ...h.deps.changeProposalTransaction,
+      run: async <T>(...args: Parameters<typeof run<T>>) => {
+        h.objects.objects.set(key, { bytes, contentType: 'image/png' });
+        return run<T>(...args);
+      },
+    };
+  };
+
+  it('compares under the lock the entity tag of the read whose bytes were hashed, not one of an earlier metadata request', async () => {
+    const h = harness();
+    const { groupId, itemIds } = await reusingGroup(h, 1);
+    const reused = `image-assets/${TENANT}/product-cover/${sha256HexOfBytes(PNG(1))}.png`;
+    h.objects.objects.set(reused, { bytes: PNG(9), contentType: 'image/png' });
+    const get = h.objects.storage.getObject;
+    let replaced = false;
+    h.objects.storage.getObject = async (input, options) => {
+      if (!replaced && input.url.endsWith(reused)) {
+        replaced = true;
+        h.objects.objects.set(reused, { bytes: PNG(1), contentType: 'image/png' });
+      }
+      return get(input, options);
+    };
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, { ...h.deps, changeProposalTransaction: swappingInTransaction(h, reused, PNG(9)) }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(liveCover(h, 'target-1')).toBeNull();
+  });
+
+  it.each([
+    ['sends no entity tag', undefined],
+    ['sends only a weak entity tag', 'W/"unchanged"'],
+  ])('reads and hashes a reused public copy again under the lock when the storage %s', async (_label, etag) => {
+    const reused = `image-assets/${TENANT}/product-cover/${sha256HexOfBytes(PNG(1))}.png`;
+    const withoutStrongTags = async () => {
+      const h = harness();
+      const group = await reusingGroup(h, 1);
+      const head = h.objects.storage.head;
+      h.objects.storage.head = async (input) => {
+        const found = await head(input);
+        return found.ok ? { ok: true, value: { sizeBytes: found.value.sizeBytes, ...(etag === undefined ? {} : { etag }) } } : found;
+      };
+      const get = h.objects.storage.getObject;
+      h.objects.storage.getObjectVersion = async (input, options) => {
+        const read = await get(input, options);
+        return read.ok ? { ok: true, value: { bytes: read.value, etag: etag ?? null } } : read;
+      };
+      return { h, ...group };
+    };
+
+    const replaced = await withoutStrongTags();
+    expect(await approveChangeProposalGroup(ownerSession, { id: replaced.groupId, itemIds: replaced.itemIds },
+      { ...replaced.h.deps, changeProposalTransaction: swappingInTransaction(replaced.h, reused, PNG(9)) }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(liveCover(replaced.h, 'target-1')).toBeNull();
+
+    const kept = await withoutStrongTags();
+    kept.h.objects.calls.length = 0;
+    expect(await approveChangeProposalGroup(ownerSession, { id: kept.groupId, itemIds: kept.itemIds }, kept.h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(kept.h.objects.calls.filter((call) => call.method === 'getObject' && call.key === reused)).toHaveLength(2);
   });
 
   it('publishes nothing when an item of the group is stale, and releases the images', async () => {

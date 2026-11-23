@@ -41,6 +41,8 @@ const placeholderDigest = (bytes: Uint8Array): string => {
 
 const keyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
 
+const entityTagOf = (bytes: Uint8Array): string => `"${placeholderDigest(bytes).slice(0, 32)}"`;
+
 export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) => string } = {}): FakeObjectStorage => {
   const digest = options.sha256 ?? placeholderDigest;
   const objects = new Map<string, StoredObject>();
@@ -69,7 +71,11 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         calls.push({ method: 'head', key });
         if (fake.failReads(key)) return unreachable(key);
         const found = objects.get(key);
-        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength, etag: `"${placeholderDigest(found.bytes).slice(0, 32)}"` });
+        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength, etag: entityTagOf(found.bytes) });
+      },
+      getObjectVersion: async (input, options) => {
+        const read = await fake.storage.getObject(input, options);
+        return read.ok ? ok({ bytes: read.value, etag: entityTagOf(read.value) }) : read;
       },
       getObject: async (input, options) => {
         const key = keyOf(input.url);

@@ -117,6 +117,8 @@ export interface ImageAssetUploadStart {
   servePath: string;
   uploadUrl: string;
   expiresAt: string;
+  /** Present when the signature covers it, so the write is refused unless it carries this `content-length`. */
+  contentLength?: number;
 }
 
 interface CandidateUploadOptions {
@@ -165,6 +167,7 @@ export const beginCandidateUpload = async (
     servePath: servePath(parsed.data.kind, file),
     uploadUrl: signed.value,
     expiresAt: storageAssetExpiresAt(createdAt, IMAGE_ASSET_UPLOAD_TTL_SECONDS),
+    ...(options.signContentLength === true ? { contentLength: parsed.data.sizeBytes } : {}),
   });
 };
 

@@ -1434,7 +1434,9 @@ curl -s -H "$KEY" -H "$JSON" -d '{"id":"<product-id>","coverUrl":"/api/public/as
 ```
 
 Completion answers `{ "url": "/api/public/assets/product-cover/<file>" }`. A
-propose-mode key gets `"servePath": null` from the upload start and
+propose-mode key gets `"servePath": null` from the upload start, with
+`content-length` (the declared `sizeBytes`, which the signature covers) in
+`upload.headers` beside `content-type`, and
 `{ "url": "/api/public/assets/product-cover/<sha256>.png", "quarantined": true }`
 from completion; the product update with that address then answers `202` with
 a receipt, and the image becomes public only when the owner approves.

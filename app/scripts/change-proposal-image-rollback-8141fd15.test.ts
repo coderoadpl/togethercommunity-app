@@ -680,14 +680,15 @@ describe('release 8141fd15 reading what proposed images store', () => {
 describe('a client of release 8141fd15 reading the image upload answers of this release', () => {
   it('fails on the begin answer of a propose-mode key, reads its completion without the quarantined flag, and reads every answer of a direct-mode key', async () => {
     const h = harness();
-    const input = { kind: 'product-cover' as const, fileName: 'image.png', contentType: 'image/png' as const, sizeBytes: PNG.byteLength };
+    const bytes = new Uint8Array([...PNG, ++variant]);
+    const input = { kind: 'product-cover' as const, fileName: 'image.png', contentType: 'image/png' as const, sizeBytes: bytes.byteLength };
     const proposed = await beginProposedProductCoverUpload(keyCtx, input, h.deps);
     if (!proposed.ok) throw new Error(proposed.error.message);
     const quarantinedAnswer = imageUploadAnswer(proposed.value, 'image/png', true);
     expect(quarantinedAnswer.servePath).toBeNull();
     expect(imageAssetUploadOutputSchema.safeParse(quarantinedAnswer).success).toBe(false);
 
-    h.objects.objects.set(proposed.value.key, { bytes: new Uint8Array([...PNG, ++variant]), contentType: 'image/png' });
+    expect(h.objects.receive(quarantinedAnswer.upload.url, quarantinedAnswer.upload.headers, bytes)).toEqual({ status: 200 });
     const completed = await completeProposedProductCoverUpload(keyCtx, { key: proposed.value.key }, h.deps);
     if (!completed.ok) throw new Error(completed.error.message);
     expect(imageAssetCompleteOutputSchema.parse(completed.value)).toEqual({ url: completed.value.url });
@@ -696,6 +697,7 @@ describe('a client of release 8141fd15 reading the image upload answers of this 
     if (!started.ok) throw new Error(started.error.message);
     const directAnswer = imageUploadAnswer(started.value, 'image/png', false);
     expect(directAnswer).not.toHaveProperty('quarantined');
+    expect(directAnswer.upload.headers).toEqual({ 'content-type': 'image/png' });
     expect(imageAssetUploadOutputSchema.parse(directAnswer).servePath).toBe(started.value.servePath);
   });
 });

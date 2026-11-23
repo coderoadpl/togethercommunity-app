@@ -31,6 +31,8 @@ export interface FakeObjectStorage {
   keysUnder(prefix: string): string[];
   /** Answers a signed read the way a provider that ignores response overrides does: with the headers stored with the object. */
   deliver(signedUrl: string): { status: 404 } | { status: 200; contentType: string; contentDisposition: string | null };
+  /** Takes a client's presigned write as sent, refusing it when the signature covers a length the request does not carry. */
+  receive(signedUrl: string, headers: Record<string, string>, bytes: Uint8Array): { status: 200 | 403 };
 }
 
 const placeholderDigest = (bytes: Uint8Array): string => {
@@ -60,6 +62,13 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
     failCopies: () => false,
     beforeCopy: async () => undefined,
     keysUnder: (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)).sort(),
+    receive: (signedUrl, headers, bytes) => {
+      const key = keyOf(signedUrl);
+      const signed = fake.signedLengths.get(key);
+      if (signed !== undefined && (headers['content-length'] !== String(signed) || bytes.byteLength !== signed)) return { status: 403 };
+      objects.set(key, { bytes: bytes.slice(), contentType: headers['content-type'] ?? 'application/octet-stream' });
+      return { status: 200 };
+    },
     deliver: (signedUrl) => {
       const found = objects.get(keyOf(signedUrl));
       return found === undefined ? { status: 404 } : { status: 200, contentType: found.contentType, contentDisposition: found.contentDisposition ?? null };

@@ -121,7 +121,7 @@ const uploadAndComplete = async (secret: string, family: ImageFamily, file: Uplo
   const started = await beginUpload(secret, family, file, host);
   expect(started.status).toBe(200);
   const begun = envelope(shopAssetsContracts.productCoverUpload.output).parse(await started.json()).data;
-  storage.objects.set(begun.key, { bytes: new Uint8Array(file.bytes), contentType: file.contentType });
+  expect(storage.receive(begun.upload.url, begun.upload.headers, new Uint8Array(file.bytes))).toEqual({ status: 200 });
   const completed = await keyed(secret, 'POST', IMAGE_ROUTES[family].complete, { key: begun.key }, host);
   return { begun, completed };
 };

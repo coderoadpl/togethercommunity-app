@@ -103,6 +103,7 @@ export const CourseProgressCard = ({
                 to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(firstTarget.id)}`}
                 variant="body2"
                 underline="always"
+                align="center"
                 data-testid="first-lesson-link"
               >
                 {t.courseOverview.firstIncomplete({ name: firstTarget.name })}

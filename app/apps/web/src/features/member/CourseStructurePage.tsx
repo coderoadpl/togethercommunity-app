@@ -125,7 +125,7 @@ const AboutCourseCard = ({ description, clamp }: { description: string; clamp: b
       {clamp && (expanded || overflowing) ? (
         <Button
           variant="text"
-          sx={{ mt: '0.5rem' }}
+          sx={{ mt: '0.5rem', px: '0.5rem', ml: '-0.5rem' }}
           aria-controls={textId}
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}

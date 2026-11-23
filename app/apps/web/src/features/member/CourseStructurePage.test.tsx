@@ -372,6 +372,8 @@ describe('CourseStructurePage', () => {
     const toggle = screen.getByRole('button', { name: en.courseOverview.aboutShowMore });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', text.id);
+    expect(stylesAt(toggle, 390)['margin-left']).toBe('-0.5rem');
+    expect(stylesAt(toggle, 390)['padding-left']).toBe('0.5rem');
 
     await user.click(toggle);
 
@@ -630,6 +632,7 @@ describe('CourseStructurePage', () => {
     expect(link).toHaveTextContent(en.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
     expect(link).toHaveTextContent('First unfinished lesson: Intro to Variables');
     expect(link).toHaveClass('MuiLink-underlineAlways');
+    expect(link).toHaveClass('MuiTypography-alignCenter');
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {

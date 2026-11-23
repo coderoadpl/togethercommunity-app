@@ -1321,7 +1321,12 @@ for its storage delete; its lock waits get what is left minus that second, and
 its delete, the lookup of the storage endpoint included, gets at most 5 seconds
 and what is left, so the sweep's lock waits and storage requests end by its
 end, and the 10 seconds before the function limit are for its database
-statements and the answer. A failing sweep is logged and never stops the tick
+statements and the answer. Every statement that lists work or records an
+attempt, the first query for the workspaces included, runs with a statement
+timeout and a lock timeout of what is left, but at least 1 second; one that
+runs out, for example behind a migration that holds an image table, lists
+nothing or records nothing, so that part of the run ends and its rows wait for
+the next run. A failing sweep is logged and never stops the tick
 or the other sweep. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as

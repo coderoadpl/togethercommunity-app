@@ -58,7 +58,7 @@ import type {
 } from '../ports.js';
 import { beginCandidateUpload, readCandidateImage, type ImageAssetDeps, type ImageAssetUploadStart } from './image-assets.js';
 import { resolveStorageConfiguration } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, sweepStageBudget, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStageBudget, sweepStatementBound, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
 
 type ProposedImageFamily = 'catalog' | 'settings';
 
@@ -662,7 +662,9 @@ const sweepUploads = async (
   budget: SweepBudget,
   deps: QuarantinedImageSweepDeps,
 ): Promise<number> => {
-  const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, due.createdBefore, due.deletedBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
+  const uploads = await deps.quarantinedImages.listUploadsBefore(
+    tenantId, due.createdBefore, due.deletedBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant, sweepStatementBound(budget),
+  );
   if (uploads.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
@@ -679,14 +681,14 @@ const sweepUploads = async (
     });
     if (!deleted.ok) {
       logImageFailure(deps, tenantId, 'could not remove an expired image upload', deleted.error.message);
-      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso());
+      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
       continue;
     }
     if (upload.deletedOnce) {
-      await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
+      await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey, sweepStatementBound(budget));
       continue;
     }
-    await deps.quarantinedImages.markUploadDeleted(tenantId, upload.objectKey, deps.clock.nowIso());
+    await deps.quarantinedImages.markUploadDeleted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
     removed += 1;
   }
   return removed;
@@ -708,9 +710,10 @@ export const sweepQuarantinedImages = async (
     deletedBefore: before(now, QUARANTINED_IMAGE_LIMITS.uploadSecondDeleteAfterMs),
   };
   const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
-  const releaseTenants = await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit);
-  const uploadTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsDue.createdBefore, uploadsDue.deletedBefore, limit);
-  const publicationTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit);
+  const images = deps.quarantinedImages;
+  const releaseTenants = await images.listTenantIdsToSweep(createdBefore, now, limit, sweepStatementBound(budget));
+  const uploadTenants = spent(budget) ? [] : await images.listTenantIdsWithUploadsBefore(uploadsDue.createdBefore, uploadsDue.deletedBefore, limit, sweepStatementBound(budget));
+  const publicationTenants = spent(budget) ? [] : await images.listTenantIdsWithPublicationsBefore(publicationsBefore, limit, sweepStatementBound(budget));
   const stagesFrom = (lists: ReadonlyArray<readonly string[]>): number => lists.filter((list) => list.length > 0).length;
   const releases = sweepStageBudget(budget, stagesFrom([releaseTenants, uploadTenants, publicationTenants]));
   for (const tenantId of releaseTenants) {
@@ -731,13 +734,13 @@ export const sweepQuarantinedImages = async (
   for (const tenantId of publicationTenants) {
     if (spent(budget)) break;
     tenants.add(tenantId);
-    const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);
+    const records = await images.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant, sweepStatementBound(budget));
     for (const record of records) {
       if (spent(budget)) break;
       if (await removePublication(tenantId, record.attemptId, record.image, { written: true, keepRecord: false }, deps, budget)) {
         removed += 1;
       } else {
-        await deps.quarantinedImages.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso());
+        await images.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso(), sweepStatementBound(budget));
       }
     }
   }

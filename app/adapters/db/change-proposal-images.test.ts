@@ -895,6 +895,29 @@ describe('the order of the image sweep', () => {
   });
 });
 
+describe('database statements of the sweep', () => {
+  it('end once a lock they wait on outlives the run budget, the discovery of workspaces included', async () => {
+    const harness = endToEnd();
+    await database.db.insert(changeProposalImages).values({ ...image(1), releasedAt: NOW });
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('lock table change_proposal_images in access exclusive mode');
+      const started = Date.now();
+      const released = new Promise((resolve) => { setTimeout(resolve, 4_000); }).then(() => holder.query('rollback'));
+      const outcome = await sweepQuarantinedImages({ ...harness.deps, budgetMs: 1_000 });
+      const elapsed = Date.now() - started;
+      await released;
+      expect(outcome).toEqual({ ok: true, value: { tenants: 0, removed: 0 } });
+      expect(elapsed).toBeLessThan(3_000);
+    } finally {
+      await holder.end();
+    }
+    expect(await releasedRows()).toEqual(['1']);
+  }, 15_000);
+});
+
 describe('storage requests of an approval that never answer', () => {
   it('end at their deadline as a transient error and leave the proposal pending, for the read of the quarantined copy and for the public write', async () => {
     const harness = endToEnd();

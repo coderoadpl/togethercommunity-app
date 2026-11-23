@@ -3273,7 +3273,11 @@ export interface QuarantinedImageLiveUse {
   inLiveUse(tenantId: string, path: string): Promise<boolean>;
 }
 
-/** The private images a propose-mode key uploaded for proposals; the rows, not a storage listing, are the record of what is quarantined. */
+/**
+ * The private images a propose-mode key uploaded for proposals; the rows, not a storage listing, are the record of what is
+ * quarantined. A sweep call given `boundMs` ends every statement and lock wait by then; one that runs out lists nothing
+ * and writes nothing, and leaves the rows for the next run.
+ */
 export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /**
    * Under a lock of the key, commits the image as a pending row (or revives a released row as pending) after counting
@@ -3313,7 +3317,7 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * The workspaces holding rows a `sweep` selects, the one waiting longest first, by the time of a row's last failed
    * removal or else its creation.
    */
-  listTenantIdsToSweep(createdBefore: string, now: string, limit: number): Promise<string[]>;
+  listTenantIdsToSweep(createdBefore: string, now: string, limit: number, boundMs?: number): Promise<string[]>;
   /**
    * Under the lock of the key, records a presigned upload unless the key already started `uploadsPerKey` uploads
    * created after `countedAfter`.
@@ -3326,20 +3330,20 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * for its first delete once created before `createdBefore`, and for its second once that first delete succeeded before
    * `deletedBefore`.
    */
-  listTenantIdsWithUploadsBefore(createdBefore: string, deletedBefore: string, limit: number): Promise<string[]>;
-  listUploadsBefore(tenantId: string, createdBefore: string, deletedBefore: string, limit: number): Promise<QuarantinedImageUploadDue[]>;
+  listTenantIdsWithUploadsBefore(createdBefore: string, deletedBefore: string, limit: number, boundMs?: number): Promise<string[]>;
+  listUploadsBefore(tenantId: string, createdBefore: string, deletedBefore: string, limit: number, boundMs?: number): Promise<QuarantinedImageUploadDue[]>;
   /** Records the first successful delete of the candidate; the record stays for the second. */
-  markUploadDeleted(tenantId: string, objectKey: string, now: string): Promise<void>;
-  deleteUpload(tenantId: string, objectKey: string): Promise<void>;
+  markUploadDeleted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
+  deleteUpload(tenantId: string, objectKey: string, boundMs?: number): Promise<void>;
   /** Records a failed removal, so the upload moves behind the others. */
-  markUploadAttempted(tenantId: string, objectKey: string, now: string): Promise<void>;
+  markUploadAttempted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
   /** Records whose last unresolved delete, or else whose start, lies before `startedBefore`. */
-  listTenantIdsWithPublicationsBefore(startedBefore: string, limit: number): Promise<string[]>;
-  listPublicationsBefore(tenantId: string, startedBefore: string, limit: number): Promise<ProposalImagePublication[]>;
+  listTenantIdsWithPublicationsBefore(startedBefore: string, limit: number, boundMs?: number): Promise<string[]>;
+  listPublicationsBefore(tenantId: string, startedBefore: string, limit: number, boundMs?: number): Promise<ProposalImagePublication[]>;
   /** Records a failed removal, so the publication record moves behind the others. */
-  markPublicationAttempted(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
+  markPublicationAttempted(tenantId: string, attemptId: string, image: ProposalImageReference, now: string, boundMs?: number): Promise<void>;
 }
 
 export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {

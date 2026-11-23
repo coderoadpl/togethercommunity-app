@@ -744,6 +744,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         >
           {t.common.retry}
         </Button>
+        <Button
+          type="button"
+          variant="text"
+          size="small"
+          sx={{ px: 0, mt: '0.5rem', minHeight: 44 }}
+          data-testid="sign-in-rate-limited-choose-method"
+          onClick={() => switchMethod('magic-link')}
+        >
+          {t.auth.signInRateLimitedChooseMethod}
+        </Button>
       </Box>,
       null,
     );

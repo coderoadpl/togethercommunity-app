@@ -1066,6 +1066,37 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
   });
 
+  it('lets the visitor leave a lookup rate limit for the method step and sign in with a password', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+    const { router } = await renderLoginPage();
+    rateLimitSignInMethods(583);
+    await continueWithEmail();
+    const limited = await screen.findByTestId('sign-in-rate-limited');
+    expect(within(limited).getByTestId('sign-in-methods-retry')).toBeDisabled();
+    const chooseMethod = within(limited).getByRole('button', { name: en.auth.signInRateLimitedChooseMethod });
+    expect(chooseMethod).toBeEnabled();
+    expect(chooseMethod).not.toHaveClass('MuiButton-contained');
+
+    await userEvent.click(chooseMethod);
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
+    expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
+    expect(screen.getByTestId('signin-passkey')).toBeEnabled();
+    expect(within(screen.getByTestId('sign-in-content')).queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('use-password'));
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+  });
+
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();

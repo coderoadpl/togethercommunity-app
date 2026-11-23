@@ -412,6 +412,7 @@ export const pl: Messages = {
     signInRateLimitedRetryNow: 'Możesz spróbować ponownie.',
     signInRateLimitedLeadRetryIn: ({ delay }) => format('Spróbuj ponownie za {delay}.', { delay }),
     signInRateLimitedLeadWait: 'Odczekaj chwilę i spróbuj ponownie.',
+    signInRateLimitedChooseMethod: 'Wybierz sposób logowania',
     signInTitle: 'Zaloguj się',
     signInToTenant: ({ tenant }) => format('Zaloguj się do {tenant}', { tenant }),
     signInLead: 'Wpisz e-mail podany przy zakupie lub zapisie.',

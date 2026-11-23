@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
 
 import { en } from '../apps/web/src/i18n/en.js';
-import { signInWithPassword } from './login-flow.js';
+import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import { delay } from './server-harness.js';
 import { createAuthE2eTransport } from './auth-e2e-transport.js';
 
@@ -117,6 +117,44 @@ export const runAttributionPurchase = async (webBaseUrl: string): Promise<void> 
     await page.getByText('meta / paid', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     await page.getByText('X', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     console.log('purchase-welcome-e2e: short-link campaign survives purchase and Studio order detail OK');
+    await context.close();
+  } finally {
+    await browser.close();
+  }
+};
+
+export const runSignedOutDownloadReturn = async (webBaseUrl: string): Promise<void> => {
+  const buyerEmail = 'student.active@together.dev';
+  const productId = 'product-download-workbook';
+  const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
+  const browser = await chromium.launch(chromeExecutablePath
+    ? { executablePath: chromeExecutablePath, headless: true }
+    : { channel: 'chrome', headless: true });
+  try {
+    const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
+    await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
+    const page = await context.newPage();
+    const downloadPath = API_PATHS.memberProductDownload
+      .replace(':productId', productId)
+      .replace(':assetId', 'download-asset-workbook-v2');
+    await page.goto(`${webBaseUrl}${downloadPath}`, { waitUntil: 'networkidle' });
+    await page.waitForURL(
+      (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === '/my/products',
+      { timeout: 15000 },
+    );
+    await requestMagicLink(page, buyerEmail);
+    const devLink = page.getByTestId('open-magic-link');
+    await devLink.waitFor({ state: 'visible', timeout: 15000 });
+    const href = await devLink.getAttribute('href');
+    assert(href !== null, 'the dev magic link was missing on the sign-in page reached from a download');
+    await page.goto(href, { waitUntil: 'networkidle' });
+    await page.waitForURL((url) => url.pathname === '/my/products', { timeout: 15000 });
+    const row = page.getByTestId(`my-product-${productId}`);
+    await row.waitFor({ state: 'visible', timeout: 15000 });
+    assert((await row.textContent())?.includes('Creator Workbook') === true,
+      'My products did not show the buyer\'s download product after sign-in');
+    console.log('purchase-welcome-e2e: signed-out download returns the buyer to My products OK');
     await context.close();
   } finally {
     await browser.close();

@@ -97,6 +97,12 @@ ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "sweep_attempted_at" text
 --> statement-breakpoint
 ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "first_deleted_at" text CONSTRAINT "change_proposal_image_uploads_first_deleted_at_check" CHECK ("first_deleted_at" IS NULL OR "first_deleted_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');
 --> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "completed_digest" text CONSTRAINT "change_proposal_image_uploads_completed_digest_check" CHECK ("completed_digest" IS NULL OR "completed_digest" ~ '^[0-9a-f]{64}$');
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "completed_extension" text CONSTRAINT "change_proposal_image_uploads_completed_extension_check" CHECK ("completed_extension" IS NULL OR "completed_extension" IN ('png', 'jpg', 'webp', 'svg', 'ico'));
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD CONSTRAINT "change_proposal_image_uploads_completed_check" CHECK (("completed_digest" IS NULL) = ("completed_extension" IS NULL));
+--> statement-breakpoint
 ALTER TABLE "change_proposal_image_publications" ADD COLUMN "sweep_attempted_at" text;
 --> statement-breakpoint
 ALTER TABLE "change_proposal_image_publications" ADD COLUMN "delete_unresolved_at" text CONSTRAINT "change_proposal_image_publications_delete_unresolved_at_check" CHECK ("delete_unresolved_at" IS NULL OR "delete_unresolved_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');

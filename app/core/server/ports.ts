@@ -3280,6 +3280,9 @@ type QuarantinedImageObjectRemoval = 'deleted' | 'failed' | 'unresolved';
 
 type QuarantinedImageUploadDue = QuarantinedImageUpload & { deletedOnce: boolean };
 
+/** The image a completion of the upload stored, without its kind, which the candidate key names. */
+export type QuarantinedImageUploadResult = Omit<ProposalImageReference, 'kind'>;
+
 export type QuarantinedImageUploadRecord =
   | { kind: 'recorded' }
   | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap };
@@ -3347,8 +3350,12 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * created after `countedAfter`.
    */
   recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
-  /** The recorded start of the upload to this candidate key, which names the key that may complete it; null for a live upload. */
-  findUpload(tenantId: string, objectKey: string): Promise<QuarantinedImageUpload | null>;
+  /**
+   * The recorded start of the upload to this candidate key, which names the key that may complete it, with the image a
+   * completion stored, null before one did; null for a live upload.
+   */
+  findUpload(tenantId: string, objectKey: string): Promise<(QuarantinedImageUpload & { completed: QuarantinedImageUploadResult | null }) | null>;
+  markUploadCompleted(tenantId: string, objectKey: string, completed: QuarantinedImageUploadResult): Promise<void>;
   /**
    * Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. An upload is due
    * for its first delete once created before `createdBefore`, and for its second once that first delete succeeded before

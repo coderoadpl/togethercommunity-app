@@ -205,7 +205,7 @@ export const beginProposedBrandingAssetUpload = (ctx: Ctx, input: ImageAssetUplo
 );
 
 export interface ProposedImageCompleteDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'insert' | 'findUpload'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'insert' | 'findUpload' | 'markUploadCompleted'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   contentHash: ContentHash;
@@ -227,6 +227,11 @@ const completeProposedImageUpload = async (
   const { tenantId, keyId } = key.value;
   const started = await deps.quarantinedImages.findUpload(tenantId, input.key);
   if (started?.apiKeyId !== keyId) return err(notFound('Image asset not found'));
+  if (started.completed !== null) {
+    const completedKind = proposalImageKindSchema.safeParse(input.key.split('/')[2]);
+    if (!completedKind.success || !KINDS_BY_FAMILY[family].includes(completedKind.data)) return err(notFound('Image asset not found'));
+    return ok({ url: proposalImagePublicPath({ kind: completedKind.data, ...started.completed }), quarantined: true });
+  }
   const candidate = await readCandidateImage(tenantId, KINDS_BY_FAMILY[family], input, deps);
   if (!candidate.ok) return candidate;
   const { file, bytes, configuration, credentials, candidateUrl, contentType } = candidate.value;
@@ -255,6 +260,7 @@ const completeProposedImageUpload = async (
     if (!removed.ok) return removed;
     return err(inserted.kind === 'cap_exceeded' ? changeProposalImageCapExceeded(inserted.cap) : inserted.error);
   }
+  await deps.quarantinedImages.markUploadCompleted(tenantId, input.key, { digest: image.digest, extension: image.extension });
   const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
   if (!removed.ok) return removed;
   return ok({ url: proposalImagePublicPath(image), quarantined: true });

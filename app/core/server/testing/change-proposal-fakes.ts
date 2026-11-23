@@ -61,6 +61,7 @@ import type {
   ChangeProposalTransitionGuard,
   QuarantinedImageRelease,
   QuarantinedImageRepository,
+  QuarantinedImageUploadResult,
   RealtimeEvent,
   SalesLinkRepository,
   TenantSecretResolver,
@@ -393,7 +394,7 @@ const catalogRepositoriesOver = (
 
 type FakeImagePublication = ProposalImagePublication & { tenantId: string; deleteUnresolvedAt?: string };
 
-type FakeImageUpload = QuarantinedImageUpload & { tenantId: string; firstDeletedAt?: string };
+type FakeImageUpload = QuarantinedImageUpload & { tenantId: string; firstDeletedAt?: string; completed?: QuarantinedImageUploadResult };
 
 const uploadDue = (createdBefore: string, deletedBefore: string) => (row: FakeImageUpload): boolean =>
   row.firstDeletedAt === undefined ? row.createdAt < createdBefore : row.firstDeletedAt < deletedBefore;
@@ -740,7 +741,12 @@ export const createQuarantinedImagesFake = (
     },
     findUpload: async (tenantId, objectKey) => {
       const found = store.imageUploads.find((row) => row.tenantId === tenantId && row.objectKey === objectKey);
-      return found === undefined ? null : { apiKeyId: found.apiKeyId, objectKey: found.objectKey, createdAt: found.createdAt };
+      return found === undefined ? null : { apiKeyId: found.apiKeyId, objectKey: found.objectKey, createdAt: found.createdAt, completed: found.completed ?? null };
+    },
+    markUploadCompleted: async (tenantId, objectKey, completed) => {
+      for (const row of store.imageUploads) {
+        if (row.tenantId === tenantId && row.objectKey === objectKey) row.completed = { ...completed };
+      }
     },
     listTenantIdsWithUploadsBefore: async (createdBefore, deletedBefore, limit) =>
       [...new Set(store.imageUploads.filter(uploadDue(createdBefore, deletedBefore)).map((row) => row.tenantId))].sort().slice(0, limit),

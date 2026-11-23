@@ -146,6 +146,8 @@ export const changeProposalImageUploads = pgTable('change_proposal_image_uploads
   createdAt: text('created_at').notNull(),
   sweepAttemptedAt: text('sweep_attempted_at'),
   firstDeletedAt: text('first_deleted_at'),
+  completedDigest: text('completed_digest'),
+  completedExtension: text('completed_extension').$type<ProposalImageExtension>(),
 }, (table) => [
   primaryKey({ name: 'change_proposal_image_uploads_pkey', columns: [table.tenantId, table.objectKey] }),
   index('change_proposal_image_uploads_key_idx').on(table.tenantId, table.apiKeyId, table.createdAt),
@@ -153,6 +155,9 @@ export const changeProposalImageUploads = pgTable('change_proposal_image_uploads
   check('change_proposal_image_uploads_object_key_check', sql`${table.objectKey} LIKE 'image-asset-candidates/%'`),
   check('change_proposal_image_uploads_created_at_check', isoMillisecondTimestamp(table.createdAt)),
   check('change_proposal_image_uploads_first_deleted_at_check', sql`${table.firstDeletedAt} IS NULL OR ${isoMillisecondTimestamp(table.firstDeletedAt)}`),
+  check('change_proposal_image_uploads_completed_digest_check', sql`${table.completedDigest} IS NULL OR ${table.completedDigest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_image_uploads_completed_extension_check', sql`${table.completedExtension} IS NULL OR ${table.completedExtension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_image_uploads_completed_check', sql`(${table.completedDigest} IS NULL) = (${table.completedExtension} IS NULL)`),
 ]);
 
 export const changeProposalImagePublications = pgTable('change_proposal_image_publications', {

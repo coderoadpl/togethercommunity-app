@@ -23,6 +23,7 @@ import type {
   QuarantinedImageReleaseEnd,
   QuarantinedImageRepository,
   QuarantinedImageUploadRecord,
+  QuarantinedImageUploadResult,
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
@@ -68,6 +69,9 @@ const parseUpload = (row: typeof changeProposalImageUploads.$inferSelect): Quara
   objectKey: row.objectKey,
   createdAt: row.createdAt,
 });
+
+const completedUpload = (row: typeof changeProposalImageUploads.$inferSelect): QuarantinedImageUploadResult | null =>
+  row.completedDigest === null || row.completedExtension === null ? null : { digest: row.completedDigest, extension: row.completedExtension };
 
 const sameImage = (image: ProposalImageReference): SQL | undefined => and(
   eq(changeProposalImages.kind, image.kind),
@@ -370,7 +374,11 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
     findUpload: async (tenantId, objectKey) => {
       const [row] = await db.select().from(changeProposalImageUploads)
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey))).limit(1);
-      return row === undefined ? null : parseUpload(row);
+      return row === undefined ? null : { ...parseUpload(row), completed: completedUpload(row) };
+    },
+    markUploadCompleted: async (tenantId, objectKey, completed) => {
+      await db.update(changeProposalImageUploads).set({ completedDigest: completed.digest, completedExtension: completed.extension })
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
     },
     listTenantIdsWithUploadsBefore: (createdBefore, deletedBefore, limit, boundMs) => within(boundMs, async (executor) =>
       (await executor.select({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)

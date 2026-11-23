@@ -402,6 +402,23 @@ describe('a proposed product cover end to end on the database', () => {
     expect(objects.signedLengths.get(started.value.key)).toBe(bytes.byteLength);
     expect(logger.error).not.toHaveBeenCalled();
   });
+
+  it('records the completed image on the upload, so a repeated completion gets the same answer once the candidate is gone', async () => {
+    const { objects, deps } = endToEnd();
+    const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: PNG_BYTES.byteLength }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+    objects.objects.set(started.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+    const first = await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps);
+    expect(first).toMatchObject({ ok: true, value: { quarantined: true } });
+    expect(objects.keysUnder('image-asset-candidates/')).toEqual([]);
+
+    expect(await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps)).toEqual(first);
+    const digest = createContentHash().sha256(PNG_BYTES);
+    expect(await deps.quarantinedImages.findUpload(TENANT, started.value.key)).toMatchObject({ completed: { digest, extension: 'png' } });
+    expect(await deps.quarantinedImages.findUpload(NEIGHBOUR, started.value.key)).toBeNull();
+    await deps.quarantinedImages.markUploadCompleted(NEIGHBOUR, started.value.key, { digest: digestOf(9), extension: 'png' });
+    expect(await deps.quarantinedImages.findUpload(TENANT, started.value.key)).toMatchObject({ completed: { digest, extension: 'png' } });
+  });
 });
 
 const publications = async () => (await database.db.select().from(changeProposalImagePublications)).map((row) => row.digest.replace(/^0+/u, ''));

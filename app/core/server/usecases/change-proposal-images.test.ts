@@ -254,6 +254,26 @@ describe('uploading an image for a proposal', () => {
     expect(h.store.imageRows.map((row) => row.apiKeyId)).toEqual([KEY_ID]);
   });
 
+  it('answers a repeated completion whose first answer was lost with the recorded image, after the candidate is gone', async () => {
+    const h = harness();
+    const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.objects.objects.set(started.value.key, { bytes: PNG(1), contentType: 'image/png' });
+    const input = { key: started.value.key };
+    const receipt = { ok: true, value: { url: pathOf(PNG(1)), quarantined: true } };
+    expect(await completeProposedProductCoverUpload(keyCtx(), input, h.deps)).toEqual(receipt);
+    expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([]);
+    h.objects.calls.length = 0;
+
+    expect(await completeProposedProductCoverUpload(keyCtx(), input, h.deps)).toEqual(receipt);
+    expect(h.objects.calls).toEqual([]);
+    expect(h.store.imageRows).toHaveLength(1);
+    const gone = { ok: false, error: { code: 'not_found' } };
+    expect(await completeProposedProductCoverUpload(keyCtx(OTHER_KEY_ID), input, h.deps)).toMatchObject(gone);
+    expect(await completeProposedBrandingAssetUpload(keyCtx(), input, h.deps)).toMatchObject(gone);
+    expect(await completeProposedProductCoverUpload(keyCtx(KEY_ID, NEIGHBOUR), input, h.deps)).toMatchObject(gone);
+  });
+
   it('copies verified bytes to a private content-addressed key, deletes the candidate and answers the future public path', async () => {
     const h = harness();
     const bytes = PNG(1);

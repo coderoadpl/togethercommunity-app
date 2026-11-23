@@ -4,9 +4,9 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { PublicNavigation, SpaceFeedItem } from '#core/domain/index.js';
 
@@ -63,11 +63,41 @@ const okFeed = (items: SpaceFeedItem[]) =>
     }),
   );
 
-const renderPage = async () => {
+type OfferProductInput = {
+  id: string;
+  title: string;
+  prices?: { id: string; kind: 'one_time' | 'recurring'; interval: 'month' | 'year' | null; amountCents: number; currency: string }[];
+};
+
+const offerProduct = ({ id, title, prices }: OfferProductInput) => ({
+  id,
+  type: 'course',
+  slug: id,
+  title,
+  description: '',
+  coverUrl: null,
+  priceCents: prices?.[0]?.amountCents ?? 19_900,
+  currency: 'PLN',
+  prices: prices ?? [{ id: `price-${id}`, kind: 'one_time', interval: null, amountCents: 19_900, currency: 'PLN' }],
+});
+
+type OfferSalesLinkInput = { id: string; slug: string; heading: string; description: string; totalCents: number; currency: string };
+
+const okOffer = ({
+  products = [],
+  salesLinks = [],
+}: { products?: ReturnType<typeof offerProduct>[]; salesLinks?: OfferSalesLinkInput[] } = {}) =>
+  http.get('/api/public/offer', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { tenant: { slug: 'acme', name: 'Acme Academy' }, contentVersion: 1, products, salesLinks },
+    }));
+
+const renderPage = async (initialEntry = '/') => {
   const rootRoute = createRootRoute({ component: AnonHomePage });
   const router = createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
@@ -75,7 +105,7 @@ const renderPage = async () => {
 
 describe('AnonHomePage', () => {
   it('opens with the home space feed above the public tiles', async () => {
-    server.use(okNavigation(), okFeed([feedItem('p1', 'Wpis powitalny')]));
+    server.use(okNavigation(), okFeed([feedItem('p1', 'Wpis powitalny')]), okOffer());
 
     await renderPage();
 
@@ -89,7 +119,7 @@ describe('AnonHomePage', () => {
   });
 
   it('labels the public tile sections for a visitor and offers a sign-in link in the banner', async () => {
-    server.use(okNavigation(), okFeed([]));
+    server.use(okNavigation(), okFeed([]), okOffer());
 
     await renderPage();
 
@@ -104,7 +134,7 @@ describe('AnonHomePage', () => {
   });
 
   it('drops the feed section and tiles every space when no home space is configured', async () => {
-    server.use(okNavigation(navigation({ defaultHomeSpaceId: null })));
+    server.use(okNavigation(navigation({ defaultHomeSpaceId: null })), okOffer());
 
     await renderPage();
 
@@ -121,6 +151,7 @@ describe('AnonHomePage', () => {
         }),
       ),
       okFeed([]),
+      okOffer(),
     );
 
     await renderPage();
@@ -132,6 +163,7 @@ describe('AnonHomePage', () => {
   it('shows an empty state when nothing is public', async () => {
     server.use(
       okNavigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] }),
+      okOffer(),
     );
 
     await renderPage();
@@ -140,17 +172,150 @@ describe('AnonHomePage', () => {
     expect(empty).toHaveTextContent(en.anon.emptyTitle);
     expect(empty).toHaveTextContent(en.anon.emptyBody);
   });
-});
 
+  it('uses the workspace name as the page heading under the visitor eyebrow', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer());
 
-it('lists public bundles even when there are no course or space tiles', async () => {
-  server.use(
-    okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
-    http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: { tenant: { slug: 'acme', name: 'Community' }, contentVersion: 1, products: [], salesLinks: [{ id: 'link-1', slug: 'complete-bundle', heading: 'Complete bundle', description: '', totalCents: 4200, currency: 'PLN' }] } })),
-  );
-  await renderPage();
-  const section = await screen.findByTestId('anon-sales-links');
-  expect(within(section).getByRole('link')).toHaveAttribute('href', '/offer/complete-bundle');
-  expect(section).toHaveTextContent('Complete bundle');
-  expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Acme Academy' })).toBeInTheDocument();
+    expect(screen.getByText(en.anon.eyebrow)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: en.anon.homeTitle })).not.toBeInTheDocument();
+  });
+
+  it('lists catalogue products with their price and a checkout button in the offer section', async () => {
+    server.use(
+      okNavigation(),
+      okFeed([]),
+      okOffer({
+        products: [
+          offerProduct({ id: 'prod-course', title: 'Starter course' }),
+          offerProduct({
+            id: 'prod-club',
+            title: 'Club membership',
+            prices: [
+              { id: 'price-month', kind: 'recurring', interval: 'month', amountCents: 4_900, currency: 'PLN' },
+              { id: 'price-year', kind: 'recurring', interval: 'year', amountCents: 49_900, currency: 'PLN' },
+            ],
+          }),
+          offerProduct({
+            id: 'prod-free',
+            title: 'Free sampler',
+            prices: [{ id: 'price-free', kind: 'one_time', interval: null, amountCents: 0, currency: 'PLN' }],
+          }),
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const section = await screen.findByTestId('anon-offer');
+    expect(section).toHaveAttribute('id', 'offer');
+    expect(within(section).getByRole('heading', { level: 2, name: en.anon.offersSection })).toBeInTheDocument();
+    expect(within(section).getByRole('heading', { level: 3, name: 'Starter course' })).toBeInTheDocument();
+    expect(screen.getByTestId('offer-product-prod-course-price').textContent).toMatch(/199/);
+    expect(screen.getByTestId('offer-product-prod-course-price')).toHaveTextContent('one-off');
+    expect(screen.getByTestId('offer-product-cta-prod-course')).toHaveAttribute('href', '/checkout/prod-course');
+    expect(screen.getByTestId('offer-product-cta-prod-course')).toHaveTextContent(en.anon.offerBuyCta);
+    expect(screen.getByTestId('offer-product-prod-club-price')).toHaveTextContent('/mo.');
+    expect(screen.getByTestId('offer-product-prod-club-price')).toHaveTextContent('/yr.');
+    expect(screen.getByTestId('offer-product-prod-free-price')).toHaveTextContent(en.common.free);
+    expect(screen.getByTestId('offer-product-cta-prod-free')).toHaveTextContent(en.checkout.freeOrderIdle);
+    expect(screen.getByTestId('anon-spaces')).not.toHaveAttribute('id');
+  });
+
+  it('lists each product once even when the payload repeats it', async () => {
+    server.use(
+      okNavigation(),
+      okFeed([]),
+      okOffer({
+        products: [
+          offerProduct({ id: 'p1', title: 'Premium access' }),
+          offerProduct({ id: 'p1', title: 'Premium access' }),
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const section = await screen.findByTestId('anon-offer');
+    expect(within(section).getAllByTestId('offer-product-p1')).toHaveLength(1);
+  });
+
+  it('lists public bundles in the offer section with their description and a button-styled call to action', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({
+        salesLinks: [{ id: 'link-1', slug: 'complete-bundle', heading: 'Complete bundle', description: 'Every course in one pack.', totalCents: 4200, currency: 'PLN' }],
+      }),
+    );
+
+    await renderPage();
+
+    const section = await screen.findByTestId('anon-offer');
+    expect(section).toHaveAttribute('id', 'offer');
+    expect(within(section).getByRole('link', { name: `${en.salesLinks.buyBundle} Complete bundle` })).toHaveAttribute('href', '/offer/complete-bundle');
+    expect(within(section).getByRole('heading', { level: 3, name: 'Complete bundle' })).toBeInTheDocument();
+    expect(section).toHaveTextContent('Every course in one pack.');
+    expect(section).not.toHaveTextContent(en.salesLinks.heading);
+    expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+  });
+
+  it('counts catalogue products when deciding whether the home is empty', async () => {
+    server.use(
+      okNavigation(navigation({ defaultHomeSpaceId: null, spaces: [], courses: [], lockedSpaces: [] })),
+      okOffer({ products: [offerProduct({ id: 'prod-annual', title: 'Annual access' })] }),
+    );
+
+    await renderPage();
+
+    expect(await screen.findByTestId('offer-product-prod-annual')).toBeInTheDocument();
+    expect(screen.queryByTestId('anon-empty-state')).toBeNull();
+  });
+
+  it('puts the offer anchor on locked spaces, then courses, then spaces when there is no offer section', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer());
+    const first = await renderPage();
+    expect(await screen.findByTestId('anon-locked')).toHaveAttribute('id', 'offer');
+    expect(screen.getByTestId('anon-courses')).not.toHaveAttribute('id');
+    first.unmount();
+
+    server.use(okNavigation(navigation({ lockedSpaces: [] })));
+    const second = await renderPage();
+    expect(await screen.findByTestId('anon-courses')).toHaveAttribute('id', 'offer');
+    expect(screen.getByTestId('anon-spaces')).not.toHaveAttribute('id');
+    second.unmount();
+
+    server.use(okNavigation(navigation({ lockedSpaces: [], courses: [] })));
+    await renderPage();
+    expect(await screen.findByTestId('anon-spaces')).toHaveAttribute('id', 'offer');
+    expect(screen.queryByTestId('anon-offer-jump')).not.toBeInTheDocument();
+  });
+
+  it('offers a jump to the offer in the read-only banner when something is for sale', async () => {
+    server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+
+    await renderPage();
+
+    const banner = await screen.findByTestId('anon-read-only-banner');
+    expect(within(banner).getByRole('link', { name: en.anon.salesCta })).toHaveAttribute('href', '/#offer');
+    expect(within(banner).getByRole('link', { name: en.auth.signInLink })).toHaveAttribute('href', '/login');
+  });
+
+  it('scrolls to the offer section when the page opens on the offer anchor', async () => {
+    const scrolled: (string | null)[] = [];
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function record(this: Element) {
+      scrolled.push(this.getAttribute('data-testid'));
+    });
+    try {
+      server.use(okNavigation(), okFeed([]), okOffer({ products: [offerProduct({ id: 'p1', title: 'Premium access' })] }));
+
+      await renderPage('/#offer');
+
+      await screen.findByTestId('anon-offer');
+      await waitFor(() => expect(scrolled).toEqual(['anon-offer']));
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

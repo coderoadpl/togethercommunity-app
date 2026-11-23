@@ -28,6 +28,9 @@ type Executor = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 const STAFF_REFUND_STOCK_REASON = 'staff_refund';
 
+// One bind parameter per id; Postgres refuses a statement with more than 65,535.
+const ORDER_ID_CHUNK_SIZE = 1000;
+
 export const toStaffRefund = (row: typeof orderStaffRefunds.$inferSelect): OrderStaffRefund => orderStaffRefundSchema.parse({
   ...row,
   nextAttemptAt: isoOrNull(row.nextAttemptAt),
@@ -114,16 +117,19 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
   platformCommittedCents: async (tenantId, orderId) => committedCents(db, tenantId, orderId),
   hasLabel: async (tenantId, orderId) => labelBought(db, tenantId, orderId),
   committedCentsByOrder: async (tenantId, orderIds) => {
-    if (orderIds.length === 0) return new Map();
-    const rows = await db.select({ orderId: orderStaffRefunds.orderId, cents: sql<string>`sum(${orderStaffRefunds.amountCents})` })
-      .from(orderStaffRefunds)
-      .where(and(
-        eq(orderStaffRefunds.tenantId, tenantId),
-        inArray(orderStaffRefunds.orderId, [...orderIds]),
-        inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]),
-      ))
-      .groupBy(orderStaffRefunds.orderId);
-    return new Map(rows.map((row) => [row.orderId, Number(row.cents)]));
+    const committed = new Map<string, number>();
+    for (let start = 0; start < orderIds.length; start += ORDER_ID_CHUNK_SIZE) {
+      const rows = await db.select({ orderId: orderStaffRefunds.orderId, cents: sql<string>`sum(${orderStaffRefunds.amountCents})` })
+        .from(orderStaffRefunds)
+        .where(and(
+          eq(orderStaffRefunds.tenantId, tenantId),
+          inArray(orderStaffRefunds.orderId, orderIds.slice(start, start + ORDER_ID_CHUNK_SIZE)),
+          inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]),
+        ))
+        .groupBy(orderStaffRefunds.orderId);
+      for (const row of rows) committed.set(row.orderId, Number(row.cents));
+    }
+    return committed;
   },
   returnableStock: async (tenantId, orderId) => returnableOrderStock(db, tenantId, orderId, STAFF_REFUND_STOCK_REASON),
   noteChargeRefunded: async (tenantId, orderId, now) =>

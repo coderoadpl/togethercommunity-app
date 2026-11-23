@@ -5,6 +5,7 @@ import { outOfStockRefundJob, refundFailure, type Identity, type OrderShipping, 
 import {
   createStaffRefund,
   dispatchOrderRefundJobs,
+  exportOrders,
   getOrder,
   previewStaffRefund,
   shipRefundedOrderAnyway,
@@ -364,7 +365,7 @@ describe('staff refunds against a real database', () => {
     expect(changes?.count).toBeGreaterThanOrEqual(3);
   });
 
-  it('shows the most recent unsettled staff refund on the orders list and adds the refunded amount to the export', async () => {
+  it('shows the most recent unsettled staff refund on the orders list', async () => {
     const h = harness();
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
     const listed = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
@@ -372,6 +373,27 @@ describe('staff refunds against a real database', () => {
     await h.dispatch(minutes(1));
     const settled = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
     expect(settled.orders.map((order) => [order.id, order.refundJobStatus])).toStrictEqual([['order-1', undefined]]);
-    expect(await h.deps.staffRefunds.committedCentsByOrder('tenant-a', ['order-1', 'order-x'])).toStrictEqual(new Map([['order-1', 1000]]));
+  });
+
+  it('adds the refunded amount to the CSV and JSON export', async () => {
+    const h = harness();
+    await insertOrder('order-2', { status: 'refunded', createdAt: minutes(-1) });
+    await insertOrder('order-3', { createdAt: minutes(-2) });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    const exportDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
+
+    const [header = '', ...lines] = unwrap(await exportOrders(staff('tenant-a'), { format: 'csv' }, exportDeps)).content.split('\n');
+    expect(header.split(',').at(-1)).toBe('refunded_amount');
+    expect(lines.map((line) => line.split(',').at(-1))).toStrictEqual(['"1000"', '"4099"', '"0"']);
+    const json: unknown = JSON.parse(unwrap(await exportOrders(staff('tenant-a'), { format: 'json' }, exportDeps)).content);
+    expect(json).toMatchObject([{ id: 'order-1', refundedCents: 1000 }, { id: 'order-2', refundedCents: 4099 }, { id: 'order-3', refundedCents: 0 }]);
+  });
+
+  it('sums committed staff refunds for more order ids than one statement can bind', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    const orderIds = [...Array.from({ length: 66_000 }, (_value, index) => `order-x-${String(index)}`), 'order-1'];
+
+    expect(await h.deps.staffRefunds.committedCentsByOrder('tenant-a', orderIds)).toStrictEqual(new Map([['order-1', 1000]]));
   });
 });

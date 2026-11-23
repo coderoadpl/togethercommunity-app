@@ -44,21 +44,21 @@ const publicOffer = () =>
       },
     }));
 
-const renderVisitorShell = async () => {
+const renderVisitorShell = async (
+  { visitorEmail = 'visitor@example.com', path = '/start' }: { visitorEmail?: string | null; path?: string } = {},
+) => {
   const rootRoute = createRootRoute();
+  const publicPage = (label: string) => () => (
+    <AnonShell visitorEmail={visitorEmail}>
+      <p>{label}</p>
+    </AnonShell>
+  );
   const routeTree = rootRoute.addChildren([
-    createRoute({
-      getParentRoute: () => rootRoute,
-      path: '/start',
-      component: () => (
-        <AnonShell visitorEmail="visitor@example.com">
-          <p>Public start</p>
-        </AnonShell>
-      ),
-    }),
+    createRoute({ getParentRoute: () => rootRoute, path: '/start', component: publicPage('Public start') }),
+    createRoute({ getParentRoute: () => rootRoute, path: '/community/$spaceId', component: publicPage('Public space') }),
     createRoute({ getParentRoute: () => rootRoute, path: '/login', component: () => <p>Sign-in page</p> }),
   ]);
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/start'] }) });
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
   await router.load();
   return {
     router,
@@ -138,5 +138,18 @@ describe('AnonShell visitor account', () => {
     expect(router.state.location.pathname).toBe('/start');
     expect(window.sessionStorage.getItem(LOGIN_IDENTIFIER_KEY)).toBe('visitor@example.com');
     expect(screen.getByTestId('anon-sign-out')).toBeEnabled();
+  });
+});
+
+describe('AnonShell sign-in link', () => {
+  it('sends a visitor on a deep public page to sign-in with that page as the return path', async () => {
+    server.use(publicNavigation(), publicOffer());
+    await renderVisitorShell({ visitorEmail: null, path: '/community/s1?sort=new' });
+
+    const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
+    expect(signIn.closest('header')).not.toBeNull();
+    const target = new URL(signIn.getAttribute('href') ?? '', 'https://acme.example');
+    expect(target.pathname).toBe('/login');
+    expect(target.searchParams.get('returnTo')).toBe('/community/s1?sort=new');
   });
 });

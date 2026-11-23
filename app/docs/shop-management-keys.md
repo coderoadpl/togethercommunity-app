@@ -762,7 +762,8 @@ is recorded in the same transaction and the minute sweep retries a storage
 delete that failed ([Download file prefixes](storage.md#download-file-prefixes)).
 A removal is never refused for the limits below: what a failed delete owes
 counts against the key that staged the file until the storage confirms the
-delete, and blocks that key's new uploads and copies while it lasts.
+delete, and a new upload or copy of that key is refused only when its own
+share does not fit beside that debt (see Limits).
 
 **Staged files.** A staged file that is not attached becomes due for the minute
 sweep 7 days after it was staged, and once its key is revoked, expires or is

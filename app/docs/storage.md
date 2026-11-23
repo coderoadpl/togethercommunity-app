@@ -75,8 +75,11 @@ Who deletes them:
 
 - a `key-uploads/` object: a completion that staged it or that failed for a
   definite reason (nothing uploaded, a wrong size or type, a copy the storage
-  refused), and the minute sweep once its upload record is 20 minutes old and
-  30 minutes have passed since its last completion attempt started. When the
+  refused), and the minute sweep once its upload record is 20 minutes old; for
+  a record whose completion attempt is still running or was interrupted (its
+  outcome unknown), only once that attempt also started 30 minutes ago, while
+  a record with no attempt, a completed one or one that failed definitely
+  needs only the 20 minutes. When the
   sweep settles the record it records, in the same transaction, an owed
   deletion of the upload object that is due a day after the upload started, and
   deletes it once more then, whether or not an object is there. Until it is
@@ -126,7 +129,9 @@ so an attach that takes the object over in the meantime is never undone. The
 copy and the read of a completion or copy hold no row lock; they are fenced by
 the attempt id and by a destination of their own. A delete that takes effect
 while its transaction rolls back, or whose answer is lost, still leaves the row
-in place, and the sweep deletes the object again. Removing a file version or deleting a draft product whose file
+in place, and the sweep deletes the object again. A `404` answer to a delete
+means the object is not there and counts as a confirmed delete; a `404` that
+names a missing bucket (`NoSuchBucket`) does not. Removing a file version or deleting a draft product whose file
 object is under `key-files/`, discarding a staged file, and the minute sweep of
 a staged file record the object's deletion in
 `change_proposal_download_deletions` in the transaction that deletes the file's
@@ -170,9 +175,12 @@ by then. Its discovery of workspaces, the listing of a workspace's rows and the
 recording of their failed attempts run with a statement timeout and a lock
 timeout of what is left, but at least 1 second, and one that runs out lists or
 records nothing, so its rows wait for the next run; the retention purge of a
-workspace runs with a statement timeout and a lock timeout of what is left and
-deletes nothing when it runs out, and the listing after it starts only when
-what is left still covers a row. The retention purge of a workspace deletes at
+workspace sets a statement timeout and a lock timeout of what is left once,
+before its three statements (the records, their purge events and the expired
+events), and deletes nothing when one of them runs out. The timeout bounds each
+statement, not the purge as a whole: three statements that each finish within
+it can together end, and commit, after the run's budget is spent. The listing
+after the purge starts only when what is left still covers a row. The retention purge of a workspace deletes at
 most 50 settled records and 50 expired events per run, oldest first, so a
 backlog is worked off over several runs. It starts a row only when what is left covers a lock wait of at least 250
 milliseconds and 1 second for each of the row's storage deletes (two for an

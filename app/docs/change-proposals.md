@@ -1181,7 +1181,11 @@ extension), with the full address as its title and for assistive technology.
 When the preview cannot be loaded, a warning takes the place of the picture:
 the image could not be loaded; if it no longer exists, approving changes
 nothing and the image has to be uploaded and proposed again; otherwise try
-again in a moment. The private note is not shown then. A proposed SVG is never
+again in a moment. The private note is not shown then. The preview reads the
+key's quarantined copy whenever its row exists, so the warning can be wrong:
+when that copy is lost but a public copy of the same image already passes the
+check before the transaction (below), the preview shows the warning while
+approval applies the image at once. A proposed SVG is never
 rendered: the panel shows a labelled download link through the same route, the
 same facts and the reason. For a decided proposal the panel keeps the rule for every image
 address: it shows an image only for a same-origin public asset path, and it
@@ -1227,9 +1231,12 @@ time (`PROPOSAL_IMAGE_REUSE_CHECKS.concurrency`), each request within its 5
 seconds, and every request starts and ends within one wall-clock budget of 15
 seconds (`PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs`): a request that cannot start
 with at least 1 second of it left ends the checks with `503 unavailable`
-("retry the request", `Retry-After: 5`), nothing recorded or changed. With the
-25 seconds of the [file checks](#download-files), at most 40 seconds of the
-60-second server function go to checks before the transaction. An object that
+("retry the request", `Retry-After: 5`), nothing recorded or changed. The read
+of the storage configuration before these checks is awaited before that budget
+starts and is not counted in it, so a stalled configuration read alone can keep
+the approval longer than 15 seconds. Apart from that read, with the 25 seconds
+of the [file checks](#download-files), the checks before the transaction aim at
+40 seconds of the 60-second server function. An object that
 passes is neither written nor recorded and its bytes are not kept, so an
 approval never deletes a public object an earlier approval published; a missing
 object, or one whose bytes no longer match, is recorded and written again from
@@ -1245,9 +1252,14 @@ transaction, so the approval never waits for a second database connection while
 it holds one. Under the workspace's approval lock, each public copy that passed
 is checked again by a metadata request only, never read again: its size must be
 the size seen before the transaction and, when the storage sent an entity tag
-then, its entity tag must be the same. A copy that changed meanwhile makes an
-address without a quarantined copy `stale`, and answers `503 unavailable` for
-one with a quarantined copy. When every item applied, the approval locks the records of the
+then, its entity tag must be the same. Only a change these metadata show is
+detected: a copy whose size or entity tag changed makes an address without a
+quarantined copy `stale`, and answers `503 unavailable` for one with a
+quarantined copy. Other bytes of the same size pass when the storage sends no
+entity tag or an unchanged weak one, and the entity tag compared is the one the
+metadata request returned before the read, not one of the read whose bytes were
+hashed, so other bytes that held the address at that request and are back at
+the lock pass as well. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
@@ -1300,7 +1312,9 @@ of the storage, so a process that dies during a write, whose record no
 withdrawal restarts, still leaves the storage the full 10 minutes after the
 latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
 `4xx` answer other than `404`) cannot land later, so the mark is cleared and the
-record stays for the sweep. When the delete ends without a definite answer (no
+record stays for the sweep. A `404` answer means the object is not there and
+counts as a confirmed delete, so the record is removed; a `404` that names a
+missing bucket (`NoSuchBucket`) counts as a delete without a definite answer. When the delete ends without a definite answer (no
 answer, a connection error, a server error), or the process dies after sending
 it, the storage may still carry it out later, so the record keeps its mark; the
 minute sweep deletes the object again 15 minutes after the mark, under the same
@@ -1343,10 +1357,16 @@ clears the mark and leaves the row released and invisible, and the sweep
 retries it; a busy step leaves it the same way. A bucket policy that refuses
 deletes therefore leaves such rows counted toward the key's limits, and the
 refusal logged on every sweep run, until the storage permits the delete; it
-never blocks a completion of the same image. A delete that ended without a definite answer, or whose process
-died, keeps the mark: for 10 minutes after it the sweep leaves the row alone,
-then deletes the object again and removes the row, and the image can be
-uploaded again.
+never blocks a completion of the same image. A `404` answer means the object is
+not there and counts as a confirmed delete, so the row is removed; a `404` that
+names a missing bucket (`NoSuchBucket`) counts as a delete without a definite
+answer. A delete that ended without a definite answer, or whose process
+died, keeps the mark: for 10 minutes the sweep leaves the row alone, then
+deletes the object again and removes the row once that delete is confirmed,
+and the image can be uploaded again. The 10 minutes count from the time the
+step was given, read before it waited for its database connection and the
+key's lock, not from the moment the delete was sent, so a step that waited
+leaves the storage less than 10 minutes after its delete.
 The workspace's approval lock is never held across these storage requests. This
 follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
@@ -1396,7 +1416,10 @@ the rows and their marking as released) runs with a statement timeout of what
 is left of that step's lock wait, set again before each of them, and none
 starts once it is spent: the release then changes nothing and its rows wait
 for the next run, so a slow release query cannot take the share of the kinds
-after it. A failing sweep is logged and never stops the tick
+after it. That allowance starts only once the release holds its database
+connection: the wait for a connection from the pool is not counted in it, so
+after a long wait the release can still run its statements past the end the
+sweep gave that step. A failing sweep is logged and never stops the tick
 or the other sweep. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
@@ -1618,9 +1641,11 @@ the target for the checks of the public image copies (at most 15 seconds,
 an approval whose connection pool is held by such stalled reads can still wait
 longer for its transaction. None of these file checks runs under
 the workspace's approval lock; an image a proposal attaches, alone or in a
-mixed group, has its public copy checked before the transaction too, and its
-quarantined copy read and written under that lock, each storage request
-within its own 5 seconds ([Images](#images)). A row that is gone or no longer
+mixed group, has its public copy checked before the transaction too. When that
+public copy passes, the approval neither reads the quarantined copy nor writes
+a public one: under that lock it only checks the public copy's metadata again.
+Otherwise it reads the quarantined copy and writes the public one under that
+lock, each storage request within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the
 budget left, a check whose staged row or configuration read has not answered
@@ -2021,7 +2046,10 @@ Three paths write access items without the check: the content import
 (`adapters/db/importer.ts`), and lesson deletion (`deleteLesson`), which removes
 the deleted lesson from every `lessons` item. Lesson deletion deletes the lesson
 first and then writes each product that names it, up to 3 times when the
-product is busy. Every attempt reads the product again and removes the lesson
+product is busy. Only a busy write is reported: when the list left after the
+removal names an archived course, the repository refuses the write, the
+product keeps the id of the deleted lesson, and the lesson deletion still
+answers success without naming that product. Every attempt reads the product again and removes the lesson
 from the list stored at that moment, so a retry never writes back a list an
 editor replaced in the meantime; a write that is not busy is not compared with
 what was read, so an editor's change committed between that read and that write

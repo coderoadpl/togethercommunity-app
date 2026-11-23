@@ -297,6 +297,7 @@ const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
   order: (id: string) => ['sales', 'order', id] as const,
+  refundPreview: (id: string) => ['sales', 'order', id, 'refund-preview'] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
   summary: () => ['sales', 'summary'] as const,
   reconciliation: (input: OrdersReconciliationQueryInput) =>
@@ -915,6 +916,25 @@ export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({
     queryKey: salesScopes.order(id),
     call: ({ signal }) => api.getOrder(id, signal),
+  });
+
+export const orderRefundPreviewQuery = (api: ApiClient, orderId: string) =>
+  defineQuery({
+    queryKey: salesScopes.refundPreview(orderId),
+    staleTime: 0,
+    call: ({ signal }) => api.orderRefundPreview({ orderId }, signal),
+  });
+
+export const createOrderRefundMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'refund'],
+    call: (input: Parameters<ApiClient['createOrderRefund']>[0]) => api.createOrderRefund(input),
+  });
+
+export const shipOrderAnywayMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'ship-anyway'],
+    call: (orderId: string) => api.shipOrderAnyway({ orderId }),
   });
 
 export const issueInvoiceMutation = (api: ApiClient) =>

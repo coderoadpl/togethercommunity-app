@@ -111,6 +111,7 @@ describe('startServiceContainer', () => {
 
     expect(await startServiceContainer(spec, deps)).toEqual({
       ok: false,
+      infrastructure: false,
       problem: `could not pull ${spec.image} after 1 attempt(s)`,
       lastMessage: 'manifest unknown: manifest unknown',
     });
@@ -123,6 +124,7 @@ describe('startServiceContainer', () => {
 
     expect(await startServiceContainer(spec, deps)).toEqual({
       ok: false,
+      infrastructure: true,
       problem: `could not pull ${spec.image} after ${String(MAX_PULL_ATTEMPTS)} attempt(s) (registry throttling or a network error)`,
       lastMessage: 'toomanyrequests: You have reached your pull rate limit',
     });
@@ -137,6 +139,7 @@ describe('startServiceContainer', () => {
 
     expect(await startServiceContainer(spec, deps)).toEqual({
       ok: false,
+      infrastructure: false,
       problem: 'could not start container postgres',
       lastMessage: 'docker: Error response from daemon: port is already allocated.',
     });
@@ -154,6 +157,7 @@ describe('startServiceContainer', () => {
 
     expect(await startServiceContainer(spec, deps)).toEqual({
       ok: false,
+      infrastructure: false,
       problem: 'could not start container postgres',
       lastMessage: 'docker: Error response from daemon: Conflict. The container name "/postgres" is already in use.',
     });
@@ -179,11 +183,24 @@ describe('startServiceContainer', () => {
 
     expect(await startServiceContainer(spec, deps)).toEqual({
       ok: false,
+      infrastructure: false,
       problem: 'container postgres did not become healthy within 180 s (state: running, health unhealthy)',
       lastMessage: 'no response',
     });
     expect(commands()).toEqual(['pull', 'run', 'inspect', 'logs']);
     expect(deps.log).toHaveBeenCalledWith('FATAL: bad config\n');
+  });
+
+  it('reports an exited container as a service container failure', async () => {
+    const exited = JSON.stringify({ Status: 'exited' });
+    const { deps } = harness({ inspect: [ok(exited)], logs: [ok('initdb: invalid locale\n')] });
+
+    expect(await startServiceContainer(spec, deps)).toEqual({
+      ok: false,
+      infrastructure: false,
+      problem: 'container postgres did not become healthy within 180 s (state: exited, health none)',
+      lastMessage: 'initdb: invalid locale',
+    });
   });
 
   it('stops waiting for health after a bounded time', async () => {
@@ -193,6 +210,7 @@ describe('startServiceContainer', () => {
 
     expect(result).toEqual({
       ok: false,
+      infrastructure: false,
       problem: 'container postgres did not become healthy within 180 s (state: running, health starting)',
       lastMessage: 'still starting',
     });
@@ -235,14 +253,32 @@ describe('container state', () => {
 });
 
 describe('failure annotation', () => {
-  it('says the failure is CI infrastructure, not a test failure, with the last registry message', () => {
-    expect(failureAnnotation('could not pull image after 6 attempt(s)', 'toomanyrequests: Rate exceeded')).toBe(
-      '::error title=CI infrastructure::CI infrastructure failure (image pull or container start), not a test failure: could not pull image after 6 attempt(s). Last message: toomanyrequests: Rate exceeded',
+  it('says a pull that exhausted its retries on throttling is CI infrastructure, not a test failure', () => {
+    expect(failureAnnotation({
+      infrastructure: true,
+      problem: 'could not pull image after 6 attempt(s) (registry throttling or a network error)',
+      lastMessage: 'toomanyrequests: Rate exceeded',
+    })).toBe(
+      '::error title=CI infrastructure::CI infrastructure failure (image pull), not a test failure: could not pull image after 6 attempt(s) (registry throttling or a network error). Last message: toomanyrequests: Rate exceeded',
     );
   });
 
+  it.each([
+    ['a non-transient pull error', 'could not pull image after 1 attempt(s)', 'manifest unknown'],
+    ['a failed docker run', 'could not start container postgres', 'port is already allocated'],
+    ['an unhealthy container', 'container postgres did not become healthy within 180 s (state: running, health unhealthy)', 'no response'],
+  ])('names %s neutrally and points at the image, environment and health command', (_label, problem, message) => {
+    const text = failureAnnotation({ infrastructure: false, problem, lastMessage: message });
+
+    expect(text).toBe(
+      `::error title=Service container::Service container failure: ${problem}. Last message: ${message}. If this pull request changed the image reference, the container environment or the health command, check them.`,
+    );
+    expect(text).not.toContain('infrastructure');
+    expect(text).not.toContain('not a test failure');
+  });
+
   it('keeps a multi-line message on one annotation line', () => {
-    expect(failureAnnotation('problem', 'a\nb')).not.toContain('\n');
+    expect(failureAnnotation({ infrastructure: false, problem: 'problem', lastMessage: 'a\nb' })).not.toContain('\n');
   });
 });
 
@@ -285,14 +321,13 @@ describe('service container entry point', () => {
     expect(result.stdout).toContain('postgres is healthy');
   });
 
-  it('fails with the infrastructure annotation on a pull error', () => {
+  it('fails with the neutral service container annotation on a non-transient pull error', () => {
     const { result, calls } = runEntry({ STUB_PULL_ERROR: 'manifest unknown' });
 
     expect(result.status).toBe(1);
     expect(calls).toHaveLength(1);
-    expect(result.stdout).toContain(
-      '::error title=CI infrastructure::CI infrastructure failure (image pull or container start), not a test failure:',
-    );
+    expect(result.stdout).toContain('::error title=Service container::Service container failure: could not pull');
+    expect(result.stdout).not.toContain('CI infrastructure');
     expect(result.stdout).toContain('Last message: manifest unknown');
   });
 

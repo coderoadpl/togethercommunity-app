@@ -29,9 +29,15 @@ export interface ServiceDeps {
   log: (line: string) => void;
 }
 
+export interface StartFailure {
+  infrastructure: boolean;
+  problem: string;
+  lastMessage: string;
+}
+
 export type StartResult =
   | { ok: true; pullAttempts: number }
-  | { ok: false; problem: string; lastMessage: string };
+  | ({ ok: false } & StartFailure);
 
 export const MAX_PULL_ATTEMPTS = 6;
 export const HEALTH_WAIT_MS = 180_000;
@@ -142,6 +148,7 @@ const pullImage = async (spec: ServiceSpec, deps: ServiceDeps): Promise<StartRes
       logFailedCommand(deps, args, result);
       return {
         ok: false,
+        infrastructure: transient,
         problem: `could not pull ${spec.image} after ${String(attempt)} attempt(s)${transient ? ' (registry throttling or a network error)' : ''}`,
         lastMessage: lastMessage(result.output),
       };
@@ -168,6 +175,7 @@ const waitHealthy = async (spec: ServiceSpec, deps: ServiceDeps): Promise<StartR
   const observed = state === null ? 'unknown' : `${state.status}, health ${state.health ?? 'none'}`;
   return {
     ok: false,
+    infrastructure: false,
     problem: `container ${spec.name} did not become healthy within ${String(HEALTH_WAIT_MS / 1000)} s (state: ${observed})`,
     lastMessage: state?.lastProbe ?? lastMessage(logs.output),
   };
@@ -180,7 +188,12 @@ export const startServiceContainer = async (spec: ServiceSpec, deps: ServiceDeps
   const started = await deps.docker(args);
   if (started.code !== 0) {
     logFailedCommand(deps, args, started);
-    return { ok: false, problem: `could not start container ${spec.name}`, lastMessage: lastMessage(started.output) };
+    return {
+      ok: false,
+      infrastructure: false,
+      problem: `could not start container ${spec.name}`,
+      lastMessage: lastMessage(started.output),
+    };
   }
   return await waitHealthy(spec, deps) ?? pulled;
 };
@@ -188,10 +201,14 @@ export const startServiceContainer = async (spec: ServiceSpec, deps: ServiceDeps
 const annotation = (value: string): string =>
   value.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
 
-export const failureAnnotation = (problem: string, message: string): string =>
-  `::error title=CI infrastructure::${annotation(
-    `CI infrastructure failure (image pull or container start), not a test failure: ${problem}. Last message: ${message}`,
-  )}`;
+export const failureAnnotation = (failure: StartFailure): string =>
+  failure.infrastructure
+    ? `::error title=CI infrastructure::${annotation(
+      `CI infrastructure failure (image pull), not a test failure: ${failure.problem}. Last message: ${failure.lastMessage}`,
+    )}`
+    : `::error title=Service container::${annotation(
+      `Service container failure: ${failure.problem}. Last message: ${failure.lastMessage}. If this pull request changed the image reference, the container environment or the health command, check them.`,
+    )}`;
 
 const runDocker = (args: string[]): Promise<CommandResult> =>
   new Promise((resolve) => {
@@ -213,7 +230,7 @@ const main = async (env: Env): Promise<number> => {
     log: (line) => { process.stdout.write(`${line}\n`); },
   });
   if (!result.ok) {
-    process.stdout.write(`${failureAnnotation(result.problem, result.lastMessage)}\n`);
+    process.stdout.write(`${failureAnnotation(result)}\n`);
     return 1;
   }
   process.stdout.write(`${spec.name} is healthy, published on localhost as ${spec.port} (${spec.image})\n`);

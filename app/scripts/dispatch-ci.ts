@@ -445,7 +445,7 @@ export interface GateInput {
   needsRaw: string | undefined;
   planRaw: string | undefined;
   details: RunDetails | null;
-  infrastructureStepPrefix?: string;
+  serviceContainerStepPrefix?: string;
 }
 
 const blockingOutcomes: readonly Outcome[] = ['failed', 'cancelled', 'skipped but required', 'plan mismatch'];
@@ -459,18 +459,18 @@ const legName = (jobId: string, suite: string): string => `${jobId} (${suite})`;
 const runNames = (job: PlannedJob): string[] =>
   job.matrix === null ? [job.id] : job.matrix.map((entry) => legName(job.id, entry.suite));
 
-const describeStep = (step: string, infrastructurePrefix: string | undefined): string =>
-  infrastructurePrefix !== undefined && step.startsWith(infrastructurePrefix)
-    ? `infrastructure: step "${step}"`
+const describeStep = (step: string, serviceContainerPrefix: string | undefined): string =>
+  serviceContainerPrefix !== undefined && step.startsWith(serviceContainerPrefix)
+    ? `service container: step "${step}"`
     : `step "${step}"`;
 
-const describeFailure = (job: PlannedJob, details: RunDetails | null, infrastructurePrefix: string | undefined): string[] => {
+const describeFailure = (job: PlannedJob, details: RunDetails | null, serviceContainerPrefix: string | undefined): string[] => {
   if (details === null || !details.available) return [job.id];
   const names = new Set(runNames(job));
   const failing = details.jobs.filter((detail) => names.has(detail.name) && detail.conclusion === 'failure');
   if (failing.length === 0) return [job.id];
   return failing.map((detail) =>
-    detail.failedStep === null ? detail.name : `${detail.name} (${describeStep(detail.failedStep, infrastructurePrefix)})`);
+    detail.failedStep === null ? detail.name : `${detail.name} (${describeStep(detail.failedStep, serviceContainerPrefix)})`);
 };
 
 const describeCancellation = (job: PlannedJob, details: RunDetails | null): string[] => {
@@ -549,7 +549,7 @@ export const decideGate = (input: GateInput): GateVerdict => {
     const { reason, ...verdict } = judgeJob(job, needs[job.id]);
     let detail = reason;
     if (verdict.outcome === 'failed') {
-      const described = describeFailure(job, input.details, input.infrastructureStepPrefix);
+      const described = describeFailure(job, input.details, input.serviceContainerStepPrefix);
       failed.push(...described.map((name) => reason === '' ? name : `${name} (${reason})`));
       detail = [described.join('; '), reason].filter((part) => part !== '').join(' — ');
     } else if (verdict.outcome === 'cancelled') {
@@ -559,7 +559,7 @@ export const decideGate = (input: GateInput): GateVerdict => {
     } else if (verdict.outcome === 'plan mismatch') {
       mismatches.push(`${job.id} (${reason})`);
     } else if (verdict.outcome === 'advisory failure') {
-      const described = describeFailure(job, input.details, input.infrastructureStepPrefix);
+      const described = describeFailure(job, input.details, input.serviceContainerStepPrefix);
       advisoryFailures.push(...described);
       detail = described.join('; ');
     }
@@ -714,7 +714,7 @@ const runGate = async (env: Env, manifestPath: string): Promise<boolean> => {
     needsRaw: env['DISPATCH_CI_NEEDS'],
     planRaw: env['DISPATCH_CI_PLAN'],
     details: null,
-    infrastructureStepPrefix: manifest.serviceContainerStepPrefix,
+    serviceContainerStepPrefix: manifest.serviceContainerStepPrefix,
   };
   let verdict = decideGate(input);
   if (verdict.wantsRunDetails) {

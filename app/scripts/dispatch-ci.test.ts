@@ -353,7 +353,7 @@ describe('dispatch-ci gate', () => {
     expect(verdict.notes).toEqual([]);
   });
 
-  it('marks a failing service container step as infrastructure without changing the verdict', () => {
+  it('labels a failing service container step without changing the verdict', () => {
     const details: RunDetails = {
       available: true,
       jobs: [
@@ -368,15 +368,15 @@ describe('dispatch-ci gate', () => {
       needsRaw: needs({ check: 'failure', audit: 'failure', e2e: 'failure' }),
       planRaw: JSON.stringify(plan),
       details,
-      infrastructureStepPrefix: 'Start service container',
+      serviceContainerStepPrefix: 'Start service container',
     });
 
     expect(verdict.green).toBe(false);
     expect(verdict.headline).toBe(
-      'dispatch-ci: RED — failed: check (infrastructure: step "Start service container: postgres"), e2e (auth) (infrastructure: step "Start service container: postgres"), e2e (coupon) (step "Run E2E suite"); cancelled: none; skipped but required: none',
+      'dispatch-ci: RED — failed: check (service container: step "Start service container: postgres"), e2e (auth) (service container: step "Start service container: postgres"), e2e (coupon) (step "Run E2E suite"); cancelled: none; skipped but required: none',
     );
     expect(verdict.jobs.find((job) => job.id === 'audit')?.detail)
-      .toBe('audit (infrastructure: step "Start service container: mongodb")');
+      .toBe('audit (service container: step "Start service container: mongodb")');
   });
 
   it('labels a service container step as an ordinary step without a prefix', () => {
@@ -390,7 +390,7 @@ describe('dispatch-ci gate', () => {
     );
   });
 
-  it('keeps the green verdict when an advisory job failed on infrastructure', () => {
+  it('keeps the green verdict when an advisory job failed in its service container step', () => {
     const verdict = decideGate({
       planJob: 'plan',
       needsRaw: needs({ audit: 'failure' }),
@@ -399,12 +399,12 @@ describe('dispatch-ci gate', () => {
         available: true,
         jobs: [{ name: 'audit', conclusion: 'failure', failedStep: 'Start service container: mongodb' }],
       },
-      infrastructureStepPrefix: 'Start service container',
+      serviceContainerStepPrefix: 'Start service container',
     });
 
     expect(verdict.green).toBe(true);
     expect(verdict.headline).toBe(
-      'dispatch-ci: GREEN — 3 planned job(s) matched the plan for pull_request on staging; advisory failures (not blocking): audit (infrastructure: step "Start service container: mongodb")',
+      'dispatch-ci: GREEN — 3 planned job(s) matched the plan for pull_request on staging; advisory failures (not blocking): audit (service container: step "Start service container: mongodb")',
     );
   });
 

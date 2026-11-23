@@ -138,9 +138,16 @@ declare no `services:`; they start Postgres or MongoDB with the composite action
 the error patterns and bounded backoff of `app/scripts/docker-pull.ts` (six
 attempts, about a minute of waiting at most), starts it on the same `localhost` port and waits for its health
 check. Its step is named `<serviceContainerStepPrefix>: <service>` (manifest
-field, `Start service container`), and a failed pull or start prints an
-`::error` saying it is CI infrastructure, not a test failure. The gate then
-shows that step as `failed: check (infrastructure: step "Start service container: postgres")`;
+field, `Start service container`). A failed docker command prints its full
+output before the `::error` annotation. Only a pull that still fails after the
+last retry on registry throttling or a network error is annotated as CI
+infrastructure, not a test failure. A non-transient pull error (for example a
+mistyped digest), a failed `docker run`, and a container that is unhealthy,
+exited or never became healthy get a neutral `Service container` annotation
+that names the cause and asks to check the image reference, the container
+environment and the health command if the pull request changed them. The gate
+shows any failure of that step as
+`failed: check (service container: step "Start service container: postgres")`;
 the verdict stays red.
 
 The `check` job runs each sub-gate of `pnpm run check` as its own step named

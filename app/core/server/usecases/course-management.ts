@@ -586,6 +586,11 @@ const withoutLesson = (item: AccessItem, lessonId: string): AccessItem | null =>
   return { ...item, lessonIds };
 };
 
+const LESSON_CLEANUP_ATTEMPTS = 3;
+
+const lessonCleanupBusy = (): AppError =>
+  appError('unavailable', 'The lesson was deleted, but a product that granted it was busy and still names it in its access list');
+
 export const deleteLesson = async (
   ctx: Ctx,
   input: unknown,
@@ -633,7 +638,11 @@ export const deleteLesson = async (
       .filter((item): item is AccessItem => item !== null);
     const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
     if (!snapshot.ok) return snapshot;
-    await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
+    let cleaned = await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
+    for (let attempt = 1; cleaned === 'busy' && attempt < LESSON_CLEANUP_ATTEMPTS; attempt += 1) {
+      cleaned = await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
+    }
+    if (cleaned === 'busy') return err(lessonCleanupBusy());
   }
 
   return ok(references);

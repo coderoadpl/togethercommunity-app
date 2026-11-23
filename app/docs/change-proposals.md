@@ -1889,7 +1889,13 @@ item's course does not reach.
 Three paths write access items without the check: the content import
 (`core/server/usecases/m2m-import.ts`), the legacy importer
 (`adapters/db/importer.ts`), and lesson deletion (`deleteLesson`), which removes
-the deleted lesson from every `lessons` item. An import key with
+the deleted lesson from every `lessons` item. Lesson deletion deletes the lesson
+first and then writes each product that names it, up to 3 times when the
+product is busy; when a product stays busy it answers `503 unavailable` ("The
+lesson was deleted, but a product that granted it was busy and still names it
+in its access list"), and that product keeps the id of the deleted lesson,
+which grants nothing, until its list is saved again: deleting the lesson again
+answers `404`. An import key with
 `import:content-write` updates a product it imported only while that product is
 unpublished, but an unpublished product can still have members with active
 grants from earlier sales or owner grants. A re-import therefore changes what

@@ -904,6 +904,31 @@ describe('course management use-cases', () => {
     expect(errors).toEqual([expect.stringContaining('tenant "t-acme" could not delete storage object "lesson-attachments/l1/attachment-1/handout.pdf"')]);
   });
 
+  it('retries a busy product cleanup and reports a cleanup that stays busy, after the lesson is gone', async () => {
+    const setup = () => {
+      const lessons = [lesson('l1', 't-acme')];
+      const products = [{ ...product('p1', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }] }];
+      const d = deps({ lessons, products, ids: ['snap-p1'] });
+      const write = d.products.updateAccessItems;
+      let calls = 0;
+      return { lessons, products, d, write, calls: () => calls, count: () => { calls += 1; } };
+    };
+
+    const once = setup();
+    once.d.products.updateAccessItems = async (...args) => { once.count(); return once.calls() === 1 ? 'busy' : once.write(...args); };
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, once.d)).toMatchObject({ ok: true, value: { lessonId: 'l1' } });
+    expect(once.calls()).toBe(2);
+    expect(once.products[0]?.accessItems).toEqual([]);
+
+    const stuck = setup();
+    stuck.d.products.updateAccessItems = async () => { stuck.count(); return 'busy'; };
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, stuck.d)).toMatchObject({
+      ok: false, error: { code: 'unavailable', message: 'The lesson was deleted, but a product that granted it was busy and still names it in its access list' },
+    });
+    expect(stuck.calls()).toBe(3);
+    expect(stuck.lessons).toHaveLength(0);
+  });
+
   it('reports not found when deleting a missing lesson', async () => {
     const result = await deleteLesson(
       { identity: identity('t-acme', 'owner') },

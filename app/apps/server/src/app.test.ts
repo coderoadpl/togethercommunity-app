@@ -4960,6 +4960,23 @@ describe('purchased product download route', () => {
     }
   });
 
+  it('gives a plain representation no quality from a range that requires other media type parameters', async () => {
+    const cases = [
+      { accept: 'text/*;profile=legacy, application/json;q=0.5', status: 403 },
+      { accept: 'text/html;level=1, application/json;q=0.5', status: 403 },
+      { accept: browserAccept, status: 303 },
+      { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', status: 303 },
+      { accept: 'text/html;q=0.9;ext=1, application/json;q=0.5', status: 303 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
   it('sends a signed-out browser download to sign-in with a return to My products', async () => {
     const anonymous = { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } };
     const browser = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {

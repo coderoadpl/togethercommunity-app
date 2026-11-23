@@ -15,9 +15,11 @@ const qualityOf = (accept: string, mediaType: string): number => {
   let best = { specificity: -1, quality: 0 };
   for (const entry of accept.split(',')) {
     const [range = '', ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    const specificity = specificityOf(range, mediaType);
+    const qIndex = params.findIndex((param) => param.startsWith('q='));
+    const mediaParams = (qIndex < 0 ? params : params.slice(0, qIndex)).filter((param) => param !== '');
+    const specificity = mediaParams.length === 0 ? specificityOf(range, mediaType) : -1;
     if (specificity < 0 || specificity < best.specificity) continue;
-    const q = params.find((param) => param.startsWith('q='));
+    const q = params[qIndex];
     const value = q === undefined ? 1 : Number(q.slice(2));
     if (!Number.isFinite(value)) continue;
     best = specificity > best.specificity

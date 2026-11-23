@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -20,7 +20,7 @@ import {
 } from '../../theme.js';
 import { courseTotals, CourseProgressCard, formatTotalDuration } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
-import { focusLesson } from './course-tree-state.js';
+import { focusLesson, nextLessonOf } from './course-tree-state.js';
 import { CourseTree } from './CourseTree.js';
 import { CourseLoading } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -82,14 +82,72 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
   );
 };
 
+const ABOUT_CLAMP_LINES = 5;
+
+const AboutCourseCard = ({ description, clamp }: { description: string; clamp: boolean }) => {
+  const t = useTranslations();
+  const textId = useId();
+  const text = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const collapsed = clamp && !expanded;
+
+  useLayoutEffect(() => {
+    const element = text.current;
+    if (element === null || !collapsed) return;
+    const measure = () => setOverflowing(element.scrollHeight > element.clientHeight);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [collapsed, description]);
+
+  return (
+    <Paper elevation={1} sx={{ p: '1.25rem' }} data-testid="course-about-card">
+      <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+        {t.courseOverview.aboutCourse}
+      </Eyebrow>
+      <Typography
+        ref={text}
+        id={textId}
+        variant="body1"
+        data-testid="course-about-text"
+        data-collapsed={collapsed}
+        sx={collapsed ? {
+          display: '-webkit-box',
+          WebkitLineClamp: ABOUT_CLAMP_LINES,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        } : undefined}
+      >
+        {description}
+      </Typography>
+      {clamp && (expanded || overflowing) ? (
+        <Button
+          variant="text"
+          sx={{ mt: '0.5rem' }}
+          aria-controls={textId}
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+          data-testid="course-about-toggle"
+        >
+          {expanded ? t.courseOverview.aboutShowLess : t.courseOverview.aboutShowMore}
+        </Button>
+      ) : null}
+    </Paper>
+  );
+};
+
 const CourseProgramSection = ({
   courseId,
   structure,
   focusLessonId,
+  nextLessonId,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
   focusLessonId: string | null;
+  nextLessonId: string | null;
 }) => {
   const t = useTranslations();
   const headingId = useId();
@@ -104,7 +162,7 @@ const CourseProgramSection = ({
       <Eyebrow variant="overline" component="h2" id={headingId} sx={{ mb: '0.75rem' }}>
         {t.courseOverview.curriculum}
       </Eyebrow>
-      <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} />
+      <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} nextLessonId={nextLessonId} />
     </Paper>
   );
 };
@@ -163,11 +221,17 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
           width="wide"
           state={{
             kind: 'not-found',
-            title: t.courseTree.courseNotInLibrary,
+            title: t.courseTree.courseUnavailable,
+            body: `${t.courseTree.courseNotInLibrary} ${t.courseTree.renewInMyProducts}`,
             action: (
-              <Button component={Link} to="/my" variant="contained">
-                {t.courseTree.backToMyCourses}
-              </Button>
+              <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem' }}>
+                <Button component={Link} to="/my" variant="contained">
+                  {t.courseTree.backToMyCourses}
+                </Button>
+                <Button component={Link} to="/my/products" variant="text">
+                  {t.student.myProducts}
+                </Button>
+              </Stack>
             ),
           }}
         />
@@ -176,13 +240,18 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
 
     return (
       <MemberSurface
-        title={t.student.myCourses}
+        title={t.courseTree.courseUnavailable}
         eyebrow={t.student.courseEyebrow}
         width="wide"
         state={{
           kind: 'error',
           message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
           retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
+          action: (
+            <Button component={Link} to="/my" variant="text">
+              {t.courseTree.backToMyCourses}
+            </Button>
+          ),
         }}
       />
     );
@@ -192,24 +261,19 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const catalogEntry = courses.data?.courses.find((entry) => entry.id === courseId);
   const hasModules = course.modules.length > 0;
   const aboutCard = catalogEntry !== undefined && catalogEntry.description !== '' ? (
-    <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="course-about-card">
-      <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-        {t.courseOverview.aboutCourse}
-      </Eyebrow>
-      <Typography variant="body1">{catalogEntry.description}</Typography>
-    </Paper>
+    <AboutCourseCard description={catalogEntry.description} clamp={isCompact} />
   ) : null;
   const discussionSearch = hasModules ? (
     <CourseDiscussionSearch courseId={courseId} structure={course} />
   ) : null;
-  const progressCard = (
+  const progressCard = hasModules ? (
     <CourseProgressCard
       courseId={courseId}
       structure={course}
       resume={progress.data?.progress.resume}
     />
-  );
-  const statTiles = <CourseStatTiles structure={course} />;
+  ) : null;
+  const statTiles = hasModules ? <CourseStatTiles structure={course} /> : null;
   const cover = catalogEntry === undefined ? null : (
     <Cover
       src={catalogEntry.imageUrl}
@@ -222,7 +286,12 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     />
   );
   const program = hasModules ? (
-    <CourseProgramSection courseId={courseId} structure={course} focusLessonId={focusLessonId} />
+    <CourseProgramSection
+      courseId={courseId}
+      structure={course}
+      focusLessonId={focusLessonId}
+      nextLessonId={nextLessonOf(progress.data?.progress.resume)}
+    />
   ) : null;
   const emptyState = !hasModules ? (
     <StatusView
@@ -238,12 +307,12 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const compactSections = (
     <>
       {progressCard}
-      {aboutCard}
-      {discussionSearch}
+      {program}
+      {emptyState}
       {statTiles}
       {cover}
-      {emptyState}
-      {program}
+      {aboutCard}
+      {discussionSearch}
     </>
   );
   const desktopSections = (
@@ -262,7 +331,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       eyebrow={t.student.courseEyebrow}
       width="wide"
       mobileRail="split"
-      railLeading={isCompact ? undefined : progressCard}
+      railLeading={hasModules && !isCompact ? progressCard : undefined}
       rail={hasModules && !isCompact ? discussionSearch : undefined}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>

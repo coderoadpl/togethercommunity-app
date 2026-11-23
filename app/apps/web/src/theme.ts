@@ -3721,6 +3721,11 @@ export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
 export const TreeLessonTitle = styled(Typography)<AsElement>({
   fontSize: '0.875rem',
   lineHeight: 1.45,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
 });
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
@@ -4039,6 +4044,17 @@ export const EllipsisTableCell = styled(TableCell)({
   textOverflow: 'ellipsis',
 });
 
+export const ContinueCtaLesson = styled('span')({
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  textAlign: 'center',
+  fontWeight: 400,
+});
+
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
   const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);
   return {
@@ -4058,7 +4074,7 @@ export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
   fontSize: '0.75rem',
-  color: theme.palette.text.disabled,
+  color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));

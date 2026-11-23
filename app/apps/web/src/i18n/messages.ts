@@ -2385,6 +2385,8 @@ export interface Messages {
     accessPartiallyUnlocked: string;
     completionComplete: string;
     completionPartial: string;
+    nextLesson: string;
+    renewInMyProducts: string;
   };
   courseOverview: {
     progressTitle: string;
@@ -2401,6 +2403,8 @@ export interface Messages {
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
+    aboutShowMore: string;
+    aboutShowLess: string;
   };
   lesson: {
     enlargeImage: string;

@@ -11,7 +11,7 @@ import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { RailProgressBar } from '../../../theme.js';
 import { courseTotals } from '../CourseRail.js';
-import { focusLesson } from '../course-tree-state.js';
+import { focusLesson, nextLessonOf } from '../course-tree-state.js';
 import { CourseTree } from '../CourseTree.js';
 import { spacesForCourse } from './course-spaces.js';
 import { memberHomePath } from './member-nav.js';
@@ -174,6 +174,7 @@ export const CourseSidebar = ({
             focusLessonId={focusLessonId}
             scrollFocusIntoView
             showFilter={showFilter}
+            nextLessonId={currentLessonId === null ? nextLessonOf(progress.data?.progress.resume) : null}
             {...(currentLessonId === null ? {} : { currentLessonId })}
           />
         </>

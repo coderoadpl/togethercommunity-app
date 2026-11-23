@@ -5,7 +5,7 @@ import type { CourseResume, CourseStructureLesson, CourseStructureWithAccess } f
 
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { useTranslations, type Messages } from '../../i18n/index.js';
-import { Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
+import { ContinueCtaLesson, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
 
 const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
@@ -51,7 +51,8 @@ export const CourseProgressCard = ({
   const target = resume?.target;
   const firstTarget = resume?.firstIncomplete;
   const isReview = resume?.isReview === true;
-  const label = target == null ? '' : `${isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning}: ${target.name}`;
+  const action = isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning;
+  const label = target == null ? '' : `${action}: ${target.name}`;
   const courseCompleted = totals.total > 0 && totals.done === totals.total;
 
   return (
@@ -89,9 +90,11 @@ export const CourseProgressCard = ({
             to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(target.id)}`}
             data-testid="continue-cta"
             title={label}
-            sx={{ minWidth: 0 }}
+            sx={{ minWidth: 0, flexDirection: 'column' }}
           >
-            <Typography component="span" variant="inherit" noWrap sx={{ minWidth: 0 }}>{label}</Typography>
+            <Typography component="span" variant="inherit" sx={{ display: 'block' }}>{action}</Typography>
+            {' '}
+            <ContinueCtaLesson data-testid="continue-cta-lesson">{target.name}</ContinueCtaLesson>
           </Button>
           {firstTarget != null && firstTarget.id !== target.id && (
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -99,7 +102,7 @@ export const CourseProgressCard = ({
                 component={Link}
                 to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(firstTarget.id)}`}
                 variant="body2"
-                color="text.secondary"
+                underline="always"
                 data-testid="first-lesson-link"
               >
                 {t.courseOverview.firstIncomplete({ name: firstTarget.name })}

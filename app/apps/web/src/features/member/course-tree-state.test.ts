@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
-import { branchOfLesson, focusLesson } from './course-tree-state.js';
+import { branchOfLesson, focusLesson, nextLessonOf } from './course-tree-state.js';
 
 const lesson = (id: string) => ({
   contentId: `content-${id}`,
@@ -97,5 +97,20 @@ describe('branchOfLesson', () => {
   it('expands nothing for an unknown or absent lesson', () => {
     expect([...branchOfLesson(structure, 'gone')]).toEqual([]);
     expect([...branchOfLesson(structure, null)]).toEqual([]);
+  });
+});
+
+describe('nextLessonOf', () => {
+  it('marks the resume target while the course is in progress', () => {
+    expect(nextLessonOf({ target: { id: 'l2', name: 'Two' }, firstIncomplete: null, isReview: false })).toBe('l2');
+  });
+
+  it('marks nothing once every lesson is completed and the resume is a review', () => {
+    expect(nextLessonOf({ target: { id: 'l1', name: 'One' }, firstIncomplete: null, isReview: true })).toBeNull();
+  });
+
+  it('marks nothing without a resume or its target', () => {
+    expect(nextLessonOf(undefined)).toBeNull();
+    expect(nextLessonOf({ target: null, firstIncomplete: null, isReview: false })).toBeNull();
   });
 });

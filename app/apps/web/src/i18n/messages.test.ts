@@ -94,4 +94,15 @@ describe('i18n dictionaries', () => {
     expect(format('checkout · {tenant}', { tenant: 'Acme' })).toBe('checkout · Acme');
     expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('Checkout · Acme');
   });
+
+  it.each([1, 2, 5, 22])('keeps the Polish course progress line grammatical for %i completed lessons', (done) => {
+    expect(pl.courseOverview.completedOf({ done, total: 25 })).toBe(`Uko\u0144czono ${String(done)} z 25 lekcji`);
+  });
+
+  it('names the course program and the discussion search the same way in English as in the UI around them', () => {
+    expect(en.courseOverview.curriculum).toBe(en.shell.programTitle);
+    expect(en.courseOverview.completedOf({ done: 2, total: 8 })).toBe('2 of 8 lessons completed');
+    expect(en.discussion.searchCoursePlaceholder).toBe('Search discussion posts…');
+    expect(pl.discussion.searchCoursePlaceholder).toBe('Szukaj we wpisach dyskusji…');
+  });
 });

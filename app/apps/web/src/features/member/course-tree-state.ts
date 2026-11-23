@@ -1,4 +1,4 @@
-import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
+import type { CourseResume, CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
 
 const lessonsOf = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
   structure.modules.flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons));
@@ -32,3 +32,6 @@ export const branchOfLesson = (
   }
   return new Set();
 };
+
+export const nextLessonOf = (resume: CourseResume | undefined): string | null =>
+  resume === undefined || resume.isReview ? null : resume.target?.id ?? null;

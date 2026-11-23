@@ -259,6 +259,7 @@ export const getChangeProposalFileLink = async (
     deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.headMs,
   });
   if (!head.ok) return head.error.code === 'not_found' ? err(missing) : head;
+  if (head.value.sizeBytes !== file.sizeBytes) return err(missing);
   target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
   target.searchParams.set('response-content-type', 'application/octet-stream');
   target.searchParams.set('response-cache-control', 'no-store');

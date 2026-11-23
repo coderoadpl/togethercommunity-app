@@ -1502,7 +1502,8 @@ proposal holds; an approval of that proposal then ends `stale` (below).
 (`getChangeProposalFileLink`) answers the verified owner in their own session,
 with `proposal:read`, a short-lived download of a staged file that the pending,
 unexpired proposal `:id` attaches and still holds: it asks the storage whether
-the object exists (5 seconds at most) and answers
+the object exists and has the recorded size (5 seconds at most), as the
+approval does, and answers
 `{ "download": { "url", "expiresAt", "fileName", "sizeBytes" } }` with
 `cache-control: private, no-store` and `referrer-policy: no-referrer`. `url` is
 a signed `GET` of the staged object, valid for 60 seconds, that asks the
@@ -1514,8 +1515,8 @@ bearer capability: whoever holds the address can fetch the file until it
 expires. The server never logs it and its answer is never cached. A key, an
 admin, an unverified owner and an owner viewing as a member get `401` or `403`;
 another workspace, a decided or expired proposal, a file the proposal does not
-attach or no longer holds, and an object the storage reports missing get
-`404`; a malformed id is `400`; any other storage failure is answered with its
+attach or no longer holds, and an object the storage reports missing or of
+another size than the recorded `sizeBytes` get `404`; a malformed id is `400`; any other storage failure is answered with its
 error. With the CLI, `proposals file <id> <file id> --out <path>` streams the
 file through this link, never printing the link, into a new temporary file next
 to `--out`, writes every byte, and moves it onto `--out` only when the bytes

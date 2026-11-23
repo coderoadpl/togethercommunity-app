@@ -693,7 +693,8 @@ scopes on every shop key.
   server writes the staged object and the row stays locked until the commit,
   the bytes an approval attaches are the bytes the owner could download. The
   owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
-  (verified owner session, `proposal:read`, a file the pending proposal holds):
+  (verified owner session, `proposal:read`, a file the pending proposal holds
+  whose object the storage reports with the recorded size, else `404`):
   a 60-second signed `GET` that forces a download of type
   `application/octet-stream` with `no-store`, answered `private, no-store` with
   `referrer-policy: no-referrer`. It is a bearer link: whoever holds the

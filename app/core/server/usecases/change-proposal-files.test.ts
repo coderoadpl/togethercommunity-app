@@ -20,7 +20,7 @@ import type { StorageProvider } from '../ports.js';
 import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '../testing/change-proposal-fakes.js';
 import { fakeStorageSecrets } from '../testing/object-storage-fake.js';
 import { previewChangeProposal } from './change-proposal-apply.js';
-import { checkApprovalFiles, prepareApprovalFiles } from './change-proposal-files.js';
+import { checkApprovalFiles, getChangeProposalFileLink, prepareApprovalFiles } from './change-proposal-files.js';
 import { CHANGE_PROPOSAL_OPERATIONS } from './change-proposal-operations.js';
 
 const TENANT = 'tenant-acme';
@@ -173,6 +173,37 @@ const owner: Identity = {
   tenantId: TENANT, tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner', memberId: null, image: null,
   memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
 };
+
+describe('the owner link to a proposed file', () => {
+  const link = (storedSizeBytes: number) => {
+    const signed: string[] = [];
+    const deps = {
+      clock: { nowIso: () => NOW },
+      secretResolver: fakeStorageSecrets,
+      changeProposals: { findById: async () => fileItem(1) },
+      keyDownloadFiles: { findStaged: async () => stagedFile(1, 'proposal-1') },
+      storage: {
+        ...unusedStorage,
+        objectUrl: (_configuration, key) => new URL(`https://storage.example.test/${key}`),
+        head: async () => ok({ sizeBytes: storedSizeBytes }),
+        presignGet: (input) => { signed.push(input.url); return ok(`${input.url}&signature=fake`); },
+      } satisfies StorageProvider,
+    };
+    return { signed, answer: () => getChangeProposalFileLink({ identity: owner }, { id: 'proposal-1', fileId: 'staged-1' }, deps) };
+  };
+
+  it('signs a link to an object of the size the proposal announces', async () => {
+    const h = link(10);
+    expect(await h.answer()).toMatchObject({ ok: true, value: { download: { fileName: 'workbook.pdf', sizeBytes: 10 } } });
+    expect(h.signed).toHaveLength(1);
+  });
+
+  it('answers the missing file and signs nothing when the stored object has another size', async () => {
+    const h = link(11);
+    expect(await h.answer()).toMatchObject({ ok: false, error: { code: 'not_found', message: 'No proposed file awaiting approval under this address' } });
+    expect(h.signed).toEqual([]);
+  });
+});
 
 const workbook: Product = {
   id: 'product-workbook', tenantId: TENANT, type: 'digital_download', slug: 'workbook', title: 'Workbook', description: '', coverUrl: null,

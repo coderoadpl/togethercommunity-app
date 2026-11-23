@@ -376,31 +376,73 @@ jobs:
     }
   });
 
-  it('splits required checks that are not expected into legacy and unknown', () => {
+  it('splits required checks that are not expected into legacy, ungated and unknown', () => {
+    const producer = (name: string, file = 'ci.yml', job = name) => ({ name, file, job });
+
     expect(compareRulesetBranches(
       {
         staging: ['dispatch-ci', 'staging-freeze'],
         main: ['dispatch-ci', 'promotion-guard'],
       },
       {
-        staging: ['check', 'staging-freeze', 'vanished'],
-        main: ['dispatch-ci', 'promotion-guard', 'obsolete'],
+        staging: ['check', 'lint', 'staging-freeze', 'vanished'],
+        main: ['dispatch-ci', 'promotion-guard', 'obsolete', 'shadow'],
       },
       {
-        staging: ['dispatch-ci', 'staging-freeze', 'check'],
-        main: ['dispatch-ci', 'promotion-guard', 'check'],
+        staging: [
+          producer('dispatch-ci'),
+          producer('staging-freeze', 'staging-freeze.yml'),
+          producer('check'),
+          producer('lint', 'lint.yml'),
+        ],
+        main: [
+          producer('dispatch-ci'),
+          producer('promotion-guard', 'promotion-guard.yml'),
+          producer('check'),
+          producer('shadow', 'ci.yml', 'release-tag'),
+        ],
       },
+      loadManifest(),
     )).toEqual({
       staging: {
         expectedMissing: ['dispatch-ci'],
         requiredLegacy: ['check'],
+        requiredUngated: ['lint'],
         requiredUnknown: ['vanished'],
       },
       main: {
         expectedMissing: [],
         requiredLegacy: [],
+        requiredUngated: ['shadow'],
         requiredUnknown: ['obsolete'],
       },
+    });
+  });
+
+  it('classifies a required check produced by a second workflow file as ungated', () => {
+    const lint = `
+name: lint
+on:
+  pull_request:
+    branches: [main, staging]
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps: []
+`;
+    const producers = deriveCheckProducersFromWorkflowSources(
+      [{ file: 'ci.yml', text: planDrivenWorkflow }, { file: 'lint.yml', text: lint }],
+      planDrivenManifest,
+    );
+
+    expect(compareRulesetBranches(
+      { staging: ['dispatch-ci'], main: ['dispatch-ci'] },
+      { staging: ['dispatch-ci', 'check', 'e2e (auth)'], main: ['dispatch-ci', 'check', 'e2e (auth)'] },
+      producers,
+      planDrivenManifest,
+    )).toEqual({
+      staging: { expectedMissing: [], requiredLegacy: ['e2e (auth)'], requiredUngated: ['check'], requiredUnknown: [] },
+      main: { expectedMissing: [], requiredLegacy: ['e2e (auth)'], requiredUngated: ['check'], requiredUnknown: [] },
     });
   });
 });

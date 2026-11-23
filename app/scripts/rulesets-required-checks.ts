@@ -26,6 +26,7 @@ export type CheckProducersByBranch = Record<RulesetBranch, ProducedCheck[]>;
 export interface RulesetComparison {
   expectedMissing: string[];
   requiredLegacy: string[];
+  requiredUngated: string[];
   requiredUnknown: string[];
 }
 
@@ -470,32 +471,43 @@ const ordered = (names: Iterable<string>): string[] => [...new Set(names)].sort(
 export const compareRulesetChecks = (
   expected: readonly string[],
   required: readonly string[],
-  produced: readonly string[],
+  producers: readonly ProducedCheck[],
+  isGated: (producer: ProducedCheck) => boolean,
 ): RulesetComparison => {
   const expectedSet = new Set(expected);
   const requiredSet = new Set(required);
-  const producedSet = new Set(produced);
   const notExpected = required.filter((name) => !expectedSet.has(name));
+  const producersOf = (name: string): ProducedCheck[] => producers.filter((producer) => producer.name === name);
   return {
     expectedMissing: ordered(expected.filter((name) => !requiredSet.has(name))),
-    requiredLegacy: ordered(notExpected.filter((name) => producedSet.has(name))),
-    requiredUnknown: ordered(notExpected.filter((name) => !producedSet.has(name))),
+    requiredLegacy: ordered(notExpected.filter((name) => {
+      const found = producersOf(name);
+      return found.length > 0 && found.every(isGated);
+    })),
+    requiredUngated: ordered(notExpected.filter((name) =>
+      producersOf(name).some((producer) => !isGated(producer)))),
+    requiredUnknown: ordered(notExpected.filter((name) => producersOf(name).length === 0)),
   };
 };
 
 export const compareRulesetBranches = (
   expected: RequiredChecksByBranch,
   required: RequiredChecksByBranch,
-  produced: RequiredChecksByBranch,
-): RulesetComparisonByBranch => ({
-  staging: compareRulesetChecks(expected.staging, required.staging, produced.staging),
-  main: compareRulesetChecks(expected.main, required.main, produced.main),
-});
+  producers: CheckProducersByBranch,
+  manifest: DispatchManifest,
+): RulesetComparisonByBranch => {
+  const isGated = (producer: ProducedCheck): boolean => isGatedProducer(manifest, producer);
+  return {
+    staging: compareRulesetChecks(expected.staging, required.staging, producers.staging, isGated),
+    main: compareRulesetChecks(expected.main, required.main, producers.main, isGated),
+  };
+};
 
 export const hasRulesetDrift = (comparison: RulesetComparisonByBranch): boolean =>
   RULESET_BRANCHES.some((branch) =>
     comparison[branch].expectedMissing.length > 0
     || comparison[branch].requiredLegacy.length > 0
+    || comparison[branch].requiredUngated.length > 0
     || comparison[branch].requiredUnknown.length > 0);
 
 export const hasUnknownRequiredChecks = (comparison: RulesetComparisonByBranch): boolean =>

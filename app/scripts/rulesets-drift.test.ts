@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectLiveBranchRules,
   createRulesetDriftReport,
+  driftAnnotations,
   evaluateDeletionProtection,
   extractRequiredStatusChecks,
   formatCliReport,
@@ -36,7 +37,9 @@ const report = (
   unknown: readonly string[] = ['vanished'],
   legacy: readonly string[] = [],
   deletionProtected = true,
+  ungated: readonly string[] = [],
 ): RulesetDriftReport => ({
+  gate: 'dispatch-ci',
   expected: {
     staging: ['dispatch-ci', 'smoke'],
     main: ['dispatch-ci'],
@@ -53,11 +56,13 @@ const report = (
     staging: {
       expectedMissing: [...missing],
       requiredLegacy: [...legacy],
+      requiredUngated: [...ungated],
       requiredUnknown: [...unknown],
     },
     main: {
       expectedMissing: [],
       requiredLegacy: [],
+      requiredUngated: [],
       requiredUnknown: [],
     },
   },
@@ -189,6 +194,7 @@ describe('rulesets drift', () => {
     ['a legacy check is still required', report([], [], ['check']), false, true],
     ['an unknown check is required', report([], ['vanished']), true, true],
     ['deletion protection is missing', report([], [], [], false), false, true],
+    ['a required check is reported outside the gate and the manifest', report([], [], [], true, ['lint']), false, true],
     ['nothing drifted', report([], []), false, false],
   ])('blocks by mode when %s', (_label, drift, pullRequest, scheduled) => {
     expect(hasBlockingRulesetDrift(drift, 'pull-request')).toBe(pullRequest);
@@ -216,15 +222,62 @@ describe('rulesets drift', () => {
     });
     const transition = await createRulesetDriftReport(client, repo, repoRoot);
 
+    expect(transition.required.staging).toHaveLength(19);
     expect(transition.comparison.staging).toEqual({
       expectedMissing: ['dispatch-ci'],
       requiredLegacy: [...perJobChecks].sort(),
+      requiredUngated: [],
       requiredUnknown: [],
     });
     expect(transition.comparison.main.requiredUnknown).toEqual([]);
     expect(transition.deletionProtection.map((entry) => entry.protected)).toEqual([false, false]);
     expect(hasBlockingRulesetDrift(transition, 'pull-request')).toBe(false);
     expect(hasBlockingRulesetDrift(transition, 'scheduled')).toBe(true);
+  });
+
+  it('tells the transition to keep the legacy checks until the gate is required', async () => {
+    const repoRoot = join(import.meta.dirname, '..', '..');
+    const client = new LiveRulesClient({
+      staging: liveRules(['ai-review', ...perJobChecks, 'staging-freeze'], 1),
+      main: liveRules(['dispatch-ci', 'ai-review', 'check', 'promotion-guard'], 1),
+    });
+    const transition = await createRulesetDriftReport(client, repo, repoRoot);
+    const legacy = [...perJobChecks].sort().join(', ');
+    const cli = formatCliReport(transition, 'pull-request');
+    const body = formatIssueBody(transition);
+    const messages = driftAnnotations(transition, 'pull-request').map((entry) => `${entry.level} ${entry.message}`);
+
+    expect(cli).toContain(
+      `staging: legacy, now covered by the gate; keep until dispatch-ci is required on this branch, then remove: ${legacy}`,
+    );
+    expect(cli).toContain('main: remove from the ruleset (legacy, now covered by the gate): check');
+    expect(cli).not.toContain('staging: remove from the ruleset');
+    expect(body).toContain(
+      `Legacy checks in the \`staging\` ruleset's required status checks (still reported, now covered by the gate); keep until \`dispatch-ci\` is required on this branch, then remove: ${perJobChecks.toSorted().map((name) => `\`${name}\``).join(', ')}`,
+    );
+    expect(body).toContain("Remove from the `main` ruleset's required status checks (legacy: still reported, now covered by the gate): `check`");
+    expect(body).not.toContain("Remove from the `staging` ruleset's required status checks (legacy");
+    expect(messages).toContain(
+      `warning Legacy, now covered by the gate; keep until dispatch-ci is required on this branch, then remove: ${legacy}`,
+    );
+    expect(messages).toContain('warning Remove from the ruleset (legacy, now covered by the gate): check');
+  });
+
+  it('reports a required check from another workflow as neither gated nor listed', () => {
+    const drift = report([], [], [], true, ['lint']);
+    const instruction = 'required by the ruleset but neither gated nor listed in the manifest: add it to separateRequiredChecks or remove it from the ruleset';
+
+    expect(formatCliReport(drift, 'pull-request')).toContain(`staging: ${instruction}: lint`);
+    expect(formatCliReport(drift, 'pull-request')).toContain('drift found, but pull-request mode reports it as warnings');
+    expect(formatIssueBody(drift)).toContain(
+      "Required by the `staging` ruleset but neither gated nor listed in the manifest (add it to `separateRequiredChecks` or remove it from the ruleset): `lint`",
+    );
+    expect(driftAnnotations(drift, 'pull-request')).toContainEqual({
+      level: 'warning',
+      title: 'Ruleset drift staging',
+      message: 'Required by the ruleset but neither gated nor listed in the manifest: add it to separateRequiredChecks or remove it from the ruleset: lint',
+    });
+    expect(driftAnnotations(drift, 'scheduled').map((entry) => entry.level)).toEqual(['error']);
   });
 
   it('is clean once the rulesets list the manifest checks and deletion sits in its own ruleset', async () => {

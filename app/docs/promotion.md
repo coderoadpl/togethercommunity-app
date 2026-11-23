@@ -172,11 +172,16 @@ produced by exactly one job for its branch, and that only one job in
 `.github/workflows` reports the gate name.
 
 `pnpm run rulesets-drift` compares the expected and produced checks with the
-live rulesets in three lists per branch:
+live rulesets in four lists per branch:
 
 - expected but not required: add these to the ruleset;
-- required, not expected, but still produced (legacy): a per-job check that
-  now reports through the gate; remove it from the ruleset;
+- required, not expected, and produced only by jobs of the manifest (legacy):
+  a per-job check that now reports through the gate; remove it from the
+  ruleset, but while the gate itself is still missing from that ruleset the
+  report says to keep it until the gate is required there;
+- required, not expected, and produced by another workflow file (ungated):
+  neither the gate nor the manifest covers it; add it to
+  `separateRequiredChecks` or remove it from the ruleset;
 - required and produced by nothing (unknown): it blocks every pull request
   forever; remove it now.
 
@@ -192,8 +197,9 @@ Three surfaces run that comparison:
 
 - `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
   diff touches `.github/workflows/**`, `app/ci/dispatch-ci.manifest.json`,
-  `app/scripts/dispatch-ci.ts` or `app/scripts/rulesets-required-checks.ts`. It warns on expected, legacy and
-  deletion-protection findings, and fails only on unknown checks.
+  `app/scripts/dispatch-ci.ts` or `app/scripts/rulesets-required-checks.ts`.
+  It warns on expected, legacy, ungated and deletion-protection findings, and
+  fails only on unknown checks.
 - `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on
   demand, with `contents: read` + `issues: write`. It fails on any finding,
   opens one issue titled `Ruleset drift`, labelled `ruleset-drift`, updates its
@@ -209,8 +215,9 @@ Three surfaces run that comparison:
 `ci.yml` still reports every per-job check under its old name (`check`,
 `visual`, `smoke`, `e2e (<suite>)`), because the live rulesets keep requiring
 them until the owner swaps the list. Until then the drift report lists
-`dispatch-ci` as expected and the per-job names as legacy, and the
-`Ruleset drift` issue stays open. Swap order: wait until `dispatch-ci` has
+`dispatch-ci` as expected and the per-job names as legacy to keep until
+`dispatch-ci` is required on that branch, and the `Ruleset drift` issue stays
+open. Swap order: wait until `dispatch-ci` has
 reported on a run of each branch, add it to both rulesets, then remove the
 legacy names, and add the separate deletion-protection ruleset.
 

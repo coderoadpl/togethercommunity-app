@@ -8,10 +8,12 @@ import { z } from 'zod';
 import { expectedRequiredChecks, loadManifest, MANIFEST_PATH_FROM_REPO_ROOT } from './dispatch-ci.js';
 import {
   compareRulesetBranches,
-  deriveProducedChecksFromWorkflows,
+  deriveCheckProducersFromWorkflowSources,
   hasRulesetDrift,
   hasUnknownRequiredChecks,
+  readWorkflowSources,
   RULESET_BRANCHES,
+  type ProducedCheck,
   type RequiredChecksByBranch,
   type RulesetBranch,
   type RulesetComparisonByBranch,
@@ -76,6 +78,7 @@ export interface DeletionProtection {
 }
 
 export interface RulesetDriftReport {
+  gate: string;
   expected: RequiredChecksByBranch;
   required: RequiredChecksByBranch;
   produced: RequiredChecksByBranch;
@@ -254,17 +257,19 @@ export const createRulesetDriftReport = async (
 ): Promise<RulesetDriftReport> => {
   const manifest = loadManifest(join(repoRoot, MANIFEST_PATH_FROM_REPO_ROOT));
   const expected = expectedRequiredChecks(manifest);
-  const produced = deriveProducedChecksFromWorkflows(repoRoot, manifest);
+  const producers = deriveCheckProducersFromWorkflowSources(readWorkflowSources(repoRoot), manifest);
+  const names = (found: readonly ProducedCheck[]): string[] => [...new Set(found.map((producer) => producer.name))];
   const live = await collectLiveBranchRules(client, repo, RULESET_BRANCHES);
   const required = {
     staging: extractRequiredStatusChecks(live.get('staging')),
     main: extractRequiredStatusChecks(live.get('main')),
   };
   return {
+    gate: manifest.gate,
     expected,
     required,
-    produced,
-    comparison: compareRulesetBranches(expected, required, produced),
+    produced: { staging: names(producers.staging), main: names(producers.main) },
+    comparison: compareRulesetBranches(expected, required, producers, manifest),
     deletionProtection: manifest.deletionProtectedBranches.map((branch) =>
       evaluateDeletionProtection(branch, live.get(branch))),
   };
@@ -280,14 +285,30 @@ const unprotectedBranches = (report: RulesetDriftReport): DeletionProtection[] =
 export const hasReportDrift = (report: RulesetDriftReport): boolean =>
   hasRulesetDrift(report.comparison) || unprotectedBranches(report).length > 0;
 
+const gatePending = (report: RulesetDriftReport, branch: RulesetBranch): boolean =>
+  report.comparison[branch].expectedMissing.includes(report.gate);
+
+const ungatedInstruction =
+  'required by the ruleset but neither gated nor listed in the manifest: add it to separateRequiredChecks or remove it from the ruleset';
+
+const legacyInstruction = (report: RulesetDriftReport, branch: RulesetBranch): string =>
+  gatePending(report, branch)
+    ? `legacy, now covered by the gate; keep until ${report.gate} is required on this branch, then remove`
+    : 'remove from the ruleset (legacy, now covered by the gate)';
+
 const branchSection = (branch: RulesetBranch, report: RulesetDriftReport): string => {
   const comparison = report.comparison[branch];
+  const legacy = gatePending(report, branch)
+    ? `Legacy checks in the \`${branch}\` ruleset's required status checks (still reported, now covered by the gate); keep until \`${report.gate}\` is required on this branch, then remove: ${list(comparison.requiredLegacy)}`
+    : `Remove from the \`${branch}\` ruleset's required status checks (legacy: still reported, now covered by the gate): ${list(comparison.requiredLegacy)}`;
   return [
     `## ${branch}`,
     '',
     `Add to the \`${branch}\` ruleset's required status checks (expected, not required yet): ${list(comparison.expectedMissing)}`,
     '',
-    `Remove from the \`${branch}\` ruleset's required status checks (legacy: still reported, now covered by the gate): ${list(comparison.requiredLegacy)}`,
+    legacy,
+    '',
+    `Required by the \`${branch}\` ruleset but neither gated nor listed in the manifest (add it to \`separateRequiredChecks\` or remove it from the ruleset): ${list(comparison.requiredUngated)}`,
     '',
     `Remove from the \`${branch}\` ruleset's required status checks now (no workflow reports them, so every pull request waits forever): ${list(comparison.requiredUnknown)}`,
   ].join('\n');
@@ -342,7 +363,10 @@ export const formatCliReport = (
       lines.push(`${branch}: add to the ruleset (expected, not required yet): ${comparison.expectedMissing.join(', ')}`);
     }
     if (comparison.requiredLegacy.length > 0) {
-      lines.push(`${branch}: remove from the ruleset (legacy, now covered by the gate): ${comparison.requiredLegacy.join(', ')}`);
+      lines.push(`${branch}: ${legacyInstruction(report, branch)}: ${comparison.requiredLegacy.join(', ')}`);
+    }
+    if (comparison.requiredUngated.length > 0) {
+      lines.push(`${branch}: ${ungatedInstruction}: ${comparison.requiredUngated.join(', ')}`);
     }
     if (comparison.requiredUnknown.length > 0) {
       lines.push(`${branch}: ruleset requires status checks no workflow produces; remove them now: ${comparison.requiredUnknown.join(', ')}`);
@@ -401,35 +425,53 @@ export const syncRulesetDriftIssue = async (
 const annotationValue = (value: string): string =>
   value.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
 
-const emitAnnotation = (level: 'error' | 'warning', title: string, message: string): void => {
-  process.stderr.write(`::${level} title=${annotationValue(title)}::${annotationValue(message)}\n`);
-};
+export interface DriftAnnotation {
+  level: 'error' | 'warning';
+  title: string;
+  message: string;
+}
 
-const emitDriftAnnotations = (report: RulesetDriftReport, mode: RulesetDriftMode): void => {
+const capitalized = (text: string): string => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+
+export const driftAnnotations = (report: RulesetDriftReport, mode: RulesetDriftMode): DriftAnnotation[] => {
   const advisoryLevel = mode === 'pull-request' ? 'warning' : 'error';
+  const annotations: DriftAnnotation[] = [];
   for (const branch of RULESET_BRANCHES) {
-    const { expectedMissing, requiredLegacy, requiredUnknown } = report.comparison[branch];
+    const { expectedMissing, requiredLegacy, requiredUngated, requiredUnknown } = report.comparison[branch];
+    const title = `Ruleset drift ${branch}`;
     if (expectedMissing.length > 0) {
-      emitAnnotation(advisoryLevel, `Ruleset drift ${branch}`, `Add to the ruleset: ${expectedMissing.join(', ')}`);
+      annotations.push({ level: advisoryLevel, title, message: `Add to the ruleset: ${expectedMissing.join(', ')}` });
     }
     if (requiredLegacy.length > 0) {
-      emitAnnotation(
-        advisoryLevel,
-        `Ruleset drift ${branch}`,
-        `Remove from the ruleset (legacy, now covered by the gate): ${requiredLegacy.join(', ')}`,
-      );
+      annotations.push({
+        level: advisoryLevel,
+        title,
+        message: `${capitalized(legacyInstruction(report, branch))}: ${requiredLegacy.join(', ')}`,
+      });
+    }
+    if (requiredUngated.length > 0) {
+      annotations.push({
+        level: advisoryLevel,
+        title,
+        message: `${capitalized(ungatedInstruction)}: ${requiredUngated.join(', ')}`,
+      });
     }
     if (requiredUnknown.length > 0) {
-      emitAnnotation(
-        'error',
-        `Ruleset drift ${branch}`,
-        `Ruleset requires status checks no workflow produces: ${requiredUnknown.join(', ')}`,
-      );
+      annotations.push({
+        level: 'error',
+        title,
+        message: `Ruleset requires status checks no workflow produces: ${requiredUnknown.join(', ')}`,
+      });
     }
   }
   for (const entry of unprotectedBranches(report)) {
-    emitAnnotation(advisoryLevel, 'Branch deletion protection', `${entry.branch}: ${entry.detail}`);
+    annotations.push({ level: advisoryLevel, title: 'Branch deletion protection', message: `${entry.branch}: ${entry.detail}` });
   }
+  return annotations;
+};
+
+const emitAnnotation = (level: 'error' | 'warning', title: string, message: string): void => {
+  process.stderr.write(`::${level} title=${annotationValue(title)}::${annotationValue(message)}\n`);
 };
 
 export const parseRulesetDriftMode = (
@@ -472,7 +514,7 @@ const run = async (env: NodeJS.ProcessEnv, argv: readonly string[]): Promise<voi
   }
   const output = formatCliReport(report, mode);
   process.stdout.write(output);
-  emitDriftAnnotations(report, mode);
+  for (const entry of driftAnnotations(report, mode)) emitAnnotation(entry.level, entry.title, entry.message);
 
   const summaryPath = env['GITHUB_STEP_SUMMARY'];
   if (summaryPath !== undefined && summaryPath !== '') {

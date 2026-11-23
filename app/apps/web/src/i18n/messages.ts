@@ -7,6 +7,7 @@ import type {
   ImportAuditAction,
   ImportAuditResourceType,
   LessonBlockType,
+  MemberDownloadFailureCode,
   MemberEventType,
   OrderRefundJobView,
   ShipxRejectionError,
@@ -2310,7 +2311,6 @@ export interface Messages {
     productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
-    courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;
     grantActiveLabel: string;
@@ -2328,8 +2328,23 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadProductBody: string;
     downloadsHeading: string;
-    downloadFile: (params: { name: string }) => string;
-    downloadNoCopyIdentifier: string;
+    downloadButton: string;
+    downloadFileVersion: (params: { name: string; number: number }) => string;
+    downloadsGroupLabel: (params: { title: string }) => string;
+    downloadVersionShort: (params: { number: number }) => string;
+    opensInNewTab: string;
+    openCourse: string;
+    viewCourses: string;
+    productsOtherEmailHint: string;
+    browseOffers: string;
+    continueCourse: string;
+    downloadPreparing: string;
+    downloadFailures: Record<MemberDownloadFailureCode, string>;
+    productEyebrow: string;
+    loadingProduct: string;
+    productLoadFailed: string;
+    productNotFound: string;
+    productAccessExpired: (params: { date: string }) => string;
   };
   downloadCopies: {
     showMore: string;

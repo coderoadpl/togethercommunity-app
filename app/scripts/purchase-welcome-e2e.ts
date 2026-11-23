@@ -168,10 +168,13 @@ export const runWelcomePurchases = async (input: {
         if (purchase.productId === 'product-download-workbook') {
           const downloads = page.getByTestId(`product-downloads-${purchase.productId}`);
           await downloads.waitFor({ state: 'visible', timeout: 15000 });
-          const download = downloads.getByTestId('download-download-asset-workbook-v2');
+          const row = downloads.getByTestId('download-row-download-asset-workbook-v2');
+          const download = row.getByTestId('download-download-asset-workbook-v2');
           assert(await download.isVisible(), 'the freshly signed-in buyer cannot see the purchased download');
-          assert((await download.textContent())?.includes('workbook-creator.pdf') === true,
+          assert((await row.textContent())?.includes('workbook-creator.pdf') === true,
             'the download list did not render the purchased file');
+          assert((await download.getAttribute('aria-label'))?.includes('workbook-creator.pdf') === true,
+            'the download button is not named after the purchased file');
           assert((await download.getAttribute('href'))?.includes('download-asset-workbook-v2') === true,
             'the purchased file did not have a download URL');
         } else {

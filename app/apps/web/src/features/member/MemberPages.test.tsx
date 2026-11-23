@@ -157,7 +157,12 @@ describe('member pages', () => {
     expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent(
       en.student.subscriptionAccessUntil({ date: '' }),
     );
-    expect(screen.getAllByRole('link', { name: en.student.manageSubscription })).toHaveLength(3);
+    const portalLinks = screen.getAllByRole('link', {
+      name: (name) => name.startsWith(en.student.manageSubscription) && name.endsWith(en.student.opensInNewTab),
+    });
+    expect(portalLinks).toHaveLength(3);
+    expect(portalLinks[0]).toHaveAttribute('target', '_blank');
+    expect(within(screen.getByTestId('subscription-portal-active')).getByText(en.student.opensInNewTab)).toBeInTheDocument();
   });
 
   it('renders latest and collapsed previous versions with their own links', async () => {
@@ -203,19 +208,19 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'workbook.pdf' })} · ${en.products.fileVersion({ number: 2 })}` }))
+    expect(await screen.findByRole('link', { name: en.student.downloadFileVersion({ name: 'workbook.pdf', number: 2 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
     expect(screen.getByText('Corrected diagram')).toBeVisible();
     expect(screen.getByText('First edition')).not.toBeVisible();
     await userEvent.click(screen.getByText(en.products.previousVersions));
     expect(screen.getByText('First edition')).toBeVisible();
     expect(screen.getByTestId('download-previous')).toHaveAttribute('href', '/api/my/products/download-1/downloads/previous');
-    expect(screen.getByText(en.student.downloadNoCopyIdentifier)).toBeVisible();
+    expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Creator workbook' }))
       .toHaveAttribute('href', '/my/course/download-1');
   });
 
-  it('shows when a buyer download is delivered without a copy identifier', async () => {
+  it('keeps the copy-identifier size limit out of the buyer view', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({
         ok: true,
@@ -282,13 +287,13 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my/products');
 
-    expect(await screen.findByRole('link', { name: `${en.student.downloadFile({ name: 'large-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(await screen.findByRole('link', { name: en.student.downloadFileVersion({ name: 'large-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
-    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'equal-limit-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(screen.getByRole('link', { name: en.student.downloadFileVersion({ name: 'equal-limit-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-2');
-    expect(screen.getByRole('link', { name: `${en.student.downloadFile({ name: 'regular-workbook.pdf' })} · ${en.products.fileVersion({ number: 1 })}` }))
+    expect(screen.getByRole('link', { name: en.student.downloadFileVersion({ name: 'regular-workbook.pdf', number: 1 }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-3');
-    expect(screen.getAllByText(en.student.downloadNoCopyIdentifier)).toHaveLength(1);
+    expect(screen.queryByText(/copy identifier/u)).not.toBeInTheDocument();
   });
 
   it('renders the coming-soon stub when the member can access no course yet', async () => {
@@ -342,13 +347,15 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByTestId('product-course-links')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Front-end Course' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Front-end Course/u })).toHaveAttribute(
       'href',
       '/my/courses/c1',
     );
-    expect(screen.queryByRole('link', { name: 'A different product course' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /A different product course/u })).not.toBeInTheDocument();
+    expect(screen.getByText(en.student.productCoursesHint)).toBeVisible();
+    expect(screen.getByText('Start here.')).toBeVisible();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Intro Course');
-    expect(within(screen.getByRole('banner')).queryAllByRole('link')).toHaveLength(0);
+    expect(within(screen.getByRole('banner')).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/my/products']);
     expect(
       screen.queryByRole('heading', { name: en.student.productWithoutCoursesTitle }),
     ).not.toBeInTheDocument();

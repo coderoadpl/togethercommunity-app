@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MY_PRODUCTS_PATH } from './member-routes.js';
+
 export const PRODUCT_DOWNLOAD_MAX_BYTES = 1024 * 1024 * 1024;
 
 const versionNoteSchema = z.string().trim().max(500);
@@ -107,3 +109,50 @@ export const downloadCopyQuerySchema = z.object({
   (value.productId !== undefined && value.copyIdentifier !== undefined));
 
 export type DownloadCopyQuery = z.infer<typeof downloadCopyQuerySchema>;
+
+const MEMBER_DOWNLOAD_FAILURE_CODES = ['no_access', 'not_found', 'failed'] as const;
+
+export type MemberDownloadFailureCode = (typeof MEMBER_DOWNLOAD_FAILURE_CODES)[number];
+
+export const MEMBER_DOWNLOAD_FAILURE_PARAMS = { code: 'downloadError', productId: 'product', assetId: 'asset' } as const;
+
+const downloadFailureReferenceSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);
+
+interface MemberDownloadFailure {
+  code: MemberDownloadFailureCode;
+  productId: string | null;
+  assetId: string | null;
+}
+
+const referenceOrNull = (value: string | null): string | null => {
+  const parsed = downloadFailureReferenceSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+export const parseMemberDownloadFailure = (search: URLSearchParams): MemberDownloadFailure | null => {
+  const code = z.enum(MEMBER_DOWNLOAD_FAILURE_CODES).safeParse(search.get(MEMBER_DOWNLOAD_FAILURE_PARAMS.code));
+  if (!code.success) return null;
+  const productId = referenceOrNull(search.get(MEMBER_DOWNLOAD_FAILURE_PARAMS.productId));
+  return {
+    code: code.data,
+    productId,
+    assetId: productId === null ? null : referenceOrNull(search.get(MEMBER_DOWNLOAD_FAILURE_PARAMS.assetId)),
+  };
+};
+
+export const memberDownloadFailurePath = (failure: {
+  code: MemberDownloadFailureCode;
+  productId: string;
+  assetId: string;
+}): string => {
+  const search = new URLSearchParams({ [MEMBER_DOWNLOAD_FAILURE_PARAMS.code]: failure.code });
+  const productId = referenceOrNull(failure.productId);
+  const assetId = referenceOrNull(failure.assetId);
+  if (productId !== null) {
+    search.set(MEMBER_DOWNLOAD_FAILURE_PARAMS.productId, productId);
+    if (assetId !== null) search.set(MEMBER_DOWNLOAD_FAILURE_PARAMS.assetId, assetId);
+  }
+  return `${MY_PRODUCTS_PATH}?${search.toString()}`;
+};
+
+export const MEMBER_DOWNLOAD_SIGN_IN_PATH = `/login?${new URLSearchParams({ returnTo: MY_PRODUCTS_PATH }).toString()}`;

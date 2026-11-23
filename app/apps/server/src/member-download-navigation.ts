@@ -11,10 +11,33 @@ const specificityOf = (range: string, mediaType: string): number => {
   return range === '*/*' ? 0 : -1;
 };
 
+const splitOutsideQuotes = (text: string, separator: string): string[] => {
+  const parts: string[] = [];
+  let current = '';
+  let quoted = false;
+  let escaped = false;
+  for (const char of text) {
+    if (escaped) {
+      escaped = false;
+    } else if (quoted && char === '\\') {
+      escaped = true;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (!quoted && char === separator) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current);
+  return parts;
+};
+
 const qualityOf = (accept: string, mediaType: string): number => {
   let best = { specificity: -1, quality: 0 };
-  for (const entry of accept.split(',')) {
-    const [range = '', ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+  for (const entry of splitOutsideQuotes(accept, ',')) {
+    const [range = '', ...params] = splitOutsideQuotes(entry, ';').map((part) => part.trim().toLowerCase());
     const qIndex = params.findIndex((param) => param.startsWith('q='));
     const mediaParams = (qIndex < 0 ? params : params.slice(0, qIndex)).filter((param) => param !== '');
     const specificity = mediaParams.length === 0 ? specificityOf(range, mediaType) : -1;

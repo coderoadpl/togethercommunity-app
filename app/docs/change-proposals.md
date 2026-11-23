@@ -1630,10 +1630,13 @@ budget shortened, ends the checks with `503 unavailable` and `Retry-After: 5`;
 any other storage failure of a request that had its full 5 seconds, a timeout
 included, is answered with its error, the first in the order of the items when
 several fail. Either way nothing is decided and the proposal or group stays
-`pending`. Inside the transaction, before any target lock, the
-approval locks each attached staged row of the proposing key and checks that
-it is the file the storage confirmed (id, key, object key, size, SHA-256, held
-by this proposal). A file that is gone makes the proposal `stale` with the note
+`pending`. Inside the transaction, after the proposal or group lock, a group's
+course locks and the quarantined image rows of the proposal, and before the
+product lock of any item, the approval locks each attached staged row of the
+proposing key and checks that it is the row it read before the transaction
+(id, key, object key, size, SHA-256, held by this proposal). The storage
+confirmed only that the object exists with the recorded size; the SHA-256 is
+compared between the two database reads, not with the object. A file that is gone makes the proposal `stale` with the note
 `file_unavailable: The proposed file <staged file id> is no longer available,
 so the proposal cannot be applied; nothing was changed` on its `stale` event,
 and nothing is applied; in a group every file is checked before any item
@@ -1648,9 +1651,10 @@ attach or propose. Every one of these paths must lock the staged row to remove i
 waits for an approval that holds the row: after the approval commits the row
 is gone (attached) and there is nothing to discard or sweep, and a path that
 removed the row first leaves the approval nothing to lock, so it ends `stale`.
-No database path can remove the object between the check and the attach; a
-storage delete the minute sweep sent earlier and whose answer did not arrive in
-time can still land later, because the sweep keeps such a staged row
+Between the checks before the transaction and its row lock the key's discard
+can remove the row and then the object; the approval then finds no row to
+lock and ends `stale`. The sweep commits the removal of a staged row before it
+sends the delete, so a delete whose answer is lost never leaves that row
 proposable. The
 attach makes no
 storage request: the new product file points at the staged object, and the
@@ -1892,9 +1896,11 @@ progress is recorded follows a course that opens the lesson for them:
   Un-completion also removes the lesson from the member's own progress of the
   named course when that course holds the lesson but is not the course the
   request is recorded under, so a completion recorded there
-  while it was open does not come back; both rows change in one database
-  transaction, so a failed request leaves both as they were and a retry
-  finishes the job. A named course that does not hold the
+  while it was open does not come back. The lesson leaves both rows in one
+  database transaction, so a failed request removes it from neither and a retry
+  finishes the job; the empty progress row of the course the request is
+  recorded under, when the member had none, is created before that transaction
+  and stays when the request then fails. A named course that does not hold the
   lesson, or that belongs to another workspace, is never written. Once the
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is
@@ -1977,7 +1983,11 @@ only reference existing, active courses", "… existing modules", "… existing
 lessons", "Product access moduleIds must belong to the item courseId",
 "Product access excludedModuleIds must belong to the item courseId" or
 "Product access lessonIds must belong to the item courseId through its modules
-and chapters", for the first item in the order of the list that fails. The
+and chapters". The courses of all items are checked first, so a course that
+does not exist or is archived in a later item answers the course message even
+when an earlier item names a module or lesson that fails; after that, the
+module and lesson messages are for the first item in the order of the list
+that fails. The
 check reads the courses and the modules of the whole list in one query each,
 the ids of the named lessons that exist in the workspace in one query that
 reads no lesson content, and the workspace's modules once when the list has a
@@ -1987,8 +1997,10 @@ and its memory grows with the named ids and the workspace's modules, not with
 the content of the lessons it names.
 
 Stored lists are not rewritten. The owner's editor runs the check only when the
-list it is sent grants something other than the stored list (items and ids
-compared in any order, repeats ignored), so a save that resends the stored list,
+list it is sent differs from the stored list item by item (items and the ids
+within an item compared in any order, repeats ignored), not by what the items
+grant: a list that splits one `modules` item into two that open the same
+modules is checked again. So a save that resends the stored list,
 as the checkout consent save of the product editor does, succeeds for a product
 whose stored list the check would refuse, unless that list names an archived
 course, which the write itself refuses. Changing the list is refused until

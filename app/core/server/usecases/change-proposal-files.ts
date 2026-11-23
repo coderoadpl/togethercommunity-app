@@ -173,10 +173,10 @@ const sameStagedFile = (left: KeyDownloadStagedFile, right: KeyDownloadStagedFil
 export type ApprovalFiles = { kind: 'ready' } | { kind: 'missing'; proposal: ChangeProposal; fileId: string };
 
 /**
- * Inside the approval transaction, before any target lock: locks each attached staged row of the proposing key and
- * checks it is the file the storage confirmed and that this proposal still holds it. Only rows of the proposing key are
- * locked, and a key that proposes never attaches live, so this order never meets a live attach's product-then-file order
- * on the same row.
+ * Inside the approval transaction, before any product lock: locks each attached staged row of the proposing key and
+ * checks it is the row read before the transaction, whose object the storage confirmed by size, and that this proposal
+ * still holds it. Only rows of the proposing key are locked, and a key that proposes never attaches live, so this order
+ * never meets a live attach's product-then-file order on the same row.
  */
 export const prepareApprovalFiles = async (
   tenantId: string,

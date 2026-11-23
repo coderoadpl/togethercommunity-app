@@ -103,6 +103,65 @@ describe('ChangePasswordForm', () => {
     });
   });
 
+  it('attaches the too-short error to the new password field', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', 'short', 'short');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    const field = screen.getByTestId('change-new-password');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription(`${en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })} ${en.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH })}`);
+    expect(screen.getByTestId('change-confirm-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('attaches the mismatch error to the confirmation field', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', VALID_PASSWORD, 'other-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    const field = screen.getByTestId('change-confirm-password');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription(en.changePassword.mismatch);
+    expect(screen.getByTestId('change-new-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('clears the too-short error once the new password changes', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', 'short', 'short');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'x');
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-new-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-new-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('clears the mismatch error once either new password field changes', async () => {
+    renderForm();
+    await fillPasswordChange('current-password', VALID_PASSWORD, 'other-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+
+    await userEvent.type(screen.getByTestId('change-current-password'), 'x');
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(screen.getByTestId('change-password-local-error')).toBeVisible();
+    await userEvent.type(screen.getByTestId('change-new-password'), 'x');
+    expect(screen.queryByTestId('change-password-local-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-confirm-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('describes the revocation checkbox with its scope hint', () => {
+    renderForm();
+
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).toHaveAccessibleDescription(en.changePassword.revokeScopeHint);
+  });
+
   it('maps provider INVALID_PASSWORD to the localized current-password error', async () => {
     const providerError = Object.assign(new Error('Invalid password'), {
       appError: {

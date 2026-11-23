@@ -182,15 +182,37 @@ describe('AuthenticationMethods', () => {
     expect(screen.queryByTestId('two-factor-needs-password')).not.toBeInTheDocument();
   });
 
-  it('shows the password hint above the passkey form when the account has no password', async () => {
-    renderMethods(propsWith({ presentation: 'account', hasPassword: false }));
+  it('replaces the passkey form with the password link when the account has no password', async () => {
+    const requestPasswordSetup = vi.fn();
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, run: requestPasswordSetup } }));
     await userEvent.click(screen.getByTestId('add-passkey-open'));
 
-    const hint = screen.getByTestId('passkey-passwordless');
-    expect(hint.closest('details')).toBeNull();
-    expect(hint).toBeVisible();
-    expect(hint.compareDocumentPosition(screen.getByTestId('passkey-name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByTestId('passkey-set-password')).toBeVisible();
+    const body = screen.getByTestId('passkey-passwordless');
+    expect(body.closest('details')).toBeNull();
+    expect(body).toHaveTextContent(en.security.passkeyPasswordlessHint);
+    const setup = screen.getByTestId('passkey-set-password');
+    expect(setup).toHaveTextContent(en.security.setOrResetPassword);
+    expect(setup).toHaveFocus();
+    expect(screen.queryByTestId('passkey-name')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-proof-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-help')).not.toBeInTheDocument();
+    await userEvent.click(setup);
+    expect(requestPasswordSetup).toHaveBeenCalledOnce();
+  });
+
+  it('shows a password link error only beside the passwordless button that sent it', async () => {
+    const failure = new Error('password link failed');
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, error: failure, run: vi.fn() } }));
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('two-factor-set-password'));
+    expect(screen.getByTestId('two-factor-set-password-error')).toBeVisible();
+
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    expect(screen.queryByTestId('passkey-set-password-error')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('passkey-set-password'));
+    expect(screen.getByTestId('passkey-set-password-error')).toBeVisible();
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
   });
 
   it('keeps the password hint inside the passkey help when the account has a password', async () => {

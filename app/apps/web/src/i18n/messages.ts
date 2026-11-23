@@ -1429,6 +1429,7 @@ export interface Messages {
     sessionsSummary: ({ count }: { count: number }) => string;
     passkeyCount: ({ count }: { count: number }) => string;
     continueSetup: string;
+    wizardBack: string;
     disableTwoFactorConfirm: string;
     wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
     twoFactorStatusUnknown: string;
@@ -1443,6 +1444,10 @@ export interface Messages {
     backupCodesCopied: string;
     downloadBackupCodes: string;
     backupCodesSaved: string;
+    leaveWithoutCodesTitle: string;
+    leaveWithoutCodesBody: string;
+    leaveWithoutCodesConfirm: string;
+    leaveWithoutCodesCancel: string;
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;
@@ -2637,7 +2642,7 @@ export interface Messages {
     back: string;
     profileHeading: string;
     tabsLabel: string;
-    tabs: { profile: string; security: string; notifications: string; playback: string };
+    tabs: { profile: string; security: string; preferences: string; playback: string };
     displayNameLabel: string;
     displayNameNotSet: string;
     displayNameHint: string;
@@ -2649,13 +2654,14 @@ export interface Messages {
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    avatarUnsupportedType: string;
     editName: string;
     passwordStatusSet: string;
     passwordStatusUnset: string;
-    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
-    setOrResetPassword: string;
+    forgotPasswordPrompt: string;
+    forgotPasswordEmailLink: string;
     resetSending: string;
     resetSent: string;
     billingHeading: string;
@@ -2681,11 +2687,11 @@ export interface Messages {
     erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
     erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
+    erasureConfirmHint: (input: { email: string }) => string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;
-    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
-    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
+    erasureClosed: Record<'cancelled' | 'rejected' | 'completed', (input: { date: string }) => string>;
   };
   changePassword: {
     minimumHint: ({ min }: { min: number }) => string;

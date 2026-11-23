@@ -1,5 +1,5 @@
 import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
-import { BellIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
+import { CreditCardIcon, LockKeyholeIcon, MailCheckIcon, PlayIcon, ShieldCheckIcon, SlidersHorizontalIcon, UserRoundIcon } from '../../components/ui/account-icons.js';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -26,7 +26,7 @@ import { AccountCard as SectionCard } from './AccountCard.js';
 import { AccountHelp } from '../../components/ui/AccountHelp.js';
 import { ActiveSessions } from '../../components/ui/ActiveSessions.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
-import { ChangePasswordForm, localizeChangePasswordError } from '../../components/ui/ChangePasswordForm.js';
+import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { useToast } from '../../components/ui/Toast.js';
@@ -122,7 +122,6 @@ export const MemberAccountPage = () => {
       toast.success(t.account.displayNameSaved);
       await queryClient.invalidateQueries(actions.meInvalidates());
     },
-    onError: reportFailure,
   });
   const uploadAvatar = useMutation({
     ...actions.uploadAvatar,
@@ -162,7 +161,6 @@ export const MemberAccountPage = () => {
       setSupportBody('');
       toast.success(t.support.sent);
     },
-    onError: reportFailure,
   });
   const accountSessions = useQuery({ ...actions.accountSessions, enabled: ownAccount });
   const revokeAccountSession = useMutation({
@@ -184,7 +182,6 @@ export const MemberAccountPage = () => {
       toast.success(t.security.passkeyAdded);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
-    onError: reportFailure,
   });
   const removePasskey = useMutation({
     ...actions.removePasskey,
@@ -192,32 +189,25 @@ export const MemberAccountPage = () => {
       toast.success(t.security.passkeyRemoved);
       await queryClient.invalidateQueries(actions.passkeysInvalidates());
     },
-    onError: reportFailure,
   });
-  const enableTwoFactor = useMutation({
-    ...actions.enableTwoFactor,
-    onError: reportFailure,
-  });
+  const enableTwoFactor = useMutation(actions.enableTwoFactor);
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
     onSuccess: () => {
       toast.success(t.security.twoFactorOn);
     },
-    onError: reportFailure,
   });
   const disableTwoFactor = useMutation({
     ...actions.disableTwoFactor,
     onSuccess: () => {
       toast.success(t.security.twoFactorOff);
     },
-    onError: reportFailure,
   });
   const regenerateBackupCodes = useMutation({
     ...actions.regenerateBackupCodes,
     onSuccess: () => {
       toast.success(t.security.backupCodesRegenerated);
     },
-    onError: reportFailure,
   });
 
   const unauthorized = isUnauthorized(me.error);
@@ -226,27 +216,17 @@ export const MemberAccountPage = () => {
     if (unauthorized) void redirectToLogin();
   }, [redirectToLogin, unauthorized]);
 
-  const requestPasswordReset = useMutation({
+  const [passwordLinkFromCard, setPasswordLinkFromCard] = useState(false);
+  const requestPasswordLink = useMutation({
     ...actions.requestPasswordReset,
     onSuccess: () => {
       toast.success(t.account.resetSent);
     },
-    onError: reportFailure,
-  });
-  const requestPasskeyPasswordSetup = useMutation({
-    ...actions.requestPasswordReset,
-    onSuccess: () => {
-      toast.success(t.security.resetSent);
-    },
-    onError: reportFailure,
   });
   const changePassword = useMutation({
     ...actions.changePassword,
     onSuccess: () => {
       toast.success(t.changePassword.success);
-    },
-    onError: (error) => {
-      toast.error(localizeChangePasswordError(error, t));
     },
   });
   const resendVerification = useMutation({
@@ -331,7 +311,7 @@ export const MemberAccountPage = () => {
         {impersonating ? null : (
           <Tab icon={<ShieldCheckIcon />} iconPosition="start" id="account-tab-security" aria-controls="account-panel-security" value="security" label={t.account.tabs.security} />
         )}
-        <Tab icon={<BellIcon />} iconPosition="start" id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.notifications} />
+        <Tab icon={<SlidersHorizontalIcon />} iconPosition="start" id="account-tab-notifications" aria-controls="account-panel-notifications" value="notifications" label={t.account.tabs.preferences} />
         {me.data.tenant?.memberId == null ? null : (
           <Tab icon={<PlayIcon />} iconPosition="start" id="account-tab-playback" aria-controls="account-panel-playback" value="playback" label={t.account.tabs.playback} />
         )}
@@ -363,12 +343,16 @@ export const MemberAccountPage = () => {
                   onUpload={(event) => {
                     const file = event.target.files?.[0];
                     event.target.value = '';
-                    if (file !== undefined && file.size > AVATAR_IMAGE_MAX_BYTES) {
+                    if (file === undefined) return;
+                    if (file.size > AVATAR_IMAGE_MAX_BYTES) {
                       setAvatarError(t.account.avatarTooLarge);
                       return;
                     }
-                    const contentType = file === undefined ? null : avatarContentType(file.type);
-                    if (file === undefined || contentType === null) return;
+                    const contentType = avatarContentType(file.type);
+                    if (contentType === null) {
+                      setAvatarError(t.account.avatarUnsupportedType);
+                      return;
+                    }
                     setAvatarError(null);
                     uploadAvatar.mutate({
                       kind: 'avatar',
@@ -422,6 +406,7 @@ export const MemberAccountPage = () => {
                   <ChangePasswordForm
                     dialog
                     showHeading={false}
+                    revokeOtherSessionsByDefault
                     pending={changePassword.isPending}
                     success={changePassword.isSuccess}
                     error={changePassword.error}
@@ -429,22 +414,32 @@ export const MemberAccountPage = () => {
                   />
                   <Divider />
                 </> : null}
-                <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }} data-testid="account-reset-password-row">
+                  {me.data.hasPassword ? (
+                    <Typography variant="caption" color="text.secondary" id="account-forgot-password-prompt" data-testid="account-forgot-password-prompt">
+                      {t.account.forgotPasswordPrompt}
+                    </Typography>
+                  ) : null}
                   <Button
                     variant={me.data.hasPassword ? 'text' : 'contained'}
+                    size={me.data.hasPassword ? 'small' : 'medium'}
+                    aria-describedby={me.data.hasPassword ? 'account-forgot-password-prompt' : undefined}
                     data-testid="account-reset-password"
-                    disabled={requestPasswordReset.isPending}
-                    onClick={() => requestPasswordReset.mutate(passwordSetupInput)}
+                    disabled={requestPasswordLink.isPending}
+                    onClick={() => {
+                      setPasswordLinkFromCard(true);
+                      requestPasswordLink.mutate(passwordSetupInput);
+                    }}
                   >
-                    {requestPasswordReset.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.setOrResetPassword : t.account.setPassword}
+                    {requestPasswordLink.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.security.setOrResetPassword}
                   </Button>
-                  <AccountHelp title={t.account.passwordLinkHelp}>
-                    <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
-                    <AccountWrappingText variant="body2">{email}</AccountWrappingText>
-                    <Typography variant="body2">{t.account.passwordIntro}</Typography>
-                  </AccountHelp>
                 </Stack>
-                {requestPasswordReset.error ? <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert> : null}
+                {passwordLinkFromCard && requestPasswordLink.error ? <Alert severity="error" data-testid="account-reset-password-error">{localizeError(requestPasswordLink.error, t)}</Alert> : null}
+                <AccountHelp title={t.account.passwordLinkHelp}>
+                  <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
+                  <AccountWrappingText variant="body2">{email}</AccountWrappingText>
+                  <Typography variant="body2">{t.account.passwordIntro}</Typography>
+                </AccountHelp>
             </SectionCard></Box>}
                 sessionsCard={<ActiveSessions
                 Card={SectionCard}
@@ -482,10 +477,13 @@ export const MemberAccountPage = () => {
                   run: removePasskey.mutate,
                 }}
                 requestPasswordSetup={{
-                  pending: requestPasskeyPasswordSetup.isPending,
-                  success: requestPasskeyPasswordSetup.isSuccess,
-                  error: requestPasskeyPasswordSetup.error,
-                  run: () => requestPasskeyPasswordSetup.mutate(passwordSetupInput),
+                  pending: requestPasswordLink.isPending,
+                  success: requestPasswordLink.isSuccess,
+                  error: passwordLinkFromCard ? null : requestPasswordLink.error,
+                  run: () => {
+                    setPasswordLinkFromCard(false);
+                    requestPasswordLink.mutate(passwordSetupInput);
+                  },
                 }}
                 enableTwoFactor={{
                   data: enableTwoFactor.data,
@@ -612,14 +610,14 @@ export const MemberAccountPage = () => {
 
         {selectedTab === 'profile' && (billingPortalUrl || !impersonating) ? <Stack data-account-compact useFlexGap spacing="1.5rem">
         {billingPortalUrl ? (
-          <Box><SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
+          <Box><SectionCard icon={<CreditCardIcon />} title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
                   component="a"
                   href={billingPortalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  variant="contained"
+                  variant="outlined"
                   data-testid="account-manage-payments"
                 >
                   {t.account.managePayments}
@@ -672,19 +670,8 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {selectedTab === 'profile' && tenantSettings.data?.settings.supportConfigured === true ? (
-          <AccountSupportForm initiallyOpen={search['support'] === 'open'} success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
-        ) : null}
-
-        {selectedTab === 'profile' && tenantSettings.data?.settings.supportUrl ? (
-          <Button
-            component="a"
-            href={tenantSettings.data.settings.supportUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t.support.externalLink}
-          </Button>
+        {selectedTab === 'profile' && tenantSettings.data !== undefined ? (
+          <AccountSupportForm configured={tenantSettings.data.settings.supportConfigured} externalUrl={tenantSettings.data.settings.supportUrl} initiallyOpen={search['support'] === 'open'} success={support.isSuccess} error={support.error} supportSubject={supportSubject} supportBody={supportBody} pending={support.isPending} onSubjectChange={setSupportSubject} onBodyChange={setSupportBody} onSubmit={(input) => support.mutate(input)} />
         ) : null}
 
         {selectedTab === 'profile' ? <AccountErasureCard

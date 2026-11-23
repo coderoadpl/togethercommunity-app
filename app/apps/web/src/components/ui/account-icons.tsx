@@ -16,11 +16,30 @@ export const ShieldCheckIcon = (props: IconProps) => (<Glyph {...props}><path d=
 export const BellIcon = (props: IconProps) => (<Glyph {...props}><path d="M10.268 21a2 2 0 0 0 3.464 0" />
   <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></Glyph>);
 
+export const SlidersHorizontalIcon = (props: IconProps) => (<Glyph {...props}><line x1="21" x2="14" y1="4" y2="4" />
+  <line x1="10" x2="3" y1="4" y2="4" />
+  <line x1="21" x2="12" y1="12" y2="12" />
+  <line x1="8" x2="3" y1="12" y2="12" />
+  <line x1="21" x2="16" y1="20" y2="20" />
+  <line x1="12" x2="3" y1="20" y2="20" />
+  <line x1="14" x2="14" y1="2" y2="6" />
+  <line x1="8" x2="8" y1="10" y2="14" />
+  <line x1="16" x2="16" y1="18" y2="22" /></Glyph>);
+
+export const CreditCardIcon = (props: IconProps) => (<Glyph {...props}><rect width="20" height="14" x="2" y="5" rx="2" />
+  <line x1="2" x2="22" y1="10" y2="10" /></Glyph>);
+
+export const DownloadIcon = (props: IconProps) => (<Glyph {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <polyline points="7 10 12 15 17 10" />
+  <line x1="12" x2="12" y1="15" y2="3" /></Glyph>);
+
 export const PlayIcon = (props: IconProps) => (<Glyph {...props}><polygon points="6 3 20 12 6 21 6 3" /></Glyph>);
 
 export const MailCheckIcon = (props: IconProps) => (<Glyph {...props}><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8" />
   <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
   <path d="m16 19 2 2 4-4" /></Glyph>);
+
+export const MessageSquareIcon = (props: IconProps) => (<Glyph {...props}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Glyph>);
 
 export const LockKeyholeIcon = (props: IconProps) => (<Glyph {...props}><circle cx="12" cy="16" r="1" />
   <rect x="3" y="10" width="18" height="12" rx="2" />

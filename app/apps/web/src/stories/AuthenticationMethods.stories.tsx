@@ -56,7 +56,7 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
     passkeys: { data: state === 'PasskeysLoading' || state === 'PasskeysError' ? undefined : state === 'PasskeysEmpty' || state === 'ProofAbsent' ? [] : accountPasskeys, pending: state === 'PasskeysLoading', error: state === 'PasskeysError' ? previewFailure : null, retry: () => undefined },
     registerPasskey: { ...idleOperation, pending: state === 'AddPending', error: state === 'AddError' ? previewFailure : null },
     removePasskey: { ...idleOperation, pending: state === 'RemovalPending' },
-    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordLinkPending', error: state === 'PasswordLinkError' ? previewFailure : null },
+    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordLinkPending', error: state.endsWith('LinkError') ? previewFailure : null },
     enableTwoFactor: { ...idleOperation, submittedAt: 0, data: state === 'LaterDisable' ? enrollment : undefined },
     verifyTotp: { ...idleOperation, submittedAt: 0 },
     disableTwoFactor: { ...idleOperation, submittedAt: 3, success: state === 'LaterDisable' },
@@ -64,10 +64,11 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement.ownerDocument.body);
-    if (['ProofAbsent', 'ProofPresent', 'AddPending', 'AddError', 'PasswordlessAddDialog'].includes(state) || state.startsWith('PasswordLink') || state === 'AddDialog') {
+    if (['ProofAbsent', 'ProofPresent', 'AddPending', 'AddError', 'PasswordlessAddDialog', 'PasswordlessLinkError'].includes(state) || state.startsWith('PasswordLink') || state === 'AddDialog') {
       await userEvent.click(canvas.getByTestId('add-passkey-open'));
-      if (state !== 'ProofAbsent' && state !== 'AddDialog' && state !== 'PasswordlessAddDialog') await userEvent.type(canvas.getByTestId('passkey-proof-password'), 'fresh-proof-password');
+      if (!['ProofAbsent', 'AddDialog', 'PasswordlessAddDialog', 'PasswordlessLinkError'].includes(state)) await userEvent.type(canvas.getByTestId('passkey-proof-password'), 'fresh-proof-password');
       if (state.startsWith('PasswordLink')) await userEvent.click(canvas.getByTestId('passkey-help'));
+      if (state.endsWith('LinkError')) await userEvent.click(canvas.getByTestId('passkey-set-password'));
     }
     if (state === 'RemovalConfirmation' || state === 'RemovalPending') {
       await userEvent.click(within(canvas.getByTestId('passkey-laptop')).getByRole('button'));
@@ -198,3 +199,7 @@ export const PasswordlessAddDialogLightDesktop1440: Story = stateStory('Password
 export const PasswordlessAddDialogLightMobile390: Story = stateStory('PasswordlessAddDialog', 'light', 'mobile');
 export const PasswordlessAddDialogDarkDesktop1440: Story = stateStory('PasswordlessAddDialog', 'dark', 'desktop');
 export const PasswordlessAddDialogDarkMobile390: Story = stateStory('PasswordlessAddDialog', 'dark', 'mobile');
+export const PasswordlessLinkErrorLightDesktop1440: Story = stateStory('PasswordlessLinkError', 'light', 'desktop');
+export const PasswordlessLinkErrorLightMobile390: Story = stateStory('PasswordlessLinkError', 'light', 'mobile');
+export const PasswordlessLinkErrorDarkDesktop1440: Story = stateStory('PasswordlessLinkError', 'dark', 'desktop');
+export const PasswordlessLinkErrorDarkMobile390: Story = stateStory('PasswordlessLinkError', 'dark', 'mobile');

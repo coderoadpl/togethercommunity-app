@@ -27,6 +27,7 @@ import type {
   KeyDownloadObjectRemoval,
   KeyDownloadRelease,
   KeyDownloadReservation,
+  KeyDownloadStagedSweep,
   KeyDownloadSweepCutoffs,
   KeyDownloadSweepRow,
 } from '#core/server/index.js';
@@ -498,18 +499,16 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       await tx.delete(deletions).where(deletionOf(tenantId, objectKey));
       return 'removed';
     }, 'busy', wait),
-    sweepStaged: (tenantId, id, cutoffs, remove, wait) => locked(async (tx): Promise<KeyDownloadObjectRemoval> => {
+    sweepStaged: (tenantId, id, cutoffs, wait) => locked(async (tx): Promise<KeyDownloadStagedSweep> => {
       const [row] = await tx.select().from(stagedFiles).where(stagedOf(tenantId, id)).for('update');
-      if (row === undefined) return 'gone';
+      if (row === undefined) return { kind: 'gone' };
       const [selected] = await tx.select({ id: stagedFiles.id }).from(stagedFiles).where(and(stagedOf(tenantId, id), stagedSweepable(cutoffs)));
-      if (selected === undefined) return 'kept';
-      if (!await remove()) {
-        await tx.update(stagedFiles).set({ sweepAttemptedAt: cutoffs.now }).where(stagedOf(tenantId, id));
-        return 'failed';
-      }
+      if (selected === undefined) return { kind: 'kept' };
+      const [owed] = await oweKeyFileDeletions(tx, tenantId, [{ storageKey: row.objectKey, sizeBytes: row.sizeBytes }], cutoffs.now);
+      if (owed === undefined) throw new Error('A staged file is outside the key-files prefix');
       await tx.delete(stagedFiles).where(stagedOf(tenantId, id));
-      return 'removed';
-    }, 'busy', wait),
+      return { kind: 'owed', deletion: owed };
+    }, { kind: 'busy' }, wait),
     listTenantIdsToSweep: async (cutoffs, limit) => {
       const waiting = new Map<string, string>();
       const collect = (rows: ReadonlyArray<{ tenantId: string; waiting: string | null }>) => {

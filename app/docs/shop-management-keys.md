@@ -751,7 +751,10 @@ delete, and blocks that key's new uploads and copies while it lasts.
 sweep 7 days after it was staged, and once its key is revoked, expires or is
 purged, unless a pending, unexpired proposal holds it; a rejection, a
 withdrawal or a recorded expiry of that proposal discards it at once
-([Release on decisions](change-proposals.md#download-files)). After a
+([Release on decisions](change-proposals.md#download-files)). The sweep
+first moves such a file to the owed deletions and only then deletes its
+object, so from then on the file can no longer be attached or proposed, also
+when the storage does not confirm the delete. After a
 propose-mode upload or copy, the CLI prints such a file as `kept while the
 proposal is pending` instead of its 7-day expiry. The key may discard a file
 a pending proposal holds; an approval of that proposal then ends `stale`.

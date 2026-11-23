@@ -647,9 +647,12 @@ scopes on every shop key.
   key's. Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
   only by what the key attached before, and it blocks the key's new uploads and
-  copies until the storage confirms the delete. Completions, copies, the key's
-  discard and removal, and the minute sweep hold the row that owns a staged or
-  upload object until the storage answers; an owner's removal or draft
+  copies until the storage confirms the delete. Completions, copies and the
+  minute sweep of a record hold the row that owns an upload object or a
+  destination until the storage answers; the key's discard and removal and the
+  minute sweep of a staged file first move the file to the owed deletions in a
+  committed transaction, so no attach or proposal takes a file whose delete
+  was sent, also when its answer is lost; an owner's removal or draft
   deletion deletes an attached object once after its commit without that row,
   and the minute sweep, which has its own time budget and never holds back
   e-mail or refund dispatch, retries owed deletions

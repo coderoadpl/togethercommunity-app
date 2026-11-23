@@ -105,13 +105,16 @@ staged row), a staged file, or an owed deletion. Completions, copies, the
 key's discard and file removal, and the minute sweep hold that row until the
 storage answers, so an attach that takes the object over in the meantime is
 never undone. Removing a file version or deleting a draft product whose file
-object is under `key-files/`, and discarding a staged file, record the
-object's deletion in `change_proposal_download_deletions` in the same
-transaction, owed by the key whose `key-files/` prefix holds the object,
+object is under `key-files/`, discarding a staged file, and the minute sweep of
+a staged file record the object's deletion in
+`change_proposal_download_deletions` in the transaction that deletes the file's
+row, before any storage delete, owed by the key whose `key-files/` prefix holds the object,
 whoever removed the file; the owed bytes count against that key's and the
 workspace's staging limits until the storage confirms the delete
 ([Download files](shop-management-keys.md#download-files)). After a key's
-removal or discard the deletion that follows holds and removes that row; after
+removal or discard, and after the sweep moved a staged file, the deletion that
+follows holds and removes that row, and keeps it when the storage does not
+confirm the delete; after
 a removal in the product editor, an approved removal proposal or a draft
 deletion the object is deleted once after its row as before, without the owed
 row, and the minute sweep deletes it once more and removes the row. That delete cannot remove a newer file: every

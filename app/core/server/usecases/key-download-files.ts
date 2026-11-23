@@ -39,7 +39,7 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
-import type { KeyDownloadFileRepository, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
+import type { KeyDownloadFileRepository, KeyDownloadObjectRemoval, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt, storageFileName } from './storage-assets.js';
@@ -461,14 +461,22 @@ const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, r
   }
   const remove = deleteObjects(tenantId, configuration.value, deps, left);
   let removed = 0;
+  const finish = (objectKey: string, wait: number | undefined): Promise<KeyDownloadObjectRemoval> =>
+    files.finishDeletion(tenantId, objectKey, cutoffs.now, () => remove([objectKey]), wait);
   for (const row of batch.rows) {
     const wait = sweepLockWait(left, objectsOf(row));
     if (wait === null) continue;
-    const outcome = row.kind === 'record'
-      ? await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove, wait)
-      : row.kind === 'staged'
-        ? await files.sweepStaged(tenantId, row.file.id, cutoffs, () => remove([row.file.objectKey]), wait)
-        : await files.finishDeletion(tenantId, row.deletion.objectKey, cutoffs.now, () => remove([row.deletion.objectKey]), wait);
+    let outcome: KeyDownloadObjectRemoval;
+    if (row.kind === 'record') {
+      outcome = await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove, wait);
+    } else if (row.kind === 'deletion') {
+      outcome = await finish(row.deletion.objectKey, wait);
+    } else {
+      const swept = await files.sweepStaged(tenantId, row.file.id, cutoffs, wait);
+      const deleteWait = sweepLockWait(left, 1);
+      if (swept.kind !== 'owed' || deleteWait === null) continue;
+      outcome = await finish(swept.deletion.objectKey, deleteWait);
+    }
     if (outcome === 'removed') removed += 1;
   }
   return removed;

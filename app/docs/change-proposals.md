@@ -1556,11 +1556,11 @@ and nothing is applied; in a group every file is checked before any item
 applies, and one gone file makes the whole group `stale`, with that note on
 the item that attaches it and the usual note on the others (the first such
 item in group order). The approval holds each staged row until it commits.
-The minute sweep locks a staged row and holds it until the storage answered
-its delete. The key's discard and the release after a decision lock the staged
-row, delete it and record an owed deletion of its object in one transaction,
-and delete the object after that commit while holding only the owed-deletion
-row. Every one of these paths must lock the staged row to remove it, so it
+The minute sweep, the key's discard and the release after a decision lock the
+staged row, delete it and record an owed deletion of its object in one
+transaction, and delete the object after that commit while holding only the
+owed-deletion row, so a delete whose answer is lost leaves no staged file to
+attach or propose. Every one of these paths must lock the staged row to remove it, so it
 waits for an approval that holds the row: after the approval commits the row
 is gone (attached) and there is nothing to discard or sweep, and a path that
 removed the row first leaves the approval nothing to lock, so it ends `stale`.

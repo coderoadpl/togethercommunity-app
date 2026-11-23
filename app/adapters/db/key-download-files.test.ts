@@ -429,6 +429,30 @@ describe('removing staged objects durably', () => {
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
   });
 
+  it('owes the deletion of a swept staged file before deleting it, so a delete whose answer is lost leaves no file to attach or propose', async () => {
+    const h = harness();
+    const staged = await h.stage();
+    await database.db.update(changeProposalDownloadFiles).set({ createdAt: '2026-02-20T10:00:00.000Z' });
+    const objectKey = `${TENANT}/product-downloads/key-files/${KEY_ID}/${staged.id}/workbook.pdf`;
+    const unconfirmed: StorageProvider = {
+      ...h.objects.storage,
+      delete: async (input) => {
+        await h.objects.storage.delete(input);
+        return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+      },
+    };
+    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: unconfirmed })).toMatchObject({ ok: true, value: { removed: 0 } });
+    expect(h.objects.keysUnder(objectKey)).toEqual([]);
+    expect(await stagedRows()).toEqual([]);
+    expect(await owedRows()).toEqual([objectKey]);
+    expect(await h.deps.keyDownloadFiles.proposable(TENANT, KEY_ID, [staged.id], NOW)).toBe(false);
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: staged.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await database.db.select().from(productDownloadAssets)).toEqual([]);
+    expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(await owedRows()).toEqual([]);
+  });
+
   it.each(['commit', 'rollback'] as const)('never deletes a staged object an uncommitted attach takes over, and sweeps it when the attach ends in %s', async (outcome) => {
     const h = harness();
     const staged = await h.stage();

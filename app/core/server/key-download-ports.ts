@@ -37,6 +37,8 @@ export type KeyDownloadInterruption = { kind: 'interrupted'; until: string } | {
 /** What a locked removal step found: the objects it may delete, or why it deletes nothing. */
 export type KeyDownloadObjectRemoval = 'removed' | 'failed' | 'gone' | 'kept' | 'busy';
 
+export type KeyDownloadStagedSweep = { kind: 'owed'; deletion: KeyDownloadPendingDeletion } | { kind: 'gone' | 'kept' | 'busy' };
+
 export type KeyDownloadSweepRow =
   | { kind: 'record'; record: KeyDownloadUploadRecord }
   | { kind: 'staged'; file: KeyDownloadStagedFile }
@@ -119,16 +121,11 @@ export interface KeyDownloadFileRepository {
    */
   finishDeletion(tenantId: string, objectKey: string, now: string, remove: () => Promise<boolean>, lockWaitMs?: number): Promise<KeyDownloadObjectRemoval>;
   /**
-   * Holding the staged row until `remove` answered: when the file is still past its age or of a revoked or deleted key,
-   * and no pending, unexpired proposal attaches it, deletes the row once `remove` answers true.
+   * Holding the staged row: when the file is still past its age, of a revoked or deleted key, or held by an ended
+   * proposal, and no pending, unexpired proposal attaches it, moves it to the owed deletions in one transaction, as a
+   * discard does, so the storage delete that follows starts only once no attach or proposal can take the file.
    */
-  sweepStaged(
-    tenantId: string,
-    id: string,
-    cutoffs: KeyDownloadSweepCutoffs,
-    remove: () => Promise<boolean>,
-    lockWaitMs?: number,
-  ): Promise<KeyDownloadObjectRemoval>;
+  sweepStaged(tenantId: string, id: string, cutoffs: KeyDownloadSweepCutoffs, lockWaitMs?: number): Promise<KeyDownloadStagedSweep>;
   /** Workspaces with rows the sweep selects, the one waiting longest first, by the attempt time or else the creation time. */
   listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<string[]>;
   /**

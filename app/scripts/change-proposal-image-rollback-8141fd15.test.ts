@@ -670,6 +670,9 @@ describe('release 8141fd15 reading what proposed images store', () => {
   });
 
   it('is refused by release b6a8634a, which has no change-proposal notification kind', async () => {
+    const h = harness();
+    await database.db.delete(notifications);
+    await h.propose('product.update', { id: MUG, title: 'Acme mug, third edition' });
     const row = await ownerNotification();
     if (row === undefined) throw new Error('No change-proposal notification is stored');
     expect(notificationSchemaOfB6a8634a.safeParse(row).success).toBe(false);

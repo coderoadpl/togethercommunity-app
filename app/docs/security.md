@@ -32,8 +32,9 @@ from responses to browser requests. A request counts as a browser when it
 carries `Sec-Fetch-Site` or the Better Auth session cookie (with or without
 the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
 `localhost` origins, and page scripts cannot set or remove it; Safari before
-16.4 and local development over plain HTTP do not send it, which is why a
-cookie-bearing request is treated as a browser too. Such a request gets no `set-auth-token`
+16.4, and plain-HTTP local development hosts a browser does not treat as
+potentially trustworthy, do not send it, which is why a cookie-bearing request
+is treated as a browser too. Such a request gets no `set-auth-token`
 header, no `Access-Control-Expose-Headers` entry for it, no top-level `token`,
 no `session.token` and no `token` on session-list entries.
 Cookies, status codes and every other field stay unchanged, so browser
@@ -46,10 +47,11 @@ Nothing stored changes; removing the wrapper restores the previous responses.
 
 Remaining gaps (not closed by this change):
 
-- A sign-in response to a browser that sends no `Sec-Fetch-Site` (Safari
-  before 16.4, local development over plain HTTP) still carries the token,
-  because the request has no session cookie yet. Every later cookie-bearing response is
-  stripped.
+- A response that creates a session (sign-up, sign-in, two-factor, magic-link,
+  passkey or One Tap) to a browser that sends no `Sec-Fetch-Site` (Safari before
+  16.4, or a plain-HTTP local development host the browser does not treat as
+  potentially trustworthy) still carries the token, because that request has
+  no session cookie yet. Every later cookie-bearing response is stripped.
 - Google One Tap hands its credential (a Google ID token) to page JavaScript
   before the page posts it to `/api/auth/one-tap/callback`. A script already
   running on the page can intercept that credential and exchange it for a
@@ -77,8 +79,8 @@ enabled, the clients and harnesses that send the unsigned body `token` as
 `shop-settings-routes.test.ts`, `shop-proposal-groups.test.ts`,
 `shop-propose-mode.test.ts`, `change-proposal-panel.test.ts`,
 `shop-assets-routes.test.ts`, `shop-catalog-routes.test.ts`,
-`shop-order-routes.test.ts` and `shop-management-keys-legacy-isolation.test.ts`
-under `apps/server/src/`, plus `scripts/stripe-webhook-old-api-redelivery.test.ts`,
+`shop-order-routes.test.ts`, `shop-management-keys-legacy-isolation.test.ts`
+and `sign-in-events.test.ts` under `apps/server/src/`, plus `scripts/stripe-webhook-old-api-redelivery.test.ts`,
 `scripts/change-proposal-replay.test.ts` and `scripts/shop-machine-replay.test.ts`.
 Outside integrators that copied the body token would need the header too.
 
@@ -159,8 +161,9 @@ running on a tenant's own origin. The shared-cookie vendor-script exposure
 accepted in the repository policy remains; solving it requires cookie/account
 isolation rather than a broader claim about CSRF protection. Such a script can
 act with the cookie while the page is open, but apart from the remaining gaps
-listed there it cannot read the session token from auth responses or take a stored
-Google ID token to mint a new session (see [Session tokens and browsers](#session-tokens-and-browsers)).
+listed in [Session tokens and browsers](#session-tokens-and-browsers) it cannot
+read the session token from auth responses or take a stored Google ID token to
+mint a new session.
 
 ## Account and delivery boundaries
 

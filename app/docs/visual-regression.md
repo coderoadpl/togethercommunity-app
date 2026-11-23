@@ -43,9 +43,12 @@ preserving coverage of both settings surfaces and their headings.
 Lesson lightbox captures are page variants declared in
 `scripts/visual-screen-inventory.ts` and mapped in
 `scripts/storybook-page-screens.ts`. They reuse the recorded lesson fixture with
-local image content and open the overlay through a story interaction. Desktop
-and mobile goldens cover a captioned SVG in light mode and a raster image with
-alternative text in dark mode, including the lesson shell behind the overlay.
+local image content. The light desktop variant opens the overlay with a real
+pointer click in the capture's readiness step, so its close button shows no
+focus ring; the others open it through a story interaction. The goldens cover a
+small captioned raster (light desktop), a captioned transparent SVG in Polish
+(light mobile) and in the dark theme (dark desktop), and a raster with
+alternative text only (dark mobile), including the lesson shell behind the overlay.
 Each variant uses an isolated browser context and the normal fixture readiness
 handshake; no new recording scenario or database is required.
 

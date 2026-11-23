@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Box, Paper, Stack, Typography } from '@mui/material';
+import { Box, Stack, Typography } from '@mui/material';
 import { userEvent, within } from 'storybook/test';
 
-import { LessonEditionBadge, LessonEditionBanner, LessonEditionMenu, LessonEditionsList } from '../features/member/LessonEditions.js';
-import { en } from '../i18n/en.js';
-import { useTranslations } from '../i18n/index.js';
+import { LessonEditionBanner, LessonEditionPicker } from '../features/member/LessonEditions.js';
 import { withAccountPreview } from './page-decorators.js';
 
 const editions = [
@@ -13,44 +11,46 @@ const editions = [
   { number: '1', note: null, markedAt: '2026-08-01T12:00:00.000Z' },
 ];
 
+interface EditionStoryArgs {
+  currentEdition: string | null;
+  viewing?: string | undefined;
+}
+
 const meta = {
   title: 'Member/LessonEditions',
   decorators: [withAccountPreview],
   parameters: { locale: 'en', colorScheme: 'light' },
-  render: function EditionPreview() {
-    const t = useTranslations();
+  args: { currentEdition: '10', viewing: '2.1' },
+  render: function EditionPreview({ currentEdition, viewing }) {
+    const viewed = editions.find((edition) => edition.number === viewing);
     return (
       <Box data-testid="story-lesson-editions" sx={{ p: { xs: '1rem', sm: '2rem' }, maxWidth: '60rem', mx: 'auto' }}>
         <Stack spacing={3}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography variant="h1" sx={{ flexGrow: 1 }}>Chapter 3</Typography>
-            <LessonEditionBadge number="2.1" />
-            <LessonEditionMenu editions={editions} onSelect={() => undefined} />
+            <LessonEditionPicker editions={editions} currentEdition={currentEdition} viewing={viewing} onSelect={() => undefined} onCurrent={() => undefined} />
           </Stack>
-          <LessonEditionBanner onCurrent={() => undefined} />
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="h2">{t.lesson.previousEditions}</Typography>
-            <LessonEditionsList editions={editions} onSelect={() => undefined} />
-          </Paper>
+          {viewed === undefined || viewed.number === currentEdition
+            ? null
+            : <LessonEditionBanner number={viewed.number} markedAt={viewed.markedAt} onCurrent={() => undefined} />}
         </Stack>
       </Box>
     );
   },
-} satisfies Meta;
+} satisfies Meta<EditionStoryArgs>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const openDialog: Story['play'] = async ({ canvasElement }) => {
+  await document.fonts.ready;
+  await userEvent.click(within(canvasElement).getByTestId('lesson-edition-badge'));
+};
+
 export const LightDesktop: Story = { globals: { viewport: { value: 'desktop' } } };
 export const DarkDesktop: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'desktop' } } };
-export const LightMobile: Story = { globals: { viewport: { value: 'mobile' } } };
+export const LightMobile: Story = { parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const DarkMobile: Story = { parameters: { colorScheme: 'dark' }, globals: { viewport: { value: 'mobile' } } };
-export const MenuLightDesktop: Story = {
-  ...LightDesktop,
-  play: async ({ canvasElement }) => {
-    await document.fonts.ready;
-    await userEvent.click(within(canvasElement).getByRole('button', { name: en.lesson.editionMenu }));
-  },
-};
-export const MenuDarkDesktop: Story = { ...MenuLightDesktop, ...DarkDesktop };
-export const MenuLightMobile: Story = { ...MenuLightDesktop, ...LightMobile };
-export const MenuDarkMobile: Story = { ...MenuLightDesktop, ...DarkMobile };
+export const MenuLightDesktop: Story = { ...LightDesktop, play: openDialog };
+export const MenuDarkDesktop: Story = { ...DarkDesktop, args: { currentEdition: null, viewing: undefined }, play: openDialog };
+export const MenuLightMobile: Story = { ...LightMobile, play: openDialog };
+export const MenuDarkMobile: Story = { ...DarkMobile, args: { currentEdition: '10', viewing: undefined }, play: openDialog };

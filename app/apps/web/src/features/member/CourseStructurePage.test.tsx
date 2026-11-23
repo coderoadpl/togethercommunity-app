@@ -155,6 +155,12 @@ const progressView = (lastViewedLessonId?: string): ProgressView => ({
   ...(lastViewedLessonId === undefined ? {} : { lastViewedLessonId }),
 });
 
+const closuresNext: ProgressView['resume'] = {
+  target: { id: 'l4', name: 'Closures Deep Dive' },
+  firstIncomplete: { id: 'l2', name: 'Advanced Variables' },
+  isReview: false,
+};
+
 const mockPage = ({
   body = structure,
   lastViewedLessonId,
@@ -182,17 +188,30 @@ const mockPage = ({
   );
 };
 
+const mediaQueryList = (query: string, matches: boolean) => ({
+  matches,
+  media: query,
+  onchange: null,
+  addListener: () => undefined,
+  removeListener: () => undefined,
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  dispatchEvent: () => false,
+});
+
 const stubViewport = (isCompact: boolean) => {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: isCompact && query.includes('max-width'),
-    media: query,
-    onchange: null,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    dispatchEvent: () => false,
-  }));
+  vi.stubGlobal('matchMedia', (query: string) => mediaQueryList(query, isCompact && query.includes('max-width')));
+};
+
+const stubViewportWidth = (width: number) => {
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const min = /min-width:\s*([\d.]+)px/u.exec(query)?.[1];
+    const max = /max-width:\s*([\d.]+)px/u.exec(query)?.[1];
+    return mediaQueryList(
+      query,
+      (min === undefined || width >= Number(min)) && (max === undefined || width <= Number(max)),
+    );
+  });
 };
 
 const anonOffer = {
@@ -275,20 +294,22 @@ describe('CourseStructurePage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('orders compact course sections before the curriculum', async () => {
+  it('puts the compact program right under the progress card, ahead of tiles, cover, About and discussions', async () => {
     stubViewport(true);
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const progressCard = await screen.findByTestId('course-progress-card');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
     const aboutCard = screen.getByTestId('course-about-card');
     const discussionSearch = screen.getByTestId('course-discussion-search');
-    const inlineProgram = screen.getByTestId('course-tree-inline');
-    const compactOrder = [progressCard, aboutCard, discussionSearch, inlineProgram]
+    const compactOrder = [progressCard, inlineProgram, statTile, cover, aboutCard, discussionSearch]
       .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
 
     expect(compactOrder).toEqual([...compactOrder].sort((left, right) => left - right));
-    expect(inlineProgram).toHaveStyle({ marginTop: '1.5rem' });
+    expect(inlineProgram).toHaveClass('MuiPaper-root');
     expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
     expect(within(inlineProgram).getByTestId('course-tree')).toBeInTheDocument();
     expect(within(inlineProgram).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
@@ -301,9 +322,94 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
   });
 
-  it('opens the small-screen program on the branch of the last viewed lesson', async () => {
+  it('keeps the one-column compact order and the About clamp between md and lg', async () => {
+    stubViewportWidth(1000);
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const progressCard = await screen.findByTestId('course-progress-card');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
+    const aboutCard = screen.getByTestId('course-about-card');
+    const discussionSearch = screen.getByTestId('course-discussion-search');
+    const order = [progressCard, inlineProgram, statTile, cover, aboutCard, discussionSearch]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-trailing')).not.toBeInTheDocument();
+    expect(screen.getByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'true');
+    expect(screen.getByTestId('course-about-toggle')).toBeInTheDocument();
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
+  });
+
+  it('moves progress and discussion search into the rail from lg up', async () => {
+    stubViewportWidth(1200);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const leading = await screen.findByTestId('member-rail-leading');
+    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(within(screen.getByTestId('member-rail-trailing')).getByTestId('course-discussion-search')).toBeInTheDocument();
+    expect(screen.getByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'false');
+  });
+
+  it('clamps a long compact About text to five lines behind a show more toggle', async () => {
     stubViewport(true);
-    mockPage({ lastViewedLessonId: 'l4' });
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+    const user = userEvent.setup();
+
+    const text = await screen.findByTestId('course-about-text');
+    expect(text).toHaveAttribute('data-collapsed', 'true');
+    expect(stylesAt(text, 390)['-webkit-line-clamp']).toBe('5');
+    const toggle = screen.getByRole('button', { name: en.courseOverview.aboutShowMore });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', text.id);
+    expect(stylesAt(toggle, 390)['margin-left']).toBe('-0.5rem');
+    expect(stylesAt(toggle, 390)['padding-left']).toBe('0.5rem');
+
+    await user.click(toggle);
+
+    expect(text).toHaveAttribute('data-collapsed', 'false');
+    expect(stylesAt(text, 390)['-webkit-line-clamp']).toBeUndefined();
+    expect(screen.getByRole('button', { name: en.courseOverview.aboutShowLess })).toHaveAttribute('aria-expanded', 'true');
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
+  });
+
+  it('shows a short compact About text without a toggle', async () => {
+    stubViewport(true);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'true');
+    expect(screen.queryByTestId('course-about-toggle')).not.toBeInTheDocument();
+  });
+
+  it('leaves the desktop About text unclamped', async () => {
+    stubViewport(false);
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const text = await screen.findByTestId('course-about-text');
+    expect(text).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.queryByTestId('course-about-toggle')).not.toBeInTheDocument();
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
+  });
+
+  it('opens the small-screen program on the branch of the next lesson', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const inlineProgram = await screen.findByTestId('course-tree-inline');
@@ -318,6 +424,60 @@ describe('CourseStructurePage', () => {
     );
     expect(within(inlineProgram).getByText('Closures Deep Dive')).toBeInTheDocument();
     expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
+  });
+
+  it('opens the branch of the next lesson when the last viewed lesson is completed and ends its chapter', async () => {
+    stubViewport(true);
+    const lastDone: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((lesson) => lesson.lessonId === 'l2'
+            ? { ...lesson, completionStatus: 'fully-completed' as const }
+            : lesson),
+        })),
+      })),
+    };
+    mockPage({
+      body: lastDone,
+      lastViewedLessonId: 'l2',
+      resume: { target: { id: 'l3', name: 'Scope Basics' }, firstIncomplete: { id: 'l3', name: 'Scope Basics' }, isReview: false },
+    });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-next-l3')).toBeInTheDocument();
+    expect(within(inlineProgram).getByTestId('chapter-toggle-c2').closest('[role="treeitem"]')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(within(inlineProgram).getByTestId('chapter-toggle-c1').closest('[role="treeitem"]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('marks the resume target as the next lesson in the compact program', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-next-l2')).toHaveTextContent(en.courseTree.nextLesson);
+    expect(within(inlineProgram).getAllByText(en.courseTree.nextLesson)).toHaveLength(1);
+  });
+
+  it('leaves the next-lesson mark out of the program when the resume is a review', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2', resume: { target: { id: 'l2', name: 'Advanced Variables' }, firstIncomplete: null, isReview: true } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(within(inlineProgram).queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
+    expect(within(inlineProgram).queryByText(en.courseTree.nextLesson)).not.toBeInTheDocument();
   });
 
   it('holds the small-screen program closed until the last viewed lesson is known', async () => {
@@ -340,32 +500,61 @@ describe('CourseStructurePage', () => {
 
   it('keeps the page at the top instead of scrolling to the small-screen program', async () => {
     stubViewport(true);
-    mockPage({ lastViewedLessonId: 'l4' });
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    expect(await screen.findByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(await within(await screen.findByTestId('course-tree-inline')).findByText('Closures Deep Dive')).toBeInTheDocument();
     expect(scrollIntoView).not.toHaveBeenCalled();
     scrollIntoView.mockRestore();
   });
 
-  it('drops the small-screen program for a course without modules', async () => {
+  it('drops the small-screen program, progress card and stat tiles for a course without modules', async () => {
     stubViewport(true);
     mockPage({ body: { ...structure, modules: [] } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    await screen.findByTestId('course-progress-card');
+    expect(await screen.findByTestId('course-empty-state')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-cover')).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.courseOverview.completedOf({ done: 0, total: 0 }))).not.toBeInTheDocument();
   });
 
-  it('leaves the program to the shell sidebar on desktop', async () => {
+  it('puts the desktop program in the main column under the stat tiles, inside a card', async () => {
     stubViewport(false);
-    mockPage();
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    await screen.findByTestId('course-progress-card');
+    const program = await screen.findByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    const order = [statTile, program, cover, about]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(program).toHaveClass('MuiPaper-root');
+    expect(program.closest('[data-testid^="member-rail"]')).toBeNull();
+    expect(within(program).getByRole('heading', { level: 2, name: en.courseOverview.curriculum })).toBeInTheDocument();
+    expect(within(program).getByTestId('course-tree')).toBeInTheDocument();
+    expect(within(program).getByTestId('lesson-search')).toBeInTheDocument();
+    expect(screen.getAllByTestId('lesson-search')).toHaveLength(1);
+    expect(within(program).getByText('Closures Deep Dive')).toBeInTheDocument();
+  });
+
+  it('drops the desktop program, rail progress card and stat tiles for a course without modules', async () => {
+    stubViewport(false);
+    mockPage({ body: { ...structure, modules: [] } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByTestId('course-empty-state')).toBeInTheDocument();
+    expect(await screen.findByTestId('course-cover')).toBeInTheDocument();
     expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('course-tree')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
   });
 
   it('keeps desktop progress and discussion search in the rail', async () => {
@@ -414,6 +603,24 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('first-lesson-link')).not.toBeInTheDocument();
   });
 
+  it('puts the lesson name on its own wrapping line of the continue CTA, clamped to two lines', async () => {
+    stubViewport(true);
+    mockPage({ lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    const lesson = within(cta).getByTestId('continue-cta-lesson');
+    expect(lesson).toHaveTextContent('Advanced Variables');
+    expect(lesson.previousSibling?.textContent).toBe(' ');
+    expect(cta).toHaveAccessibleName(`${en.courseOverview.continueLearning} Advanced Variables`);
+    for (const width of [390, 1440]) {
+      const styles = stylesAt(lesson, width);
+      expect(styles['white-space']).not.toBe('nowrap');
+      expect(styles['-webkit-line-clamp']).toBe('2');
+      expect(stylesAt(cta, width)['flex-direction']).toBe('column');
+    }
+  });
+
   it('offers the server-provided first incomplete lesson beneath a different resume target', async () => {
     mockPage({ lastViewedLessonId: 'l2', resume: {
       target: { id: 'l2', name: 'Advanced Variables' },
@@ -423,6 +630,9 @@ describe('CourseStructurePage', () => {
     const link = await screen.findByTestId('first-lesson-link');
     expect(link).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
     expect(link).toHaveTextContent(en.courseOverview.firstIncomplete({ name: 'Intro to Variables' }));
+    expect(link).toHaveTextContent('First unfinished lesson: Intro to Variables');
+    expect(link).toHaveClass('MuiLink-underlineAlways');
+    expect(link).toHaveClass('MuiTypography-alignCenter');
   });
 
   it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
@@ -523,6 +733,35 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('continue-cta')).not.toBeInTheDocument();
   });
 
+  it('treats modules whose chapters hold no lesson as an empty course, with the empty state before cover and About on desktop', async () => {
+    stubViewport(false);
+    mockPage({
+      body: {
+        ...structure,
+        modules: structure.modules.map((module) => ({
+          ...module,
+          chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+        })),
+      },
+      resume: { target: null, firstIncomplete: null, isReview: false },
+    });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const empty = await screen.findByTestId('course-empty-state');
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    const order = [empty, cover, about]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.courseOverview.completedOf({ done: 0, total: 0 }))).not.toBeInTheDocument();
+  });
+
   it('shows a friendly empty state for a course without modules', async () => {
     mockPage({ body: { ...structure, modules: [] } });
     await renderPage(<CourseStructurePage courseId="course-1" />);
@@ -551,9 +790,45 @@ describe('CourseStructurePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseNotFound })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { name: en.courseTree.courseNotFound })).toHaveLength(1);
-    expect(screen.getByText(en.courseTree.courseNotInLibrary)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: en.courseTree.backToMyCourses })).toHaveAttribute('href', '/my');
+    expect(screen.getByRole('heading', { level: 2, name: en.courseTree.courseUnavailable })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.courseTree.courseNotInLibrary })).not.toBeInTheDocument();
+    expect(screen.getByText(`${en.courseTree.courseNotInLibrary} ${en.courseTree.renewInMyProducts}`)).toBeInTheDocument();
+    const myCourses = screen.getByRole('link', { name: en.courseTree.backToMyCourses });
+    expect(myCourses).toHaveAttribute('href', '/my');
+    expect(myCourses).toHaveClass('MuiButton-contained');
+    const myProducts = screen.getByRole('link', { name: en.student.myProducts });
+    expect(myProducts).toHaveAttribute('href', '/my/products');
+    expect(myProducts).toHaveClass('MuiButton-text');
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it('titles a failed course load as unavailable and offers My courses next to Retry', async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    server.use(
+      okMe(),
+      http.get('/api/student/courses/:courseId/structure', () => {
+        calls += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 });
+      }),
+      http.get('/api/student/progress', () =>
+        HttpResponse.json({ ok: true, data: { progress: progressView() } }),
+      ),
+      http.get('/api/student/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: catalog } }),
+      ),
+    );
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: en.courseTree.courseUnavailable }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.student.myCourses })).not.toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: en.common.retry });
+    const myCourses = screen.getByRole('link', { name: en.courseTree.backToMyCourses });
+    expect(myCourses).toHaveAttribute('href', '/my');
+    expect(retry.parentElement).toBe(myCourses.parentElement);
+    const before = calls;
+    await user.click(retry);
+    await vi.waitFor(() => expect(calls).toBeGreaterThan(before));
   });
 
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
@@ -610,6 +885,18 @@ describe('CourseStructurePage', () => {
       expect(stylesAt(text, width)['-webkit-line-clamp']).toBeUndefined();
     }
     expect(screen.getByTestId('guest-course-offer').compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('pads the member About card like the other stacked cards', async () => {
+    stubViewport(true);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const about = await screen.findByTestId('course-about-card');
+    for (const width of [390, 1440]) {
+      expect(stylesAt(about, width).padding).toBe(stylesAt(screen.getByTestId('course-progress-card'), width).padding);
+      expect(stylesAt(about, width).padding).toBe('1.25rem');
+    }
   });
 
   it('keeps the member course cover and about card on the same column width', async () => {

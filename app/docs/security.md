@@ -621,10 +621,12 @@ scopes on every shop key.
   failure of the copy answers one refusal without details (a missing, larger,
   smaller or mistyped stored object, or an unanswered storage request alike),
   so the answer tells the key from the bytes only whether the copy was staged.
-  The response time is not uniform: a missing stored object, or one larger than
-  its file row, is refused after the first storage answer, while a smaller or
+  The response time is not uniform. A missing source object is refused after
+  the copy request's answer. A stored object larger than its file row is
+  refused after the copy and the headers of the following read. A smaller or
   mistyped one is refused only after the server read all of it, which takes
-  longer the more bytes it holds. A key that times its copies can therefore
+  longer the more bytes it holds. Each refusal also waits for the deletion of
+  the copy's destination. A key that times its copies can therefore
   tell a missing or larger stored object from a smaller one or one of the full
   size that failed the type check, and estimate how many bytes a smaller one
   holds; it never receives a byte, a fingerprint, a size or a type of the
@@ -660,7 +662,9 @@ scopes on every shop key.
   refused with the cap when that extra file or its bytes would pass a limit.
   Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
-  only by what the key attached before, and it blocks the key's new uploads and
+  by what the key attached before and by the upload objects whose second
+  delete, a day after their upload started, is due and not yet confirmed, and
+  it blocks the key's new uploads and
   copies until the storage confirms the delete. Completions, copies and the
   minute sweep of a record hold the row that owns an upload object or a
   destination until the storage answers; the key's discard and removal and the

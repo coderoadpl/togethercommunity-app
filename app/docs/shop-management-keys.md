@@ -747,8 +747,9 @@ conflict` and changes nothing, and any other staged file that is gone answers
 
 **Remove.** Removing deletes one version of any file of the product, a file the
 owner uploaded included, also one still uploading, and promotes the newest
-remaining ready version of its lineage; buyers can no longer download the
-removed version. A propose-mode key's removal proposes only the removal of a
+remaining ready version of its lineage. Buyers get no new link to the removed
+version, but a signed link issued before the removal keeps working until it
+expires or the storage deletes the object. A propose-mode key's removal proposes only the removal of a
 ready file: a file still uploading answers `400 validation` and nothing is
 stored ([Download files](change-proposals.md#download-files)). The answer is
 `{ "deleted": true }`. When the file's object was staged by a key, its deletion

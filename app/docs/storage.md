@@ -111,10 +111,18 @@ Who deletes them:
 
 Every staged or upload object is owned by a database row: an upload or copy
 record (its upload object, and its destination until a completion hands it to a
-staged row), a staged file, or an owed deletion. Completions, copies, the
-key's discard and file removal, and the minute sweep hold that row until the
-storage answers, so an attach that takes the object over in the meantime is
-never undone. Removing a file version or deleting a draft product whose file
+staged row), a staged file, or an owed deletion (the upload object of a settled
+upload included, until its second delete a day after the upload started). The
+exception is a provider write that lands later than the assumptions at the end
+of this section allow: such an object has no row and only the storage orphan
+report lists it. Every storage delete of such an object (the cleanup after a
+completion or copy, the deletion that follows the key's discard or file
+removal, and the minute sweep) runs while the transaction holds the owning row,
+so an attach that takes the object over in the meantime is never undone. The
+copy and the read of a completion or copy hold no row lock; they are fenced by
+the attempt id and by a destination of their own. A delete that takes effect
+while its transaction rolls back, or whose answer is lost, still leaves the row
+in place, and the sweep deletes the object again. Removing a file version or deleting a draft product whose file
 object is under `key-files/`, discarding a staged file, and the minute sweep of
 a staged file record the object's deletion in
 `change_proposal_download_deletions` in the transaction that deletes the file's

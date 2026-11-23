@@ -1435,7 +1435,7 @@ export interface AutoInvoiceJobRepository {
   complete(tenantId: string, jobId: string): Promise<void>;
 }
 
-export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
+type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
   'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
 
 export type RefundJobUpdate = OrderRefundJobUpdate & Partial<Pick<OrderStaffRefund, 'createOutcomeUnknown'>>;

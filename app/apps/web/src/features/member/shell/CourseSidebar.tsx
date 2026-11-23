@@ -97,13 +97,14 @@ export const CourseSidebar = ({
   const progress = useQuery(actions.studentProgress(courseId));
   const tree = structure.data?.structure;
   const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const nextLessonId = currentLessonId === null ? nextLessonOf(progress.data?.progress.resume) : null;
   const waitingForLastViewed = currentLessonId === null && progress.isPending;
   const focusLessonId = useMemo(
     () =>
       tree === undefined || waitingForLastViewed
         ? null
-        : focusLesson(tree, { currentLessonId, lastViewedLessonId }),
-    [tree, waitingForLastViewed, currentLessonId, lastViewedLessonId],
+        : focusLesson(tree, { currentLessonId, nextLessonId, lastViewedLessonId }),
+    [tree, waitingForLastViewed, currentLessonId, nextLessonId, lastViewedLessonId],
   );
 
   if (structure.isError && isNotFound(structure.error)) {
@@ -174,7 +175,7 @@ export const CourseSidebar = ({
             focusLessonId={focusLessonId}
             scrollFocusIntoView
             showFilter={showFilter}
-            nextLessonId={currentLessonId === null ? nextLessonOf(progress.data?.progress.resume) : null}
+            nextLessonId={nextLessonId}
             {...(currentLessonId === null ? {} : { currentLessonId })}
           />
         </>

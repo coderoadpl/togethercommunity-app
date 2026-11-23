@@ -65,6 +65,19 @@ describe('focusLesson', () => {
     expect(focusLesson(structure, { currentLessonId: 'l4', lastViewedLessonId: 'l1' })).toBe('l4');
   });
 
+  it('follows the next lesson over the last viewed one outside a lesson route', () => {
+    expect(focusLesson(structure, { currentLessonId: null, nextLessonId: 'l3', lastViewedLessonId: 'l2' })).toBe('l3');
+  });
+
+  it('keeps the open lesson over the next one', () => {
+    expect(focusLesson(structure, { currentLessonId: 'l1', nextLessonId: 'l3', lastViewedLessonId: 'l2' })).toBe('l1');
+  });
+
+  it('falls back to the last viewed lesson when the next one is absent or unknown', () => {
+    expect(focusLesson(structure, { nextLessonId: null, lastViewedLessonId: 'l4' })).toBe('l4');
+    expect(focusLesson(structure, { nextLessonId: 'gone', lastViewedLessonId: 'l4' })).toBe('l4');
+  });
+
   it('falls back to the last viewed lesson outside a lesson route', () => {
     expect(focusLesson(structure, { currentLessonId: null, lastViewedLessonId: 'l3' })).toBe('l3');
   });

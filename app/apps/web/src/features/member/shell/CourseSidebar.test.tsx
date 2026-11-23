@@ -245,6 +245,33 @@ describe('CourseSidebar', () => {
     expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
   });
 
+  it('opens and scrolls to the branch of the next lesson when the last viewed one is completed and ends its chapter', async () => {
+    const lastDone: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((lesson) => ({ ...lesson, completionStatus: lesson.lessonId === 'l3' ? 'not-completed' : 'fully-completed' })),
+        })),
+      })),
+    };
+    server.use(okStructure(lastDone), okProgress('l2', 'l3'), okNavigation(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderSidebar(null);
+
+      const next = await screen.findByTestId('lesson-button-l3');
+      expect(screen.getByTestId('lesson-next-l3')).toBeInTheDocument();
+      expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
+      expect(scrollIntoView.mock.instances).toEqual([next]);
+    } finally {
+      scrollIntoView.mockRestore();
+    }
+  });
+
   it('opens the branch of the first lesson when nothing was viewed yet', async () => {
     server.use(okStructure(), okProgress(), okNavigation(), noNotifications());
 

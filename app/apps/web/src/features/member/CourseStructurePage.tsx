@@ -192,13 +192,14 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const unauthorized = isUnauthorized(structure.error);
   const loadedStructure = structure.data?.structure;
   const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const nextLessonId = nextLessonOf(progress.data?.progress.resume);
   const waitingForLastViewed = progress.isPending;
   const focusLessonId = useMemo(
     () =>
       loadedStructure === undefined || waitingForLastViewed
         ? null
-        : focusLesson(loadedStructure, { lastViewedLessonId }),
-    [loadedStructure, waitingForLastViewed, lastViewedLessonId],
+        : focusLesson(loadedStructure, { nextLessonId, lastViewedLessonId }),
+    [loadedStructure, waitingForLastViewed, nextLessonId, lastViewedLessonId],
   );
 
   useEffect(() => {
@@ -290,7 +291,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       courseId={courseId}
       structure={course}
       focusLessonId={focusLessonId}
-      nextLessonId={nextLessonOf(progress.data?.progress.resume)}
+      nextLessonId={nextLessonId}
     />
   ) : null;
   const emptyState = !hasModules ? (

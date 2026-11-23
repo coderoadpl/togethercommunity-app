@@ -155,6 +155,12 @@ const progressView = (lastViewedLessonId?: string): ProgressView => ({
   ...(lastViewedLessonId === undefined ? {} : { lastViewedLessonId }),
 });
 
+const closuresNext: ProgressView['resume'] = {
+  target: { id: 'l4', name: 'Closures Deep Dive' },
+  firstIncomplete: { id: 'l2', name: 'Advanced Variables' },
+  isReview: false,
+};
+
 const mockPage = ({
   body = structure,
   lastViewedLessonId,
@@ -399,9 +405,9 @@ describe('CourseStructurePage', () => {
     clientHeight.mockRestore();
   });
 
-  it('opens the small-screen program on the branch of the last viewed lesson', async () => {
+  it('opens the small-screen program on the branch of the next lesson', async () => {
     stubViewport(true);
-    mockPage({ lastViewedLessonId: 'l4' });
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const inlineProgram = await screen.findByTestId('course-tree-inline');
@@ -416,6 +422,39 @@ describe('CourseStructurePage', () => {
     );
     expect(within(inlineProgram).getByText('Closures Deep Dive')).toBeInTheDocument();
     expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument();
+  });
+
+  it('opens the branch of the next lesson when the last viewed lesson is completed and ends its chapter', async () => {
+    stubViewport(true);
+    const lastDone: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((lesson) => lesson.lessonId === 'l2'
+            ? { ...lesson, completionStatus: 'fully-completed' as const }
+            : lesson),
+        })),
+      })),
+    };
+    mockPage({
+      body: lastDone,
+      lastViewedLessonId: 'l2',
+      resume: { target: { id: 'l3', name: 'Scope Basics' }, firstIncomplete: { id: 'l3', name: 'Scope Basics' }, isReview: false },
+    });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const inlineProgram = await screen.findByTestId('course-tree-inline');
+    expect(await within(inlineProgram).findByTestId('lesson-next-l3')).toBeInTheDocument();
+    expect(within(inlineProgram).getByTestId('chapter-toggle-c2').closest('[role="treeitem"]')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(within(inlineProgram).getByTestId('chapter-toggle-c1').closest('[role="treeitem"]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('marks the resume target as the next lesson in the compact program', async () => {
@@ -459,11 +498,11 @@ describe('CourseStructurePage', () => {
 
   it('keeps the page at the top instead of scrolling to the small-screen program', async () => {
     stubViewport(true);
-    mockPage({ lastViewedLessonId: 'l4' });
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
-    expect(await screen.findByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(await within(await screen.findByTestId('course-tree-inline')).findByText('Closures Deep Dive')).toBeInTheDocument();
     expect(scrollIntoView).not.toHaveBeenCalled();
     scrollIntoView.mockRestore();
   });
@@ -483,7 +522,7 @@ describe('CourseStructurePage', () => {
 
   it('puts the desktop program in the main column under the stat tiles, inside a card', async () => {
     stubViewport(false);
-    mockPage({ lastViewedLessonId: 'l4' });
+    mockPage({ lastViewedLessonId: 'l4', resume: closuresNext });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const program = await screen.findByTestId('course-tree-inline');

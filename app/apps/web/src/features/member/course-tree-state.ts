@@ -7,12 +7,17 @@ export const focusLesson = (
   structure: CourseStructureWithAccess,
   {
     currentLessonId,
+    nextLessonId,
     lastViewedLessonId,
-  }: { currentLessonId?: string | null | undefined; lastViewedLessonId?: string | null | undefined },
+  }: {
+    currentLessonId?: string | null | undefined;
+    nextLessonId?: string | null | undefined;
+    lastViewedLessonId?: string | null | undefined;
+  },
 ): string | null => {
   const lessons = lessonsOf(structure);
   const known = new Set(lessons.map((lesson) => lesson.lessonId));
-  const preferred = [currentLessonId, lastViewedLessonId].find(
+  const preferred = [currentLessonId, nextLessonId, lastViewedLessonId].find(
     (lessonId) => lessonId !== null && lessonId !== undefined && known.has(lessonId),
   );
   return preferred ?? lessons[0]?.lessonId ?? null;

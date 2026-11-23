@@ -961,7 +961,7 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(card).getByTestId('proposal-approve'));
     const dialog = await screen.findByTestId('proposal-approve-dialog');
     expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? '')).toMatch(
-      /^Buyers of “Field Guide \(digital\)” will get access to: the course “Sketching from life” without its module “Bonus sketches”; .+ current buyers included, gets what this list names at once .+ Nothing else changes\.$/u,
+      /^Buyers of “Field Guide \(digital\)” will get access to: the course “Sketching from life” without its module “Bonus sketches”; .+ current buyers included, this product grants what this list names at once .+ Nothing else changes\.$/u,
     );
     await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
 

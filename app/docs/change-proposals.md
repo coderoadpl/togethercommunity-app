@@ -2211,12 +2211,14 @@ nothing unless that changes before the owner approves. A decided proposal shows
 the row without the warning.
 
 The confirmation reads "Buyers of “Field guide” will get access to: the whole
-course “Intro course”. Everyone who already has access to this product, current
-buyers included, gets what this list names at once and loses what it no longer
-names, unless another of their products still opens it for them. Nothing else
-changes."; for an empty list it says that the product will no longer grant any
-course, module or lesson and that everyone who has access loses what it granted
-at once, unless another of their products still opens it for them. When the
+course “Intro course”. For everyone who already has access to this product,
+current buyers included, this product grants what this list names at once and
+stops granting what it no longer names; access that something else gives them,
+such as another product, a free preview lesson or a staff role, stays. Nothing
+else changes."; for an empty list it says that the product will no longer grant
+any course, module or lesson and that for everyone who has access this product
+stops granting what it granted at once, while access that something else gives
+them stays. When the
 list does not pass the check as the row's warning describes, the
 confirmation leads with "As the shop is now, the new list of what “Field guide”
 grants does not pass the shop’s check, so approving would change nothing; if it

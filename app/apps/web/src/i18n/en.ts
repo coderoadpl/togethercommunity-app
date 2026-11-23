@@ -814,11 +814,11 @@ export const en: Messages = {
     accessListRefused:
       'As the shop is now, the list after approval does not pass the shop’s check: something on it no longer exists or a course on it is archived. Approving would change nothing unless that changes before you approve.',
     approveProductSetAccess: ({ target, access }) => format(
-      'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them.',
+      'Buyers of “{target}” will get access to: {access}. For everyone who already has access to this product, current buyers included, this product grants what this list names at once and stops granting what it no longer names; access that something else gives them, such as another product, a free preview lesson or a staff role, stays.',
       { target, access },
     ),
     approveProductSetAccessNothing: ({ target }) => format(
-      '“{target}” will no longer grant any course, module or lesson. Everyone who already has access to this product, current buyers included, loses what it granted at once, unless another of their products still opens it for them.',
+      '“{target}” will no longer grant any course, module or lesson. For everyone who already has access to this product, current buyers included, this product stops granting what it granted at once; access that something else gives them, such as another product, a free preview lesson or a staff role, stays.',
       { target },
     ),
     approveProductSetAccessNewProduct: ({ target, access }) => format('Everyone who later gets access to the new product “{target}” will get access to: {access}.', { target, access }),

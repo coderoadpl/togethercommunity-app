@@ -857,11 +857,11 @@ export const pl: Messages = {
     accessListRefused:
       'Przy obecnym stanie sklepu lista po zatwierdzeniu nie przechodzi kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego by nie zmieniło, chyba że zmieni się to przed zatwierdzeniem.',
     approveProductSetAccess: ({ target, access }) => format(
-      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu zyska dostęp do tego, co jest na liście, i straci dostęp do tego, czego na niej nie ma, chyba że nadal daje mu go inny jego produkt.',
+      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdemu, kto ma już dostęp do tego produktu, także obecnym kupującym, produkt od razu zacznie dawać dostęp do tego, co jest na liście, i przestanie dawać dostęp do tego, czego na niej nie ma; dostęp, który daje im coś innego, na przykład inny produkt, bezpłatna lekcja próbna lub rola w zespole, zostaje.',
       { target, access },
     ),
     approveProductSetAccessNothing: ({ target }) => format(
-      'Produkt „{target}” nie będzie już dawał dostępu do żadnego kursu, modułu ani lekcji. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu straci dostęp do tego, co produkt dawał, chyba że nadal daje mu go inny jego produkt.',
+      'Produkt „{target}” nie będzie już dawał dostępu do żadnego kursu, modułu ani lekcji. Każdemu, kto ma już dostęp do tego produktu, także obecnym kupującym, produkt od razu przestanie dawać dostęp do tego, co dawał; dostęp, który daje im coś innego, na przykład inny produkt, bezpłatna lekcja próbna lub rola w zespole, zostaje.',
       { target },
     ),
     approveProductSetAccessNewProduct: ({ target, access }) => format(

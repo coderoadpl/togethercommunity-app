@@ -555,7 +555,11 @@ list returns both live and test orders, as the session list does. The export
 and the packing list answer the session JSON envelope with `filename`,
 `mimeType` and `content`; the label answers the PDF bytes with the session
 route's `content-type`, `content-disposition: attachment` and
-`cache-control: private, no-store` headers.
+`cache-control: private, no-store` headers. The export carries the session
+export's columns, including the trailing `refunded_amount` (CSV, minor units)
+and `refundedCents` (JSON): the platform-recorded staff and sold-out refunds,
+or the paid amount for a `refunded` order (see
+[Staff refunds](shop.md#staff-refunds)).
 
 Each order line in the list, detail and verify responses carries `quantity`
 (1 for lines stored without one) and `issuedCount`, as on the session routes;

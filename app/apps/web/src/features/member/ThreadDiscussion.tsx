@@ -478,6 +478,8 @@ export const ThreadDiscussion = ({
 
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const replyOpening = useRef(0);
+  const editOpening = useRef(0);
   const [deleting, setDeleting] = useState<DiscussionPost | null>(null);
   const [subthreadRootId, setSubthreadRootId] = useState<string | null>(focus?.rootPostId ?? null);
   const [subOverride, setSubOverride] = useState<Record<string, ThreadSubscriptionState>>({});
@@ -576,11 +578,17 @@ export const ThreadDiscussion = ({
     update.isError && update.variables.id === postId ? errorMessage(update.error) : null;
 
   const changeReplyTarget = (id: string | null) => {
-    if (id !== replyingTo && create.isError && create.variables.parentPostId !== undefined) create.reset();
+    if (id !== replyingTo) {
+      replyOpening.current += 1;
+      if (create.isError && create.variables.parentPostId !== undefined) create.reset();
+    }
     setReplyingTo(id);
   };
   const changeEditTarget = (id: string | null) => {
-    if (id !== editingId && update.isError) update.reset();
+    if (id !== editingId) {
+      editOpening.current += 1;
+      if (update.isError) update.reset();
+    }
     setEditingId(id);
   };
   const switchView = (subthreadId: string | null) => {
@@ -627,30 +635,38 @@ export const ThreadDiscussion = ({
     editError: editErrorFor,
     cancelReply: () => {
       if (create.isError) create.reset();
+      replyOpening.current += 1;
       setReplyingTo(null);
     },
     cancelEdit: () => {
       if (update.isError) update.reset();
+      editOpening.current += 1;
       setEditingId(null);
     },
     submitReply: (parent, body, bodyFormat, reset) => {
+      const opening = replyOpening.current;
       create.mutate(
         { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat },
         {
           onSuccess: () => {
+            if (replyOpening.current !== opening) return;
             reset();
-            setReplyingTo((current) => (current === parent.id ? null : current));
+            replyOpening.current += 1;
+            setReplyingTo(null);
           },
         },
       );
     },
     submitEdit: (post, body, bodyFormat, reset) => {
+      const opening = editOpening.current;
       update.mutate(
         { id: post.id, body, bodyFormat },
         {
           onSuccess: () => {
+            if (editOpening.current !== opening) return;
             reset();
-            setEditingId((current) => (current === post.id ? null : current));
+            editOpening.current += 1;
+            setEditingId(null);
           },
         },
       );

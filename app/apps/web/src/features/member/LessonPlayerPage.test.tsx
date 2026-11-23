@@ -2846,6 +2846,79 @@ describe('LessonPlayerPage', () => {
     expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('keeps a new reply draft under the same post open when a reply sent from the linked thread succeeds later', async () => {
+    const thread = discussionPost('t1', 'Question about hammocks');
+    let releasePost: (value: undefined) => void = () => undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(thread),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({
+          ok: true,
+          data: { post: { ...discussionPost('n1', 'My reply'), parentPostId: 't1', rootPostId: 't1', isOwn: true } },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
+
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-t1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'New draft');
+    releasePost(undefined);
+
+    await waitFor(() => expect(screen.getByTestId('reply-composer-t1-submit')).toHaveTextContent(en.discussion.send));
+    expect(screen.getByTestId('reply-composer-t1')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-composer-t1-input')).toHaveTextContent('New draft');
+  });
+
+  it('keeps a new edit draft of the same post open when an edit sent from the linked thread succeeds later', async () => {
+    const thread = { ...discussionPost('t1', 'Question about hammocks'), isOwn: true };
+    let releaseUpdate: (value: undefined) => void = () => undefined;
+    const updateResponse = new Promise<undefined>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(thread),
+      http.post('/api/posts/update', async () => {
+        await updateResponse;
+        return HttpResponse.json({ ok: true, data: { post: { ...thread, editedAt: '2026-08-16T08:00:00.000Z' } } });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
+
+    await user.click(await screen.findByTestId('edit-button-t1'));
+    await user.type(screen.getByTestId('edit-composer-t1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-t1-submit'));
+    await waitFor(() => expect(screen.getByTestId('edit-composer-t1-submit')).toHaveTextContent(en.discussion.saving));
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    await user.click(await screen.findByTestId('edit-button-t1'));
+    await user.type(screen.getByTestId('edit-composer-t1-input'), ' again');
+    releaseUpdate(undefined);
+
+    await waitFor(() => expect(screen.getByTestId('edit-composer-t1-submit')).toHaveTextContent(en.common.save));
+    expect(screen.getByTestId('edit-composer-t1')).toBeInTheDocument();
+    expect(screen.getByTestId('edit-composer-t1-input')).toHaveValue('Question about hammocks again');
+  });
+
   it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);

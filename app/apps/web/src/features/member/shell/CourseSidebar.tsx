@@ -35,24 +35,28 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
         </Typography>
         {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
       </Stack>
-      <RailProgressBar
-        variant="determinate"
-        value={totals.percent}
-        sx={{ mt: '0.6rem' }}
-        aria-label={t.courseOverview.progressTitle}
-      />
-      <Typography
-        variant="body2"
-        component="p"
-        color="text.secondary"
-        sx={{ mt: '0.35rem' }}
-        data-testid="course-sidebar-totals"
-      >
-        {`${t.courseOverview.percentValue({ percent: totals.percent })} · ${t.shell.lessonsOf({
-          done: totals.done,
-          total: totals.total,
-        })}`}
-      </Typography>
+      {totals.total > 0 ? (
+        <>
+          <RailProgressBar
+            variant="determinate"
+            value={totals.percent}
+            sx={{ mt: '0.6rem' }}
+            aria-label={t.courseOverview.progressTitle}
+          />
+          <Typography
+            variant="body2"
+            component="p"
+            color="text.secondary"
+            sx={{ mt: '0.35rem' }}
+            data-testid="course-sidebar-totals"
+          >
+            {`${t.courseOverview.percentValue({ percent: totals.percent })} · ${t.shell.lessonsOf({
+              done: totals.done,
+              total: totals.total,
+            })}`}
+          </Typography>
+        </>
+      ) : null}
     </Box>
   );
 };

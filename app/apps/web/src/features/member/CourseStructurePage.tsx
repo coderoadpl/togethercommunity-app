@@ -260,21 +260,21 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
 
   const course = structure.data.structure;
   const catalogEntry = courses.data?.courses.find((entry) => entry.id === courseId);
-  const hasModules = course.modules.length > 0;
+  const hasLessons = courseTotals(course).total > 0;
   const aboutCard = catalogEntry !== undefined && catalogEntry.description !== '' ? (
     <AboutCourseCard description={catalogEntry.description} clamp={isCompact} />
   ) : null;
-  const discussionSearch = hasModules ? (
+  const discussionSearch = hasLessons ? (
     <CourseDiscussionSearch courseId={courseId} structure={course} />
   ) : null;
-  const progressCard = hasModules ? (
+  const progressCard = hasLessons ? (
     <CourseProgressCard
       courseId={courseId}
       structure={course}
       resume={progress.data?.progress.resume}
     />
   ) : null;
-  const statTiles = hasModules ? <CourseStatTiles structure={course} /> : null;
+  const statTiles = hasLessons ? <CourseStatTiles structure={course} /> : null;
   const cover = catalogEntry === undefined ? null : (
     <Cover
       src={catalogEntry.imageUrl}
@@ -286,7 +286,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       fallbackTestId="course-cover-fallback"
     />
   );
-  const program = hasModules ? (
+  const program = hasLessons ? (
     <CourseProgramSection
       courseId={courseId}
       structure={course}
@@ -294,7 +294,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       nextLessonId={nextLessonId}
     />
   ) : null;
-  const emptyState = !hasModules ? (
+  const emptyState = !hasLessons ? (
     <StatusView
       state={{
         kind: 'empty',
@@ -320,9 +320,9 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
     <>
       {statTiles}
       {program}
+      {emptyState}
       {cover}
       {aboutCard}
-      {emptyState}
     </>
   );
 
@@ -332,8 +332,8 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       eyebrow={t.student.courseEyebrow}
       width="wide"
       mobileRail="split"
-      railLeading={hasModules && !isCompact ? progressCard : undefined}
-      rail={hasModules && !isCompact ? discussionSearch : undefined}
+      railLeading={hasLessons && !isCompact ? progressCard : undefined}
+      rail={hasLessons && !isCompact ? discussionSearch : undefined}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
         {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}

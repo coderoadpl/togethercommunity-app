@@ -730,6 +730,35 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('continue-cta')).not.toBeInTheDocument();
   });
 
+  it('treats modules whose chapters hold no lesson as an empty course, with the empty state before cover and About on desktop', async () => {
+    stubViewport(false);
+    mockPage({
+      body: {
+        ...structure,
+        modules: structure.modules.map((module) => ({
+          ...module,
+          chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+        })),
+      },
+      resume: { target: null, firstIncomplete: null, isReview: false },
+    });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const empty = await screen.findByTestId('course-empty-state');
+    const cover = await screen.findByTestId('course-cover');
+    const about = screen.getByTestId('course-about-card');
+    const order = [empty, cover, about]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-tree-inline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.courseOverview.completedOf({ done: 0, total: 0 }))).not.toBeInTheDocument();
+  });
+
   it('shows a friendly empty state for a course without modules', async () => {
     mockPage({ body: { ...structure, modules: [] } });
     await renderPage(<CourseStructurePage courseId="course-1" />);

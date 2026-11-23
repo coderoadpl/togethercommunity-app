@@ -173,6 +173,24 @@ describe('CourseSidebar', () => {
     );
   });
 
+  it('shows only the course name in the header of a course without lessons', async () => {
+    const empty: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+      })),
+    };
+    server.use(okStructure(empty), okProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    const header = await screen.findByTestId('course-sidebar-header');
+    expect(header).toHaveTextContent('JavaScript Foundations');
+    expect(within(header).queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar-totals')).not.toBeInTheDocument();
+  });
+
   it('marks a finished course to the right of its title, without a text label', async () => {
     const finished: CourseStructureWithAccess = {
       ...structure,

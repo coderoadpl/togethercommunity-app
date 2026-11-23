@@ -2948,7 +2948,7 @@ export const en: Messages = {
     dataExportButton: 'Download my data',
     dataExportPreparing: 'Preparing…',
     erasureHeading: 'Request account erasure',
-    erasureIntro: 'Ask the team to erase your data in this community. Once the team completes the request:',
+    erasureIntro: 'Ask the team to erase your data in this workspace. Once the team completes the request:',
     erasureEffects: {
       profile: 'Your name, email and picture are removed from your profile; the delivery name, street and phone are erased from past orders. Invoice details are kept.',
       posts: 'Your posts stay, signed as “Deleted account”.',

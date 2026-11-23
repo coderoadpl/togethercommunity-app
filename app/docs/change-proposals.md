@@ -509,8 +509,8 @@ reads "All 5 changes will be applied together, or none.". When the proposal,
 or any item of the group, carries a proposed image under its digest (the
 images the card loads through the owner preview), the confirmation adds one
 more sentence, counted per distinct image: approving makes the proposed image
-public at the address shown, and if it no longer exists nothing is changed (for
-a group: none of the changes is applied). A file proposal, alone or as a group
+public at the address shown unless it is public there already, and if it no
+longer exists nothing is changed (for a group: none of the changes is applied). A file proposal, alone or as a group
 item, adds the sentences described under [Download files](#download-files),
 and a product access proposal, alone or as a group item, the sentence described
 under [Product access](#product-access).
@@ -1184,14 +1184,16 @@ The [owner panel](#owner-panel) loads a pending proposal's proposed
 content-addressed image only from this route: a raster image is shown with a
 loading and a failed state, its format, a fingerprint (the first twelve
 characters of the digest), the address it will have and a note that only the
-owners of the workspace can see it and that it becomes public at this address
-when the proposal is approved. The address is shortened in the middle of the
+owners of the workspace can open this preview, that a new image becomes public
+at this address when the proposal is approved, and that an image published
+there before may already be public (the published copy the route serves for a
+reused address). The address is shortened in the middle of the
 digest (the fingerprint, an ellipsis, the last four characters, then the
 extension), with the full address as its title and for assistive technology.
 When the preview cannot be loaded, a warning takes the place of the picture:
 the image could not be loaded; if it no longer exists, approving changes
 nothing and the image has to be uploaded and proposed again; otherwise try
-again in a moment. The private note is not shown then. The preview reads the
+again in a moment. The preview note is not shown then. The preview reads the
 key's quarantined copy whenever its row exists, so the warning can be wrong:
 when that copy is lost but a public copy of the same image already passes the
 check before the transaction (below), the preview shows the warning while

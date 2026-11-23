@@ -644,7 +644,7 @@ export interface Messages {
     proposedImageLoading: string;
     proposedImageFailed: string;
     proposedImageFacts: (params: { format: string; fingerprint: string }) => string;
-    proposedImagePrivate: string;
+    proposedImageOwnerPreview: string;
     proposedImageSvgReason: string;
     proposedImageSvgDownload: string;
     fileAdded: (params: { name: string }) => string;

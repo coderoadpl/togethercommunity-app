@@ -662,7 +662,7 @@ export const en: Messages = {
     proposedImageLoading: 'Loading the proposed image…',
     proposedImageFailed: 'The proposed image could not be loaded. If it no longer exists, approving changes nothing and the image has to be uploaded and proposed again. Otherwise, try again in a moment.',
     proposedImageFacts: ({ format, fingerprint }) => `${format} file · fingerprint ${fingerprint}`,
-    proposedImagePrivate: 'Only the owners of this workspace can see this image. It becomes public at this address when the proposal is approved.',
+    proposedImageOwnerPreview: 'Only the owners of this workspace can open this preview. A new image becomes public at this address when the proposal is approved; an image published there before may already be public.',
     proposedImageSvgReason: 'SVG files can contain scripts, so this one is not shown here.',
     proposedImageSvgDownload: 'Download the proposed SVG file',
     fileAdded: ({ name }) => format('Added: {name}', { name }),
@@ -753,13 +753,13 @@ export const en: Messages = {
       format(plural(count, 'The change will be applied.', 'All {count} changes will be applied together, or none.'), { count }),
     approveImagesPublic: ({ count }) => format(plural(
       count,
-      'Approving makes the proposed image public at the address shown. If it no longer exists, nothing is changed.',
-      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, nothing is changed.',
+      'Approving makes the proposed image public at the address shown, unless it is public there already. If it no longer exists, nothing is changed.',
+      'Approving makes the {count} proposed images public at the addresses shown, unless they are public there already. If one of them no longer exists, nothing is changed.',
     ), { count }),
     approveGroupImagesPublic: ({ count }) => format(plural(
       count,
-      'Approving makes the proposed image public at the address shown. If it no longer exists, none of the changes is applied.',
-      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, none of the changes is applied.',
+      'Approving makes the proposed image public at the address shown, unless it is public there already. If it no longer exists, none of the changes is applied.',
+      'Approving makes the {count} proposed images public at the addresses shown, unless they are public there already. If one of them no longer exists, none of the changes is applied.',
     ), { count }),
     approveFileAdd: ({ file, facts, target }) => format(
       '“{file}” ({facts}) will be added to “{target}”. Everyone who has access to this product, current buyers included, can download it at once.',

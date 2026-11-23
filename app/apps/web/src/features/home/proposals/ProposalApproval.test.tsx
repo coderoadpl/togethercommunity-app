@@ -207,7 +207,7 @@ describe('the approval confirmation of a proposed image', () => {
     expect(summaryOf(proposal)).toBe(`${t.approveFieldsChange({ target: 'Mug', count: 1 })} ${t.approveNothingElse}`);
     render(<ApprovalSummary proposal={proposal} />);
     expect(screen.getByTestId('proposal-approve-images')).toHaveTextContent(t.approveImagesPublic({ count: 1 }));
-    expect(t.approveImagesPublic({ count: 1 })).toContain('public at the address shown');
+    expect(t.approveImagesPublic({ count: 1 })).toContain('public at the address shown, unless it is public there already');
     expect(t.approveImagesPublic({ count: 1 })).toContain('If it no longer exists, nothing is changed.');
   });
 

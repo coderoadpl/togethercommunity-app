@@ -35,7 +35,7 @@ export const ContentAddress = ({ path, short }: { path: string; short: string })
   );
 };
 
-const ImageFacts = ({ image, path, privateNote }: { image: ImageAwaitingApproval; path: string; privateNote: boolean }) => {
+const ImageFacts = ({ image, path, previewNote }: { image: ImageAwaitingApproval; path: string; previewNote: boolean }) => {
   const t = useTranslations().changeProposals;
   return (
     <>
@@ -43,7 +43,7 @@ const ImageFacts = ({ image, path, privateNote }: { image: ImageAwaitingApproval
         {t.proposedImageFacts({ format: FORMAT_NAMES[image.extension], fingerprint: imageFingerprint(image.digest) })}
       </FinePrint>
       <ContentAddress path={path} short={shortProposedImagePath(path) ?? path} />
-      {privateNote ? <FinePrint component="p">{t.proposedImagePrivate}</FinePrint> : null}
+      {previewNote ? <FinePrint component="p">{t.proposedImageOwnerPreview}</FinePrint> : null}
     </>
   );
 };
@@ -67,7 +67,7 @@ const RasterPreview = ({ image, path, source }: { image: ImageAwaitingApproval; 
         </Box>
       )}
       {load === 'loading' ? <FinePrint component="p" role="status">{t.proposedImageLoading}</FinePrint> : null}
-      <ImageFacts image={image} path={path} privateNote={load !== 'failed'} />
+      <ImageFacts image={image} path={path} previewNote={load !== 'failed'} />
     </Stack>
   );
 };
@@ -80,7 +80,7 @@ const VectorDownload = ({ image, path, source }: { image: ImageAwaitingApproval;
       <Link href={source} download={`${image.digest}.svg`} rel="noreferrer" variant="body2">
         {t.proposedImageSvgDownload}
       </Link>
-      <ImageFacts image={image} path={path} privateNote />
+      <ImageFacts image={image} path={path} previewNote />
     </Stack>
   );
 };

@@ -315,7 +315,7 @@ describe('ProposalsPanel', () => {
     expect(preview).toHaveAttribute('data-state', 'loading');
     expect(within(preview).getByRole('status')).toHaveTextContent(t.proposedImageLoading);
     expect(within(preview).getByTestId('proposed-image-facts')).toHaveTextContent(t.proposedImageFacts({ format: 'PNG', fingerprint: digest.slice(0, 12) }));
-    expect(within(preview).getByText(t.proposedImagePrivate)).toBeInTheDocument();
+    expect(within(preview).getByText(t.proposedImageOwnerPreview)).toBeInTheDocument();
     const sources = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
     expect(sources).toEqual(['/api/public/assets/logo/current.png', `/api/change-proposals/proposal-quarantined-logo/assets/${digest}`]);
 
@@ -327,7 +327,7 @@ describe('ProposalsPanel', () => {
     expect(preview).toHaveAttribute('data-state', 'failed');
     expect(within(preview).getByRole('alert')).toHaveTextContent(t.proposedImageFailed);
     expect(within(preview).queryByRole('img')).toBeNull();
-    expect(within(preview).queryByText(t.proposedImagePrivate)).toBeNull();
+    expect(within(preview).queryByText(t.proposedImageOwnerPreview)).toBeNull();
     expect(within(preview).getByText(proposed)).toBeInTheDocument();
     expect(within(preview).getByTestId('content-address')).toHaveAttribute('title', proposed);
     expect(within(preview).getByTestId('content-address-short')).toHaveTextContent(`/api/public/assets/logo/${digest.slice(0, 12)}…${digest.slice(-4)}.png`);
@@ -377,7 +377,9 @@ describe('ProposalsPanel', () => {
     fireEvent.load(within(preview).getByRole('img', { name: t.proposedImageAlt }));
     expect(preview).toHaveAttribute('data-state', 'loaded');
     expect(within(preview).queryByRole('alert')).toBeNull();
-    expect(within(preview).getByText(t.proposedImagePrivate)).toBeInTheDocument();
+    expect(within(preview).getByText(t.proposedImageOwnerPreview)).toBeInTheDocument();
+    expect(t.proposedImageOwnerPreview).toContain('may already be public');
+    expect(t.proposedImageOwnerPreview).not.toMatch(/can see this image/u);
   });
 
   it('says the proposed image is gone, not that the shop changed, when an approval ends stale for a missing image', async () => {

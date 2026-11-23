@@ -4968,7 +4968,7 @@ describe('purchased product download route', () => {
       { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', status: 303 },
       { accept: 'text/html;q=0.9;ext=1, application/json;q=0.5', status: 303 },
       { accept: 'application/json;profile="one,text/html,two", application/json;q=0.5', status: 403 },
-      { accept: 'application/json;profile="a\\",text/html", application/json;q=0.5', status: 403 },
+      { accept: 'application/json;profile="a\\",text/html,tail", application/json;q=0.5', status: 403 },
     ];
     for (const { accept, status } of cases) {
       const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {

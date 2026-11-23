@@ -316,15 +316,15 @@ files change only `status`, `type` or `functions`.
 
 A point is usable only when `status` is `Operating`, its `type` includes
 `parcel_locker` and its `functions` include `parcel_collect`
-(`inpostPointRejection` in `core/domain/shipping.ts`). Only the statuses known
-to be negative refuse the sale with `not_operating`: `NonOperating` and
+(`inpostPointRejection` in `core/domain/shipping.ts`). These three rules match
+what the map offers with `config="parcelCollect"`. Only the statuses known to
+be negative refuse the sale with `not_operating`: `NonOperating` and
 `Disabled`, which the field reference lists, and `Removed`, which the field
-reference does not list but live answers for withdrawn points have carried.
-Any other status is read as if the carrier could not be asked
-(`withKnownPointStatus`): the page answers `unavailable`, the sale goes on with
-`verified: false`, and the status string itself is never stored. This is what the map
-offers with `config="parcelCollect"`, and InPost partner pickup points that hold
-parcels for collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
+reference does not list and which is refused as before. Any other status is read
+as if the carrier could not be asked (`withKnownPointStatus`): the page answers
+`unavailable`, the sale goes on with `verified: false`, and the status string
+itself is never stored. InPost partner pickup points that hold parcels for
+collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
 would pass these three rules. They cannot be chosen today, though: every partner
 pickup point is named like `POP-ABC1`, which the code pattern `^[A-Z0-9]{4,12}$`
 refuses, so a map choice of one is ignored (`parseGeowidgetPoint`) and a typed

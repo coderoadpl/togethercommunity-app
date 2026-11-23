@@ -343,11 +343,14 @@ minute in production), per workspace (600 per minute) and across the platform
 600), see
 [Security](security.md#parcel-locker-lookup).
 
-In development, end-to-end runs and the smoke gate (`PAYMENT_PROVIDER=fake`)
-the fake directory in `adapters/shipx/fake.ts` answers instead: `WAW01M` is an
-operating locker, `CLOSED01` is not operating, `SENDONLY1` is a send-only point,
-`OUTAGE01` simulates the carrier being down, and every other code, such as
-`MISSING1`, is not found.
+The directory follows the payment provider: a deployment with
+`PAYMENT_PROVIDER=stripe` (production and any staging that runs Stripe test
+mode) asks InPost, and one with `PAYMENT_PROVIDER=fake` (development,
+end-to-end runs and the smoke gate) uses the fake directory in
+`adapters/shipx/fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
+`CLOSED01` is not operating, `SENDONLY1` is a send-only point, `OUTAGE01`
+simulates the carrier being down, and every other code, such as `MISSING1`, is
+not found.
 
 ## Order data
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import type { ApiClient } from '#core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
-import { appError, err, forbidden, ok, orderListItemSchema, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
+import { appError, err, forbidden, internal, ok, orderListItemSchema, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { refundPreviewLines, runOrderRefund } from './order-refund-commands.js';
 
@@ -78,20 +78,20 @@ describe('order refund command', () => {
     const h = harness();
     h.createOrderRefund.mockImplementationOnce(async () => {
       expect(errorSpy).toHaveBeenCalledExactlyOnceWith('request key: lost-1 (after a network error repeat with --request-key lost-1; the same key never refunds twice)');
-      return err(appError('network', 'fetch failed'));
+      return err(internal('Network error calling /api/orders/order-1/refunds: TypeError: fetch failed'));
     });
     await h.refund({ yes: true }, () => 'lost-1');
     expect(h.createOrderRefund).toHaveBeenCalledOnce();
-    expect(errorSpy.mock.calls[1]?.[0]).toBe('error(network): fetch failed');
-    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.network);
+    expect(errorSpy.mock.calls[1]?.[0]).toBe('error(internal): Network error calling /api/orders/order-1/refunds: TypeError: fetch failed');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.internal);
   });
 
   it('names the request key in the error envelope with --json and prints nothing before it', async () => {
     const h = harness(true);
-    h.createOrderRefund.mockResolvedValueOnce(err(appError('network', 'fetch failed')));
+    h.createOrderRefund.mockResolvedValueOnce(err(internal('Network error calling /api/orders/order-1/refunds: TypeError: fetch failed')));
     await h.refund({ yes: true }, () => 'lost-2');
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(printed()).toEqual({ ok: false, error: { code: 'network', message: 'fetch failed', details: { requestKey: 'lost-2' } } });
+    expect(printed()).toEqual({ ok: false, error: { code: 'internal', message: 'Network error calling /api/orders/order-1/refunds: TypeError: fetch failed', details: { requestKey: 'lost-2' } } });
   });
 
   it('refuses without --yes, names the amount and shows the preview, and sends nothing', async () => {

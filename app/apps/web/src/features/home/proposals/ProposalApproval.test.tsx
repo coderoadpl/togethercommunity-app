@@ -580,7 +580,7 @@ describe('the approval confirmation of what a product grants', () => {
       t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'the whole course “Intro course”' }),
     );
     expect(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' })).toContain('gains or loses anything through it');
-    expect(pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'cały kurs „Intro”' })).toContain('nie zyska ani nie straci');
+    expect(pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' })).toMatch(/nie zyska ani nie straci/u);
   });
 
   it('claims no future access for a draft the group deletes after setting its list, but keeps a refusal', () => {

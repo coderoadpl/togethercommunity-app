@@ -8,7 +8,7 @@ import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { formatPrice } from '../../../lib/format.js';
 import { groupReferences } from './proposal-display.js';
-import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupFileSentences, type ApprovalFacts } from './ProposalApproval.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences, type ApprovalFacts } from './ProposalApproval.js';
 
 const t = en.changeProposals;
 
@@ -80,6 +80,11 @@ const samples: Record<RegisteredChangeProposalOperation, ApprovalFacts> = {
     ...product, operation: 'settings.update', target: { kind: 'settings', id: null }, targetLabel: null,
     input: { shopName: 'Acme' }, effect: { shopName: { before: 'Old', after: 'Acme' } },
   },
+  'product.set-access': {
+    ...product, operation: 'product.set-access', input: { id: 'product-mug', accessItems: [{ level: 'course', courseId: 'course-intro' }] },
+    effect: { accessItems: { before: [], after: [{ level: 'course', courseId: 'course-intro' }] } },
+    accessLabels: { courses: [{ id: 'course-intro', title: 'Intro course' }], modules: [], lessons: [] },
+  },
   'download.add': {
     ...product, operation: 'download.add', input: { productId: 'product-mug', stagedFileId: careSheet.id },
     effect: { files: { before: [mugGuide], after: [mugGuide, careSheet] } },
@@ -112,7 +117,7 @@ const WHOLE_RECORD: ReadonlySet<RegisteredChangeProposalOperation> = new Set(['p
 
 describe('the approval confirmation', () => {
   it('says nothing else changes after every operation sentence that names all of its rows', () => {
-    expect(registeredChangeProposalOperationSchema.options).toHaveLength(17);
+    expect(registeredChangeProposalOperationSchema.options).toHaveLength(18);
     for (const operation of registeredChangeProposalOperationSchema.options) {
       expect(summaryOf(samples[operation]), operation).toMatch(new RegExp(`${t.approveNothingElse}$`, 'u'));
     }
@@ -391,5 +396,75 @@ describe('the approval confirmation of a file proposal', () => {
     expect(polish.fileRemoveOnlyFile).toMatch(/^To jedyny plik produktu\. Je\p{L}li produkt /u);
     expect(polish.approveGroupFilesMissing({ count: 1 })).not.toMatch(/\d/u);
     expect(polish.approveGroupFilesMissing({ count: 5 })).toContain('5 proponowanych plik');
+  });
+});
+
+type StoredAccessItem = ApprovalFacts['input'][string];
+
+const accessChange = (after: StoredAccessItem[], labels: ApprovalFacts['accessLabels'], before: StoredAccessItem[] = []): ApprovalFacts => ({
+  ...samples['product.set-access'],
+  input: { id: 'product-mug', accessItems: after },
+  effect: { accessItems: { before, after } },
+  ...(labels === undefined ? {} : { accessLabels: labels }),
+});
+
+const LABELS = {
+  courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Deep course' }],
+  modules: [{ id: 'module-basics', title: 'Basics' }, { id: 'module-extra', title: 'Extras' }],
+  lessons: [{ id: 'lesson-welcome', title: 'Welcome' }, { id: 'lesson-retired', title: null }],
+};
+
+describe('the approval confirmation of what a product grants', () => {
+  it('says what buyers get in words, that current buyers get the new list at once, and that nothing else changes', () => {
+    expect(summaryOf(samples['product.set-access'])).toBe(
+      'Buyers of “Mug” will get access to: the whole course “Intro course”. Everyone who already has access to this product, current buyers included, '
+      + 'gets this list at once and loses what it no longer lists, unless another of their products grants it. Nothing else changes.',
+    );
+  });
+
+  it('says plainly that a module or a lesson is granted as such, names excluded modules and marks what no longer exists', () => {
+    const summary = summaryOf(accessChange([
+      { level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] },
+      { level: 'modules', courseId: 'course-deep', moduleIds: ['module-basics'] },
+      { level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] },
+    ], LABELS));
+    expect(summary).toContain('the course “Intro course” without its module “Extras”');
+    expect(summary).toContain('the module “Basics” as such, in every course that uses it (chosen from “Deep course”)');
+    expect(summary).toContain('the lessons “Welcome”, something that no longer exists (lesson-retired) as such, each in every course that uses it (chosen from “Intro course”)');
+  });
+
+  it('says the product will grant nothing and that current buyers lose what it granted when the new list is empty', () => {
+    expect(summaryOf(accessChange([], LABELS, [{ level: 'course', courseId: 'course-intro' }]))).toBe(
+      `${t.approveProductSetAccessNothing({ target: 'Mug' })} ${t.approveNothingElse}`,
+    );
+    expect(t.approveProductSetAccessNothing({ target: 'Mug' })).toContain('current buyers included, loses what it granted at once');
+  });
+
+  it('isolates every course, module and lesson title in the sentence', () => {
+    const title = `Intro${OVERRIDE}esruoc`;
+    render(<ApprovalSummary proposal={accessChange([{ level: 'course', courseId: 'course-intro' }], { ...LABELS, courses: [{ id: 'course-intro', title }] })} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['Mug', title]);
+    const outside = summary.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+  });
+
+  it('adds the access sentence of every access item to a group confirmation and nothing for other items', () => {
+    const items = [{ ...samples['product.set-access'], id: 'item-access' }, { ...samples['product.publish'], id: 'item-publish' }];
+    const text = dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />);
+    expect(text).toContain('Buyers of “Mug” will get access to: the whole course “Intro course”.');
+    expect(dialogText(<GroupAccessSentences items={[samples['product.publish']]} references={groupReferences([])} />)).toBe('');
+  });
+
+  it('words what a product grants in Polish with the titles quoted', () => {
+    const polish = pl.changeProposals;
+    expect(polish.operation['product.set-access']).toMatch(/^Dost\p{L}p, kt\p{L}ry daje produkt$/u);
+    expect(polish.accessName({ name: 'Kurs' })).toBe('„Kurs”');
+    expect(polish.accessWholeCourse({ course: '„Kurs”' })).toMatch(/^ca\p{L}y kurs „Kurs”$/u);
+    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B” jako takie, ka\p{L}da w ka\p{L}dym kursie/u);
+    expect(polish.approveProductSetAccess({ target: 'Kubek', access: 'ACCESS' }))
+      .toMatch(/^Kupuj\p{L}cy produkt „Kubek” dostan\p{L} dost\p{L}p do: ACCESS\. /u);
   });
 });

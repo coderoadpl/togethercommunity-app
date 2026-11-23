@@ -22,6 +22,7 @@ import { ToastProvider } from '../../../components/ui/Toast.js';
 import { en } from '../../../i18n/en.js';
 import { formatPrice } from '../../../lib/format.js';
 import {
+  accessChangeProposal,
   CHANGE_PROPOSAL_GROUP_ID,
   changeProposalGroup,
   FILE_GROUP_ID,
@@ -870,6 +871,27 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(lastRemoval).getByTestId('proposal-approve'));
     const lastRemovalDialog = await screen.findByTestId('proposal-approve-dialog');
     expect(within(lastRemovalDialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.fileRemoveOnlyFile);
+  });
+
+  it('shows what a product grants now and after approval in words and confirms what buyers will get', async () => {
+    usePending([accessChangeProposal]);
+
+    renderPanel();
+
+    const card = await screen.findByTestId(`proposal-card-${accessChangeProposal.id}`);
+    expect(within(card).getByText(t.operation['product.set-access'])).toBeInTheDocument();
+    const row = within(card).getByTestId('proposal-access-changes');
+    expect(row).toHaveTextContent('the module “First lines” as such, in every course that uses it (chosen from “Sketching from life”)');
+    expect(row).toHaveTextContent('the course “Sketching from life” without its module “Bonus sketches”');
+    expect(row).toHaveTextContent('the lessons “Mixing palettes”, something that no longer exists (lesson-studio-retired) as such');
+    expect(within(row).getAllByTestId('access-gone')).toHaveLength(1);
+    expect(within(card).queryByTestId('proposal-field-accessItems')).toBeNull();
+
+    await userEvent.click(within(card).getByTestId('proposal-approve'));
+    const dialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? '')).toMatch(
+      /^Buyers of “Field Guide \(digital\)” will get access to: the course “Sketching from life” without its module “Bonus sketches”; .+ current buyers included, gets this list at once .+ Nothing else changes\.$/u,
+    );
   });
 
   it('shows the file row in its group step and approves a group with a file item like any other group', async () => {

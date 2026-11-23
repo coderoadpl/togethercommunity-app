@@ -724,6 +724,15 @@ export interface Messages {
     fileRemoveOnlyFile: string;
     approveFileMissing: string;
     approveGroupFilesMissing: (params: { count: number }) => string;
+    accessWholeCourse: (params: { course: string }) => string;
+    accessCourseWithout: (params: { course: string; modules: string; count: number }) => string;
+    accessModules: (params: { course: string; modules: string; count: number }) => string;
+    accessLessons: (params: { course: string; lessons: string; count: number }) => string;
+    accessNothing: string;
+    accessName: (params: { name: string }) => string;
+    accessGone: (params: { id: string }) => string;
+    approveProductSetAccess: (params: { target: string; access: string }) => string;
+    approveProductSetAccessNothing: (params: { target: string }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;

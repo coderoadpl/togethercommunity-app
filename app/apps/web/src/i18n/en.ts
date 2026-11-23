@@ -621,6 +621,7 @@ export const en: Messages = {
       'sales-link.update': 'Change to sales link',
       'sales-link.delete': 'Delete sales link',
       'settings.update': 'Shop settings',
+      'product.set-access': 'What a product grants',
       'download.add': 'New download file',
       'download.replace': 'New version of a download file',
       'download.remove': 'Remove a download file',
@@ -787,6 +788,30 @@ export const en: Messages = {
       'If the proposed file no longer exists, none of the changes is applied.',
       'If one of the {count} proposed files no longer exists, none of the changes is applied.',
     ), { count }),
+    accessWholeCourse: ({ course }) => format('the whole course {course}', { course }),
+    accessCourseWithout: ({ course, modules, count }) =>
+      format(plural(count, 'the course {course} without its module {modules}', 'the course {course} without its modules {modules}'), { course, modules }),
+    accessModules: ({ course, modules, count }) => format(plural(
+      count,
+      'the module {modules} as such, in every course that uses it (chosen from {course})',
+      'the modules {modules} as such, each in every course that uses it (chosen from {course})',
+    ), { course, modules }),
+    accessLessons: ({ course, lessons, count }) => format(plural(
+      count,
+      'the lesson {lessons} as such, in every course that uses it (chosen from {course})',
+      'the lessons {lessons} as such, each in every course that uses it (chosen from {course})',
+    ), { course, lessons }),
+    accessNothing: 'no course, module or lesson',
+    accessName: ({ name }) => format('“{name}”', { name }),
+    accessGone: ({ id }) => format('something that no longer exists ({id})', { id }),
+    approveProductSetAccess: ({ target, access }) => format(
+      'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets this list at once and loses what it no longer lists, unless another of their products grants it.',
+      { target, access },
+    ),
+    approveProductSetAccessNothing: ({ target }) => format(
+      '“{target}” will no longer grant any course, module or lesson. Everyone who already has access to this product, current buyers included, loses what it granted at once, unless another of their products grants it.',
+      { target },
+    ),
     approveConfirm: 'Approve',
     rejectTitle: 'Reject this change?',
     rejectGroupTitle: 'Reject the whole group?',

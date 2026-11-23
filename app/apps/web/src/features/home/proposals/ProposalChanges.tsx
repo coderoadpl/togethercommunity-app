@@ -1,7 +1,12 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 
-import { stockAdjustmentEventType, type ChangeProposalOwnerView, type ChangeProposalTargetKind } from '#core/domain/index.js';
+import {
+  changeProposalAccessChange,
+  stockAdjustmentEventType,
+  type ChangeProposalOwnerView,
+  type ChangeProposalTargetKind,
+} from '#core/domain/index.js';
 
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatFileSize, formatPrice } from '../../../lib/format.js';
@@ -21,6 +26,7 @@ import {
   type GroupReferences,
 } from './proposal-display.js';
 import { enumValueLabel, fieldLabel, Isolated, priceTerms } from './proposal-text.js';
+import { AccessChangeRow } from './ProposedAccess.js';
 import { FileChangeRows } from './ProposedFiles.js';
 import { ContentAddress, ProposedImage } from './ProposedImage.js';
 
@@ -244,7 +250,7 @@ export const ProposalFieldRows = ({
   labelComponent = 'h3',
   pendingProposalId = null,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation' | 'proposedFiles'>>;
+  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation' | 'proposedFiles' | 'accessLabels'>>;
   targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
@@ -254,14 +260,15 @@ export const ProposalFieldRows = ({
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
   const files = proposalFileChanges(proposal);
+  const access = proposal.operation === undefined ? null : changeProposalAccessChange({ operation: proposal.operation, effect: proposal.effect });
   const rows = proposalRows(proposal, references, pendingProposalId)
-    .filter((row) => files?.complete !== true || row.field !== 'files');
+    .filter((row) => (files?.complete !== true || row.field !== 'files') && (access === null || row.field !== 'accessItems'));
   const removal = proposalRemovesRecord(proposal);
   const newPrice = proposal.operation === 'price.create' ? priceOf(proposal.input) : null;
   if (newPrice !== null) {
     return <NewRecord entries={[{ field: 'price', label: t.fields.priceCents, value: <FieldDiffText breakAnywhere>{priceTerms(t, newPrice, language)}</FieldDiffText> }]} />;
   }
-  if (rows.length === 0 && files === null) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
+  if (rows.length === 0 && files === null && access === null) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
   if (proposalCreatesRecord(proposal)) {
     const entries = rows.flatMap((row): NewRecordEntry[] => row.kind === 'change' && row.after !== null
       ? [{ field: row.field, label: fieldLabel(t, row.field, targetKind), value: <ProposalValue value={row.after} /> }]
@@ -270,6 +277,9 @@ export const ProposalFieldRows = ({
   }
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
+      {access === null ? null : (
+        <AccessChangeRow change={access} labels={proposal.accessLabels} label={fieldLabel(t, 'accessItems', targetKind)} labelComponent={labelComponent} />
+      )}
       {files === null ? null : (
         <FileChangeRows
           files={files}

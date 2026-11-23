@@ -504,3 +504,35 @@ export const fileHistoryDetail = <P extends DecidedProposal & { id: string }>(pr
     ? { ...detail, events: detail.events.map((event) => event.kind === 'stale' ? { ...event, note: `file_unavailable: The proposed file ${bonusChapter.id} is no longer available, so the proposal cannot be applied; nothing was changed` } : event) }
     : detail;
 };
+
+export const accessChangeProposal = fileProposal('proposal-field-guide-access', '2026-11-21T09:20:00.000Z', {
+  operation: 'product.set-access',
+  input: {
+    id: FILE_PRODUCT_ID,
+    accessItems: [
+      { level: 'course', courseId: 'course-studio-sketching', excludedModuleIds: ['module-studio-bonus'] },
+      { level: 'lessons', courseId: 'course-studio-colour', lessonIds: ['lesson-studio-palettes', 'lesson-studio-retired'] },
+    ],
+  },
+  effect: {
+    accessItems: {
+      before: [{ level: 'modules', courseId: 'course-studio-sketching', moduleIds: ['module-studio-basics'] }],
+      after: [
+        { level: 'course', courseId: 'course-studio-sketching', excludedModuleIds: ['module-studio-bonus'] },
+        { level: 'lessons', courseId: 'course-studio-colour', lessonIds: ['lesson-studio-palettes', 'lesson-studio-retired'] },
+      ],
+    },
+  },
+  accessLabels: {
+    courses: [{ id: 'course-studio-sketching', title: 'Sketching from life' }, { id: 'course-studio-colour', title: 'Colour basics' }],
+    modules: [{ id: 'module-studio-basics', title: 'First lines' }, { id: 'module-studio-bonus', title: 'Bonus sketches' }],
+    lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }, { id: 'lesson-studio-retired', title: null }],
+  },
+});
+
+export const accessClearProposal = fileProposal('proposal-field-guide-access-clear', '2026-11-21T09:25:00.000Z', {
+  operation: 'product.set-access',
+  input: { id: FILE_PRODUCT_ID, accessItems: [] },
+  effect: { accessItems: { before: [{ level: 'course', courseId: 'course-studio-sketching' }], after: [] } },
+  accessLabels: { courses: [{ id: 'course-studio-sketching', title: 'Sketching from life' }], modules: [], lessons: [] },
+});

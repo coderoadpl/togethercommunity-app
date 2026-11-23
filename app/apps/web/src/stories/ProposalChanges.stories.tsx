@@ -5,6 +5,8 @@ import type { ChangeProposalOwnerView } from '#core/domain/index.js';
 import { ProposalFieldRows, type StockNow } from '../features/home/proposals/ProposalChanges.js';
 import { groupReferences } from '../features/home/proposals/proposal-display.js';
 import {
+  accessChangeProposal,
+  accessClearProposal,
   changeProposalGroupItems,
   fileAddProposal,
   fileAddProposalOf,
@@ -16,7 +18,7 @@ import {
 import { STORY_PROPOSAL_GONE_FILE_ID, STORY_PROPOSAL_IMAGE_DIGESTS } from './fixture-client.js';
 import { withAccountPreview, withQueryClient } from './page-decorators.js';
 
-type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'proposedFiles'>>;
+type Proposal = Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation' | 'proposedFiles' | 'accessLabels'>>;
 
 const Rows = ({ proposal, stockNow, inGroup = false, pendingProposalId = null }: { proposal: Proposal; stockNow?: StockNow; inGroup?: boolean; pendingProposalId?: string | null }) => (
   <Paper elevation={1} sx={{ p: '1.5rem', maxWidth: '48rem' }}>
@@ -128,4 +130,8 @@ export const ProposedFileGone: Story = {
   },
 };
 export const ProposedFileGonePolishMobile: Story = { ...ProposedFileGone, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedAccess: Story = { render: () => <Rows proposal={accessChangeProposal} /> };
+export const ProposedAccessPolishMobile: Story = { ...ProposedAccess, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedAccessCleared: Story = { render: () => <Rows proposal={accessClearProposal} /> };
+export const ProposedAccessClearedPolishMobile: Story = { ...ProposedAccessCleared, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const TextDark: Story = { parameters: { colorScheme: 'dark' } };

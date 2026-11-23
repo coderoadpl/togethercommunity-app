@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Typography } from '@mui/material';
 
 import {
+  changeProposalAccessChange,
   changeProposalStagedFileIds,
   registeredChangeProposalOperation,
   type ChangeProposalOwnerView,
@@ -24,12 +25,13 @@ import {
   type ProposalFile,
   type TargetDisplay,
 } from './proposal-display.js';
+import { AccessApprovalText } from './ProposedAccess.js';
 import { currentVersionText, Fingerprint } from './ProposedFiles.js';
 import { fileTypeLabel, Isolated, operationTitle, priceTerms, Sentence, targetPriceTerms } from './proposal-text.js';
 
 export type ApprovalFacts = Pick<
   ChangeProposalOwnerView,
-  'id' | 'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId' | 'proposedFiles'
+  'id' | 'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId' | 'proposedFiles' | 'accessLabels'
 >;
 
 type CopySource = ChangeProposalProposedFile['copiedFrom'];
@@ -224,6 +226,12 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
     case 'product.update':
     case 'sales-link.update':
       return named((target) => t.approveFieldsChange({ target, count: rows.length }), 'every-row');
+    case 'product.set-access': {
+      const access = changeProposalAccessChange(proposal);
+      return access === null
+        ? fallback
+        : { text: <AccessApprovalText target={name} items={access.after} labels={proposal.accessLabels} />, names: ['accessItems'] };
+    }
     case 'download.add':
     case 'download.replace':
     case 'download.remove': {
@@ -290,6 +298,25 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
     <>
       {files.map(({ item, text }) => (
         <Typography key={item.id} variant="body2" data-testid={`proposal-approve-file-${item.id}`}>{text}</Typography>
+      ))}
+    </>
+  );
+};
+
+export const GroupAccessSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
+  const t = useTranslations().changeProposals;
+  const sentences = items.flatMap((item) => {
+    if (item.operation !== 'product.set-access') return [];
+    const access = changeProposalAccessChange(item);
+    const target = targetName(proposalTarget(item, references));
+    return [{ item, text: access === null || target === null
+      ? t.approveFallback({ operation: operationTitle(t, item.operation) })
+      : <AccessApprovalText target={target} items={access.after} labels={item.accessLabels} /> }];
+  });
+  return (
+    <>
+      {sentences.map(({ item, text }) => (
+        <Typography key={item.id} variant="body2" data-testid={`proposal-approve-access-${item.id}`}>{text}</Typography>
       ))}
     </>
   );

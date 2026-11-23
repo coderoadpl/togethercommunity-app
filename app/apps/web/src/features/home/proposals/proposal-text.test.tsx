@@ -80,7 +80,7 @@ describe('proposal text', () => {
 
   it('titles every operation the server can store, and only an unregistered one as unknown', () => {
     for (const translations of [en.changeProposals, pl.changeProposals]) {
-      for (const operation of ['download.add', 'download.replace', 'download.remove'] as const) {
+      for (const operation of ['product.set-access', 'download.add', 'download.replace', 'download.remove'] as const) {
         expect(operationTitle(translations, operation)).toBe(translations.operation[operation]);
         expect(operationTitle(translations, operation)).not.toBe(translations.unknownOperation);
       }

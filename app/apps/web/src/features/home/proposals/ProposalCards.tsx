@@ -23,7 +23,7 @@ import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { FinePrint, WrapAnywhereText } from '../../../theme.js';
-import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupFileSentences } from './ProposalApproval.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences } from './ProposalApproval.js';
 import { ProposalFieldRows, ReferenceText, type StockNow } from './ProposalChanges.js';
 import {
   groupReferences,
@@ -203,7 +203,7 @@ export const ProposalBody = ({
   live,
   labelComponent,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target' | 'proposedFiles'>;
+  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target' | 'proposedFiles' | 'accessLabels'>;
   references?: GroupReferences;
   live: boolean;
   labelComponent: 'h3' | 'h4';
@@ -604,6 +604,7 @@ export const GroupProposalCard = ({
         approveBody={(
           <>
             <Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>
+            <GroupAccessSentences items={shownItems} references={references} />
             <GroupFileSentences items={shownItems} references={references} />
             <ApprovalImagesNote proposals={shownItems} group />
             <ApprovalFilesNote proposals={shownItems} group />

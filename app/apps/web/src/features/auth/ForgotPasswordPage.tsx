@@ -10,18 +10,17 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { z } from 'zod';
 
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { returnToFromSearch } from '../../lib/auth-return.js';
 import { AuthAccentLink, AuthHelp, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
-import { describedBy } from './auth-fields.js';
+import { describedBy, isEmailAddress } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
-const emailSchema = z.string().email();
 const EMAIL_ERROR_ID = 'forgot-password-email-error';
+type EmailError = 'required' | 'invalid';
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
@@ -30,7 +29,7 @@ export const ForgotPasswordPage = () => {
   const search = useRouterState({ select: (state) => state.location.searchStr });
   const returnTo = returnToFromSearch(search);
   const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<EmailError | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const sentTitleRef = useRef<HTMLHeadingElement>(null);
   const [returnedToForm, setReturnedToForm] = useState(false);
@@ -51,9 +50,9 @@ export const ForgotPasswordPage = () => {
     event.preventDefault();
     requestPasswordReset.reset();
     const normalizedEmail = email.trim();
-    const error = normalizedEmail === ''
-      ? t.forgotPassword.emailRequired
-      : emailSchema.safeParse(normalizedEmail).success ? null : t.forgotPassword.invalidEmail;
+    const error: EmailError | null = normalizedEmail === ''
+      ? 'required'
+      : isEmailAddress(normalizedEmail) ? null : 'invalid';
     setEmailError(error);
     if (error !== null) {
       emailRef.current?.focus();
@@ -127,7 +126,9 @@ export const ForgotPasswordPage = () => {
                 required
               />
               {emailError === null ? null : (
-                <FormHelperText id={EMAIL_ERROR_ID} data-testid="forgot-password-email-error">{emailError}</FormHelperText>
+                <FormHelperText id={EMAIL_ERROR_ID} data-testid="forgot-password-email-error">
+                  {emailError === 'required' ? t.forgotPassword.emailRequired : t.forgotPassword.invalidEmail}
+                </FormHelperText>
               )}
             </FormControl>
             <Button

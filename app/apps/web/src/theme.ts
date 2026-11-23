@@ -4199,6 +4199,8 @@ export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
   '& .MuiAlert-action .MuiButton-root': { whiteSpace: 'nowrap' },
   [theme.breakpoints.down('sm')]: {
     flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    '& .MuiAlert-message': { flex: '1 1 0', minWidth: 0 },
     '& .MuiAlert-action': { flexBasis: '100%', margin: 0, padding: '0 0 0.5rem' },
     '& .MuiAlert-icon ~ .MuiAlert-action': { paddingLeft: '2.125rem' },
   },

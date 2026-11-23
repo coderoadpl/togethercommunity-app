@@ -1,5 +1,5 @@
-import { appendFileSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DISPATCH_EVENTS = ['pull_request', 'push'] as const;
@@ -704,7 +704,7 @@ const main = async (env: Env, argv: readonly string[]): Promise<number> => {
 };
 
 const invokedDirectly =
-  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
   main(process.env, process.argv.slice(2)).then((code) => {

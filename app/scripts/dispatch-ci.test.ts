@@ -1,3 +1,8 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -339,6 +344,32 @@ describe('dispatch-ci gate', () => {
     expect(lines[0]).toBe('dispatch-ci: RED — failed: check (step "pnpm run depcruise"); cancelled: none; skipped but required: none');
     expect(summary).toContain('| check | run | required | failure | failed | check (step "pnpm run depcruise") |');
     expect(summary).toContain('| smoke | skip | required | skipped | skipped as planned | - |');
+  });
+});
+
+describe('dispatch-ci entry point', () => {
+  it('runs the gate and fails red when invoked through a symlinked directory', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dispatch-ci-link-'));
+    try {
+      const linked = join(directory, 'scripts');
+      symlinkSync(import.meta.dirname, linked, 'dir');
+      const result = spawnSync(process.execPath, [join(linked, 'dispatch-ci.ts'), 'gate'], {
+        encoding: 'utf8',
+        timeout: 20_000,
+        env: {
+          PATH: process.env['PATH'],
+          DISPATCH_CI_NEEDS: JSON.stringify({ plan: { result: 'failure', outputs: {} } }),
+        },
+      });
+      if (result.error !== undefined) throw result.error;
+
+      expect(result.status).toBe(1);
+      expect(result.stdout.split('\n')[0]).toBe(
+        'dispatch-ci: RED — plan: job "plan" concluded failure, so no job ran against a plan',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

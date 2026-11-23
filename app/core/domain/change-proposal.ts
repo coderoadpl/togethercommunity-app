@@ -363,6 +363,7 @@ const changeProposalAccessLabelsSchema = z.object({
   lessons: z.array(changeProposalAccessLabelSchema),
   /** Excluded modules of either list that are also attached to a course other than the one their item names. */
   excludedModulesInOtherCourses: z.array(z.string()).optional(),
+  archivedCourses: z.array(z.string()).optional(),
 }).strict();
 
 export type ChangeProposalAccessLabels = z.output<typeof changeProposalAccessLabelsSchema>;

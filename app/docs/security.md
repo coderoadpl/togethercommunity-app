@@ -763,8 +763,9 @@ scopes on every shop key.
   module or lesson belongs to the course it named, and the refusal of an
   excluded module tells it only that the module is attached to more than one
   course. The course, module and lesson titles of the owner view
-  (`accessLabels`) and its `excludedModulesInOtherCourses` are read at read
-  time for display only and never take part in a decision. See
+  (`accessLabels`), its `excludedModulesInOtherCourses` and its
+  `archivedCourses` are read at read time for display only and never take
+  part in a decision. See
   [Product access](change-proposals.md#product-access).
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the

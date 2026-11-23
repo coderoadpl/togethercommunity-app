@@ -794,7 +794,8 @@ export const changeProposalOwnerViewFakes = (
       return label === undefined ? [] : [{ ...target, label, price: null }];
     }),
     accessTitles: async (tenantId, ids) => ({
-      courses: state.courses.filter((row) => row.tenantId === tenantId && ids.courseIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
+      courses: state.courses.filter((row) => row.tenantId === tenantId && ids.courseIds.includes(row.id))
+        .map((row) => ({ id: row.id, title: row.name, archived: Boolean(row.archivedAt) })),
       modules: state.modules.filter((row) => row.tenantId === tenantId && ids.moduleIds.includes(row.id))
         .map((row) => ({ id: row.id, title: row.name, courseIds: row.courseIds })),
       lessons: state.lessons.filter((row) => row.tenantId === tenantId && ids.lessonIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),

@@ -440,6 +440,8 @@ describe('approving what a product grants over the database', () => {
     const id = await submit('product.set-access', { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
     await database.db.update(courses).set({ archivedAt: NOW }).where(eq(courses.id, 'course-advanced'));
     try {
+      expect((await createChangeProposalTargetLabelReader(database.db).accessTitles(TENANT, { courseIds: ['course-advanced', 'course-intro'], moduleIds: [], lessonIds: [] }))
+        .courses.map((course) => [course.id, course.archived]).toSorted()).toEqual([['course-advanced', true], ['course-intro', false]]);
       expect(await approve(id)).toMatchObject({
         ok: true, value: { status: 'failed', failureCode: 'validation', failureMessage: 'Product access items may only reference existing, active courses' },
       });

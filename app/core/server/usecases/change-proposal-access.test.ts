@@ -321,6 +321,16 @@ describe('the owner view of a proposed access change', () => {
       .toEqual(['module-shared', 'module-deep']);
   });
 
+  it('lists the archived courses of both lists, and only once a course is archived', async () => {
+    const h = harness();
+    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: ADVANCED }));
+    const labels = async () => changeProposalOwnerDetailSchema.parse(unwrap(await getChangeProposal(ownerSession, { id }, h.deps))).accessLabels;
+    expect(await labels()).not.toHaveProperty('archivedCourses');
+
+    h.state.courses = h.state.courses.map((candidate) => candidate.id === 'course-advanced' ? { ...candidate, archivedAt: NOW } : candidate);
+    expect((await labels())?.archivedCourses).toEqual(['course-advanced']);
+  });
+
   it('carries no access labels for any other operation', async () => {
     const h = harness();
     const { id } = unwrap(await submitChangeProposal(keyCtx(), { operation: 'product.update', input: { id: 'product-guide', title: 'Pocket guide' } }, h.deps));

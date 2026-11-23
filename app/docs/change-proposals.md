@@ -324,7 +324,7 @@ the panel reads one page and makes no further call per item:
 | `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail`, `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) and `issuerIsFormerTeamMember` |
 | `createdAt`, `expiresAt`, `status` | the times and the derived status |
 | `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
-| `accessLabels` | only on a `product.set-access`, absent on every other proposal: `{ courses, modules, lessons, excludedModulesInOtherCourses }`; the first three are each a list of `{ id, title }` for every course, module (named in `moduleIds` or `excludedModuleIds`) and lesson id of the access lists before and after, read from live state at read time; `title` is `null` for an id that no longer names a course, module or lesson of the workspace; `excludedModulesInOtherCourses` lists the ids of the excluded modules of either list that are attached to a course other than the one their item names ([Product access](#product-access)) |
+| `accessLabels` | only on a `product.set-access`, absent on every other proposal: `{ courses, modules, lessons, excludedModulesInOtherCourses, archivedCourses? }`; the first three are each a list of `{ id, title }` for every course, module (named in `moduleIds` or `excludedModuleIds`) and lesson id of the access lists before and after, read from live state at read time; `title` is `null` for an id that no longer names a course, module or lesson of the workspace; `excludedModulesInOtherCourses` lists the ids of the excluded modules of either list that are attached to a course other than the one their item names; `archivedCourses`, present only when one is, lists the ids of the archived courses of either list ([Product access](#product-access)) |
 | `proposedFiles` | only on a `download.add` or `download.replace`, absent on every other proposal: `[{ id, available, copiedFrom }]` for the staged file it attaches, read at read time: `available` says whether the proposal still holds that staged file, and `copiedFrom` is `{ productId, productTitle, versionNumber }` for a server-side copy (`productTitle` `null` when that product is gone), `null` for an upload or once the staged file is gone ([Download files](#download-files)) |
 
 `proposedFiles` is a key that a panel page or a CLI built from a release before
@@ -1725,9 +1725,10 @@ the product as `appliedResourceId`.
 
 **Owner view and panel.** The owner view of a `product.set-access` carries
 [`accessLabels`](#owner-view), the titles of every course, module and lesson of
-both lists, and `excludedModulesInOtherCourses`, the excluded modules of either
+both lists, `excludedModulesInOtherCourses`, the excluded modules of either
 list that are also attached to a course other than the one their item names,
-all read at read time for display only. Because exclusions are pooled, a
+and, when one is, `archivedCourses`, the archived courses of either list, all
+read at read time for display only. Because exclusions are pooled, a
 replaced list can change what the product's holders open in other courses:
 removing an exclusion of such a module (one the owner's editor, product
 creation or an import wrote) can reopen it in those courses, and removing a

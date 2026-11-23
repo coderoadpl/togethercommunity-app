@@ -120,11 +120,13 @@ const readAccessLabels = async (
     const items = accessItemsOf(proposal);
     if (items === null || titles === null) return null;
     const ids = accessItemIds(items);
+    const archivedCourses = titles.courses.filter((course) => course.archived && ids.courseIds.includes(course.id)).map((course) => course.id);
     return {
       courses: labelled(ids.courseIds, titles.courses),
       modules: labelled(ids.moduleIds, titles.modules),
       lessons: labelled(ids.lessonIds, titles.lessons),
       excludedModulesInOtherCourses: excludedModulesInOtherCourses(items, titles.modules),
+      ...(archivedCourses.length === 0 ? {} : { archivedCourses }),
     };
   };
 };

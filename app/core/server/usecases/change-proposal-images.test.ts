@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  err,
+  integrationUnavailable,
   sha256HexOfBytes,
+  storageDefiniteFailure,
   type ChangeProposalOperation,
   type Identity,
   type ImageAssetUploadInput,
@@ -12,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import type { StorageProvider } from '../ports.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
@@ -469,6 +473,50 @@ describe('approving a proposal with an image', () => {
     expect(liveCover(h, 'product-mug')).toBeNull();
   });
 
+  it('deletes the copy of a write without a definite answer on withdrawal but keeps its record, so the sweep deletes a copy that lands later', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const put = h.objects.storage.putObject;
+    let land: () => Promise<unknown> = async () => undefined;
+    h.objects.storage.putObject = async (input) => {
+      if (!input.url.includes('/image-assets/')) return put(input);
+      land = () => put(input);
+      return err(integrationUnavailable('Could not store the published image: the storage request deadline passed'));
+    };
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(h.objects.calls.filter(({ method, key }) => method === 'delete' && key.startsWith('image-assets/'))).toHaveLength(1);
+    expect(h.store.imagePublications).toHaveLength(1);
+    await land();
+    expect(h.publicKeys()).toHaveLength(1);
+
+    h.clock.now = '2026-03-01T10:09:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.publicKeys()).toHaveLength(1);
+    expect(h.store.imagePublications).toHaveLength(1);
+    h.clock.now = '2026-03-01T10:11:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.publicKeys()).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
+    expect(h.proposal(id)?.status).toBe('pending');
+    expect(liveCover(h, 'product-mug')).toBeNull();
+  });
+
+  it('removes the record with the withdrawal when the storage refused the write', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const put = h.objects.storage.putObject;
+    h.objects.storage.putObject = async (input) => input.url.includes('/image-assets/')
+      ? err(storageDefiniteFailure('S3 refused the published image with status 403'))
+      : put(input);
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(h.store.imagePublications).toEqual([]);
+    expect(h.publicKeys()).toEqual([]);
+  });
+
   it('keeps a published copy that a live field already shows when a later approval of the same bytes aborts', async () => {
     const h = harness();
     const bytes = PNG(1);
@@ -718,6 +766,43 @@ describe('releasing quarantined images', () => {
     await sweepQuarantinedImages(h.deps);
     expect(h.store.releasedImageRows).toEqual([]);
     expect(h.quarantinedKeys()).toEqual([]);
+  });
+
+  it('gives each lock wait and each delete of the sweep, endpoint lookup included, only what is left of its budget', async () => {
+    const h = harness();
+    for (const marker of [1, 2, 3, 4]) await h.upload(PNG(marker));
+    h.clock.now = '2026-03-08T10:00:01.000Z';
+    const spend = (ms: number) => { h.clock.now = new Date(Date.parse(h.clock.now) + ms).toISOString(); };
+    const waits: Array<number | undefined> = [];
+    const deadlines: number[] = [];
+    const images = h.deps.quarantinedImages;
+    const quarantinedImages: typeof images = {
+      ...images,
+      release: (tenantId, selection, now, wait) => {
+        waits.push(wait);
+        spend(Math.min(wait ?? 0, 1_000));
+        return images.release(tenantId, selection, now, wait);
+      },
+      finishRelease: (tenantId, asset, removeObject, now, wait) => {
+        waits.push(wait);
+        spend(Math.min(wait ?? 0, 1_000));
+        return images.finishRelease(tenantId, asset, removeObject, now, wait);
+      },
+    };
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      delete: async (input) => {
+        const deadline = input.deadlineMs ?? Number.POSITIVE_INFINITY;
+        deadlines.push(deadline);
+        spend(Math.min(deadline, 3_000));
+        return deadline < 3_000 ? err(integrationUnavailable('Could not reach S3.: the storage request deadline passed')) : h.objects.storage.delete(input);
+      },
+    };
+    const started = Date.parse(h.clock.now);
+    expect(await sweepQuarantinedImages({ ...h.deps, quarantinedImages, storage })).toMatchObject({ ok: true, value: { removed: 2 } });
+    expect(waits).toEqual([9_000, 8_000, 4_000]);
+    expect(deadlines).toEqual([5_000, 4_000]);
+    expect(Date.parse(h.clock.now) - started).toBeLessThanOrEqual(10_000);
   });
 
   it('sweeps images never attached past the age bound and every image of a revoked key, keeping attached and young ones', async () => {

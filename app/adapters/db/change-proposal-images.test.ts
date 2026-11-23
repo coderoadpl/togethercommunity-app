@@ -551,7 +551,7 @@ describe('quarantined rows and objects of one key', () => {
     const revivedAt = '2026-03-01T11:00:00.000Z';
     expect(await repository.insert(TENANT, image(1, { createdAt: revivedAt }), stored)).toEqual({ kind: 'stored', asset: image(1, { createdAt: revivedAt }) });
     const removeObject = vi.fn(async () => true);
-    expect(await repository.finishRelease(TENANT, image(1), removeObject)).toBe('revived');
+    expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW)).toBe('revived');
     expect(removeObject).not.toHaveBeenCalled();
     expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
   });
@@ -574,7 +574,7 @@ describe('quarantined rows and objects of one key', () => {
       });
       await writeStarted;
       const removeObject = vi.fn(async () => true);
-      const finish = repository.finishRelease(TENANT, image(1), removeObject);
+      const finish = repository.finishRelease(TENANT, image(1), removeObject, NOW);
       await untilWaiting(observer, 'The release finish');
       finishWrite();
       expect(await completion).toMatchObject({ kind: 'stored' });
@@ -585,6 +585,32 @@ describe('quarantined rows and objects of one key', () => {
       await observer.end();
     }
   });
+
+  it('gives up a release, a release finish and a withdrawal transaction once the lock wait a sweep passes ran out, below a long own bound', async () => {
+    const repository = createQuarantinedImageRepository(database.db, { lockWaitMs: 60_000 });
+    const harness = endToEnd({ lockWaitMs: 60_000 });
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    const holder = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    try {
+      await holder.query('begin');
+      for (const name of [`change-proposal-images:${TENANT}:${KEY_ID}`, `change-proposals:${TENANT}`, `change-proposal-transaction:${TENANT}`]) {
+        await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [name]);
+      }
+      const removeObject = vi.fn(async () => true);
+      expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW, 50)).toBe('busy');
+      expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: NOW, limit: 10 }, NOW, 50)).toEqual({ kind: 'busy' });
+      const operation = vi.fn(async () => ok(true));
+      expect(await harness.deps.changeProposalTransaction.run(TENANT, operation, { lockWaitMs: 50 })).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+      expect(removeObject).not.toHaveBeenCalled();
+      expect(operation).not.toHaveBeenCalled();
+      await holder.query('rollback');
+    } finally {
+      await holder.end();
+    }
+    expect(await releasedRows()).toEqual(['1']);
+  }, 15_000);
 
   it('rolls back the row when its object cannot be written, and keeps a released row released', async () => {
     const repository = createQuarantinedImageRepository(database.db);
@@ -606,11 +632,11 @@ describe('quarantined rows and objects of one key', () => {
     await database.db.transaction(async (tx) => {
       expect(await createQuarantinedImageLocks(tx).lockForPublication(TENANT, KEY_ID, image(100))).toBeNull();
     });
-    expect(await repository.finishRelease(TENANT, image(100), async () => false)).toBe('failed');
+    expect(await repository.finishRelease(TENANT, image(100), async () => false, NOW)).toBe('failed');
     const retried = await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, NOW);
     expect(retried).toEqual({ kind: 'written', value: [image(100)] });
     expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', NOW, 10)).toEqual([TENANT]);
-    expect(await repository.finishRelease(TENANT, image(100), async () => true)).toBe('removed');
+    expect(await repository.finishRelease(TENANT, image(100), async () => true, NOW)).toBe('removed');
     expect(await releasedRows()).toEqual([]);
   });
 });
@@ -667,4 +693,116 @@ describe('the sweep selection', () => {
     }
     expect(compared).toBe(operations.length * fields.length * (candidates.length + 2));
   }, 120_000);
+});
+
+describe('the order of the image sweep', () => {
+  const released = (index: number, tenantId: string, createdAt: string) => ({
+    ...image(index, { tenantId, apiKeyId: tenantId === TENANT ? KEY_ID : 'key-neighbour', createdAt }), releasedAt: NOW,
+  });
+  const LATER = '2026-03-01T10:05:00.000Z';
+
+  it('moves a released image whose deletion fails behind the later images of its workspace', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values([released(1, TENANT, '2026-03-01T09:00:00.000Z'), released(2, TENANT, '2026-03-01T09:30:00.000Z')]);
+    const sweep = { kind: 'sweep', createdBefore: '2026-02-01T00:00:00.000Z', limit: 1 } as const;
+    const first = await repository.release(TENANT, sweep, NOW);
+    expect(first).toMatchObject({ kind: 'written', value: [{ digest: digestOf(1) }] });
+    expect(await repository.finishRelease(TENANT, image(1, { createdAt: '2026-03-01T09:00:00.000Z' }), async () => false, LATER)).toBe('failed');
+    expect(await repository.release(TENANT, sweep, NOW)).toMatchObject({ kind: 'written', value: [{ digest: digestOf(2) }] });
+  });
+
+  it('moves a workspace whose image deletions fail behind the other workspaces', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values([released(1, TENANT, '2026-03-01T09:00:00.000Z'), released(2, NEIGHBOUR, '2026-03-01T09:30:00.000Z')]);
+    expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', NOW, 1)).toEqual([TENANT]);
+    await repository.finishRelease(TENANT, image(1), async () => false, LATER);
+    expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', NOW, 1)).toEqual([NEIGHBOUR]);
+  });
+
+  it('moves upload records and publication records whose removal fails behind the others, inside and across workspaces', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    const upload = (index: number, tenantId: string, createdAt: string) => ({
+      tenantId, apiKeyId: KEY_ID, objectKey: `image-asset-candidates/${tenantId}/product-cover/00000000-0000-4000-8000-${String(index).padStart(12, '0')}.png`, createdAt,
+    });
+    await database.db.insert(changeProposalImageUploads).values([
+      upload(1, TENANT, '2026-03-01T09:00:00.000Z'), upload(2, TENANT, '2026-03-01T09:10:00.000Z'), upload(3, NEIGHBOUR, '2026-03-01T09:20:00.000Z'),
+    ]);
+    const before = '2026-03-01T09:50:00.000Z';
+    expect(await repository.listUploadsBefore(TENANT, before, 1)).toMatchObject([{ objectKey: upload(1, TENANT, NOW).objectKey }]);
+    expect(await repository.listTenantIdsWithUploadsBefore(before, 1)).toEqual([TENANT]);
+    await repository.markUploadAttempted(TENANT, upload(1, TENANT, NOW).objectKey, LATER);
+    expect(await repository.listUploadsBefore(TENANT, before, 1)).toMatchObject([{ objectKey: upload(2, TENANT, NOW).objectKey }]);
+    await repository.markUploadAttempted(TENANT, upload(2, TENANT, NOW).objectKey, LATER);
+    expect(await repository.listTenantIdsWithUploadsBefore(before, 1)).toEqual([NEIGHBOUR]);
+
+    await repository.recordPublications(TENANT, 'attempt-failing', [image(1)], '2026-03-01T09:00:00.000Z');
+    await repository.recordPublications(TENANT, 'attempt-later', [image(2)], '2026-03-01T09:10:00.000Z');
+    await repository.recordPublications(NEIGHBOUR, 'attempt-neighbour', [image(3)], '2026-03-01T09:20:00.000Z');
+    expect(await repository.listPublicationsBefore(TENANT, before, 1)).toMatchObject([{ attemptId: 'attempt-failing' }]);
+    await repository.markPublicationAttempted(TENANT, 'attempt-failing', image(1), LATER);
+    expect(await repository.listPublicationsBefore(TENANT, before, 1)).toMatchObject([{ attemptId: 'attempt-later' }]);
+    await repository.markPublicationAttempted(TENANT, 'attempt-later', image(2), LATER);
+    expect(await repository.listTenantIdsWithPublicationsBefore(before, 1)).toEqual([NEIGHBOUR]);
+  });
+
+  it('writes the attempt time of every row whose removal failed during a sweep', async () => {
+    const harness = endToEnd();
+    harness.clock.now = '2026-03-01T10:30:00.000Z';
+    await database.db.insert(changeProposalImages).values(released(1, TENANT, NOW));
+    await database.db.insert(changeProposalImageUploads).values({ tenantId: TENANT, apiKeyId: KEY_ID, objectKey: `image-asset-candidates/${TENANT}/product-cover/u.png`, createdAt: NOW });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [image(2)], NOW);
+    harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${digestOf(2)}.png`, { bytes: PNG_BYTES, contentType: 'image/png' });
+    harness.objects.failDeletes = () => true;
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+    const attempted = [
+      ...(await database.db.select({ at: changeProposalImages.sweepAttemptedAt }).from(changeProposalImages)),
+      ...(await database.db.select({ at: changeProposalImageUploads.sweepAttemptedAt }).from(changeProposalImageUploads)),
+      ...(await database.db.select({ at: changeProposalImagePublications.sweepAttemptedAt }).from(changeProposalImagePublications)),
+    ];
+    expect(attempted).toEqual([{ at: harness.clock.now }, { at: harness.clock.now }, { at: harness.clock.now }]);
+  });
+
+  it('stops once storage deletes used its time budget and gives each delete only what is left of it', async () => {
+    const harness = endToEnd();
+    await database.db.insert(changeProposalImages).values([1, 2, 3, 4, 5].map((index) => released(index, TENANT, NOW)));
+    const deadlines: number[] = [];
+    const deps = {
+      ...harness.deps,
+      storage: {
+        ...harness.objects.storage,
+        delete: async (input: { deadlineMs?: number }) => {
+          deadlines.push(input.deadlineMs ?? 0);
+          harness.clock.now = new Date(Date.parse(harness.clock.now) + 4_000).toISOString();
+          return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+        },
+      },
+    };
+    expect(await sweepQuarantinedImages(deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+    expect(deadlines).toEqual([5_000, 5_000, 2_000]);
+    expect(await sweepQuarantinedImages({ ...deps, deadlineAt: Date.parse(harness.clock.now) + 3_000 })).toMatchObject({ ok: true });
+    expect(deadlines.slice(3)).toEqual([3_000]);
+  });
+});
+
+describe('storage requests of an approval that never answer', () => {
+  it('end at their deadline as a transient error and leave the proposal pending, for the read of the quarantined copy and for the public write', async () => {
+    const harness = endToEnd();
+    const { id } = await harness.proposeCover(PNG_BYTES);
+    const deadlines: Array<[string, number | undefined]> = [];
+    const unanswered = <T>(method: string, deadlineMs: number | undefined): Promise<Result<T, AppError>> => {
+      deadlines.push([method, deadlineMs]);
+      return deadlineMs === undefined ? new Promise(() => undefined)
+        : Promise.resolve(err(integrationUnavailable('Could not read the bounded storage object: the storage request deadline passed')));
+    };
+    const silentRead = { ...harness.deps, storage: { ...harness.objects.storage, getObject: (input: { deadlineMs?: number }) => unanswered<Uint8Array>('getObject', input.deadlineMs) } };
+    expect(await approveChangeProposal(ownerSession, { id }, silentRead)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    const silentWrite = { ...harness.deps, storage: { ...harness.objects.storage, putObject: (input: { deadlineMs?: number }) => unanswered<undefined>('putObject', input.deadlineMs) } };
+    expect(await approveChangeProposal(ownerSession, { id }, silentWrite)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(deadlines).toEqual([['getObject', 5_000], ['putObject', 5_000]]);
+    const [proposal] = await database.db.select({ status: changeProposals.status }).from(changeProposals).where(eq(changeProposals.id, id));
+    expect(proposal?.status).toBe('pending');
+    const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(eq(products.id, 'mug'));
+    expect(cover?.coverUrl).toBeNull();
+    expect(await approveChangeProposal(ownerSession, { id }, harness.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+  });
 });

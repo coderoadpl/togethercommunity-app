@@ -122,7 +122,7 @@ workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
-The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
+The `shop products|prices|stock|orders|settings|branding|cover|files|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list. With a
 propose-mode key the catalogue, `shop settings set` and
@@ -136,6 +136,17 @@ and the address the image takes once approved; `shop branding upload <kind>
 <file>` prints that address and the `shop settings set` command that proposes
 it, or proposes the settings change itself with `--attach`. Both accept
 `--group <id>`, and the image stays private until the owner approves.
+With a direct-mode key `shop files upload <productId> <file> [--replaces <assetId>] [--note <text>]`
+checks the product, uploads the file (streamed from disk, at most 256 MiB, the
+type taken from its extension), completes it and attaches it as a new file or
+the next version of `--replaces`, refusing before the upload a `--note` over
+500 characters or a `--replaces` that is not a ready file of the product; `shop files copy <fromProductId> <assetId> <toProductId>`
+copies a ready file on the server and attaches the copy to the other product;
+`shop files list <productId>`, `shop files remove <productId> <assetId>`,
+`shop files staged` and `shop files discard <id>` list a product's files, remove
+a version, and list or discard the key's staged files. A propose-mode key gets
+the refusal on every `shop files` command except `list`; see
+[Download files](shop-management-keys.md#download-files).
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,

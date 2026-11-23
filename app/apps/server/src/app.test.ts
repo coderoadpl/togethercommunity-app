@@ -9,6 +9,7 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
+import { unusedKeyDownloadRepositories } from '#core/server/testing/key-download-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import {
   changeProposalOwnerViewFakes,
@@ -395,6 +396,7 @@ const deps = (input: {
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
+    ...unusedKeyDownloadRepositories(),
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
@@ -529,6 +531,8 @@ const deps = (input: {
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
@@ -664,6 +668,7 @@ const deps = (input: {
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
     sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0 }),
+    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -3475,6 +3480,44 @@ describe('email dispatch route', () => {
     expect((await response).status).toBe(200);
   });
 
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('runs both staged object sweeps on the %s tick after e-mail and refunds, side by side, each with its own failure', async (_trigger, init) => {
+    const calls: string[] = [];
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs, logger });
+    let finishImages: () => void = () => undefined;
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(() => {
+      calls.push('images');
+      return new Promise((_resolve, reject) => { finishImages = () => { reject(new Error('image storage unavailable')); }; });
+    });
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => {
+      calls.push('files');
+      return err(integrationUnavailable('file storage unavailable'));
+    });
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    const response = buildApp(base).request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(sweepKeyDownloadFiles).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual(['email', 'refunds', 'images', 'files']);
+    finishImages();
+    expect((await response).status).toBe(200);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 50_000;
+    expect(sweepQuarantinedImages.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(sweepKeyDownloadFiles.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(logger.error).toHaveBeenCalledWith('[change-proposal] quarantined image sweep failed: image storage unavailable');
+    expect(logger.error).toHaveBeenCalledWith('[key-download] staged download file sweep failed: file storage unavailable');
+  });
+
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
     const calls: string[] = [];
     const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
@@ -3746,6 +3789,8 @@ describe('tenant domain check route', () => {
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+          copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+          digestObject: () => Promise.reject(new Error('digestObject is not used here')),
           probeCors,
           presignPut: (input) => ok(input.url),
           presignGet: (input) => ok(input.url),
@@ -4548,6 +4593,8 @@ describe('lesson attachment download route', () => {
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+        digestObject: () => Promise.reject(new Error('digestObject is not used here')),
         probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
         presignPut: (input) => ok(input.url),
         presignGet: () => ok('https://download.example.test/signed'),

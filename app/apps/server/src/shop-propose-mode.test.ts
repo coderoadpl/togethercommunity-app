@@ -54,6 +54,7 @@ import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { shopDownloadRoutes } from './shop-download-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
 import { shopOrderRoutes } from './shop-order-routes.js';
@@ -166,7 +167,7 @@ const routeClass = (route: ShopMachineRoute): string => {
 
 const registeredShopRoutes = (): readonly ShopMachineRoute[] => [
   ...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps),
-  ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps),
+  ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps),
 ];
 
 const concretePath = (path: string): string => path
@@ -332,6 +333,15 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
       'POST /api/m2m/shop/sales-links/:id': 'proposal sales-link.update',
       'DELETE /api/m2m/shop/sales-links/:id': 'proposal sales-link.delete',
+      'POST /api/m2m/shop/downloads/upload': 'refuse not-in-release',
+      'POST /api/m2m/shop/downloads/complete': 'refuse not-in-release',
+      'POST /api/m2m/shop/downloads/copy': 'refuse not-in-release',
+      'GET /api/m2m/shop/downloads/staged': 'refuse not-in-release',
+      'DELETE /api/m2m/shop/downloads/staged/:id': 'refuse not-in-release',
+      'GET /api/m2m/shop/products/:productId/downloads': 'read',
+      'POST /api/m2m/shop/products/downloads': 'refuse not-in-release',
+      'POST /api/m2m/shop/products/downloads/replace': 'refuse not-in-release',
+      'POST /api/m2m/shop/products/downloads/remove': 'refuse not-in-release',
       'GET /api/m2m/shop/integrations/secrets': 'read',
       'POST /api/m2m/shop/integrations/secrets': 'refuse secret',
       'DELETE /api/m2m/shop/integrations/secrets/:key': 'refuse secret',
@@ -393,7 +403,7 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(imageStorage.keysUnder('image-asset-quarantine/acme/').length).toBeGreaterThan(0);
     expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
     expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(4);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(12);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(20);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
     expect(stored).toHaveLength(14);
   });

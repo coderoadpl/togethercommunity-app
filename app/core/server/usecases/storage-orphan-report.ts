@@ -61,6 +61,7 @@ export const reportStorageOrphans = async (
     (attachment.status === 'pending' ? pending : current).add(attachment.storageKey);
   }
   for (const image of inventory.quarantinedImages) pending.add(image.storageKey);
+  for (const staged of inventory.stagedDownloads) pending.add(staged.storageKey);
   for (const download of inventory.downloads) {
     const references = download.status === 'pending' ? pending
       : download.supersededAt === null ? current : history;

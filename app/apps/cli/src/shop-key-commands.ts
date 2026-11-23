@@ -1,3 +1,4 @@
+import { openAsBlob } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 
@@ -20,6 +21,7 @@ import {
   type ChangeProposalProposedOutput,
   shopAssetsContracts,
   shopCatalogContracts,
+  shopDownloadContracts,
   shopIntegrationContracts,
   shopSettingsContracts,
 } from '#core/contract/index.js';
@@ -30,6 +32,9 @@ import {
   fulfilmentStatusSchema,
   IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   isChangeProposalReference,
+  KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
+  keyDownloadAttachInputSchema,
+  notFound,
   ok,
   parcelTemplateSchema,
   priceKindSchema,
@@ -43,7 +48,10 @@ import {
   type AppError,
   type ChangeProposalGroupKeyReceipt,
   type ChangeProposalKeyReceipt,
+  type KeyDownloadFileCap,
+  type KeyDownloadStagedFileView,
   type OrderListItem,
+  type ProductDownloadAssetMetadata,
   type ProductPrice,
   type ProductStock,
   type Result,
@@ -184,6 +192,70 @@ const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'pro
   }, kind === 'product-cover' ? 'Invalid product cover image' : 'Invalid branding image');
   return input.ok ? ok({ ...input.value, body: bytes }) : input;
 };
+
+const fileNoteSchema = keyOnlySchema.extend({ note: keyDownloadAttachInputSchema.shape.versionNote });
+
+const fileAttachSchema = fileNoteSchema.extend({ replaces: idSchema.optional() });
+
+const replacementCheck = (assets: readonly ProductDownloadAssetMetadata[], replaces: string | undefined): Result<void, AppError> => {
+  if (replaces === undefined) return ok(undefined);
+  const replaced = assets.find((asset) => asset.id === replaces);
+  if (replaced === undefined) return err(notFound(`Replacement file "${replaces}" not found on this product; nothing was uploaded`));
+  return replaced.status === 'ready' ? ok(undefined) : err(validation(`Only ready files can be replaced; "${replaces}" is ${replaced.status} and nothing was uploaded`));
+};
+
+const downloadFileInput = async (file: string) => {
+  const extension = extname(file).slice(1).toLowerCase();
+  const contentType = Object.entries(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION).find(([known]) => known === extension)?.[1];
+  if (contentType === undefined) {
+    return err(validation(`The file must end in ${Object.keys(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION).map((known) => `.${known}`).join(', ')}`));
+  }
+  let body: Blob;
+  try {
+    body = await openAsBlob(file);
+  } catch (cause) {
+    return err(validation(`Could not read the file "${file}": ${String(cause)}`));
+  }
+  const input = contractInput(shopDownloadContracts.uploadStagedDownload.input, {
+    fileName: basename(file), contentType, sizeBytes: body.size,
+  }, 'Invalid download file');
+  return input.ok ? ok({ ...input.value, body }) : input;
+};
+
+const FILE_CAP_HINTS = {
+  key_staged_files: 'list this key\'s staged files with "together shop files staged" and discard the ones it no longer needs with "together shop files discard <id>"',
+  key_staged_bytes: 'list this key\'s staged files with "together shop files staged" and discard the ones it no longer needs with "together shop files discard <id>"',
+  workspace_staged_bytes: 'every key of the workspace shares this budget; a staged file is deleted 7 days after it was staged',
+  key_file_uploads: 'retry once the uploads and copies of the last 15 minutes fall out of the window',
+  key_file_bytes_daily: 'retry once the uploads and copies of the last 24 hours fall out of the window',
+  product_files: 'remove a file of the product first with "together shop files remove <productId> <assetId>"',
+} as const satisfies Record<KeyDownloadFileCap, string>;
+
+const capDetailsSchema = z.object({ changeProposalCap: z.string() });
+
+const withFileHint = (error: AppError, stagedId?: string): AppError => {
+  const cap = capDetailsSchema.safeParse(error.details);
+  const hint = cap.success ? Object.entries(FILE_CAP_HINTS).find(([known]) => known === cap.data.changeProposalCap)?.[1] : undefined;
+  const kept = stagedId === undefined ? '' : `; the file stays staged as ${stagedId} until it is discarded or 7 days pass ("together shop files discard ${stagedId}")`;
+  return { ...error, message: `${error.message}${hint === undefined ? '' : ` (${hint})`}${kept}` };
+};
+
+const sizeLabel = (bytes: number): string => `${String(bytes)} bytes`;
+
+const downloadAssetLine = (asset: ProductDownloadAssetMetadata): string =>
+  `- ${asset.fileName}  version ${String(asset.versionNumber)}${asset.supersededAt === null ? '' : ' (previous version)'}  ${asset.contentType}  ${sizeLabel(asset.sizeBytes)}  [${asset.status}]  (${asset.id})`;
+
+const stagedFileLine = (file: KeyDownloadStagedFileView): string => [
+  `- ${file.fileName}  ${file.contentType}  ${sizeLabel(file.sizeBytes)}`,
+  file.copiedFrom === null
+    ? `sha256 ${file.sha256 ?? '(not shown)'}`
+    : `copy of file ${file.copiedFrom.assetId} version ${String(file.copiedFrom.versionNumber)} of product ${file.copiedFrom.productId}`,
+  `expires ${file.expiresAt}`,
+  `(${file.id})`,
+].join('  ');
+
+const attachedFileLines = (data: { asset: ProductDownloadAssetMetadata; staged: KeyDownloadStagedFileView }): string =>
+  [`attached: ${downloadAssetLine(data.asset).slice(2)}`, `staged as: ${stagedFileLine(data.staged).slice(2)}`].join('\n');
 
 const envNameSchema = z.string().min(1).optional();
 const secretSetSchema = keyOnlySchema.extend({ valueEnv: envNameSchema });
@@ -698,6 +770,54 @@ export const registerShopKeyCommands = (
     }, (data) => isProposedChange(data)
       ? [proposedLines(data), quarantinedImageLine(data.image)].join('\n')
       : JSON.stringify(data.product, null, 2)));
+
+  const attachStaged = async (
+    client: ShopManagementClient,
+    productId: string,
+    staged: KeyDownloadStagedFileView,
+    options: { replaces?: string | undefined; note?: string | undefined },
+  ) => {
+    const note = options.note === undefined ? {} : { versionNote: options.note };
+    const attached = options.replaces === undefined
+      ? await client.addProductDownload({ productId, stagedFileId: staged.id, ...note })
+      : await client.replaceProductDownload({ productId, replacesAssetId: options.replaces, stagedFileId: staged.id, ...note });
+    return attached.ok ? ok({ asset: attached.value.asset, staged }) : err(withFileHint(attached.error, staged.id));
+  };
+
+  const files = shop.command('files').description('Download files of digital products, staged by the key and attached live; a propose-mode key is refused on every files command except list in this release, and no command reads back the bytes of a file');
+  keyed(files.command('list <productId>').description('List the files of a digital product with their versions'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [productId]) => client.listProductDownloads(productId), (data) =>
+      data.assets.length === 0 ? 'no files' : data.assets.map(downloadAssetLine).join('\n')));
+  keyed(files.command('upload <productId> <file>').description('Check that the product exists, stage the file (upload, PUT with the signed headers, completion) and attach it live as a new file or, with --replaces, as the next version of a file')
+    .option('--replaces <assetId>', 'attach the upload as the next version of this file of the product')
+    .option('--note <text>', 'version note shown with the file'))
+    .action(run(z.tuple([idSchema, z.string().min(1), fileAttachSchema]), async (client, [productId, file, options]) => {
+      const input = await downloadFileInput(file);
+      if (!input.ok) return input;
+      const product = await client.listProductDownloads(productId);
+      if (!product.ok) return product;
+      const replacement = replacementCheck(product.value.assets, options.replaces);
+      if (!replacement.ok) return replacement;
+      const staged = await client.stageProductDownload(input.value);
+      if (!staged.ok) return err(withFileHint(staged.error));
+      return attachStaged(client, productId, staged.value.file, options);
+    }, attachedFileLines));
+  keyed(files.command('copy <fromProductId> <assetId> <toProductId>').description('Copy a ready file of one product on the server and attach the copy live to another product; the bytes never pass through this command')
+    .option('--note <text>', 'version note shown with the copied file'))
+    .action(run(z.tuple([idSchema, idSchema, idSchema, fileNoteSchema]), async (client, [fromProductId, assetId, toProductId, options]) => {
+      const target = await client.listProductDownloads(toProductId);
+      if (!target.ok) return target;
+      const staged = await client.copyProductDownload({ productId: fromProductId, assetId });
+      if (!staged.ok) return err(withFileHint(staged.error));
+      return attachStaged(client, toProductId, staged.value.file, { note: options.note });
+    }, attachedFileLines));
+  keyed(files.command('remove <productId> <assetId>').description('Remove one file version of a product live; buyers can no longer download it'))
+    .action(run(z.tuple([idSchema, idSchema, keyOnlySchema]), (client, [productId, assetId]) => client.removeProductDownload({ productId, assetId }), () => 'removed'));
+  keyed(files.command('staged').description('List this key\'s staged files that are not attached yet'))
+    .action(run(z.tuple([keyOnlySchema]), (client) => client.listStagedDownloads(), (data) =>
+      data.files.length === 0 ? 'no staged files' : data.files.map(stagedFileLine).join('\n')));
+  keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy'))
+    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.discardStagedDownload(id), () => 'discarded'));
 
   const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');
   keyed(salesLinks.command('list').description('List sales links'))

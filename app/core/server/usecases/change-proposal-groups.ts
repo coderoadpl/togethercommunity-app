@@ -36,7 +36,6 @@ import {
   type ChangeProposalGroupOwnerView,
   type ChangeProposalIdInput,
   type CreateChangeProposalGroupInput,
-  type ProposalImageReference,
   type RejectChangeProposalInput,
   type Result,
   type SubmitGroupedChangeProposalInput,
@@ -76,6 +75,7 @@ import {
   changeProposalImageGone,
   checkProposedImages,
   prepareApprovalImages,
+  noApprovalImageWrites,
   publishApprovalImages,
   recordApprovalPublications,
   releaseImagesOfProposals,
@@ -485,7 +485,7 @@ export const approveChangeProposalGroup = async (
 
   const publication = await recordApprovalPublications(tenantId, found.items, deps);
   if (!publication.ok) return publication;
-  const written: ProposalImageReference[] = [];
+  const writes = noApprovalImageWrites();
   const approve = () => deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<GroupApprovalDecision, AppError>> => {
     const groups = scope.repositories.changeProposalGroups;
     const locked = await groups.lock(tenantId, id);
@@ -524,7 +524,7 @@ export const approveChangeProposalGroup = async (
       return ok({ kind: 'expired', at: stop.outcome.at });
     }
     if (applied.ok && images.kind === 'ready') {
-      const published = await publishApprovalImages(tenantId, images, publication.value, scope, deps, written);
+      const published = await publishApprovalImages(tenantId, images, publication.value, scope, deps, writes);
       if (!published.ok) return published;
     }
     const transitions: ChangeProposalGroupItemTransition[] = [];
@@ -554,11 +554,11 @@ export const approveChangeProposalGroup = async (
     return ok({ kind: 'decided', items: moved, at });
   });
   const decided = await approve().catch(async (cause: unknown) => {
-    await withdrawPublishedImages(tenantId, publication.value, written, deps);
+    await withdrawPublishedImages(tenantId, publication.value, writes, deps);
     throw cause;
   });
   if (!decided.ok || decided.value.kind !== 'decided' || decided.value.items.some((item) => item.status !== 'applied')) {
-    await withdrawPublishedImages(tenantId, publication.value, written, deps);
+    await withdrawPublishedImages(tenantId, publication.value, writes, deps);
   }
   if (!decided.ok) return decided;
   await releaseImagesOfProposals(tenantId, found.items, deps);

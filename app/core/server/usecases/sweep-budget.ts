@@ -1,0 +1,23 @@
+const SWEEP_MINIMUM_DELETE_MS = 1_000;
+
+const SWEEP_MINIMUM_LOCK_WAIT_MS = 250;
+
+/** The milliseconds left of a sweep's wall-clock budget; a request outside a sweep has none. */
+export type SweepBudget = () => number;
+
+export const UNBOUNDED: SweepBudget = () => Number.POSITIVE_INFINITY;
+
+const bounded = (budget: SweepBudget): boolean => Number.isFinite(budget());
+
+/**
+ * The lock wait of a sweep step that still leaves each of its `deletes` storage deletes the minimum, or null when what
+ * is left cannot cover them; undefined outside a sweep, so the repository keeps its own bound.
+ */
+export const sweepLockWait = (budget: SweepBudget, deletes: number): number | null | undefined => {
+  if (!bounded(budget)) return undefined;
+  const wait = Math.floor(budget() - deletes * SWEEP_MINIMUM_DELETE_MS);
+  return wait < SWEEP_MINIMUM_LOCK_WAIT_MS ? null : wait;
+};
+
+export const sweepDeleteDeadline = (budget: SweepBudget, deleteMs: number, deletesAfter: number): number =>
+  Math.max(1, Math.min(deleteMs, Math.floor(budget() - deletesAfter * SWEEP_MINIMUM_DELETE_MS)));

@@ -196,7 +196,6 @@ import {
   type LessonAttachmentMetadata,
   type LessonAttachmentView,
   type ProductDownloadAsset,
-  type ProductDownloadAssetMetadata,
   type ProductDownloadAssetView,
   type MemberCourseProgress,
   type ProgressView,
@@ -494,7 +493,9 @@ import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
 import { shopOrderRoutes } from './shop-order-routes.js';
+import { productDownloadMetadata } from './product-download-metadata.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
+import { shopDownloadRoutes } from './shop-download-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
@@ -589,21 +590,6 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
   downloadPath: API_PATHS.studentLessonAttachmentDownload
     .replace(':lessonId', encodeURIComponent(attachment.lessonId))
     .replace(':attachmentId', encodeURIComponent(attachment.id)),
-});
-
-const productDownloadMetadata = (asset: ProductDownloadAsset, personalisationMaxBytes: number): ProductDownloadAssetMetadata => ({
-  lineageId: asset.lineageId,
-  versionNumber: asset.versionNumber,
-  versionNote: asset.versionNote,
-  supersededAt: asset.supersededAt,
-  id: asset.id,
-  productId: asset.productId,
-  fileName: asset.fileName,
-  contentType: asset.contentType,
-  sizeBytes: asset.sizeBytes,
-  status: asset.status,
-  createdAt: asset.createdAt,
-  personalisationSizeExceeded: asset.sizeBytes > personalisationMaxBytes,
 });
 
 const productDownloadView = (
@@ -823,13 +809,37 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
-const sweepQuarantinedProposalImages = async (deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'logger'>): Promise<void> => {
+const CRON_FUNCTION_LIMIT_MS = 60_000;
+
+// A sweep starts a row only when what is left covers its lock wait and each delete, endpoint lookup included, so the
+// sweeps' lock waits and storage requests end by the tick end; the margin is for their database statements and the answer.
+const STAGING_SWEEP_MARGIN_MS = 10_000;
+
+const STAGING_SWEEP_TICK_END_MS = CRON_FUNCTION_LIMIT_MS - STAGING_SWEEP_MARGIN_MS;
+
+const runStagingSweep = async (
+  failure: string,
+  sweep: () => Promise<Result<unknown, AppError>>,
+  logger: AppDeps['logger'],
+): Promise<void> => {
   try {
-    const swept = await deps.sweepQuarantinedImages();
-    if (!swept.ok) deps.logger.error(`[change-proposal] quarantined image sweep failed: ${swept.error.message}`);
+    const swept = await sweep();
+    if (!swept.ok) logger.error(`${failure}: ${swept.error.message}`);
   } catch (error) {
-    deps.logger.error(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}`);
+    logger.error(`${failure}: ${safeErrorMessage(error)}`);
   }
+};
+
+/** Runs after e-mail and refund dispatch, and the two sweeps side by side, so a sweep that uses its budget delays neither. */
+const sweepStagedObjects = async (
+  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger'>,
+  tickStartedAt: number,
+): Promise<void> => {
+  const tick = { deadlineAt: tickStartedAt + STAGING_SWEEP_TICK_END_MS };
+  await Promise.all([
+    runStagingSweep('[change-proposal] quarantined image sweep failed', () => deps.sweepQuarantinedImages(tick), deps.logger),
+    runStagingSweep('[key-download] staged download file sweep failed', () => deps.sweepKeyDownloadFiles(tick), deps.logger),
+  ]);
 };
 
 const dispatchDueOrderRefunds = async (
@@ -860,9 +870,9 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('manual');
     await dispatchDueOrderRefunds(deps, tickStartedAt);
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 
@@ -873,10 +883,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     }
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
-    await sweepQuarantinedProposalImages(deps);
     const emails = await deps.dispatchEmails('cron');
     await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 
@@ -1356,7 +1366,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

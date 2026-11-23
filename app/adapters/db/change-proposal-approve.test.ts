@@ -101,7 +101,7 @@ const storage: StorageProvider = (() => {
       storageDeletes.push(input.url);
       return ok({ deleted: true });
     },
-    list: refuse, getObject: refuse, putObject: refuse, probe: refuse, probeCors: refuse, presignPut: refuse,
+    list: refuse, getObject: refuse, putObject: refuse, probe: refuse, copyObject: refuse, digestObject: refuse, probeCors: refuse, presignPut: refuse,
     presignGet: refuse, head: refuse, healthcheck: refuse, test: refuse,
   };
 })();

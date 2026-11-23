@@ -4,7 +4,8 @@ A change proposal is a write that a machine asked for and the workspace owner
 has not yet decided on. It comes from a [shop management key](shop-management-keys.md)
 created in **propose mode**: such a key reads what its read scopes allow, and
 every catalogue, sales-link and settings write it sends is stored as a
-proposal instead of changing the live shop. The owner reads each proposal with
+proposal instead of changing the live shop (download files aside: it cannot
+write those yet). The owner reads each proposal with
 a field-level before/after and approves or rejects it. An approval applies
 exactly the effect the owner saw, or applies nothing.
 
@@ -50,7 +51,7 @@ A proposal stores two things:
 
 The dry run executes the live use-case with the rights of the owner who issued
 the key, inside a transaction that always rolls back. What a key may propose is
-bounded by the operations registry (the ten operations below) and the
+bounded by the operations registry (the fourteen operations below) and the
 [route classes](#route-classes), not by the context of the dry run, which
 carries the owner's identity and no capability list of the key.
 
@@ -183,7 +184,8 @@ treats it as described under [Unknown operation](#approval).
 Every shop route that writes declares one class for a propose-mode key in
 `apps/server/src/shop-machine-auth.ts`; the server refuses to start when a
 shop write route declares none, and a test pins the class of every registered
-shop route. A direct-mode key is unaffected on every route.
+shop route. A read route may declare the class `refuse` as well. A direct-mode
+key is unaffected on every route.
 
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
@@ -191,9 +193,13 @@ shop route. A direct-mode key is unaffected on every route.
 | `direct` | branding and product cover image upload and completion | the handler runs and keeps the image private until approval ([Images](#images)) |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
+| `refuse`, reason `not-in-release` | the [download file](shop-management-keys.md#download-files) routes: upload, completion, copy, the staged file list and discard (`/api/m2m/shop/downloads/*`), and the attach, replace and remove routes (`POST /api/m2m/shop/products/downloads`, `…/replace`, `…/remove`) | `403 forbidden`; the class carries the feature it names, so the message for these routes says that product download files are not available to a propose-mode key yet |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
 
-Reads (`GET`) behave as before for both modes. The order on a write route is
+Reads (`GET`) behave as before for both modes, except the staged download file
+list (`GET /api/m2m/shop/downloads/staged`, class `refuse`); a product's file
+list (`GET /api/m2m/shop/products/:productId/downloads`) is an ordinary read.
+The order on a write route is
 unchanged: authenticate the key and its issuer, apply the rate limit and the
 scope, write the key history `request` row, then dispatch by class. A proposal
 therefore leaves a `request` row in the [key history](shop-management-keys.md#key-history)
@@ -1092,7 +1098,13 @@ on the `stale` event of the item that attaches it (its group siblings carry the
 usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
-public already and needs nothing.
+public already and needs nothing. Every storage request of an approval, of a
+publication withdrawal and of the owner's image preview (the read of the
+quarantined copy, the check and the write of the public copy, a delete) gives up
+after 5 seconds without an answer, the lookup of the storage endpoint included,
+the bound a statement of an approval has, and counts as a failed storage request: the approval answers
+`503 integration_unavailable` and the proposal stays `pending`, so no storage
+request holds the workspace's approval lock longer.
 
 Before the approval transaction opens, the approval asks the storage, for each
 attached image, whether its public object
@@ -1121,15 +1133,24 @@ record is removed in a short transaction of its own under the workspace's
 approval lock, so no concurrent approval can publish the same address in
 between. An object the attempt tried to write is deleted first, except when a
 live field shows the address or an applied proposal carries it in its input; a
-record whose object the attempt never tried to write is only dropped. Once the
-withdrawal succeeds, the attempt has left neither a record nor a public copy
-behind. A record it cannot remove (the lock wait runs out, the storage
+record whose object the attempt never tried to write is only dropped. When the
+write of an image ended without a definite answer (no answer within its 5
+seconds, a connection error, a server error), the storage may still store it
+after this delete, so the withdrawal deletes the object but keeps its record,
+and the minute sweep deletes the object once more after the record's 10 minutes
+and only then removes the record; a write the storage refused (a `4xx` answer)
+is withdrawn like any other. This rests on the storage finishing or abandoning
+a write it accepted within those 10 minutes; the signed write itself expires 60
+seconds after it was signed. Once the withdrawal of an attempt without such a
+write succeeds, the attempt has left neither a record nor a public copy behind.
+A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
 stays, and the minute sweep retries it: it removes every record older than 10
 minutes under the same lock, always deleting its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
-remove for the next run. Every public object written by an approval that did
+remove for the next run, with the time of that attempt, so it moves behind the
+other records. Every public object written by an approval that did
 not end applied is therefore removed without anyone's help once the storage
 answers, unless a live field shows its address or an applied proposal carries
 it.
@@ -1154,10 +1175,25 @@ out in the database query itself, so they never fill a batch and an image
 behind them is never starved; the query reads the image fields of each
 operation from the stored input exactly as the application does. The same
 sweep removes expired upload candidates (see Upload) and unfinished publication
-records (see above). It runs on the existing minute tick
-(the `/api/internal/dispatch-email` cron route and the Node ticker), at most
-once every 50 seconds per server process, and a failing sweep is logged and
-never stops the tick. The
+records (see above). Workspaces, images, upload candidates and publication
+records are each taken longest waiting first, by the time of their last failed
+removal (recorded in `sweep_attempted_at`) or else their creation or start,
+so rows whose removal keeps failing move behind the others, inside a workspace
+and across workspaces. It runs on the existing minute tick
+(the `/api/internal/dispatch-email` cron route, after e-mail and refund
+dispatch, and the Node ticker, beside them), at most once every 50 seconds per
+server process, independently of the [download file
+sweep](storage.md#download-file-prefixes): each has its own failure and its own
+budget of 10 seconds, and on the cron route both end at the latest 50 seconds
+after the tick started, 10 seconds before the 60-second function limit. A step
+(a release, an image's removal, a publication record's withdrawal) starts only
+when what is left covers a lock wait of at least 250 milliseconds and 1 second
+for its storage delete; its lock waits get what is left minus that second, and
+its delete, the lookup of the storage endpoint included, gets at most 5 seconds
+and what is left, so the sweep's lock waits and storage requests end by its
+end, and the 10 seconds before the function limit are for its database
+statements and the answer. A failing sweep is logged and never stops the tick
+or the other sweep. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
@@ -1170,6 +1206,11 @@ index on `started_at`. Each `CREATE INDEX` locks only its new, empty table; the
 foreign key of each table to `tenants` takes a `SHARE ROW EXCLUSIVE` lock on
 `tenants`, which blocks writes to `tenants` (not reads) until the migration
 transaction commits, a moment since nothing is scanned.
+
+Migration `0170_key_download_files` adds a nullable `sweep_attempted_at`
+column without a default to each of the three tables (constant time; each
+table's `ACCESS EXCLUSIVE` lock is held until the migration commits); a release
+before it ignores that column.
 
 The release on production when proposed images were added, `8141fd15`,
 predates `0169`. What it does with what this release stores and answers is
@@ -1253,8 +1294,13 @@ stay listed under [Change proposals](#owner-panel) after rolling forward.
 
 ## Not yet available
 
-- **Other files.** Download files of digital products and images other than
-  product covers and branding (course covers, avatars) cannot be proposed.
+- **Download files.** Download files of digital products cannot be proposed:
+  every [download file route](shop-management-keys.md#download-files) except
+  the product file list refuses a propose-mode key with `403` (class `refuse`,
+  reason `not-in-release`), and only a direct-mode key stages and attaches
+  files, live.
+- **Other images.** Images other than product covers and branding (course
+  covers, avatars) cannot be proposed.
 - **Checkout appearance images.** A propose-mode key cannot propose a new
   `checkoutAppearance.logoUrl` or `checkoutAppearance.iconUrl`: a
   `settings.update` that sets either to an address other than the live one is

@@ -168,6 +168,7 @@ import type {
   PublicRateLimitRepository,
 } from '#core/server/index.js';
 
+import { oweKeyFileDeletions } from './key-download-files.js';
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { undefinedRelation, uniqueViolation } from './pg-errors.js';
@@ -892,6 +893,7 @@ export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAss
       .where(and(eq(products.tenantId, tenantId), eq(products.id, initial.productId))).for('update');
     const [deleted] = await tx.delete(productDownloadAssets).where(scope).returning();
     if (!deleted) return false;
+    await oweKeyFileDeletions(tx, tenantId, [deleted], new Date().toISOString());
     if (deleted.status === 'ready' && deleted.supersededAt === null) {
       const [latest] = await tx.select().from(productDownloadAssets).where(and(
         eq(productDownloadAssets.tenantId, tenantId),

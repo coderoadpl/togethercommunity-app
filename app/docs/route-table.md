@@ -194,6 +194,15 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/sales-links` | self-authenticating | mutating | api m2m shop sales-links |
 | `POST /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
 | `DELETE /api/m2m/shop/sales-links/:id` | self-authenticating | mutating | api m2m shop sales-links id |
+| `POST /api/m2m/shop/downloads/upload` | self-authenticating | mutating | api m2m shop downloads upload |
+| `POST /api/m2m/shop/downloads/complete` | self-authenticating | mutating | api m2m shop downloads complete |
+| `POST /api/m2m/shop/downloads/copy` | self-authenticating | mutating | api m2m shop downloads copy |
+| `GET /api/m2m/shop/downloads/staged` | self-authenticating | read | api m2m shop downloads staged |
+| `DELETE /api/m2m/shop/downloads/staged/:id` | self-authenticating | mutating | api m2m shop downloads staged id |
+| `GET /api/m2m/shop/products/:productId/downloads` | self-authenticating | read | api m2m shop products productId downloads |
+| `POST /api/m2m/shop/products/downloads` | self-authenticating | mutating | api m2m shop products downloads |
+| `POST /api/m2m/shop/products/downloads/replace` | self-authenticating | mutating | api m2m shop products downloads replace |
+| `POST /api/m2m/shop/products/downloads/remove` | self-authenticating | mutating | api m2m shop products downloads remove |
 | `GET /api/m2m/shop/integrations/secrets` | self-authenticating | read | api m2m shop integrations secrets |
 | `POST /api/m2m/shop/integrations/secrets` | self-authenticating | mutating | api m2m shop integrations secrets |
 | `DELETE /api/m2m/shop/integrations/secrets/:key` | self-authenticating | mutating | api m2m shop integrations secrets key |

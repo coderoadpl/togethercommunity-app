@@ -41,6 +41,7 @@ const harness = vi.hoisted(() => {
     dispatchOrderRefundJobs: vi.fn(async () => ({ ok: true, value: { processedCount: 0, outcomes: {} } })),
     releaseExpiredStockReservations: vi.fn(),
     sweepQuarantinedImages: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0 } })),
+    sweepKeyDownloadFiles: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0 } })),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger', warn: vi.fn() },
   };
@@ -209,6 +210,7 @@ describe('entry.node composition', () => {
     });
     harness.deps.releaseExpiredStockReservations.mockRejectedValueOnce(new Error('stock unavailable'));
     harness.deps.sweepQuarantinedImages.mockRejectedValueOnce(new Error('images unavailable'));
+    harness.deps.sweepKeyDownloadFiles.mockRejectedValueOnce(new Error('files unavailable'));
     harness.deps.dispatchOrderRefundJobs.mockRejectedValueOnce(new Error('refund jobs unavailable'));
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -241,6 +243,8 @@ describe('entry.node composition', () => {
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[stock] expired reservation sweep failed:'));
     expect(harness.deps.sweepQuarantinedImages).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[change-proposal] quarantined image sweep failed:'));
+    expect(harness.deps.sweepKeyDownloadFiles).toHaveBeenCalledOnce();
+    expect(stderr).toHaveBeenCalledWith('[key-download] staged download file sweep failed: files unavailable\n');
     expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
     expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenCalledWith('[order-refund] ticker dispatch failed: refund jobs unavailable\n');
@@ -295,6 +299,24 @@ describe('entry.node composition', () => {
     finishRefunds();
     await vi.advanceTimersByTimeAsync(0);
     expect(listDueTenantIds).toHaveBeenCalledOnce();
+  });
+
+  it('starts e-mail and refund dispatch on the minute ticker while both staged object sweeps are still running', async () => {
+    vi.useFakeTimers();
+    harness.env.NODE_ENV = 'production';
+    harness.deps.sweepQuarantinedImages.mockImplementationOnce(() => new Promise(() => undefined));
+    harness.deps.sweepKeyDownloadFiles.mockImplementationOnce(() => new Promise(() => undefined));
+    harness.deps.dispatchEmails.mockResolvedValueOnce({ ok: true, value: undefined });
+    harness.deps.dispatchAutoInvoices.mockResolvedValue({ ok: true, value: undefined });
+    harness.deps.releaseExpiredStockReservations.mockResolvedValue(undefined);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await importEntry();
+    await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
+    expect(harness.deps.sweepQuarantinedImages).toHaveBeenCalledOnce();
+    expect(harness.deps.sweepKeyDownloadFiles).toHaveBeenCalledOnce();
+    expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.deps.dispatchOrderRefundJobs).toHaveBeenCalledOnce();
   });
 
   it('waits for an in-flight Meta conversion tick when the tickers stop', async () => {

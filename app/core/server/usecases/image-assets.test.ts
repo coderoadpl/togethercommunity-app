@@ -80,6 +80,8 @@ const testDeps = (sizeBytes = 1024, body = new Uint8Array([137, 80, 78, 71, 13, 
     getObject: async () => ok(body),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+    copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+    digestObject: () => Promise.reject(new Error('digestObject is not used here')),
     probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => {
       signed.push({ method: 'PUT', url: input.url, expiresInSeconds: input.expiresInSeconds });

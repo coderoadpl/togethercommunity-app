@@ -70,6 +70,7 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'QuarantinedImageRepository.listTenantIdsToSweep': 'The scheduled sweep discovers workspaces holding images to remove before releasing them in tenant-scoped transactions.',
   'QuarantinedImageRepository.listTenantIdsWithUploadsBefore': 'The scheduled sweep discovers workspaces holding expired image upload records before removing them with tenant-scoped calls.',
   'QuarantinedImageRepository.listTenantIdsWithPublicationsBefore': 'The scheduled sweep discovers workspaces holding unfinished image publication records before removing them in tenant-scoped transactions.',
+  'KeyDownloadFileRepository.listTenantIdsToSweep': 'The scheduled sweep discovers workspaces holding staged download rows to remove before removing them with tenant-scoped calls.',
   'StockRepository.releaseExpired': 'The minute tick releases expired checkout reservations across all tenants; each release runs in its own tenant-scoped transaction.',
   'SchedulerRunRepository.finalize': 'A scheduler run is a platform aggregate containing per-tenant results.',
   'SchedulerRunRepository.getWithTenants': 'Operator diagnostics read a platform run and all of its tenant results.',

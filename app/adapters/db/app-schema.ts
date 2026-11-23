@@ -462,6 +462,7 @@ export const productDownloadAssets = pgTable(
     storageKey: text('storage_key').notNull(),
     status: text('status', { enum: ['pending', 'ready'] }).notNull().default('pending'),
     createdAt: text('created_at').notNull(),
+    sha256: text('sha256'),
   },
   (table) => [
     foreignKey({

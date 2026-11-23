@@ -54,15 +54,15 @@ describe('order refund command', () => {
     const h = harness();
     h.orderRefundPreview.mockResolvedValueOnce(ok(preview({ refundable: false, refundedCents: 4099, remainderCents: 0 })));
     h.createOrderRefund.mockResolvedValueOnce(ok({ refund: refundView(), created: false }));
-    await h.refund({ yes: true, requestKey: 'lost-full' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full' });
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'lost-full' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full', expectedAmountCents: 3099 });
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('(already requested with this request key)');
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('refunds the whole remainder with --yes, leaving restock and packing to the server defaults', async () => {
+  it('refunds the whole remainder with --yes and --remainder, leaving restock and packing to the server defaults', async () => {
     const h = harness();
-    await h.refund({ yes: true, requestKey: 'retry-7' });
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'retry-7' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099 });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('refund refund-1: 30.99 PLN (full), pending, stock returned, off the packing list\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
     expect(process.exitCode).toBeUndefined();
@@ -78,9 +78,9 @@ describe('order refund command', () => {
 
   it('generates a request key when none is given', async () => {
     const h = harness();
-    await h.refund({ yes: true });
+    await h.refund({ yes: true, amount: '5' });
     expect(h.createOrderRefund.mock.calls[0]?.[0].requestKey).toMatch(/^cli-[0-9a-f-]{36}$/);
-    await h.refund({ yes: true }, () => 'fixed-key');
+    await h.refund({ yes: true, amount: '5' }, () => 'fixed-key');
     expect(h.createOrderRefund.mock.calls[1]?.[0].requestKey).toBe('fixed-key');
   });
 
@@ -90,7 +90,7 @@ describe('order refund command', () => {
       expect(errorSpy).toHaveBeenCalledExactlyOnceWith('request key: lost-1 (after a network error repeat with --request-key lost-1; the same key never refunds twice)');
       return err(internal('Network error calling /api/orders/order-1/refunds: TypeError: fetch failed'));
     });
-    await h.refund({ yes: true }, () => 'lost-1');
+    await h.refund({ yes: true, remainder: '30.99' }, () => 'lost-1');
     expect(h.createOrderRefund).toHaveBeenCalledOnce();
     expect(errorSpy.mock.calls[1]?.[0]).toBe('error(internal): Network error calling /api/orders/order-1/refunds: TypeError: fetch failed');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.internal);
@@ -99,7 +99,7 @@ describe('order refund command', () => {
   it('names the request key in the error envelope with --json and prints nothing before it', async () => {
     const h = harness(true);
     h.createOrderRefund.mockResolvedValueOnce(err(internal('Network error calling /api/orders/order-1/refunds: TypeError: fetch failed')));
-    await h.refund({ yes: true }, () => 'lost-2');
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'lost-2' });
     expect(errorSpy).not.toHaveBeenCalled();
     expect(printed()).toEqual({ ok: false, error: { code: 'internal', message: 'Network error calling /api/orders/order-1/refunds: TypeError: fetch failed', details: { requestKey: 'lost-2' } } });
   });
@@ -132,6 +132,30 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
   });
 
+  it('requires --request-key with --json before any request and keeps generating one for a person at the terminal', async () => {
+    const h = harness(true);
+    await h.refund({ yes: true, amount: '5' });
+    expect(h.orderRefundPreview).not.toHaveBeenCalled();
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
+    expect(printed()).toEqual({
+      ok: false, error: { code: 'validation', message: 'With --json, pass your own --request-key and keep it, so a refund whose answer was lost can be repeated without a second refund' },
+    });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    const human = harness();
+    await human.refund({ yes: true, amount: '5' }, () => 'made-1');
+    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500 });
+    expect(errorSpy).toHaveBeenCalledWith('request key: made-1 (after a network error repeat with --request-key made-1; the same key never refunds twice)');
+  });
+
+  it('refuses a full refund with --yes but without --remainder, shows the preview and names the flag to add, never confirming the fresh remainder', async () => {
+    const h = harness();
+    await h.refund({ yes: true, requestKey: 'full-2' });
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --remainder 30.99 to confirm');
+    expect(String(errorSpy.mock.calls[1]?.[0])).toContain('paid 40.99 PLN, refunded 10.00 PLN, remaining 30.99 PLN');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+  });
+
   it('refuses --remainder together with --amount before any request', async () => {
     const h = harness();
     await h.refund({ amount: '5', remainder: '30.99', yes: true });
@@ -148,13 +172,13 @@ describe('order refund command', () => {
 
   it('prints one envelope with --json and maps a server refusal to its exit code', async () => {
     const h = harness(true);
-    await h.refund({ yes: true, requestKey: 'json-1' });
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'json-1' });
     expect(printed()).toEqual({ ok: true, data: { refund: refundView(), created: true, requestKey: 'json-1' } });
     logSpy.mockClear();
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'Another refund of this order is still waiting to reach the payment provider')));
-    await h.refund({ yes: true });
+    await h.refund({ yes: true, amount: '5', requestKey: 'json-2' });
     expect(printed()).toEqual({
-      ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider', details: { requestKey: expect.stringMatching(/^cli-/) } },
+      ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider', details: { requestKey: 'json-2' } },
     });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
@@ -162,7 +186,7 @@ describe('order refund command', () => {
   it('says when the request key was already used for this refund', async () => {
     const h = harness();
     h.createOrderRefund.mockResolvedValueOnce(ok({ refund: refundView({ status: 'succeeded' }), created: false }));
-    await h.refund({ yes: true, requestKey: 'retry-7' });
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'retry-7' });
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('(already requested with this request key)');
   });
 

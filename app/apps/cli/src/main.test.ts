@@ -2379,7 +2379,7 @@ describe('staff refund CLI', () => {
   });
 
   it('leaves the full-refund defaults to the server and refuses without --yes', async () => {
-    await run('--json', 'orders', 'refund', 'order-number');
+    await run('--json', 'orders', 'refund', 'order-number', '--request-key', 'auto-1');
     expect(h.createOrderRefund).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; repeat the command with --yes --remainder 40.99 to confirm' } });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);

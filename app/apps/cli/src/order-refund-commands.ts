@@ -87,11 +87,11 @@ const refundRequest = (
   }
   const amount = options.amount === undefined ? null : minorUnitsFromDecimal(options.amount, preview.currency);
   if (amount !== null && !amount.ok) return amount;
-  const remainder = options.remainder === undefined ? ok(preview.remainderCents) : minorUnitsFromDecimal(options.remainder, preview.currency);
-  if (!remainder.ok) return remainder;
+  const remainder = options.remainder === undefined ? null : minorUnitsFromDecimal(options.remainder, preview.currency);
+  if (remainder !== null && !remainder.ok) return remainder;
   return ok({
     requestKey: options.requestKey ?? newRequestKey(),
-    ...(amount !== null ? { amountCents: amount.value } : remainder.value > 0 ? { expectedAmountCents: remainder.value } : {}),
+    ...(amount !== null ? { amountCents: amount.value } : remainder !== null && remainder.value > 0 ? { expectedAmountCents: remainder.value } : {}),
     ...(options.reason === undefined ? {} : { reason: options.reason }),
     ...(options.restock ? {} : { restock: false }),
     ...(options.keepOnPackingList === true ? { removeFromPackingList: false } : {}),
@@ -106,13 +106,19 @@ export const runOrderRefund = async (
 ): Promise<void> => {
   const options = refundOptionsSchema.safeParse(raw);
   if (!options.success) { emit(err(validation('Invalid order refund options', options.error.flatten())), ctx.json, () => ''); return; }
+  if (ctx.json && options.data.requestKey === undefined) {
+    emit(err(validation('With --json, pass your own --request-key and keep it, so a refund whose answer was lost can be repeated without a second refund')), ctx.json, () => '');
+    return;
+  }
   const preview = await ctx.api.orderRefundPreview({ orderId });
   if (!preview.ok) { emit(preview, ctx.json, () => ''); return; }
   const request = refundRequest(options.data, preview.value, newRequestKey);
   if (!request.ok) { emit(request, ctx.json, () => ''); return; }
-  if (options.data.yes !== true) {
-    const amount = formatMinorUnits(request.value.amountCents ?? preview.value.remainderCents, preview.value.currency);
-    const confirm = request.value.amountCents === undefined ? `--yes --remainder ${amount.replace(/ \S+$/, '')}` : '--yes';
+  const fullWithoutRemainder = request.value.amountCents === undefined && options.data.remainder === undefined;
+  if (options.data.yes !== true || fullWithoutRemainder) {
+    const amount = formatMinorUnits(request.value.amountCents ?? request.value.expectedAmountCents ?? preview.value.remainderCents, preview.value.currency);
+    const remainderFlag = `--remainder ${formatMinorUnits(preview.value.remainderCents, preview.value.currency).replace(/ \S+$/, '')}`;
+    const confirm = [...(options.data.yes === true ? [] : ['--yes']), ...(fullWithoutRemainder ? [remainderFlag] : [])].join(' ');
     emit(err(validation(`Refunding ${amount} of order ${orderId} cannot be undone; repeat the command with ${confirm} to confirm`, { preview: preview.value })), ctx.json, () => '');
     if (!ctx.json) console.error(refundPreviewLines(preview.value));
     return;
@@ -153,11 +159,11 @@ export const registerOrderRefundCommands = (
     .command('refund <orderId>')
     .description('Refund a paid order through the payment provider: the whole remainder, or part of it with --amount')
     .option('--amount <decimal>', 'refund only this amount in the order currency, e.g. 12.50; omit to refund the whole remainder')
-    .option('--remainder <decimal>', 'with --yes, the remainder a full refund was confirmed for; the refund is refused when the remainder changed since')
+    .option('--remainder <decimal>', 'required for a full refund: the remainder you confirm, as the preview shows it; the refund is refused when the remainder changed since')
     .option('--reason <text>', 'staff-only note kept with the refund, at most 500 characters; never sent to the buyer or the provider')
     .option('--no-restock', 'do not return the goods to stock with a full refund')
     .option('--keep-on-packing-list', 'keep the order on the packing list after a full refund; needs --no-restock')
-    .option('--request-key <key>', 'repeat a refund request safely: the same key never refunds twice')
+    .option('--request-key <key>', 'repeat a refund request safely: the same key never refunds twice; required with --json')
     .option('--yes', 'confirm the refund; it cannot be undone')
     .action(withContext((ctx, orderId, raw) => runOrderRefund(ctx, orderId, raw)));
   orders

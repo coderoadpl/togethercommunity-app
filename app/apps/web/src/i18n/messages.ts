@@ -455,7 +455,12 @@ export interface Messages {
     twoFactorCodeLabel: string;
     twoFactorVerifying: string;
     twoFactorVerifyTotp: string;
+    twoFactorInvalidCode: string;
     twoFactorUseBackupCode: string;
+    twoFactorBackupIntro: string;
+    twoFactorBackupCodeLabel: string;
+    twoFactorVerifyBackupCode: string;
+    twoFactorUseAppCode: string;
     twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;
@@ -464,6 +469,7 @@ export interface Messages {
     magicLinkExpiredOnStep: string;
     checkInboxTitle: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
+    magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
     magicLinkResendCooldown: (params: { seconds: number }) => string;
     magicLinkResent: string;

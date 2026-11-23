@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import {
   DEFAULT_LANGUAGE,
+  MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   magicLink as renderMagicLink,
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
@@ -93,8 +94,6 @@ export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset
 export const BETTER_AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/send-verification-email';
 
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
-
-export const MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const MAGIC_LINK_CONTEXT_MAX_ENTRIES = 512;
 

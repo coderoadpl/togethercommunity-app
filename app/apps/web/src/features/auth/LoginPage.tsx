@@ -14,13 +14,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
-import type { SignInMethod } from '#core/domain/index.js';
+import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type SignInMethod } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { errorCodeOf, localizeError, providerCodeOf, useLanguage, useTranslations } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
@@ -53,8 +53,13 @@ import { AuthShell } from './AuthShell.js';
 const IDENTITY_ID = 'login-identity';
 const EMAIL_ERROR_ID = 'login-email-error';
 const EMAIL_HELPER_ID = 'login-email-helper';
+const TWO_FACTOR_ERROR_ID = 'two-factor-error';
+const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
+const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
+
+type TwoFactorMode = 'app' | 'backup';
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
@@ -82,6 +87,11 @@ const ChevronIcon = () => (
     <path d="M9.29 6.71a1 1 0 0 0 0 1.41L13.17 12l-3.88 3.88a1 1 0 1 0 1.42 1.41l4.58-4.58a1 1 0 0 0 0-1.42L10.71 6.71a1 1 0 0 0-1.42 0Z" />
   </SvgIcon>
 );
+
+const isInvalidTwoFactorCode = (error: unknown): boolean => {
+  const providerCode = providerCodeOf(error);
+  return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
+};
 
 const initialsOf = (email: string): string =>
   (email.match(/[a-z0-9]/giu)?.slice(0, 2).join('') ?? '?').toUpperCase();
@@ -166,7 +176,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     () => new URLSearchParams(window.location.search).get('twoFactor') === 'required',
   );
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
+  const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -176,6 +188,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const platformSurface = usesPlatformAuthSurface(hostname);
   const tenantName = publicOffer.data?.tenant.name ?? null;
   const tenantNamePending = resolveTenantOffer && publicOffer.isPending;
+
+  useEffect(() => {
+    if (requestedMagicEmail !== '') magicLinkSentTitleRef.current?.focus();
+  }, [requestedMagicEmail]);
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -188,11 +204,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     onSuccess: (_, variables) => {
       setPasswordKnownFor(variables.email);
       setResolveFailure(null);
-      setMethod(!magicLinkExpired ? 'password' : 'magic-link');
+      setMethod('magic-link');
     },
     onError: (error, variables) => {
       if (passwordKnownFor === variables.email && !magicLinkExpired) {
-        setMethod('password');
+        setMethod('magic-link');
         return;
       }
       setResolveFailure(error);
@@ -248,13 +264,19 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     queryClient.clear();
     await navigate({ href: postLoginTarget });
   };
+  const selectTwoFactorCode = () => {
+    twoFactorCodeRef.current?.focus();
+    twoFactorCodeRef.current?.select();
+  };
   const verifyTotp = useMutation({
     ...actions.verifyTotp,
     onSuccess: completeTwoFactor,
+    onError: selectTwoFactorCode,
   });
   const verifyBackupCode = useMutation({
     ...actions.verifyBackupCode,
     onSuccess: completeTwoFactor,
+    onError: selectTwoFactorCode,
   });
 
   const requestMagicLink = useMutation({
@@ -333,12 +355,28 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const submitTwoFactor = (event: FormEvent) => {
     event.preventDefault();
-    verifyTotp.mutate({ code: twoFactorCode.trim() });
+    const code = twoFactorCode.trim();
+    if (code.length === 0 || verifyTotp.isPending || verifyBackupCode.isPending) return;
+    if (twoFactorMode === 'app') {
+      verifyBackupCode.reset();
+      verifyTotp.mutate({ code });
+    } else {
+      verifyTotp.reset();
+      verifyBackupCode.mutate({ code });
+    }
+  };
+
+  const switchTwoFactorMode = (next: TwoFactorMode) => {
+    verifyTotp.reset();
+    verifyBackupCode.reset();
+    setTwoFactorCode('');
+    setTwoFactorMode(next);
   };
 
   const cancelTwoFactor = () => {
     setTwoFactorRequired(false);
     setTwoFactorCode('');
+    setTwoFactorMode('app');
     verifyTotp.reset();
     verifyBackupCode.reset();
     editIdentifier();
@@ -449,33 +487,34 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return shell(
       <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
         <Box>
-          <AuthTitle variant="h1">{t.auth.checkInboxTitle}</AuthTitle>
+          {identityChip}
+          <AuthTitle variant="h1" ref={magicLinkSentTitleRef} tabIndex={-1}>
+            {t.auth.checkInboxTitle}
+          </AuthTitle>
           <AuthLead component="p">
             {t.auth.magicLinkRequestedBody({ email: requestedMagicEmail })}
           </AuthLead>
+          <AuthHelp component="p" sx={{ mt: '0.5rem' }} data-testid="magic-link-sent-hint">
+            {t.auth.magicLinkSentHint({ minutes: MAGIC_LINK_VALID_MINUTES })}
+          </AuthHelp>
         </Box>
         {magicLinkResent ? (
           <FinePrint variant="caption" component="p" role="status">
             {t.auth.magicLinkResent}
           </FinePrint>
         ) : null}
-        <FinePrint variant="caption" component="p">
-          <MuiLink
-            component="button"
-            type="button"
-            data-testid="resend-magic-link"
-            color={resendCooldown > 0 ? 'text.disabled' : undefined}
-            disabled={resendCooldown > 0 || requestMagicLink.isPending}
-            onClick={resendMagicLink}
-          >
-            {resendCooldown > 0
-              ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
-              : t.auth.magicLinkResend}
-          </MuiLink>
-        </FinePrint>
-        <FinePrint variant="caption" component="p">
-          {changeIdentifierLink(t.auth.changeIdentifier)}
-        </FinePrint>
+        <Button
+          type="button"
+          variant="outlined"
+          fullWidth
+          data-testid="resend-magic-link"
+          disabled={resendCooldown > 0 || requestMagicLink.isPending}
+          onClick={resendMagicLink}
+        >
+          {resendCooldown > 0
+            ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
+            : t.auth.magicLinkResend}
+        </Button>
         {requestMagicLink.isError ? (
           <Alert severity="error">{errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}</Alert>
         ) : null}
@@ -501,54 +540,66 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   }
 
   if (twoFactorRequired) {
+    const backupMode = twoFactorMode === 'backup';
+    const activeVerification = backupMode ? verifyBackupCode : verifyTotp;
+    const twoFactorError = activeVerification.error;
+    const twoFactorCodeInvalid = isInvalidTwoFactorCode(twoFactorError);
+    const verifying = verifyTotp.isPending || verifyBackupCode.isPending;
     return shell(
       <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
         <Box>
           <AuthTitle variant="h1">{t.auth.twoFactorTitle}</AuthTitle>
-          <AuthLead component="p">{t.auth.twoFactorIntro}</AuthLead>
+          <AuthLead component="p">{backupMode ? t.auth.twoFactorBackupIntro : t.auth.twoFactorIntro}</AuthLead>
         </Box>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="two-factor-code">{t.auth.twoFactorCodeLabel}</FormLabel>
+        <FormControl fullWidth error={twoFactorCodeInvalid}>
+          <FormLabel htmlFor="two-factor-code">
+            {backupMode ? t.auth.twoFactorBackupCodeLabel : t.auth.twoFactorCodeLabel}
+          </FormLabel>
           <AuthInput
+            key={twoFactorMode}
             id="two-factor-code"
             value={twoFactorCode}
             onChange={(event) => setTwoFactorCode(event.target.value)}
-            autoComplete="one-time-code"
+            autoComplete={backupMode ? 'off' : 'one-time-code'}
             autoFocus
             inputRef={twoFactorCodeRef}
-            inputProps={{ 'data-testid': 'two-factor-code', autoCapitalize: 'off', spellCheck: false }}
+            {...(twoFactorError === null ? {} : { 'aria-describedby': TWO_FACTOR_ERROR_ID })}
+            inputProps={{
+              'data-testid': 'two-factor-code',
+              inputMode: backupMode ? 'text' : 'numeric',
+              autoCapitalize: 'off',
+              spellCheck: false,
+            }}
             required
           />
         </FormControl>
+        {twoFactorError === null ? null : (
+          <Alert severity="error" id={TWO_FACTOR_ERROR_ID} data-testid="two-factor-error">
+            {twoFactorCodeInvalid ? t.auth.twoFactorInvalidCode : localizeError(twoFactorError, t)}
+          </Alert>
+        )}
         <Button
           type="submit"
           variant="contained"
           fullWidth
-          disabled={verifyTotp.isPending || verifyBackupCode.isPending || twoFactorCode.trim().length === 0}
-          data-testid="verify-login-totp"
+          disabled={verifying || twoFactorCode.trim().length === 0}
+          data-testid={backupMode ? 'verify-login-backup-code' : 'verify-login-totp'}
         >
-          {verifyTotp.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorVerifyTotp}
+          {verifying
+            ? t.auth.twoFactorVerifying
+            : backupMode ? t.auth.twoFactorVerifyBackupCode : t.auth.twoFactorVerifyTotp}
         </Button>
         <Button
           type="button"
           variant="text"
           size="small"
           sx={{ px: 0, alignSelf: 'flex-start', minHeight: 44 }}
-          disabled={verifyTotp.isPending || verifyBackupCode.isPending}
-          data-testid="verify-login-backup-code"
-          onClick={() => {
-            const code = twoFactorCode.trim();
-            if (code.length === 0) {
-              twoFactorCodeRef.current?.focus();
-              return;
-            }
-            verifyBackupCode.mutate({ code });
-          }}
+          disabled={verifying}
+          data-testid={backupMode ? 'two-factor-use-app' : 'two-factor-use-backup'}
+          onClick={() => switchTwoFactorMode(backupMode ? 'app' : 'backup')}
         >
-          {verifyBackupCode.isPending ? t.auth.twoFactorVerifying : t.auth.twoFactorUseBackupCode}
+          {backupMode ? t.auth.twoFactorUseAppCode : t.auth.twoFactorUseBackupCode}
         </Button>
-        {verifyTotp.isError ? <Alert severity="error">{localizeError(verifyTotp.error, t)}</Alert> : null}
-        {verifyBackupCode.isError ? <Alert severity="error">{localizeError(verifyBackupCode.error, t)}</Alert> : null}
         <FinePrint variant="caption" component="p">
           <MuiLink
             component="button"

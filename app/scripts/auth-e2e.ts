@@ -220,20 +220,19 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
-    const step = async (email: string): Promise<'password' | 'magic-link'> => {
+    const step = async (email: string): Promise<'uniform' | 'differs'> => {
       await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
       await continueWithIdentifier(page, email);
-      const passwordField = page.getByTestId('login-password');
-      const sendMagicLink = page.getByTestId('send-magic-link');
-      await passwordField.or(sendMagicLink).first().waitFor({ state: 'visible', timeout: 15000 });
-      return (await passwordField.isVisible()) ? 'password' : 'magic-link';
+      await page.getByTestId('send-magic-link').waitFor({ state: 'visible', timeout: 15000 });
+      await page.getByTestId('use-password').waitFor({ state: 'visible', timeout: 15000 });
+      return (await page.getByTestId('login-password').isVisible()) ? 'differs' : 'uniform';
     };
 
-    assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
-    assert(await step('student2@together.dev') === 'password', 'a passwordless member did not receive the uniform options');
-    assert(await step('nobody@together.dev') === 'password', 'an unknown address did not receive the uniform options');
+    assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'uniform', 'the acme owner did not receive the uniform options');
+    assert(await step('student2@together.dev') === 'uniform', 'a passwordless member did not receive the uniform options');
+    assert(await step('nobody@together.dev') === 'uniform', 'an unknown address did not receive the uniform options');
     assert(
-      await step('creator@together.dev') === 'password',
+      await step('creator@together.dev') === 'uniform',
       'a different tenant account did not receive the uniform options',
     );
 
@@ -343,7 +342,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
     await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
-    await page.getByTestId('login-password').waitFor({ state: 'visible', timeout: 15000 });
+    await page.getByTestId('use-password').waitFor({ state: 'visible', timeout: 15000 });
     await page.getByTestId('signin-passkey').click();
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });

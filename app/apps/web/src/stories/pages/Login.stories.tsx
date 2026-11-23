@@ -14,7 +14,8 @@ export const MethodCards: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
-    await canvas.findByTestId('login-password');
+    await canvas.findByTestId('use-password');
+    await expect(canvas.queryByTestId('login-password')).not.toBeInTheDocument();
   },
 };
 
@@ -69,8 +70,8 @@ export const PasswordOnly: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(await canvas.findByTestId('login-email'), 'creator@together.dev');
     await userEvent.click(canvas.getByTestId('login-continue'));
-    await canvas.findByTestId('login-password');
-    await expect(canvas.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
+    await userEvent.click(await canvas.findByTestId('use-password'));
+    await expect(await canvas.findByTestId('login-password')).toHaveFocus();
     await expect(canvas.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
   },
 };

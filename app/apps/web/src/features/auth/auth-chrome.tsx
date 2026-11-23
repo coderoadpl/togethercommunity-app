@@ -106,6 +106,7 @@ export const AuthTitle = styled(Typography)<{ component?: ElementType }>(({ them
   lineHeight: 1.14,
   letterSpacing: '-0.03em',
   margin: 0,
+  '&[tabindex="-1"]:focus': { outline: 'none' },
   [theme.breakpoints.up('sm')]: { fontSize: '2.5rem' },
 }));
 

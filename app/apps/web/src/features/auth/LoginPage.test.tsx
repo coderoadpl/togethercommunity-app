@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
-import type { Language } from '#core/domain/index.js';
+import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type Language } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
@@ -171,6 +171,7 @@ const continueWithEmail = async (email = 'creator@together.dev') => {
 
 const fillCredentials = async () => {
   await continueWithEmail();
+  await userEvent.click(await screen.findByTestId('use-password'));
   await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'wrong-password');
 };
 
@@ -183,7 +184,7 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await waitFor(() => expect(signIn).toHaveBeenCalledWith({ autoFill: true }, expect.anything()));
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     expect(available).toHaveBeenCalledOnce();
     expect(signIn).toHaveBeenCalledOnce();
   });
@@ -237,7 +238,7 @@ describe('LoginPage', () => {
     await renderLoginPage(false, '/login', 'acme.localhost', ['password', 'passkey', 'magic-link']);
     if (step === 'methods') {
       await continueWithEmail();
-      await screen.findByLabelText(en.auth.passwordLabel);
+      await screen.findByTestId('use-password');
     }
     const content = screen.getByTestId('sign-in-content');
     const noticeSlot = screen.getByTestId('sign-in-notice-slot');
@@ -373,6 +374,7 @@ describe('LoginPage', () => {
     );
 
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
@@ -395,6 +397,7 @@ describe('LoginPage', () => {
       '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1%23wiring',
     );
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
 
@@ -555,6 +558,7 @@ describe('LoginPage', () => {
     );
     await continueWithEmail();
 
+    await userEvent.click(await screen.findByTestId('use-password'));
     expect(await screen.findByTestId('forgot-password')).toHaveAttribute(
       'href',
       '/forgot-password?email=creator%40together.dev&returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1',
@@ -596,6 +600,7 @@ describe('LoginPage', () => {
   it('carries the entered email into the editable password-reset form', async () => {
     await renderLoginPage();
     await continueWithEmail('member+login@example.com');
+    await userEvent.click(await screen.findByTestId('use-password'));
     await userEvent.click(await screen.findByTestId('forgot-password'));
     expect(await screen.findByTestId('forgot-password-email')).toHaveValue('member+login@example.com');
     await userEvent.clear(screen.getByTestId('forgot-password-email'));
@@ -603,9 +608,18 @@ describe('LoginPage', () => {
     expect(screen.getByTestId('forgot-password-email')).toHaveValue('another@example.com');
   });
 
-  it('opens the password step for an account that has a password', async () => {
+  it('lands on the method step with no panel open and opens the password panel on its card', async () => {
     await renderLoginPage();
     await continueWithEmail();
+
+    const passwordCard = await screen.findByRole('button', { name: new RegExp(en.auth.methodPasswordTitle, 'u') });
+    expect(passwordCard).toBe(screen.getByTestId('use-password'));
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.activeElement?.getAttribute('type')).not.toBe('password');
+
+    await userEvent.click(passwordCard);
 
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveFocus();
     const identifier = screen.getByTestId('login-identity-email');
@@ -645,8 +659,10 @@ describe('LoginPage', () => {
   it('leaves the expanded password card head inert instead of an empty button', async () => {
     await renderLoginPage();
     await continueWithEmail();
+    await userEvent.click(await screen.findByTestId('use-password'));
+    await screen.findByLabelText(en.auth.passwordLabel);
 
-    const head = await screen.findByTestId('use-password');
+    const head = screen.getByTestId('use-password');
     expect(head).not.toHaveAttribute('role');
     expect(head).not.toHaveAttribute('tabindex');
     expect(
@@ -662,7 +678,8 @@ describe('LoginPage', () => {
   ])('keeps every method available regardless of a legacy lookup response: %s', async (...methods) => {
     await renderLoginPage(false, '/login', undefined, methods);
     await continueWithEmail('nobody@example.com');
-    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeEnabled();
+    expect(screen.queryByTestId('login-password')).not.toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeEnabled();
     expect(screen.getByTestId('signin-passkey')).not.toHaveAttribute('aria-disabled');
     expect(screen.getByTestId('use-password')).not.toHaveAttribute('aria-disabled');
@@ -671,11 +688,33 @@ describe('LoginPage', () => {
   it.each([
     { language: 'en', t: en },
     { language: 'pl', t: pl },
-  ] as const)('offers uniform methods without account-specific explanations in $language', async ({ language }) => {
-    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
-    await userEvent.type(screen.getByTestId('login-email'), 'learner@together.dev');
-    await userEvent.click(screen.getByTestId('login-continue'));
-    expect(await screen.findByTestId('login-password')).toBeInTheDocument();
+  ] as const)('shows the same method step for a known and an unknown address in $language', async ({ language }) => {
+    const methodStepFor = async (email: string, methods: readonly string[]) => {
+      const view = await renderLoginPage(false, '/login', undefined, methods, [], anonymousMe(), null, language);
+      await userEvent.clear(screen.getByTestId('login-email'));
+      await userEvent.type(screen.getByTestId('login-email'), email);
+      await userEvent.click(screen.getByTestId('login-continue'));
+      await screen.findByTestId('use-password');
+      const content = screen.getByTestId('sign-in-content');
+      const layout = [...content.querySelectorAll('*')].map((element) => [
+        element.tagName,
+        element.getAttribute('data-testid'),
+        element.getAttribute('type'),
+        element.getAttribute('disabled'),
+        element.getAttribute('aria-expanded'),
+        element.children.length === 0 ? (element.textContent ?? '').replaceAll(email, '<email>') : null,
+      ]);
+      const focused = document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName;
+      view.unmount();
+      return { layout, focused };
+    };
+
+    const known = await methodStepFor('creator@together.dev', ['password', 'passkey', 'magic-link']);
+    window.sessionStorage.clear();
+    const unknown = await methodStepFor('crow.unknown@example.com', ['magic-link']);
+
+    expect(unknown).toEqual(known);
+    expect(known.layout.some(([, testId]) => testId === 'login-password')).toBe(false);
   });
 
   it('offers password when reported, with the link card first', async () => {
@@ -689,7 +728,7 @@ describe('LoginPage', () => {
       expect.stringContaining(en.auth.methodPasskeyTitle),
     ]);
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.queryByLabelText(en.auth.passwordLabel)).not.toBeInTheDocument();
     expect(screen.getByTestId('send-magic-link')).toBeInTheDocument();
   });
 
@@ -722,7 +761,7 @@ describe('LoginPage', () => {
   it('remembers the last identifier for the next visit in this tab only', async () => {
     const first = await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     first.unmount();
 
     expect(window.localStorage.getItem('together-login-identifier')).toBeNull();
@@ -809,27 +848,27 @@ describe('LoginPage', () => {
 
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
     failSignInMethods();
 
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
   it('does not carry a known password method over to another address', async () => {
     await renderLoginPage();
     await continueWithEmail();
-    await screen.findByLabelText(en.auth.passwordLabel);
+    await screen.findByTestId('use-password');
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
     failSignInMethods();
@@ -903,7 +942,7 @@ describe('LoginPage', () => {
 
       await continueWithEmail();
 
-      expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+      expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     } finally {
       allowSiteData();
     }
@@ -1139,8 +1178,9 @@ describe('LoginPage', () => {
     await renderLoginPage();
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
-    await userEvent.type(await screen.findByLabelText(en.auth.twoFactorCodeLabel), 'backup-once');
-    await userEvent.click(screen.getByTestId('verify-login-backup-code'));
+    await userEvent.click(await screen.findByTestId('two-factor-use-backup'));
+    await userEvent.type(screen.getByLabelText(en.auth.twoFactorBackupCodeLabel), 'backup-once');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.twoFactorVerifyBackupCode }));
 
     await waitFor(() => expect(submitted).toEqual({ code: 'backup-once' }));
   });
@@ -1167,30 +1207,157 @@ describe('LoginPage', () => {
     expect(code).toHaveFocus();
     expect(code).toHaveAttribute('autocapitalize', 'off');
     expect(code).toHaveAttribute('spellcheck', 'false');
-    expect(code).not.toHaveAttribute('inputmode');
-    expect(screen.getByTestId('verify-login-backup-code')).toBeEnabled();
+    expect(code).toHaveAttribute('inputmode', 'numeric');
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveAccessibleName(en.auth.twoFactorCodeLabel);
+    expect(screen.getByTestId('two-factor-use-backup')).toBeEnabled();
+    expect(screen.queryByTestId('verify-login-backup-code')).not.toBeInTheDocument();
     expect(screen.getByTestId('verify-login-totp')).toBeDisabled();
     expect(screen.queryByText(en.auth.registerPrompt)).not.toBeInTheDocument();
     expect(screen.queryByText(en.auth.demoAccount)).not.toBeInTheDocument();
   });
 
-  it('returns an empty backup-code click to the field instead of the API', async () => {
-    let backupCalls = 0;
-    await reachTwoFactor();
+  const countSecondFactorCalls = () => {
+    const calls: string[] = [];
     server.use(
       http.post('*', ({ request }) => {
-        if (!new URL(request.url).pathname.endsWith('/two-factor/verify-backup-code')) {
-          return undefined;
-        }
-        backupCalls += 1;
-        return HttpResponse.json({ token: 'session-token' });
+        const path = new URL(request.url).pathname;
+        if (path.endsWith('/two-factor/verify-totp')) calls.push('totp');
+        else if (path.endsWith('/two-factor/verify-backup-code')) calls.push('backup');
+        else return undefined;
+        return HttpResponse.json({ code: 'INVALID_CODE', message: 'provider text' }, { status: 401 });
+      }),
+    );
+    return calls;
+  };
+
+  it('switches to the backup-code form without submitting anything', async () => {
+    await reachTwoFactor();
+    const calls = countSecondFactorCalls();
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456');
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+
+    expect(calls).toEqual([]);
+    const code = screen.getByTestId('two-factor-code');
+    expect(code).toHaveAccessibleName(en.auth.twoFactorBackupCodeLabel);
+    expect(code).toHaveAttribute('inputmode', 'text');
+    expect(code).not.toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveValue('');
+    expect(code).toHaveFocus();
+    expect(screen.getByText(en.auth.twoFactorBackupIntro)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.auth.twoFactorVerifyBackupCode })).toBeDisabled();
+    expect(screen.queryByTestId('verify-login-totp')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: en.auth.twoFactorUseAppCode }));
+
+    expect(calls).toEqual([]);
+    expect(screen.getByTestId('two-factor-code')).toHaveAccessibleName(en.auth.twoFactorCodeLabel);
+    expect(screen.getByTestId('two-factor-code')).toHaveAttribute('inputmode', 'numeric');
+    expect(screen.getByTestId('verify-login-totp')).toHaveTextContent(en.auth.twoFactorVerifyTotp);
+  });
+
+  it('submits the active mode on Enter', async () => {
+    await reachTwoFactor();
+    const calls = countSecondFactorCalls();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    await waitFor(() => expect(calls).toEqual(['totp']));
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'backup-once{Enter}');
+    await waitFor(() => expect(calls).toEqual(['totp', 'backup']));
+  });
+
+  it('shows one alert for the active mode and clears it on a mode change', async () => {
+    await reachTwoFactor();
+    countSecondFactorCalls();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    expect(await screen.findAllByTestId('two-factor-error')).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'backup-once{Enter}');
+    expect(await screen.findAllByTestId('two-factor-error')).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('two-factor-use-app'));
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
+  });
+
+  it('drops the previous failure while a new attempt runs', async () => {
+    await reachTwoFactor();
+    countSecondFactorCalls();
+    await userEvent.type(screen.getByTestId('two-factor-code'), '123456{Enter}');
+    await screen.findByTestId('two-factor-error');
+    server.use(
+      http.post('*', async ({ request }) => {
+        if (!new URL(request.url).pathname.endsWith('/two-factor/verify-totp')) return undefined;
+        await delay('infinite');
+        return HttpResponse.json({});
       }),
     );
 
+    await userEvent.type(screen.getByTestId('two-factor-code'), '{Enter}');
+
+    expect(await screen.findByRole('button', { name: en.auth.twoFactorVerifying })).toBeDisabled();
+    expect(screen.queryByTestId('two-factor-error')).not.toBeInTheDocument();
+  });
+
+  const answerSecondFactor = (path: string, code: string) =>
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith(path)
+          ? HttpResponse.json({ code, message: 'provider text' }, { status: 401 })
+          : undefined,
+      ),
+    );
+
+  it('names a wrong authenticator code on the field and selects it for retyping', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-totp', 'INVALID_CODE');
+
+    const code = screen.getByTestId('two-factor-code');
+    await userEvent.type(code, '654321');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    const alert = await screen.findByTestId('two-factor-error');
+    expect(alert).toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(alert).not.toHaveTextContent(en.errors.messageUnauthorized);
+    expect(alert).not.toHaveTextContent('654321');
+    expect(code).toHaveAttribute('aria-invalid', 'true');
+    expect(code).toHaveAccessibleDescription(en.auth.twoFactorInvalidCode);
+    expect(code).toHaveFocus();
+    expect(code).toHaveProperty('selectionStart', 0);
+    expect(code).toHaveProperty('selectionEnd', '654321'.length);
+  });
+
+  it('names a wrong backup code with the same invalid-code copy', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-backup-code', 'INVALID_BACKUP_CODE');
+
+    await userEvent.click(screen.getByTestId('two-factor-use-backup'));
+    await userEvent.type(screen.getByTestId('two-factor-code'), 'abcde-fghij');
     await userEvent.click(screen.getByTestId('verify-login-backup-code'));
 
-    expect(backupCalls).toBe(0);
-    expect(screen.getByTestId('two-factor-code')).toHaveFocus();
+    expect(await screen.findByTestId('two-factor-error')).toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(screen.getByTestId('two-factor-error')).not.toHaveTextContent('abcde-fghij');
+  });
+
+  it('keeps the session-ended copy for an expired challenge, not a wrong code', async () => {
+    await reachTwoFactor();
+    answerSecondFactor('/two-factor/verify-totp', 'INVALID_TWO_FACTOR_COOKIE');
+
+    const code = screen.getByTestId('two-factor-code');
+    await userEvent.type(code, '123456');
+    await userEvent.click(screen.getByTestId('verify-login-totp'));
+
+    const alert = await screen.findByTestId('two-factor-error');
+    expect(alert).toHaveTextContent(en.errors.messageUnauthorized);
+    expect(alert).not.toHaveTextContent(en.auth.twoFactorInvalidCode);
+    expect(code).toHaveAttribute('aria-invalid', 'false');
+    expect(code).toHaveAccessibleDescription(en.errors.messageUnauthorized);
   });
 
   it('cancels the challenge back to the identifier without the twoFactor query', async () => {
@@ -1234,6 +1401,34 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('magic-link-sent')).not.toBeInTheDocument();
   });
 
+  it.each([
+    { language: 'en', t: en },
+    { language: 'pl', t: pl },
+  ] as const)('confirms the sent link with the address, validity and a full-width resend in $language', async ({ language, t }) => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+
+    await renderLoginPage(false, '/login', undefined, ['magic-link'], [], anonymousMe(), null, language);
+    await userEvent.type(screen.getByTestId('login-email'), 'member@example.com');
+    await userEvent.click(screen.getByTestId('login-continue'));
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+
+    const sent = await screen.findByTestId('magic-link-sent');
+    const title = within(sent).getByRole('heading', { level: 1, name: t.auth.checkInboxTitle });
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title).toHaveAttribute('tabindex', '-1');
+    expect(within(sent).getByTestId('login-identity')).toHaveTextContent('member@example.com');
+    expect(within(sent).getAllByTestId('login-change-email')).toHaveLength(1);
+    expect(within(sent).getByTestId('magic-link-sent-hint')).toHaveTextContent(
+      t.auth.magicLinkSentHint({ minutes: MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60 }),
+    );
+    expect(within(sent).getByTestId('magic-link-sent-hint')).toHaveTextContent(
+      String(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60),
+    );
+    const resend = within(sent).getByRole('button', { name: t.auth.magicLinkResend });
+    expect(resend).toHaveClass('MuiButton-outlined');
+    expect(resend).toHaveClass('MuiButton-fullWidth');
+  });
+
   it('retries the sign-in method lookup from the unavailable notice', async () => {
     await renderLoginPage();
     failSignInMethods();
@@ -1243,7 +1438,7 @@ describe('LoginPage', () => {
     stubSignInMethods(['password']);
     await userEvent.click(screen.getByTestId('sign-in-methods-retry'));
 
-    expect(await screen.findByLabelText(en.auth.passwordLabel)).toBeInTheDocument();
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-methods-unavailable')).not.toBeInTheDocument();
   });
 
@@ -1264,6 +1459,7 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByTestId('login-change-email'));
     await userEvent.click(await screen.findByRole('button', { name: en.auth.identifierContinue }));
 
+    await userEvent.click(await screen.findByTestId('use-password'));
     expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveValue('');
     expect(screen.queryByText(en.auth.invalidCredentials)).not.toBeInTheDocument();
   });

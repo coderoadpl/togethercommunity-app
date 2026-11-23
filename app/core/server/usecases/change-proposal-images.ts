@@ -633,6 +633,7 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     | 'listTenantIdsToSweep'
     | 'listTenantIdsWithUploadsBefore'
     | 'listUploadsBefore'
+    | 'markUploadDeleted'
     | 'deleteUpload'
     | 'markUploadAttempted'
     | 'listTenantIdsWithPublicationsBefore'
@@ -650,8 +651,18 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
 
 const before = (now: string, ageMs: number): string => new Date(Date.parse(now) - ageMs).toISOString();
 
-const sweepUploads = async (tenantId: string, createdBefore: string, budget: SweepBudget, deps: QuarantinedImageSweepDeps): Promise<number> => {
-  const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, createdBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
+/**
+ * A write accepted before its presigned URL expired may still be streaming at the first delete, so the record stays and
+ * the candidate is deleted once more `uploadSecondDeleteAfterMs` later, on the assumption that the storage finishes or
+ * abandons a write it accepted by then.
+ */
+const sweepUploads = async (
+  tenantId: string,
+  due: { createdBefore: string; deletedBefore: string },
+  budget: SweepBudget,
+  deps: QuarantinedImageSweepDeps,
+): Promise<number> => {
+  const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, due.createdBefore, due.deletedBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
   if (uploads.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
@@ -671,7 +682,11 @@ const sweepUploads = async (tenantId: string, createdBefore: string, budget: Swe
       await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso());
       continue;
     }
-    await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
+    if (upload.deletedOnce) {
+      await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
+      continue;
+    }
+    await deps.quarantinedImages.markUploadDeleted(tenantId, upload.objectKey, deps.clock.nowIso());
     removed += 1;
   }
   return removed;
@@ -688,10 +703,13 @@ export const sweepQuarantinedImages = async (
   const limit = QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun;
   const tenants = new Set<string>();
   let removed = 0;
-  const uploadsBefore = before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs);
+  const uploadsDue = {
+    createdBefore: before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs),
+    deletedBefore: before(now, QUARANTINED_IMAGE_LIMITS.uploadSecondDeleteAfterMs),
+  };
   const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
   const releaseTenants = await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit);
-  const uploadTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit);
+  const uploadTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsDue.createdBefore, uploadsDue.deletedBefore, limit);
   const publicationTenants = spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit);
   const stagesFrom = (lists: ReadonlyArray<readonly string[]>): number => lists.filter((list) => list.length > 0).length;
   const releases = sweepStageBudget(budget, stagesFrom([releaseTenants, uploadTenants, publicationTenants]));
@@ -705,7 +723,7 @@ export const sweepQuarantinedImages = async (
     if (spent(uploads)) break;
     tenants.add(tenantId);
     try {
-      removed += await sweepUploads(tenantId, uploadsBefore, uploads, deps);
+      removed += await sweepUploads(tenantId, uploadsDue, uploads, deps);
     } catch (cause) {
       logImageFailure(deps, tenantId, 'expired image upload sweep failed', cause);
     }

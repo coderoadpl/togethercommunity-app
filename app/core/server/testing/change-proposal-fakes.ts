@@ -386,7 +386,10 @@ const catalogRepositoriesOver = (
 
 type FakeImagePublication = ProposalImagePublication & { tenantId: string; deleteUnresolvedAt?: string };
 
-type FakeImageUpload = QuarantinedImageUpload & { tenantId: string };
+type FakeImageUpload = QuarantinedImageUpload & { tenantId: string; firstDeletedAt?: string };
+
+const uploadDue = (createdBefore: string, deletedBefore: string) => (row: FakeImageUpload): boolean =>
+  row.firstDeletedAt === undefined ? row.createdAt < createdBefore : row.firstDeletedAt < deletedBefore;
 
 export interface FakeChangeProposalStore {
   repository: ChangeProposalRepository;
@@ -732,12 +735,17 @@ export const createQuarantinedImagesFake = (
       const found = store.imageUploads.find((row) => row.tenantId === tenantId && row.objectKey === objectKey);
       return found === undefined ? null : { apiKeyId: found.apiKeyId, objectKey: found.objectKey, createdAt: found.createdAt };
     },
-    listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
-      [...new Set(store.imageUploads.filter((row) => row.createdAt < createdBefore).map((row) => row.tenantId))].sort().slice(0, limit),
-    listUploadsBefore: async (tenantId, createdBefore, limit) => store.imageUploads
-      .filter((row) => row.tenantId === tenantId && row.createdAt < createdBefore)
+    listTenantIdsWithUploadsBefore: async (createdBefore, deletedBefore, limit) =>
+      [...new Set(store.imageUploads.filter(uploadDue(createdBefore, deletedBefore)).map((row) => row.tenantId))].sort().slice(0, limit),
+    listUploadsBefore: async (tenantId, createdBefore, deletedBefore, limit) => store.imageUploads
+      .filter((row) => row.tenantId === tenantId && uploadDue(createdBefore, deletedBefore)(row))
       .slice(0, limit)
-      .map(({ apiKeyId, objectKey, createdAt }) => ({ apiKeyId, objectKey, createdAt })),
+      .map(({ apiKeyId, objectKey, createdAt, firstDeletedAt }) => ({ apiKeyId, objectKey, createdAt, deletedOnce: firstDeletedAt !== undefined })),
+    markUploadDeleted: async (tenantId, objectKey, now) => {
+      for (const row of store.imageUploads) {
+        if (row.tenantId === tenantId && row.objectKey === objectKey) row.firstDeletedAt = now;
+      }
+    },
     deleteUpload: async (tenantId, objectKey) => {
       removeWhere(store.imageUploads, (row) => row.tenantId === tenantId && row.objectKey === objectKey);
     },

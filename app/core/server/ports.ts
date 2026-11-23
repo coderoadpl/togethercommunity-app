@@ -3262,6 +3262,8 @@ export type QuarantinedImageReleaseEnd = 'removed' | 'revived' | 'gone' | 'faile
 /** `unresolved`: the delete ended without a definite answer, so the storage may still carry it out later. */
 export type QuarantinedImageObjectRemoval = 'deleted' | 'failed' | 'unresolved';
 
+export type QuarantinedImageUploadDue = QuarantinedImageUpload & { deletedOnce: boolean };
+
 export type QuarantinedImageUploadRecord =
   | { kind: 'recorded' }
   | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap };
@@ -3319,9 +3321,15 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
   /** The recorded start of the upload to this candidate key, which names the key that may complete it; null for a live upload. */
   findUpload(tenantId: string, objectKey: string): Promise<QuarantinedImageUpload | null>;
-  /** Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. */
-  listTenantIdsWithUploadsBefore(createdBefore: string, limit: number): Promise<string[]>;
-  listUploadsBefore(tenantId: string, createdBefore: string, limit: number): Promise<QuarantinedImageUpload[]>;
+  /**
+   * Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. An upload is due
+   * for its first delete once created before `createdBefore`, and for its second once that first delete succeeded before
+   * `deletedBefore`.
+   */
+  listTenantIdsWithUploadsBefore(createdBefore: string, deletedBefore: string, limit: number): Promise<string[]>;
+  listUploadsBefore(tenantId: string, createdBefore: string, deletedBefore: string, limit: number): Promise<QuarantinedImageUploadDue[]>;
+  /** Records the first successful delete of the candidate; the record stays for the second. */
+  markUploadDeleted(tenantId: string, objectKey: string, now: string): Promise<void>;
   deleteUpload(tenantId: string, objectKey: string): Promise<void>;
   /** Records a failed removal, so the upload moves behind the others. */
   markUploadAttempted(tenantId: string, objectKey: string, now: string): Promise<void>;

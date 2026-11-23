@@ -26,6 +26,7 @@ export const QUARANTINED_IMAGE_LIMITS = {
   sweepAssetsPerTenant: 200,
   uploadsPerKey: 60,
   uploadSweepAfterMs: (IMAGE_ASSET_UPLOAD_TTL_SECONDS + 5 * 60) * 1000,
+  uploadSecondDeleteAfterMs: 10 * 60 * 1000,
   sweepUploadsPerTenant: 200,
   publicationSweepAfterMs: 10 * 60 * 1000,
   publicationWriteWindowMs: 5 * 60 * 1000,

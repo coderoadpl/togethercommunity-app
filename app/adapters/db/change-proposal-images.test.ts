@@ -539,7 +539,7 @@ describe('uploads a propose-mode key starts', () => {
     expect(await repository.recordUpload(TENANT, upload(4, NOW, OTHER_KEY_ID), countedAfter)).toEqual({ kind: 'recorded' });
   });
 
-  it('removes the candidate object of every upload past its lifetime and the margin, completed or not, and keeps younger ones', async () => {
+  it('removes the candidate object of every upload past its lifetime and the margin, completed or not, and keeps younger ones and the record until a second delete', async () => {
     const harness = endToEnd();
     await harness.proposeCover(PNG_BYTES);
     const [recorded] = await database.db.select().from(changeProposalImageUploads);
@@ -553,7 +553,15 @@ describe('uploads a propose-mode key starts', () => {
     harness.clock.now = '2026-03-01T10:21:00.000Z';
     await sweepQuarantinedImages(harness.deps);
     expect(harness.objects.keysUnder('image-asset-candidates/')).toEqual([abandoned.value.key]);
+    expect(await database.db.select({ objectKey: changeProposalImageUploads.objectKey, firstDeletedAt: changeProposalImageUploads.firstDeletedAt })
+      .from(changeProposalImageUploads).orderBy(changeProposalImageUploads.createdAt))
+      .toEqual([{ objectKey: recorded.objectKey, firstDeletedAt: '2026-03-01T10:21:00.000Z' }, { objectKey: abandoned.value.key, firstDeletedAt: null }]);
     harness.clock.now = '2026-03-01T10:37:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-asset-candidates/')).toEqual([]);
+    expect((await database.db.select().from(changeProposalImageUploads)).map((row) => row.objectKey)).toEqual([abandoned.value.key]);
+    harness.objects.objects.set(abandoned.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+    harness.clock.now = '2026-03-01T10:48:00.000Z';
     await sweepQuarantinedImages(harness.deps);
     expect(harness.objects.keysUnder('image-asset-candidates/')).toEqual([]);
     expect(await database.db.select().from(changeProposalImageUploads)).toEqual([]);
@@ -831,12 +839,12 @@ describe('the order of the image sweep', () => {
       upload(1, TENANT, '2026-03-01T09:00:00.000Z'), upload(2, TENANT, '2026-03-01T09:10:00.000Z'), upload(3, NEIGHBOUR, '2026-03-01T09:20:00.000Z'),
     ]);
     const before = '2026-03-01T09:50:00.000Z';
-    expect(await repository.listUploadsBefore(TENANT, before, 1)).toMatchObject([{ objectKey: upload(1, TENANT, NOW).objectKey }]);
-    expect(await repository.listTenantIdsWithUploadsBefore(before, 1)).toEqual([TENANT]);
+    expect(await repository.listUploadsBefore(TENANT, before, before, 1)).toMatchObject([{ objectKey: upload(1, TENANT, NOW).objectKey }]);
+    expect(await repository.listTenantIdsWithUploadsBefore(before, before, 1)).toEqual([TENANT]);
     await repository.markUploadAttempted(TENANT, upload(1, TENANT, NOW).objectKey, LATER);
-    expect(await repository.listUploadsBefore(TENANT, before, 1)).toMatchObject([{ objectKey: upload(2, TENANT, NOW).objectKey }]);
+    expect(await repository.listUploadsBefore(TENANT, before, before, 1)).toMatchObject([{ objectKey: upload(2, TENANT, NOW).objectKey }]);
     await repository.markUploadAttempted(TENANT, upload(2, TENANT, NOW).objectKey, LATER);
-    expect(await repository.listTenantIdsWithUploadsBefore(before, 1)).toEqual([NEIGHBOUR]);
+    expect(await repository.listTenantIdsWithUploadsBefore(before, before, 1)).toEqual([NEIGHBOUR]);
 
     await repository.recordPublications(TENANT, 'attempt-failing', [image(1)], '2026-03-01T09:00:00.000Z');
     await repository.recordPublications(TENANT, 'attempt-later', [image(2)], '2026-03-01T09:10:00.000Z');

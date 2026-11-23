@@ -1,6 +1,6 @@
 {
-  "hash": "a05d7e108399eb6930787199933f8e8a27ff6ea6e73ac93788db8db49d996623",
-  "shortId": "a05d7e108399",
+  "hash": "6ce36b1f480f1c950fe2caefe026aa2a41588636d3a0bfc280959a0f1314120a",
+  "shortId": "6ce36b1f480f",
   "schema": {
     "constraints": [
       {
@@ -122,6 +122,11 @@
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK (((first_deleted_at IS NULL) OR (first_deleted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_image_uploads_first_deleted_at_check",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CHECK (((group_id IS NULL) = (group_position IS NULL)))",
@@ -12248,6 +12253,59 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "first_deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_uploads"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "not_before",
             "notNull": false,
             "type": "text"
@@ -12286,51 +12344,6 @@
           }
         ],
         "name": "change_proposal_download_deletions"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "object_key",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sweep_attempted_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "change_proposal_image_uploads"
       },
       {
         "columns": [

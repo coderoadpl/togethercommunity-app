@@ -218,7 +218,12 @@ const selectionFilter = (tenantId: string, selection: QuarantinedImageRelease, n
 
 const imageWaiting = sql`coalesce(${changeProposalImages.sweepAttemptedAt}, ${changeProposalImages.createdAt})`;
 
-const uploadWaiting = sql`coalesce(${changeProposalImageUploads.sweepAttemptedAt}, ${changeProposalImageUploads.createdAt})`;
+const uploadWaiting = sql`coalesce(${changeProposalImageUploads.sweepAttemptedAt}, ${changeProposalImageUploads.firstDeletedAt}, ${changeProposalImageUploads.createdAt})`;
+
+const uploadDue = (createdBefore: string, deletedBefore: string): SQL | undefined => or(
+  and(isNull(changeProposalImageUploads.firstDeletedAt), lt(changeProposalImageUploads.createdAt, createdBefore)),
+  lt(changeProposalImageUploads.firstDeletedAt, deletedBefore),
+);
 
 const publicationWaiting = sql`coalesce(${changeProposalImagePublications.sweepAttemptedAt}, ${changeProposalImagePublications.startedAt})`;
 
@@ -331,15 +336,20 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey))).limit(1);
       return row === undefined ? null : parseUpload(row);
     },
-    listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
+    listTenantIdsWithUploadsBefore: async (createdBefore, deletedBefore, limit) =>
       (await db.select({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)
-        .where(lt(changeProposalImageUploads.createdAt, createdBefore)).groupBy(changeProposalImageUploads.tenantId)
+        .where(uploadDue(createdBefore, deletedBefore)).groupBy(changeProposalImageUploads.tenantId)
         .orderBy(sql`min(${uploadWaiting})`, asc(changeProposalImageUploads.tenantId)).limit(limit))
         .map((row) => row.tenantId),
-    listUploadsBefore: async (tenantId, createdBefore, limit) =>
+    listUploadsBefore: async (tenantId, createdBefore, deletedBefore, limit) =>
       (await db.select().from(changeProposalImageUploads)
-        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), lt(changeProposalImageUploads.createdAt, createdBefore)))
-        .orderBy(asc(uploadWaiting), asc(changeProposalImageUploads.objectKey)).limit(limit)).map(parseUpload),
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), uploadDue(createdBefore, deletedBefore)))
+        .orderBy(asc(uploadWaiting), asc(changeProposalImageUploads.objectKey)).limit(limit))
+        .map((row) => ({ ...parseUpload(row), deletedOnce: row.firstDeletedAt !== null })),
+    markUploadDeleted: async (tenantId, objectKey, now) => {
+      await db.update(changeProposalImageUploads).set({ firstDeletedAt: now, sweepAttemptedAt: null })
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
+    },
     deleteUpload: async (tenantId, objectKey) => {
       await db.delete(changeProposalImageUploads)
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));

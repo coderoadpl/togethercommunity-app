@@ -967,6 +967,24 @@ describe('releasing quarantined images', () => {
     expect(h.store.imagePublications).toEqual([]);
   });
 
+  it('deletes an upload candidate a second time after a longer bound, so a write that lands after the first delete does not stay', async () => {
+    const h = harness();
+    const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.clock.now = '2026-03-01T10:21:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.imageUploads).toHaveLength(1);
+    h.objects.objects.set(started.value.key, { bytes: PNG(1), contentType: 'image/png' });
+
+    h.clock.now = '2026-03-01T10:30:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([started.value.key]);
+    h.clock.now = '2026-03-01T10:31:01.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([]);
+    expect(h.store.imageUploads).toEqual([]);
+  });
+
   it('sweeps images never attached past the age bound and every image of a revoked key, keeping attached and young ones', async () => {
     const h = harness();
     const attached = await h.upload(PNG(1));
@@ -981,7 +999,8 @@ describe('releasing quarantined images', () => {
     h.clock.now = '2026-03-08T10:00:01.000Z';
 
     expect(await sweepQuarantinedImages(h.deps)).toEqual({ ok: true, value: { tenants: 1, removed: 6 } });
-    expect(h.store.imageUploads).toEqual([]);
+    expect(h.store.imageUploads.map((upload) => upload.firstDeletedAt)).toEqual(Array.from({ length: 4 }, () => '2026-03-08T10:00:01.000Z'));
+    expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([]);
     expect(h.store.imageRows.map((row) => [row.apiKeyId, row.digest])).toEqual([
       [KEY_ID, sha256HexOfBytes(PNG(1))],
       [KEY_ID, sha256HexOfBytes(PNG(3))],

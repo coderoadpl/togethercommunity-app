@@ -1075,10 +1075,14 @@ bytes. Before it answers, each such upload start is recorded in
 time); a key that already started 60 uploads in the last 15 minutes, the
 lifetime of the presigned `PUT`, gets `409` with `key_image_uploads` (see
 [Limits](#limits)). The minute sweep deletes the candidate object of every
-record older than 20 minutes (the lifetime and a 5-minute margin) and then the
-record, whether the upload was completed or not, so neither an upload that is
-never completed nor a second `PUT` through a still valid URL stays in the
-bucket. Only the key whose upload start is recorded for a candidate key can
+record older than 20 minutes (the lifetime and a 5-minute margin), whether the
+upload was completed or not, keeps the record with the time of that delete
+(`first_deleted_at`), deletes the candidate once more 10 minutes later and only
+then removes the record. Neither an upload that is never completed, nor a
+second `PUT` through a still valid URL, nor a `PUT` the storage accepted before
+the URL expired that finishes after the first delete stays in the bucket; the
+last rests on the storage finishing or abandoning a write it accepted within
+those 10 minutes. Only the key whose upload start is recorded for a candidate key can
 complete it: another key of the workspace, whatever its mode, and an owner
 session completing it through the live route get `404 not_found`, so a
 candidate a propose-mode key started is never published without an approval
@@ -1338,8 +1342,9 @@ table's `ACCESS EXCLUSIVE` lock is held until the migration commits), and a
 nullable `delete_unresolved_at` column with a timestamp format check to
 `change_proposal_images` and `change_proposal_image_publications` and a
 nullable `pending_since` column with the same check to
-`change_proposal_images`; the check
-reads the table once under that lock, which `0169` created moments before or
+`change_proposal_images`, and a nullable `first_deleted_at` column with the
+same check to `change_proposal_image_uploads`; each check reads its table once
+under that lock, which `0169` created moments before or
 which holds only rows of unreleased proposals. A release before it ignores these
 columns.
 

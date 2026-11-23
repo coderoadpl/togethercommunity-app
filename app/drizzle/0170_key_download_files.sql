@@ -95,6 +95,8 @@ ALTER TABLE "change_proposal_images" ADD COLUMN "pending_since" text CONSTRAINT 
 --> statement-breakpoint
 ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "sweep_attempted_at" text;
 --> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "first_deleted_at" text CONSTRAINT "change_proposal_image_uploads_first_deleted_at_check" CHECK ("first_deleted_at" IS NULL OR "first_deleted_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');
+--> statement-breakpoint
 ALTER TABLE "change_proposal_image_publications" ADD COLUMN "sweep_attempted_at" text;
 --> statement-breakpoint
 ALTER TABLE "change_proposal_image_publications" ADD COLUMN "delete_unresolved_at" text CONSTRAINT "change_proposal_image_publications_delete_unresolved_at_check" CHECK ("delete_unresolved_at" IS NULL OR "delete_unresolved_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');

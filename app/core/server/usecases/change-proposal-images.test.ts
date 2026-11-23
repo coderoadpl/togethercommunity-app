@@ -976,6 +976,44 @@ describe('the owner preview of a proposed image', () => {
   });
 
   it.each([
+    ['missing', (h: Harness, key: string) => { h.objects.objects.delete(key); }],
+    ['no longer hashing to the digest', (h: Harness, key: string) => { h.objects.objects.set(key, { bytes: PNG(9), contentType: 'image/png' }); }],
+  ])('makes an approval that reuses a live address stale, as the preview refuses it, when its public copy is %s', async (_label, damage) => {
+    const h = harness();
+    const bytes = PNG(1);
+    const cover = await h.upload(bytes);
+    const first = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    expect(await approveChangeProposal(ownerSession, { id: first }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    const again = await h.proposed('product.update', { id: 'product-live', coverUrl: cover });
+    const [published] = h.publicKeys();
+    if (published === undefined) throw new Error('missing published image');
+    damage(h, published);
+
+    expect(await getChangeProposalImage(ownerSession, { id: again, digest: sha256HexOfBytes(bytes) }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await approveChangeProposal(ownerSession, { id: again }, h.deps)).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(h.store.eventRows.at(-1)).toMatchObject({ kind: 'stale', note: expect.stringContaining(`${cover} is no longer available`) });
+    expect(liveCover(h, 'product-live')).toBe(LIVE_COVER);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
+  it('writes the verified bytes again when the public copy of a still quarantined image no longer hashes to the digest', async () => {
+    const h = harness();
+    const bytes = PNG(1);
+    const cover = await h.upload(bytes);
+    const first = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const second = await h.proposed('product.update', { id: 'product-live', coverUrl: cover });
+    expect(await approveChangeProposal(ownerSession, { id: first }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    const [published] = h.publicKeys();
+    if (published === undefined) throw new Error('missing published image');
+    h.objects.objects.set(published, { bytes: PNG(9), contentType: 'image/png' });
+
+    expect(await approveChangeProposal(ownerSession, { id: second }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.objects.objects.get(published)?.bytes).toEqual(bytes);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
+  it.each([
     ['the proposing key', keyCtx()],
     ['a direct-mode key', keyCtx(KEY_ID, TENANT, 'direct')],
     ['an admin', { identity: identity({ staffRole: 'admin', userId: 'user-admin' }) }],

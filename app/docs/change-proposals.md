@@ -1136,7 +1136,7 @@ direct-mode key set any address the live validator accepts, exactly as before.
 with `proposal:read`, the quarantined bytes of an image that the pending
 proposal `:id` attaches. When the key holds no quarantined copy of it but a
 live field of the workspace shows its address (an earlier approval published
-it, and approval accepts it as it is), the route serves the published copy
+it, and approval accepts it once its bytes still hash to the digest), the route serves the published copy
 under `image-assets/` with the same checks instead. The server reads the bytes, checks their hash again
 and answers them with the image's content type, `x-content-type-options: nosniff` and `cache-control: private,
 no-store`; the disposition is `inline` for a raster image and always
@@ -1183,7 +1183,10 @@ on the `stale` event of the item that attaches it (its group siblings carry the
 usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
-public already and needs nothing. Every storage request of an approval, of a
+public already: approval reads its public copy inside the transaction and
+checks its hash the same way, and a missing copy or bytes that no longer match
+make the proposal `stale` with the same note, as the owner preview refuses
+it. Every storage request of an approval, of a
 publication withdrawal and of the owner's image preview (the read of the
 quarantined copy, the check and the write of the public copy, a delete) gives up
 after 5 seconds without an answer, the lookup of the storage endpoint included,
@@ -1191,12 +1194,12 @@ the bound a statement of an approval has, and counts as a failed storage request
 `503 integration_unavailable` and the proposal stays `pending`, so no storage
 request holds the workspace's approval lock longer.
 
-Before the approval transaction opens, the approval asks the storage, for each
-attached image, whether its public object
-`image-assets/<workspace>/<kind>/<sha256>.<ext>` exists. An existing object
-has the same bytes, because its name is their digest: it is neither written
-nor recorded, so an approval never deletes a public object an earlier approval
-published. A storage request that fails here answers its error, and nothing is
+Before the approval transaction opens, the approval reads, for each image the
+effect sets, its public object
+`image-assets/<workspace>/<kind>/<sha256>.<ext>` and checks its hash. An object
+whose bytes hash to the digest is neither written nor recorded, so an approval
+never deletes a public object an earlier approval published; a missing object,
+or one whose bytes no longer match, is recorded and written again. A storage request that fails here answers its error, and nothing is
 recorded or changed. For every other image it commits a publication record of its attempt
 in `change_proposal_image_publications` (workspace, attempt, kind, digest,
 extension, start time). This single insert runs on its own before the
@@ -1206,10 +1209,14 @@ images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
 approval commits. A quarantined image it did not record must still have its
-public object at that moment, or the approval answers busy (a failed storage
-request answers its error); the workspace's approval lock it holds keeps the
-object there until the commit. Publishing before the commit means committed
-live state never points at an object that does not exist, also after a crash.
+public object, with bytes that hash to the digest, at that moment, or the
+approval answers busy (a failed storage request answers its error); the
+workspace's approval lock it holds, and the refusal of every address with an
+unresolved delete (below), keep the object there until the commit. Publishing
+before the commit, and checking every reused address under that lock, mean
+committed live state never points at an object that was missing or did not
+match at the commit, also after a crash; only a delete outside the application
+or a loss in the storage can remove it later.
 
 When the approval does not end `applied` (it ends `stale`, `failed` or
 expired, a write fails, a lock wait runs out, or the status change or the

@@ -305,6 +305,8 @@ export const changeProposalImageGone = (invalidInputMessage: string): AppError =
 interface PreparedImage {
   image: ProposalImageReference;
   bytes: Uint8Array;
+  /** Read from the public copy a live field already shows, so approval writes nothing for it. */
+  published: boolean;
 }
 
 export type ApprovalImages =
@@ -330,7 +332,25 @@ const changedImagesOf = (proposals: readonly ChangeProposal[]): Array<{ proposal
   return changed;
 };
 
-/** An address that is no longer quarantined is fine only when a live field already shows it, so it is public already. */
+const readVerified = async (
+  configuration: StorageConfiguration,
+  key: string,
+  image: ProposalImageReference,
+  deps: ChangeProposalImagePrepareDeps,
+): Promise<Result<Uint8Array | null, AppError>> => {
+  const read = await deps.storage.getObject({
+    url: deps.storage.objectUrl(configuration, key).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
+  }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+  if (!read.ok) return read.error.code === 'not_found' ? ok(null) : read;
+  return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
+};
+
+/**
+ * An address that is no longer quarantined is fine only when a live field already shows it and its public copy still
+ * hashes to the digest, the copy the owner preview showed.
+ */
 export const prepareApprovalImages = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
@@ -341,8 +361,8 @@ export const prepareApprovalImages = async (
   let configuration: StorageConfiguration | null = null;
   for (const { proposal, image } of changedImagesOf(proposals)) {
     const quarantined = await scope.repositories.quarantinedImages.lockForPublication(tenantId, proposal.proposedByKeyId, image);
-    if (quarantined === null) {
-      if (await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) continue;
+    const published = quarantined === null;
+    if (published && !await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) {
       return { kind: 'missing', proposal, image };
     }
     if (configuration === null) {
@@ -350,14 +370,11 @@ export const prepareApprovalImages = async (
       if (!resolved.ok) return { kind: 'failed', error: resolved.error };
       configuration = resolved.value;
     }
-    const read = await deps.storage.getObject({
-      url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
-      ...credentialsOf(configuration),
-      deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
-    }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
-    if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
-    if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
-    images.push({ image, bytes: read.value });
+    const key = published ? proposalImagePublishedKey(tenantId, image) : proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image);
+    const read = await readVerified(configuration, key, image, deps);
+    if (!read.ok) return { kind: 'failed', error: read.error };
+    if (read.value === null) return { kind: 'missing', proposal, image };
+    images.push({ image, bytes: read.value, published });
   }
   return { kind: 'ready', images, configuration };
 };
@@ -376,9 +393,9 @@ export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepa
 
 /**
  * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
- * holds one. It records, in a commit of its own, the attempt's intent to write each attached image whose public object
- * does not exist yet; an existing object has the same bytes, because its name is their digest, and is never written or
- * recorded. What a record leaves behind when the attempt does not end applied, the withdrawal or the sweep removes.
+ * holds one. It records, in a commit of its own, the attempt's intent to write each image the effect sets whose public
+ * object is missing or no longer hashes to the digest; an object that does is never written or recorded. What a record
+ * leaves behind when the attempt does not end applied, the withdrawal or the sweep removes.
  */
 export const recordApprovalPublications = async (
   tenantId: string,
@@ -391,14 +408,9 @@ export const recordApprovalPublications = async (
   if (!configuration.ok) return configuration;
   const absent: ProposalImageReference[] = [];
   for (const image of images) {
-    const found = await deps.storage.head({
-      url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
-      ...credentialsOf(configuration.value),
-      deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs,
-    });
-    if (found.ok) continue;
-    if (found.error.code !== 'not_found') return found;
-    absent.push(image);
+    const found = await readVerified(configuration.value, proposalImagePublishedKey(tenantId, image), image, deps);
+    if (!found.ok) return found;
+    if (found.value === null) absent.push(image);
   }
   if (absent.length === 0) return ok({ attemptId: '', images: [] });
   const attemptId = deps.ids.nextId();
@@ -419,7 +431,8 @@ export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], 
  * never points at an object that does not exist and the records disappear exactly when the approval commits. Every
  * image it tries to write, a failed write included, is added to `writes.written`, and a write whose outcome is unknown
  * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
- * recorded must still be public: the workspace lock this transaction holds keeps it there until the commit.
+ * recorded must still be public with bytes that hash to its digest, or the approval answers busy; the workspace lock
+ * this transaction holds, and the refusal of any address with an unresolved delete, keep it there until the commit.
  */
 export const publishApprovalImages = async (
   tenantId: string,
@@ -434,20 +447,25 @@ export const publishApprovalImages = async (
   for (const image of [...publication.images, ...prepared.images.map((known) => known.image)]) {
     if (await images.deleteUnresolved(tenantId, image)) return err(changeProposalsBusy());
   }
-  const toWrite = prepared.images.filter(({ image }) => recorded(image)).map(({ image }) => image);
+  const toWrite = prepared.images.filter(({ image, published }) => !published && recorded(image)).map(({ image }) => image);
   if (toWrite.length > 0 && !await images.claimPublications(tenantId, publication.attemptId, toWrite)) return err(changeProposalsBusy());
   const { configuration } = prepared;
   if (configuration !== null) {
-    for (const { image, bytes } of prepared.images) {
-      const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
+    for (const { image, bytes, published } of prepared.images) {
+      if (published) continue;
       if (!recorded(image)) {
-        const present = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
-        if (present.ok) continue;
-        return err(present.error.code === 'not_found' ? changeProposalsBusy() : present.error);
+        const present = await readVerified(configuration, proposalImagePublishedKey(tenantId, image), image, deps);
+        if (!present.ok) return present;
+        if (present.value !== null) continue;
+        return err(changeProposalsBusy());
       }
       writes.written.push(image);
       const stored = await deps.storage.putObject({
-        url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
+        url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString(),
+        ...credentialsOf(configuration),
+        body: bytes,
+        contentType: proposalImageContentType(image.extension),
+        deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
       });
       if (!stored.ok) {
         if (!storageFailureIsDefinite(stored.error)) writes.unconfirmed.push(image);

@@ -74,6 +74,19 @@ export const createRefundJobQueue = (db: Db): RefundJobQueue => ({
       .limit(1);
     return row !== undefined;
   },
+  markCreateAttempt: async (tenantId, jobId, lease, { keyGeneration, now }) => {
+    if (!('source' in lease)) throw new Error(`Sold-out refund job ${jobId} does not record a create attempt`);
+    const marked = await db.update(orderStaffRefunds)
+      .set({ createOutcomeUnknown: true, keyGeneration, updatedAt: now })
+      .where(and(
+        eq(orderStaffRefunds.tenantId, tenantId),
+        eq(orderStaffRefunds.id, jobId),
+        eq(orderStaffRefunds.status, lease.status),
+        eq(orderStaffRefunds.lockedAt, lease.lockedAt),
+      ))
+      .returning({ id: orderStaffRefunds.id });
+    return marked.length > 0;
+  },
   release: async (tenantId, jobId, lease, update, staffAlerts = [], buyerNotice) => {
     if (!('source' in lease)) {
       if (buyerNotice !== undefined) throw new Error(`Sold-out refund job ${jobId} cannot carry a buyer notice`);

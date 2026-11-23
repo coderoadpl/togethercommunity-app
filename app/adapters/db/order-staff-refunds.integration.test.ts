@@ -70,8 +70,14 @@ const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
   const logs: string[] = [];
   const provider = createRefundProviderFake({ chargeAmountCents: 4099, ...(input.steps === undefined ? {} : { steps: input.steps }) });
   let listsHidden = false;
+  let crashAfterCreate = false;
   const payment = {
     ...provider.payment,
+    createRefund: async (call: Parameters<NonNullable<typeof provider.payment.createRefund>>[0]) => {
+      const created = await provider.payment.createRefund?.(call);
+      if (created === undefined || crashAfterCreate) throw new Error('Worker lost after the provider answered');
+      return created;
+    },
     listRefunds: async (call: Parameters<NonNullable<typeof provider.payment.listRefunds>>[0]) =>
       (listsHidden ? ok([]) : provider.payment.listRefunds?.(call) ?? ok([])),
   };
@@ -105,9 +111,9 @@ const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
     singleTenantMode: false,
   };
   const refund = (orderId: string, body: Record<string, unknown>, ctx: Ctx = staff('tenant-a')) => createStaffRefund(ctx, orderId, body, deps);
-  const dispatch = async (at: string) => {
+  const dispatch = async (at: string, overrides: Partial<typeof dispatchDeps> = {}) => {
     now = at;
-    const result = await dispatchOrderRefundJobs(dispatchDeps);
+    const result = await dispatchOrderRefundJobs({ ...dispatchDeps, ...overrides });
     if (!result.ok) throw new Error(result.error.message);
     return result.value;
   };
@@ -115,7 +121,8 @@ const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
     .filter((created) => created.status !== 'failed' && created.status !== 'canceled')
     .reduce((sum, created) => sum + created.amountCents, 0);
   const hideLists = (hidden: boolean) => { listsHidden = hidden; };
-  return { deps, provider, refund, dispatch, providerTotal, logs, hideLists };
+  const crashAfterEachCreate = (crash: boolean) => { crashAfterCreate = crash; };
+  return { deps, dispatchDeps, provider, refund, dispatch, providerTotal, logs, hideLists, crashAfterEachCreate };
 };
 
 const refundRows = async (orderId: string) => (await createOrderStaffRefundRepository(database.db).listByOrder('tenant-a', orderId)).toReversed();
@@ -346,6 +353,69 @@ describe('staff refunds against a real database', () => {
       .toStrictEqual(['retrying', 'unconfirmed']);
     expect(await h.deps.staffRefunds.platformCommittedCents('tenant-a', 'order-1')).toBe(1000);
     expect(h.provider.created).toHaveLength(1);
+  });
+
+  it('ends a staff refund the provider accepted before its worker was lost as unconfirmed, still counted, when its refunds cannot be read until the retries end', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    h.crashAfterEachCreate(true);
+    await expect(h.dispatch(minutes(1))).rejects.toThrow('Worker lost after the provider answered');
+    h.crashAfterEachCreate(false);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'running', createOutcomeUnknown: true, keyGeneration: 0 }]);
+    h.provider.failLists(...Array.from({ length: 60 }, () => refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout')));
+
+    for (let at = 12; at <= 60 * 24 * 8; at += 6 * 60) await h.dispatch(minutes(at));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'unconfirmed', createOutcomeUnknown: true, nextAttemptAt: null }]);
+    expect(await h.deps.staffRefunds.platformCommittedCents('tenant-a', 'order-1')).toBe(1000);
+    expect(h.provider.created).toHaveLength(1);
+    expect(h.provider.calls).toHaveLength(1);
+  });
+
+  it('sends no refund request when another worker took the staff refund over before its attempt was recorded', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+
+    expect(await h.dispatch(minutes(1), { refundJobs: { ...h.dispatchDeps.refundJobs, markCreateAttempt: async () => false } })).toMatchObject({ outcomes: { lease_lost: 1 } });
+    expect(h.provider.calls).toStrictEqual([]);
+    expect(h.logs).toContain('[order-refund] lease lost before the refund request tenant=tenant-a order=order-1 job=refund-1');
+  });
+
+  it('takes the refund a lost worker made over with the key it recorded once the refunds can be read again', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    h.crashAfterEachCreate(true);
+    await expect(h.dispatch(minutes(1))).rejects.toThrow('Worker lost after the provider answered');
+    h.crashAfterEachCreate(false);
+    h.hideLists(true);
+
+    await h.dispatch(minutes(12));
+    h.hideLists(false);
+
+    expect(h.provider.calls.map((call) => call.idempotencyKey)).toStrictEqual(['staff-refund-refund-1', 'staff-refund-refund-1']);
+    expect(h.provider.created).toHaveLength(1);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', providerRefundId: 're_1', createOutcomeUnknown: false }]);
+  });
+
+  it.each([
+    ['not_found', refundFailure('not_found', "Stripe could not list the refunds: No such payment_intent: 'pi_order-1'", 'resource_missing')],
+    ['refund_failed', refundFailure('refund_failed', 'Stripe could not list the refunds: Invalid request')],
+    ['permission_missing', refundFailure('permission_missing', 'Stripe could not list the refunds: The provided key does not have the required permissions', 'permission_denied')],
+  ] as const)('never reads a %s refund list answer after an unknown create outcome as a refusal, and takes the refund over once the list is readable', async (_kind, listFailure) => {
+    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    h.provider.failLists(listFailure);
+
+    await h.dispatch(minutes(2));
+    const [afterRead] = await refundRows('order-1');
+    expect(afterRead).toMatchObject({ status: 'pending', createOutcomeUnknown: true, keyGeneration: 0 });
+    expect(afterRead?.lastError).not.toContain('refused');
+    await h.dispatch(minutes(30));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: 're_1', createOutcomeUnknown: false }]);
+    expect(h.provider.created).toHaveLength(1);
+    expect(h.providerTotal()).toBe(1000);
   });
 
   it('tells the buyer only once the provider holds the refund as pending or succeeded, not while it requires action', async () => {

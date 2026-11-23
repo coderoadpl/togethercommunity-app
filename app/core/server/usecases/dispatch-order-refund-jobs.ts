@@ -39,7 +39,7 @@ import { resolveTenantOrigin, type TenantUrlDeps } from '../tenant-url.js';
 import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 
 export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
-  refundJobs: Pick<RefundJobQueue, 'claimDue' | 'release' | 'countDue'> & Partial<Pick<RefundJobQueue, 'staffRefundWaiting'>>;
+  refundJobs: Pick<RefundJobQueue, 'claimDue' | 'release' | 'countDue'> & Partial<Pick<RefundJobQueue, 'staffRefundWaiting' | 'markCreateAttempt'>>;
   orderDetails: OrderDetailRepository;
   members?: Pick<MemberRepository, 'findById'>;
   payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds'>;
@@ -238,11 +238,27 @@ const ownRefundSeen = (job: RefundJob): RefundJobUpdate => (job.source === 'staf
 
 const withUpdate = (settlement: Settlement, update: RefundJobUpdate): Settlement => ({ ...settlement, update: { ...settlement.update, ...update } });
 
-const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+const leaseLost: Settlement = { update: {}, outcome: 'lease_lost', alert: null };
+
+// Reading the refunds is not a refund request: while an earlier request may have reached the provider, no list
+// answer can prove that nothing was refunded, so it is retried until it can be read or the retries end.
+const settleListFailure = (job: RefundJob, order: OrderListItem, error: AppError, now: string): Settlement =>
+  createMayHaveRefunded(job)
+    ? settleRefundFailure(job, refundFailure('transient', error.message), now)
+    : handRefundUnconfirmed(order, settleRefundFailure(job, error, now));
+
+// A worker can be lost after the provider accepted a staff refund but before its result is saved, so the attempt
+// and the key it uses are saved first; a later run then never takes the refund for failed.
+const markCreateAttempt = async (claim: ClaimedRefundJob, keyGeneration: number, deps: DispatchOrderRefundJobsDeps): Promise<boolean> => {
+  if (deps.refundJobs.markCreateAttempt === undefined) throw new Error(`Staff refund ${claim.job.id} cannot record its create attempt`);
+  return deps.refundJobs.markCreateAttempt(claim.job.tenantId, claim.job.id, claim.lease, { keyGeneration, now: deps.clock.nowIso() });
+};
+
+const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   const { createRefund, listRefunds } = deps.payment;
   if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
   const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId });
-  if (!listed.ok) return handRefundUnconfirmed(order, settleRefundFailure(job, listed.error, now));
+  if (!listed.ok) return settleListFailure(job, order, listed.error, now);
   const refunds = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
@@ -254,6 +270,7 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
   // current key; a recorded one moved the generation on when the job reopened.
   const keySpent = ownRefundsOf(job, refunds).some((refund) => refund.refundId !== job.providerRefundId);
   const keyGeneration = keySpent ? job.keyGeneration + 1 : job.keyGeneration;
+  if (job.source === 'staff' && !await markCreateAttempt(claim, keyGeneration, deps)) return leaseLost;
   const created = await createRefund({
     mode: order.mode,
     tenantId: job.tenantId,
@@ -270,7 +287,7 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
     if (after.kind === 'own_failed') return ownRefundFailed(after.refund, { submittedAt: now, keyGeneration, ...ownRefundSeen(job) });
     if (after.kind === 'short') {
       const settlement = settleRefundFailure(job, refundFailure('transient', `Refund ${created.value.refundId} does not cover the rest of the payment`), now);
-      return withUpdate(settlement, { keyGeneration: keyGeneration + 1 });
+      return withUpdate(settlement, { keyGeneration: keyGeneration + 1, ...ownRefundSeen(job) });
     }
     return withUpdate(settleCoverageAfterRefund(created.value, after.awaiting, now), { keyGeneration, ...ownRefundSeen(job) });
   }
@@ -278,12 +295,12 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
   // A staff refund is created with the key it is retried with, so after a provider server error the same key
   // either replays the refund the provider made or makes it once; a new key could make a second one.
   const outcomeUnknown = failureDetails?.outcomeUnknown === true || (job.source === 'staff' && failureDetails?.providerServerError === true);
-  const attempted: RefundJob = outcomeUnknown && job.source === 'staff' ? { ...job, createOutcomeUnknown: true } : job;
+  const attempted: RefundJob = job.source === 'staff' ? { ...job, createOutcomeUnknown: outcomeUnknown } : job;
   const failure = settleRefundFailure(attempted, created.error, now);
   const settlement = refunds.some((refund) => !isCommitted(refund)) ? failure : handRefundUnconfirmed(order, failure);
   return withUpdate(settlement, {
     keyGeneration: outcomeUnknown ? keyGeneration : keyGeneration + 1,
-    ...(attempted.source === 'staff' && attempted.createOutcomeUnknown ? { createOutcomeUnknown: true } : {}),
+    ...(attempted.source === 'staff' ? { createOutcomeUnknown: attempted.createOutcomeUnknown } : {}),
   });
 };
 
@@ -292,17 +309,17 @@ const settleAttempt = (settlement: Settlement): Settlement => {
   return { ...settlement, update: { transientFailureStreak: 0, ...(refundCovered ? { permissionBlockedAt: null } : {}), ...settlement.update } };
 };
 
-const refundJob = async (job: RefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
+const refundJob = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem | null, now: string, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   if (job.source === 'staff') {
     if (order === null) return finalFailure('The order was not found');
-    return settleAttempt(await attemptRefund(job, order, job.paymentIntentId, now, deps));
+    return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deps));
   }
   if (order === null) return finalFailure('The cancelled order was not found');
   const refundable = order.cancelReason === job.reason && job.paymentIntentId !== null;
   if (!refundable && order.status === 'refunded') return skippedRefunded();
   if (order.cancelReason !== job.reason) return finalFailure('The order is not cancelled for this refund reason');
   if (job.paymentIntentId === null) return finalFailure('The order has no payment intent to refund');
-  return settleAttempt(await attemptRefund(job, order, job.paymentIntentId, now, deps));
+  return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deps));
 };
 
 const settleReadFailure = (submittedAt: string, lastError: string, now: string): Settlement => {
@@ -435,8 +452,12 @@ const processClaim = async (claim: ClaimedRefundJob, deps: DispatchOrderRefundJo
   const now = deps.clock.nowIso();
   const order = await deps.orderDetails.findById(job.tenantId, job.orderId);
   const settlement = claim.phase === 'refund'
-    ? await refundJob(job, order, now, deps)
+    ? await refundJob(claim, job, order, now, deps)
     : await checkRefundStatus(job, order, now, deps);
+  if (settlement.outcome === 'lease_lost') {
+    deps.logger.error(`[order-refund] lease lost before the refund request tenant=${job.tenantId} order=${job.orderId} job=${job.id}`);
+    return 'lease_lost';
+  }
   let staffAlerts: EmailOutboxEnqueueInput[] = [];
   let notice: EmailOutboxEnqueueInput | undefined;
   let released: Awaited<ReturnType<DispatchOrderRefundJobsDeps['refundJobs']['release']>>;

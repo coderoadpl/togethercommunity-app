@@ -5,11 +5,22 @@ import { useTranslations } from '../../i18n/index.js';
 
 type SupportContact = { kind: 'address'; href: string; external: boolean } | { kind: 'form' };
 
-export const resolveSupportContact = (supportUrl: string | null | undefined, supportConfigured: boolean): SupportContact | null => {
-  if (typeof supportUrl === 'string') {
-    return { kind: 'address', href: supportUrl, external: !supportUrl.toLowerCase().startsWith('mailto:') };
+const LINKABLE_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
+
+const protocolOf = (url: string): string | null => {
+  try {
+    return new URL(url).protocol;
+  } catch {
+    return null;
   }
-  return supportUrl === null && supportConfigured ? { kind: 'form' } : null;
+};
+
+export const resolveSupportContact = (supportUrl: string | null | undefined, supportConfigured: boolean): SupportContact | null => {
+  const protocol = typeof supportUrl === 'string' ? protocolOf(supportUrl) : null;
+  if (typeof supportUrl === 'string' && protocol !== null && LINKABLE_PROTOCOLS.has(protocol)) {
+    return { kind: 'address', href: supportUrl, external: protocol !== 'mailto:' };
+  }
+  return supportUrl !== undefined && supportConfigured ? { kind: 'form' } : null;
 };
 
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;

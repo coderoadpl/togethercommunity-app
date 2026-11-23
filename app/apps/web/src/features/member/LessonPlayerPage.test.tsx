@@ -1391,11 +1391,13 @@ describe('LessonPlayerPage', () => {
   it('completes under the course it shows and reads that course back as completed', async () => {
     const written = new Map<string, string[]>();
     const requests: unknown[] = [];
+    let readsAfterPost = 0;
     server.use(
       okStructure(),
       okLesson(allBlocks),
       http.get('/api/student/progress', ({ request }) => {
         const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        if (requests.length > 0) readsAfterPost += 1;
         return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
       }),
       http.post('/api/student/lessons/complete', async ({ request }) => {
@@ -1408,12 +1410,15 @@ describe('LessonPlayerPage', () => {
     );
 
     const user = userEvent.setup();
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    const { queryClient } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     await user.click(await screen.findByTestId('mark-complete'));
 
-    await waitFor(() => expect(requests).toEqual([{ lessonId: 'l1', courseId: 'course-1' }]));
-    await waitFor(() => expect(written.get('course-1')).toEqual(['l1']));
-    expect(await screen.findByTestId('unmark-complete')).toBeInTheDocument();
+    await waitFor(() => expect(readsAfterPost).toBeGreaterThan(0));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(requests).toEqual([{ lessonId: 'l1', courseId: 'course-1' }]);
+    expect(written.get('course-1')).toEqual(['l1']);
+    expect(screen.getByTestId('unmark-complete')).toBeEnabled();
+    expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 
   it('keeps showing what it wrote when the server recorded the completion under another course', async () => {

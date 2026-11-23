@@ -16,15 +16,29 @@ const lessonsReachedBy = (modules: readonly CourseModule[], courseId: string): S
   .filter((module) => module.courseIds.includes(courseId))
   .flatMap((module) => module.chapters.flatMap((chapter) => chapter.contents.map((content) => content.lessonId))));
 
-const checkModules = async (
-  tenantId: string,
+const moduleIdsOf = (item: AccessItem): string[] => {
+  switch (item.level) {
+    case 'course':
+      return item.excludedModuleIds ?? [];
+    case 'modules':
+      return item.moduleIds;
+    case 'lessons':
+      return [];
+  }
+};
+
+const lessonIdsOf = (item: AccessItem): string[] => item.level === 'lessons' ? item.lessonIds : [];
+
+const byId = async <T extends { id: string }>(ids: string[], find: (ids: string[]) => Promise<T[]>): Promise<Map<string, T>> =>
+  new Map(ids.length === 0 ? [] : (await find(ids)).map((found) => [found.id, found]));
+
+const checkModules = (
   moduleIds: readonly string[],
   courseId: string,
   outsideCourseMessage: string,
-  catalog: ProductAccessCatalog,
-): Promise<Result<void, AppError>> => {
-  if (moduleIds.length === 0) return ok(undefined);
-  const modules = await catalog.modules.findByIds(tenantId, [...moduleIds]);
+  modulesById: ReadonlyMap<string, CourseModule>,
+): Result<void, AppError> => {
+  const modules = moduleIds.flatMap((id) => modulesById.get(id) ?? []);
   if (modules.length !== moduleIds.length) return err(validation('Product access items may only reference existing modules'));
   return modules.every((module) => module.courseIds.includes(courseId)) ? ok(undefined) : err(validation(outsideCourseMessage));
 };
@@ -42,22 +56,30 @@ export const checkProductAccessItems = async (
   if (courses.length !== courseIds.length || courses.some((course) => course.archivedAt)) {
     return err(validation(PRODUCT_ACCESS_COURSE_MESSAGE));
   }
-  let tenantModules: CourseModule[] | null = null;
+  const modulesById = await byId(unique(items.flatMap(moduleIdsOf)), (ids) => catalog.modules.findByIds(tenantId, ids));
+  const lessonsById = await byId(unique(items.flatMap(lessonIdsOf)), (ids) => catalog.lessons.findByIds(tenantId, ids));
+  const tenantModules = lessonsById.size === 0 ? [] : await catalog.modules.list(tenantId);
+  const reachedByCourse = new Map<string, Set<string>>();
+  const reachedBy = (courseId: string): Set<string> => {
+    const known = reachedByCourse.get(courseId);
+    if (known !== undefined) return known;
+    const reached = lessonsReachedBy(tenantModules, courseId);
+    reachedByCourse.set(courseId, reached);
+    return reached;
+  };
   for (const item of items) {
     if (item.level === 'modules') {
-      const modules = await checkModules(tenantId, unique(item.moduleIds), item.courseId, 'Product access moduleIds must belong to the item courseId', catalog);
+      const modules = checkModules(unique(item.moduleIds), item.courseId, 'Product access moduleIds must belong to the item courseId', modulesById);
       if (!modules.ok) return modules;
     } else if (item.level === 'course') {
-      const excluded = await checkModules(
-        tenantId, unique(item.excludedModuleIds ?? []), item.courseId, 'Product access excludedModuleIds must belong to the item courseId', catalog,
+      const excluded = checkModules(
+        unique(item.excludedModuleIds ?? []), item.courseId, 'Product access excludedModuleIds must belong to the item courseId', modulesById,
       );
       if (!excluded.ok) return excluded;
     } else {
       const lessonIds = unique(item.lessonIds);
-      const lessons = await catalog.lessons.findByIds(tenantId, lessonIds);
-      if (lessons.length !== lessonIds.length) return err(validation('Product access items may only reference existing lessons'));
-      tenantModules ??= await catalog.modules.list(tenantId);
-      const reached = lessonsReachedBy(tenantModules, item.courseId);
+      if (!lessonIds.every((lessonId) => lessonsById.has(lessonId))) return err(validation('Product access items may only reference existing lessons'));
+      const reached = reachedBy(item.courseId);
       if (!lessonIds.every((lessonId) => reached.has(lessonId))) {
         return err(validation('Product access lessonIds must belong to the item courseId through its modules and chapters'));
       }

@@ -1862,7 +1862,11 @@ only reference existing, active courses", "… existing modules", "… existing
 lessons", "Product access moduleIds must belong to the item courseId",
 "Product access excludedModuleIds must belong to the item courseId" or
 "Product access lessonIds must belong to the item courseId through its modules
-and chapters".
+and chapters", for the first item in the order of the list that fails. The
+check reads the courses, the modules and the lessons of the whole list in one
+query each, and the workspace's modules once when the list has a `lessons`
+item, whatever the number of items, so a long list costs the locks it runs
+under no more round trips than a short one.
 
 Stored lists are not rewritten. The owner's editor runs the check only when the
 list it is sent grants something other than the stored list (items and ids

@@ -1431,6 +1431,7 @@ export const pl: Messages = {
       submitWithoutAmount: 'Zwróć',
       submitting: 'Zlecanie zwrotu…',
       errorConflict: 'Inny zwrot tego zamówienia wciąż czeka na Stripe. Zamknij okno, aby zobaczyć historię zwrotów.',
+      errorRefused: 'Tego zamówienia nie można teraz zwrócić. Zamknij okno, aby zobaczyć jego aktualny stan.',
       errorRemainderChanged: ({ remainder }) => format('Kwota do zwrotu zmieniła się i wynosi teraz {remainder}. Sprawdź zwrot i potwierdź go ponownie.', { remainder }),
       errorRateLimited: 'Za dużo zleceń zwrotu. Odczekaj minutę i spróbuj ponownie.',
     },

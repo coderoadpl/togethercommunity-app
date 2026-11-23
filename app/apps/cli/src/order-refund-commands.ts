@@ -88,7 +88,7 @@ const refundRequest = (
   if (!remainder.ok) return remainder;
   return ok({
     requestKey: options.requestKey ?? newRequestKey(),
-    ...(amount === null ? { expectedAmountCents: remainder.value } : { amountCents: amount.value }),
+    ...(amount !== null ? { amountCents: amount.value } : remainder.value > 0 ? { expectedAmountCents: remainder.value } : {}),
     ...(options.reason === undefined ? {} : { reason: options.reason }),
     ...(options.restock ? {} : { restock: false }),
     ...(options.keepOnPackingList === true ? { removeFromPackingList: false } : {}),

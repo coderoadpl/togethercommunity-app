@@ -168,6 +168,16 @@ describe('staff refunds against a real database', () => {
     ]);
   });
 
+  it('replays a stored full refund by its request key without the remainder it was confirmed for', async () => {
+    const h = harness();
+    const first = unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 }));
+    await h.dispatch(minutes(1));
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1' }))).toMatchObject({ created: false, refund: { id: first.refund.id } });
+    expect(await h.refund('order-1', { requestKey: 'req-2' })).toMatchObject({ ok: false });
+    expect(h.provider.calls).toHaveLength(1);
+  });
+
   it('lets one of two refunds requested at once with different keys win and refuses the other', async () => {
     const h = harness();
     const results = await Promise.all([h.refund('order-1', { requestKey: 'req-a', expectedAmountCents: 4099 }), h.refund('order-1', { requestKey: 'req-b', amountCents: 1000 })]);

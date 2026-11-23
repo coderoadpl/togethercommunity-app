@@ -50,6 +50,16 @@ const harness = (json = false) => {
 const printed = (): unknown => JSON.parse(String(logSpy.mock.calls[0]?.[0]));
 
 describe('order refund command', () => {
+  it('replays a stored full refund by its request key once nothing is left to refund', async () => {
+    const h = harness();
+    h.orderRefundPreview.mockResolvedValueOnce(ok(preview({ refundable: false, refundedCents: 4099, remainderCents: 0 })));
+    h.createOrderRefund.mockResolvedValueOnce(ok({ refund: refundView(), created: false }));
+    await h.refund({ yes: true, requestKey: 'lost-full' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full' });
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('(already requested with this request key)');
+    expect(process.exitCode).toBeUndefined();
+  });
+
   it('refunds the whole remainder with --yes, leaving restock and packing to the server defaults', async () => {
     const h = harness();
     await h.refund({ yes: true, requestKey: 'retry-7' });

@@ -1393,6 +1393,7 @@ export const en: Messages = {
       submitWithoutAmount: 'Refund',
       submitting: 'Requesting the refund…',
       errorConflict: 'Another refund of this order is still waiting for Stripe. Close the dialog to see the refund history.',
+      errorRefused: 'This order cannot be refunded now. Close the dialog to see its current state.',
       errorRemainderChanged: ({ remainder }) => format('The amount left to refund changed and is now {remainder}. Check the refund and confirm it again.', { remainder }),
       errorRateLimited: 'Too many refund requests. Wait a minute and try again.',
     },

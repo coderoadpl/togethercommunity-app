@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { SALES_LINK_TIME_ZONE, minorUnitsFromDecimal, productLines, type OrderListItem, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { errorCodeOf, errorDetailsOf, localizePanelError, serverMessageOf, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { errorCodeOf, errorDetailsOf, localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { currencyFractionDigits, formatDate, formatMinorUnitsDecimal, formatMinorUnitsPrice } from '../../../lib/format.js';
 import {
   RefundAmountField,
@@ -190,7 +190,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const submitError = (() => {
     if (!refund.isError) return null;
     if (changedRemainder?.success === true) return messages.errorRemainderChanged({ remainder: money(changedRemainder.data.remainderCents) });
-    if (conflict) return waitingDetailSchema.safeParse(errorDetailsOf(refund.error)).success ? messages.errorConflict : serverMessageOf(refund.error) ?? messages.errorConflict;
+    if (conflict) return waitingDetailSchema.safeParse(errorDetailsOf(refund.error)).success ? messages.errorConflict : messages.errorRefused;
     const code = errorCodeOf(refund.error);
     if (code === 'rate_limited') return messages.errorRateLimited;
     if (code === 'validation') {

@@ -344,13 +344,13 @@ describe('staff refund dialog', () => {
     expect(calls.refunds).toHaveLength(1);
   });
 
-  it('shows the server message of another conflict that retrying cannot help, with the refund button disabled', async () => {
+  it('shows a localized refusal for another conflict that retrying cannot help, with the refund button disabled', async () => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Nothing is left to refund on this order' } }, { status: 409 }));
     await renderDetail();
     const dialog = await openDialog();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
-    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent('Nothing is left to refund on this order');
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(messages.errorRefused);
     expect(within(dialog).getByTestId('staff-refund-submit')).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: en.common.close })).toBeEnabled();
   });

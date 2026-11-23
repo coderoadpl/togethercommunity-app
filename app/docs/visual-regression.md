@@ -104,8 +104,12 @@ Migration acceptance is stricter: each converted capture must report
 0 counted pixels, preferably identical bytes. Any residual pixels and their
 cause must be listed in the pull request. Browser errors, unexpected fixture
 calls, unexercised expected errors, unresolved queries and suspiciously small
-screenshots also fail. The default size floor is 10 KiB; the held boot splash
-uses 7 KiB and skips network-idle waiting, and component screens use 4 KiB.
+screenshots also fail. The size floor is set per screen: the default is 10 KiB
+and component screens use 4 KiB. The held boot splash is the one page exception:
+it skips network-idle waiting and uses 4 KiB, because the neutral grey splash
+compresses to about 6 KiB. Its content is guarded instead: the capture's ready
+step waits for the visible mark and the `Loading…` label, and
+`BrandLoader.test.tsx` checks both render in the neutral text token.
 
 Screenshots are written to `out/visual/current`, diffs to `out/visual/diff`, and
 per-capture counts, byte equality, fixture hashes and diagnostics to

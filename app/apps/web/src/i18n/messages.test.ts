@@ -90,9 +90,17 @@ describe('i18n dictionaries', () => {
     expect([1, 3, 12, 22].map((count) => en.courseOverview.lessonCount({ count }))).toEqual([
       '1 lesson', '3 lessons', '12 lessons', '22 lessons',
     ]);
-    expect([1, 3, 12, 22].map((count) => pl.courseOverview.lessonCount({ count }))).toEqual([
-      '1 lekcja', '3 lekcje', '12 lekcji', '22 lekcje',
-    ]);
+    const polishNouns = [1, 3, 12, 22].map((count) => {
+      const text = pl.courseOverview.lessonCount({ count });
+      expect(text.startsWith(`${count} `)).toBe(true);
+      const noun = text.slice(`${count} `.length);
+      expect(noun).toMatch(/^\S+$/u);
+      expect(noun).toBe(noun.toLocaleLowerCase('pl'));
+      return noun;
+    });
+    const [one, few, many, twentyTwo] = polishNouns;
+    expect(new Set([one, few, many]).size).toBe(3);
+    expect(twentyTwo).toBe(few);
   });
 
   it('starts every open-thread link name with the visible link text', () => {

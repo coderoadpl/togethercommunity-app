@@ -345,6 +345,21 @@ describe('MemberShell', () => {
     expect(screen.queryByTestId('foreign-tenant-notice')).not.toBeInTheDocument();
   });
 
+  it('keeps the signed-in non-member header with sign-out on a public space page', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    stubViewport(true);
+    server.use(okMe({ tenant: null, tenantAccess: 'none' }), okOffer(), okPublicNavigation());
+    await renderShell('/community/s1', page(en.redirects.targetLesson), page(en.redirects.targetCourse), 'acme.localhost');
+
+    const visitorEmail = await screen.findByTestId('anon-visitor-email');
+    expect(visitorEmail).toHaveTextContent('jan@example.com');
+    const header = screen.getByRole('banner');
+    expect(header).toContainElement(visitorEmail);
+    expect(within(header).getByRole('button', { name: en.tenant.signOut })).toBeEnabled();
+    expect(within(header).queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+    expect(screen.getByText(en.community.feedEyebrow)).toBeInTheDocument();
+  });
+
   it('redirects member routes on the platform host to the workspace picker', async () => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
 
@@ -1295,7 +1310,7 @@ describe('MemberShell', () => {
     await renderShell('/my');
 
     const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
-    expect(signIn).toHaveAttribute('href', '/login');
+    expect(signIn).toHaveAttribute('href', `/login?${new URLSearchParams({ returnTo: '/my' }).toString()}`);
     expect(signIn.closest('header')).not.toBeNull();
     expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();

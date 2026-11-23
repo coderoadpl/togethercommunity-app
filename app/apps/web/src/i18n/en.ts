@@ -23,7 +23,7 @@ export const en: Messages = {
     withdraw: 'Withdraw consent',
     withdrawShort: 'Withdraw',
     withdrawing: 'Withdrawing…',
-    withdrawHint: "Withdrawal stops any further sharing of this order's data with Meta. It does not undo data already sent to Meta. You can also withdraw on the purchase confirmation page.",
+    withdrawHint: 'Withdrawal stops our server from sending any further data about this order to Meta. It does not undo data already sent to Meta. You can also withdraw on the purchase confirmation page.',
     rowGranted: 'Consent given',
     rowDenied: 'Consent declined',
     rowWithdrawn: 'Consent withdrawn',

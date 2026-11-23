@@ -29,7 +29,7 @@ export const pl: Messages = {
     withdraw: 'Wycofaj zgodę',
     withdrawShort: 'Wycofaj',
     withdrawing: 'Wycofywanie…',
-    withdrawHint: 'Po wycofaniu zgody nie przekażemy do Meta kolejnych danych o tym zamówieniu. Wycofanie nie cofa danych już przekazanych do Meta. Zgodę możesz też wycofać na stronie potwierdzenia zakupu.',
+    withdrawHint: 'Po wycofaniu zgody nasz serwer nie prześle do Meta kolejnych danych o tym zamówieniu. Wycofanie nie cofa danych już przekazanych do Meta. Zgodę możesz też wycofać na stronie potwierdzenia zakupu.',
     rowGranted: 'Zgoda udzielona',
     rowDenied: 'Odmowa zgody',
     rowWithdrawn: 'Zgoda wycofana',

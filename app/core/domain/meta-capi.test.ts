@@ -23,6 +23,19 @@ describe('Meta conversion domain rules', () => {
         .toEqual({ heading: 'Custom heading', body: 'Custom body', acceptLabel: 'Accept', declineLabel: 'Decline', privacyUrl: 'https://example.org/privacy' });
     }
   });
+  it('scopes the default English copy to the server-side send while keeping every disclosure', () => {
+    expect(englishCopy.heading).toBe('May we also send data about this purchase to Meta from our server to measure and optimize ads, including matching to your account and ad personalization?');
+    expect([englishCopy.acceptLabel, englishCopy.declineLabel]).toEqual(['Yes, send it to Meta', 'No, do not send']);
+    expect(englishCopy.body).toContain("Withdrawal stops our server from sending any further data about this order to Meta; it does not undo data already sent.");
+    for (const disclosure of ['ad click identifier', 'Meta Platforms Ireland', 'purchase and its value', 'SHA-256 hash of my email address', 'IP address', 'browser information', 'Meta browser identifier', 'country', 'measure and optimize Meta ads', 'matching to my account and ad personalization', 'Consent is optional', 'purchase confirmation page or in my account settings']) {
+      expect(englishCopy.body).toContain(disclosure);
+    }
+    for (const copy of [englishCopy, polishCopy]) {
+      expect(copy.body).toContain('Meta Platforms Ireland');
+      expect(copy.body).toContain('SHA-256');
+      expect(copy.body).toContain('IP');
+    }
+  });
   it.each([undefined, 'en', 'pl'] as const)('restores locale-resolved defaults for null overrides and locale %s', (locale) => {
     expect(metaCapiCopy({ analyticsMetaCapiConsentHeading: null, analyticsMetaCapiConsentBody: null,
       analyticsMetaCapiConsentAcceptLabel: null, analyticsMetaCapiConsentDeclineLabel: null }, locale))

@@ -1,12 +1,28 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MetaCapiPrivacyCard } from './MetaCapiPrivacyCard.js';
 
-const day = (value: string) => new Date(value).toLocaleDateString('en');
+const days: Record<string, string> = {
+  '2026-11-05T09:00:00.000Z': '5 Nov 2026',
+  '2026-11-04T09:00:00.000Z': '4 Nov 2026',
+  '2026-11-05T10:00:00.000Z': '5 Nov 2026',
+  '2026-11-04T10:00:00.000Z': '4 Nov 2026',
+  '2026-11-05T11:00:00.000Z': '5 Nov 2026',
+  '2026-01-05T09:00:00.000Z': '5 Jan 2026',
+};
+const day = (value: string): string => {
+  const formatted = days[value];
+  if (formatted === undefined) throw new Error(`No expected date for ${value}`);
+  return formatted;
+};
+afterEach(() => window.localStorage.clear());
+
 const rowStatuses = () => screen.getAllByTestId('meta-capi-consent-row').map((row) => within(row).getByRole('status'));
 
 it('lists order decisions and withdraws a grant, then refreshes the account state', async () => {
@@ -42,6 +58,18 @@ it('lists order decisions and withdraws a grant, then refreshes the account stat
   expect(withdraw).toHaveBeenCalledWith({ orderId: 'order-1' });
   expect(screen.queryByRole('button', { name: new RegExp(`^${en.metaCapi.withdrawShort}`) })).toBeNull();
   expect(screen.queryByText(en.metaCapi.withdrawHint)).toBeNull();
+});
+
+it('formats purchase and decision dates in the member language', async () => {
+  window.localStorage.setItem('together-language', 'pl');
+  server.use(
+    http.get('/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [
+      { orderId: 'order-1', consent: 'granted', consentAt: '2026-11-05T10:00:00.000Z', withdrawnAt: null, productName: 'Course', purchasedAt: '2026-11-05T09:00:00.000Z' },
+    ] } })),
+  );
+  renderWithProviders(<LanguageProvider><MetaCapiPrivacyCard /></LanguageProvider>);
+  expect(await screen.findByText(pl.metaCapi.purchase({ product: 'Course', date: '5 lis 2026' }))).toBeVisible();
+  expect(rowStatuses()[0]).toHaveTextContent(`${pl.metaCapi.rowGranted} · 5 lis 2026`);
 });
 
 it('announces the withdrawal at card level and focuses it when the refreshed list omits the row', async () => {

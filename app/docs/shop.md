@@ -307,9 +307,10 @@ means not found, whether it comes with HTTP 200 (what the carrier sends for an
 unknown code) or HTTP 404. Any other HTTP 404, such as the
 `{"status":404,"error":"routing_not_found"}` answer the host gives for a path it
 does not route, any other status, a timeout, a network error, a body that is
-not valid UTF-8 or does not parse, a body with a text value PostgreSQL cannot
-store in `jsonb` (U+0000 or an unpaired surrogate half, in any field) or an
-answer for another point mean the carrier is unavailable.
+not valid UTF-8 or does not parse, a body with a key or text value PostgreSQL
+cannot store in `jsonb` (U+0000 or an unpaired surrogate half, in any field,
+checked before the body is read as not found) or an answer for another point
+mean the carrier is unavailable.
 Recorded answers live in `adapters/shipx/fixtures/`: `point-operating.json`,
 `point-not-found.json` and `routing-not-found.json` keep the recorded shape of real answers with every
 human-language value (address, location description, display name, error

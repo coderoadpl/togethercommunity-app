@@ -30,6 +30,7 @@ import {
   unauthorized,
   validation,
   type AppError,
+  type ConsentConfirmationToken,
   type Identity,
   type Language,
   type Result,
@@ -172,6 +173,15 @@ const html = (body: string, status = 200): Response => new Response(body, {
 const legalPageContext = async (deps: AppDeps, tenant: Tenant) => {
   const brand: PublicBrand = { tenant, settings: await deps.tenants.findSettings(tenant.id) };
   return { brand, language: brand.settings?.defaultLanguage ?? DEFAULT_LANGUAGE };
+};
+
+const confirmationPageState = (
+  confirmation: Pick<ConsentConfirmationToken, 'expiresAt' | 'usedAt'> | null,
+  now: string,
+): 'prompt' | 'success' | 'expired' => {
+  if (confirmation === null) return 'expired';
+  if (confirmation.usedAt !== null) return 'success';
+  return Date.parse(confirmation.expiresAt) <= Date.parse(now) ? 'expired' : 'prompt';
 };
 
 const pageNonce = (context: Context<Vars>): string => {
@@ -760,12 +770,10 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
-    const confirmation = await marketing.value.confirmations.findByToken(resolved.value.tenant.id, token);
-    const state = confirmation === null || (
-      confirmation.usedAt === null && Date.parse(confirmation.expiresAt) <= Date.parse(deps.clock.nowIso())
-    )
-      ? 'expired'
-      : confirmation.usedAt === null ? 'prompt' : 'success';
+    const state = confirmationPageState(
+      await marketing.value.confirmations.findByToken(resolved.value.tenant.id, token),
+      deps.clock.nowIso(),
+    );
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     const page = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
     return html(renderConfirmationPage({
@@ -795,14 +803,19 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ids: deps.ids,
       clock: deps.clock,
     }));
+    // An overlapping post can lose the race for the token after the winner committed; the visitor is then subscribed and must see success.
+    const settled = result.ok
+      ? 'success'
+      : confirmationPageState(await marketing.value.confirmations.findByToken(tenant.id, token), deps.clock.nowIso());
+    const state = settled === 'success' ? 'success' : 'expired';
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     const page = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
     return html(renderConfirmationPage({
       nonce: pageNonce(c),
       ...page,
       path,
-      state: result.ok ? 'success' : 'expired',
-      signupHref: result.ok ? null : await signupAgainHref(marketing.value, tenant.id, token, page.language),
+      state,
+      signupHref: state === 'expired' ? await signupAgainHref(marketing.value, tenant.id, token, page.language) : null,
     }));
   });
 

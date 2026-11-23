@@ -359,6 +359,8 @@ const statusCueIcons: Record<StatusCue, string> = {
 const renderStatusCue = (cue: StatusCue): string =>
   `<span class="status-cue status-cue--${cue}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${statusCueIcons[cue]}</svg></span>`;
 
+const DEFAULT_ACCENT = '#7c3aed';
+
 const renderPage = (input: {
   nonce: string;
   brand: PublicBrand;
@@ -374,7 +376,7 @@ const renderPage = (input: {
 }): string => {
   const t = messages[input.language];
   const settings = input.brand.settings;
-  const accentSource = settings?.accentColor ?? '#7c3aed';
+  const accentSource = settings?.accentColor ?? DEFAULT_ACCENT;
   const accentLight = settings?.accentLight ?? deriveLightAccent(accentSource);
   const accentDark = deriveDarkAccent(accentSource);
   const logoLight = settings == null ? null : resolveTenantLogo(settings, 'light');
@@ -582,6 +584,8 @@ export const renderLegalDocumentPage = (input: {
   return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: null, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
 };
 
+const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
+
 export const renderConfirmationPage = (input: {
   nonce: string;
   brand: PublicBrand;
@@ -606,19 +610,33 @@ export const renderConfirmationPage = (input: {
       links: signupHref === null ? [] : [{ label: t.signupAgain, href: signupHref, primary: true }],
     });
   }
-  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
+  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}" data-pending-label="${escapeHtml(t.confirmationSubmitPending)}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
   return renderPage({
     ...common,
     title: t.confirmationPromptTitle,
     body: `<div class="status"><p class="lede">${escapeHtml(t.confirmationPromptBody({ tenant }))}</p>${action}</div>`,
     cue: 'info',
+    script: submitPendingScript,
   });
 };
 
-export interface SignupConsentDocument {
-  title: string;
-  href: string;
-}
+export type SignupConsentDocument =
+  | { kind: 'hosted'; title: string; href: string }
+  | { kind: 'external'; url: string };
+
+const externalHref = (value: string): string | null => {
+  const safe = safeHref(value);
+  if (safe === null || !URL.canParse(safe)) return null;
+  const protocol = new URL(safe).protocol;
+  return protocol === 'http:' || protocol === 'https:' ? safe : null;
+};
+
+const renderConsentDocumentLink = (t: PublicMarketingMessages, document: SignupConsentDocument | null): string => {
+  if (document === null) return '';
+  if (document.kind === 'hosted') return `<a href="${escapeHtml(document.href)}">${escapeHtml(document.title)}</a>`;
+  const href = externalHref(document.url);
+  return href === null ? '' : `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.signupConsentExternalDocument)}</a>`;
+};
 
 const consentWording = (wording: string): string => wording.trim().replace(/\.+$/, '');
 
@@ -630,9 +648,8 @@ const renderSignupConsent = (input: {
     ...(input.doubleOptIn ? [input.t.signupConsentConfirm] : []),
     input.t.signupConsentUnsubscribe,
   ].map(escapeHtml).join(' ');
-  const document = input.document === null
-    ? ''
-    : ` ${escapeHtml(input.t.signupConsentDocument)} <a href="${escapeHtml(input.document.href)}">${escapeHtml(input.document.title)}</a>`;
+  const link = renderConsentDocumentLink(input.t, input.document);
+  const document = link === '' ? '' : ` ${escapeHtml(input.t.signupConsentDocument)} ${link}`;
   return `<p class="signup-consent">${sentences}${document}</p>`;
 };
 
@@ -642,8 +659,6 @@ export interface SignupFormValues {
   email: string;
   displayName: string;
 }
-
-const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
 
 const focusAlertScript = "document.getElementById('signup-error')?.focus();";
 
@@ -663,9 +678,13 @@ export const renderSignupUnavailablePage = (input: {
   });
 };
 
-export const renderSignupRateLimitedPage = (language: Language): string => {
-  const t = messages[language];
-  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escapeHtml(`${t.errorTitlePrefix}${t.signupRateLimitedTitle}`)}</title><style>body{max-width:40rem;margin:0 auto;padding:2.5rem 1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6}h1{font-size:1.75rem;line-height:1.2}</style></head><body><main data-testid="marketing-signup-rate-limited"><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><p role="alert">${escapeHtml(t.signupRateLimited)}</p></main></body></html>`;
+export const renderSignupRateLimitedPage = (input: { language: Language; formPath: string | null }): string => {
+  const t = messages[input.language];
+  const action = input.formPath === null
+    ? ''
+    : `<div class="actions"><a class="button-link" href="${escapeHtml(`${input.formPath}?lang=${input.language}`)}">${escapeHtml(t.signupBackToForm)}</a></div>`;
+  const body = `<section class="page">${renderStatusCue('error')}<p class="eyebrow">${escapeHtml(t.signupEyebrow)}</p><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><div class="status"><p class="lede" role="alert">${escapeHtml(t.signupRateLimited)}</p>${action}</div></section>`;
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(deriveLightAccent(DEFAULT_ACCENT))};--accent-dark:${escapeHtml(deriveDarkAccent(DEFAULT_ACCENT))}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012"><title>${escapeHtml(`${t.errorTitlePrefix}${t.signupRateLimitedTitle}`)}</title><style>${publicStyles}</style></head><body><main class="shell" data-testid="marketing-signup-rate-limited">${body}</main></body></html>`;
 };
 
 export const renderSignupFormPage = (input: {
@@ -685,7 +704,7 @@ export const renderSignupFormPage = (input: {
       path: `${path}/thanks`,
       eyebrow: t.signupEyebrow,
       title: input.doubleOptIn ? t.signupPendingTitle : t.signupThanks,
-      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam] : [successText],
+      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam, t.signupAgainHint] : [successText],
       testId: 'marketing-signup-thanks',
       cue: input.doubleOptIn ? 'info' : 'success',
       links: input.doubleOptIn ? [{ label: t.signupAgain, href: `${path}?lang=${input.language}` }] : [],

@@ -7,12 +7,14 @@ export interface PublicMarketingMessages {
   signupConsentConfirm: string;
   signupConsentUnsubscribe: string;
   signupConsentDocument: string;
+  signupConsentExternalDocument: string;
   signupSubmit: string;
   signupSubmitPending: string;
   signupEmailInvalid: string;
   signupFailed: string;
   signupRateLimited: string;
   signupRateLimitedTitle: string;
+  signupBackToForm: string;
   errorTitlePrefix: string;
   signupUnavailableTitle: string;
   signupUnavailableBody: string;
@@ -21,6 +23,7 @@ export interface PublicMarketingMessages {
   signupPending: string;
   signupPendingValidity: string;
   signupPendingSpam: string;
+  signupAgainHint: string;
   signupAgain: string;
 
   language: string;
@@ -70,6 +73,7 @@ export interface PublicMarketingMessages {
   confirmationPromptTitle: string;
   confirmationPromptBody: (input: { tenant: string }) => string;
   confirmationSubmit: string;
+  confirmationSubmitPending: string;
   confirmationSuccessTitle: string;
   confirmationSuccessBody: (input: { tenant: string }) => string;
   confirmationExpiredTitle: string;

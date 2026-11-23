@@ -62,9 +62,11 @@ const formPageData = async (deps: AppDeps, form: MarketingSignupForm) => {
   return {
     wording: form.consentVersion.label,
     doubleOptIn: definition.doubleOptIn,
-    consentDocument: document === null
-      ? null
-      : { title: document.document.title, href: `/legal/${encodeURIComponent(document.document.slug)}/v/${String(document.version.version)}` },
+    consentDocument: reference.mode === 'url'
+      ? { kind: 'external', url: reference.url } as const
+      : document === null
+        ? null
+        : { kind: 'hosted', title: document.document.title, href: `/legal/${encodeURIComponent(document.document.slug)}/v/${String(document.version.version)}` } as const,
   };
 };
 const submissionSlug = (path: string): string => decodeURIComponent(path.split('/').at(-2) ?? '');

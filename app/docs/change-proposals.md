@@ -1602,23 +1602,29 @@ proposal still holds it, asks the storage whether its object exists and has the
 recorded size. These file checks run at most 4 at a time
 (`CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.concurrency`), each storage request
 within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and every storage
-request starts and ends within one wall-clock budget of 25 seconds; the
-database reads of the staged rows and of the storage configuration are not
-bounded by that budget, so a slow database can extend the checks beyond it,
-and a check whose staged row read ends after the budget ends the checks with
-`503 unavailable` as below instead of counting the file as gone. A group holds at most as many file
+request starts and ends within one wall-clock budget of 25 seconds. The
+approval waits for each database read of a staged row and for the read of the
+storage configuration only until that budget ends: a read that has not
+answered by then, or answers after it, ends the checks with `503 unavailable`
+as below, whatever it answers later, instead of counting the file as gone or
+answering a configuration error. The approval stops waiting, but the read itself
+is not cancelled: a stalled read keeps its database connection until the
+database answers it. A group holds at most as many file
 items as its key may have staged files (20), and 20 checks 4 at a time are 5
 rounds of at most 5 seconds. The other 35 seconds of the 60-second server
 function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
-left to the checks of the public image copies (at most 15 seconds,
-[Images](#images)), the transaction and the answer. None of these file checks runs under
+the target for the checks of the public image copies (at most 15 seconds,
+[Images](#images)), the transaction and the answer; they are not reserved, so
+an approval whose connection pool is held by such stalled reads can still wait
+longer for its transaction. None of these file checks runs under
 the workspace's approval lock; an image a proposal attaches, alone or in a
 mixed group, has its public copy checked before the transaction too, and its
 quarantined copy read and written under that lock, each storage request
 within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the
-budget left, a check whose staged row read ends after the budget, or any
+budget left, a check whose staged row or configuration read has not answered
+within the budget, or any
 storage failure other than a missing object on a request whose 5 seconds the
 budget shortened, ends the checks with `503 unavailable` and `Retry-After: 5`;
 any other storage failure of a request that had its full 5 seconds, a timeout

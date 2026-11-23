@@ -86,6 +86,18 @@ const fileCheckKey = (proposalId: string, fileId: string): string => `${proposal
 
 type FileCheck = Result<KeyDownloadStagedFile | null, AppError>;
 
+const withinMs = async <T>(work: Promise<T>, ms: number): Promise<{ done: true; value: T } | { done: false }> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<{ done: false }>((resolve) => {
+    timer = setTimeout(() => resolve({ done: false }), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([work.then((value) => ({ done: true as const, value })), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 /**
  * Runs before the approval transaction, so none of these storage requests waits under the workspace's approval lock,
  * a few at a time within one wall-clock budget. A file whose row is gone, whose object the storage reports missing or
@@ -111,10 +123,13 @@ export const checkApprovalFiles = async (
   };
   const check = async (proposal: ChangeProposal, fileId: string): Promise<FileCheck> => {
     if (left() < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
-    const file = await deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId);
-    if (left() <= 0) return err(changeProposalFileChecksOutOfTime());
+    const found = await withinMs(deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId), left());
+    if (!found.done || left() <= 0) return err(changeProposalFileChecksOutOfTime());
+    const file = found.value;
     if (file?.proposalId !== proposal.id) return ok(null);
-    const resolved = await configured();
+    const configuration = await withinMs(configured(), left());
+    if (!configuration.done || left() <= 0) return err(changeProposalFileChecksOutOfTime());
+    const resolved = configuration.value;
     if (!resolved.ok) return resolved;
     const remaining = left();
     if (remaining < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS,
@@ -16,7 +16,7 @@ import {
   type Product,
 } from '#core/domain/index.js';
 
-import type { StorageProvider } from '../ports.js';
+import type { StorageProvider, TenantSecretResolver } from '../ports.js';
 import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '../testing/change-proposal-fakes.js';
 import { fakeStorageSecrets } from '../testing/object-storage-fake.js';
 import { previewChangeProposal } from './change-proposal-apply.js';
@@ -163,6 +163,48 @@ describe('the file checks before an approval', () => {
     const h = harness({ headMs: () => 100, findMs, rowsGone: true });
     expect(await h.check()).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } });
     expect(h.heads).toEqual([]);
+  });
+
+  describe('with a lookup that has not answered when the budget ends', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: Date.parse(NOW) }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    const settlesBy = async <T>(work: Promise<T>, ms: number): Promise<T | 'pending'> => {
+      const watched = work.then((value): { value: T } => ({ value }));
+      let outcome: { value: T } | 'pending' = 'pending';
+      void watched.then((settled) => { outcome = settled; });
+      await vi.advanceTimersByTimeAsync(ms);
+      return outcome === 'pending' ? 'pending' : outcome.value;
+    };
+
+    const stalled = <T>(): Promise<T> => new Promise<T>(() => undefined);
+
+    const lateDeps = (overrides: { findStaged?: () => Promise<KeyDownloadStagedFile | null>; secretResolver?: TenantSecretResolver }) => ({
+      clock: { nowIso: () => new Date().toISOString() },
+      secretResolver: overrides.secretResolver ?? fakeStorageSecrets,
+      keyDownloadFiles: { findStaged: overrides.findStaged ?? (async () => stagedFile(1, 'proposal-1')) },
+      storage: { ...unusedStorage, objectUrl: (_configuration: unknown, key: string) => new URL(`https://storage.example.test/${key}`), head: async () => ok({ sizeBytes: 10 }) },
+    });
+
+    const outOfTime = { ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } };
+
+    it('answers out of time when the budget ends while a staged row read stalls', async () => {
+      const checked = checkApprovalFiles(TENANT, [fileItem(1)], lateDeps({ findStaged: stalled }));
+      expect(await settlesBy(checked, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs)).toMatchObject(outOfTime);
+    });
+
+    it('answers out of time, not the configuration error, when the configuration read ends after the budget', async () => {
+      const secretResolver: TenantSecretResolver = {
+        resolve: async () => {
+          await new Promise((resolve) => { setTimeout(resolve, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs + 1_000); });
+          return err(integrationUnavailable('No storage configuration'));
+        },
+      };
+      const checked = checkApprovalFiles(TENANT, [fileItem(1)], lateDeps({ secretResolver }));
+      expect(await settlesBy(checked, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs)).toMatchObject(outOfTime);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await checked).toMatchObject(outOfTime);
+    });
   });
 
   it('answers the storage failure of the first item in group order, whichever answered first', async () => {

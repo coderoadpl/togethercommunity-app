@@ -1700,7 +1700,11 @@ preview says so, and Stripe still refuses anything above the charge.
   choices apply when the refund is requested; a refund that later fails leaves
   them as chosen and the staff alert says so. "Ship anyway"
   (`POST /api/orders/:orderId/packing-list`, `order ship-anyway`) puts an order
-  without fulfilment status back to `to_pack`.
+  without fulfilment status back to `to_pack` and, in the same transaction,
+  takes back out of stock the units a staff refund returned (an `adjusted`
+  stock event with `reference = { orderId, reason: "staff_refund_ship_anyway" }`),
+  once. When fewer units are on hand than it must take back, it is refused with
+  `conflict` naming the products, and staff adjust the stock first.
 - **Access**: the existing `charge.refunded` handler marks a fully refunded
   order `refunded` and revokes the grants of its products unless another
   purchase keeps them; a partial refund changes no grant. The handler also

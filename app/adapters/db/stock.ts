@@ -1,8 +1,9 @@
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 
-import { appError, err, MAX_STOCK_QUANTITY, mergeStockQuantities, notFound, ok, shortLateCommitProductIds, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel, type StockQuantity } from '#core/domain/index.js';
+import { appError, err, MAX_STOCK_QUANTITY, mergeStockQuantities, notFound, ok, shortLateCommitProductIds, stockAdjustmentEventType, stockAlertMarkers, validation, type StockCommitEffect, type StockEventType, type StockLevel, type StockQuantity, type AppError, type Result } from '#core/domain/index.js';
 import type { StockRepository } from '#core/server/index.js';
 
+import { products } from './app-schema.js';
 import type { Db } from './client.js';
 import { productStock, stockEvents, stockReservations, type StockEventReference } from './stock-schema.js';
 
@@ -175,17 +176,23 @@ const unchanged = async (tx: Executor, tenantId: string, productId: string): Pro
   };
 };
 
+const takeBackReasonOf = (reason: string): string => `${reason}_ship_anyway`;
+
+const returnedOrderUnits = (reason: string) =>
+  sql<string>`coalesce(sum(${stockEvents.quantity}) filter (where (${stockEvents.type} = 'returned' and (${stockEvents.reference} ->> 'reason') = ${reason})
+    or (${stockEvents.type} = 'adjusted' and (${stockEvents.reference} ->> 'reason') = ${takeBackReasonOf(reason)})), 0)`;
+
 const committedOrderStock = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string, reason: string) => {
   const committed = await executor.select({
     productId: stockEvents.productId,
     committed: sql<string>`coalesce(sum(${stockEvents.quantity}) filter (where ${stockEvents.type} IN ('committed', 'committed_late')), 0)`,
-    returned: sql<string>`count(*) filter (where ${stockEvents.type} = 'returned' and (${stockEvents.reference} ->> 'reason') = ${reason})`,
+    returned: returnedOrderUnits(reason),
   })
     .from(stockEvents)
     .innerJoin(productStock, and(eq(productStock.tenantId, stockEvents.tenantId), eq(productStock.productId, stockEvents.productId)))
     .where(and(
       eq(stockEvents.tenantId, tenantId),
-      sql`${stockEvents.type} IN ('committed', 'committed_late', 'returned')`,
+      sql`${stockEvents.type} IN ('committed', 'committed_late', 'returned', 'adjusted')`,
       sql`(${stockEvents.reference} ->> 'orderId') = ${orderId}`,
     ))
     .groupBy(stockEvents.productId)
@@ -225,6 +232,49 @@ export const returnCommittedOrderStock = async (
     returned.push({ productId: line.productId, quantity: onHand - current.onHand });
   }
   return returned;
+};
+
+export const takeBackReturnedOrderStock = async (
+  tx: Executor,
+  tenantId: string,
+  input: { orderId: string; reason: string; actorUserId: string | null; now: string },
+): Promise<Result<Array<{ productId: string; quantity: number }>, AppError>> => {
+  const outstanding = (await tx.select({ productId: stockEvents.productId, title: products.title, returned: returnedOrderUnits(input.reason) })
+    .from(stockEvents)
+    .innerJoin(products, and(eq(products.tenantId, stockEvents.tenantId), eq(products.id, stockEvents.productId)))
+    .where(and(
+      eq(stockEvents.tenantId, tenantId),
+      sql`${stockEvents.type} IN ('returned', 'adjusted')`,
+      sql`(${stockEvents.reference} ->> 'orderId') = ${input.orderId}`,
+    ))
+    .groupBy(stockEvents.productId, products.title)
+    .orderBy(asc(stockEvents.productId)))
+    .map((line) => ({ productId: line.productId, title: line.title, quantity: Number(line.returned) }))
+    .filter((line) => line.quantity > 0);
+  const locked: Array<(typeof outstanding)[number] & { current: StockRow }> = [];
+  for (const line of outstanding) {
+    const current = await lockStock(tx, tenantId, line.productId);
+    if (current !== null) locked.push({ ...line, current });
+  }
+  const short = locked.filter((line) => line.current.onHand < line.quantity);
+  if (short.length > 0) {
+    return err(appError('conflict', `The refund returned units of ${short.map((line) => line.title).join(', ')} to stock and fewer are on hand now; adjust the stock before shipping the order`));
+  }
+  for (const line of locked) {
+    const onHand = line.current.onHand - line.quantity;
+    await tx.update(productStock)
+      .set({ onHand, ...stockAlertMarkers({ ...line.current, onHand }), updatedAt: input.now })
+      .where(stockKey(tenantId, line.productId));
+    await appendEvent(tx, tenantId, {
+      productId: line.productId,
+      type: 'adjusted',
+      quantity: -line.quantity,
+      reference: { orderId: input.orderId, reason: takeBackReasonOf(input.reason) },
+      actorUserId: input.actorUserId,
+      occurredAt: input.now,
+    });
+  }
+  return ok(locked.map(({ productId, quantity }) => ({ productId, quantity })));
 };
 
 export const createStockRepository = (db: Db): StockRepository => ({

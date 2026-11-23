@@ -22,7 +22,7 @@ import { orderRefundJobs } from './order-refund-job-schema.js';
 import { isoOrNull } from './order-refund-jobs.js';
 import { orderStaffRefunds } from './order-staff-refund-schema.js';
 import { orderShipments } from './shipx-schema.js';
-import { returnableOrderStock, returnCommittedOrderStock } from './stock.js';
+import { returnableOrderStock, returnCommittedOrderStock, takeBackReturnedOrderStock } from './stock.js';
 
 type Executor = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -149,11 +149,13 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
       )))
       .returning())
       .map(toStaffRefund),
-  shipAnyway: async (tenantId, orderId) => db.transaction(async (tx) => {
+  shipAnyway: async (tenantId, orderId, input) => db.transaction(async (tx) => {
     const [row] = await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId))).for('update');
     if (row === undefined) return err(notFound('Order not found'));
     const blocker = shipAnywayBlocker(parseOrder(row));
     if (blocker !== null) return err(blocker);
+    const takenBack = await takeBackReturnedOrderStock(tx, tenantId, { orderId, reason: STAFF_REFUND_STOCK_REASON, ...input });
+    if (!takenBack.ok) return takenBack;
     const [updated] = await tx.update(orders)
       .set({ fulfilmentStatus: 'to_pack' })
       .where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId), isNull(orders.fulfilmentStatus)))

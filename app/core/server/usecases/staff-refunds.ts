@@ -225,7 +225,7 @@ export const createStaffRefund = async (
 export const shipRefundedOrderAnyway = async (
   ctx: Ctx,
   orderId: string,
-  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'rateLimit'>,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'clock' | 'rateLimit'>,
 ): Promise<Result<OrderListItem, AppError>> => {
   const refusal = machineKeyRefusal(ctx);
   if (refusal !== null) return refusal;
@@ -235,7 +235,7 @@ export const shipRefundedOrderAnyway = async (
   if (order === null) return err(notFound('Order was not found'));
   const blocker = shipAnywayBlocker(order);
   if (blocker !== null) return err(blocker);
-  const shipped = await deps.staffRefunds.shipAnyway(tenant.value, order.id);
+  const shipped = await deps.staffRefunds.shipAnyway(tenant.value, order.id, { actorUserId: ctx.identity.userId, now: deps.clock.nowIso() });
   return shipped.ok ? ok({ ...order, fulfilmentStatus: shipped.value.fulfilmentStatus ?? null }) : shipped;
 };
 

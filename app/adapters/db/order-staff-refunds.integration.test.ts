@@ -422,7 +422,25 @@ describe('staff refunds against a real database', () => {
     await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
     expect(await shipRefundedOrderAnyway(staff('tenant-b'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: true, value: { fulfilmentStatus: 'to_pack', status: 'refunded' } });
+    expect((await database.db.select().from(productStock).where(eq(productStock.productId, 'book')))[0]?.onHand).toBe(3);
+    expect(await database.db.select({ quantity: stockEvents.quantity, reference: stockEvents.reference, actorUserId: stockEvents.actorUserId }).from(stockEvents).where(eq(stockEvents.type, 'adjusted')))
+      .toStrictEqual([{ quantity: -2, reference: { orderId: 'order-1', reason: 'staff_refund_ship_anyway' }, actorUserId: 'staff-tenant-a' }]);
     expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect((await database.db.select().from(productStock).where(eq(productStock.productId, 'book')))[0]?.onHand).toBe(3);
+  });
+
+  it('refuses ship anyway while fewer units are on hand than the refund returned to stock and keeps the order off the packing list', async () => {
+    const h = harness();
+    await database.db.insert(productStock).values({ tenantId: 'tenant-a', productId: 'book', onHand: 0, reserved: 0, updatedAt: start });
+    await database.db.insert(stockEvents).values({ tenantId: 'tenant-a', productId: 'book', type: 'committed', quantity: -2, reference: { orderId: 'order-1', checkoutSnapshotId: 'snap-1' }, occurredAt: start });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    await database.db.update(productStock).set({ onHand: 1 }).where(eq(productStock.productId, 'book'));
+
+    expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({
+      ok: false, error: { code: 'conflict', message: 'The refund returned units of Book to stock and fewer are on hand now; adjust the stock before shipping the order' },
+    });
+    expect(await fulfilmentOf('order-1')).toBeNull();
+    expect((await database.db.select().from(productStock).where(eq(productStock.productId, 'book')))[0]?.onHand).toBe(1);
   });
 
   it('refunds no more than a typed amount equal to the remainder when a dashboard refund fails before it is issued, and offers the full refund choices with it', async () => {

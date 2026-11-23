@@ -1503,7 +1503,7 @@ export interface OrderStaffRefundRepository {
   returnableStock(tenantId: string, orderId: string): Promise<Array<{ productId: string; quantity: number }>>;
   committedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
-  shipAnyway(tenantId: string, orderId: string): Promise<Result<Order, AppError>>;
+  shipAnyway(tenantId: string, orderId: string, input: { actorUserId: string; now: string }): Promise<Result<Order, AppError>>;
 }
 
 export interface KsefCredentials {

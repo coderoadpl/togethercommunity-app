@@ -123,7 +123,10 @@ workspace's restricted key and what to do about it.
     removeFromPackingList? }` → the created (or, for a repeated `requestKey`, the existing)
     refund.
   - `POST /api/orders/:orderId/packing-list` → puts a refunded order without fulfilment status
-    back to `to_pack` ("Ship anyway").
+    back to `to_pack` ("Ship anyway") and takes back out of stock, once and in the same
+    transaction, the units a staff refund returned (`adjusted` stock event with
+    `reference = { orderId, reason: "staff_refund_ship_anyway" }`); `conflict` naming the products
+    when fewer units are on hand.
   - The order detail response carries the order's staff refunds (newest first) and the totals.
 - FR-3: An order is refundable by staff when: `status` is `paid` or `partially_refunded`;
   `provider` is `stripe`; it has a payment intent id; `amountCents > 0`; `cancelReason` is null
@@ -235,7 +238,8 @@ What the previous release does with rows written by this one:
   flow and read as "not on the packing list".
 - `orders.status` `refunded` / `partially_refunded`: existing values, written by the existing
   webhook.
-- `stock_events` type `returned`: an existing type; the `reference` JSON is not parsed strictly.
+- `stock_events` types `returned` and `adjusted` (ship anyway): existing types; the `reference`
+  JSON is not parsed strictly.
 - `order_changes`: same columns, written by the same trigger function.
 - `email_outbox` kind `order-refund-issued`: the previous release's `renderEmailOutboxPayload`
   safe-parses the payload and fails only that row ("Invalid email outbox payload"), retries it up

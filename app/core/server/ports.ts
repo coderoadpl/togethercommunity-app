@@ -1674,7 +1674,6 @@ export interface StorageReferenceRepository {
 /** `getObject` and `head` answer `not_found` only when the storage says the object does not exist; any other failure is another code. */
 export interface StorageProvider {
   list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
-  /** With `deadlineMs`, a request still unanswered then fails as `integration_unavailable`. */
   getObject(input: {
     url: string;
     accessKeyId: string;
@@ -1690,7 +1689,6 @@ export interface StorageProvider {
     region?: string;
     deadlineMs?: number;
   }, options: { maxBytes: number }): Promise<Result<{ bytes: Uint8Array; etag: string | null }, AppError>>;
-  /** With `deadlineMs`, a request still unanswered then fails as `integration_unavailable`. */
   putObject(input: {
     url: string;
     accessKeyId: string;
@@ -1698,7 +1696,7 @@ export interface StorageProvider {
     region?: string;
     body: Uint8Array;
     contentType: string;
-    /** Stored with the object and sent on every read of it, whatever a signed read asks for. */
+    /** Stored with the object; a read falls back to it when the provider applies no response override the read was signed with. */
     contentDisposition?: string;
     deadlineMs?: number;
   }): Promise<Result<void, AppError>>;

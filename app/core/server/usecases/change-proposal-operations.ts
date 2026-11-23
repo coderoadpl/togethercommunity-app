@@ -70,7 +70,6 @@ export interface PreparedChangeProposalOperation {
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   comparable: ChangeProposalComparable;
-  /** Set when a run that changes nothing can only mean the input names what the snapshot does not show. */
   refusesEmptyEffect: boolean;
   invalidInputMessage: string;
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;

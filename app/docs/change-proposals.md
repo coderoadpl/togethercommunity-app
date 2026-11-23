@@ -1793,7 +1793,10 @@ ordered by module creation time, then by the module's course order
 lesson opens when the member's items open it in any of these places
 (`locateAccessibleLesson`): the lesson player with its media, editions and
 attachments, completion, discussions, discussion search and the reach of
-lesson-thread notifications check every place. Where a member is sent or
+lesson-thread notifications check every place; a preview lesson still opens in
+the player, with its media, editions and attachments, to any signed-in member
+without that check, while completion and discussions of it still require a
+place their items open. Where a member is sent or
 progress is recorded follows a course that opens the lesson for them:
 
 - a lesson-thread notification (the e-mail link and the course of the in-app

@@ -687,7 +687,8 @@ deletes it whether or not a late copy landed there.
 
 **Types, names and size.** The type is one of `application/pdf` (`%PDF-`
 within the first 1024 bytes), `application/epub+zip` (a ZIP whose first entry
-is the stored, uncompressed `mimetype` naming `application/epub+zip`),
+is the stored, uncompressed `mimetype` whose header declares the 20 bytes of
+`application/epub+zip` and which holds them),
 `application/zip` (a ZIP local file header first), `audio/mpeg` (first an
 ID3v2.2, 2.3 or 2.4 tag with a synchsafe size, or an MPEG audio frame header
 with a valid version, layer, bitrate and sampling rate), `audio/mp4` (an `ftyp`
@@ -696,7 +697,8 @@ box at offset 4 whose major brand is `M4A `, `M4B `, `isom`, `iso2`, `mp41`,
 `M4A ` and `M4B `), `image/png` and `image/jpeg`; any other type is refused
 with `400`. The check reads the first 4096 bytes. Refused on purpose, although
 some readers and players open them: an EPUB whose `mimetype` entry is
-compressed or not first, an empty or spanned ZIP, an MP3 with padding or
+compressed or not first, or whose header leaves its sizes to a data descriptor,
+an empty or spanned ZIP, an MP3 with padding or
 another tag before its first frame, a PDF whose `%PDF-` does not lie within the
 first 1024 bytes, and ISO media of any other brand (QuickTime, 3GP, HEIC,
 AVIF). A file name has 1 to 255 characters after trimming and no control

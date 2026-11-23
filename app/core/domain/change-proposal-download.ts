@@ -109,11 +109,24 @@ const littleEndian16 = (head: Uint8Array, offset: number): number | null => {
   return low === undefined || high === undefined ? null : low + high * 256;
 };
 
+const littleEndian32 = (head: Uint8Array, offset: number): number | null => {
+  const low = littleEndian16(head, offset);
+  const high = littleEndian16(head, offset + 2);
+  return low === null || high === null ? null : low + high * 65536;
+};
+
+const ZIP_DATA_DESCRIPTOR_FLAG = 0x08;
+
+const EPUB_MIMETYPE = 'application/epub+zip';
+
 const isEpub = (head: Uint8Array): boolean => {
   if (!startsWith(head, 0, ZIP_LOCAL_HEADER) || littleEndian16(head, 8) !== 0 || littleEndian16(head, 26) !== 8) return false;
+  const flags = littleEndian16(head, 6);
+  if (flags === null || (flags & ZIP_DATA_DESCRIPTOR_FLAG) !== 0) return false;
+  if (littleEndian32(head, 18) !== EPUB_MIMETYPE.length || littleEndian32(head, 22) !== EPUB_MIMETYPE.length) return false;
   const extraLength = littleEndian16(head, 28);
   return extraLength !== null && startsWith(head, 30, ascii('mimetype'))
-    && startsWith(head, 38 + extraLength, ascii('application/epub+zip'));
+    && startsWith(head, 38 + extraLength, ascii(EPUB_MIMETYPE));
 };
 
 const isId3Tag = (head: Uint8Array): boolean => {

@@ -40,8 +40,10 @@ const bytes = (...parts: Array<string | number[]>): Uint8Array =>
 
 const le16 = (value: number): number[] => [value & 0xff, value >> 8];
 
-const epubHead = (extra = 0, mimetype = 'application/epub+zip', method = 0): Uint8Array => bytes(
-  [0x50, 0x4b, 0x03, 0x04], le16(10), le16(0), le16(method), [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
+const le32 = (value: number): number[] => [...le16(value & 0xffff), ...le16(value >>> 16)];
+
+const epubHead = (extra = 0, mimetype = 'application/epub+zip', method = 0, sizes = [20, 20], flags = 0): Uint8Array => bytes(
+  [0x50, 0x4b, 0x03, 0x04], le16(10), le16(flags), le16(method), [0, 0, 0, 0], [0, 0, 0, 0], le32(sizes[0] ?? 0), le32(sizes[1] ?? 0),
   le16(8), le16(extra), 'mimetype', new Array<number>(extra).fill(0), mimetype,
 );
 
@@ -72,6 +74,11 @@ describe('the type check of a staged download file', () => {
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(4))).toBe(true);
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/zip+xyz'))).toBe(false);
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 8))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [0, 0]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 21]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [21, 20]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 20], 0x08))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 20], 0x0800))).toBe(true);
     expect(keyDownloadBytesMatch('application/epub+zip', SAMPLES['application/zip'])).toBe(false);
   });
 

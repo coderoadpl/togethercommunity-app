@@ -699,9 +699,16 @@ scopes on every shop key.
   waits under the workspace's approval lock, then locks the staged row and
   checks it is the same file
   (key, object, size, SHA-256, held by that proposal); a gone file ends the
-  proposal or its whole group `stale` and nothing is attached. Because only the
-  server writes the staged object and the row stays locked until the commit,
-  the bytes an approval attaches are the bytes the owner could download. The
+  proposal or its whole group `stale` and nothing is attached. A key cannot
+  write the staged object, which only the server writes by a copy, and the row
+  stays locked until the commit; the storage is asked only for the object's
+  length, and the SHA-256 is compared between the two reads of the row, not
+  with the bytes. Known limit: bytes replaced outside the application with
+  others of the same length, or a storage connection the workspace owner
+  changes between the review and the approval (each resolves the current
+  connection, and a staged row names no bucket), are not detected, so the
+  approval can attach other bytes than the owner downloaded, or an object the
+  new bucket does not hold. The
   owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
   (verified owner session, `proposal:read`, a file the pending proposal holds
   whose object the storage reports with the recorded size, else `404`):
@@ -726,7 +733,10 @@ scopes on every shop key.
   accepts or refuses a proposal depends on live state (a negative stock
   adjustment, the effect size), so a write-only key could otherwise probe
   values it cannot read; with the rule, a propose-mode key learns nothing from
-  a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
+  a refused or accepted proposal that it could not read with its read scope;
+  the course, module and lesson checks of a product's access list, which no
+  read scope covers, therefore run only at the approval
+  ([What a product grants](#shop-management-keys), below). Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
   without one: the eleven catalogue write routes, the three sales-link write
   routes, the settings update and the three product file write routes store a
@@ -742,8 +752,13 @@ scopes on every shop key.
   appeared under the public image prefix. A quarantined image is stored under
   `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
   private prefix the public asset route never serves; its address names its
-  SHA-256, so the bytes the owner previews are the bytes an approval publishes,
-  and approval checks the hash again before it writes the public copy. The owner
+  SHA-256, the owner preview checks the hash of what it serves, and approval
+  checks the hash of the quarantined bytes again before it writes the public
+  copy. A public copy already at the address is reused without a write when its
+  bytes hashed to the digest before the approval transaction; under the lock it
+  is checked again by its size and strong entity tag, or read and hashed again
+  when the first read carried none, so at the commit a reused copy matches only
+  as far as the storage's entity tag says. The owner
   reads it only through `GET /api/change-proposals/:id/assets/:digest`
   (verified owner session, `proposal:read`, an image the pending proposal
   attaches), with `nosniff`, `private, no-store` and SVG always as an
@@ -756,10 +771,16 @@ scopes on every shop key.
   and starts at most 60 uploads in 15 minutes, each presigned for exactly its
   declared size; decisions, revocation and a sweep on the minute tick remove
   them, and the sweep also removes the key's upload candidates and the public
-  copies of approvals that did not end applied. The public asset route answers
-  `404` for a content-addressed address while an approval attempt holds its
-  publication record, so a public copy written before an approval's commit is
-  served only once that approval committed. A
+  copies of approvals that did not end applied. An approval writes a public
+  copy before its commit, so a copy can be in storage after an approval whose
+  commit failed, until its withdrawal or the minute sweep deletes it. The
+  public asset route answers `404` for a content-addressed address while an
+  approval attempt holds its publication record. That record is removed with
+  the approval's commit, once the storage confirmed the copy's delete, when the
+  attempt never tried to write the copy, or when a live field or an applied
+  proposal already shows the address, so a copy written before a commit is
+  served only once that approval committed, and never after one that did not
+  end applied unless the address was public already. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
@@ -809,9 +830,13 @@ scopes on every shop key.
   lock a key event's foreign key takes, so a settings approval and a key
   revocation share only the proposal row lock and cannot deadlock. There is no intermediate state, so a
   repeated or concurrent approve finds no pending row and gets `409`; an
-  infrastructure failure rolls everything back and leaves the proposal
-  pending. Non-database effects of an applied change run only after the
-  commit. The database checks only the shape of a stored operation name; a
+  infrastructure failure rolls back every database change and leaves the
+  proposal pending. Non-database effects of an applied change run only after
+  the commit, except the public copies of proposed images, which the approval
+  writes before its commit and which a rollback does not undo: such a copy
+  stays in storage, answered `404` by the public asset route while its
+  publication record exists, until the withdrawal or the minute sweep deletes
+  it (above). The database checks only the shape of a stored operation name; a
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
@@ -859,10 +884,14 @@ scopes on every shop key.
   receipt shows that outcome only after an owner chose to approve. A key that
   creates a product gets one refusal message for every reason the check or the
   write refuses its list; an owner or admin session gets the specific message. The owner's editor
-  skips the check and the list write when the list it is sent equals the
-  stored one, so a consent save writes only the consents, does not fail on a
-  stored list the check would refuse and never writes back a list another
-  editor changed after it was read. A module
+  skips the check and the list write when the list it is sent names the same
+  items as the stored one (items and the ids within an item compared in any
+  order, repeats ignored), so a consent save writes only the consents, does not
+  fail on a stored list the check would refuse, an archived course included,
+  and never writes back a list another editor changed after it was read. It
+  compares items, not what they grant: a list that grants the same through
+  differently shaped items, such as one `modules` item split into two, is
+  checked and written. A module
   or lesson item opens that module or lesson wherever it is used, so the check
   only keeps the course shown next to it true. It is a point-in-time check:
   the write locks only the courses, and a later module detach or lesson move

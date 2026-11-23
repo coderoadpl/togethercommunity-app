@@ -1160,6 +1160,35 @@ describe('MemberAccountPage', () => {
     expect(screen.getByTestId('account-reset-password')).toHaveClass('MuiButton-text');
   });
 
+  it.each([
+    { revokeOtherSessions: true, refetches: 1 },
+    { revokeOtherSessions: false, refetches: 0 },
+  ])('refetches the session list after a password change only when other sessions were signed out ($revokeOtherSessions)', async ({ revokeOtherSessions, refetches }) => {
+    let sessionCalls = 0;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.get('*/api/me/sessions', () => {
+        sessionCalls += 1;
+        return HttpResponse.json({ ok: true, data: { sessions: [] } });
+      }),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+    await waitFor(() => expect(sessionCalls).toBe(1));
+
+    await userEvent.click(await screen.findByTestId('change-password-open'));
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
+    if (!revokeOtherSessions) await userEvent.click(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions }));
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await findToast('success')).toHaveTextContent(en.changePassword.success);
+    await waitFor(() => expect(sessionCalls).toBe(1 + refetches));
+  });
+
   it('keeps the reset path available for a passwordless account', async () => {
     let body: unknown;
     server.use(

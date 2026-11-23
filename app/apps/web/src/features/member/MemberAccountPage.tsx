@@ -225,8 +225,9 @@ export const MemberAccountPage = () => {
   });
   const changePassword = useMutation({
     ...actions.changePassword,
-    onSuccess: () => {
+    onSuccess: async (_data, { revokeOtherSessions }) => {
       toast.success(t.changePassword.success);
+      if (revokeOtherSessions) await queryClient.invalidateQueries(actions.accountSessionsInvalidates());
     },
   });
   const resendVerification = useMutation({

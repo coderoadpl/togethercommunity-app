@@ -860,7 +860,9 @@ describe('a delete the storage refuses', () => {
       lookupAddresses: async () => ['93.184.216.34'],
       fetchStorage: async (_url, init) => {
         requests.push(init.method);
-        return { ok: false, status: 403, headers: { get: () => null }, text: async () => '<Error><Code>AccessDenied</Code></Error>' };
+        return {
+          ok: false, status: 403, headers: { get: () => null }, body: { cancel: async () => undefined }, text: async () => '<Error><Code>AccessDenied</Code></Error>',
+        };
       },
     });
     const repository = createQuarantinedImageRepository(database.db);

@@ -236,6 +236,24 @@ describe('uploading an image for a proposal', () => {
     expect(h.store.imageRows).toEqual([]);
   });
 
+  it('completes a candidate only for the key that started it, and never through the live completion', async () => {
+    const h = harness();
+    const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.objects.objects.set(started.value.key, { bytes: PNG(1), contentType: 'image/png' });
+    const input = { key: started.value.key };
+    const gone = { ok: false, error: { code: 'not_found' } };
+    expect(await completeProposedProductCoverUpload(keyCtx(OTHER_KEY_ID), input, h.deps)).toMatchObject(gone);
+    expect(await completeProductCoverUpload(keyCtx(KEY_ID, TENANT, 'direct'), input, h.deps)).toMatchObject(gone);
+    expect(await completeProductCoverUpload(ownerSession, input, h.deps)).toMatchObject(gone);
+    expect(h.store.imageRows).toEqual([]);
+    expect(h.publicKeys()).toEqual([]);
+    expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([started.value.key]);
+
+    expect(await completeProposedProductCoverUpload(keyCtx(), input, h.deps)).toMatchObject({ ok: true, value: { quarantined: true } });
+    expect(h.store.imageRows.map((row) => row.apiKeyId)).toEqual([KEY_ID]);
+  });
+
   it('copies verified bytes to a private content-addressed key, deletes the candidate and answers the future public path', async () => {
     const h = harness();
     const bytes = PNG(1);

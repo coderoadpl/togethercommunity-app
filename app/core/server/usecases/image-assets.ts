@@ -27,6 +27,7 @@ import type {
   AccountAvatarRepository,
   AvatarImageProcessor,
   IdGenerator,
+  QuarantinedImageRepository,
   StorageProvider,
   TenantSecretResolver,
 } from '../ports.js';
@@ -241,6 +242,21 @@ const completeUpload = async (
   return ok({ url: servePath(kind, file) });
 };
 
+export interface LiveImageCompleteDeps extends Pick<ImageAssetDeps, 'secretResolver' | 'storage'> {
+  quarantinedImages: Pick<QuarantinedImageRepository, 'findUpload'>;
+}
+
+/** A candidate a propose-mode key started is its own: completing it here would publish it without an owner approval. */
+const completeLiveUpload = async (
+  tenantId: string,
+  allowedKinds: readonly ImageAssetKind[],
+  input: { key: string },
+  deps: LiveImageCompleteDeps,
+): Promise<Result<{ url: string }, AppError>> => {
+  if (await deps.quarantinedImages.findUpload(tenantId, input.key) !== null) return err(notFound('Image asset not found'));
+  return completeUpload(tenantId, allowedKinds, input, deps);
+};
+
 export const beginCourseCoverUpload = async (
   ctx: Ctx,
   input: ImageAssetUploadInput,
@@ -274,11 +290,11 @@ export const beginProductCoverUpload = async (
 export const completeProductCoverUpload = async (
   ctx: Ctx,
   input: { key: string },
-  deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
+  deps: LiveImageCompleteDeps,
 ): Promise<Result<{ url: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
-  return completeUpload(tenant.value, ['product-cover'], input, deps);
+  return completeLiveUpload(tenant.value, ['product-cover'], input, deps);
 };
 
 export const beginBrandingAssetUpload = async (
@@ -294,11 +310,11 @@ export const beginBrandingAssetUpload = async (
 export const completeBrandingAssetUpload = async (
   ctx: Ctx,
   input: { key: string },
-  deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
+  deps: LiveImageCompleteDeps,
 ): Promise<Result<{ url: string }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:settings:write', { shopManagementKeyGrant: brandingAssetGrant });
   if (!tenant.ok) return tenant;
-  return completeUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
+  return completeLiveUpload(tenant.value, BRANDING_ASSET_KINDS, input, deps);
 };
 
 export const beginAvatarUpload = async (

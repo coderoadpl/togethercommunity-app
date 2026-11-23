@@ -626,7 +626,7 @@ const respondImageAssetUpload = async (
 };
 
 const respondImageAssetCompletion = async (
-  complete: typeof completeCourseCoverUpload,
+  complete: (ctx: Ctx, input: { key: string }, deps: AppDeps) => ReturnType<typeof completeCourseCoverUpload>,
   ctx: Ctx,
   body: unknown,
   deps: AppDeps,

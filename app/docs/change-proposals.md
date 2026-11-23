@@ -1074,7 +1074,11 @@ lifetime of the presigned `PUT`, gets `409` with `key_image_uploads` (see
 record older than 20 minutes (the lifetime and a 5-minute margin) and then the
 record, whether the upload was completed or not, so neither an upload that is
 never completed nor a second `PUT` through a still valid URL stays in the
-bucket. Completing it (the matching `.../complete`
+bucket. Only the key whose upload start is recorded for a candidate key can
+complete it: another key of the workspace, whatever its mode, and an owner
+session completing it through the live route get `404 not_found`, so a
+candidate a propose-mode key started is never published without an approval
+and never taken over by another key. Completing it (the matching `.../complete`
 route) runs the live content checks (size and format; an upload
 that fails them is deleted and answers the same validation error), then copies
 the bytes to a private, content-addressed key of the key,

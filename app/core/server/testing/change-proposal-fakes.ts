@@ -705,6 +705,10 @@ export const createQuarantinedImagesFake = (
       store.imageUploads.push({ tenantId, ...upload });
       return { kind: 'recorded' };
     },
+    findUpload: async (tenantId, objectKey) => {
+      const found = store.imageUploads.find((row) => row.tenantId === tenantId && row.objectKey === objectKey);
+      return found === undefined ? null : { apiKeyId: found.apiKeyId, objectKey: found.objectKey, createdAt: found.createdAt };
+    },
     listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
       [...new Set(store.imageUploads.filter((row) => row.createdAt < createdBefore).map((row) => row.tenantId))].sort().slice(0, limit),
     listUploadsBefore: async (tenantId, createdBefore, limit) => store.imageUploads

@@ -3304,6 +3304,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * created after `countedAfter`.
    */
   recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
+  /** The recorded start of the upload to this candidate key, which names the key that may complete it; null for a live upload. */
+  findUpload(tenantId: string, objectKey: string): Promise<QuarantinedImageUpload | null>;
   /** Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. */
   listTenantIdsWithUploadsBefore(createdBefore: string, limit: number): Promise<string[]>;
   listUploadsBefore(tenantId: string, createdBefore: string, limit: number): Promise<QuarantinedImageUpload[]>;

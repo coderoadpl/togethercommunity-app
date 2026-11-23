@@ -201,7 +201,7 @@ export const beginProposedBrandingAssetUpload = (ctx: Ctx, input: ImageAssetUplo
 );
 
 export interface ProposedImageCompleteDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'insert'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'insert' | 'findUpload'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   contentHash: ContentHash;
@@ -221,6 +221,8 @@ const completeProposedImageUpload = async (
 ): Promise<Result<QuarantinedImageUpload, AppError>> => {
   if (!key.ok) return key;
   const { tenantId, keyId } = key.value;
+  const started = await deps.quarantinedImages.findUpload(tenantId, input.key);
+  if (started?.apiKeyId !== keyId) return err(notFound('Image asset not found'));
   const candidate = await readCandidateImage(tenantId, KINDS_BY_FAMILY[family], input, deps);
   if (!candidate.ok) return candidate;
   const { file, bytes, configuration, credentials, candidateUrl, contentType } = candidate.value;

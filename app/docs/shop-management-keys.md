@@ -522,7 +522,9 @@ public asset URL without changing any product. Attach it with product update.
 The public asset URL retains its existing redirect to signed storage. For a
 propose-mode key completion publishes nothing: it keeps the image private and
 answers `quarantined: true` with the address an approval publishes it at
-([Images](change-proposals.md#images)).
+([Images](change-proposals.md#images)). Only the key that started a
+propose-mode upload can complete it; any other key, and an owner session,
+gets `404 not_found` for that candidate.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
@@ -1050,7 +1052,8 @@ the returned headers and send `{"key":"<candidate-key>"}` to `complete`, which
 checks the workspace, size and image signature and answers the published
 `url`. Set that URL as `logoUrl`, `logoDarkUrl`, `faviconUrl` or `ogImageUrl`
 with a settings write. A candidate key of another workspace answers
-`404 not_found`. For a propose-mode key `complete` publishes nothing and adds
+`404 not_found`, and so does a candidate key a propose-mode key started, unless
+the completing key is that key. For a propose-mode key `complete` publishes nothing and adds
 `quarantined: true`; the settings write with that URL is a proposal, and the
 image becomes public when the owner approves it.
 

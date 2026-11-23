@@ -280,6 +280,11 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         return { kind: 'recorded' };
       });
     },
+    findUpload: async (tenantId, objectKey) => {
+      const [row] = await db.select().from(changeProposalImageUploads)
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey))).limit(1);
+      return row === undefined ? null : parseUpload(row);
+    },
     listTenantIdsWithUploadsBefore: async (createdBefore, limit) =>
       (await db.select({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)
         .where(lt(changeProposalImageUploads.createdAt, createdBefore)).groupBy(changeProposalImageUploads.tenantId)

@@ -8,7 +8,7 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 
 import { withoutBrowserSessionToken } from './browser-session-token.js';
-import { createAuth, createAuthPort } from './create-auth.js';
+import { createAuth, createAuthPort, type AuthSettings } from './create-auth.js';
 import { totpCode } from './totp-test-helper.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -25,7 +25,7 @@ const origin = `http://${host}`;
 const password = 'browser-token-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 let ipSuffix = 1;
 
-const buildAuth = () => {
+const buildAuth = (options: { google?: AuthSettings['google'] } = {}) => {
   const db = database.db;
   const auth = createAuth(db, {
     secret: 'browser-session-token-test-secret-32-characters',
@@ -47,7 +47,7 @@ const buildAuth = () => {
     clock: { nowIso: () => new Date().toISOString() },
     dispatchEmail: () => undefined,
     defaultTenantName: 'Together',
-    google: null,
+    google: options.google ?? null,
   });
   return { auth, authPort: createAuthPort(auth), magicLinks: createDevMagicLinkReader(db) };
 };
@@ -63,7 +63,7 @@ const call = (
   headers: Record<string, string>,
   body?: unknown,
 ) => auth.handler(new Request(`${origin}/api/auth${path}`, body === undefined
-  ? { headers }
+  ? { headers: { ...headers, 'x-forwarded-for': `198.51.100.${ipSuffix++}` } }
   : {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json', 'x-forwarded-for': `198.51.100.${ipSuffix++}` },
@@ -76,13 +76,22 @@ const sessionCookie = (response: Response): string =>
     .filter((entry) => entry.includes('session_token=') || entry.includes('two_factor='))
     .join('; ');
 
-const expectNoToken = async (response: Response) => {
+const rawSessionTokens = (cookies: string[]): string[] =>
+  [...cookies.join('; ').matchAll(/session_token=([^;,\s]+)/gu)]
+    .map((match) => decodeURIComponent(match[1] ?? '').split('.')[0] ?? '')
+    .filter((token) => token !== '');
+
+const expectNoToken = async (response: Response, ...requestCookies: string[]) => {
   expect(response.headers.get('set-auth-token')).toBeNull();
   expect(response.headers.get('access-control-expose-headers') ?? '').not.toMatch(/set-auth-token/iu);
   const text = await response.text();
   expect(text).not.toMatch(/"token"/u);
+  const tokens = rawSessionTokens([...response.headers.getSetCookie(), ...requestCookies]);
+  for (const token of tokens) expect(text).not.toContain(token);
   return text;
 };
+
+const googleClient = { clientId: 'browser-token-test.apps.googleusercontent.com', clientSecret: 'browser-token-test-secret' };
 
 const signedUpUser = async (auth: Auth) => {
   const email = `browser-token-${crypto.randomUUID()}@together.dev`;
@@ -200,6 +209,144 @@ describe('session tokens on browser auth responses', () => {
     const session = await call(auth, '/get-session', { ...cliHeaders, authorization: `Bearer ${token ?? ''}` });
     expect(z.object({ session: z.object({ token: z.string() }) }).parse(await session.json()).session.token).not.toBe('');
     expect(await authPort.getAuthenticatedUser(new Headers({ authorization: `Bearer ${token ?? ''}` }))).toMatchObject({ email });
+  });
+});
+
+describe('session tokens on cookie-bearing requests without fetch metadata', () => {
+  it('keeps the token out of get-session and update-user answered to the session cookie alone', async () => {
+    const { auth } = buildAuth();
+    const { email } = await signedUpUser(auth);
+    const cookie = sessionCookie(await call(auth, '/sign-in/email', cliHeaders, { email, password }));
+    expect(cookie).toContain('session_token=');
+
+    const session = await call(auth, '/get-session', { ...cliHeaders, cookie });
+    expect(session.status).toBe(200);
+    expect(JSON.parse(await expectNoToken(session, cookie))).toMatchObject({ user: { email } });
+
+    const updated = await call(auth, '/update-user', { ...cliHeaders, cookie }, { name: 'Grace' });
+    expect(updated.status).toBe(200);
+    expect(JSON.parse(await expectNoToken(updated, cookie))).toEqual({ status: true });
+  });
+});
+
+describe('more token-bearing responses to browser requests', () => {
+  it('keeps every token out of a browser list-sessions', async () => {
+    const { auth } = buildAuth();
+    const { email } = await signedUpUser(auth);
+    const cookie = sessionCookie(await call(auth, '/sign-in/email', browserHeaders, { email, password }));
+
+    const listed = await call(auth, '/list-sessions', { ...browserHeaders, cookie });
+
+    expect(listed.status).toBe(200);
+    const sessions = z.array(z.record(z.string(), z.unknown())).parse(JSON.parse(await expectNoToken(listed, cookie)));
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    for (const entry of sessions) expect(entry).toHaveProperty('id');
+  });
+
+  it('keeps the new token out of a browser change-password that revokes the other sessions', async () => {
+    const { auth, authPort } = buildAuth();
+    const { email } = await signedUpUser(auth);
+    const cookie = sessionCookie(await call(auth, '/sign-in/email', browserHeaders, { email, password }));
+    const newPassword = 'browser-token-new-password'.padEnd(PASSWORD_MIN_LENGTH, 'y');
+
+    const changed = await call(
+      auth,
+      '/change-password',
+      { ...browserHeaders, cookie },
+      { currentPassword: password, newPassword, revokeOtherSessions: true },
+    );
+
+    expect(changed.status).toBe(200);
+    const nextCookie = sessionCookie(changed);
+    expect(nextCookie).toContain('session_token=');
+    expect(JSON.parse(await expectNoToken(changed, cookie))).toMatchObject({ user: { email } });
+    expect(await authPort.getAuthenticatedUser(new Headers({ cookie: nextCookie }))).toMatchObject({ email });
+  });
+
+  it('keeps the token out of a browser two-factor backup-code verification', async () => {
+    const { auth } = buildAuth();
+    const { email, token } = await signedUpUser(auth);
+    const bearer = { ...cliHeaders, authorization: `Bearer ${token}` };
+    const enrollment = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()) })
+      .parse(await (await call(auth, '/two-factor/enable', bearer, { password })).json());
+    const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+    expect((await call(auth, '/two-factor/verify-totp', bearer, { code: totpCode(secret) })).status).toBe(200);
+    const challenged = await call(auth, '/sign-in/email', browserHeaders, { email, password });
+
+    const completed = await call(
+      auth,
+      '/two-factor/verify-backup-code',
+      { ...browserHeaders, cookie: sessionCookie(challenged) },
+      { code: enrollment.backupCodes[0] ?? '' },
+    );
+
+    expect(completed.status).toBe(200);
+    expect(sessionCookie(completed)).toContain('session_token=');
+    await expectNoToken(completed);
+  });
+
+  it('keeps the token out of a browser magic-link verification answered with JSON', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `browser-magic-json-${crypto.randomUUID()}@together.dev`;
+    await authPort.requestMagicLink({
+      email, callbackURL: `${origin}/`, tenantName: 'Studio', language: 'en', baseUrl: origin,
+    });
+    const link = new URL((await magicLinks.findByEmail(normalizeEmail(email)))?.url ?? '');
+    link.searchParams.delete('callbackURL');
+
+    const verified = await auth.handler(new Request(link, { headers: { host, 'sec-fetch-site': 'none' } }));
+
+    expect(verified.status).toBe(200);
+    const cookie = sessionCookie(verified);
+    expect(cookie).toContain('session_token=');
+    const body = z.object({ session: z.record(z.string(), z.unknown()), user: z.object({ email: z.string() }) })
+      .parse(JSON.parse(await expectNoToken(verified)));
+    expect(body.user.email).toBe(normalizeEmail(email));
+    expect(body.session).not.toHaveProperty('token');
+    expect(await authPort.getAuthenticatedUser(new Headers({ cookie }))).toMatchObject({ email: normalizeEmail(email) });
+  });
+});
+
+describe('provider token routes', () => {
+  it.each([
+    ['POST', '/get-access-token'],
+    ['POST', '/refresh-token'],
+    ['GET', '/account-info'],
+  ])('answers %s %s with 404 to browser and non-browser callers', async (method, path) => {
+    const { auth } = buildAuth({ google: googleClient });
+    const { email, token } = await signedUpUser(auth);
+    const cookie = sessionCookie(await call(auth, '/sign-in/email', browserHeaders, { email, password }));
+    const body = method === 'POST' ? { providerId: 'google' } : undefined;
+
+    const fromBrowser = await call(auth, path, { ...browserHeaders, cookie }, body);
+    const fromClient = await call(auth, path, { ...cliHeaders, authorization: `Bearer ${token}` }, body);
+
+    expect(fromBrowser.status).toBe(404);
+    expect(fromClient.status).toBe(404);
+  });
+
+  it('refuses a Google id token on the social sign-in route', async () => {
+    const { auth } = buildAuth({ google: googleClient });
+
+    const refused = await call(auth, '/sign-in/social', cliHeaders, {
+      provider: 'google', idToken: { token: 'header.payload.signature' },
+    });
+
+    expect(refused.status).toBe(404);
+    expect(await refused.json()).toMatchObject({ code: 'ID_TOKEN_NOT_SUPPORTED' });
+  });
+
+  it('still starts the Google redirect sign-in and still routes One Tap credentials', async () => {
+    const { auth } = buildAuth({ google: googleClient });
+
+    const redirect = await call(auth, '/sign-in/social', browserHeaders, { provider: 'google', callbackURL: '/' });
+    expect(redirect.status).toBe(200);
+    const started = z.object({ url: z.string(), redirect: z.literal(true) }).parse(await redirect.json());
+    expect(new URL(started.url).origin).toBe('https://accounts.google.com');
+
+    const oneTap = await call(auth, '/one-tap/callback', browserHeaders, { idToken: 'not-a-google-credential' });
+    expect(oneTap.status).toBe(400);
+    expect(await oneTap.json()).toMatchObject({ message: 'invalid id token' });
   });
 });
 

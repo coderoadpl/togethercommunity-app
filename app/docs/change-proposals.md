@@ -1520,7 +1520,8 @@ another size than the recorded `sizeBytes` get `404`; a malformed id is `400`; a
 error. With the CLI, `proposals file <id> <file id> --out <path>` streams the
 file through this link, never printing the link, into a new temporary file next
 to `--out` that only the account running it can read (mode `0600`), writes every byte, and moves it onto `--out` only when the bytes
-written are `sizeBytes`; it refuses an existing `--out` without `--force`, and a
+written are `sizeBytes`, and stops reading without writing the chunk that would
+go past `sizeBytes`; it refuses an existing `--out` without `--force`, and a
 download that breaks off or has another size removes only the temporary file,
 so an existing `--out` is never truncated or removed. `proposals show <id>` and
 `proposals group show <id>` list the files a proposal or each item attaches and

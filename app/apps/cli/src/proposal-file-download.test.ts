@@ -138,6 +138,27 @@ describe('saving a proposed file', () => {
     expect(await modeOf(ownerOnly)).toBe(0o600);
   });
 
+  it('stops reading and writes nothing more once the storage sends more bytes than announced', async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const endless: typeof fetch = async () => new Response(new ReadableStream({
+      pull: (controller) => {
+        pulls += 1;
+        if (pulls > 1_000) throw new Error('The download kept reading past the announced size');
+        controller.enqueue(new TextEncoder().encode('%PDF'));
+      },
+      cancel: () => { cancelled = true; },
+    }));
+    await writeFile(out, 'reviewed earlier');
+    expect(await saveProposedFile(link, out, true, endless)).toMatchObject({
+      ok: false, error: { code: 'unavailable', message: `The storage sent more than 6 bytes; ${out} was not changed` },
+    });
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(5);
+    expect(await readFile(out, 'utf8')).toBe('reviewed earlier');
+    expect(await leftovers()).toEqual([]);
+  });
+
   it('refuses an existing target without --force, also when it appears during the download', async () => {
     await writeFile(out, 'reviewed earlier');
     expect(await saveProposedFile(link, out, false, body('%PDF-1'))).toMatchObject({ ok: false, error: { code: 'conflict' } });

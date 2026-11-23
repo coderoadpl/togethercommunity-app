@@ -65,13 +65,25 @@ const writeFully = async (handle: ProposedFileHandle, chunk: Uint8Array): Promis
   return offset;
 };
 
-const copyBody = async (body: ReadableStream<Uint8Array>, handle: ProposedFileHandle, out: string): Promise<Result<number, AppError>> => {
+const tooLong = (sizeBytes: number, out: string): AppError =>
+  unavailable(`The storage sent more than ${String(sizeBytes)} bytes; ${out} was not changed`);
+
+const copyBody = async (
+  body: ReadableStream<Uint8Array>,
+  handle: ProposedFileHandle,
+  sizeBytes: number,
+  out: string,
+): Promise<Result<number, AppError>> => {
   let written = 0;
   try {
     const reader = body.getReader();
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) return ok(written);
+      if (written + chunk.value.byteLength > sizeBytes) {
+        await reader.cancel();
+        return err(tooLong(sizeBytes, out));
+      }
       written += await writeFully(handle, chunk.value);
     }
   } catch {
@@ -121,7 +133,7 @@ export const saveProposedFile = async (
     return err(unavailable(`Could not open a file next to ${out} for writing; nothing was downloaded`));
   }
   try {
-    const written = await copyBody(response.value.body, handle, out);
+    const written = await copyBody(response.value.body, handle, proposedLink.sizeBytes, out);
     if (!written.ok) return written;
     if (written.value !== proposedLink.sizeBytes) {
       return err(unavailable(`The storage sent ${String(written.value)} bytes instead of ${String(proposedLink.sizeBytes)}; ${out} was not changed`));

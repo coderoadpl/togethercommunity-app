@@ -451,19 +451,29 @@ describe('removing staged objects durably', () => {
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
   });
 
-  it('owes the deletion of a swept staged file before deleting it, so a delete whose answer is lost leaves no file to attach or propose', async () => {
+  it('owes the deletion of a swept staged file in a commit before its delete is sent, so a deletion that fails after the delete leaves no file to attach or propose', async () => {
     const h = harness();
     const staged = await h.stage();
     await database.db.update(changeProposalDownloadFiles).set({ createdAt: '2026-02-20T10:00:00.000Z' });
     const objectKey = `${TENANT}/product-downloads/key-files/${KEY_ID}/${staged.id}/workbook.pdf`;
-    const unconfirmed: StorageProvider = {
+    const observer = await connected();
+    const seenAtDelete: Array<{ owed: string[]; staged: string[] }> = [];
+    const failing: StorageProvider = {
       ...h.objects.storage,
       delete: async (input) => {
+        const owed = await observer.query<{ object_key: string }>('select object_key from change_proposal_download_deletions');
+        const rows = await observer.query<{ id: string }>('select id from change_proposal_download_files');
+        seenAtDelete.push({ owed: owed.rows.map((row) => row.object_key), staged: rows.rows.map((row) => row.id) });
         await h.objects.storage.delete(input);
-        return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+        throw new Error('Connection terminated unexpectedly');
       },
     };
-    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: unconfirmed })).toMatchObject({ ok: true, value: { removed: 0 } });
+    try {
+      expect(await sweepKeyDownloadFiles({ ...h.deps, storage: failing })).toMatchObject({ ok: true, value: { removed: 0 } });
+    } finally {
+      await observer.end();
+    }
+    expect(seenAtDelete).toEqual([{ owed: [objectKey], staged: [] }]);
     expect(h.objects.keysUnder(objectKey)).toEqual([]);
     expect(await stagedRows()).toEqual([]);
     expect(await owedRows()).toEqual([objectKey]);

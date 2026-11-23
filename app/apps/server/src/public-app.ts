@@ -642,7 +642,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (mode === 'list') {
       const editions = await listLessonEditions(ctx, lessonId, deps);
       if (!editions.ok) return respondPublic(!authenticated && editions.error.code === 'forbidden' ? err(unauthorized()) : editions);
-      return respondPublic(ok(lessonEditionsOutputSchema.parse({ editions: editions.value })));
+      return respondPublic(ok(lessonEditionsOutputSchema.parse(editions.value)));
     }
     const result = await getPlayableLesson(ctx, lessonId, deps, mode === 'edition' ? c.req.param('number') : undefined);
     if (!result.ok) {

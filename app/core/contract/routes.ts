@@ -106,7 +106,7 @@ import {
   tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
   lessonEditionSchema,
-  readerLessonEditionSchema,
+  readerLessonEditionsSchema,
   markLessonEditionInputSchema,
   unmarkLessonEditionInputSchema,
   courseHistoryEntrySchema,
@@ -1103,7 +1103,7 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
-export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
+export const lessonEditionsOutputSchema = readerLessonEditionsSchema;
 export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
 export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
 export { markLessonEditionInputSchema, unmarkLessonEditionInputSchema };

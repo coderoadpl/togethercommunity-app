@@ -1,8 +1,8 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
-import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
@@ -4150,11 +4150,57 @@ export const LessonMediaIframe = styled('iframe')({
   display: 'block',
 });
 
+const standardAlertTint = (theme: Theme, color: 'warning' | 'info'): CSSObject => {
+  const light = theme.palette.mode === 'light';
+  return {
+    padding: '6px 16px',
+    border: 'none',
+    backgroundColor: light ? lighten(theme.palette[color].light, 0.9) : darken(theme.palette[color].light, 0.9),
+    color: light ? darken(theme.palette[color].light, 0.6) : lighten(theme.palette[color].light, 0.6),
+    '& .MuiAlert-icon': { color: theme.palette[color].main },
+  };
+};
+
 export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
-  '&.MuiAlert-colorWarning': {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.warning.contrastText,
+  '&.MuiAlert-standard.MuiAlert-colorWarning': standardAlertTint(theme, 'warning'),
+  '&.MuiAlert-standard.MuiAlert-colorInfo': standardAlertTint(theme, 'info'),
+  alignItems: 'center',
+  '& .MuiAlert-message > .MuiTypography-root': { fontWeight: 700 },
+  '& .MuiAlert-action': { paddingTop: 0 },
+  '& .MuiAlert-action .MuiButton-root': { whiteSpace: 'nowrap' },
+  [theme.breakpoints.down('sm')]: {
+    flexWrap: 'wrap',
+    '& .MuiAlert-action': { flexBasis: '100%', margin: 0, padding: '0 0 0.5rem' },
+    '& .MuiAlert-icon ~ .MuiAlert-action': { paddingLeft: '2.125rem' },
   },
+}));
+
+export const LessonEditionTrigger = styled(Button)({
+  minHeight: TOUCH_TARGET_MIN,
+  whiteSpace: 'nowrap',
+});
+
+export const LessonEditionRows = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root, & .MuiListItem-root:first-of-type, & .MuiListItem-root:last-of-type, & .MuiListItem-root:hover': {
+    padding: 0,
+    margin: 0,
+    border: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    backgroundImage: 'none',
+    boxShadow: 'none',
+    transform: 'none',
+    transition: 'none',
+  },
+  '& .MuiListItem-root + .MuiListItem-root': { borderTop: `1px solid ${theme.palette.divider}` },
+  '& .MuiListItemButton-root': {
+    alignItems: 'center',
+    gap: '0.75rem',
+    minHeight: TOUCH_TARGET_MIN,
+    padding: '0.75rem 1.5rem',
+    borderRadius: 0,
+  },
+  '& .MuiListItemText-root': { margin: 0 },
 }));
 
 export const LessonPlaceholder = styled(Box)(({ theme }) => ({
@@ -4194,37 +4240,70 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   },
 }));
 
+export const LessonLightboxBackdrop = styled(Backdrop)(({ theme }) => ({
+  backgroundColor: alpha(theme.palette.common.black, 0.9),
+}));
+
 export const LessonImageLightbox = styled(Box)(({ theme }) => ({
-  position: 'absolute',
-  inset: '1rem',
-  margin: 'auto',
-  maxWidth: 'calc(100vw - 2rem)',
-  maxHeight: 'calc(100dvh - 2rem)',
-  padding: '1rem',
+  position: 'fixed',
+  inset: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: '1rem',
-  backgroundColor: theme.palette.background.paper,
-  color: theme.palette.text.primary,
-  borderRadius: theme.shape.borderRadius,
-  '& > .MuiButton-root': { alignSelf: 'flex-end', flexShrink: 0, minHeight: 44 },
+  paddingTop: `calc(${String(TOUCH_TARGET_MIN)}px + 1.5rem + env(safe-area-inset-top))`,
+  paddingBottom: 'env(safe-area-inset-bottom)',
+  color: theme.palette.common.white,
+  outline: 'none',
+  '& [data-slot="close"]': {
+    position: 'absolute',
+    top: 'calc(0.75rem + env(safe-area-inset-top))',
+    right: 'calc(0.75rem + env(safe-area-inset-right))',
+    zIndex: 1,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    backgroundColor: theme.palette.common.white,
+    color: theme.palette.common.black,
+    '&:hover': { backgroundColor: theme.palette.grey[200] },
+    '&:focus-visible': {
+      outline: `3px solid ${theme.palette.common.white}`,
+      outlineOffset: 3,
+      boxShadow: 'none',
+    },
+  },
+  '& [data-slot="stage"]': {
+    flex: '1 1 0',
+    minHeight: 0,
+    containerType: 'size',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   '& [data-slot="caption"]': {
     flexShrink: 0,
+    width: '100%',
+    maxWidth: '44rem',
     maxHeight: '20dvh',
+    marginInline: 'auto',
+    padding: '0.75rem 1rem 1rem',
     overflowY: 'auto',
     overflowWrap: 'anywhere',
     textAlign: 'center',
+    color: alpha(theme.palette.common.white, 0.92),
+  },
+  [theme.breakpoints.up('sm')]: {
+    paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+    '& [data-slot="stage"]': { paddingInline: '2rem' },
   },
 }));
 
-export const LessonLightboxImage = styled('img')({
+export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' && prop !== 'vector' })<{ vector: boolean; fillRatio: number | null }>(({ theme, vector, fillRatio }) => ({
   display: 'block',
-  width: '100%',
-  height: '100%',
-  flex: '1 1 0',
-  minHeight: 0,
+  width: fillRatio !== null ? `min(100cqw, calc(100cqh * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
+  height: vector && fillRatio === null ? '100cqh' : 'auto',
+  maxWidth: '100cqw',
+  maxHeight: '100cqh',
   objectFit: 'contain',
-});
+  backgroundColor: theme.palette.common.white,
+}));
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',

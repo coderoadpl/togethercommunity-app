@@ -6,12 +6,16 @@ export const lessonEditionInputSchema = z.object({
   note: z.string().max(200).optional(),
 });
 export type LessonEditionInput = z.infer<typeof lessonEditionInputSchema>;
-export const readerLessonEditionSchema = z.object({
+const readerLessonEditionSchema = z.object({
   number: lessonEditionNumberSchema,
   note: z.string().max(200).nullable(),
   markedAt: z.string().datetime(),
 });
-export type ReaderLessonEdition = z.infer<typeof readerLessonEditionSchema>;
+export const readerLessonEditionsSchema = z.object({
+  editions: z.array(readerLessonEditionSchema.extend({ matchesLive: z.boolean() })),
+  currentEdition: lessonEditionNumberSchema.nullable(),
+});
+export type ReaderLessonEditions = z.infer<typeof readerLessonEditionsSchema>;
 export const lessonEditionSchema = readerLessonEditionSchema.extend({
   versionId: z.string().min(1),
 });

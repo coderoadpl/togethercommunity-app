@@ -71,7 +71,7 @@ add it here before using it in either dictionary.
 | Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
 | Edition | wydanie | edition | An author-marked, numbered snapshot of lesson content that readers can open. Distinct from a file version (a downloadable file) and from change-history versions (every save, staff only). |
 | Edition note | notatka do wydania | edition note | Optional author note shown with an edition. |
-| Previous editions | poprzednie wydania | previous editions | Reader entry point listing a lesson's earlier editions. |
+| Lesson editions | wydania lekcji | lesson editions | Reader dialog, opened from the edition badge, listing the current lesson first and then its other editions. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure

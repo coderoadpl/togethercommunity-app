@@ -813,7 +813,7 @@ describe('reader lesson editions', () => {
     const records = new Map<string, { version: EntityVersionRecord; number: string; note: string | null; markedAt: string }>();
     const lessonEditions: LessonEditionRepository = {
       list: async (_tenantId, lessonId) => [...records.values()].filter((row) => row.version.entityId === lessonId)
-        .map((row) => ({ versionId: row.version.id, number: row.number, note: row.note, markedAt: row.markedAt })),
+        .map((row) => ({ versionId: row.version.id, number: row.number, note: row.note, markedAt: row.markedAt, version: row.version })),
       find: async (_tenantId, lessonId, number) => {
         const row = records.get(number);
         return row?.version.entityId === lessonId ? row.version : null;
@@ -841,12 +841,12 @@ describe('reader lesson editions', () => {
 
   it('only exposes marked versions and hides them again after unmarking', async () => {
     const h = harness(deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]));
-    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({ ok: true, value: [] });
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({ ok: true, value: { editions: [], currentEdition: null } });
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await markLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps))
       .toMatchObject({ ok: true, value: { number: '1' } });
     expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({
-      ok: true, value: [{ number: '1', note: null, markedAt: NOW }],
+      ok: true, value: { editions: [{ number: '1', note: null, markedAt: NOW, matchesLive: false }], currentEdition: null },
     });
     expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: true, value: { id: 'l4', name: 'Chapter 3 earlier', isPreview: false } });
     expect(await unmarkLessonEdition(ctx({ staffRole: 'owner' }), { lessonId: 'l4', number: '1' }, h.staffDeps)).toEqual({ ok: true, value: undefined });
@@ -879,6 +879,46 @@ describe('reader lesson editions', () => {
     expect(await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2', note: 'Current text' } }, h.staffDeps))
       .toMatchObject({ ok: true, value: { number: '2', note: 'Current text' } });
     expect(await getLessonEdition(staff, 'l4', '2', h.deps)).toMatchObject({ ok: true, value: { name: 'Lesson l4' } });
+  });
+
+  it('names the newest edition whose reader content equals the live lesson', async () => {
+    const live = lesson('l4');
+    let current: CourseLesson = live;
+    const access = deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]);
+    const h = harness({ ...access, lessons: { ...access.lessons, findById: async (_tenantId, id) => id === 'l4' ? current : null } });
+    const staff = ctx({ staffRole: 'owner' });
+    await markLessonEdition(staff, { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps);
+    await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2' } }, h.staffDeps);
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toMatchObject({ ok: true, value: { currentEdition: '2' } });
+    current = { ...live, isPreview: true, createdAt: '1999-01-01T00:00:00.000Z' };
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toMatchObject({ ok: true, value: { currentEdition: '2' } });
+    current = { ...live, contents: [{ type: 'html', html: '<p>Rewritten after the edition</p>' }] };
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({ ok: true, value: {
+      editions: [{ number: '1', note: null, markedAt: NOW, matchesLive: false }, { number: '2', note: null, markedAt: NOW, matchesLive: false }], currentEdition: null,
+    } });
+    current = { ...live, name: 'Chapter 3 earlier' };
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toMatchObject({ ok: true, value: { currentEdition: '1' } });
+  });
+
+  it('marks every edition equal to the live lesson and names the newest one current from a single repository read', async () => {
+    const h = harness(deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]));
+    const staff = ctx({ staffRole: 'owner' });
+    await markLessonEdition(staff, { lessonId: 'l4', versionId: 'version-1', edition: { number: '1' } }, h.staffDeps);
+    await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '2' } }, h.staffDeps);
+    await markLessonEdition(staff, { lessonId: 'l4', edition: { number: '10' } }, h.staffDeps);
+    const list = vi.spyOn(h.deps.lessonEditions, 'list');
+    const find = vi.spyOn(h.deps.lessonEditions, 'find');
+    expect(await listLessonEditions(ctx({}), 'l4', h.deps)).toEqual({ ok: true, value: {
+      editions: [
+        { number: '1', note: null, markedAt: NOW, matchesLive: false },
+        { number: '2', note: null, markedAt: NOW, matchesLive: true },
+        { number: '10', note: null, markedAt: NOW, matchesLive: true },
+      ],
+      currentEdition: '10',
+    } });
+    expect(list).toHaveBeenCalledOnce();
+    expect(list).toHaveBeenCalledWith('t1', 'l4');
+    expect(find).not.toHaveBeenCalled();
   });
 
   it.each([undefined, 'version-1'])('maps a conditional mark rejection to conflict for version %s', async (versionId) => {

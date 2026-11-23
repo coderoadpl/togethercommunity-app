@@ -406,19 +406,25 @@ history also lets staff preview and mark any stored lesson version. Unmarking
 hides the edition from readers while retaining its snapshot for staff history
 and restore. Ordinary saves and restores keep their existing behavior.
 
-Readers see a small edition badge beside the lesson title. When multiple
-editions exist, **Previous editions** in the overflow menu lists their numbers,
-marking dates, and notes, ordered numerically from newest edition number to
-oldest. Selecting one opens
+The reader editions response flags every edition whose content (name, blocks
+and duration) equals the live lesson (`matchesLive`) and names the newest of them
+as `currentEdition`. Readers see an edition badge beside the lesson title: that
+edition's number, or **Current version** when no edition matches. When there is anything to switch to, the badge is a button that opens
+**Lesson editions**: the live lesson first, marked **Current** and leading to the
+plain lesson URL, then the other editions with their numbers, marking dates and
+notes, ordered numerically from newest edition number to oldest. The row on
+screen is marked. Selecting an edition opens
 `/my/courses/<courseId>/lessons/<lessonId>/editions/<number>`, for example
 `/my/courses/course-1/lessons/lesson-1/editions/2.10`. Share this URL to link
 directly to the snapshot. The path preserves author-chosen numbers such as
 `2`, `2.0`, and `2.10` as distinct strings. Unknown or malformed edition numbers
 show the lesson not-found notice. This URL requires the same lesson access as
-current content, including free previews. Every explicit edition view shows a prominent warning and a
-return-to-current control, because even the highest numbered snapshot may
-precede ordinary edits. The return control opens the lesson URL without the
-`/editions/<number>` suffix.
+current content, including free previews. An edition view whose content differs
+from the live lesson shows a warning naming the edition and its date with a
+control that opens the lesson URL without the `/editions/<number>` suffix; the
+edition URL of any edition that matches the live lesson shows no warning. When
+the editions list cannot be read, the view names the edition with the same
+control and makes no claim about newer content.
 Discussion, progress, completion, and next-lesson navigation keep the lesson's
 identity. Unmarked snapshots are unavailable through reader APIs.
 

@@ -1,5 +1,5 @@
 import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
-import type { SurveyRepository } from '#core/server/index.js';
+import type { EntityVersionRecord, SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
@@ -7129,10 +7129,10 @@ describe('free lesson preview route', () => {
     const base = deps({ lessons: [preview], getAuthenticatedUser: async () => null });
     const stored = { id: 'edition-version', entityKind: 'course_lesson' as const, entityId: preview.id, schemaVersion: 3, payload: { ...preview, contents: [{ type: 'html', html: '<p>Earlier content</p>' }] }, createdAt: preview.createdAt, createdBy: null };
     const edition = { versionId: stored.id, number: '2', note: 'Updated examples', markedAt: preview.createdAt };
-    const makeApp = (isPreview: boolean) => appWithCourse({
+    const makeApp = (isPreview: boolean, version: EntityVersionRecord = stored) => appWithCourse({
       ...base,
       lessons: { ...base.lessons, findById: async () => ({ ...preview, isPreview }) },
-      lessonEditions: { ...base.lessonEditions, list: async () => [edition], find: async (_tenant, _lesson, number) => number === '2' ? stored : null },
+      lessonEditions: { ...base.lessonEditions, list: async () => [{ ...edition, version }], find: async (_tenant, _lesson, number) => number === '2' ? version : null },
     }, courseFor('edition-course', true), preview.id);
     const headers = { [TENANT_HEADER]: acme.slug };
     const listPath = API_PATHS.studentLessonEditions.replace(':lessonId', preview.id);
@@ -7140,8 +7140,10 @@ describe('free lesson preview route', () => {
     const listed = await makeApp(true).request(listPath, { headers });
     expect(listed.status).toBe(200);
     expect(await listed.json()).toEqual({ ok: true, data: { editions: [{
-      number: edition.number, note: edition.note, markedAt: edition.markedAt,
-    }] } });
+      number: edition.number, note: edition.note, markedAt: edition.markedAt, matchesLive: false,
+    }], currentEdition: null } });
+    const matching = await makeApp(true, { ...stored, payload: preview }).request(listPath, { headers });
+    expect(await matching.json()).toMatchObject({ ok: true, data: { editions: [{ number: '2', matchesLive: true }], currentEdition: '2' } });
     const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
     expect(opened.status).toBe(200);
     expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });

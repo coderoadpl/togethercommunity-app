@@ -55,7 +55,7 @@ import {
   LockedScopeText,
   VisuallyHidden,
 } from '../../theme.js';
-import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
+import { LessonEditionControls, LessonEditionNotice } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson, type LessonNeighbours } from './lesson-nav.js';
@@ -717,6 +717,12 @@ export const LessonPlayerPage = ({
     else markComplete();
   };
 
+  const goToCurrentLesson = () => void navigate({
+    to: '/my/courses/$courseId/lessons/$lessonId',
+    params: { courseId, lessonId },
+    search: threadRootPostId === null ? {} : { thread: threadRootPostId },
+  });
+
   const dismissCompletionError = () => {
     footerBarRef.current?.focus();
     resetComplete();
@@ -729,7 +735,7 @@ export const LessonPlayerPage = ({
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
-      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onSelect={(number) => void navigate({
+      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onCurrent={goToCurrentLesson} onSelect={(number) => void navigate({
         to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
         params: { courseId, lessonId, number },
         search: threadRootPostId === null ? {} : { thread: threadRootPostId },
@@ -743,11 +749,7 @@ export const LessonPlayerPage = ({
           />
         ) : (
           <>
-        {editionNumber === undefined ? null : <LessonEditionBanner onCurrent={() => void navigate({
-          to: '/my/courses/$courseId/lessons/$lessonId',
-          params: { courseId, lessonId },
-          search: threadRootPostId === null ? {} : { thread: threadRootPostId },
-        })} />}
+        <LessonEditionNotice lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess} onCurrent={goToCurrentLesson} />
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}

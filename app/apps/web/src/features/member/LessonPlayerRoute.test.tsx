@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -174,7 +174,7 @@ describe('lesson edition routes', () => {
       okLesson([{ type: 'html', html: '<p>Current content</p>' }]), okStructure(), okProgress(),
       http.get('/api/student/lessons/l1/editions', () => HttpResponse.json({
         ok: true,
-        data: { editions: ['3', '2.10'].map((number) => ({ number, note: null, markedAt: '2026-10-01T12:00:00.000Z' })) },
+        data: { editions: ['3', '2.10'].map((number) => ({ number, note: null, markedAt: '2026-10-01T12:00:00.000Z', matchesLive: number === '3' })), currentEdition: '3' },
       })),
       http.get('/api/student/lessons/l1/editions/2.10', () => HttpResponse.json({
         ok: true,
@@ -182,20 +182,20 @@ describe('lesson edition routes', () => {
       })),
     );
     const { router } = await renderLessonUrl('/my/courses/course-1/lessons/l1');
-    await userEvent.click(await screen.findByRole('button', { name: en.lesson.editionMenu }));
-    await userEvent.click(screen.getByRole('menuitem', { name: en.lesson.previousEditions }));
-    await userEvent.click(screen.getByRole('button', { name: /Edition 2.10/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Edition 3' }));
+    await userEvent.click(within(screen.getByRole('dialog', { name: en.lesson.editionsTitle })).getByRole('button', { name: /Edition 2.10/ }));
     expect(await screen.findByTestId('lesson-edition-banner')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1/editions/2.10');
     expect(screen.getByTestId('lesson-html')).toHaveTextContent('Earlier snapshot');
-    await userEvent.click(screen.getByRole('button', { name: en.lesson.editionBackToCurrent }));
+    expect(await screen.findByRole('button', { name: 'Edition 2.10' })).toHaveAttribute('aria-haspopup', 'dialog');
+    await userEvent.click(screen.getByRole('button', { name: en.lesson.editionGoToCurrent }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1'));
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Current content');
     expect(screen.queryByTestId('lesson-edition-banner')).not.toBeInTheDocument();
   });
 
   it.each(['', '/editions/2.10'])('does not request editions for anonymous non-preview content at %s', async (suffix) => {
-    const editionReads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions: [] } }));
+    const editionReads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions: [], currentEdition: null } }));
     server.use(
       http.get(`/api/student/lessons/l1${suffix}`, () => HttpResponse.json({
         ok: false, error: { code: 'unauthorized', message: 'Sign in' },
@@ -209,7 +209,7 @@ describe('lesson edition routes', () => {
   });
 
   it.each(['', '/editions/2.10'])('does not request editions for locked content at %s', async (suffix) => {
-    const editionReads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions: [] } }));
+    const editionReads = vi.fn(() => HttpResponse.json({ ok: true, data: { editions: [], currentEdition: null } }));
     server.use(
       okStructure(), okProgress(),
       http.get(`/api/student/lessons/l1${suffix}`, () => HttpResponse.json({

@@ -60,21 +60,24 @@ describe('RichTextContent', () => {
     expect(screen.getByTestId('content').querySelector('script, [onclick], [onerror], a[href]')).toBeNull();
   });
 
-  it.each(['svg', 'png'])('opens a %s image with its figure caption and closes with Escape, restoring focus', async (extension) => {
+  it.each(['svg', 'png'])('opens a %s image named after its alt with its figure caption and closes with Escape, restoring focus', async (extension) => {
     const user = userEvent.setup();
     render(<RichTextContent html={`<figure><img src="/diagram.${extension}" alt="Diagram"><figcaption>Layout <strong>overview</strong></figcaption></figure>`} />);
-    const trigger = screen.getByRole('button', { name: en.lesson.enlargeImage });
+    const trigger = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) });
+    expect(trigger).toHaveAccessibleName('Diagram. Enlarge image');
     expect(trigger).toHaveAttribute('tabindex', '0');
     expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
 
     await user.click(trigger);
 
-    const dialog = screen.getByRole('dialog', { name: en.lesson.enlargeImage });
+    const dialog = screen.getByRole('dialog', { name: 'Diagram' });
     expect(dialog).toHaveAccessibleDescription('Layout overview');
     expect(within(dialog).getByText('Layout overview')).toBeVisible();
     expect(within(dialog).getByRole('img', { name: 'Diagram' })).toHaveAttribute('src', new URL(`/diagram.${extension}`, document.baseURI).href);
     expect(document.body.style.overflow).toBe('hidden');
-    expect(within(dialog).getByRole('button', { name: en.common.close })).toHaveFocus();
+    const close = within(dialog).getByRole('button', { name: en.common.close });
+    expect(close).toHaveFocus();
+    expect(close.querySelector('svg')).not.toBeNull();
 
     await user.keyboard('{Escape}');
 
@@ -83,20 +86,100 @@ describe('RichTextContent', () => {
     expect(document.body.style.overflow).not.toBe('hidden');
   });
 
-  it.each(['{Enter}', ' '])('opens a bare image using %s and uses alt as its caption', async (key) => {
+  it.each(['{Enter}', ' '])('opens a bare image using %s, names the dialog after the alt and shows no caption', async (key) => {
     const user = userEvent.setup();
-    render(<RichTextContent html={'<img src="/diagram.svg" alt="Floor plan">'} />);
-    const trigger = screen.getByRole('button', { name: en.lesson.enlargeImage });
+    render(<RichTextContent html={'<img src="/diagram.svg" alt="Floor plan.">'} />);
+    const trigger = screen.getByRole('button', { name: 'Floor plan. Enlarge image' });
     await user.tab();
     expect(trigger).toHaveFocus();
 
     await user.keyboard(key);
 
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Floor plan')).toBeVisible();
+    const dialog = screen.getByRole('dialog', { name: 'Floor plan' });
+    expect(dialog).not.toHaveAttribute('aria-describedby');
+    expect(dialog.querySelector('[data-slot="caption"]')).toBeNull();
     await user.click(within(dialog).getByRole('button', { name: en.common.close }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
+  });
+
+  it('names an image without alt by the action and its dialog by the figure caption without repeating it as description', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<figure><img src="/diagram.png"><figcaption>Seating plan</figcaption></figure>'} />);
+
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeImage }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Seating plan' });
+    expect(dialog).not.toHaveAttribute('aria-describedby');
+    expect(within(dialog).getByText('Seating plan')).toBeVisible();
+  });
+
+  it('names the dialog by the action when the image has neither alt nor caption', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<img src="/diagram.png" alt="">'} />);
+
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeImage }));
+
+    expect(screen.getByRole('dialog', { name: en.lesson.enlargeImage })).toBeVisible();
+  });
+
+  it('closes on a click beside the image and stays open on a click on the image or its caption', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<figure><img src="/diagram.png" alt="Diagram"><figcaption>Overview</figcaption></figure>'} />);
+    const trigger = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Diagram' });
+
+    await user.click(within(dialog).getByRole('img', { name: 'Diagram' }));
+    await user.click(within(dialog).getByText('Overview'));
+    expect(dialog).toBeInTheDocument();
+
+    const stage = dialog.querySelector('[data-slot="stage"]');
+    if (stage === null) throw new Error('Missing lightbox stage');
+    await user.click(stage);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
+  it('fits a vector image to the viewer and keeps a raster at most at its natural size', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RichTextContent html={'<img src="/icon.png" alt="Icon">'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Icon' }) }));
+    const raster = within(screen.getByRole('dialog')).getByRole('img', { name: 'Icon' });
+    expect(stylesAt(raster, 1440)).toMatchObject({ width: 'auto', height: 'auto' });
+
+    rerender(<RichTextContent html={'<img src="/wordmark.svg" alt="Wordmark">'} />);
+    const trigger = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Wordmark' }) });
+    trigger.getBoundingClientRect = () => DOMRect.fromRect({ width: 300, height: 100 });
+    await user.click(trigger);
+    const vector = within(screen.getByRole('dialog')).getByRole('img', { name: 'Wordmark' });
+    expect(stylesAt(vector, 1440)['width']).not.toBe('auto');
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 3))'))).toBe(true);
+  });
+
+  it('fills the viewer with an unmeasured vector image and sizes it by its natural ratio once loaded', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<img src="/badge.svg" alt="Badge">'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Badge' }) }));
+    const vector = within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' });
+    expect(stylesAt(vector, 1440)).toMatchObject({ width: '100cqw', height: '100cqh', 'object-fit': 'contain' });
+
+    Object.defineProperties(vector, { naturalWidth: { value: 200 }, naturalHeight: { value: 50 } });
+    fireEvent.load(vector);
+
+    await waitFor(() => expect(stylesAt(within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' }), 1440)['height']).toBe('auto'));
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 4))'))).toBe(true);
+  });
+
+  it('shows the image edge to edge on a phone and inset from a tablet up', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<img src="/diagram.png" alt="Diagram">'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) }));
+    const stage = screen.getByRole('dialog').querySelector('[data-slot="stage"]');
+
+    expect(stylesAt(stage, 390)['padding-inline']).toBeUndefined();
+    expect(stylesAt(stage, 1440)['padding-inline']).toBe('2rem');
   });
 
   it('keeps linked images as links without lightbox activation', async () => {
@@ -119,25 +202,11 @@ describe('RichTextContent', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('closes on backdrop click and restores focus', async () => {
-    const user = userEvent.setup();
-    const { baseElement } = render(<RichTextContent html={'<img src="/diagram.svg" alt="Diagram">'} />);
-    const trigger = screen.getByRole('button', { name: en.lesson.enlargeImage });
-    await user.click(trigger);
-    const backdrop = baseElement.querySelector('.MuiBackdrop-root');
-    expect(backdrop).not.toBeNull();
-    if (backdrop === null) throw new Error('Missing lightbox backdrop');
-    fireEvent.click(backdrop);
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(trigger).toHaveFocus();
-  });
-
   it('clears the selection when lesson HTML changes and keeps it closed on returning', async () => {
     const user = userEvent.setup();
     const html = '<img src="/diagram.svg" alt="Diagram">';
     const { rerender } = render(<RichTextContent html={html} />);
-    await user.click(screen.getByRole('button', { name: en.lesson.enlargeImage }));
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) }));
     rerender(<RichTextContent html="<p>Next lesson</p>" />);
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -148,7 +217,7 @@ describe('RichTextContent', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(document.body.style.overflow).not.toBe('hidden');
-    await user.click(screen.getByRole('button', { name: en.lesson.enlargeImage }));
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) }));
     expect(screen.getByRole('dialog')).toBeVisible();
     expect(document.body.style.overflow).toBe('hidden');
   });

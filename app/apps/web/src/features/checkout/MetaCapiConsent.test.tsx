@@ -39,11 +39,39 @@ it('shows labelled modal, equal choices, disclosures and privacy link without ch
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(fields).toBeVisible();
   expect(screen.getAllByRole('listitem')).toHaveLength(4);
-  expect(scrolled.mock.contexts[0]).toBe(screen.getAllByRole('listitem')[0]);
+  expect(scrolled.mock.contexts[0]).toBe(toggle);
+  expect(scrolled.mock.calls[0]).toEqual([{ block: 'start' }]);
   scrolled.mockRestore();
   decline.focus();
   await user.tab();
   expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+});
+
+it('scrolls the heading with the body so only the answers stay pinned', () => {
+  renderConsent();
+  const heading = screen.getByRole('heading', { level: 2, name: metaCapiConfig.heading });
+  const dialog = screen.getByRole('dialog', { name: metaCapiConfig.heading });
+  const scrollArea = heading.closest('.MuiDialogContent-root');
+  expect(scrollArea).not.toBeNull();
+  expect(scrollArea).toContainElement(screen.getByText(metaCapiConfig.body));
+  expect(scrollArea).not.toContainElement(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
+  expect(heading).not.toHaveAttribute('tabindex');
+  expect(heading).not.toHaveFocus();
+  expect(dialog.querySelector('.MuiDialogTitle-root')).toBeNull();
+});
+
+it('marks the scroll area only while content remains below', () => {
+  renderConsent();
+  const scrollArea = screen.getByRole('heading', { level: 2 }).closest<HTMLElement>('.MuiDialogContent-root');
+  if (!scrollArea) throw new Error('Missing scroll area');
+  Object.defineProperty(scrollArea, 'scrollHeight', { configurable: true, value: 900 });
+  Object.defineProperty(scrollArea, 'clientHeight', { configurable: true, value: 300 });
+  scrollArea.scrollTop = 0;
+  fireEvent.scroll(scrollArea);
+  expect(scrollArea).toHaveAttribute('data-more-below', 'true');
+  scrollArea.scrollTop = 600;
+  fireEvent.scroll(scrollArea);
+  expect(scrollArea).toHaveAttribute('data-more-below', 'false');
 });
 
 it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the displayed version and browser cookie', async (choice) => {

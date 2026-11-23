@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Link, Stack, Typography } from '@mui/material';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Box, Button, DialogActions, DialogContent, DialogContentText, Link, Stack, Typography } from '@mui/material';
 import type { MetaCapiConfig } from '#core/domain/index.js';
 import { ChevronDownIcon, ExternalLinkIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
-import { AccountSessionDisclosure, VisuallyHidden } from '../../theme.js';
+import { AccountSessionDisclosure, ConsentDialog, ConsentDialogHeading, VisuallyHidden } from '../../theme.js';
+
+const hasMoreBelow = (area: HTMLElement): boolean => area.scrollHeight - area.scrollTop - area.clientHeight > 1;
 
 export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onExited, disableRestoreFocus = false, initiallyExpanded = false }: {
   config: MetaCapiConfig;
@@ -17,20 +19,31 @@ export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onE
   const t = useTranslations();
   const id = useId();
   const [expanded, setExpanded] = useState(initiallyExpanded);
+  const [moreBelow, setMoreBelow] = useState(false);
   const revealFields = useRef(false);
-  const fieldList = useRef<HTMLUListElement>(null);
+  const disclosure = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!expanded || !revealFields.current) return;
     revealFields.current = false;
-    fieldList.current?.firstElementChild?.scrollIntoView({ block: 'nearest' });
+    disclosure.current?.scrollIntoView({ block: 'start' });
   }, [expanded]);
+  const scrollArea = useCallback((area: HTMLDivElement | null) => {
+    if (!area) return;
+    const update = () => setMoreBelow(hasMoreBelow(area));
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(area);
+    if (area.firstElementChild) observer.observe(area.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
   const toggleFields = () => {
     revealFields.current = !expanded;
     setExpanded(!expanded);
   };
   const fields = [t.metaCapi.fieldsPurchase, t.metaCapi.fieldsIdentity, t.metaCapi.fieldsBrowser, t.metaCapi.fieldsAttribution];
   return (
-    <Dialog
+    <ConsentDialog
       open={open}
       onClose={onDismiss}
       disableRestoreFocus={disableRestoreFocus}
@@ -42,9 +55,9 @@ export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onE
       aria-describedby={`${id}-body`}
       sx={{ '& .MuiDialog-container': { alignItems: 'flex-end' } }}
     >
-      <DialogTitle id={`${id}-title`} tabIndex={-1} autoFocus>{config.heading}</DialogTitle>
-      <DialogContent dividers>
+      <DialogContent ref={scrollArea} data-more-below={moreBelow} onScroll={(event) => setMoreBelow(hasMoreBelow(event.currentTarget))}>
         <Stack spacing={2}>
+          <ConsentDialogHeading id={`${id}-title`} component="h2" variant="h6">{config.heading}</ConsentDialogHeading>
           <DialogContentText id={`${id}-body`} color="text.primary">{config.body}</DialogContentText>
           {config.privacyUrl ? (
             <Link
@@ -60,11 +73,11 @@ export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onE
             </Link>
           ) : null}
           <Box>
-            <AccountSessionDisclosure aria-expanded={expanded} aria-controls={`${id}-fields`} onClick={toggleFields}>
+            <AccountSessionDisclosure ref={disclosure} aria-expanded={expanded} aria-controls={`${id}-fields`} onClick={toggleFields}>
               <Typography component="span" variant="body2">{t.metaCapi.fieldsToggle}</Typography>
               <ChevronDownIcon />
             </AccountSessionDisclosure>
-            <Box component="ul" ref={fieldList} id={`${id}-fields`} hidden={!expanded} sx={{ pl: 3, mb: 0, mt: 1, '& > li + li': { mt: 1 } }}>
+            <Box component="ul" id={`${id}-fields`} hidden={!expanded} sx={{ pl: 3, mb: 0, mt: 1, '& > li + li': { mt: 1 } }}>
               {fields.map((field) => (
                 <Typography key={field} component="li" variant="body2" color="text.secondary">{field}</Typography>
               ))}
@@ -78,6 +91,6 @@ export const MetaCapiConsentDialog = ({ config, open, onDecision, onDismiss, onE
           <Button variant="outlined" fullWidth onClick={() => onDecision('denied')}>{config.declineLabel}</Button>
         </Stack>
       </DialogActions>
-    </Dialog>
+    </ConsentDialog>
   );
 };

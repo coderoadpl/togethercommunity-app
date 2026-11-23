@@ -352,7 +352,7 @@ const readVerified = async (
   return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
 };
 
-export interface ReusedPublicCopy {
+interface ReusedPublicCopy {
   image: ProposalImageReference;
   sizeBytes: number;
   etag: string | null;

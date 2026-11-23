@@ -921,6 +921,29 @@ describe('reader lesson editions', () => {
     expect(find).not.toHaveBeenCalled();
   });
 
+  it('computes the current edition only within the newest 100 marked editions the repository returns', async () => {
+    const h = harness(deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]));
+    const live = buildSnapshot('course_lesson', lesson('l4'));
+    if (!live.ok) throw new Error(live.error.message);
+    const matchingVersion: EntityVersionRecord = { ...h.version, id: 'version-live', ...live.value };
+    await h.deps.lessonEditions.mark('t1', matchingVersion, { number: '1' }, NOW, null);
+    for (let number = 2; number <= 101; number += 1) {
+      await h.deps.lessonEditions.mark('t1', { ...h.version, id: `version-${String(number)}` }, { number: String(number) }, NOW, null);
+    }
+    const all = await h.deps.lessonEditions.list('t1', 'l4');
+    expect(all).toHaveLength(101);
+    const newestHundred = all.filter((row) => row.number !== '1').reverse();
+    vi.spyOn(h.deps.lessonEditions, 'list').mockResolvedValue(newestHundred);
+
+    const listed = await listLessonEditions(ctx({}), 'l4', h.deps);
+    expect(listed).toMatchObject({ ok: true, value: { currentEdition: null } });
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value.editions).toHaveLength(100);
+    expect(listed.value.editions.some((edition) => edition.number === '1')).toBe(false);
+    expect(listed.value.editions.every((edition) => !edition.matchesLive)).toBe(true);
+    expect(await getLessonEdition(ctx({}), 'l4', '1', h.deps)).toMatchObject({ ok: true, value: { id: 'l4', name: 'Lesson l4' } });
+  });
+
   it.each([undefined, 'version-1'])('maps a conditional mark rejection to conflict for version %s', async (versionId) => {
     const h = harness(deps([], []));
     const mark = vi.spyOn(h.staffDeps.lessonEditions, 'mark').mockResolvedValue('conflict');

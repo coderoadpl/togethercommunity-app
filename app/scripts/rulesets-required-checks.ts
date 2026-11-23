@@ -447,6 +447,24 @@ export const deriveProducedChecksFromWorkflows = (
   manifest: DispatchManifest,
 ): RequiredChecksByBranch => deriveProducedChecksFromWorkflowSources(readWorkflowSources(repoRoot), manifest);
 
+export const isGatedProducer = (manifest: DispatchManifest, producer: ProducedCheck): boolean =>
+  producer.file === manifest.workflow
+  && [manifest.planJob, manifest.gate, ...manifest.jobs.map((job) => job.id)].includes(producer.job);
+
+export const ungatedCheckViolations = (
+  producers: CheckProducersByBranch,
+  manifest: DispatchManifest,
+): string[] => RULESET_BRANCHES.flatMap((branch) => {
+  const listed = new Set([
+    ...manifest.separateRequiredChecks[branch].map((check) => check.name),
+    ...manifest.ungatedChecks[branch].map((check) => check.name),
+  ]);
+  return producers[branch]
+    .filter((producer) => !isGatedProducer(manifest, producer) && !listed.has(producer.name))
+    .map((producer) =>
+      `${branch}: "${producer.name}" from ${producer.file} job "${producer.job}" reports on every pull request push without the gate, so add the job to the dispatch-ci manifest, list it in separateRequiredChecks.${branch}, or list it with a reason in ungatedChecks.${branch}.`);
+});
+
 const ordered = (names: Iterable<string>): string[] => [...new Set(names)].sort();
 
 export const compareRulesetChecks = (

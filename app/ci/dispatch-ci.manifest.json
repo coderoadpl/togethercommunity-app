@@ -52,6 +52,10 @@
       }
     ]
   },
+  "ungatedChecks": {
+    "staging": [],
+    "main": []
+  },
   "postDeploy": {
     "staging": [],
     "production": []

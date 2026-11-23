@@ -6,6 +6,11 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 import { loadManifest } from '../scripts/dispatch-ci.js';
+import {
+  deriveCheckProducersFromWorkflowSources,
+  readWorkflowSources,
+  ungatedCheckViolations,
+} from '../scripts/rulesets-required-checks.js';
 
 const stepSchema = z.object({
   name: z.string().optional(),
@@ -222,5 +227,14 @@ describe('dispatch-ci workflow binding', () => {
       });
 
     expect(producers).toEqual([`${manifest.workflow}:${manifest.gate}`]);
+  });
+
+  it('accounts for every check any workflow file reports on a pull request push', () => {
+    const producers = deriveCheckProducersFromWorkflowSources(
+      readWorkflowSources(join(workflowsDir, '..', '..')),
+      manifest,
+    );
+
+    expect(ungatedCheckViolations(producers, manifest)).toEqual([]);
   });
 });

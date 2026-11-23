@@ -26,6 +26,7 @@ interface RawManifest {
   jobs: Record<string, unknown>[];
   afterGate: string[];
   separateRequiredChecks: Record<string, Record<string, unknown>[]>;
+  ungatedChecks: Record<string, Record<string, unknown>[]>;
   postDeploy: Record<string, string[]>;
   deletionProtectedBranches: string[];
 }
@@ -49,6 +50,10 @@ const validManifest = (): RawManifest => ({
     staging: [{ name: 'ai-review', reason: 'own workflow' }],
     main: [{ name: 'ai-review', reason: 'own workflow' }, { name: 'promotion-guard', reason: 'own workflow' }],
   },
+  ungatedChecks: {
+    staging: [],
+    main: [{ name: 'storybook-preview', reason: 'publishes a preview link, never blocks a merge' }],
+  },
   postDeploy: { staging: [], production: [] },
   deletionProtectedBranches: ['staging', 'main'],
 });
@@ -70,6 +75,7 @@ describe('dispatch-ci manifest', () => {
     expect(committed.afterGate).toEqual(['release-tag']);
     expect(committed.jobs.filter((job) => job.mode === 'advisory').map((job) => job.id))
       .toEqual(['dependency-audit', 'telemetry-mongodb']);
+    expect(committed.ungatedChecks).toEqual({ staging: [], main: [] });
     expect(committed.postDeploy).toEqual({ staging: [], production: [] });
     expect(committed.deletionProtectedBranches).toEqual(['staging', 'main']);
     expect(expectedRequiredChecks(committed)).toEqual({
@@ -121,6 +127,24 @@ describe('dispatch-ci manifest', () => {
     })],
     ['separateRequiredChecks.staging[0].reason must be a non-empty string', () => withField((raw) => {
       raw.separateRequiredChecks.staging = [{ name: 'ai-review', reason: ' ' }];
+    })],
+    ['ungatedChecks is missing', () => withField((raw) => {
+      delete raw['ungatedChecks'];
+    })],
+    ['ungatedChecks.staging must not repeat the gate "dispatch-ci"', () => withField((raw) => {
+      raw.ungatedChecks.staging = [{ name: 'dispatch-ci', reason: 'duplicate' }];
+    })],
+    ['ungatedChecks.main[0].reason must be a non-empty string', () => withField((raw) => {
+      raw.ungatedChecks.main = [{ name: 'storybook-preview', reason: '' }];
+    })],
+    ['ungatedChecks.main lists "storybook-preview" more than once', () => withField((raw) => {
+      raw.ungatedChecks.main = [
+        { name: 'storybook-preview', reason: 'preview' },
+        { name: 'storybook-preview', reason: 'preview' },
+      ];
+    })],
+    ['ungatedChecks.main must not repeat "promotion-guard" from separateRequiredChecks.main', () => withField((raw) => {
+      raw.ungatedChecks.main = [{ name: 'promotion-guard', reason: 'listed twice' }];
     })],
     ['postDeploy.production is reserved for post-deploy jobs', () => withField((raw) => {
       raw.postDeploy = { staging: [], production: ['prod-smoke'] };

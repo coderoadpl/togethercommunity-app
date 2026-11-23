@@ -149,6 +149,13 @@ checks of a branch are the gate plus that branch's separate checks, pinned in
 `app/config-regression/rulesets-required-checks.snapshot.json`, so the snapshot
 test forces a reviewed change whenever the list moves.
 
+`ungatedChecks` lists, per branch with a reason each, the checks that another
+workflow reports on every pull request push but that neither the gate nor the
+ruleset should cover; both lists start empty. A config-regression test fails
+when any workflow file reports such a check that is not a job of the manifest,
+not a separate required check and not listed in `ungatedChecks`, so a new
+blocking job outside `ci.yml` cannot go unnoticed.
+
 ### Drift check
 
 `app/scripts/rulesets-required-checks.ts` derives the produced checks, the

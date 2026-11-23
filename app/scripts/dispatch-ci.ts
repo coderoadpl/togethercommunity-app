@@ -27,7 +27,7 @@ export interface ManifestJob {
   matrix: MatrixEntry[] | null;
 }
 
-export interface SeparateRequiredCheck {
+export interface ManifestCheck {
   name: string;
   reason: string;
 }
@@ -38,7 +38,8 @@ export interface DispatchManifest {
   planJob: string;
   jobs: ManifestJob[];
   afterGate: string[];
-  separateRequiredChecks: Record<DispatchBranch, SeparateRequiredCheck[]>;
+  separateRequiredChecks: Record<DispatchBranch, ManifestCheck[]>;
+  ungatedChecks: Record<DispatchBranch, ManifestCheck[]>;
   postDeploy: Record<PostDeployEnvironment, string[]>;
   deletionProtectedBranches: DispatchBranch[];
 }
@@ -173,7 +174,7 @@ const parseJob = (value: unknown, field: string): ManifestJob => {
   };
 };
 
-const parseSeparateChecks = (value: unknown, field: string): SeparateRequiredCheck[] => {
+const parseChecks = (value: unknown, field: string): ManifestCheck[] => {
   const checks = expectArray(value, field).map((entry, index) => {
     const entryField = `${field}[${String(index)}]`;
     const record = expectRecord(entry, entryField);
@@ -184,6 +185,21 @@ const parseSeparateChecks = (value: unknown, field: string): SeparateRequiredChe
     };
   });
   expectDistinct(checks.map((check) => check.name), field);
+  return checks;
+};
+
+const parseBranchChecks = (value: unknown, field: string, gate: string): Record<DispatchBranch, ManifestCheck[]> => {
+  const record = expectRecord(value, field);
+  expectKeys(record, field, DISPATCH_BRANCHES);
+  const checks = {
+    staging: parseChecks(record['staging'], `${field}.staging`),
+    main: parseChecks(record['main'], `${field}.main`),
+  };
+  for (const branch of DISPATCH_BRANCHES) {
+    if (checks[branch].some((check) => check.name === gate)) {
+      throw manifestError(`${field}.${branch}`, `must not repeat the gate "${gate}"`);
+    }
+  }
   return checks;
 };
 
@@ -209,6 +225,7 @@ export const parseManifest = (value: unknown): DispatchManifest => {
     'jobs',
     'afterGate',
     'separateRequiredChecks',
+    'ungatedChecks',
     'postDeploy',
     'deletionProtectedBranches',
   ]);
@@ -219,15 +236,16 @@ export const parseManifest = (value: unknown): DispatchManifest => {
   const afterGate = expectArray(record['afterGate'], 'afterGate')
     .map((id, index) => expectString(id, `afterGate[${String(index)}]`, jobIdPattern));
   expectDistinct([gate, planJob, ...jobs.map((job) => job.id), ...afterGate], 'jobs, afterGate, gate and planJob');
-  const separate = expectRecord(record['separateRequiredChecks'], 'separateRequiredChecks');
-  expectKeys(separate, 'separateRequiredChecks', DISPATCH_BRANCHES);
-  const separateRequiredChecks = {
-    staging: parseSeparateChecks(separate['staging'], 'separateRequiredChecks.staging'),
-    main: parseSeparateChecks(separate['main'], 'separateRequiredChecks.main'),
-  };
+  const separateRequiredChecks = parseBranchChecks(record['separateRequiredChecks'], 'separateRequiredChecks', gate);
+  const ungatedChecks = parseBranchChecks(record['ungatedChecks'], 'ungatedChecks', gate);
   for (const branch of DISPATCH_BRANCHES) {
-    if (separateRequiredChecks[branch].some((check) => check.name === gate)) {
-      throw manifestError(`separateRequiredChecks.${branch}`, `must not repeat the gate "${gate}"`);
+    const separateNames = new Set(separateRequiredChecks[branch].map((check) => check.name));
+    const repeated = ungatedChecks[branch].find((check) => separateNames.has(check.name));
+    if (repeated !== undefined) {
+      throw manifestError(
+        `ungatedChecks.${branch}`,
+        `must not repeat "${repeated.name}" from separateRequiredChecks.${branch}`,
+      );
     }
   }
   const deletionProtectedBranches = expectArray(record['deletionProtectedBranches'], 'deletionProtectedBranches')
@@ -240,6 +258,7 @@ export const parseManifest = (value: unknown): DispatchManifest => {
     jobs,
     afterGate,
     separateRequiredChecks,
+    ungatedChecks,
     postDeploy: parsePostDeploy(record['postDeploy']),
     deletionProtectedBranches,
   };

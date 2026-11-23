@@ -13,6 +13,7 @@ import {
   IGNORED_WORKFLOW_FILES,
   readWorkflowSources,
   RULESET_BRANCHES,
+  ungatedCheckViolations,
 } from './rulesets-required-checks.js';
 
 const snapshotSchema = z.object({
@@ -53,7 +54,7 @@ const legacyPerJobChecks = [
   'e2e (meta-capi)',
 ];
 
-const planDrivenManifest = parseManifest({
+const planDrivenRaw = (overrides: Record<string, unknown> = {}) => ({
   gate: 'dispatch-ci',
   workflow: 'ci.yml',
   planJob: 'plan',
@@ -63,9 +64,13 @@ const planDrivenManifest = parseManifest({
   ],
   afterGate: [],
   separateRequiredChecks: { staging: [], main: [] },
+  ungatedChecks: { staging: [], main: [] },
   postDeploy: { staging: [], production: [] },
   deletionProtectedBranches: [],
+  ...overrides,
 });
+
+const planDrivenManifest = parseManifest(planDrivenRaw());
 
 const planDrivenWorkflow = `${pullRequestHeader}
   plan:
@@ -312,6 +317,31 @@ jobs:
       [{ file: 'other.yml', text: planDrivenWorkflow }],
       planDrivenManifest,
     )).toThrow('matrix include is not a list of scalar objects');
+  });
+
+  it('names a check that another workflow reports outside the gate and the manifest lists', () => {
+    const lint = `
+name: lint
+on:
+  pull_request:
+    branches: [main, staging]
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps: []
+`;
+    const producers = deriveCheckProducersFromWorkflowSources(
+      [{ file: 'ci.yml', text: planDrivenWorkflow }, { file: 'lint.yml', text: lint }],
+      planDrivenManifest,
+    );
+    const listing = (field: 'separateRequiredChecks' | 'ungatedChecks') => parseManifest(planDrivenRaw({
+      [field]: { staging: [{ name: 'lint', reason: 'listed' }], main: [{ name: 'lint', reason: 'listed' }] },
+    }));
+
+    expect(ungatedCheckViolations(producers, planDrivenManifest)).toEqual(RULESET_BRANCHES.map((branch) =>
+      `${branch}: "lint" from lint.yml job "lint" reports on every pull request push without the gate, so add the job to the dispatch-ci manifest, list it in separateRequiredChecks.${branch}, or list it with a reason in ungatedChecks.${branch}.`));
+    expect(ungatedCheckViolations(producers, listing('separateRequiredChecks'))).toEqual([]);
+    expect(ungatedCheckViolations(producers, listing('ungatedChecks'))).toEqual([]);
   });
 
   it('matches the committed expected required-check snapshot', () => {

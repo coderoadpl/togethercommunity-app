@@ -554,8 +554,14 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByTestId('tenant-gate-pending').getByText('Loading…').waitFor(visible),
+    ready: async (page) => {
+      const splash = page.getByTestId('tenant-gate-pending');
+      await splash.getByText('Loading…').waitFor(visible);
+      await splash.getByTestId('brand-loader-core').waitFor(visible);
+      await splash.getByTestId('brand-loader-ring').waitFor(visible);
+    },
     waitForNetworkIdle: false,
+    // The neutral splash compresses to about 6 KiB; the ready step and BrandLoader.test.tsx guard its content instead.
     minBytes: 4 * 1024,
   },
   {

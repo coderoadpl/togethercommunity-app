@@ -278,7 +278,13 @@ export const ProposalFieldRows = ({
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
       {access === null ? null : (
-        <AccessChangeRow change={access} labels={proposal.accessLabels} label={fieldLabel(t, 'accessItems', targetKind)} labelComponent={labelComponent} />
+        <AccessChangeRow
+          change={access}
+          labels={proposal.accessLabels}
+          label={fieldLabel(t, 'accessItems', targetKind)}
+          labelComponent={labelComponent}
+          pending={pendingProposalId !== null}
+        />
       )}
       {files === null ? null : (
         <FileChangeRows

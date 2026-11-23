@@ -7,6 +7,8 @@ import { groupReferences } from '../features/home/proposals/proposal-display.js'
 import {
   accessChangeProposal,
   accessClearProposal,
+  accessGoneProposal,
+  accessSharedExclusionProposal,
   changeProposalGroupItems,
   fileAddProposal,
   fileAddProposalOf,
@@ -130,8 +132,12 @@ export const ProposedFileGone: Story = {
   },
 };
 export const ProposedFileGonePolishMobile: Story = { ...ProposedFileGone, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
-export const ProposedAccess: Story = { render: () => <Rows proposal={accessChangeProposal} /> };
+export const ProposedAccess: Story = { render: () => <Rows proposal={accessChangeProposal} pendingProposalId={accessChangeProposal.id} /> };
 export const ProposedAccessPolishMobile: Story = { ...ProposedAccess, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
-export const ProposedAccessCleared: Story = { render: () => <Rows proposal={accessClearProposal} /> };
+export const ProposedAccessCleared: Story = { render: () => <Rows proposal={accessClearProposal} pendingProposalId={accessClearProposal.id} /> };
 export const ProposedAccessClearedPolishMobile: Story = { ...ProposedAccessCleared, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedAccessGone: Story = { render: () => <Rows proposal={accessGoneProposal} pendingProposalId={accessGoneProposal.id} /> };
+export const ProposedAccessGonePolishMobile: Story = { ...ProposedAccessGone, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
+export const ProposedAccessSharedExclusion: Story = { render: () => <Rows proposal={accessSharedExclusionProposal} pendingProposalId={accessSharedExclusionProposal.id} /> };
+export const ProposedAccessSharedExclusionPolishMobile: Story = { ...ProposedAccessSharedExclusion, parameters: { locale: 'pl' }, globals: { viewport: { value: 'mobile' } } };
 export const TextDark: Story = { parameters: { colorScheme: 'dark' } };

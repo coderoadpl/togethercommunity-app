@@ -671,8 +671,8 @@ export const en: Messages = {
     fileFingerprint: 'fingerprint',
     fileNewName: ({ name }) => format('The new version is named {name}', { name }),
     fileVersionNote: ({ note }) => format('Version note: {note}', { note }),
-    fileCopiedFrom: ({ version, product }) => format('Copy of version {version} of “{product}”', { version, product }),
-    fileCopiedFromGone: ({ version }) => format('Copy of version {version} of a product that no longer exists', { version }),
+    fileCopiedFrom: ({ version, product }) => format('Copy of version {version} of a file from “{product}”', { version, product }),
+    fileCopiedFromGone: ({ version }) => format('Copy of version {version} of a file from a product that no longer exists', { version }),
     fileBecomesCurrent: ({ version }) => format('Version {version} becomes the current version.', { version }),
     fileStaysCurrent: ({ version }) => format('Version {version} stays the current version.', { version }),
     fileNoVersionLeft: 'No version of this file is left.',
@@ -766,7 +766,7 @@ export const en: Messages = {
       { file, facts, target },
     ),
     approveFileAddToNewProduct: ({ file, facts, target }) => format(
-      '“{file}” ({facts}) will be added to “{target}”. Everyone who gets access to this product can download the file once the product is published or sold.',
+      '“{file}” ({facts}) will be added to “{target}”. Everyone who later gets access to this product can download the file.',
       { file, facts, target },
     ),
     approveFileCopiedFrom: ({ version, product }) => format('It is a copy of version {version} of a file from “{product}”.', { version, product }),
@@ -782,7 +782,7 @@ export const en: Messages = {
     approveFileRemove: ({ file, version, target }) =>
       format('Buyers of “{target}” will no longer be able to download “{file}” version {version}.', { file, version, target }),
     fileRemoveOnlyFile: 'This is the product’s only file. If the product is published when you approve, it stays published with nothing to download.',
-    approveFileMissing: 'If the proposed file no longer exists, nothing is changed.',
+    approveFileMissing: 'If the proposed file no longer exists, approving does nothing.',
     approveGroupFilesMissing: ({ count }) => format(plural(
       count,
       'If the proposed file no longer exists, none of the changes is applied.',
@@ -793,25 +793,45 @@ export const en: Messages = {
       format(plural(count, 'the course {course} without its module {modules}', 'the course {course} without its modules {modules}'), { course, modules }),
     accessModules: ({ course, modules, count }) => format(plural(
       count,
-      'the module {modules} as such, in every course that uses it (chosen from {course})',
-      'the modules {modules} as such, each in every course that uses it (chosen from {course})',
+      'the module {modules} in every course that uses it (chosen from {course})',
+      'the modules {modules}, each in every course that uses it (chosen from {course})',
     ), { course, modules }),
     accessLessons: ({ course, lessons, count }) => format(plural(
       count,
-      'the lesson {lessons} as such, in every course that uses it (chosen from {course})',
-      'the lessons {lessons} as such, each in every course that uses it (chosen from {course})',
+      'the lesson {lessons} in every course that uses it (chosen from {course})',
+      'the lessons {lessons}, each in every course that uses it (chosen from {course})',
     ), { course, lessons }),
     accessNothing: 'no course, module or lesson',
     accessName: ({ name }) => format('“{name}”', { name }),
     accessGone: ({ id }) => format('something that no longer exists ({id})', { id }),
+    accessArchived: ({ name }) => format('“{name}” (archived)', { name }),
+    accessUsedElsewhere: ({ name }) => format('“{name}” (also in other courses)', { name }),
+    accessListRefused:
+      'The list after approval no longer passes the shop’s check: something on it no longer exists, a course on it is archived, or it excludes a module that other courses also use. Approving changes nothing.',
+    accessSharedExclusionNow: ({ modules, count }) => format(plural(
+      count,
+      'Now this product excludes the module {modules}, which other courses also use. Everyone who has this product therefore has it closed in those other courses too, even when another of their products grants such a course whole. Only a product that grants the module itself, or this same course without excluding it, opens it again, and a product that grants one of its lessons opens just that lesson.',
+      'Now this product excludes the modules {modules}, which other courses also use. Everyone who has this product therefore has them closed in those other courses too, even when another of their products grants such a course whole. Only a product that grants a module itself, or this same course without excluding it, opens it again, and a product that grants one of its lessons opens just that lesson.',
+    ), { modules }),
+    accessSharedExclusionLifted: ({ modules, count }) => format(plural(
+      count,
+      'After approval this product no longer excludes the module {modules}, which other courses also use, so for everyone who has this product it can open again in every course that contains it.',
+      'After approval this product no longer excludes the modules {modules}, which other courses also use, so for everyone who has this product they can open again in every course that contains them.',
+    ), { modules }),
     approveProductSetAccess: ({ target, access }) => format(
-      'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets this list at once and loses what it no longer lists, unless another of their products grants it.',
+      'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them.',
       { target, access },
     ),
     approveProductSetAccessNothing: ({ target }) => format(
-      '“{target}” will no longer grant any course, module or lesson. Everyone who already has access to this product, current buyers included, loses what it granted at once, unless another of their products grants it.',
+      '“{target}” will no longer grant any course, module or lesson. Everyone who already has access to this product, current buyers included, loses what it granted at once, unless another of their products still opens it for them.',
       { target },
     ),
+    approveProductSetAccessNewProduct: ({ target, access }) => format('Everyone who later gets access to the new product “{target}” will get access to: {access}.', { target, access }),
+    approveProductSetAccessNothingNewProduct: ({ target }) => format('The new product “{target}” will not grant any course, module or lesson.', { target }),
+    approveProductSetAccessRefused: ({ target }) =>
+      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving changes nothing.', { target }),
+    approveGroupProductSetAccessRefused: ({ target }) =>
+      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving applies none of the changes.', { target }),
     approveConfirm: 'Approve',
     rejectTitle: 'Reject this change?',
     rejectGroupTitle: 'Reject the whole group?',

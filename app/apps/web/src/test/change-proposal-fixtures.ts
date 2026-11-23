@@ -505,28 +505,70 @@ export const fileHistoryDetail = <P extends DecidedProposal & { id: string }>(pr
     : detail;
 };
 
+const SKETCHING = { id: 'course-studio-sketching', title: 'Sketching from life' };
+
+const COLOUR = { id: 'course-studio-colour', title: 'Colour basics' };
+
+const accessAfter = [
+  { level: 'course' as const, courseId: SKETCHING.id, excludedModuleIds: ['module-studio-bonus'] },
+  { level: 'modules' as const, courseId: COLOUR.id, moduleIds: ['module-studio-mixing'] },
+  { level: 'lessons' as const, courseId: COLOUR.id, lessonIds: ['lesson-studio-palettes', 'lesson-studio-shading'] },
+];
+
 export const accessChangeProposal = fileProposal('proposal-field-guide-access', '2026-11-21T09:20:00.000Z', {
   operation: 'product.set-access',
-  input: {
-    id: FILE_PRODUCT_ID,
-    accessItems: [
-      { level: 'course', courseId: 'course-studio-sketching', excludedModuleIds: ['module-studio-bonus'] },
-      { level: 'lessons', courseId: 'course-studio-colour', lessonIds: ['lesson-studio-palettes', 'lesson-studio-retired'] },
-    ],
-  },
+  input: { id: FILE_PRODUCT_ID, accessItems: accessAfter },
   effect: {
     accessItems: {
-      before: [{ level: 'modules', courseId: 'course-studio-sketching', moduleIds: ['module-studio-basics'] }],
-      after: [
-        { level: 'course', courseId: 'course-studio-sketching', excludedModuleIds: ['module-studio-bonus'] },
-        { level: 'lessons', courseId: 'course-studio-colour', lessonIds: ['lesson-studio-palettes', 'lesson-studio-retired'] },
-      ],
+      before: [{ level: 'modules', courseId: SKETCHING.id, moduleIds: ['module-studio-basics'] }],
+      after: accessAfter,
     },
   },
   accessLabels: {
-    courses: [{ id: 'course-studio-sketching', title: 'Sketching from life' }, { id: 'course-studio-colour', title: 'Colour basics' }],
-    modules: [{ id: 'module-studio-basics', title: 'First lines' }, { id: 'module-studio-bonus', title: 'Bonus sketches' }],
+    courses: [SKETCHING, COLOUR],
+    modules: [
+      { id: 'module-studio-basics', title: 'First lines' },
+      { id: 'module-studio-bonus', title: 'Bonus sketches' },
+      { id: 'module-studio-mixing', title: 'Mixing colours' },
+    ],
+    lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }, { id: 'lesson-studio-shading', title: 'Light and shade' }],
+    excludedModulesInOtherCourses: [],
+  },
+});
+
+const accessGoneAfter = [
+  { level: 'course' as const, courseId: 'course-studio-life-2025' },
+  { level: 'course' as const, courseId: 'course-studio-retired' },
+  { level: 'lessons' as const, courseId: COLOUR.id, lessonIds: ['lesson-studio-palettes', 'lesson-studio-retired'] },
+];
+
+export const accessGoneProposal = fileProposal('proposal-field-guide-access-gone', '2026-11-21T09:30:00.000Z', {
+  operation: 'product.set-access',
+  input: { id: FILE_PRODUCT_ID, accessItems: accessGoneAfter },
+  effect: { accessItems: { before: [{ level: 'course', courseId: SKETCHING.id }], after: accessGoneAfter } },
+  accessLabels: {
+    courses: [SKETCHING, { id: 'course-studio-life-2025', title: 'Life drawing 2025' }, { id: 'course-studio-retired', title: null }, COLOUR],
+    modules: [],
     lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }, { id: 'lesson-studio-retired', title: null }],
+    excludedModulesInOtherCourses: [],
+    archivedCourses: ['course-studio-life-2025'],
+  },
+});
+
+export const accessSharedExclusionProposal = fileProposal('proposal-field-guide-access-shared', '2026-11-21T09:35:00.000Z', {
+  operation: 'product.set-access',
+  input: { id: FILE_PRODUCT_ID, accessItems: [{ level: 'course', courseId: SKETCHING.id }] },
+  effect: {
+    accessItems: {
+      before: [{ level: 'course', courseId: SKETCHING.id, excludedModuleIds: ['module-studio-warmups'] }],
+      after: [{ level: 'course', courseId: SKETCHING.id }],
+    },
+  },
+  accessLabels: {
+    courses: [SKETCHING],
+    modules: [{ id: 'module-studio-warmups', title: 'Warm-up drills' }],
+    lessons: [],
+    excludedModulesInOtherCourses: ['module-studio-warmups'],
   },
 });
 
@@ -536,3 +578,78 @@ export const accessClearProposal = fileProposal('proposal-field-guide-access-cle
   effect: { accessItems: { before: [{ level: 'course', courseId: 'course-studio-sketching' }], after: [] } },
   accessLabels: { courses: [{ id: 'course-studio-sketching', title: 'Sketching from life' }], modules: [], lessons: [] },
 });
+
+export const ACCESS_GROUP_ID = 'proposal-group-starter-pack';
+
+const accessGroupProduct = '$proposal:proposal-starter-pack-product';
+
+const accessGroupItem = <F extends object>(position: number, id: string, createdAt: string, fields: F) => ({
+  id,
+  groupId: ACCESS_GROUP_ID,
+  groupTitle: 'Launch the starter pack',
+  groupPosition: position,
+  targetLabel: null,
+  targetPrice: null,
+  ...pendingBase,
+  createdAt,
+  expiresAt: '2026-12-22T10:00:00.000Z',
+  ...fields,
+});
+
+const accessGroupItemViews = [
+  accessGroupItem(1, 'proposal-starter-pack-product', '2026-11-22T10:00:00.000Z', {
+    operation: 'product.create',
+    target: { kind: 'product' as const, id: null },
+    input: { title: 'Starter Pack', slug: 'starter-pack', type: 'digital_download', priceCents: 4900, currency: 'PLN' },
+    effect: {
+      exists: { before: false, after: true },
+      title: { before: null, after: 'Starter Pack' },
+      slug: { before: null, after: 'starter-pack' },
+      type: { before: null, after: 'digital_download' },
+      priceCents: { before: null, after: 4900 },
+      currency: { before: null, after: 'PLN' },
+      published: { before: null, after: false },
+    },
+  }),
+  accessGroupItem(2, 'proposal-starter-pack-access', '2026-11-22T10:00:05.000Z', {
+    operation: 'product.set-access',
+    target: { kind: 'product' as const, id: accessGroupProduct },
+    input: { id: accessGroupProduct, accessItems: [{ level: 'course', courseId: COLOUR.id }] },
+    effect: { accessItems: { before: [], after: [{ level: 'course', courseId: COLOUR.id }] } },
+    accessLabels: { courses: [COLOUR], modules: [], lessons: [], excludedModulesInOtherCourses: [] },
+  }),
+  accessGroupItem(3, 'proposal-starter-pack-field-guide-access', '2026-11-22T10:00:10.000Z', {
+    operation: 'product.set-access',
+    target: { kind: 'product' as const, id: FILE_PRODUCT_ID },
+    targetLabel: 'Field Guide (digital)',
+    input: { id: FILE_PRODUCT_ID, accessItems: [{ level: 'course', courseId: SKETCHING.id }, { level: 'lessons', courseId: COLOUR.id, lessonIds: ['lesson-studio-palettes'] }] },
+    effect: {
+      accessItems: {
+        before: [{ level: 'course', courseId: SKETCHING.id }],
+        after: [{ level: 'course', courseId: SKETCHING.id }, { level: 'lessons', courseId: COLOUR.id, lessonIds: ['lesson-studio-palettes'] }],
+      },
+    },
+    accessLabels: { courses: [SKETCHING, COLOUR], modules: [], lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }], excludedModulesInOtherCourses: [] },
+  }),
+];
+
+export const accessChangeProposalGroup = {
+  id: ACCESS_GROUP_ID,
+  title: 'Launch the starter pack',
+  status: 'open' as const,
+  proposedBy: proposer,
+  createdAt: '2026-11-22T09:59:00.000Z',
+  expiresAt: '2026-12-22T10:00:00.000Z',
+  items: accessGroupItemViews.map((item) => ({
+    ...item,
+    events: [{ sequence: 1, kind: 'proposed' as const, actorUserId: null, apiKeyId: proposer.keyId, note: null, at: item.createdAt }],
+  })),
+};
+
+export const pendingAccessChangeProposals = [
+  ...accessGroupItemViews.toReversed(),
+  accessChangeProposal,
+  accessSharedExclusionProposal,
+  accessGoneProposal,
+  accessClearProposal,
+];

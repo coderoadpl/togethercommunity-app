@@ -11,6 +11,7 @@ import {
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatFileSize } from '../../../lib/format.js';
+import { WrapAnywhereText } from '../../../theme.js';
 import {
   priceOf,
   proposalCreatesRecord,
@@ -25,7 +26,7 @@ import {
   type ProposalFile,
   type TargetDisplay,
 } from './proposal-display.js';
-import { AccessApprovalText } from './ProposedAccess.js';
+import { accessFacts, AccessApprovalText } from './ProposedAccess.js';
 import { currentVersionText, Fingerprint } from './ProposedFiles.js';
 import { fileTypeLabel, Isolated, operationTitle, priceTerms, Sentence, targetPriceTerms } from './proposal-text.js';
 
@@ -43,6 +44,7 @@ type Coverage = 'every-row' | readonly string[];
 interface ApprovalSentence {
   text: ReactNode;
   names: Coverage;
+  closing?: false;
 }
 
 const targetName = (target: TargetDisplay): string | null => {
@@ -228,9 +230,9 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
       return named((target) => t.approveFieldsChange({ target, count: rows.length }), 'every-row');
     case 'product.set-access': {
       const access = changeProposalAccessChange(proposal);
-      return access === null
-        ? fallback
-        : { text: <AccessApprovalText target={name} items={access.after} labels={proposal.accessLabels} />, names: ['accessItems'] };
+      if (access === null) return fallback;
+      const text = <AccessApprovalText target={name} change={access} labels={proposal.accessLabels} newProduct={false} group={false} />;
+      return accessFacts(access, proposal.accessLabels).refused ? { text, names: 'every-row', closing: false } : { text, names: ['accessItems'] };
     }
     case 'download.add':
     case 'download.replace':
@@ -297,7 +299,7 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
   return (
     <>
       {files.map(({ item, text }) => (
-        <Typography key={item.id} variant="body2" data-testid={`proposal-approve-file-${item.id}`}>{text}</Typography>
+        <WrapAnywhereText key={item.id} variant="body2" data-testid={`proposal-approve-file-${item.id}`}>{text}</WrapAnywhereText>
       ))}
     </>
   );
@@ -308,15 +310,16 @@ export const GroupAccessSentences = ({ items, references }: { items: readonly Ap
   const sentences = items.flatMap((item) => {
     if (item.operation !== 'product.set-access') return [];
     const access = changeProposalAccessChange(item);
-    const target = targetName(proposalTarget(item, references));
+    const shownTarget = proposalTarget(item, references);
+    const target = targetName(shownTarget);
     return [{ item, text: access === null || target === null
       ? t.approveFallback({ operation: operationTitle(t, item.operation) })
-      : <AccessApprovalText target={target} items={access.after} labels={item.accessLabels} /> }];
+      : <AccessApprovalText target={target} change={access} labels={item.accessLabels} newProduct={shownTarget.kind === 'reference'} group /> }];
   });
   return (
     <>
       {sentences.map(({ item, text }) => (
-        <Typography key={item.id} variant="body2" data-testid={`proposal-approve-access-${item.id}`}>{text}</Typography>
+        <WrapAnywhereText key={item.id} variant="body2" data-testid={`proposal-approve-access-${item.id}`}>{text}</WrapAnywhereText>
       ))}
     </>
   );
@@ -339,10 +342,10 @@ export const ApprovalSummary = ({ proposal }: { proposal: ApprovalFacts }) => {
   const sentence = useApprovalSentence(proposal, rows);
   return (
     <>
-      <Typography variant="body2" data-testid="proposal-approve-summary">
+      <WrapAnywhereText variant="body2" data-testid="proposal-approve-summary">
         {sentence.text}
-        {` ${closingSentence(t, rows, sentence.names)}`}
-      </Typography>
+        {sentence.closing === false ? null : ` ${closingSentence(t, rows, sentence.names)}`}
+      </WrapAnywhereText>
       <ApprovalImagesNote proposals={[proposal]} group={false} />
       <ApprovalFilesNote proposals={[proposal]} group={false} />
     </>

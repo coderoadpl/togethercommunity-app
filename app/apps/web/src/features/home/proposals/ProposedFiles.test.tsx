@@ -108,6 +108,27 @@ describe('proposed file rows', () => {
     expect(row).not.toHaveTextContent(t.fileNewName({ name: 'workbook.pdf' }));
   });
 
+  it('lets a 255-character new name, version note and copy source wrap anywhere in the fine print', () => {
+    const long = `${'quarterly_report_'.repeat(15)}final.pdf.exe`.slice(-255);
+    const previous = at(fileReplaceProposal.effect.files.after, 0);
+    const added = at(fileReplaceProposal.effect.files.after, 1);
+    renderRows({
+      ...fileReplaceProposal,
+      effect: { files: { before: fileReplaceProposal.effect.files.before, after: [previous, { ...added, fileName: long, versionNote: long }] } },
+      proposedFiles: [{ id: added.id, available: true, copiedFrom: { productId: 'product-long', productTitle: long, versionNumber: 2 } }],
+    });
+
+    const row = screen.getByTestId('proposed-file');
+    const lineReading = (text: string): Element => {
+      const line = [...row.querySelectorAll('p')].find((candidate) => normalized(candidate.textContent) === text);
+      if (line === undefined) throw new Error(`missing line ${text}`);
+      return line;
+    };
+    const finePrint = [lineReading(t.fileNewName({ name: long })), lineReading(t.fileVersionNote({ note: long })), screen.getByTestId('proposed-file-copy')];
+    for (const line of finePrint) expect(getComputedStyle(line).overflowWrap).toBe('anywhere');
+    expect(screen.getByTestId('proposed-file-copy')).toHaveTextContent(`Copy of version 2 of a file from “${long}”`);
+  });
+
   it('names the file of a new version when it differs from the version it replaces', () => {
     const previous = at(fileReplaceProposal.effect.files.after, 0);
     const added = at(fileReplaceProposal.effect.files.after, 1);
@@ -159,10 +180,12 @@ describe('proposed file rows', () => {
     expect(screen.getByTestId('proposed-file-only-file')).toHaveTextContent(t.fileRemoveOnlyFile);
   });
 
-  it('says the file is no longer held instead of offering its download', () => {
+  it('says the file is no longer held instead of offering its download, without taking focus', () => {
     renderRows({ ...fileAddProposal, proposedFiles: [{ id: 'staged-file-bonus-chapter', available: false, copiedFrom: null }] });
 
     expect(screen.getByTestId('proposed-file-unavailable')).toHaveTextContent(t.fileUnavailable);
+    expect(screen.getByTestId('proposed-file-unavailable')).not.toHaveFocus();
+    expect(screen.getByTestId('proposed-file-unavailable')).not.toHaveAttribute('tabindex');
     expect(screen.queryByTestId('proposed-file-download')).toBeNull();
   });
 
@@ -187,8 +210,14 @@ describe('proposed file rows', () => {
 
     await userEvent.click(screen.getByTestId('proposed-file-download'));
     const busy = await screen.findByText(t.fileDownloadPreparing);
-    expect(busy.closest('button')).toBeDisabled();
-    expect(busy.closest('button')).toHaveAttribute('aria-busy', 'true');
+    const button = busy.closest('button');
+    if (button === null) throw new Error('missing download button');
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveFocus();
+    await userEvent.click(button);
+    expect(requested).toHaveLength(1);
     release();
 
     await waitFor(() => expect(assign).toHaveBeenCalledExactlyOnceWith(fileLink.download.url));
@@ -210,6 +239,8 @@ describe('proposed file rows', () => {
     const gone = await screen.findByTestId('proposed-file-unavailable');
     expect(gone).toHaveTextContent('This file is no longer available; approving changes nothing.');
     expect(gone).toHaveClass('MuiAlert-colorWarning');
+    await waitFor(() => expect(gone).toHaveFocus());
+    expect(gone).toHaveAttribute('tabindex', '-1');
     expect(screen.queryByTestId('proposed-file-download')).toBeNull();
     expect(assign).not.toHaveBeenCalled();
   });

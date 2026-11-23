@@ -580,8 +580,13 @@ its timeline open). Storybook has no owner link route: its fixture API answers
 the link of the gone story's file with `404`, and the link of any other story
 file fails, so its row says the download could not be started. Product access
 proposals are in `Panel/ProposalChanges` as well (a list that grants a course
-without one module and two lessons, one of them gone, and a list cleared to
-nothing, each in English and Polish). These stories have no committed golden.
+without one module, a module and two lessons; a list that names an archived
+course, a course and a lesson that no longer exist; a list that lifts the
+exclusion of a module other courses also use; and a list cleared to nothing,
+each in English and Polish), and in `Pages/PanelProposalAccess` (those four
+next to a group that creates a product and sets what it grants, and sets what
+an existing product grants; English and Polish, desktop and mobile). These
+stories have no committed golden.
 
 ## Approval
 
@@ -1452,20 +1457,25 @@ fingerprint shows the first twelve characters of the SHA-256, with the full
 value as the element's title and for assistive technology, as for a proposed
 image; a file uploaded in the product editor has no fingerprint and shows none.
 A version note is shown under the file, and a copy names its source ("Copy of
-version 2 of “Creator Workbook (print)”", or "of a product that no longer
-exists"). File names, version notes and product titles are text a key or a
-person wrote, and each sits in its own `<bdi>` element, inside the row and
-inside the confirmation.
+version 2 of a file from “Creator Workbook (print)”", or "Copy of version 2 of
+a file from a product that no longer exists"). File names, version notes and
+product titles are text a key or a person wrote, and each sits in its own
+`<bdi>` element, inside the row and inside the confirmation. The lines that
+show them, in the row, in the confirmation and in a group confirmation, break
+anywhere, so a 255-character name with no space wraps at 390 px instead of
+running past the edge of the dialog.
 
 While the proposal is pending, the row of a new file or a new version has
 **Download file**. It asks the [owner link](#download-files) route, shows
-"Preparing the download…" with the button disabled while it waits, and then
-navigates to the returned address, which the storage answers as an attachment
-to save; the page never shows the address and never previews the file. A `404`
-replaces the button with the warning "This file is no longer available;
-approving changes nothing.", in the warning style of a proposed image that
-cannot be loaded; any other failure keeps the button and says the download
-could not be started. When `proposedFiles` says the proposal no longer holds
+"Preparing the download…" while it waits, and then navigates to the returned
+address, which the storage answers as an attachment to save; the page never
+shows the address and never previews the file. While it waits the button keeps
+keyboard focus and is marked `aria-disabled` and `aria-busy`, so the busy
+label is announced, and a second press asks nothing. A `404` replaces the
+button with the warning "This file is no longer available; approving changes
+nothing.", in the warning style of a proposed image that cannot be loaded, and
+moves focus to the warning; any other failure keeps the button and says the
+download could not be started. When `proposedFiles` says the proposal no longer holds
 the file, the row shows the same warning instead of the button. A decided
 proposal shows the row without either.
 
@@ -1489,12 +1499,11 @@ list changed in any other way than the one proposed change, the confirmation
 names the operation and counts the changed fields instead. A removal whose file
 list after holds no ready file adds the only-file sentence above, and a
 proposal that attaches a file adds "If the proposed file no longer exists,
-nothing is changed." A group with a file item is approved like any other group:
+approving does nothing." A group with a file item is approved like any other group:
 its confirmation repeats the sentence of each file item, with the copy source
 as above; a file added to a product an earlier item of the group creates reads
-"… will be added to “Field Guide (digital)”. Everyone who gets access to this
-product can download the file once the product is published or sold." instead
-of naming current buyers. It adds the only-file sentence when an item's removal
+"… will be added to “Field Guide (digital)”. Everyone who later gets access to
+this product can download the file." instead of naming current buyers. It adds the only-file sentence when an item's removal
 leaves its product no ready file and no later item of the group changes that
 product's files, and "If the proposed file no longer exists, none of the
 changes is applied." when an item attaches one ("If one of the 2 proposed files
@@ -1607,8 +1616,8 @@ What an item grants (`core/server/usecases/access.ts`):
 |---|---|
 | `{ level: "course", courseId }` | every module attached to the course, with every lesson in it, except a module the member's items exclude (next row) |
 | `{ level: "course", courseId, excludedModuleIds }` | the same without the excluded modules |
-| `{ level: "modules", courseId, moduleIds }` | each module as such, in every course it is attached to |
-| `{ level: "lessons", courseId, lessonIds }` | each lesson as such, in every course that uses it |
+| `{ level: "modules", courseId, moduleIds }` | each module itself, in every course it is attached to |
+| `{ level: "lessons", courseId, lessonIds }` | each lesson itself, in every course that uses it |
 
 The `courseId` of a `modules` or `lessons` item does not limit where its modules
 or lessons open; it names the course they were chosen from.
@@ -1737,22 +1746,59 @@ every course the member holds in full. A module that is attached to another
 course after a list excluding it was written is closed there too.
 
 The panel shows one row, "Included access", with both lists in words: "the
-whole course “Intro course”", "the course “Intro course” without its module “Extras”", "the module
-“Basics” as such, in every course that uses it (chosen from “Intro course”)",
-"the lessons “Welcome”, “Goodbye” as such, each in every course that uses it
-(chosen from “Intro course”)". An id that no longer exists reads "something
-that no longer exists" with the id, and an empty list "no course, module or
-lesson". The confirmation reads "Buyers of “Field guide” will get access to: the
-whole course “Intro course”. Everyone who already has access to this product,
-current buyers included, gets this list at once and loses what it no longer
-lists, unless another of their products grants it. Nothing else changes.";
-for an empty list it says that the product will no longer grant any course,
-module or lesson and that everyone who has access loses what it granted at
-once, unless another of their products grants it. Neither confirmation says
-that pooled exclusions can also change what opens in other courses. A group
-confirmation adds that sentence for each access item. `proposals show` and
-`proposals group show` print the titles under `names:`, and "no longer exists"
-for an id that no longer exists.
+whole course “Intro course”", "the course “Intro course” without its module
+“Extras”", "the module “Basics” in every course that uses it (chosen from
+“Intro course”)", "the lessons “Welcome”, “Goodbye”, each in every course that
+uses it (chosen from “Intro course”)". An id that no longer exists reads
+"something that no longer exists" with the id, an archived course is followed
+by "(archived)", an excluded module that `excludedModulesInOtherCourses` names
+by "(also in other courses)", and an empty list reads "no course, module or
+lesson". In Polish the confirmation leads in with "after approval the product
+will give access to the following content:", so the phrases that follow are in
+the nominative, and an empty list reads "no courses, modules or lessons".
+Course, module and lesson titles each sit in their own `<bdi>` element, and the
+phrases break anywhere.
+
+While the proposal is pending the row adds two notes. When the list after
+approval names an id that no longer exists or an archived course, or excludes a
+module that `excludedModulesInOtherCourses` names, a warning says that the list
+no longer passes the shop's check and that approving changes nothing. When the
+current list excludes such a module, a note says that everyone who has the
+product has that module closed in the other courses that contain it too, even
+when another of their products grants such a course whole, that only a product
+that grants the module itself, or the same course without excluding it, opens
+it again, and that a product that grants one of its lessons opens just that
+lesson; when the list after approval passes the check and no longer excludes
+it, the note adds that after approval it can open again in every course that
+contains it. Because `excludedModulesInOtherCourses` covers both
+lists, a module that the two lists exclude under different courses is not
+counted for either note. A decided proposal shows the row without the notes.
+
+The confirmation reads "Buyers of “Field guide” will get access to: the whole
+course “Intro course”. Everyone who already has access to this product, current
+buyers included, gets what this list names at once and loses what it no longer
+names, unless another of their products still opens it for them. Nothing else
+changes."; for an empty list it says that the product will no longer grant any
+course, module or lesson and that everyone who has access loses what it granted
+at once, unless another of their products still opens it for them. When the
+current list excludes a module that other courses also use and the new one does
+not, the sentence "After approval this product no longer excludes the module
+“…”, which other courses also use, so for everyone who has this product it can
+open again in every course that contains it." comes before "Nothing else
+changes.". When the list no longer passes the check as the row's warning
+describes, the confirmation says only "The new list of what “Field guide”
+grants no longer passes the shop’s check, so approving changes nothing.".
+Neither confirmation describes the other ways pooled exclusions reach other
+courses: removing a `course` item can let another product's exclusion of a
+module take effect in every course the member holds in full. A group
+confirmation adds the access sentence for each access item; for a product an
+earlier item of the group creates it reads "Everyone who later gets access to
+the new product “Starter Pack” will get access to: …" (or "The new product
+“Starter Pack” will not grant any course, module or lesson."), and a list that
+no longer passes the check reads "… so approving applies none of the changes.".
+`proposals show` and `proposals group show` print the titles under `names:`,
+and "no longer exists" for an id that no longer exists; they do not mark an
+archived course or a module that other courses also use.
 
 **What the key learns.** No shop route serves a key a course, module or lesson;
 the key sees their ids in the access items of the products it lists. A

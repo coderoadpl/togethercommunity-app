@@ -340,7 +340,7 @@ describe('the approval confirmation of a file proposal', () => {
     ]);
     const sentences = dialogText(<GroupFileSentences items={items} references={references} />);
     expect(sentences).toContain(
-      'will be added to “Field Guide (digital)”. Everyone who gets access to this product can download the file once the product is published or sold.',
+      'will be added to “Field Guide (digital)”. Everyone who later gets access to this product can download the file.',
     );
     expect(sentences).not.toContain('current buyers included');
     expect(sentences).toContain('Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1.');
@@ -388,7 +388,11 @@ describe('the approval confirmation of a file proposal', () => {
     const polish = pl.changeProposals;
     expect(polish.approveFileAdd({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' })).toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\./u);
     expect(polish.approveFileAddToNewProduct({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' }))
-      .toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\. .+ pobra\p{L} plik, gdy produkt zostanie opublikowany albo sprzedany\.$/u);
+      .toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\. Ka\p{L}dy, kto p\p{L}\p{L}niej otrzyma dost\p{L}p do tego produktu, b\p{L}dzie m\p{L}g\p{L} pobra\p{L} plik\.$/u);
+    expect(polish.approveFileMissing).toMatch(/^Je\p{L}li proponowanego pliku ju\p{L} nie ma, zatwierdzenie niczego nie wprowadzi\.$/u);
+    expect(polish.fileNoVersionLeft).toMatch(/^Nie pozostanie \p{L}adna wersja tego pliku\.$/u);
+    expect(`${polish.approveNothingElse} ${polish.approveFileMissing}`.match(/nie zmieni/gu)).toHaveLength(1);
+    expect(t.approveFileMissing).toBe('If the proposed file no longer exists, approving does nothing.');
     expect(polish.approveFileNewVersion({ file: 'a.pdf', facts: 'PDF, 1 MB', version: 2, target: 'Mug' }))
       .toMatch(/^Nowa wersja pliku „a\.pdf” \(PDF, 1 MB\) stanie si\p{L} wersj\p{L} 2 w produkcie „Mug”; /u);
     expect(polish.approveFileCopiedFrom({ version: 2, product: 'Mug' })).toBe('To kopia wersji 2 pliku z produktu „Mug”.');
@@ -411,26 +415,41 @@ const accessChange = (after: StoredAccessItem[], labels: ApprovalFacts['accessLa
 const LABELS = {
   courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Deep course' }],
   modules: [{ id: 'module-basics', title: 'Basics' }, { id: 'module-extra', title: 'Extras' }],
-  lessons: [{ id: 'lesson-welcome', title: 'Welcome' }, { id: 'lesson-retired', title: null }],
+  lessons: [{ id: 'lesson-welcome', title: 'Welcome' }, { id: 'lesson-goodbye', title: 'Goodbye' }, { id: 'lesson-retired', title: null }],
+  excludedModulesInOtherCourses: [],
 };
 
+const EVERY_KIND: StoredAccessItem[] = [
+  { level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] },
+  { level: 'modules', courseId: 'course-deep', moduleIds: ['module-basics'] },
+  { level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-goodbye'] },
+];
+
+const textOutsideBdi = (element: Element): string => {
+  const outside = element.cloneNode(true);
+  if (!(outside instanceof Element)) throw new Error('not an element');
+  outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+  return outside.textContent ?? '';
+};
+
+const groupWithNewProduct = groupReferences([
+  { id: 'item-product', operation: 'product.create', input: { title: 'Starter pack' }, targetLabel: null, groupPosition: 1 },
+]);
+
 describe('the approval confirmation of what a product grants', () => {
-  it('says what buyers get in words, that current buyers get the new list at once, and that nothing else changes', () => {
+  it('says what buyers get in words, that current buyers get what the list names at once, and that nothing else changes', () => {
     expect(summaryOf(samples['product.set-access'])).toBe(
       'Buyers of “Mug” will get access to: the whole course “Intro course”. Everyone who already has access to this product, current buyers included, '
-      + 'gets this list at once and loses what it no longer lists, unless another of their products grants it. Nothing else changes.',
+      + 'gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them. Nothing else changes.',
     );
   });
 
-  it('says plainly that a module or a lesson is granted as such, names excluded modules and marks what no longer exists', () => {
-    const summary = summaryOf(accessChange([
-      { level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] },
-      { level: 'modules', courseId: 'course-deep', moduleIds: ['module-basics'] },
-      { level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] },
-    ], LABELS));
+  it('names excluded modules and says that a module or a lesson opens in every course that uses it', () => {
+    const summary = summaryOf(accessChange(EVERY_KIND, LABELS));
     expect(summary).toContain('the course “Intro course” without its module “Extras”');
-    expect(summary).toContain('the module “Basics” as such, in every course that uses it (chosen from “Deep course”)');
-    expect(summary).toContain('the lessons “Welcome”, something that no longer exists (lesson-retired) as such, each in every course that uses it (chosen from “Intro course”)');
+    expect(summary).toContain('the module “Basics” in every course that uses it (chosen from “Deep course”)');
+    expect(summary).toContain('the lessons “Welcome”, “Goodbye”, each in every course that uses it (chosen from “Intro course”)');
+    expect(summary).not.toContain('as such');
   });
 
   it('says the product will grant nothing and that current buyers lose what it granted when the new list is empty', () => {
@@ -441,30 +460,111 @@ describe('the approval confirmation of what a product grants', () => {
   });
 
   it('isolates every course, module and lesson title in the sentence', () => {
-    const title = `Intro${OVERRIDE}esruoc`;
-    render(<ApprovalSummary proposal={accessChange([{ level: 'course', courseId: 'course-intro' }], { ...LABELS, courses: [{ id: 'course-intro', title }] })} />);
+    const marked = (title: string) => `${title}${OVERRIDE}desrever`;
+    const labels = {
+      ...LABELS,
+      courses: LABELS.courses.map((entry) => ({ ...entry, title: marked(entry.title) })),
+      modules: LABELS.modules.map((entry) => ({ ...entry, title: marked(entry.title) })),
+      lessons: [{ id: 'lesson-welcome', title: marked('Welcome') }, { id: 'lesson-goodbye', title: marked('Goodbye') }],
+    };
+    render(<ApprovalSummary proposal={accessChange(EVERY_KIND, labels)} />);
     const summary = screen.getByTestId('proposal-approve-summary');
-    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['Mug', title]);
-    const outside = summary.cloneNode(true);
-    if (!(outside instanceof Element)) throw new Error('not an element');
-    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
-    expect(outside.textContent).not.toContain(OVERRIDE);
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual([
+      'Mug', marked('Intro course'), marked('Extras'), marked('Basics'), marked('Deep course'), marked('Welcome'), marked('Goodbye'), marked('Intro course'),
+    ]);
+    expect(textOutsideBdi(summary)).not.toContain(OVERRIDE);
+  });
+
+  it('says that approving changes nothing when the new list names something gone, an archived course or a shared exclusion', () => {
+    const refused = `${t.approveProductSetAccessRefused({ target: 'Mug' })}`;
+    expect(summaryOf(accessChange([{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] }], LABELS))).toBe(refused);
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS))).toBe(refused);
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-deep' }], { ...LABELS, archivedCourses: ['course-deep'] }))).toBe(refused);
+    expect(summaryOf(accessChange(
+      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
+      { ...LABELS, excludedModulesInOtherCourses: ['module-extra'] },
+    ))).toBe(refused);
+    expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe('The new list of what “Mug” grants no longer passes the shop’s check, so approving changes nothing.');
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
+      .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
+  });
+
+  it('says that a lifted exclusion of a module other courses use can open it there again, and still that nothing else changes', () => {
+    const labels = { ...LABELS, excludedModulesInOtherCourses: ['module-extra'] };
+    const summary = summaryOf(accessChange(
+      [{ level: 'course', courseId: 'course-intro' }],
+      labels,
+      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
+    ));
+    expect(summary).toBe(
+      'Buyers of “Mug” will get access to: the whole course “Intro course”. Everyone who already has access to this product, current buyers included, '
+      + 'gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them. '
+      + 'After approval this product no longer excludes the module “Extras”, which other courses also use, so for everyone who has this product '
+      + 'it can open again in every course that contains it. Nothing else changes.',
+    );
+    const ambiguous = summaryOf(accessChange(
+      [{ level: 'course', courseId: 'course-deep', excludedModuleIds: ['module-extra'] }],
+      labels,
+      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
+    ));
+    expect(ambiguous).not.toContain(t.approveProductSetAccessRefused({ target: 'Mug' }));
+    expect(ambiguous).not.toContain('can open again');
   });
 
   it('adds the access sentence of every access item to a group confirmation and nothing for other items', () => {
     const items = [{ ...samples['product.set-access'], id: 'item-access' }, { ...samples['product.publish'], id: 'item-publish' }];
     const text = dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />);
-    expect(text).toContain('Buyers of “Mug” will get access to: the whole course “Intro course”.');
+    expect(text).toContain('Buyers of “Mug” will get access to: the whole course “Intro course”. Everyone who already has access to this product, current buyers included,');
     expect(dialogText(<GroupAccessSentences items={[samples['product.publish']]} references={groupReferences([])} />)).toBe('');
   });
 
-  it('words what a product grants in Polish with the titles quoted', () => {
+  it('words the access of a product an earlier item of the group creates without current buyers', () => {
+    const created = { ...samples['product.set-access'], id: 'item-access', target: { kind: 'product' as const, id: '$proposal:item-product' }, targetLabel: null };
+    const text = dialogText(<GroupAccessSentences items={[created]} references={groupWithNewProduct} />);
+    expect(text).toBe('Everyone who later gets access to the new product “Starter pack” will get access to: the whole course “Intro course”.');
+    expect(text).not.toContain('current buyers');
+    const emptied = { ...created, effect: { accessItems: { before: [], after: [] } } };
+    expect(dialogText(<GroupAccessSentences items={[emptied]} references={groupWithNewProduct} />))
+      .toBe('The new product “Starter pack” will not grant any course, module or lesson.');
+    const gone = { ...created, effect: { accessItems: { before: [], after: [{ level: 'course', courseId: 'course-gone' }] } } };
+    expect(dialogText(<GroupAccessSentences items={[gone]} references={groupWithNewProduct} />))
+      .toBe(t.approveGroupProductSetAccessRefused({ target: 'Starter pack' }));
+  });
+
+  it('lets a 255-character name without a break opportunity wrap anywhere in the summary and the group sentences', () => {
+    const name = `${'quarterly_report_'.repeat(15)}final.pdf.exe`.slice(-255);
+    expect(name).toHaveLength(255);
+    const proposal = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [mugGuide, { ...careSheet, fileName: name }] } } };
+    const { unmount } = render(<ApprovalSummary proposal={proposal} />);
+    expect(getComputedStyle(screen.getByTestId('proposal-approve-summary')).overflowWrap).toBe('anywhere');
+    unmount();
+    render(<GroupFileSentences items={[{ ...proposal, id: 'item-long' }]} references={groupReferences([])} />);
+    expect(getComputedStyle(screen.getByTestId('proposal-approve-file-item-long')).overflowWrap).toBe('anywhere');
+    expect(screen.getByTestId('proposal-approve-file-item-long')).toHaveTextContent(name);
+  });
+
+  it('words what a product grants in Polish with the list items in the nominative after the lead-in', () => {
     const polish = pl.changeProposals;
     expect(polish.operation['product.set-access']).toMatch(/^Dost\p{L}p, kt\p{L}ry daje produkt$/u);
     expect(polish.accessName({ name: 'Kurs' })).toBe('„Kurs”');
     expect(polish.accessWholeCourse({ course: '„Kurs”' })).toMatch(/^ca\p{L}y kurs „Kurs”$/u);
-    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B” jako takie, ka\p{L}da w ka\p{L}dym kursie/u);
+    expect(polish.accessModules({ course: '„Kurs”', modules: '„A”', count: 1 })).toMatch(/^modu\p{L} „A” – w ka\p{L}dym kursie, kt\p{L}ry go zawiera \(wybrany z kursu „Kurs”\)$/u);
+    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B” – ka\p{L}da w ka\p{L}dym kursie, kt\p{L}ry j\p{L} zawiera/u);
     expect(polish.approveProductSetAccess({ target: 'Kubek', access: 'ACCESS' }))
-      .toMatch(/^Kupuj\p{L}cy produkt „Kubek” dostan\p{L} dost\p{L}p do: ACCESS\. /u);
+      .toMatch(/^Po zatwierdzeniu produkt „Kubek” b\p{L}dzie dawa\p{L} dost\p{L}p do nast\p{L}puj\p{L}cych tre\p{L}ci: ACCESS\. .+ od razu zyska dost\p{L}p do tego, co jest na li\p{L}cie, /u);
+    expect(polish.accessNothing).toMatch(/^brak kurs\p{L}w, modu\p{L}\p{L}w i lekcji$/u);
+    const sentences = [
+      polish.accessModules({ course: 'C', modules: 'M', count: 2 }),
+      polish.accessLessons({ course: 'C', lessons: 'L', count: 1 }),
+      polish.accessCourseWithout({ course: 'C', modules: 'M', count: 1 }),
+      polish.accessSharedExclusionNow({ modules: 'M', count: 1 }),
+      polish.accessSharedExclusionLifted({ modules: 'M', count: 2 }),
+      polish.accessListRefused,
+      polish.approveProductSetAccess({ target: 'T', access: 'A' }),
+      polish.approveProductSetAccessNothing({ target: 'T' }),
+      polish.approveProductSetAccessNewProduct({ target: 'T', access: 'A' }),
+      polish.approveProductSetAccessNothingNewProduct({ target: 'T' }),
+    ];
+    for (const sentence of sentences) expect(sentence).not.toMatch(/jako tak|t\p{L} list\p{L}|dost\p{L}p do: /u);
   });
 });

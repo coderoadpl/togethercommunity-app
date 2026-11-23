@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Stack } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -8,7 +8,7 @@ import type { ChangeProposalProposedFile } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatFileSize } from '../../../lib/format.js';
-import { FinePrint, VisuallyHidden, WrapAnywhereText } from '../../../theme.js';
+import { FinePrint, VisuallyHidden, WrapAnywhereFinePrint, WrapAnywhereText } from '../../../theme.js';
 import { FieldDiffRow } from '../FieldDiff.js';
 import { imageFingerprint, type FileChange, type FileChanges, type ProposalFile } from './proposal-display.js';
 import { fileTypeLabel, Isolated } from './proposal-text.js';
@@ -32,9 +32,17 @@ const FingerprintPart = ({ value }: { value: string | null }) => {
   return value === null ? null : <>{`${SEPARATOR}${t.fileFingerprint}${NBSP}`}<Fingerprint value={value} /></>;
 };
 
-const FileUnavailable = () => {
+const FileUnavailable = ({ takesFocus = false }: { takesFocus?: boolean }) => {
   const t = useTranslations().changeProposals;
-  return <Alert severity="warning" data-testid="proposed-file-unavailable">{t.fileUnavailable}</Alert>;
+  const alert = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (takesFocus) alert.current?.focus();
+  }, [takesFocus]);
+  return (
+    <Alert ref={alert} severity="warning" tabIndex={takesFocus ? -1 : undefined} data-testid="proposed-file-unavailable">
+      {t.fileUnavailable}
+    </Alert>
+  );
 };
 
 const FileDownload = ({ proposalId, fileId }: { proposalId: string; fileId: string }) => {
@@ -42,6 +50,7 @@ const FileDownload = ({ proposalId, fileId }: { proposalId: string; fileId: stri
   const queryClient = useQueryClient();
   const [state, setState] = useState<DownloadState>('idle');
   const download = async () => {
+    if (state === 'loading') return;
     setState('loading');
     try {
       const link = await queryClient.fetchQuery(actions.changeProposalFileLink({ id: proposalId, fileId }));
@@ -51,14 +60,14 @@ const FileDownload = ({ proposalId, fileId }: { proposalId: string; fileId: stri
       setState(error instanceof ApiError && error.appError.code === 'not_found' ? 'gone' : 'failed');
     }
   };
-  if (state === 'gone') return <FileUnavailable />;
+  if (state === 'gone') return <FileUnavailable takesFocus />;
   const loading = state === 'loading';
   return (
     <Stack useFlexGap spacing="0.35rem" sx={{ alignItems: 'flex-start', pt: '0.25rem' }}>
       <Button
         size="small"
         variant="outlined"
-        disabled={loading}
+        aria-disabled={loading}
         aria-busy={loading}
         onClick={() => void download()}
         data-testid="proposed-file-download"
@@ -84,14 +93,14 @@ const ProposedFileFacts = ({
   return (
     <>
       {file.versionNote === null ? null : (
-        <FinePrint component="p"><Isolated sentence={(note) => t.fileVersionNote({ note })} value={file.versionNote} /></FinePrint>
+        <WrapAnywhereFinePrint component="p"><Isolated sentence={(note) => t.fileVersionNote({ note })} value={file.versionNote} /></WrapAnywhereFinePrint>
       )}
       {copiedFrom === null ? null : (
-        <FinePrint component="p" data-testid="proposed-file-copy">
+        <WrapAnywhereFinePrint component="p" data-testid="proposed-file-copy">
           {copiedFrom.productTitle === null
             ? t.fileCopiedFromGone({ version: copiedFrom.versionNumber })
             : <Isolated sentence={(product) => t.fileCopiedFrom({ version: copiedFrom.versionNumber, product })} value={copiedFrom.productTitle} />}
-        </FinePrint>
+        </WrapAnywhereFinePrint>
       )}
       {pendingProposalId === null ? null : proposed?.available === false
         ? <FileUnavailable />
@@ -146,7 +155,7 @@ const FileChangeText = ({
             <FingerprintPart value={change.file.fingerprint} />
           </WrapAnywhereText>
           {change.file.fileName === change.previous.fileName ? null : (
-            <FinePrint component="p"><Isolated sentence={(name) => t.fileNewName({ name })} value={change.file.fileName} /></FinePrint>
+            <WrapAnywhereFinePrint component="p"><Isolated sentence={(name) => t.fileNewName({ name })} value={change.file.fileName} /></WrapAnywhereFinePrint>
           )}
           <ProposedFileFacts file={change.file} proposed={proposed} pendingProposalId={pendingProposalId} />
         </Stack>

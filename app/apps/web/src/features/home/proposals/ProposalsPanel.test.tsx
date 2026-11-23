@@ -20,9 +20,15 @@ import {
 import { actions } from '../../../api.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { en } from '../../../i18n/en.js';
+import { LanguageProvider } from '../../../i18n/index.js';
 import { formatPrice } from '../../../lib/format.js';
 import {
+  ACCESS_GROUP_ID,
   accessChangeProposal,
+  accessChangeProposalGroup,
+  accessClearProposal,
+  accessGoneProposal,
+  accessSharedExclusionProposal,
   CHANGE_PROPOSAL_GROUP_ID,
   changeProposalGroup,
   FILE_GROUP_ID,
@@ -32,6 +38,7 @@ import {
   fileLastRemoveProposal,
   fileRemoveProposal,
   fileUnavailableHistoryProposal,
+  pendingAccessChangeProposals,
   pendingChangeProposals,
   pendingFileChangeProposals,
   settingsProposal,
@@ -40,7 +47,9 @@ import {
 } from '../../../test/change-proposal-fixtures.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { languagePreference } from '../../../theme-mode.js';
 import { PanelContextProvider } from '../panel-context.js';
+import { ProposalFieldRows } from './ProposalChanges.js';
 import { ProposalsPanel } from './ProposalsPanel.js';
 
 const t = en.changeProposals;
@@ -839,6 +848,11 @@ describe('ProposalsPanel', () => {
 
   it('shows a file proposal with its file row and lets the owner approve it with a confirmation built from the same data', async () => {
     usePending([fileAddProposal, fileRemoveProposal, fileLastRemoveProposal]);
+    const approved: string[] = [];
+    server.use(http.post('/api/change-proposals/:id/approve', ({ params }) => {
+      approved.push(String(params['id']));
+      return HttpResponse.json({ ok: true, data: { proposal: settledView(fileLastRemoveProposal, { status: 'applied', appliedResourceId: 'product-studio-sketch-pack' }) } });
+    }));
 
     renderPanel();
 
@@ -871,27 +885,148 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(lastRemoval).getByTestId('proposal-approve'));
     const lastRemovalDialog = await screen.findByTestId('proposal-approve-dialog');
     expect(within(lastRemovalDialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.fileRemoveOnlyFile);
+    await userEvent.click(within(lastRemovalDialog).getByTestId('proposal-approve-confirm'));
+
+    expect(await screen.findByText(t.outcomeApplied)).toBeInTheDocument();
+    expect(approved).toEqual([fileLastRemoveProposal.id]);
   });
 
   it('shows what a product grants now and after approval in words and confirms what buyers will get', async () => {
     usePending([accessChangeProposal]);
+    let body: unknown = null;
+    server.use(http.post('/api/change-proposals/:id/approve', async ({ request, params }) => {
+      body = { id: params['id'], payload: await request.text() };
+      return HttpResponse.json({ ok: true, data: { proposal: settledView(accessChangeProposal, { status: 'applied', appliedResourceId: 'product-studio-field-guide-digital' }) } });
+    }));
 
     renderPanel();
 
     const card = await screen.findByTestId(`proposal-card-${accessChangeProposal.id}`);
     expect(within(card).getByText(t.operation['product.set-access'])).toBeInTheDocument();
     const row = within(card).getByTestId('proposal-access-changes');
-    expect(row).toHaveTextContent('the module “First lines” as such, in every course that uses it (chosen from “Sketching from life”)');
+    expect(row).toHaveTextContent('the module “First lines” in every course that uses it (chosen from “Sketching from life”)');
     expect(row).toHaveTextContent('the course “Sketching from life” without its module “Bonus sketches”');
-    expect(row).toHaveTextContent('the lessons “Mixing palettes”, something that no longer exists (lesson-studio-retired) as such');
-    expect(within(row).getAllByTestId('access-gone')).toHaveLength(1);
+    expect(row).toHaveTextContent('the module “Mixing colours” in every course that uses it (chosen from “Colour basics”)');
+    expect(row).toHaveTextContent('the lessons “Mixing palettes”, “Light and shade”, each in every course that uses it (chosen from “Colour basics”)');
+    expect(within(row).queryByTestId('access-gone')).toBeNull();
+    expect(within(card).queryByTestId('proposal-access-refused')).toBeNull();
+    expect(within(card).queryByTestId('proposal-access-shared')).toBeNull();
     expect(within(card).queryByTestId('proposal-field-accessItems')).toBeNull();
 
     await userEvent.click(within(card).getByTestId('proposal-approve'));
     const dialog = await screen.findByTestId('proposal-approve-dialog');
     expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? '')).toMatch(
-      /^Buyers of “Field Guide \(digital\)” will get access to: the course “Sketching from life” without its module “Bonus sketches”; .+ current buyers included, gets this list at once .+ Nothing else changes\.$/u,
+      /^Buyers of “Field Guide \(digital\)” will get access to: the course “Sketching from life” without its module “Bonus sketches”; .+ current buyers included, gets what this list names at once .+ Nothing else changes\.$/u,
     );
+    await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
+
+    expect(await screen.findByText(t.outcomeApplied)).toBeInTheDocument();
+    expect(body).toEqual({ id: accessChangeProposal.id, payload: expect.any(String) });
+  });
+
+  it('marks a gone id and an archived course and says that approving a list that no longer passes the check changes nothing', async () => {
+    usePending([accessGoneProposal]);
+
+    renderPanel();
+
+    const card = await screen.findByTestId(`proposal-card-${accessGoneProposal.id}`);
+    const row = within(card).getByTestId('proposal-access-changes');
+    expect(row).toHaveTextContent('the whole course “Life drawing 2025” (archived)');
+    expect(row).toHaveTextContent('the whole course something that no longer exists (course-studio-retired)');
+    expect(row).toHaveTextContent('something that no longer exists (lesson-studio-retired)');
+    expect(within(row).getAllByTestId('access-gone')).toHaveLength(2);
+    const refused = within(card).getByTestId('proposal-access-refused');
+    expect(refused).toHaveTextContent(t.accessListRefused);
+    expect(refused).toHaveClass('MuiAlert-colorWarning');
+
+    await userEvent.click(within(card).getByTestId('proposal-approve'));
+    const dialog = await screen.findByTestId('proposal-approve-dialog');
+    expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? ''))
+      .toBe(t.approveProductSetAccessRefused({ target: 'Field Guide (digital)' }));
+  });
+
+  it('explains an exclusion of a module other courses use that the list now holds, and that approving lifts it', async () => {
+    usePending([accessSharedExclusionProposal]);
+
+    renderPanel();
+
+    const card = await screen.findByTestId(`proposal-card-${accessSharedExclusionProposal.id}`);
+    expect(within(card).getByTestId('proposal-access-changes')).toHaveTextContent('the course “Sketching from life” without its module “Warm-up drills” (also in other courses)');
+    const shared = within(card).getByTestId('proposal-access-shared');
+    expect(normalized(shared.textContent ?? '')).toBe(
+      `${t.accessSharedExclusionNow({ modules: '“Warm-up drills”', count: 1 })} ${t.accessSharedExclusionLifted({ modules: '“Warm-up drills”', count: 1 })}`,
+    );
+    expect(shared).toHaveTextContent('closed in those other courses too, even when another of their products grants such a course whole');
+    expect(within(card).queryByTestId('proposal-access-refused')).toBeNull();
+
+    await userEvent.click(within(card).getByTestId('proposal-approve'));
+    const summary = normalized(within(await screen.findByTestId('proposal-approve-dialog')).getByTestId('proposal-approve-summary').textContent ?? '');
+    expect(summary).toContain(`${t.accessSharedExclusionLifted({ modules: '“Warm-up drills”', count: 1 })} ${t.approveNothingElse}`);
+  });
+
+  it('shows the access items of a group, words the one for a product an earlier item creates without current buyers, and approves the group', async () => {
+    usePending(pendingAccessChangeProposals.filter((proposal) => proposal.groupId !== null), accessChangeProposalGroup);
+    let body: unknown;
+    server.use(http.post('/api/change-proposals/groups/:id/approve', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        ok: true,
+        data: { group: { ...accessChangeProposalGroup, status: 'applied', items: accessChangeProposalGroup.items.map((item) => ({ ...item, status: 'applied' })) } },
+      });
+    }));
+
+    renderPanel();
+
+    const group = await screen.findByTestId(`proposal-group-card-${ACCESS_GROUP_ID}`);
+    const step = await within(group).findByTestId('proposal-group-item-proposal-starter-pack-access');
+    expect(step).toHaveTextContent('the product from step 1 (“Starter Pack”)');
+    expect(within(step).getByTestId('proposal-access-changes')).toHaveTextContent('the whole course “Colour basics”');
+
+    await userEvent.click(within(group).getByRole('button', { name: t.approveGroup({ count: 3 }) }));
+    const dialog = await screen.findByTestId('proposal-approve-dialog');
+    const created = within(dialog).getByTestId('proposal-approve-access-proposal-starter-pack-access');
+    expect(normalized(created.textContent ?? '')).toBe('Everyone who later gets access to the new product “Starter Pack” will get access to: the whole course “Colour basics”.');
+    expect(within(dialog).getByTestId('proposal-approve-access-proposal-starter-pack-field-guide-access'))
+      .toHaveTextContent('Buyers of “Field Guide (digital)” will get access to: the whole course “Sketching from life”; the lesson “Mixing palettes” in every course that uses it');
+    expect(within(dialog).getByTestId('proposal-approve-access-proposal-starter-pack-field-guide-access')).toHaveTextContent('current buyers included');
+    await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
+
+    await waitFor(() => expect(body).toEqual({ itemIds: accessChangeProposalGroup.items.map((item) => item.id) }));
+  });
+
+  it('shows both lists of a decided access proposal in history without the notes of a pending one', async () => {
+    const decided = settledView(accessGoneProposal, { status: 'failed', failureCode: 'validation', failureMessage: 'Product access items may only reference existing, active courses' });
+    usePending([]);
+    server.use(
+      http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
+        ok: true,
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [decided] : [], nextCursor: null, hasMore: false },
+      })),
+      http.get('/api/change-proposals/:id', () => HttpResponse.json({
+        ok: true,
+        data: { proposal: { ...decided, events: [{ sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'key-1', note: null, at: decided.createdAt }] } },
+      })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('tab', { name: t.tabHistory }));
+    const row = await screen.findByTestId(`proposal-history-${decided.id}`);
+    await userEvent.click(within(row).getByTestId('proposal-history-toggle'));
+    const access = await within(row).findByTestId('proposal-access-changes');
+    expect(access).toHaveTextContent('the whole course “Sketching from life”');
+    expect(access).toHaveTextContent('the whole course “Life drawing 2025” (archived)');
+    expect(within(row).queryByTestId('proposal-access-refused')).toBeNull();
+    expect(within(row).queryByTestId('proposal-approve')).toBeNull();
+  });
+
+  it('words an emptied list in Polish in the row', () => {
+    languagePreference.save('pl');
+    renderWithProviders(<LanguageProvider><ProposalFieldRows proposal={accessClearProposal} pendingProposalId={accessClearProposal.id} /></LanguageProvider>);
+
+    const row = screen.getByTestId('proposal-access-changes');
+    expect(row).toHaveTextContent(/ca\p{L}y kurs „Sketching from life”/u);
+    expect(row).toHaveTextContent(/brak kurs\p{L}w, modu\p{L}\p{L}w i lekcji/u);
   });
 
   it('shows the file row in its group step and approves a group with a file item like any other group', async () => {
@@ -917,7 +1052,7 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(group).getByRole('button', { name: t.approveGroup({ count: 4 }) }));
     const dialog = await screen.findByTestId('proposal-approve-dialog');
     expect(within(dialog).getByTestId('proposal-approve-file-proposal-field-guide-digital-file'))
-      .toHaveTextContent('will be added to “Field Guide (digital)”. Everyone who gets access to this product can download the file once the product is published or sold.');
+      .toHaveTextContent('will be added to “Field Guide (digital)”. Everyone who later gets access to this product can download the file.');
     expect(within(dialog).getByTestId('proposal-approve-files')).toHaveTextContent(t.approveGroupFilesMissing({ count: 1 }));
     await userEvent.click(within(dialog).getByTestId('proposal-approve-confirm'));
 

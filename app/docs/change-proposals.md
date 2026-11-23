@@ -1871,7 +1871,9 @@ progress is recorded follows a course that opens the lesson for them:
   the notification is first stored; staff get the lesson's first course, so
   does a member it opens there. A retried delivery of an already stored
   notification links the e-mail into the first place their items open at the
-  retry, while the in-app notification keeps the course stored with it;
+  retry, and for staff into the lesson's first course at the retry (the
+  lesson's own link when no course holds it then), while the in-app notification keeps the course stored
+  with it;
 - the next lesson (`GET /api/student/lessons/next` and the CLI's
   `student next`) is taken from the first course that opens the lesson for a
   member, or from the lesson's first course when none does; staff walk the

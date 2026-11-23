@@ -466,7 +466,7 @@ const runFanout = async (
       const pending = await deps.fanoutBatches.listNotificationsForSource(job.tenantId, job.sourceKey, [...byUserId.keys()]);
       for (const notification of pending) {
         const recipient = byUserId.get(notification.recipientUserId);
-        const courseId = recipient?.courseId ?? notification.payload.courseId;
+        const courseId = recipient?.courseId ?? resolved.payload.courseId;
         const contextUrl = resolved.courseContextUrl === undefined || courseId === null
           ? resolved.contextUrl
           : await resolved.courseContextUrl(courseId);

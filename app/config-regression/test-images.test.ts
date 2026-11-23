@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import { z } from 'zod';
 
 import {
   MINIO_CLIENT_RELEASE,
@@ -11,6 +13,20 @@ import {
 } from '../scripts/test-images.js';
 
 const dockerfile = readFileSync(new URL('../scripts/minio/Dockerfile', import.meta.url), 'utf8');
+
+const ciSchema = z.object({
+  jobs: z.record(z.object({
+    steps: z.array(z.object({
+      uses: z.string().optional(),
+      with: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+    })),
+  }).passthrough()),
+});
+const ci = ciSchema.parse(parse(readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8')));
+const ciServiceImages = Object.values(ci.jobs)
+  .flatMap((job) => job.steps)
+  .filter((step) => step.uses === './.github/actions/service-container')
+  .map((step) => String(step.with?.['image']));
 
 describe('test container images', () => {
   it('pins the in-repository MinIO image inputs', () => {
@@ -31,5 +47,14 @@ describe('test container images', () => {
     const baseImages = dockerfile.match(/^FROM .+$/gm) ?? [];
     expect(baseImages).toHaveLength(2);
     expect(baseImages.every((line) => /@sha256:[0-9a-f]{64}(?: AS \w+)?$/.test(line))).toBe(true);
+  });
+
+  it('pins every CI service container image by digest', () => {
+    expect([...new Set(ciServiceImages)].sort()).toEqual([
+      'public.ecr.aws/docker/library/mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c',
+      'public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20',
+    ]);
+    expect(ciServiceImages).toHaveLength(4);
+    expect(ciServiceImages.every((image) => /@sha256:[0-9a-f]{64}$/.test(image))).toBe(true);
   });
 });

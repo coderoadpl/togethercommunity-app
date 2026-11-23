@@ -116,6 +116,17 @@ cancellation. The step names and matrix legs come from a best-effort read of
 the run's jobs API with `actions: read`; when that read fails the verdict
 stands and the gate says the step names are unavailable.
 
+The jobs that need a database (`check`, `smoke`, `e2e`, `telemetry-mongodb`)
+declare no `services:`; they start Postgres or MongoDB with the composite action
+`.github/actions/service-container`, which pulls the digest-pinned image with
+the error patterns and bounded backoff of `app/scripts/docker-pull.ts` (six
+attempts, about a minute of waiting at most), starts it on the same `localhost` port and waits for its health
+check. Its step is named `<serviceContainerStepPrefix>: <service>` (manifest
+field, `Start service container`), and a failed pull or start prints an
+`::error` saying it is CI infrastructure, not a test failure. The gate then
+shows that step as `failed: check (infrastructure: step "Start service container: postgres")`;
+the verdict stays red.
+
 The `check` job runs each sub-gate of `pnpm run check` as its own step named
 after the command, so the gate can name the failing one. `pnpm run check`
 stays the documented local static gate;

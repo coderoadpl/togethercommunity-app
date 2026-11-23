@@ -49,20 +49,6 @@ jobs:
     defaults:
       run:
         working-directory: app
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
-        env:
-          POSTGRES_USER: together
-          POSTGRES_PASSWORD: together
-          POSTGRES_DB: together
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U together"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=6144
       DATABASE_URL: postgres://together:together@localhost:5432/together
@@ -79,6 +65,20 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
+      - name: 'Start service container: postgres'
+        uses: ./.github/actions/service-container
+        with:
+          name: postgres
+          image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+          port: 5432:5432
+          container-env: |
+            POSTGRES_USER=together
+            POSTGRES_PASSWORD=together
+            POSTGRES_DB=together
+          health-cmd: pg_isready -U together
+          health-interval: 10s
+          health-timeout: 5s
+          health-retries: '5'
       - run: |
           sudo rm -f /etc/apt/sources.list.d/google-chrome.sources /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/microsoft-edge.sources /etc/apt/sources.list.d/microsoft-edge.list
           sudo apt-get update
@@ -215,18 +215,6 @@ jobs:
     defaults:
       run:
         working-directory: app
-    services:
-      mongodb:
-        image: public.ecr.aws/docker/library/mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
-        env:
-          GLIBC_TUNABLES: glibc.pthread.rseq=1
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
         with:
@@ -239,6 +227,18 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
+      - name: 'Start service container: mongodb'
+        uses: ./.github/actions/service-container
+        with:
+          name: mongodb
+          image: public.ecr.aws/docker/library/mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
+          port: 27017:27017
+          container-env: |
+            GLIBC_TUNABLES=glibc.pthread.rseq=1
+          health-cmd: "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          health-interval: 10s
+          health-timeout: 5s
+          health-retries: '5'
       - run: pnpm install --frozen-lockfile
       - name: MongoDB telemetry adapter integration tests
         env:
@@ -295,20 +295,6 @@ jobs:
     defaults:
       run:
         working-directory: app
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
-        env:
-          POSTGRES_USER: together
-          POSTGRES_PASSWORD: together
-          POSTGRES_DB: together
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U together"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
@@ -323,6 +309,20 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
+      - name: 'Start service container: postgres'
+        uses: ./.github/actions/service-container
+        with:
+          name: postgres
+          image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+          port: 5432:5432
+          container-env: |
+            POSTGRES_USER=together
+            POSTGRES_PASSWORD=together
+            POSTGRES_DB=together
+          health-cmd: pg_isready -U together
+          health-interval: 10s
+          health-timeout: 5s
+          health-retries: '5'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run smoke
       - id: setup-chrome
@@ -349,20 +349,6 @@ jobs:
     defaults:
       run:
         working-directory: app
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
-        env:
-          POSTGRES_USER: together
-          POSTGRES_PASSWORD: together
-          POSTGRES_DB: together
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U together"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
@@ -377,6 +363,20 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
+      - name: 'Start service container: postgres'
+        uses: ./.github/actions/service-container
+        with:
+          name: postgres
+          image: public.ecr.aws/docker/library/postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+          port: 5432:5432
+          container-env: |
+            POSTGRES_USER=together
+            POSTGRES_PASSWORD=together
+            POSTGRES_DB=together
+          health-cmd: pg_isready -U together
+          health-interval: 10s
+          health-timeout: 5s
+          health-retries: '5'
       - run: pnpm install --frozen-lockfile
       - if: matrix.browser
         id: setup-chrome

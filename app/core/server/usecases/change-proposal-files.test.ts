@@ -277,7 +277,7 @@ describe('a proposal dry run that changes nothing', () => {
     const unchanged = { ...prepared.value, run: async () => ok(workbook.id) };
     const { dryRun } = createChangeProposalTransactionFake(state, createChangeProposalStoreFake());
     const deps = { clock: { nowIso: () => NOW }, ids: { nextId: () => 'id-1' }, storage: unusedStorage, logger: { error: () => undefined } };
-    return dryRun(TENANT, (scope) => previewChangeProposal(unchanged, TENANT, { identity: owner }, scope, deps, null, { keyId: KEY_ID }));
+    return dryRun(TENANT, (scope) => previewChangeProposal(unchanged, TENANT, { identity: owner }, scope, deps, null, { keyId: KEY_ID, stage: 'submission' }));
   };
 
   it('is refused at submission for a file operation, so no proposal with an empty effect is stored', async () => {

@@ -845,12 +845,20 @@ scopes on every shop key.
   list names and then the product, and ending `stale` when the product's list
   no longer grants what it granted when the proposal was made. A direct-mode
   key can still set what a new product grants with `accessItems` on product
-  creation. The owner's editor, product creation for a session, a key or a
-  `product.create` proposal, and `product.set-access` run one check,
-  `checkProductAccessItems`: every course exists in the workspace and is not
-  archived, every module is attached to its item's course, and every lesson
+  creation. The owner's editor, product creation for a session or a key, and
+  the approval of a `product.create` or `product.set-access` proposal run one
+  check, `checkProductAccessItems`: every course exists in the workspace and is
+  not archived, every module is attached to its item's course, and every lesson
   sits in a chapter of a module attached to its item's course; a course,
-  module or lesson of another workspace is never found. The owner's editor
+  module or lesson of another workspace is never found. The submission of
+  those proposals, alone or in a group, does not run it, and its dry run writes
+  a list that names an archived course: a refused or accepted submission would
+  otherwise tell the key whether a course exists or is archived and where a
+  module or lesson sits, which no read of the key shows. A list that fails the
+  check ends its proposal, or its group, `failed` at the approval; the key's
+  receipt shows that outcome only after an owner chose to approve. A key that
+  creates a product gets one refusal message for every reason the check or the
+  write refuses its list; an owner or admin session gets the specific message. The owner's editor
   skips the check when the list it is sent grants the same as the stored one,
   so a consent save does not fail on a stored list the check would refuse,
   unless that list names an archived course. A module
@@ -867,9 +875,8 @@ scopes on every shop key.
   every request, so an applied change reaches everyone who already holds the
   product at once. No shop route
   serves a course, module or lesson to a key, and the receipt carries only the
-  ids the key sent; a refusal of the check names no title but tells the key
-  whether an id it sent is an active course of the workspace and whether a
-  module or lesson belongs to the course it named. The course, module and
+  ids the key sent. A direct-mode key that creates a product still learns
+  whether the list it sent passes the check as a whole, as any write does. The course, module and
   lesson titles of the owner view (`accessLabels`) and its `archivedCourses`
   are read at read time for display only and never take part in a decision. See
   [Product access](change-proposals.md#product-access).

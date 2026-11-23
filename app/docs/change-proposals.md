@@ -250,10 +250,9 @@ effect, a before value, a live label or the deciding account. Whether a proposal
 live state (a stock adjustment below zero is refused, a large before value
 can hit the effect limit), which is why a write scope always comes with its
 read scope: a propose-mode key learns nothing from a refused or accepted
-proposal that it could not read with its read scope, except for product access
-lists: a refusal tells it whether a course id it sent is an active course of the
-workspace and whether a module or lesson belongs to the course it named (see
-[What the key learns](#product-access)). The owner view is
+proposal that it could not read with its read scope. For that reason the
+submission of a product access list does not check its courses, modules and
+lessons; the approval does (see [What the key learns](#product-access)). The owner view is
 separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
 `expired`, `revoked`, `purged`), the issuer's state, a live label of the
@@ -2019,8 +2018,8 @@ its courses. It does not count cases (b) and (c).
 (`core/server/usecases/product-access-items.ts`) is the one check of an access
 list. The owner's access editor (`updateProductAccessItems`, also reached by an
 admin), product creation (`createProduct`, so a direct-mode key's
-`POST /api/m2m/shop/products` and a `product.create` proposal as well) and
-`product.set-access` run it:
+`POST /api/m2m/shop/products` as well) and the approval of a `product.create` or
+`product.set-access` proposal run it:
 
 - every course exists in the workspace and is not archived;
 - every module of a `modules` item, and every excluded module of a `course`
@@ -2028,8 +2027,8 @@ admin), product creation (`createProduct`, so a direct-mode key's
 - every lesson of a `lessons` item exists and sits in a chapter of a module
   attached to the item's course.
 
-A course, module or lesson of another workspace is never found. The check
-answers `400 validation` with one of the messages "Product access items may
+A course, module or lesson of another workspace is never found. For an owner
+or admin session the check answers `400 validation` with one of the messages "Product access items may
 only reference existing, active courses", "… existing modules", "… existing
 lessons", "Product access moduleIds must belong to the item courseId",
 "Product access excludedModuleIds must belong to the item courseId" or
@@ -2038,7 +2037,10 @@ and chapters". The courses of all items are checked first, so a course that
 does not exist or is archived in a later item answers the course message even
 when an earlier item names a module or lesson that fails; after that, the
 module and lesson messages are for the first item in the order of the list
-that fails. The
+that fails. A shop management key gets one message for every reason the check,
+or the write's refusal of an archived course, refuses its list: "Product access
+items may only reference active courses of this workspace, and modules and
+lessons that belong to the item courseId". The
 check reads the courses and the modules of the whole list in one query each,
 the ids of the named lessons that exist in the workspace in one query that
 reads no lesson content, and the workspace's modules once when the list has a
@@ -2055,8 +2057,9 @@ modules is checked again. So a save that resends the stored list,
 as the checkout consent save of the product editor does, succeeds for a product
 whose stored list the check would refuse, unless that list names an archived
 course, which the write itself refuses. Changing the list is refused until
-every item passes. A `product.create` proposal stored before the check existed
-is checked at its approval and ends `failed` when its list fails it.
+every item passes. A `product.create` or `product.set-access` proposal is
+checked at its approval and ends `failed` when its list fails it, as does a
+`product.create` proposal stored before the check existed.
 
 The check is a point-in-time check. It reads the courses, modules and lessons
 when the list is written, and the write locks only the courses (`FOR UPDATE`)
@@ -2121,14 +2124,18 @@ same. A list equal to the live one in this comparison would change nothing and i
 payload: it would change nothing the owner can see"); the list is stored and
 applied in the order it was sent.
 The dry run runs the use-case with the identity of the owner who issued the
-key and rolls back; the approval runs it with the session of the approving
-owner.
+key and rolls back; it does not run the check, and it writes a list that names
+an archived course, so the submission of a `product.set-access`, or of a
+`product.create` that grants a list, alone or in a group, is accepted or refused
+for the same reasons whatever the courses, modules and lessons it names. The
+approval runs the use-case with the session of the approving owner, and with
+it the check.
 
 **Locks and outcomes.** The dry run and the approval lock the courses the new
 list names first (`FOR UPDATE`, in id order, as the live write of access items
 does), then the product row (`FOR NO KEY UPDATE`) and its stock row, as for a
-product update; the use-case then writes the list and refuses an archived
-course. A `product.create` likewise locks the courses its list grants before it
+product update; the use-case then writes the list, and at the approval refuses
+an archived course. A `product.create` likewise locks the courses its list grants before it
 creates the product. In a [group](#groups), the dry run and the approval
 first lock, in one statement and in id order, the courses that the
 `product.set-access` items name and the `product.create` items grant, before
@@ -2222,10 +2229,13 @@ archived course.
 
 **What the key learns.** No shop route serves a key a course, module or lesson;
 the key sees their ids in the access items of the products it lists. A
-refusal of the check names no title, but it tells the key whether an id it
-sent is an active course of the workspace and whether a module or lesson
-belongs to the course it named; a direct-mode key's `product.create` already
-told it the first.
+submission is refused only for its shape, a repeated item or id, a physical
+product or a list equal to the live one, which the key reads; none of these
+depends on the courses, modules and lessons it names. The outcome of an
+approval, `failed` or `applied`, is on the key's receipt once an owner has
+chosen to approve. A direct-mode key that creates a product with access items
+learns whether its list passes the check as a whole, under one message for
+every reason.
 
 **Rolling back.** The release on production when this operation was added,
 `8141fd15`, does not know `product.set-access`; what it does with what this

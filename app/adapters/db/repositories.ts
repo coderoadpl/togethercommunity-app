@@ -425,12 +425,11 @@ export const createProductRepository = (
         .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
     ).map(parseProduct);
   },
-  create: async (tenantId, product) => {
+  create: async (tenantId, product, options = {}) => {
     try {
       return await db.transaction(async (tx) => {
-        if (!await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId))) {
-          return 'course_unavailable';
-        }
+        const active = await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId));
+        if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
         await tx.insert(products).values({
           id: product.id,
           tenantId,
@@ -488,11 +487,10 @@ export const createProductRepository = (
     const row = rows[0];
     return row ? parseProduct(row) : null;
   }),
-  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds, options = {}) =>
     busyAfterRollback(() => db.transaction(async (tx) => {
-      if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
-        return 'course_unavailable';
-      }
+      const active = await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId));
+      if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
       if (version) await insertEntityVersion(tx, tenantId, version);
       const changes = checkoutConsentDefinitionIds === undefined
         ? { accessItems }

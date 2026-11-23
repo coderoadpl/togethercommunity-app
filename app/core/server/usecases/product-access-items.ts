@@ -10,6 +10,12 @@ export interface ProductAccessCatalog {
 
 export const PRODUCT_ACCESS_COURSE_MESSAGE = 'Product access items may only reference existing, active courses';
 
+export const PRODUCT_ACCESS_KEY_REFUSAL =
+  'Product access items may only reference active courses of this workspace, and modules and lessons that belong to the item courseId';
+
+/** A submission must not tell its key whether a course, module or lesson exists or where it sits: no route serves the key those. */
+export type ProductAccessCheck = 'now' | 'at-approval';
+
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 
 const lessonsReachedBy = (modules: readonly CourseModule[], courseId: string): Set<string> => new Set(modules

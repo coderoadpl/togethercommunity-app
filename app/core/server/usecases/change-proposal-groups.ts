@@ -281,7 +281,7 @@ export const submitGroupedChangeProposal = async (
     const references = changeProposalGroupReferences();
     await lockGroupCourses(tenantId, [...earlier, { operation: operationName, input: prepared.value.input }], scope);
     for (const [index, item] of earlier.entries()) {
-      const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
+      const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references }, 'submission');
       if (outcome.status === 'aborted') return err(outcome.error);
       if (outcome.status !== 'applied') return err(earlierItemNoLongerApplies(item));
     }
@@ -289,7 +289,7 @@ export const submitGroupedChangeProposal = async (
     if (resolved === null) return err(validation('A proposal reference names an item that created nothing'));
     const runnable = operation.prepare(resolved);
     if (!runnable.ok) return runnable;
-    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId });
+    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId, stage: 'submission' });
   }, { groupId }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, operationName, dryRun.value, operation.invalidInputMessage, deps);

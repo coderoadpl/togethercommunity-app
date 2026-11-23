@@ -186,7 +186,7 @@ export const submitChangeProposal = async (
   if (!files.ok) return files;
 
   const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
-    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId });
+    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId, stage: 'submission' });
     return effect.ok ? ok({ effect: effect.value }) : effect;
   }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;

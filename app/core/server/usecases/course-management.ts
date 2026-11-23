@@ -54,7 +54,7 @@ import type {
 } from '../ports.js';
 import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
-import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog } from './product-access-items.js';
+import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog, type ProductAccessCheck } from './product-access-items.js';
 
 export interface CourseManagementDeps {
   logger: { error(message: string): void };
@@ -667,7 +667,7 @@ const removeLessonFromProduct = async (
   return ok('busy');
 };
 
-type ProductAccessItemsDeps =ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'>;
+type ProductAccessItemsDeps = ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'> & { accessCheck?: ProductAccessCheck };
 
 const productAccessBusy = (): AppError =>
   appError('unavailable', 'The product is busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });
@@ -689,7 +689,8 @@ export const updateProductAccessItems = async (
     return err(validation('Physical products cannot grant access items'));
   }
 
-  if (!sameAccessItems(parsed.data.accessItems, product.accessItems)) {
+  const accessCheck = deps.accessCheck ?? 'now';
+  if (accessCheck === 'now' && !sameAccessItems(parsed.data.accessItems, product.accessItems)) {
     const checked = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
     if (!checked.ok) return checked;
   }
@@ -703,6 +704,7 @@ export const updateProductAccessItems = async (
     parsed.data.accessItems,
     snapshot.value,
     parsed.data.checkoutConsentDefinitionIds,
+    { archivedCourses: accessCheck === 'now' ? 'refuse' : 'write' },
   );
   if (updated === 'course_unavailable') {
     return err(validation(PRODUCT_ACCESS_COURSE_MESSAGE));

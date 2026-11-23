@@ -235,8 +235,11 @@ const catalogRepositoriesOver = (
       },
       findByIds: async (tenantId, ids) =>
         state.products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)).map((found) => ({ ...found })),
-      create: async (tenantId, created) => {
+      create: async (tenantId, created, options = {}) => {
         repositoryCourseLocks.push({ courseIds: created.accessItems.map((item) => item.courseId), targetLocksBefore: locks.length });
+        const granted = new Set(created.accessItems.map((item) => item.courseId));
+        if (options.archivedCourses !== 'write'
+          && state.courses.some((course) => course.tenantId === tenantId && granted.has(course.id) && course.archivedAt)) return 'course_unavailable';
         if (state.products.some((candidate) => candidate.tenantId === tenantId && candidate.slug === created.slug)) return 'slug_taken';
         state.products.push({ ...created });
         return 'created';
@@ -251,10 +254,11 @@ const catalogRepositoriesOver = (
         state.entityVersionAuthors.push(version.createdBy);
         return { ...saved };
       },
-      updateAccessItems: async (tenantId, id, accessItems, version) => {
+      updateAccessItems: async (tenantId, id, accessItems, version, _checkoutConsentDefinitionIds, options = {}) => {
         repositoryCourseLocks.push({ courseIds: accessItems.map((item) => item.courseId), targetLocksBefore: locks.length });
         const referenced = new Set(accessItems.map((item) => item.courseId));
-        if (state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
+        if (options.archivedCourses !== 'write'
+          && state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
         const found = product(tenantId, id);
         if (found === null) return null;
         found.accessItems = structuredClone(accessItems);

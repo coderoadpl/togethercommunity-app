@@ -473,12 +473,25 @@ describe('approving what a product grants over the database', () => {
     expect(await accessOf('draft')).toEqual([]);
   }, 30_000);
 
-  it('refuses at submission a lesson that sits in no module of the named course and stores nothing', async () => {
-    const result = await submitChangeProposal(keyCtx, {
-      operation: 'product.set-access', input: { id: 'draft', accessItems: [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-welcome'] }] },
-    }, deps());
-    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } });
-    expect(await database.db.select().from(changeProposals)).toEqual([]);
+  it('accepts at submission a lesson that sits in no module of the named course, and its approval fails and applies nothing', async () => {
+    const id = await submit('product.set-access', { id: 'draft', accessItems: [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-welcome'] }] });
+    expect(await approve(id)).toMatchObject({
+      ok: true,
+      value: { status: 'failed', failureCode: 'validation', failureMessage: 'Product access lessonIds must belong to the item courseId through its modules and chapters' },
+    });
+    expect(await accessOf('draft')).toEqual([]);
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:apply_failed']);
+  });
+
+  it('accepts at submission an archived course without telling the key, and its approval fails', async () => {
+    await database.db.update(courses).set({ archivedAt: NOW }).where(eq(courses.id, 'course-advanced'));
+    try {
+      const id = await submit('product.set-access', { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
+      expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'failed', failureCode: 'validation' } });
+    } finally {
+      await database.db.update(courses).set({ archivedAt: null }).where(eq(courses.id, 'course-advanced'));
+    }
+    expect(await accessOf('draft')).toEqual([]);
   });
 });
 

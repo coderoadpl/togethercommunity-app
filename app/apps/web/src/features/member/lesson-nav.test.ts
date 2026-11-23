@@ -111,6 +111,19 @@ describe('lessonNeighbours', () => {
     expect(neighbours?.next?.lessonId).toBe('l2');
     expect(neighbours?.nextUnlocked).toBeNull();
   });
+
+  it('reads the neighbours of the open occurrence and never offers the lesson itself', () => {
+    const repeated = linearizeCourse(
+      course([
+        [{ id: 'c1', lessons: [lesson('l1', false), lesson('l2')] }],
+        [{ id: 'c2', lessons: [lesson('l1'), lesson('l3')] }],
+      ]),
+    );
+    const neighbours = lessonNeighbours(repeated, 'l1');
+    expect(neighbours?.previous?.lessonId).toBe('l2');
+    expect(neighbours?.next?.lessonId).toBe('l3');
+    expect(neighbours?.nextUnlocked?.lessonId).toBe('l3');
+  });
 });
 
 describe('lessonPath', () => {

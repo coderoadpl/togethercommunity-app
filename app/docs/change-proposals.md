@@ -1969,7 +1969,9 @@ progress is recorded follows a course that opens the lesson for them:
   request without a lesson, are not checked. The lesson player sends it only
   when the lesson is an open row of the course tree it shows, naming the module
   and chapter of the first open row of the lesson when an earlier row of it is
-  locked (the breadcrumbs show that row too). It sends it once per course and
+  locked (the breadcrumbs show that row too, and the previous and next lessons
+  and the continue action are read from that row, never naming the lesson
+  itself). It sends it once per course and
   lesson it shows, and only once the tree has an open row of the lesson, so a
   tree that reads after a failed read still records the position;
 - a lesson hit on the search page links only into a course of the member's

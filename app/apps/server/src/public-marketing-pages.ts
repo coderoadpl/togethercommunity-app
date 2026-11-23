@@ -500,15 +500,17 @@ export const renderPreferencesPage = (input: {
     nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle,
     eyebrow: t.preferencesEyebrow, body: `${lede}${body}`, testId: 'marketing-preferences',
   });
-  const nothingLeftToWithdraw = input.definitions.every((definition) => !definition.active && !definition.pendingConfirmation);
-  if (input.globallySuppressed && nothingLeftToWithdraw) {
-    const contact = supportLink(input.brand.settings, t);
-    return page(`<section class="card" data-state="unsubscribed-all"><p class="state-line">${escapeHtml(t.unsubscribedEverything({ tenant }))}</p><p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>${contact === null ? '' : `<p class="fine">${contact}</p>`}</section>`);
-  }
   const allMarketing = input.scope === 'all_marketing';
   const scopedDefinition = allMarketing
     ? undefined
     : input.definitions.find((definition) => `consent:${definition.id}` === input.scope);
+  const scopedStateUnknown = !allMarketing && scopedDefinition === undefined;
+  const nothingLeftToWithdraw = !scopedStateUnknown
+    && input.definitions.every((definition) => !definition.active && !definition.pendingConfirmation);
+  if (input.globallySuppressed && nothingLeftToWithdraw) {
+    const contact = supportLink(input.brand.settings, t);
+    return page(`<section class="card" data-state="unsubscribed-all"><p class="state-line">${escapeHtml(t.unsubscribedEverything({ tenant }))}</p><p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>${contact === null ? '' : `<p class="fine">${contact}</p>`}</section>`);
+  }
   const scopedWithdrawn = scopedDefinition !== undefined && !scopedDefinition.active && !scopedDefinition.pendingConfirmation;
   const everythingForm = (className: string): string =>
     `<form method="post" action="${path}/all${formSuffix}"><button${className === '' ? '' : ` class="${className}"`} type="submit">${escapeHtml(t.unsubscribeAllSubmit)}</button></form>`;

@@ -231,6 +231,26 @@ describe('public marketing pages', () => {
     expect(polish).toContain(publicMarketingMessagesPl.unsubscribeAllWarning({ tenant: 'Studio Demo' }));
   });
 
+  it('keeps the scoped unsubscribe for a suppressed address whose linked consent is no longer listed', () => {
+    const html = renderPreferencesPage(preferenceInput({
+      scope: 'consent:archived-definition', scopeLabel: null, globallySuppressed: true, definitions: withdrawnDefinitions,
+    }));
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('data-state="consent-link"');
+    expect(html).toContain('<p class="fine">You will stop receiving messages from this list.</p><form method="post" action="/u/token_1234567890123456789012/confirm?lang=en"><button type="submit">Unsubscribe</button></form>');
+    expect(html).not.toContain('archived-definition');
+    const noDefinitions = renderPreferencesPage(preferenceInput({
+      scope: 'consent:archived-definition', scopeLabel: null, globallySuppressed: true, definitions: [],
+    }));
+    expect(noDefinitions).toContain('/u/token_1234567890123456789012/confirm?lang=en');
+    const allMarketing = renderPreferencesPage(preferenceInput({
+      scope: 'all_marketing', scopeLabel: null, globallySuppressed: true, definitions: withdrawnDefinitions,
+    }));
+    expect(allMarketing).toContain('data-state="unsubscribed-all"');
+    const knownWithdrawn = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions: withdrawnDefinitions }));
+    expect(knownWithdrawn).toContain('data-state="unsubscribed-all"');
+  });
+
   it('escapes consent labels and the workspace name in every preference state', () => {
     const html = renderPreferencesPage(preferenceInput({
       brand: { ...brand, tenant: { ...brand.tenant, name: 'Studio <b>' } },

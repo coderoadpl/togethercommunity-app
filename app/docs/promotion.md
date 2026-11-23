@@ -68,8 +68,12 @@ seconds instead of failing at once: up to 40 minutes while a run is still
 queued or in progress, and up to 3 minutes for a run that has not been created
 yet. A completed failing run is never waited on. After the wait it re-reads the
 staging tip and evaluates as before; the comment and the failure message say
-how long it waited and what was still unfinished. The job's 50-minute timeout
-covers the bound.
+how long it waited and what was still unfinished. A failed read of the runs
+during the wait is logged and the next poll goes ahead while the bound has not
+passed; when the last read before the bound fails, the guard fails with a
+reason naming the API error and still updates its comment. A failed first read,
+before any wait, fails the guard as before. The job's 50-minute timeout covers
+the bound.
 
 The guard comment inventories the merged pull requests between `main` and the
 promotion head, added migrations under `app/drizzle`, changed top-level areas,

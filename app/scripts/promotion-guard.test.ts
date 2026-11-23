@@ -44,6 +44,20 @@ const waitHarness = (reads: WorkflowRun[][]) => {
   return { deps, read, sleep };
 };
 
+const flakyHarness = (reads: (WorkflowRun[] | Error)[]) => {
+  let clock = 0;
+  let index = 0;
+  const read = vi.fn((): WorkflowRun[] => {
+    const next = reads[Math.min(index, reads.length - 1)] ?? [];
+    index += 1;
+    if (next instanceof Error) throw next;
+    return next;
+  });
+  const sleep = vi.fn(async (milliseconds: number) => { clock += milliseconds; });
+  const deps = { read, now: () => clock, sleep, log: vi.fn() };
+  return { deps, read, sleep };
+};
+
 describe('promotion guard', () => {
   it('accepts a PR opened from the current staging tip', () => {
     expect(evaluatePromotionSource({
@@ -383,6 +397,69 @@ describe('promotion guard waiting for the staging runs', () => {
 
     expect(wait.waitedMs).toBe(0);
     expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([]);
+  });
+
+  it('keeps the first read before any wait failing as before', async () => {
+    const deps = {
+      read: vi.fn((): WorkflowRun[] => { throw new Error('gh: Bad Gateway (HTTP 502)'); }),
+      now: () => 0,
+      sleep: vi.fn(async () => {}),
+      log: vi.fn(),
+    };
+
+    await expect(awaitWorkflowRuns(deps)).rejects.toThrow('gh: Bad Gateway (HTTP 502)');
+    expect(deps.sleep).not.toHaveBeenCalled();
+  });
+
+  it('tolerates a failed read during the wait and keeps polling', async () => {
+    const { deps, read, sleep } = flakyHarness([
+      [ciSuccess, run('staging-smoke.yml', 'in_progress', null, 2)],
+      new Error('Command failed: gh api /repos/example/repo/actions/workflows/staging-smoke.yml/runs\ngh: Bad Gateway (HTTP 502)\n'),
+      [ciSuccess, smokeSuccess],
+    ]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(sleep.mock.calls).toEqual([[30_000], [30_000]]);
+    expect(wait).toEqual({ runs: [ciSuccess, smokeSuccess], waitedMs: 60_000, unfinished: [] });
+    expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([]);
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('gh: Bad Gateway (HTTP 502)'));
+  });
+
+  it('fails with the API error when the reads keep failing until the bound', async () => {
+    const running = run('staging-smoke.yml', 'in_progress', null, 2);
+    const { deps, read } = flakyHarness([[ciSuccess, running], new Error('Command failed: gh api\ngh: Server Error (HTTP 500)\n')]);
+
+    const wait = await awaitWorkflowRuns(deps);
+    const reasons = workflowReasons(evaluateWorkflowRuns(wait.runs), wait);
+
+    expect(read).toHaveBeenCalledTimes(defaultWaitPolicy.boundMs / defaultWaitPolicy.pollMs + 1);
+    expect(wait).toEqual({
+      runs: [ciSuccess, running],
+      waitedMs: defaultWaitPolicy.boundMs,
+      unfinished: [{ workflow: 'staging-smoke.yml', state: 'running' }],
+      readError: 'gh: Server Error (HTTP 500)',
+    });
+    expect(reasons).toEqual([
+      {
+        check: 'staging runs',
+        message: 'Could not read the staging runs after waiting 40 min: gh: Server Error (HTTP 500).',
+      },
+      {
+        check: 'staging-smoke.yml',
+        message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA after waiting 40 min; its run is still in progress.',
+      },
+    ]);
+    expect(renderPromotionComment({
+      passed: false,
+      reasons,
+      includedPullRequests: [],
+      migrations: [],
+      areas: [],
+      workflows: evaluateWorkflowRuns(wait.runs),
+      wait,
+    })).toContain('**Verdict:** FAIL: Could not read the staging runs after waiting 40 min: gh: Server Error (HTTP 500).');
   });
 
   it('says in the comment how long it waited', () => {

@@ -45,6 +45,7 @@ export type WaitOutcome = {
   runs: WorkflowRun[];
   waitedMs: number;
   unfinished: UnfinishedWorkflow[];
+  readError?: string;
 };
 
 export type WaitDeps = {
@@ -168,7 +169,7 @@ export function evaluateStagingFreeze(value: string | undefined): GuardReason[] 
     }];
 }
 
-export function stagingRunsOf(runs: WorkflowRun[], workflow: RequiredWorkflow): WorkflowRun[] {
+function stagingRunsOf(runs: WorkflowRun[], workflow: RequiredWorkflow): WorkflowRun[] {
   return runs.filter((run) => run.workflow === workflow && !pullRequestEvents.has(run.event));
 }
 
@@ -203,15 +204,30 @@ export function worthWaitingFor(unfinished: UnfinishedWorkflow[], elapsedMs: num
 
 export async function awaitWorkflowRuns(deps: WaitDeps, policy: WaitPolicy = defaultWaitPolicy): Promise<WaitOutcome> {
   const start = deps.now();
+  let runs = deps.read();
+  let readError: string | null = null;
   for (;;) {
-    const runs = deps.read();
     const waitedMs = deps.now() - start;
     const unfinished = unfinishedWorkflows(runs);
     const pending = worthWaitingFor(unfinished, waitedMs, policy);
-    if (pending.length === 0) return { runs, waitedMs, unfinished };
-    deps.log(`promotion-guard: waiting for ${pending.map(describeUnfinished).join(', ')} (${formatDuration(waitedMs)} so far)`);
+    if (pending.length === 0) return readError === null ? { runs, waitedMs, unfinished } : { runs, waitedMs, unfinished, readError };
+    const waiting = `${pending.map(describeUnfinished).join(', ')} (${formatDuration(waitedMs)} so far)`;
+    deps.log(readError === null
+      ? `promotion-guard: waiting for ${waiting}`
+      : `promotion-guard: could not read the staging runs (${readError}); still waiting for ${waiting}`);
     await deps.sleep(policy.pollMs);
+    try {
+      runs = deps.read();
+      readError = null;
+    } catch (cause) {
+      readError = describeReadError(cause);
+    }
   }
+}
+
+function describeReadError(cause: unknown): string {
+  const text = cause instanceof Error ? cause.message : String(cause);
+  return lines(text).at(-1) ?? 'unknown error';
 }
 
 export function formatDuration(milliseconds: number): string {
@@ -230,12 +246,21 @@ export function describeWait(wait: WaitOutcome | null): string | null {
 }
 
 export function workflowReasons(evidence: WorkflowEvidence[], wait: WaitOutcome | null = null): GuardReason[] {
-  return evidence
-    .filter((run) => !run.passed)
-    .map((run) => ({
-      check: run.workflow,
-      message: `No successful staging branch run found for ${run.workflow} at the PR head SHA${waitSuffix(run.workflow, wait)}`,
-    }));
+  const readReasons = wait?.readError === undefined
+    ? []
+    : [{
+      check: 'staging runs',
+      message: `Could not read the staging runs after waiting ${formatDuration(wait.waitedMs)}: ${wait.readError}.`,
+    }];
+  return [
+    ...readReasons,
+    ...evidence
+      .filter((run) => !run.passed)
+      .map((run) => ({
+        check: run.workflow,
+        message: `No successful staging branch run found for ${run.workflow} at the PR head SHA${waitSuffix(run.workflow, wait)}`,
+      })),
+  ];
 }
 
 export function parseMergedPullNumbers(logText: string): number[] {

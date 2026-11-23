@@ -170,7 +170,7 @@ export const AuthenticationMethods = ({
   const passkeyHelp = (
 <AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
           <Typography variant="body2">{t.security.passkeyIntro}</Typography>
-        {passwordlessHint}
+        {presentation === 'embedded' ? passwordlessHint : null}
         </AccountHelp>
   );
   const passwordlessDialogBody = (

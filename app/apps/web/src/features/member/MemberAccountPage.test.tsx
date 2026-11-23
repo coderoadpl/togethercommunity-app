@@ -1058,10 +1058,10 @@ describe('MemberAccountPage', () => {
     expect(screen.getByRole('button', { name: en.support.send })).toBeDisabled();
   });
 
-  it('requests password setup from member passkey management', async () => {
+  it('requests password setup from the passkey dialog of a passwordless member', async () => {
     let body: unknown;
     server.use(
-      stubMe(),
+      stubMe(true, {}, null, null, { hasPassword: false }),
       stubSettings(null),
       stubBillingOrders(),
       http.post('*', async ({ request }) => {
@@ -1072,8 +1072,7 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=security');
 
     await userEvent.click(await screen.findByTestId('add-passkey-open'));
-    await userEvent.click(await screen.findByText(en.security.passkeyHelp));
-    await userEvent.click(screen.getByTestId('passkey-set-password'));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByTestId('passkey-set-password'));
     expect(await findToast('success')).toHaveTextContent(
       en.account.resetSent,
     );

@@ -215,10 +215,22 @@ describe('AuthenticationMethods', () => {
     expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
   });
 
-  it('keeps the password hint inside the passkey help when the account has a password', async () => {
+  it('keeps only the passkey intro in the passkey help when the account has a password', async () => {
     renderMethods(propsWith({ presentation: 'account', hasPassword: true }));
     await userEvent.click(screen.getByTestId('add-passkey-open'));
 
-    expect(screen.getByTestId('passkey-passwordless').closest('details')).not.toBeNull();
+    expect(screen.getByTestId('passkey-help').closest('details')).toHaveTextContent(en.security.passkeyIntro);
+    expect(screen.queryByTestId('passkey-passwordless')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.security.passkeyPasswordlessHint)).not.toBeInTheDocument();
+  });
+
+  it('shows the pending password link label on the passwordless dialog button', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, pending: true, run: vi.fn() } }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    const setup = screen.getByTestId('passkey-set-password');
+    expect(setup).toHaveTextContent(en.security.resetSending);
+    expect(setup).toBeDisabled();
   });
 });

@@ -43,12 +43,13 @@ import { Cover } from '../../components/ui/Cover.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, CartStockNote, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
+import { CardTitle, CartStockNote, CheckoutFieldset, DataValue, EmberCtaButton, FinePrint } from '../../theme.js';
 import { CheckoutPage } from './CheckoutPage.js';
-import { checkoutRefusal, checkoutSessionError, completeEmail, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
+import { checkoutRefusal, checkoutSessionError, completeEmail, lockerRefusalError, CouponField, InvoiceFields, MarketingConsentFields, StripeTestModeControls, useInvoiceFields } from './CheckoutFormParts.js';
 import { DeliveryStep } from './DeliveryStep.js';
 import { ProductSafetyInfo } from './ProductSafetyInfo.js';
-import { createCheckoutState, geowidgetAccess, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { createCheckoutState, geowidgetAccess, lockerRefusal, reduceCheckoutState, selectDelivery } from './index.web.js';
+import { useLockerCheck, useLockerHold } from './use-locker-check.js';
 
 type Translations = ReturnType<typeof useTranslations>;
 type OfferProduct = PublicOfferOutput['products'][number];
@@ -251,6 +252,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
   const initialCouponCode = search.get('code') ?? '';
   const returnUrl = resolveHostedCheckoutReturnUrl(search.get(CHECKOUT_RETURN_PARAM), paymentConfig.data?.checkoutReturnOrigins ?? []);
   const [checkoutState, dispatchCheckout] = useReducer(reduceCheckoutState, initialCouponCode, createCheckoutState);
+  const checkLocker = useLockerCheck(checkoutState, dispatchCheckout);
   const { couponVisible, couponCode } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
@@ -288,7 +290,8 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     ...actions.createCartCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
     onError: (error) => {
-      if (error instanceof ApiError && error.appError.code === 'sold_out') for (const { offer } of offers) void offer.refetch();
+      if (!(error instanceof ApiError)) return;
+      if (error.appError.code === 'sold_out') for (const { offer } of offers) void offer.refetch();
     },
   });
   const couponValidation = useMutation({ ...actions.validateCartCouponForCheckout });
@@ -309,6 +312,37 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [autoValidationDue, autoValidationKey, cartLines, couponValidation, email, initialCouponCode]);
+
+  const checkoutRequest = () => ({
+    lines: cartLines,
+    attribution: attributionFromSearchParams(search),
+    ...(returnUrl === null ? {} : { returnUrl }),
+    email,
+    language,
+    ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
+    ...consent,
+    ...invoice.billing,
+    ...shipping,
+    ...(appliedCoupon === undefined ? {} : { couponCode }),
+  });
+  const startCheckout = () => {
+    const code = checkoutState.pickupPointCode;
+    checkoutSession.mutate(checkoutRequest(), {
+      onError: (error) => {
+        const refusal = error instanceof ApiError ? lockerRefusal(code, error.appError.details) : null;
+        if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
+      },
+    });
+  };
+  const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
+  const lockerHold = useLockerHold({
+    state: checkoutState,
+    delivery,
+    checkLocker,
+    ready: !couponResolving && delivery.status !== 'incomplete' && allReady && currency !== null,
+    requestKey: JSON.stringify({ payableCents, currency, testEnabled, stripeConfigured, request: checkoutRequest() }),
+    proceed: startCheckout,
+  });
 
   const changeLines = (next: readonly CartLine[]) => {
     setLines(next);
@@ -349,7 +383,6 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
 
   if (items.length === 0) return <CartNotice title={t.checkout.cartEmptyTitle} body={t.checkout.cartEmptyBody} />;
 
-  const payableCents = (appliedCoupon?.breakdown.finalCents ?? subtotalCents) + deliveryCents;
   const cartSummary = (summaryCurrency: string) => {
     const money = (cents: number) => formatPrice(cents, summaryCurrency, language);
     return {
@@ -371,25 +404,17 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     const product = details.success ? productsById.get(details.data.productId) : undefined;
     return product === undefined ? checkoutSessionError(error, t) : t.checkout.cartStockRefusal({ title: product.title });
   };
-  const formDisabled = checkoutSession.isPending;
+  const pending = checkoutSession.isPending || lockerHold.holding;
+  const formDisabled = pending;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (couponResolving || delivery.status === 'incomplete' || !allReady || currency === null) return;
     if (!stripeConfigured && payableCents > 0) return;
-    checkoutSession.mutate({
-      lines: cartLines,
-      attribution: attributionFromSearchParams(search),
-      ...(returnUrl === null ? {} : { returnUrl }),
-      email,
-      language,
-      ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
-      ...consent,
-      ...invoice.billing,
-      ...shipping,
-      ...(appliedCoupon === undefined ? {} : { couponCode }),
-    });
+    lockerHold.submit();
   };
+  const payReason = blockedByLines ? t.checkout.cartPayBlockedLines
+    : delivery.status === 'incomplete' && delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected
+      : null;
 
   return (
     <FocusCard
@@ -399,6 +424,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
       width="wide"
       onSubmit={submit}
     >
+      <CheckoutFieldset role="presentation" disabled={lockerHold.holding}>
       <Stack useFlexGap spacing="1rem">
         <CardTitle variant="h1">{t.checkout.cartTitle}</CardTitle>
         {returnUrl === null ? null : <MuiLink href={returnUrl} sx={{ alignSelf: 'flex-start' }}>{t.checkout.backToShop}</MuiLink>}
@@ -481,6 +507,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             rates={shippingRates}
             state={checkoutState}
             dispatch={dispatchCheckout}
+            checkLocker={checkLocker}
             currency={currency}
             language={language}
             geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({
@@ -488,7 +515,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
               staffSession: paymentConfig.data.canTest,
               testMode: testEnabled,
             })}
-            disabled={checkoutSession.isPending}
+            disabled={pending}
           />
         ) : null}
         {currency === null ? null : (
@@ -501,27 +528,28 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
           variant="contained"
           fullWidth
           data-testid="checkout-pay-cta"
-          aria-describedby={blockedByLines ? payReasonId : undefined}
+          aria-describedby={payReason === null ? undefined : payReasonId}
           disabled={
             !allReady ||
             currency === null ||
             delivery.status === 'incomplete' ||
-            testSession.isPending || checkoutSession.isPending ||
+            testSession.isPending || pending ||
             couponResolving ||
             (testEnabled && payableCents === 0) ||
             (payableCents > 0 && !stripeConfigured)
           }
         >
           {currency === null ? t.checkout.cartPay : payableCents === 0
-            ? checkoutSession.isPending ? t.checkout.freePending : t.checkout.freeIdle({ price: formatPrice(payableCents, currency, language) })
-            : checkoutSession.isPending ? t.checkout.payPending : t.checkout.payIdle({ price: formatPrice(payableCents, currency, language) })}
+            ? pending ? t.checkout.freePending : t.checkout.freeIdle({ price: formatPrice(payableCents, currency, language) })
+            : pending ? t.checkout.payPending : t.checkout.payIdle({ price: formatPrice(payableCents, currency, language) })}
         </EmberCtaButton>
-        {blockedByLines ? (
-          <Typography id={payReasonId} variant="body2" color="text.secondary" data-testid="cart-pay-reason">{t.checkout.cartPayBlockedLines}</Typography>
-        ) : null}
+        {payReason === null ? null : (
+          <Typography id={payReasonId} variant="body2" color="text.secondary" data-testid="cart-pay-reason">{payReason}</Typography>
+        )}
         {currency !== null && payableCents > 0 && !stripeConfigured ? <Alert severity="error">{t.checkout.paymentUnavailable}</Alert> : null}
-        {checkoutSession.isError ? <Alert severity="error">{sessionError(checkoutSession.error)}</Alert> : null}
+        {checkoutSession.isError && !lockerRefusalError(checkoutSession.error) ? <Alert severity="error">{sessionError(checkoutSession.error)}</Alert> : null}
       </Stack>
+      </CheckoutFieldset>
     </FocusCard>
   );
 };

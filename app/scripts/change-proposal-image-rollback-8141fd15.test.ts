@@ -20,13 +20,16 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import type { Identity, ShopManagementKey } from '#core/domain/index.js';
 import {
   approveChangeProposal,
+  beginBrandingAssetUpload,
   beginProductCoverUpload,
   beginProposedBrandingAssetUpload,
   beginProposedProductCoverUpload,
+  completeBrandingAssetUpload,
   completeProposedBrandingAssetUpload,
   completeProposedProductCoverUpload,
   createChangeProposalGroup,
   getChangeProposal,
+  getPublicImageAssetUrl,
   shopManagementKeyCapabilities,
   submitChangeProposal,
   submitGroupedChangeProposal,
@@ -453,6 +456,15 @@ const publicImageAssetFound = (input: { kind: string; file: string }): boolean =
   return true;
 };
 
+const previousPublicTarget = (tenantId: string, kind: string, file: string, objectUrl: (key: string) => URL): URL => {
+  const contentType = fileContentType(file) ?? '';
+  const key = `image-assets/${tenantId}/${kind}/${file}`;
+  const target = objectUrl(key);
+  target.searchParams.set('response-content-type', contentType);
+  target.searchParams.set('response-content-disposition', contentType === 'image/svg+xml' ? 'attachment' : 'inline');
+  return target;
+};
+
 const orphanReportReferences = (tenantId: string, value: string): string[] =>
   [...value.matchAll(/\/api\/public\/assets\/(course-cover|product-cover|logo-dark|logo|favicon|share-image|avatar)\/([0-9a-f-]{36}\.(?:png|jpg|webp|svg|ico))/gi)]
     .map((match) => `image-assets/${tenantId}/${String(match[1])}/${String(match[2])}`);
@@ -644,6 +656,33 @@ describe('release 8141fd15 reading what proposed images store', () => {
       expect(orphanReportReferences(TENANT, address)).toEqual([]);
     }
     expect(publicImageAssetFound({ kind: 'product-cover', file: '00000000-0000-4000-8000-000000000001.png' })).toBe(true);
+  });
+
+  it('serves an SVG logo this release stored as an attachment, as its own override and as the stored header of a provider that ignores overrides', async () => {
+    const h = harness();
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const input = { kind: 'logo' as const, fileName: 'logo.svg', contentType: 'image/svg+xml' as const, sizeBytes: svg.byteLength };
+    const started = await beginBrandingAssetUpload(ownerSession, input, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.objects.objects.set(started.value.key, { bytes: svg, contentType: 'image/svg+xml' });
+    const completed = await completeBrandingAssetUpload(ownerSession, { key: started.value.key }, h.deps);
+    if (!completed.ok) throw new Error(completed.error.message);
+    const file = completed.value.url.split('/').at(-1) ?? '';
+    expect(file).toMatch(/^[0-9a-f-]{36}\.svg$/u);
+    expect(h.objects.objects.get(`image-assets/${TENANT}/logo/${file}`)?.contentDisposition).toBe('attachment');
+
+    expect(publicImageAssetFound({ kind: 'logo', file })).toBe(true);
+    const previous = previousPublicTarget(TENANT, 'logo', file, (key) => h.objects.storage.objectUrl({
+      provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'assets', accessKeyId: 'a', secretAccessKey: 's',
+    }, key));
+    expect(previous.searchParams.get('response-content-type')).toBe('image/svg+xml');
+    expect(previous.searchParams.get('response-content-disposition')).toBe('attachment');
+    expect(h.objects.deliver(previous.toString())).toEqual({ status: 200, contentType: 'image/svg+xml', contentDisposition: 'attachment' });
+
+    const current = await getPublicImageAssetUrl(TENANT, { kind: 'logo', file }, h.deps);
+    if (!current.ok) throw new Error(current.error.message);
+    const served = new URL(current.value);
+    expect([served.searchParams.get('response-content-type'), served.searchParams.get('response-content-disposition')]).toEqual(['image/svg+xml', 'attachment']);
   });
 
   it('reads the notification a proposal raises and still names the key and the group from the community fields', async () => {

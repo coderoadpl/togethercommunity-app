@@ -927,7 +927,7 @@ const noteStaffRefundsDue = async (tenant: Tenant, order: Order, event: PaymentW
   if (event.type !== 'charge.refunded' || deps.orderStaffRefunds === undefined) return false;
   const due = await deps.orderStaffRefunds.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
   for (const refund of due) {
-    deps.logger.warn(`[order-refund] staff refund due again after charge.refunded tenant=${tenant.id} order=${order.id} refund=${refund.id} event=${event.id}`);
+    deps.logger.warn(`[order-refund] staff refund due again after charge.refunded tenant=${tenant.id} order=${order.id} refund=${refund.id}`);
   }
   return due.length > 0;
 };

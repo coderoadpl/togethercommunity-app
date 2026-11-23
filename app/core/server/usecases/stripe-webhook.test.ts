@@ -2704,7 +2704,8 @@ describe('staff refunds on charge.refunded', () => {
     expect(h.orders[0]?.status).toBe(status);
     expect(h.staffRefundNotes).toStrictEqual([`${tenantA.id}:${order.id}:${now}`]);
     expect(h.refundKicks()).toBe(1);
-    expect(h.warnings).toContain(`[order-refund] staff refund due again after charge.refunded tenant=${tenantA.id} order=${order.id} refund=refund-1 event=evt-${status}`);
+    expect(h.warnings).toContain(`[order-refund] staff refund due again after charge.refunded tenant=${tenantA.id} order=${order.id} refund=refund-1`);
+    expect(h.warnings.filter((warning) => warning.includes('evt-'))).toStrictEqual([]);
   });
 
   it('notes no staff refund for a dispute and does not kick the dispatcher without a waiting refund', async () => {

@@ -22,7 +22,7 @@ import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
-import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
+import { describedBy, isEmailAddress } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
@@ -95,7 +95,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       name: name.trim() === '' ? t.auth.nameRequired : null,
       email: normalizedEmail === ''
         ? t.auth.emailRequired
-        : EMAIL_PATTERN.test(normalizedEmail) ? null : t.auth.emailInvalid,
+        : isEmailAddress(normalizedEmail) ? null : t.auth.emailInvalid,
       password: password === ''
         ? t.auth.passwordRequired
         : passwordMeetsMinimumLength(password) ? null : t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }),

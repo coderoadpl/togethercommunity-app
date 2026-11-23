@@ -53,7 +53,7 @@ import {
   AuthPasskeyLink,
   AuthTitle,
 } from './auth-chrome.js';
-import { EMAIL_PATTERN } from './auth-fields.js';
+import { isEmailAddress } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { PasskeyOutlineIcon } from './auth-icons.js';
 import { AuthShell } from './AuthShell.js';
@@ -387,7 +387,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     event.preventDefault();
     if (resolveSignInMethods.isPending) return;
     const identifier = email.trim();
-    if (!EMAIL_PATTERN.test(identifier)) {
+    if (!isEmailAddress(identifier)) {
       setIdentifierInvalid(true);
       return;
     }

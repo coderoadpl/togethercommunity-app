@@ -11,18 +11,16 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { z } from 'zod';
 
 import { actions } from '../../api.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { returnToFromSearch } from '../../lib/auth-return.js';
 import { FinePrint } from '../../theme.js';
 import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
-import { describedBy } from './auth-fields.js';
+import { describedBy, isEmailAddress } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
-const emailSchema = z.string().email();
 const EMAIL_ERROR_ID = 'forgot-password-email-error';
 
 export const ForgotPasswordPage = () => {
@@ -42,7 +40,7 @@ export const ForgotPasswordPage = () => {
     const normalizedEmail = email.trim();
     const error = normalizedEmail === ''
       ? t.forgotPassword.emailRequired
-      : emailSchema.safeParse(normalizedEmail).success ? null : t.forgotPassword.invalidEmail;
+      : isEmailAddress(normalizedEmail) ? null : t.forgotPassword.invalidEmail;
     setEmailError(error);
     if (error !== null) {
       emailRef.current?.focus();

@@ -1168,6 +1168,22 @@ describe('LoginPage', () => {
     expect(screen.queryByText(en.auth.emailInvalid)).not.toBeInTheDocument();
   });
 
+  it('rejects an address the sign-up validator rejects before touching the resolver', async () => {
+    let resolveCalls = 0;
+    await renderLoginPage();
+    server.use(
+      http.post('*/api/public/auth-resolve', () => {
+        resolveCalls += 1;
+        return HttpResponse.json({ ok: true, data: { methods: ['password'] } });
+      }),
+    );
+
+    await continueWithEmail('a,b@example.com');
+
+    expect(await screen.findByText(en.auth.emailInvalid)).toBeInTheDocument();
+    expect(resolveCalls).toBe(0);
+  });
+
   it('sends an expired-link visitor back to the magic link even with a password', async () => {
     await renderLoginPage(false, '/login?error=INVALID_TOKEN');
     await continueWithEmail();

@@ -210,12 +210,20 @@ describe('RegisterPage', () => {
     expect(requested).toBe(false);
   });
 
-  it('names a malformed email under its field and focuses it', async () => {
-    server.use(anonymousMe(), noTenantOffer);
+  it.each(['new@together', 'a,b@example.com'])('names the malformed email %s under its field, focuses it and sends nothing', async (address) => {
+    let requested = false;
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
 
     await renderRegisterPage();
     await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
-    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), address);
     await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
@@ -225,6 +233,7 @@ describe('RegisterPage', () => {
     expect(email).toHaveAttribute('aria-describedby', error.id);
     expect(email).toHaveFocus();
     expect(screen.getByLabelText(en.auth.nameLabel)).toHaveAttribute('aria-invalid', 'false');
+    expect(requested).toBe(false);
   });
 
   it('keeps provider errors in the alert and drops them on the next submit', async () => {

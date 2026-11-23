@@ -803,7 +803,14 @@ const deps = (input: {
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
-      removeCompletedLesson: async () => [],
+      removeCompletedLesson: async (tenantId, input) => input.courseIds.map((courseId) => ({
+        id: `progress-${courseId}`,
+        tenantId,
+        memberId: input.memberId,
+        courseId,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })),
       countReferencingLesson: async () => 0,
     },
     posts: {

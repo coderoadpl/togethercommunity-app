@@ -336,6 +336,9 @@ const catalogDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposal
   downloadAssets: scope.repositories.downloadAssets,
   spaces: scope.repositories.spaces,
   stock: scope.repositories.stock,
+  courses: scope.repositories.courses,
+  modules: scope.repositories.modules,
+  lessons: scope.repositories.lessons,
   ids: deps.ids,
   clock: deps.clock,
 });

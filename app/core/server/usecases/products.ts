@@ -36,6 +36,7 @@ import type {
   TenantRepository,
 } from '../ports.js';
 import { authorizeTenant } from '../authorize.js';
+import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog } from './product-access-items.js';
 
 export interface ProductDeps {
   tenants?: Pick<TenantRepository, 'findSettings'>;
@@ -43,6 +44,8 @@ export interface ProductDeps {
   ids: IdGenerator;
   clock: Clock;
 }
+
+type ProductCreationDeps = ProductDeps & ProductAccessCatalog;
 
 export interface ProductPublicationDeps {
   products: ProductRepository;
@@ -85,7 +88,7 @@ export const listProducts = async (
 export const createProduct = async (
   ctx: Ctx,
   input: NewProductInput,
-  deps: ProductDeps,
+  deps: ProductCreationDeps,
 ): Promise<Result<Product, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
@@ -96,6 +99,8 @@ export const createProduct = async (
   if (parsed.data.type === 'physical' && parsed.data.accessItems.length > 0) {
     return err(validation('Physical products cannot grant access items'));
   }
+  const access = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
+  if (!access.ok) return access;
   if (!deliveryMethodAllowed(parsed.data.type, parsed.data.deliveryMethod)) {
     return err(validation('Only physical products can be shipped'));
   }
@@ -142,7 +147,7 @@ export const createProduct = async (
   };
   const inserted = await deps.products.create(tenant.value, product);
   if (inserted === 'course_unavailable') {
-    return err(validation('Product access items may only reference existing, active courses'));
+    return err(validation(PRODUCT_ACCESS_COURSE_MESSAGE));
   }
   if (inserted === 'slug_taken') {
     return err(slugReserved(`A product with slug "${slug}" already exists`));

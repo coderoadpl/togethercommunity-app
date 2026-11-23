@@ -22,6 +22,9 @@ import {
   type ChangeProposalGroup,
   type ChangeProposalTarget,
   type ChangeProposalTargetPrice,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
   type Notification,
   type Product,
   type ProductDownloadAsset,
@@ -76,6 +79,9 @@ export interface FakeCatalogState {
   downloadAssets: ProductDownloadAsset[];
   salesLinks: Array<SalesLink & { deleted: boolean }>;
   settings: Array<{ tenantId: string; settings: TenantSettings }>;
+  courses: Course[];
+  modules: CourseModule[];
+  lessons: CourseLesson[];
 }
 
 export const emptyCatalogState = (): FakeCatalogState => ({
@@ -90,6 +96,9 @@ export const emptyCatalogState = (): FakeCatalogState => ({
   downloadAssets: [],
   salesLinks: [],
   settings: [],
+  courses: [],
+  modules: [],
+  lessons: [],
 });
 
 const unavailable = (name: string) => () => Promise.reject(new Error(`${name} is not part of the change proposal fake`));
@@ -232,7 +241,18 @@ const catalogRepositoriesOver = (
         state.entityVersionAuthors.push(version.createdBy);
         return { ...saved };
       },
-      updateAccessItems: unavailable('products.updateAccessItems'),
+      updateAccessItems: async (tenantId, id, accessItems, version) => {
+        const referenced = new Set(accessItems.map((item) => item.courseId));
+        if (state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
+        const found = product(tenantId, id);
+        if (found === null) return null;
+        found.accessItems = structuredClone(accessItems);
+        if (version !== undefined) {
+          state.entityVersions += 1;
+          state.entityVersionAuthors.push(version.createdBy);
+        }
+        return { ...found };
+      },
       setPublished: async (tenantId, id, published) => {
         const found = product(tenantId, id);
         if (found === null) return;
@@ -280,6 +300,12 @@ const catalogRepositoriesOver = (
         state.downloadAssets.filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
     },
     spaces: { list: async () => [], findById: async () => null },
+    courses: { findByIds: async (tenantId, ids) => state.courses.filter((course) => course.tenantId === tenantId && ids.includes(course.id)) },
+    modules: {
+      findByIds: async (tenantId, ids) => state.modules.filter((module) => module.tenantId === tenantId && ids.includes(module.id)),
+      list: async (tenantId) => state.modules.filter((module) => module.tenantId === tenantId),
+    },
+    lessons: { findByIds: async (tenantId, ids) => state.lessons.filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)) },
     stock: stockRepositoryOver(state),
     productDrafts: {
       deleteDraft: async (tenantId, productId) => {

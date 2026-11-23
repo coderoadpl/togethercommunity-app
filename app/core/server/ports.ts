@@ -3325,6 +3325,9 @@ export interface ChangeProposalRepositories {
   tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
   downloadAssets: Pick<ProductDownloadAssetRepository, 'listByProduct' | 'listReadyByProduct'>;
   spaces: Pick<SpaceRepository, 'list' | 'findById'>;
+  courses: Pick<CourseRepository, 'findByIds'>;
+  modules: Pick<CourseModuleRepository, 'findByIds' | 'list'>;
+  lessons: Pick<CourseLessonRepository, 'findByIds'>;
   stock: StockRepository;
   productDrafts: ProductDraftRepository;
   salesLinks: SalesLinkRepository;

@@ -592,7 +592,7 @@ describe('course management use-cases', () => {
     const products = [product('p1', 't-acme')];
     const d = deps({
       courses: [course('c1', 't-acme'), course('c2', 't-acme')],
-      modules: [module('m1', 't-acme', ['c2'])],
+      modules: [{ ...module('m1', 't-acme', ['c2']), chapters: [{ id: 'ch1', name: 'Chapter 1', contents: [{ id: 'content-l1', lessonId: 'l1', name: 'Lesson l1' }] }] }],
       lessons: [lesson('l1', 't-acme')],
       products,
     });
@@ -645,6 +645,34 @@ describe('course management use-cases', () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(contentVersionBumps).toEqual(['t-acme']);
+  });
+
+  it('refuses a lesson that exists but sits in no module of the item course', async () => {
+    const products = [product('p1', 't-acme')];
+    const inCourse = (id: string, courseId: string, lessonId: string): CourseModule => ({
+      ...module(id, 't-acme', [courseId]),
+      chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: [{ id: `${id}-content`, lessonId, name: 'Lesson' }] }],
+    });
+    const d = deps({
+      courses: [course('c1', 't-acme'), course('c2', 't-acme')],
+      modules: [inCourse('m1', 'c1', 'l1'), inCourse('m2', 'c2', 'l2')],
+      lessons: [lesson('l1', 't-acme'), lesson('l2', 't-acme'), lesson('l-loose', 't-acme')],
+      products,
+    });
+    const refusal = { ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } };
+    for (const lessonIds of [['l2'], ['l1', 'l2'], ['l-loose']]) {
+      expect(await updateProductAccessItems(
+        { identity: identity('t-acme', 'owner') },
+        { id: 'p1', accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds }] },
+        d,
+      )).toMatchObject(refusal);
+    }
+    expect(products[0]?.accessItems).toEqual([]);
+    expect(await updateProductAccessItems(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1', accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }] },
+      d,
+    )).toMatchObject({ ok: true });
   });
 
   it('rejects a course item whose excludedModuleIds do not belong to the course', async () => {

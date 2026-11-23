@@ -28,6 +28,7 @@ import {
   keyDownloadObjectOwner,
   keyDownloadStagedFileView,
   keyDownloadStagedKey,
+  KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
   keyDownloadNameMatchesType,
   keyDownloadUploadInputSchema,
   type KeyDownloadContentType,
@@ -175,6 +176,18 @@ describe('file names and upload inputs of keys', () => {
     expect(keyDownloadUploadInputSchema.safeParse({ ...input, fileName: 'a.png' }).success).toBe(false);
     expect(keyDownloadNameMatchesType('a.pdf', 'application/pdf')).toBe(true);
     expect(keyDownloadNameMatchesType('a.pdf', 'image/png')).toBe(false);
+  });
+
+  it('takes an .mp4 name for audio and for video, an .m4a name for audio only, and keeps one preferred type per extension', () => {
+    const input = { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 10 };
+    for (const [fileName, contentType, accepted] of [
+      ['audiobook.mp4', 'audio/mp4', true], ['film.mp4', 'video/mp4', true], ['track.m4a', 'audio/mp4', true],
+      ['film.m4a', 'video/mp4', false], ['photo.mp4', 'image/png', false], ['film.m4v', 'audio/mp4', false],
+    ] as const) {
+      expect({ fileName, contentType, accepted: keyDownloadUploadInputSchema.safeParse({ ...input, fileName, contentType }).success })
+        .toEqual({ fileName, contentType, accepted });
+    }
+    expect(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION['mp4']).toBe('video/mp4');
   });
 
   it('bounds the id of a staged file to discard', () => {

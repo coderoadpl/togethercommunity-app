@@ -706,9 +706,11 @@ another tag before its first frame, a PDF whose `%PDF-` does not lie within the
 first 1024 bytes, and ISO media of any other brand (QuickTime, 3GP, HEIC,
 AVIF). A file name has 1 to 255 characters after trimming and no control
 or bidirectional formatting characters, and its last extension, in any letter
-case, must be one the CLI maps to the declared type (below): `400 validation`
+case, must be one the CLI maps to the declared type (below), or `.mp4` for
+`audio/mp4`, the name an audio-only MP4 often has: `400 validation`
 on `fileName` otherwise, so a buyer never saves a checked PDF as `.html` or
-`.exe`. A key's file is at most 256 MiB (the
+`.exe`. The CLI still declares `video/mp4` for a `.mp4` file; an audio-only one
+is uploaded as `.m4a` or `.m4b`, or through the API with `audio/mp4`. A key's file is at most 256 MiB (the
 product editor keeps its 1 GiB), so that one completion can copy and hash it
 within a single request.
 

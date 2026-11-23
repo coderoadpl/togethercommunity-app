@@ -182,12 +182,19 @@ const FORBIDDEN_NAME_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f
 export const keyDownloadFileNameSchema = z.string().trim().min(1).max(255)
   .refine((name) => !FORBIDDEN_NAME_CHARACTERS.test(name), { message: 'File names cannot contain control or bidirectional formatting characters' });
 
+/** An audio-only MP4 is commonly named `.mp4`; the preferred type above stays the one the CLI declares for the extension. */
+const KEY_DOWNLOAD_ALSO_ALLOWED_TYPES: Readonly<Record<string, readonly KeyDownloadContentType[]>> = {
+  mp4: ['audio/mp4'],
+};
+
 /** The saved file opens by its name, so a name whose extension names another type than the checked one is refused. */
 export const keyDownloadNameMatchesType = (fileName: string, contentType: KeyDownloadContentType): boolean => {
   const name = fileName.trim();
   const dot = name.lastIndexOf('.');
   const extension = dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
-  return Object.hasOwn(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION, extension) && KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION[extension] === contentType;
+  if (!Object.hasOwn(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION, extension)) return false;
+  const others = Object.hasOwn(KEY_DOWNLOAD_ALSO_ALLOWED_TYPES, extension) ? KEY_DOWNLOAD_ALSO_ALLOWED_TYPES[extension] ?? [] : [];
+  return KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION[extension] === contentType || others.includes(contentType);
 };
 
 export const keyDownloadUploadInputSchema = z.object({

@@ -347,6 +347,20 @@ describe('copying a product file on the server', () => {
     expect(await recordStates()).toEqual(['settled']);
   });
 
+  it('stages a copy of an audio-only MP4 named .mp4 with its audio type, and refuses a video named .m4a', async () => {
+    const h = harness();
+    const audio = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 77, 52, 65, 32, 0, 0, 0, 0]);
+    const book = `${TENANT}/product-downloads/${PRODUCT}/asset-book/audiobook.mp4`;
+    h.objects.objects.set(book, { bytes: audio, contentType: 'audio/mp4' });
+    await database.db.insert(productDownloadAssets).values([
+      { id: 'asset-book', tenantId: TENANT, productId: PRODUCT, lineageId: 'asset-book', fileName: 'audiobook.mp4', contentType: 'audio/mp4', sizeBytes: audio.byteLength, storageKey: book, status: 'ready', createdAt: NOW },
+      { id: 'asset-film', tenantId: TENANT, productId: PRODUCT, lineageId: 'asset-film', fileName: 'film.m4a', contentType: 'video/mp4', sizeBytes: 10, storageKey: 'k5', status: 'ready', createdAt: NOW },
+    ]);
+    const copied = await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-book' }, h.deps);
+    expect(copied).toMatchObject({ ok: true, value: { file: { fileName: 'audiobook.mp4', contentType: 'audio/mp4' } } });
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-film' }, h.deps)).toEqual({ ok: false, error: keyDownloadCopyRefused() });
+  });
+
   it('refuses a file of another product, a pending file and a type keys cannot stage', async () => {
     const h = harness();
     await database.db.insert(productDownloadAssets).values([

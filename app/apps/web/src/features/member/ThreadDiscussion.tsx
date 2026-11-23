@@ -806,9 +806,9 @@ export const ThreadDiscussion = ({
             />
           )}
 
-          {search}
-
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
+
+          {search}
 
           {threads.length === 0 && pendingThread === null ? (
             <Typography variant="body1" data-testid="discussion-empty">

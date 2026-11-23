@@ -3148,4 +3148,46 @@ describe('LessonPlayerPage', () => {
     expect(discussionScrolled()).toBe(false);
     expect(discussionHeading).not.toHaveFocus();
   });
+
+  it('shows a reply that fails after the member went back from a search hit before the search box with its hits', async () => {
+    const thread = discussionPost('t1', 'Question about hammocks');
+    let releasePost: (value: undefined) => void = () => undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(thread),
+      http.get('/api/posts/search', () =>
+        HttpResponse.json({ ok: true, data: { hits: [{ post: thread, lessonId: 'l1', snippet: 'Question about hammocks' }] } }),
+      ),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1');
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'hammocks');
+    await user.click(await screen.findByTestId('search-hit-link-t1'));
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-t1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+    releasePost(undefined);
+
+    const discussion = screen.getByTestId('discussion-section');
+    const error = await within(discussion).findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(error.compareDocumentPosition(screen.getByTestId('discussion-search-input')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('discussion-composer').compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
+  });
 });

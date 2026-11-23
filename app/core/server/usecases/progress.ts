@@ -74,10 +74,9 @@ const completionLocation = async (
   if (locations.length === 0) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(scope, deps);
-  const opening = ctx.identity.staffRole !== null
-    ? locations
-    : locations.filter((location) =>
-      isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId }));
+  const opensForMember = (location: LessonLocation): boolean =>
+    isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId });
+  const opening = ctx.identity.staffRole !== null ? locations : locations.filter(opensForMember);
   const progressAt = opening.find((location) => location.course.id === viewedCourseId) ?? opening[0];
   return progressAt === undefined ? err(forbidden('This lesson is not accessible')) : ok(progressAt);
 };

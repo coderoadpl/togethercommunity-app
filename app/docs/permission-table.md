@@ -1060,6 +1060,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:195` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:229` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:255` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:266` | `const location = isStaff(ctx) \|\| !ctx.identity.memberId` |
 | member-scope | `core/server/usecases/image-assets.ts:311` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:322` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:406` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
@@ -1082,10 +1083,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/meta-capi.ts:75` | `return ok({ consents: await deps.repository.listMemberConsents(tenant.value, ctx.identity.memberId) });` |
 | member-scope | `core/server/usecases/my-products.ts:78` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
-| member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
-| member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/progress.ts:72` | `const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);` |
-| staff-role | `core/server/usecases/progress.ts:109` | `const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);` |
+| member-scope | `core/server/usecases/progress.ts:57` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
+| member-scope | `core/server/usecases/progress.ts:58` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
+| staff-role | `core/server/usecases/progress.ts:79` | `const opening = ctx.identity.staffRole !== null ? locations : locations.filter(opensForMember);` |
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/shop-machine-auth.ts:121` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |

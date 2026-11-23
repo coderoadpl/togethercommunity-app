@@ -591,6 +591,47 @@ describe('ProposalsPanel', () => {
     expect(within(card).queryByRole('button', { name: t.rejectGroup })).toBeNull();
   });
 
+  it.each(['applied', 'rejected'] as const)('drops the pending previews, file controls and access warnings of a group %s elsewhere', async (status) => {
+    const [first] = fileChangeProposalGroup.items;
+    if (first === undefined) throw new Error('missing fixture');
+    const digest = '9'.repeat(64);
+    const proposedCover = `/api/public/assets/product-cover/${digest}.png`;
+    const coverItem = {
+      ...first,
+      id: 'proposal-group-cover',
+      groupPosition: 5,
+      operation: 'product.update',
+      target: { kind: 'product' as const, id: 'product-studio-field-guide-digital' },
+      targetLabel: 'Field Guide (digital)',
+      input: { id: 'product-studio-field-guide-digital', coverUrl: proposedCover },
+      effect: { coverUrl: { before: null, after: proposedCover } },
+    };
+    const accessItem = { ...accessGoneProposal, groupId: FILE_GROUP_ID, groupTitle: first.groupTitle, groupPosition: 6, events: first.events };
+    const open = { ...fileChangeProposalGroup, items: [...fileChangeProposalGroup.items, coverItem, accessItem] };
+    let settled = false;
+    usePending(pendingFileChangeProposals.filter((proposal) => proposal.groupId !== null), open);
+    server.use(http.get('/api/change-proposals/groups/:id', () => HttpResponse.json({
+      ok: true,
+      data: { group: settled ? { ...open, status, items: open.items.map((item) => ({ ...item, status })) } : open },
+    })));
+
+    const { queryClient } = renderPanel();
+
+    const card = await screen.findByTestId(`proposal-group-card-${FILE_GROUP_ID}`);
+    expect(await within(card).findByTestId('proposed-image')).toBeInTheDocument();
+    expect(within(card).getByTestId('proposed-file-download')).toBeInTheDocument();
+    expect(within(card).getByTestId('proposal-access-refused')).toBeInTheDocument();
+
+    settled = true;
+    await queryClient.invalidateQueries(actions.changeProposalGroup(FILE_GROUP_ID));
+
+    await waitFor(() => expect(within(card).getByText(t.status[status])).toBeInTheDocument());
+    expect(within(card).queryByTestId('proposed-image')).toBeNull();
+    expect(within(card).queryByTestId('proposed-file-download')).toBeNull();
+    expect(within(card).queryByTestId('proposal-access-refused')).toBeNull();
+    expect(within(card).queryByText(t.proposedImageOwnerPreview)).toBeNull();
+  });
+
   it('keeps text written by the key out of the application sentences and isolates it where it is shown', async () => {
     const title = 'Spring” \u202Elaunch';
     const keyName = 'Agent \u202Eone';

@@ -462,7 +462,17 @@ const groupStatusLabel = (t: Translations, status: ChangeProposalGroupOwnerView[
 const orderedItems = (group: ChangeProposalGroupOwnerView) =>
   group.items.toSorted((left, right) => (left.groupPosition ?? 0) - (right.groupPosition ?? 0));
 
-const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerView; position: number; references: GroupReferences }) => {
+const GroupItem = ({
+  item,
+  position,
+  references,
+  live,
+}: {
+  item: ChangeProposalOwnerView;
+  position: number;
+  references: GroupReferences;
+  live: boolean;
+}) => {
   const t = useTranslations().changeProposals;
   return (
     <Stack useFlexGap spacing="0.5rem" component="li" data-testid={`proposal-group-item-${item.id}`} sx={{ listStyle: 'none' }}>
@@ -470,7 +480,7 @@ const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerVi
         {t.groupStep({ position, operation: operationTitle(t, item.operation) })}
       </Typography>
       <TargetLine proposal={item} references={references} />
-      <ProposalBody proposal={item} references={references} live labelComponent="h4" />
+      <ProposalBody proposal={item} references={references} live={live} labelComponent="h4" />
     </Stack>
   );
 };
@@ -596,7 +606,7 @@ export const GroupProposalCard = ({
           )}
           <Stack component="ol" useFlexGap spacing="1.25rem" sx={{ m: 0, p: 0 }}>
             {items.map((item, index) => (
-              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} />
+              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} live={open} />
             ))}
           </Stack>
         </>

@@ -529,7 +529,9 @@ dialog was open or the server answered that the items changed (nothing is
 applied then), and only "this group changed while you were looking at it" when
 no dialog was open, since nothing was attempted. An open dialog also closes
 when a refetch shows the group is no longer open (expired, withdrawn or
-decided elsewhere); the card then shows that status without the buttons. A single
+decided elsewhere); the card then shows that status without the buttons, and
+its items as in **History**: without the owner preview of a proposed image,
+the download of a proposed file or the notes of a pending access list. A single
 proposal needs no such step: its effect is fixed when it is proposed, so a
 refetch cannot change what the owner approves.
 

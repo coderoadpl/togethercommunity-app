@@ -95,6 +95,7 @@ const harness = (rows: ShopManagementKey[] = [], shopManagementKeysSwitch: ShopM
         return { kind: 'written', value: [] };
       },
       finishRelease: async () => 'removed',
+      markReleaseAttempted: async () => undefined,
     },
     storage: createObjectStorageFake().storage,
     secretResolver: fakeStorageSecrets,

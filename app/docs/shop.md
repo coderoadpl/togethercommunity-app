@@ -302,15 +302,17 @@ documentation:
 [Points 1.23.0](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/28639230/1.23.0+Points)
 and [the points field reference](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/18153470);
 the newer token-gated `api.inpost.pl` points gateways are not used. The adapter
-parses the answer strictly: an HTTP 200 body
-`{"status":404,"key":"point_not_found"}` and a real HTTP 404 mean not found; any
-other status, a timeout, a network error, a body that does not parse or an
-answer for another point mean the carrier is unavailable. Recorded answers live
-in `adapters/shipx/fixtures/point-*.json`: `point-operating.json` and
-`point-not-found.json` keep the recorded shape of real answers with every
-human-language value (address, location description, display name) replaced by
-an English placeholder, and the `*.derived.json` files change only `status`,
-`type` or `functions`.
+parses the answer strictly: only a body `{"status":404,"key":"point_not_found"}`
+means not found, whether it comes with HTTP 200 (what the carrier sends for an
+unknown code) or HTTP 404. Any other HTTP 404, such as the
+`{"status":404,"error":"routing_not_found"}` answer the host gives for a path it
+does not route, any other status, a timeout, a network error, a body that does
+not parse or an answer for another point mean the carrier is unavailable.
+Recorded answers live in `adapters/shipx/fixtures/`: `point-operating.json`, `point-not-found.json`
+and `routing-not-found.json` keep the recorded shape of real answers with every
+human-language value (address, location description, display name, error
+message) replaced by an English placeholder, and the `point-*.derived.json`
+files change only `status`, `type` or `functions`.
 
 A point is usable only when `status` is exactly `Operating` (`NonOperating`,
 `Disabled`, `Removed` and any other value refuse it), its `type` includes

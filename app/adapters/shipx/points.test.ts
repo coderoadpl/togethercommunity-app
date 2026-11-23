@@ -35,9 +35,20 @@ describe('InPost points directory', () => {
     });
   });
 
-  it('reads the HTTP 200 not-found body and a real HTTP 404 as not found', async () => {
+  it('reads the not-found body as not found whether it comes with HTTP 200 or HTTP 404', async () => {
     expect(await directory(answering(() => json(fixture('point-not-found.json')))).lookup('ZZZ99999X')).toEqual({ kind: 'not_found' });
-    expect(await directory(answering(() => json('{"error":"Not found"}', 404))).lookup('ZZZ99999X')).toEqual({ kind: 'not_found' });
+    expect(await directory(answering(() => json(fixture('point-not-found.json'), 404))).lookup('ZZZ99999X')).toEqual({ kind: 'not_found' });
+  });
+
+  it.each([
+    ['the recorded routing error', () => json(fixture('routing-not-found.json'), 404)],
+    ['a bare 404', () => json('{"error":"Not found"}', 404)],
+    ['an empty 404', () => new Response(null, { status: 404 })],
+    ['a 404 over the size cap', () => json(`{"status":404,"key":"point_not_found","padding":"${'A'.repeat(70_000)}"}`, 404)],
+  ])('answers unavailable for %s instead of not found', async (_case, response) => {
+    const fetchImpl = answering(response);
+    expect(await directory(fetchImpl).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -95,6 +106,15 @@ describe('InPost points directory', () => {
     expect(await directory(answering(() => response)).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
     expect(cancelled).toBe(true);
     expect(pulled).toBeLessThanOrEqual(1);
+  });
+
+  it('gives up on a 404 body that never ends once the timeout fires', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => new Response(new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        init?.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+      },
+    }), { status: 404 }));
+    expect(await directory(fetchImpl, 10).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
   });
 
   it('answers unavailable for a network error without retrying', async () => {

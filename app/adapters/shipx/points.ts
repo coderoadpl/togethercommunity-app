@@ -58,7 +58,6 @@ const readBoundedText = async (response: Response): Promise<string | null> => {
 };
 
 const readPoint = (code: string, body: unknown): PickupPointLookup => {
-  if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
   const point = wirePointSchema.safeParse(body);
   if (!point.success || normalizePickupPointCode(point.data.name) !== code) return UNAVAILABLE;
   return {
@@ -90,16 +89,15 @@ export const createInpostPointsDirectory = (options: InpostPointsDirectoryOption
           redirect: 'error',
           signal: controller.signal,
         });
-        if (response.status === 404) {
-          await response.body?.cancel();
-          return NOT_FOUND;
-        }
-        if (response.status !== 200) {
+        if (response.status !== 200 && response.status !== 404) {
           await response.body?.cancel();
           return UNAVAILABLE;
         }
         const text = await readBoundedText(response);
-        return text === null ? UNAVAILABLE : readPoint(code, parseJson(text));
+        if (text === null) return UNAVAILABLE;
+        const body = parseJson(text);
+        if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
+        return response.status === 200 ? readPoint(code, body) : UNAVAILABLE;
       } catch {
         return UNAVAILABLE;
       } finally {

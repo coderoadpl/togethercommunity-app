@@ -17,6 +17,7 @@ import { createRefundProviderFake, type RefundProviderStep } from '#core/server/
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 
 import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
+import { deadlockDetected, uniqueViolation } from './pg-errors.js';
 import { createRefundJobQueue } from './refund-job-queue.js';
 import { createMemberRepository, createOrderRepository } from './repositories.js';
 import {
@@ -203,6 +204,51 @@ describe('staff refunds against a real database', () => {
       expect(await requested).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('Another refund of this order is still waiting') } });
     } finally {
       await holder.query('ALTER TABLE order_staff_refunds ENABLE TRIGGER order_staff_refunds_record_status');
+      await holder.end();
+      await observer.end();
+    }
+  });
+
+  it('lets a status check reopen a staff refund while a refund request of the same order is being saved without a deadlock', async () => {
+    const h = harness();
+    await insertOrder('order-2');
+    await database.db.insert(orderStaffRefunds).values({
+      id: 'reopened', tenantId: 'tenant-a', orderId: 'order-1', paymentIntentId: 'pi_order-1', amountCents: 1000, currency: 'PLN', kind: 'remainder',
+      requestKey: 'req-reopened', idempotencyKey: 'staff-refund-reopened', status: 'submitted', requestedByUserId: 'staff', requestedByEmail: 'staff@example.com',
+      submittedAt: start, lockedAt: minutes(1), createdAt: start, updatedAt: start,
+    });
+    const holder = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    await observer.connect();
+    const lockWaiters = async (count: number) => {
+      for (;;) {
+        const waiting = await observer.query<{ count: number }>("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+        if ((waiting.rows[0]?.count ?? 0) >= count) return;
+      }
+    };
+    try {
+      await holder.query('BEGIN');
+      await holder.query(
+        `INSERT INTO order_staff_refunds (id, tenant_id, order_id, payment_intent_id, amount_cents, currency, kind, request_key, idempotency_key, status,
+          requested_by_user_id, requested_by_email, created_at, updated_at)
+         VALUES ('held', 'tenant-a', 'order-2', 'pi_order-2', 1000, 'PLN', 'remainder', 'req-1', 'staff-refund-held', 'failed', 'staff', 'staff@example.com', $1, $1)`,
+        [start],
+      );
+      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500 });
+      await lockWaiters(1);
+      const reopened = createRefundJobQueue(database.db)
+        .release('tenant-a', 'reopened', { status: 'submitted', lockedAt: minutes(1), source: 'staff' }, { status: 'pending', nextAttemptAt: minutes(2), now: minutes(2) })
+        .then((row) => ({ row }), (error: unknown) => ({ error }));
+      await lockWaiters(2);
+      await holder.query('ROLLBACK');
+
+      const [request, reopen] = await Promise.all([requested, reopened]);
+      expect(request).toMatchObject({ ok: true, value: { created: true, refund: { status: 'pending', amountCents: 500 } } });
+      expect('error' in reopen && deadlockDetected(reopen.error)).toBe(false);
+      expect('error' in reopen && uniqueViolation(reopen.error, 'order_staff_refunds_tenant_order_waiting_uidx')).toBe(true);
+      expect(Object.fromEntries((await refundRows('order-1')).map((row) => [row.id, row.status]))).toStrictEqual({ reopened: 'submitted', [unwrap(request).refund.id]: 'pending' });
+    } finally {
       await holder.end();
       await observer.end();
     }

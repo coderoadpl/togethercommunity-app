@@ -3,6 +3,7 @@ import { and, asc, count, eq, inArray, isNull, lt, lte, ne } from 'drizzle-orm';
 import { STAFF_REFUND_WAITING_STATUSES, type ClaimedRefundJob } from '#core/domain/index.js';
 import type { RefundJobQueue } from '#core/server/index.js';
 
+import { orders } from './app-schema.js';
 import type { Db } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
@@ -80,6 +81,13 @@ export const createRefundJobQueue = (db: Db): RefundJobQueue => ({
     }
     const { now, ...fields } = update;
     return db.transaction(async (tx) => {
+      const [owner] = await tx.select({ orderId: orderStaffRefunds.orderId }).from(orderStaffRefunds)
+        .where(and(eq(orderStaffRefunds.tenantId, tenantId), eq(orderStaffRefunds.id, jobId)));
+      if (owner === undefined) return null;
+      // A refund request locks the order before it saves its refund; the status trigger then locks the same order, so take it first.
+      await tx.select({ id: orders.id }).from(orders)
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.id, owner.orderId)))
+        .for('update');
       const [row] = await tx.update(orderStaffRefunds)
         .set({ ...fields, lockedAt: null, updatedAt: now })
         .where(and(

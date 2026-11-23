@@ -38,7 +38,7 @@ const nodeFiles = (writesAtMost: (call: number) => number, written: { bytes: num
       close: () => handle.close(),
     };
   },
-  linkNew: async (from, to) => { await writeFile(to, await readFile(from), { flag: 'wx' }); },
+  linkUnlessTaken: async (from, to) => { await writeFile(to, await readFile(from), { flag: 'wx' }); },
   replace: async (from, to) => { await writeFile(to, await readFile(from)); },
   remove: (path) => rm(path, { force: true }),
 });

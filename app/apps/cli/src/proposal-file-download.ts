@@ -25,8 +25,7 @@ interface ProposedFileHandle {
 export interface ProposedFileSystem {
   exists(path: string): Promise<boolean>;
   openExclusive(path: string): Promise<ProposedFileHandle>;
-  /** Fails with `EEXIST` when `to` exists, and never changes it then. */
-  linkNew(from: string, to: string): Promise<void>;
+  linkUnlessTaken(from: string, to: string): Promise<void>;
   replace(from: string, to: string): Promise<void>;
   remove(path: string): Promise<void>;
 }
@@ -34,7 +33,7 @@ export interface ProposedFileSystem {
 const nodeFileSystem: ProposedFileSystem = {
   exists: (path) => access(path).then(() => true, () => false),
   openExclusive: (path) => open(path, 'wx', 0o600),
-  linkNew: (from, to) => link(from, to),
+  linkUnlessTaken: (from, to) => link(from, to),
   replace: (from, to) => rename(from, to),
   remove: (path) => rm(path, { force: true }),
 };
@@ -91,7 +90,7 @@ const settle = async (temporary: string, out: string, force: boolean, files: Pro
       await files.replace(temporary, out);
       return ok(undefined);
     }
-    await files.linkNew(temporary, out);
+    await files.linkUnlessTaken(temporary, out);
     return ok(undefined);
   } catch (cause) {
     return err(errorCode(cause) === 'EEXIST' ? refusedOverwrite(out) : unavailable(`Could not move the download onto ${out}; it was not changed`));

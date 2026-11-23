@@ -59,7 +59,7 @@ Product files live under the workspace's private download prefix:
 | Prefix | Holds | Served |
 |---|---|---|
 | `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
-| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included, and once more a day after the upload started, so a `PUT` accepted before the URL expired that finishes after the sweep does not stay |
+| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included, and once more a day after the upload URL expired (a day and 15 minutes after the upload started), so a `PUT` accepted before the URL expired that finishes after the sweep does not stay |
 | `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never to a key or a buyer while staged; the verified owner gets a 60-second signed download of one a pending change proposal holds ([Download files](change-proposals.md#download-files)); an attached file is served like any other product file |
 
 A key writes only its own `key-uploads/` object, through the presigned `PUT`
@@ -81,11 +81,13 @@ Who deletes them:
   a record with no attempt, a completed one or one that failed definitely
   needs only the 20 minutes. When the
   sweep settles the record it records, in the same transaction, an owed
-  deletion of the upload object that is due a day after the upload started, and
-  deletes it once more then, whether or not an object is there. Until it is
-  due, that owed deletion is not counted against the staging limits: the daily
-  limit still counts the upload's declared bytes for that day; once due, it
-  counts until the storage confirms the delete;
+  deletion of the upload object that is due a day after the upload URL
+  expired (a day and 15 minutes after the upload started), and deletes it once
+  more then, whether or not an object is there. Until it is due, that owed
+  deletion is not counted against the staging limits: the daily limit still
+  counts the upload's declared bytes for the day after the upload started,
+  which leaves those bytes uncounted for the last 15 minutes before the delete
+  is due; once due, it counts until the storage confirms the delete;
 - a `key-files/` object that is still staged: a completion or copy that wrote
   it and then failed for a definite reason; the key's discard, also of a file a
   pending proposal holds (an approval of that proposal then ends `stale`);
@@ -119,7 +121,7 @@ Who deletes them:
 Every staged or upload object is owned by a database row: an upload or copy
 record (its upload object, and its destination until a completion hands it to a
 staged row), a staged file, or an owed deletion (the upload object of a settled
-upload included, until its second delete a day after the upload started). The
+upload included, until its second delete a day after its upload URL expired). The
 exception is a provider write that lands later than the assumptions at the end
 of this section allow: such an object has no row and only the storage orphan
 report lists it. Every storage delete of such an object (the cleanup after a

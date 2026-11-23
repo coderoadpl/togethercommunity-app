@@ -514,7 +514,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
           apiKeyId: row.apiKeyId,
           sizeBytes: row.declaredBytes,
           createdAt: now,
-          notBefore: after(row.createdAt, KEY_DOWNLOAD_FILE_LIMITS.uploadObjectDeleteAgainAfterMs),
+          notBefore: after(row.createdAt, KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000 + KEY_DOWNLOAD_FILE_LIMITS.uploadObjectDeleteAgainAfterMs),
         }).onConflictDoNothing();
       }
       await tx.update(records).set({ state: 'settled', candidateKey: null, stagedKey: null }).where(recordOf(tenantId, uploadId));

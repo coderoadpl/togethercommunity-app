@@ -604,7 +604,7 @@ describe('the staging budget', () => {
     expect(await beginKeyDownloadUpload(keyCtx(), upload, h.deps)).toMatchObject({ ok: true });
   });
 
-  it('owes the upload object of a settled upload a second delete a day after the upload started, so a PUT that finishes after the sweep does not stay', async () => {
+  it('owes the upload object of a settled upload a second delete a day after its upload URL expired, so a PUT accepted before that expiry that finishes after the sweep does not stay', async () => {
     const h = harness();
     const { id, candidate } = await h.begin(PDF);
     h.objects.objects.delete(candidate);
@@ -612,15 +612,19 @@ describe('the staging budget', () => {
     await sweepKeyDownloadFiles(h.deps);
     expect(await recordStates()).toEqual(['settled']);
     expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([expect.objectContaining({
-      objectKey: candidate, apiKeyId: KEY_ID, sizeBytes: PDF.byteLength, notBefore: '2026-03-02T10:00:00.000Z',
+      objectKey: candidate, apiKeyId: KEY_ID, sizeBytes: PDF.byteLength, notBefore: '2026-03-02T10:15:00.000Z',
     })]);
-    h.objects.objects.set(candidate, { bytes: PDF, contentType: 'application/pdf' });
     expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
     await database.db.delete(changeProposalDownloadUploads).where(ne(changeProposalDownloadUploads.id, id));
-    h.clock.now = '2026-03-02T09:59:00.000Z';
+    h.clock.now = '2026-03-02T10:00:00.000Z';
+    await sweepKeyDownloadFiles(h.deps);
+    h.clock.now = '2026-03-02T10:05:00.000Z';
+    h.objects.objects.set(candidate, { bytes: PDF, contentType: 'application/pdf' });
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(candidate)).toEqual([candidate]);
-    h.clock.now = '2026-03-02T10:00:00.000Z';
+    expect(await owedRows()).toEqual([]);
+    expect(await database.db.select({ objectKey: changeProposalDownloadDeletions.objectKey }).from(changeProposalDownloadDeletions)).toEqual([{ objectKey: candidate }]);
+    h.clock.now = '2026-03-02T10:15:00.000Z';
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(candidate)).toEqual([]);
     expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([]);

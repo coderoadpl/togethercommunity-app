@@ -652,9 +652,10 @@ scopes on every shop key.
   until the minute sweep deletes it, once the record is 20 minutes old and
   30 minutes have passed since that attempt started, because the storage may
   still write it until then. Settling an upload also owes its upload object a
-  second delete a day after the upload started, so a `PUT` the storage
+  second delete a day after the upload URL expired, so a `PUT` the storage
   accepted before the URL expired and finished after the sweep does not stay;
-  the daily limit counts those bytes until then. A key attaches only files it staged itself, and no route
+  the daily limit counts those bytes for the day after the upload started and
+  the owed delete from when it is due. A key attaches only files it staged itself, and no route
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the
@@ -666,7 +667,7 @@ scopes on every shop key.
   Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
   by what the key attached before and by the upload objects whose second
-  delete, a day after their upload started, is due and not yet confirmed (an
+  delete, a day after their upload URL expired, is due and not yet confirmed (an
   upload object written again after the first delete is not counted before
   then); a new upload or copy is refused only while its own share does not fit
   beside that debt. A completion's or a copy's source check (its size and

@@ -817,8 +817,9 @@ checked is counted once. The byte limits count staged files, objects whose
 deletion is still owed, and each object an upload or a copy still owns at its
 declared size: the upload object of an upload until the minute sweep settles
 it, at the earliest 20 minutes after it started (a still valid upload URL can
-write it again until then), and again from a day after it started while the
-sweep's second delete of it is not confirmed, and the staged copy of an upload or a copy until a
+write it again until then), and again from a day after its upload URL expired
+(a day and 15 minutes after it started) while the sweep's second delete of it
+is not confirmed, and the staged copy of an upload or a copy until a
 completion hands it to a staged file or a delete of it is confirmed (by the
 failed attempt, or by the minute sweep when the attempt's outcome was
 unknown); the destination of an attempt that a later completion took over
@@ -833,7 +834,7 @@ usage can exceed a limit by what it attached before; a new upload or copy is
 refused only when its own share does not fit beside that debt, so a small debt
 does not block a start that still fits. The limits count rows, not the bucket:
 an upload object that a still valid URL writes again after the sweep's first
-delete is not counted until a day after its upload started, when the owed
+delete is not counted until a day after its upload URL expired, when the owed
 second delete of it counts again, so the objects in the bucket can exceed a
 limit meanwhile and the counted usage can rise above a limit then without any
 new start or attach. The 24-hour limit counts every upload and copy

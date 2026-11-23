@@ -458,11 +458,17 @@ const routeRows = (): PermissionRow[] =>
       };
     });
 
+export interface KeyModeCapabilities {
+  direct: readonly Capability[];
+  propose: readonly Capability[];
+}
+
 export interface CollectedUseCase {
   name: string;
   file: string;
   capability: Capability;
   organizationContext?: true;
+  keyModes?: KeyModeCapabilities;
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
@@ -490,18 +496,15 @@ const authorizationCallNames = new Set([
 
 const capabilityArgumentIndex = (callName: string): number => callName === 'authorizeOrganization' ? 2 : 1;
 
-const sameFileGuardCapabilities: Readonly<Record<string, Capability>> = { stagingKey: 'product:write' };
+const sameFileKeyModeGuards: Readonly<Record<string, KeyModeCapabilities>> = {
+  stagingKey: { direct: ['product:write'], propose: ['proposal:asset:upload', 'proposal:submit:catalog'] },
+};
 
-const capabilityFromBody = (
-  body: ts.ConciseBody,
-  subject: string,
-): Capability => {
+const authorizationCapabilities = (node: ts.Node, subject: string): Capability[] => {
   const capabilities: Capability[] = [];
-  const visit = (node: ts.Node): void => {
-    const guarded = ts.isCallExpression(node) && ts.isIdentifier(node.expression) ? sameFileGuardCapabilities[node.expression.text] : undefined;
-    if (guarded !== undefined) capabilities.push(guarded);
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && authorizationCallNames.has(node.expression.text)) {
-      const argument = node.arguments[capabilityArgumentIndex(node.expression.text)];
+  const visit = (child: ts.Node): void => {
+    if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && authorizationCallNames.has(child.expression.text)) {
+      const argument = child.arguments[capabilityArgumentIndex(child.expression.text)];
       if (argument !== undefined && ts.isStringLiteral(argument)) {
         const capability = CAPABILITIES.find((candidate) => candidate === argument.text);
         if (capability === undefined) {
@@ -510,22 +513,112 @@ const capabilityFromBody = (
         capabilities.push(capability);
       }
     }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return capabilities;
+};
+
+const isKeyModeTest = (node: ts.Expression): boolean =>
+  ts.isBinaryExpression(node)
+  && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+  && ts.isPropertyAccessExpression(node.left)
+  && node.left.name.text === 'mode'
+  && ts.isStringLiteral(node.right)
+  && node.right.text === 'direct';
+
+const keyModeBranches = (body: ts.Node): ts.ConditionalExpression[] => {
+  const found: ts.ConditionalExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isConditionalExpression(node) && isKeyModeTest(node.condition)) found.push(node);
     ts.forEachChild(node, visit);
   };
   visit(body);
+  return found;
+};
+
+const sameCapabilities = (left: readonly Capability[], right: readonly Capability[]): boolean => left.join(',') === right.join(',');
+
+const keyModeGuardOf = (
+  name: string,
+  helpers: ReadonlyMap<string, ts.ConciseBody>,
+  subject: string,
+): KeyModeCapabilities => {
+  const expected = sameFileKeyModeGuards[name];
+  if (expected === undefined) throw new Error(`${subject} calls the unknown key mode guard ${name}`);
+  const body = helpers.get(name);
+  if (body === undefined) throw new Error(`${subject} calls ${name}, which its own file must declare`);
+  const branches = keyModeBranches(body);
+  const branch = branches[0];
+  const found = branches.length === 1 && branch !== undefined
+    ? { direct: authorizationCapabilities(branch.whenTrue, subject), propose: authorizationCapabilities(branch.whenFalse, subject) }
+    : null;
+  if (found === null || !sameCapabilities(found.direct, expected.direct) || !sameCapabilities(found.propose, expected.propose)) {
+    throw new Error(
+      `${subject}: ${name} must branch once on the key mode and authorize ${expected.direct.join(' + ')} for a direct-mode key `
+      + `and ${expected.propose.join(' + ')} for a propose-mode key; found ${found === null ? 'no single key mode branch' : `${found.direct.join(' + ') || 'none'} and ${found.propose.join(' + ') || 'none'}`}`,
+    );
+  }
+  return expected;
+};
+
+interface BodyAuthorization {
+  capability: Capability;
+  keyModes?: KeyModeCapabilities;
+}
+
+const capabilityFromBody = (
+  body: ts.ConciseBody,
+  subject: string,
+  helpers: ReadonlyMap<string, ts.ConciseBody> = new Map(),
+): BodyAuthorization => {
+  const guards: KeyModeCapabilities[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text in sameFileKeyModeGuards)) {
+      guards.push(keyModeGuardOf(node.expression.text, helpers, subject));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  const capabilities = authorizationCapabilities(body, subject);
+  const guard = guards[0];
+  if (guard !== undefined) {
+    const extra = subject === 'key-download-files.ts#copyKeyDownloadFile' && sameCapabilities(capabilities, ['product:read']) ? capabilities : [];
+    if (guards.length !== 1 || capabilities.length !== extra.length) {
+      throw new Error(`${subject} must authorize through exactly one key mode guard; found ${String(guards.length)} guards and ${capabilities.join(', ') || 'no other capability'}`);
+    }
+    const keyModes = { direct: [...guard.direct, ...extra], propose: [...guard.propose, ...extra] };
+    const capability = keyModes.direct[0];
+    if (capability === undefined) throw new Error(`${subject} has no authorization capability`);
+    return { capability, keyModes };
+  }
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
   const proposalFamilyChoice = ['change-proposals.ts#submitChangeProposal', 'change-proposal-groups.ts#submitGroupedChangeProposal'].includes(subject) && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
-  const proposalImageUpload = /^change-proposal-images\.ts#(?:begin|complete)Proposed(?:ProductCover|BrandingAsset)Upload$/u.test(subject)
-    && ['proposal:asset:upload,proposal:submit:catalog', 'proposal:asset:upload,proposal:submit:settings'].includes(capabilities.join(','));
-  const keyDownloadCopy = subject === 'key-download-files.ts#copyKeyDownloadFile' && capabilities.join(',') === 'product:write,product:read';
-  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice && !proposalImageUpload && !keyDownloadCopy) {
+  const imageFamily = /^change-proposal-images\.ts#(?:begin|complete)Proposed(ProductCover|BrandingAsset)Upload$/u.exec(subject)?.[1];
+  const proposalImageUpload = imageFamily !== undefined
+    && capabilities.join(',') === `proposal:asset:upload,${imageFamily === 'ProductCover' ? 'proposal:submit:catalog' : 'proposal:submit:settings'}`;
+  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice && !proposalImageUpload) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );
   }
   const capability = capabilities[0];
   if (capability === undefined) throw new Error(`${subject} has no authorization capability`);
-  return capability;
+  return { capability };
+};
+
+const sameFileHelpers = (sourceFile: ts.SourceFile): Map<string, ts.ConciseBody> => {
+  const helpers = new Map<string, ts.ConciseBody>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement) || hasExportModifier(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const initializer = declaration.initializer;
+      if (ts.isIdentifier(declaration.name) && initializer !== undefined && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))) {
+        helpers.set(declaration.name.text, initializer.body);
+      }
+    }
+  }
+  return helpers;
 };
 
 const hasExportModifier = (node: ts.Node): boolean =>
@@ -572,6 +665,7 @@ export const collectUseCasesInSource = (
 ): CollectedUseCase[] => {
   const found: CollectedUseCase[] = [];
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const helpers = sameFileHelpers(sourceFile);
   sourceFile.statements.forEach((statement) => {
     if (ts.isFunctionDeclaration(statement) && hasExportModifier(statement) && statement.name !== undefined) {
       const subject = `${file}#${statement.name.text}`;
@@ -598,7 +692,7 @@ export const collectUseCasesInSource = (
         found.push({
           name: declaration.name.text,
           file,
-          capability: capabilityFromBody(initializer.body, subject),
+          capability: capabilityFromBody(initializer.body, subject).capability,
           organizationContext: true,
         });
         return;
@@ -614,10 +708,12 @@ export const collectUseCasesInSource = (
         }
         return;
       }
+      const authorization = capabilityFromBody(initializer.body, subject, helpers);
       found.push({
         name: declaration.name.text,
         file,
-        capability: capabilityFromBody(initializer.body, subject),
+        capability: authorization.capability,
+        ...(authorization.keyModes === undefined ? {} : { keyModes: authorization.keyModes }),
       });
     });
   });

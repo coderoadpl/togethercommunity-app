@@ -499,6 +499,50 @@ describe('use-case shape probe', () => {
     ]);
   });
 
+  const STAGING_KEY = `
+    const stagingKey = (ctx: Ctx) => {
+      const actor = ctx.machineActor;
+      if (actor === undefined) return err(forbidden('Keys only'));
+      return actor.mode === 'direct'
+        ? authorizeTenant(ctx, 'product:write')
+        : bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:catalog'));
+    };
+  `;
+  const STAGING_USE_CASE = `
+    export const stageThing = async (ctx: Ctx) => stagingKey(ctx);
+  `;
+
+  it('reads both mode branches of the staging guard it resolves in the same file', () => {
+    expect(collectUseCasesInSource('probe.ts', `${STAGING_KEY}${STAGING_USE_CASE}`)).toEqual([{
+      name: 'stageThing', file: 'probe.ts', capability: 'product:write',
+      keyModes: { direct: ['product:write'], propose: ['proposal:asset:upload', 'proposal:submit:catalog'] },
+    }]);
+  });
+
+  it.each([
+    ['declared in another file', STAGING_USE_CASE],
+    ['missing its propose-mode guard', `${STAGING_KEY.replace("bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:catalog'))", "authorizeTenant(ctx, 'proposal:asset:upload')")}${STAGING_USE_CASE}`],
+    ['missing its direct-mode guard', `${STAGING_KEY.replace("authorizeTenant(ctx, 'product:write')", 'ok(ctx.identity.tenantId)')}${STAGING_USE_CASE}`],
+    ['an unrelated helper of the same name', `const stagingKey = (ctx: Ctx) => ok(ctx.identity.tenantId);${STAGING_USE_CASE}`],
+    ['branching on something other than the key mode', `${STAGING_KEY.replace("actor.mode === 'direct'", "actor.kind === 'direct'")}${STAGING_USE_CASE}`],
+  ])('refuses a staging guard %s', (_label, source) => {
+    expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(/stagingKey/u);
+  });
+
+  it.each([
+    ['ProductCover', 'proposal:submit:catalog', 'proposal:submit:settings'],
+    ['BrandingAsset', 'proposal:submit:settings', 'proposal:submit:catalog'],
+  ])('binds the %s proposal upload to its own submission capability', (family, own, other) => {
+    const source = (capability: string) => `
+      export const beginProposed${family}Upload = (ctx: Ctx) =>
+        bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, '${capability}'));
+    `;
+    expect(collectUseCasesInSource('change-proposal-images.ts', source(own))).toEqual([
+      { name: `beginProposed${family}Upload`, file: 'change-proposal-images.ts', capability: 'proposal:asset:upload' },
+    ]);
+    expect(() => collectUseCasesInSource('change-proposal-images.ts', source(other))).toThrow(/exactly one authorization capability/u);
+  });
+
   it('classifies organization use-cases by the capability given to authorizeOrganization', () => {
     const source = `
       export const getOrganizationThing = async (octx: OrganizationCtx, input: { organizationId: string }) =>

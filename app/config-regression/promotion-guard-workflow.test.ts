@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { defaultWaitPolicy } from '../scripts/promotion-guard.js';
+
 const workflowSchema = z.object({
   permissions: z.record(z.string()),
   on: z.object({
@@ -17,6 +19,7 @@ const workflowSchema = z.object({
     'promotion-guard': z.object({
       name: z.string(),
       permissions: z.record(z.string()),
+      'timeout-minutes': z.number(),
       steps: z.array(z.object({
         name: z.string().optional(),
         uses: z.string().optional(),
@@ -64,6 +67,14 @@ describe('promotion guard workflow', () => {
       group: 'promotion-guard-${{ github.event.pull_request.number }}',
       'cancel-in-progress': true,
     });
+  });
+
+  it('gives the job time to wait for the staging runs with margin', () => {
+    const boundMinutes = defaultWaitPolicy.boundMs / 60_000;
+
+    expect(boundMinutes).toBe(40);
+    expect(job['timeout-minutes']).toBe(50);
+    expect(job['timeout-minutes']).toBeGreaterThanOrEqual(boundMinutes + 5);
   });
 
   it('checks out full history without persisted credentials', () => {

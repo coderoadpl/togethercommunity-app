@@ -59,6 +59,15 @@ the head branch is `staging`, the head SHA still matches `origin/staging`, and
 `STAGING_FREEZE=true`. It also requires successful `ci.yml` and
 `staging-smoke.yml` runs for that exact staging SHA.
 
+When the source, tip and freeze checks pass but a required workflow has no
+successful run for the SHA yet, the guard waits and re-reads the runs every 30
+seconds instead of failing at once: up to 40 minutes while a run is still
+queued or in progress, and up to 3 minutes for a run that has not been created
+yet. A completed failing run is never waited on. After the wait it re-reads the
+staging tip and evaluates as before; the comment and the failure message say
+how long it waited and what was still unfinished. The job's 50-minute timeout
+covers the bound.
+
 The guard comment inventories the merged pull requests between `main` and the
 promotion head, added migrations under `app/drizzle`, changed top-level areas,
 and links to the staging runs it evaluated.

@@ -137,8 +137,11 @@ export interface KeyDownloadFileRepository {
   listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<KeyDownloadSweepBatch>;
   /** Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others. */
   markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string): Promise<void>;
-  /** Deletes settled records started before `settledStartedBefore`, which own no object, and events older than `eventsBefore`. */
-  purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs): Promise<number>;
+  /**
+   * Deletes up to `limit` settled records started before `settledStartedBefore`, which own no object, oldest first, and
+   * up to `limit` events older than `eventsBefore`; 0 when its lock wait ran out.
+   */
+  purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, lockWaitMs?: number): Promise<number>;
   /**
    * Read-only: whether every one of `ids` is a staged file of `apiKeyId` that no pending proposal unexpired at `now`
    * attaches. One answer for an unknown, another key's, discarded or attached file, so a key learns nothing more.

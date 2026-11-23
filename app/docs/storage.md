@@ -152,8 +152,12 @@ configure the bucket.
 The minute sweep never holds back e-mail and refund dispatch: the cron route
 runs it after them with an end 50 seconds after the tick started, 10 seconds
 before the 60-second function limit, and the Node ticker runs it beside them.
-It has a budget of 10 seconds of its own and stops at the earlier of the two
-ends. It starts a row only when what is left covers a lock wait of at least 250
+It has a budget of 10 seconds of its own. It starts no workspace and no row
+after the earlier of the two ends, and its lock waits and storage requests end
+by then. Its discovery, retention purge and listing statements are not bounded
+by either end; the retention purge of a workspace deletes at most 50 settled
+records and 50 expired events per run, oldest first, so a backlog is worked
+off over several runs. It starts a row only when what is left covers a lock wait of at least 250
 milliseconds and 1 second for each of the row's storage deletes (two for an
 upload record that still owns its upload object and its destination). The row's
 lock wait gets what is left minus those seconds, and each delete, the lookup of

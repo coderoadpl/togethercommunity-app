@@ -638,13 +638,20 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, wanted)));
       return rows.map(({ row, copiedFromTitle }) => ({ file: parseStaged(row), copiedFromTitle }));
     },
-    purgeSettled: (tenantId, cutoffs) => db.transaction(async (tx) => {
-      const purged = await tx.delete(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs)))
+    purgeSettled: (tenantId, cutoffs, limit, wait) => locked(async (tx) => {
+      const oldest = tx.select({ id: records.id }).from(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs)))
+        .orderBy(asc(records.createdAt), asc(records.id)).limit(limit);
+      const purged = await tx.delete(records).where(and(eq(records.tenantId, tenantId), inArray(records.id, oldest)))
         .returning({ tenantId: records.tenantId, id: records.id, apiKeyId: records.apiKeyId });
-      for (const row of purged) await appendEvent(tx, eventOf(row, 'purged', null, 'retention', cutoffs.now));
-      await tx.delete(recordEvents).where(and(eq(recordEvents.tenantId, tenantId), lt(recordEvents.at, cutoffs.eventsBefore)));
+      if (purged.length > 0) {
+        await tx.insert(recordEvents).values(purged.map((row) => keyDownloadRecordEventSchema.parse(eventOf(row, 'purged', null, 'retention', cutoffs.now))));
+      }
+      const expired = tx.select({ sequence: recordEvents.sequence }).from(recordEvents)
+        .where(and(eq(recordEvents.tenantId, tenantId), lt(recordEvents.at, cutoffs.eventsBefore)))
+        .orderBy(asc(recordEvents.sequence)).limit(limit);
+      await tx.delete(recordEvents).where(and(eq(recordEvents.tenantId, tenantId), inArray(recordEvents.sequence, expired)));
       return purged.length;
-    }),
+    }, 0, wait),
   };
 };
 

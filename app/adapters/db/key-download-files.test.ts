@@ -1069,6 +1069,27 @@ describe('the history of upload and copy records', () => {
     expect(await database.db.select().from(changeProposalDownloadUploadEvents)).toEqual([]);
   });
 
+  it('purges at most one batch of settled records and of expired events of a workspace per run, and the rest on later runs', async () => {
+    const h = harness();
+    const old = '2026-02-20T10:00:00.000Z';
+    await database.db.insert(changeProposalDownloadUploads).values([1, 2, 3].map((index) => ({
+      tenantId: TENANT, id: `settled-${String(index)}`, apiKeyId: KEY_ID, kind: 'upload' as const, state: 'settled' as const,
+      fileId: `settled-file-${String(index)}`, fileName: 'a.pdf', contentType: 'application/pdf' as const, declaredBytes: 10, createdAt: '2026-02-27T10:00:00.000Z',
+    })));
+    await database.db.insert(changeProposalDownloadUploadEvents).values([1, 2, 3].map((index) => ({
+      tenantId: TENANT, recordId: `gone-${String(index)}`, apiKeyId: KEY_ID, kind: 'purged' as const, reason: 'retention', at: '2026-01-01T10:00:00.000Z',
+    })));
+    const deps = { ...h.deps, batch: { tenants: 1, rows: 2 } };
+    const expiredEvents = async () => (await database.db.select().from(changeProposalDownloadUploadEvents)).filter((event) => event.at < old).length;
+    await sweepKeyDownloadFiles(deps);
+    expect(await database.db.select().from(changeProposalDownloadUploads)).toHaveLength(1);
+    expect(await expiredEvents()).toBe(1);
+    await sweepKeyDownloadFiles(deps);
+    expect(await database.db.select().from(changeProposalDownloadUploads)).toEqual([]);
+    expect(await expiredEvents()).toBe(0);
+    expect((await database.db.select().from(changeProposalDownloadUploadEvents)).filter((event) => event.kind === 'purged' && event.at === NOW)).toHaveLength(3);
+  });
+
   it('records the interruption of a copy whose storage answer is unknown with the attempt that made it', async () => {
     const h = harness();
     const original = `${TENANT}/product-downloads/${PRODUCT}/asset-owner/guide.pdf`;

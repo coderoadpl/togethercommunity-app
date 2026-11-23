@@ -452,7 +452,8 @@ const objectsOf = (row: KeyDownloadSweepRow): number => row.kind === 'record'
 
 const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, rows: number, left: SweepBudget, deps: KeyDownloadSweepDeps): Promise<number> => {
   const files = deps.keyDownloadFiles;
-  await files.purgeSettled(tenantId, cutoffs);
+  const purgeWait = sweepLockWait(left, 0);
+  if (purgeWait !== null) await files.purgeSettled(tenantId, cutoffs, rows, purgeWait);
   const batch = await files.listToSweep(tenantId, cutoffs, rows);
   if (batch.rows.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);

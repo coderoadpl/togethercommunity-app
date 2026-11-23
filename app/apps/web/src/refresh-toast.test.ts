@@ -2,12 +2,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '#core/client/index.js';
 
-// eslint-disable-next-line boundaries/element-types -- only the bound client marks a failure as network-stage, and the reporting policy must be tested on the real singleton
-import { actions } from './api.js';
 import { refreshToastStore } from './refresh-toast.js';
 
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 vi.mock('./observability.js', () => ({ reportError }));
+
+const { networkStage } = vi.hoisted(() => ({ networkStage: new WeakSet<object>() }));
+vi.mock(import('#core/client/index.js'), async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, apiFailureSource: (error) => (networkStage.has(error) ? 'network' : actual.apiFailureSource(error)) };
+});
+
+const networkFailure = (message: string): ApiError => {
+  const error = new ApiError({ code: 'internal', message });
+  networkStage.add(error.appError);
+  return error;
+};
 
 const { queryClient } = await import('./query-client.js');
 
@@ -16,7 +26,6 @@ const failingQuery = async (error: Error): Promise<never> => {
 };
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   queryClient.clear();
   refreshToastStore.dismiss();
   reportError.mockClear();
@@ -58,13 +67,14 @@ describe('error reporting policy', () => {
   });
 
   it('does not report a parcel locker lookup that never reached the server, but reports the same failure on another query', async () => {
-    vi.stubGlobal('fetch', async () => {
-      throw new TypeError('Failed to fetch');
-    });
-    await expect(queryClient.fetchQuery({ ...actions.publicParcelLocker('WAW01M'), retry: false })).rejects.toBeInstanceOf(ApiError);
+    const lookup = networkFailure('Lookup never left the browser');
+    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: () => failingQuery(lookup), retry: false }))
+      .rejects.toThrow('Lookup never left the browser');
     expect(reportError).not.toHaveBeenCalled();
-    await expect(queryClient.fetchQuery({ ...actions.publicPaymentConfig, retry: false })).rejects.toBeInstanceOf(ApiError);
-    expect(reportError).toHaveBeenCalledOnce();
+    const elsewhere = networkFailure('Payment config never left the browser');
+    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: () => failingQuery(elsewhere), retry: false }))
+      .rejects.toThrow('Payment config never left the browser');
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(elsewhere);
   });
 
   it('still reports an unexpected parcel locker lookup failure and the same refusal on another query', async () => {

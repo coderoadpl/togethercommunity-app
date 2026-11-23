@@ -8,7 +8,7 @@ import {
 } from '#core/contract/index.js';
 import { ok, type AppError, type Result } from '#core/domain/index.js';
 
-import { ApiError, createApiClient, unwrap } from './http.js';
+import { ApiError, apiFailureSource, createApiClient, unwrap } from './http.js';
 import { publicParcelLockerQuery } from './queries.js';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
@@ -702,6 +702,18 @@ it('looks a parcel locker up by its encoded code alone', async () => {
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
   await expect(client.publicParcelLocker('WAW01M?x=1')).resolves.toEqual(ok({ status: 'unavailable' }));
+});
+
+it('marks a parcel locker lookup that never reached the server as a network-stage failure and a server refusal as server-stage', async () => {
+  const offline = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  const unreachable = await offline.publicParcelLocker('WAW01M');
+  expect(unreachable.ok ? null : apiFailureSource(unreachable.error)).toBe('network');
+  const refusing = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => jsonResponse({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, 429),
+  });
+  const refused = await refusing.publicParcelLocker('WAW01M');
+  expect(refused.ok ? null : apiFailureSource(refused.error)).toBe('server');
 });
 
 it('asks for a failed parcel locker lookup once even when the query client retries by default', async () => {

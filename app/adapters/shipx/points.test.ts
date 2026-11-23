@@ -111,6 +111,32 @@ describe('InPost points directory', () => {
     expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
   });
 
+  const withField = (field: string, value: string): string => {
+    const body = JSON.parse(fixture('point-operating.json')) as Record<string, unknown>;
+    return JSON.stringify({ ...body, [field]: value });
+  };
+  const withAddressLine = (value: string): string => {
+    const body = JSON.parse(fixture('point-operating.json')) as Record<string, unknown>;
+    return JSON.stringify({ ...body, address: { line1: value, line2: '00-001 Warsaw' } });
+  };
+
+  it.each([
+    ['a NUL in the location description', () => withField('location_description', `Next to the entrance${String.fromCharCode(0)}`)],
+    ['a lone surrogate in an address line', () => withAddressLine(`Main Street ${String.fromCharCode(0xd800)}`)],
+    ['a lone surrogate in a field the app does not read', () => withField('display_name', String.fromCharCode(0xdc00))],
+  ])('answers unavailable for an operating locker whose answer carries %s', async (_case, body) => {
+    const lookup = await directory(answering(() => json(body()))).lookup('KRA14A');
+    expect(lookup).toEqual({ kind: 'unavailable' });
+    expect(applyPickupPointLookup(typedSelection, lookup)).toEqual({
+      ok: true, value: { ...typedSelection, pickupPoint: { ...typedSelection.pickupPoint, verified: false } },
+    });
+  });
+
+  it('reads an answer with ordinary non-ASCII text and a paired surrogate', async () => {
+    const lookup = await directory(answering(() => json(withField('location_description', 'By the café 📦')))).lookup('KRA14A');
+    expect(lookup).toMatchObject({ kind: 'found', point: { locationDescription: 'By the café 📦' } });
+  });
+
   it('still reads a valid multi-byte character split across two chunks', async () => {
     const bytes = new TextEncoder().encode(fixture('point-operating.json').replace('Next to the main entrance', 'Next to the café'));
     const split = bytes.indexOf(0xc3) + 1;

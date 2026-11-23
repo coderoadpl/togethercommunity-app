@@ -5,6 +5,7 @@ import { newProductSchema, productSchema } from './product.js';
 import type { ProductCompliance } from './product-compliance.js';
 import {
   applyPickupPointLookup,
+  checkoutShippingInputSchema,
   deliveryMethodAllowed,
   hasActiveParcelLockerRate,
   inpostPointRejection,
@@ -19,6 +20,7 @@ import {
   SHIPPING_ALLOWED_COUNTRIES,
   shippingRateSchema,
   shippingRatesSchema,
+  storableText,
   type CheckoutShippingSelection,
   type InpostPoint,
   type ShippingRate,
@@ -123,6 +125,34 @@ describe('checkout shipping resolution', () => {
 
   it('reports a missing delivery selection with its own error code', () => {
     expect(resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, undefined)).toMatchObject({ ok: false, error: { code: 'shipping_required' } });
+  });
+
+  const nul = String.fromCharCode(0);
+  const loneHigh = String.fromCharCode(0xd800);
+  const loneLow = String.fromCharCode(0xdc00);
+
+  it.each([
+    ['ordinary non-ASCII text', 'Café Straße, Zürich 📦', true],
+    ['a NUL character', `Kiosk${nul}`, false],
+    ['a lone high surrogate', `Kiosk ${loneHigh}`, false],
+    ['a lone low surrogate', `${loneLow} Kiosk`, false],
+    ['a reversed surrogate pair', `${loneLow}${loneHigh}`, false],
+  ])('judges whether %s is storable', (_case, value, storable) => {
+    expect(storableText(value)).toBe(storable);
+  });
+
+  it('drops an unstorable map name or address the buyer sends and keeps the locker code', () => {
+    const parsed = checkoutShippingInputSchema.parse({
+      rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m', name: `Kiosk${nul}`, address: `Main Street ${loneHigh}` },
+    });
+    expect(parsed.pickupPoint).toMatchObject({ provider: 'inpost', code: 'WAW01M' });
+    expect(parsed.pickupPoint?.name).toBeUndefined();
+    expect(parsed.pickupPoint?.address).toBeUndefined();
+    expect(resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, parsed)).toMatchObject({ ok: true, value: {
+      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+    } });
+    expect(checkoutShippingInputSchema.parse({ rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Café' } }).pickupPoint)
+      .toMatchObject({ name: 'Café' });
   });
 });
 

@@ -306,8 +306,10 @@ parses the answer strictly: only a body `{"status":404,"key":"point_not_found"}`
 means not found, whether it comes with HTTP 200 (what the carrier sends for an
 unknown code) or HTTP 404. Any other HTTP 404, such as the
 `{"status":404,"error":"routing_not_found"}` answer the host gives for a path it
-does not route, any other status, a timeout, a network error, a body that does
-not parse or an answer for another point mean the carrier is unavailable.
+does not route, any other status, a timeout, a network error, a body that is
+not valid UTF-8 or does not parse, a body with a text value PostgreSQL cannot
+store in `jsonb` (U+0000 or an unpaired surrogate half, in any field) or an
+answer for another point mean the carrier is unavailable.
 Recorded answers live in `adapters/shipx/fixtures/`: `point-operating.json`,
 `point-not-found.json` and `routing-not-found.json` keep the recorded shape of real answers with every
 human-language value (address, location description, display name, error
@@ -337,7 +339,10 @@ the name and `address.line1, address.line2` as the address, built by
 `pickupPointDetails`, the same function that reads a map choice.
 
 When the carrier cannot be asked, the sale is not blocked: the code is kept as
-the buyer typed it and the stored pickup point gains `verified: false`, which
+the buyer typed it, with the map's name and address when the page sent them (a
+name or address with U+0000 or an unpaired surrogate half is dropped by
+`checkoutShippingInputSchema`, so it can never fail the snapshot write), and
+the stored pickup point gains `verified: false`, which
 Studio shows as **Locker not verified**. There is no staff e-mail for new
 orders, so the note appears only in Studio. Alternative considered: block
 payment when the locker cannot be verified.

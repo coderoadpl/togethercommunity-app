@@ -109,11 +109,17 @@ export const inpostGeowidgetPointSchema = z.object({
   address: z.object({ line1: z.string().nullish(), line2: z.string().nullish() }).nullish(),
 });
 
+const UNPAIRED_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+export const storableText = (value: string): boolean => !value.includes('\u0000') && !UNPAIRED_SURROGATE.test(value);
+
+const storableOrDropped = (value: string): string | undefined => (storableText(value) ? value : undefined);
+
 const checkoutPickupPointSchema = z.object({
   provider: z.literal('inpost'),
   code: pickupPointCodeSchema,
-  name: z.string().trim().min(1).max(200).optional(),
-  address: z.string().trim().min(1).max(300).optional(),
+  name: z.string().trim().min(1).max(200).transform(storableOrDropped).optional(),
+  address: z.string().trim().min(1).max(300).transform(storableOrDropped).optional(),
 });
 
 export const checkoutShippingInputSchema = z.object({

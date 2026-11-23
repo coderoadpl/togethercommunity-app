@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { normalizePickupPointCode, pickupPointCodeValid, type PickupPointLookup } from '#core/domain/index.js';
+import { normalizePickupPointCode, pickupPointCodeValid, storableText, type PickupPointLookup } from '#core/domain/index.js';
 import type { PickupPointDirectory } from '#core/server/index.js';
 
 const INPOST_POINTS_URL = 'https://api-shipx-pl.easypack24.net/v1/points/';
@@ -57,7 +57,17 @@ const readBoundedText = async (response: Response): Promise<string | null> => {
   return text + decoder.decode();
 };
 
+const storableJson = (value: unknown): boolean => {
+  if (typeof value === 'string') return storableText(value);
+  if (Array.isArray(value)) return value.every(storableJson);
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).every(([key, entry]) => storableText(key) && storableJson(entry));
+  }
+  return true;
+};
+
 const readPoint = (code: string, body: unknown): PickupPointLookup => {
+  if (!storableJson(body)) return UNAVAILABLE;
   const point = wirePointSchema.safeParse(body);
   if (!point.success || normalizePickupPointCode(point.data.name) !== code) return UNAVAILABLE;
   return {

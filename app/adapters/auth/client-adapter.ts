@@ -117,6 +117,35 @@ const retryAfterSecondsOf = (error: object): number | null => {
   return parsed.success ? parsed.data.error.details.retryAfterSeconds : null;
 };
 
+const retryAfterHeaderSchema = z.string().regex(/^\d+$/u).transform(Number).pipe(z.number().int().positive());
+
+const recordOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...value } : {};
+
+const parseJsonBody = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const withHeaderRetryAfter = async ({ response }: { response: Response }): Promise<Response | undefined> => {
+  if (response.status !== 429) return undefined;
+  const header = retryAfterHeaderSchema.safeParse(response.headers.get('x-retry-after'));
+  if (!header.success) return undefined;
+  const body = recordOf(parseJsonBody(await response.clone().text()));
+  if (retryAfterSecondsOf(body) !== null) return undefined;
+  const error = recordOf(body.error);
+  return new Response(
+    JSON.stringify({
+      ...body,
+      error: { ...error, details: { ...recordOf(error.details), retryAfterSeconds: header.data } },
+    }),
+    { status: response.status, statusText: response.statusText, headers: response.headers },
+  );
+};
+
 const toResult = <T>(
   value: T,
   error: { code?: string | undefined; message?: string | undefined; status: number } | null,
@@ -240,7 +269,7 @@ const postBrowserSignUp = async (
 export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<string, string>): AuthClientPort => {
   const client = createAuthClient({
     baseURL: baseUrl === '' ? undefined : baseUrl,
-    ...(headers === undefined ? {} : { fetchOptions: { headers } }),
+    fetchOptions: { onResponse: withHeaderRetryAfter, ...(headers === undefined ? {} : { headers }) },
     plugins: [magicLinkClient(), passkeyClient(), twoFactorClient()],
   });
 

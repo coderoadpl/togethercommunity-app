@@ -10,7 +10,7 @@ const carriesSessionCookie = (request: Request, sessionCookieName: string): bool
   if (cookie === null) return false;
   const cookies = parseCookies(cookie);
   const name = stripSecureCookiePrefix(sessionCookieName);
-  return Boolean(cookies.get(`__Secure-${name}`) ?? cookies.get(name));
+  return cookies.has(`__Secure-${name}`) || cookies.has(name);
 };
 
 const isBrowserRequest = (request: Request, sessionCookieName: string): boolean =>

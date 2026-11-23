@@ -29,8 +29,9 @@ on the platform host and on every workspace where the user has a role, which
 defeats the cookie's `HttpOnly` flag. The auth adapter (`adapters/auth/browser-session-token.ts`,
 applied to every Better Auth response by `createAuth`) therefore strips them
 from responses to browser requests. A request counts as a browser when it
-carries `Sec-Fetch-Site` or the Better Auth session cookie (with or without
-the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
+carries `Sec-Fetch-Site` or a cookie under the Better Auth session cookie name
+(with or without the `__Secure-` prefix, whatever its value, so an empty one
+under one name cannot mask the other). Current browsers send `Sec-Fetch-Site` on HTTPS and
 `localhost` origins, and page scripts cannot set or remove it; Chrome before
 76, Firefox before 90 and Safari before 16.4 (on macOS and iOS), browsers and
 in-app webviews built on those engine versions, and plain-HTTP local

@@ -2977,10 +2977,10 @@ export const en: Messages = {
     erasureHeading: 'Request account erasure',
     erasureIntro: 'Ask the team to erase your data in this community. Once the team completes the request:',
     erasureEffects: {
-      profile: 'Your name, email and picture are removed from your profile; your name, street and phone are erased from past orders.',
+      profile: 'Your name, email and picture are removed from your profile; the delivery name, street and phone are erased from past orders. Invoice details are kept.',
       posts: 'Your posts stay, signed as “Deleted account”.',
-      access: 'Your access to purchased content ends, and the team cancels your subscriptions with the payment provider.',
-      signIn: 'Your sign-in account is deleted too, unless it is still linked to another community or a team role.',
+      access: 'Your access to purchased content ends, and the team asks the payment provider to cancel your subscriptions.',
+      signIn: 'Your sign-in account is deleted too, unless it is still in use elsewhere on the platform.',
     },
     erasureDialogBody: ({ days }) =>
       `Sending the request removes nothing yet. The team reviews it and can complete or decline it; a response is due within ${days} ${plural(days, 'day', 'days')}. You can cancel the request while it is open. Download your data first if you want a copy.`,

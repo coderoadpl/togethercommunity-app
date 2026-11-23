@@ -186,8 +186,11 @@ describe('dispatch-ci workflow binding', () => {
   });
 
   it.each(manifest.afterGate)('runs %s only after the gate succeeded', (id) => {
+    const condition = String(job(id).if);
+
     expect(needsOf(id)).toEqual([manifest.gate]);
-    expect(String(job(id).if)).not.toMatch(/always\(\)|failure\(\)|cancelled\(\)|success\(\)/);
+    expect(condition).toContain(`needs.${manifest.gate}.result == 'success'`);
+    expect(condition).not.toContain('always()');
   });
 
   it('pins every action of the plan and gate jobs to a full commit SHA', () => {

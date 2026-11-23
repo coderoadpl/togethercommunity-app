@@ -453,7 +453,7 @@ jobs:
         run: node scripts/dispatch-ci.ts gate
 
   release-tag:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && needs.dispatch-ci.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: [dispatch-ci]
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -396,8 +396,8 @@ const deps = (input: {
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
-    ...unusedKeyDownloadRepositories(),
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
+    ...unusedKeyDownloadRepositories(),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
       commit: async () => 'saved',

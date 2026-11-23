@@ -1768,6 +1768,14 @@ export const approveChangeProposalMutation = (api: ApiClient) =>
     call: (input: { id: string }) => api.approveChangeProposal(input),
   });
 
+export const changeProposalFileLinkQuery = (api: ApiClient, input: { id: string; fileId: string }) =>
+  defineQuery({
+    queryKey: [...changeProposalScopes.all(), 'file-link', input.id, input.fileId],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.getChangeProposalFileLink(input, signal),
+  });
+
 export const changeProposalGroupQuery = (api: ApiClient, id: string) =>
   defineQuery({
     queryKey: changeProposalScopes.group(id),
@@ -1793,6 +1801,7 @@ export const approveChangeProposalInvalidates = () => [
   { queryKey: productsScopes.all() },
   { queryKey: productPricesScopes.all() },
   { queryKey: productStockScopes.all() },
+  { queryKey: productDownloadsScopes.all() },
   { queryKey: salesLinkScopes.all() },
   { queryKey: tenantSettingsScopes.all() },
 ];

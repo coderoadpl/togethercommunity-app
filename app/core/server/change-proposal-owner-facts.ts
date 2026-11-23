@@ -1,12 +1,19 @@
 import {
+  accessItemIds,
+  changeProposalAccessChange,
   changeProposalKeyState,
+  changeProposalStagedFileId,
   isChangeProposalReference,
+  type AccessItem,
   type ChangeProposal,
+  type ChangeProposalAccessLabels,
   type ChangeProposalOwnerFacts,
+  type ChangeProposalProposedFile,
   type ChangeProposalTargetPrice,
 } from '#core/domain/index.js';
 
 import { keyNamed } from './change-proposal-access.js';
+import type { KeyDownloadFileRepository } from './key-download-ports.js';
 import type {
   ChangeProposalGroupRepository,
   ChangeProposalPeopleReader,
@@ -20,6 +27,7 @@ export interface ChangeProposalOwnerViewDeps {
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'listByIds'>;
   changeProposalTargetLabels: ChangeProposalTargetLabelReader;
   changeProposalPeople: ChangeProposalPeopleReader;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed'>;
 }
 
 export interface ChangeProposalPersonFacts {
@@ -30,7 +38,7 @@ export interface ChangeProposalPersonFacts {
 
 type FactsSubject = Pick<
   ChangeProposal,
-  'operation' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
+  'id' | 'operation' | 'input' | 'effect' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
 >;
 
 const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest | null => {
@@ -39,14 +47,89 @@ const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest 
   const applied = proposal.status === 'applied' ? proposal.appliedResourceId : null;
   if (proposal.operation === 'price.create' && applied !== null) return { kind: 'price', id: applied };
   if (id !== null && !isChangeProposalReference(id)) return { kind, id };
-  if (proposal.operation === 'price.create' || applied === null) return null;
+  if (proposal.operation === 'price.create' || applied === null || changeProposalStagedFileId(proposal.operation, proposal.input) !== null) return null;
   return { kind, id: applied };
+};
+
+type ProposedFileSubject = Pick<ChangeProposal, 'id' | 'operation' | 'input' | 'proposedByKeyId'>;
+
+/** Display facts read at view time; `available` says whether the proposal still holds its staged file, not whether the storage has it. */
+const readProposedFiles = async (
+  tenantId: string,
+  proposals: readonly ProposedFileSubject[],
+  deps: Pick<ChangeProposalOwnerViewDeps, 'keyDownloadFiles'>,
+): Promise<(proposal: ProposedFileSubject) => ChangeProposalProposedFile[]> => {
+  const ids = proposals.flatMap((proposal) => {
+    const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+    return id === null ? [] : [id];
+  });
+  const rows = ids.length === 0 ? [] : await deps.keyDownloadFiles.listProposed(tenantId, ids);
+  return (proposal) => {
+    const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+    if (id === null) return [];
+    const row = rows.find((candidate) => candidate.file.id === id && candidate.file.apiKeyId === proposal.proposedByKeyId);
+    const source = row?.file.copiedFrom ?? null;
+    return [{
+      id,
+      available: row?.file.proposalId === proposal.id,
+      copiedFrom: source === null || row === undefined
+        ? null
+        : { productId: source.productId, productTitle: row.copiedFromTitle, versionNumber: source.versionNumber },
+    }];
+  };
 };
 
 const labelKey = ({ kind, id }: ChangeProposalTargetLabelRequest): string => `${kind}:${id}`;
 
 const distinct = (values: ReadonlyArray<string | null>): string[] =>
   [...new Set(values.filter((value): value is string => value !== null))];
+
+type AccessSubject = Pick<ChangeProposal, 'operation' | 'effect'>;
+
+type AccessModuleTitles = Awaited<ReturnType<ChangeProposalTargetLabelReader['accessTitles']>>['modules'];
+
+const accessItemsOf = (proposal: AccessSubject): AccessItem[] | null => {
+  const change = changeProposalAccessChange(proposal);
+  return change === null ? null : [...change.before, ...change.after];
+};
+
+const accessIdsOf = (proposal: AccessSubject) => {
+  const items = accessItemsOf(proposal);
+  return items === null ? null : accessItemIds(items);
+};
+
+const excludedModulesInOtherCourses = (items: readonly AccessItem[], modules: AccessModuleTitles): string[] =>
+  distinct(items.flatMap((item) => item.level !== 'course' ? [] : (item.excludedModuleIds ?? []).filter((moduleId) =>
+    modules.find((module) => module.id === moduleId)?.courseIds.some((courseId) => courseId !== item.courseId) === true)));
+
+/** Read at view time for display only; the titles never take part in a decision. */
+const readAccessLabels = async (
+  tenantId: string,
+  proposals: readonly AccessSubject[],
+  deps: Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'>,
+): Promise<(proposal: AccessSubject) => ChangeProposalAccessLabels | null> => {
+  const wanted = proposals.map(accessIdsOf).filter((ids) => ids !== null);
+  const titles = wanted.length === 0 ? null : await deps.changeProposalTargetLabels.accessTitles(tenantId, {
+    courseIds: distinct(wanted.flatMap((ids) => ids.courseIds)),
+    moduleIds: distinct(wanted.flatMap((ids) => ids.moduleIds)),
+    lessonIds: distinct(wanted.flatMap((ids) => ids.lessonIds)),
+  });
+  const labelled = (ids: readonly string[], found: ReadonlyArray<{ id: string; title: string }>) =>
+    ids.map((id) => ({ id, title: found.find((entry) => entry.id === id)?.title ?? null }));
+  return (proposal) => {
+    const items = accessItemsOf(proposal);
+    if (items === null || titles === null) return null;
+    const ids = accessItemIds(items);
+    const archivedCourses = titles.courses.filter((course) => course.archived && ids.courseIds.includes(course.id)).map((course) => course.id);
+    return {
+      courses: labelled(ids.courseIds, titles.courses),
+      modules: labelled(ids.moduleIds, titles.modules),
+      lessons: labelled(ids.lessonIds, titles.lessons),
+      excludedModulesInOtherCourses: excludedModulesInOtherCourses(items, titles.modules),
+      ...(archivedCourses.length === 0 ? {} : { archivedCourses }),
+    };
+  };
+};
 
 const FORMER_OR_UNKNOWN: ChangeProposalPersonFacts = { email: null, verifiedOwner: false, formerTeamMember: true };
 
@@ -84,6 +167,8 @@ export const changeProposalOwnerFacts = async (
     (requests.size === 0 ? [] : await deps.changeProposalTargetLabels.labels(tenantId, [...requests.values()]))
       .map((entry) => [labelKey(entry), { label: entry.label, price: entry.price }]),
   );
+  const proposedFilesOf = await readProposedFiles(tenantId, proposals, deps);
+  const accessLabelsOf = await readAccessLabels(tenantId, proposals, deps);
   const person = await readChangeProposalPeople(
     tenantId,
     [...proposals.flatMap((proposal) => [proposal.proposedByIssuerUserId, proposal.decidedByUserId]), ...otherPeople],
@@ -101,6 +186,8 @@ export const changeProposalOwnerFacts = async (
       decidedBy: { email: decider.email, formerTeamMember: decider.formerTeamMember },
       targetLabel: label?.label ?? null,
       targetPrice: label?.price ?? null,
+      proposedFiles: proposedFilesOf(proposal),
+      accessLabels: accessLabelsOf(proposal),
     };
   };
   return { factsOf, person };

@@ -7,8 +7,10 @@ import { ApiError } from '#core/client/index.js';
 import {
   CHANGE_PROPOSAL_LIMITS,
   changeProposalImageReferences,
+  changeProposalStagedFileId,
+  isChangeProposalFileMissingNote,
   isChangeProposalImageMissingNote,
-  knownChangeProposalOperation,
+  registeredChangeProposalOperation,
   type ChangeProposalEventView,
   type ChangeProposalGroupOwnerView,
   type ChangeProposalOwnerView,
@@ -21,7 +23,7 @@ import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { FinePrint, WrapAnywhereText } from '../../../theme.js';
-import { ApprovalImagesNote, ApprovalSummary } from './ProposalApproval.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences } from './ProposalApproval.js';
 import { ProposalFieldRows, ReferenceText, type StockNow } from './ProposalChanges.js';
 import {
   groupReferences,
@@ -36,12 +38,14 @@ type Translations = Messages['changeProposals'];
 
 export type SettledStatus = 'stale' | 'failed' | 'expired';
 
+export type MissingAsset = 'image' | 'file';
+
 export interface SettledOutcome {
   key: string;
   title: string;
   status: SettledStatus;
   reason: string | null;
-  imageUnavailable: boolean;
+  missing: MissingAsset | null;
 }
 
 export interface DecisionCallbacks {
@@ -56,18 +60,30 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null, imageUnavailable = false): string | null => {
-  if (status === 'stale') return imageUnavailable ? t.outcomeImageUnavailable : t.outcomeStale;
+const staleExplanation = (t: Translations, missing: MissingAsset | null): string => {
+  if (missing === 'image') return t.outcomeImageUnavailable;
+  return missing === 'file' ? t.outcomeFileUnavailable : t.outcomeStale;
+};
+
+export const outcomeExplanation = (t: Translations, status: string, reason: string | null, missing: MissingAsset | null = null): string | null => {
+  if (status === 'stale') return staleExplanation(t, missing);
   if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
   if (status === 'expired') return t.outcomeExpired;
   return null;
 };
 
-export const staleForMissingImage = (events: readonly ChangeProposalEventView[]): boolean =>
-  events.some((event) => event.kind === 'stale' && isChangeProposalImageMissingNote(event.note));
+export const missingAssetOf = (event: Pick<ChangeProposalEventView, 'kind' | 'note'>): MissingAsset | null => {
+  if (event.kind !== 'stale') return null;
+  if (isChangeProposalImageMissingNote(event.note)) return 'image';
+  return isChangeProposalFileMissingNote(event.note) ? 'file' : null;
+};
 
-export const mayBeStaleForMissingImage = (proposal: Pick<ChangeProposalOwnerView, 'status' | 'operation' | 'input'>): boolean =>
-  proposal.status === 'stale' && changeProposalImageReferences(proposal.operation, proposal.input).length > 0;
+export const staleForMissingAsset = (events: readonly ChangeProposalEventView[]): MissingAsset | null =>
+  events.map(missingAssetOf).find((missing) => missing !== null) ?? null;
+
+export const mayBeStaleForMissingAsset = (proposal: Pick<ChangeProposalOwnerView, 'status' | 'operation' | 'input'>): boolean =>
+  proposal.status === 'stale'
+  && (changeProposalImageReferences(proposal.operation, proposal.input).length > 0 || changeProposalStagedFileId(proposal.operation, proposal.input) !== null);
 
 const isSettledStatus = (status: string): status is SettledStatus =>
   status === 'stale' || status === 'failed' || status === 'expired';
@@ -187,14 +203,14 @@ export const ProposalBody = ({
   live,
   labelComponent,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target'>;
+  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target' | 'proposedFiles' | 'accessLabels'>;
   references?: GroupReferences;
   live: boolean;
   labelComponent: 'h3' | 'h4';
 }) => {
   const t = useTranslations().changeProposals;
   const stockNow = useStockNow(proposal, live);
-  const known = knownChangeProposalOperation(proposal.operation) !== null;
+  const known = registeredChangeProposalOperation(proposal.operation) !== null;
   return (
     <Stack useFlexGap spacing="0.75rem">
       {known ? null : (
@@ -312,15 +328,15 @@ const useDecisionFeedback = () => {
     }
     toast.error(localizePanelError(error, t));
   };
-  const imageUnavailable = async (decided: readonly ChangeProposalOwnerView[]): Promise<boolean> => {
+  const missingAsset = async (decided: readonly ChangeProposalOwnerView[]): Promise<MissingAsset | null> => {
     try {
-      const details = await Promise.all(decided.filter(mayBeStaleForMissingImage).map((item) => queryClient.fetchQuery(actions.changeProposal(item.id))));
-      return details.some((detail) => staleForMissingImage(detail.proposal.events));
+      const details = await Promise.all(decided.filter(mayBeStaleForMissingAsset).map((item) => queryClient.fetchQuery(actions.changeProposal(item.id))));
+      return details.map((detail) => staleForMissingAsset(detail.proposal.events)).find((missing) => missing !== null) ?? null;
     } catch {
-      return false;
+      return null;
     }
   };
-  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable };
+  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset };
 };
 
 const DecisionActions = ({
@@ -359,10 +375,10 @@ export const SingleProposalCard = ({
   onSettled,
   onDecided,
 }: { proposal: ChangeProposalOwnerView } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset } = useDecisionFeedback();
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const title = operationTitle(t.changeProposals, proposal.operation);
-  const known = knownChangeProposalOperation(proposal.operation) !== null;
+  const known = registeredChangeProposalOperation(proposal.operation) !== null;
 
   const approve = useMutation({
     ...actions.approveChangeProposal,
@@ -375,10 +391,10 @@ export const SingleProposalCard = ({
         return;
       }
       if (isSettledStatus(decided.status)) {
-        const missingImage = await imageUnavailable([decided]);
-        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missingImage);
+        const missing = await missingAsset([decided]);
+        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missing);
         if (explanation !== null) toast.info(explanation);
-        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, imageUnavailable: missingImage });
+        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, missing });
       }
     },
     onError: async (error) => {
@@ -465,7 +481,7 @@ export const GroupProposalCard = ({
   onSettled,
   onDecided,
 }: { groupId: string; itemCount: number } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, imageUnavailable } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset } = useDecisionFeedback();
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const [changed, setChanged] = useState<GroupChange | null>(null);
@@ -517,10 +533,10 @@ export const GroupProposalCard = ({
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
       const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
-      const missingImage = status === 'stale' && await imageUnavailable(decided.items);
-      const explanation = outcomeExplanation(t.changeProposals, status, reason, missingImage);
+      const missing = status === 'stale' ? await missingAsset(decided.items) : null;
+      const explanation = outcomeExplanation(t.changeProposals, status, reason, missing);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, imageUnavailable: missingImage });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, missing });
     },
     onError: groupFailed,
   });
@@ -536,8 +552,9 @@ export const GroupProposalCard = ({
   });
   const pending = approve.isPending || reject.isPending;
   const open = groupView?.status === 'open';
-  const approvable = open && items.length > 0 && items.every((item) => knownChangeProposalOperation(item.operation) !== null);
+  const approvable = open && items.length > 0 && items.every((item) => registeredChangeProposalOperation(item.operation) !== null);
   const references = groupReferences(items);
+  const shownItems = items.filter((item) => shownIds.includes(item.id));
 
   return (
     <SectionCard
@@ -587,7 +604,10 @@ export const GroupProposalCard = ({
         approveBody={(
           <>
             <Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>
-            <ApprovalImagesNote proposals={items.filter((item) => shownIds.includes(item.id))} group />
+            <GroupAccessSentences items={shownItems} references={references} />
+            <GroupFileSentences items={shownItems} references={references} />
+            <ApprovalImagesNote proposals={shownItems} group />
+            <ApprovalFilesNote proposals={shownItems} group />
           </>
         )}
         approveDisabled={group.isFetching || changed !== null}

@@ -1,8 +1,11 @@
-import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
+import { createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   changeProposalDownloadDeletions,
@@ -18,19 +21,22 @@ import {
   API_PATHS,
   API_ROUTES,
   apiKeysShopManagementCreateOutputSchema,
+  changeProposalApproveOutputSchema,
+  changeProposalProposedOutputSchema,
+  changeProposalShowOutputSchema,
   SHOP_CATALOG_ROUTES,
   SHOP_DOWNLOAD_ROUTES,
+  SHOP_PROPOSAL_ROUTES,
   shopCatalogContracts,
   shopDownloadContracts,
+  shopProposalContracts,
 } from '#core/contract/index.js';
 import { sweepKeyDownloadFiles, type TenantSecretResolver } from '#core/server/index.js';
 import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
-import type { AppVars } from './app-vars.js';
 import { buildApp } from './app.js';
 import { createDeps, type AppDeps } from './composition.js';
 import { envSchema } from './env.js';
-import { notInRelease, registerShopMachineRoute } from './shop-machine-auth.js';
 
 const baseUrl = 'http://localhost:48731';
 const acmeHost = 'acme.localhost:48731';
@@ -162,11 +168,16 @@ beforeAll(async () => {
   });
   const created = createDeps(env, { db: database.db, clock: { nowIso: () => now }, changeProposalBounds: { lockWaitMs: LOCK_WAIT_MS } });
   storage = createObjectStorageFake();
-  const resolver: TenantSecretResolver = created.secretResolver;
+  const withFakeStorage = (resolver: TenantSecretResolver): TenantSecretResolver => ({
+    resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key),
+  });
+  const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
   appDeps = {
     ...created,
     storage: storage.storage,
-    secretResolver: { resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key) },
+    secretResolver: withFakeStorage(created.secretResolver),
+    changeProposalTransaction: createChangeProposalTransaction(database.db, created.logger, (connection) =>
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)), { lockWaitMs: LOCK_WAIT_MS }),
   };
   app = buildApp(appDeps);
   const owner = await signUp('shop-download-owner@example.test', 'Download Owner');
@@ -384,47 +395,106 @@ describe('a direct-mode key on the download file routes', () => {
 });
 
 describe('a propose-mode key on the download file routes', () => {
-  it('is refused on every write and on the staged list before its handler, and stages, attaches or presigns nothing', async () => {
-    const stagedByOther = await stageUpload(direct.secret, PDF, 'other.pdf');
-    const before = await fileState();
-    const presigns = storage.calls.filter((call) => call.method === 'presignPut').length;
-    const requests: Array<[string, string, unknown]> = [
-      ['POST', routes.uploadStagedDownload.path, { fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength }],
-      ['POST', routes.completeStagedDownload.path, { uploadId: 'unknown-upload' }],
-      ['POST', routes.copyStagedDownload.path, { productId: digital, assetId: ownerAsset.id }],
-      ['GET', routes.listStagedDownloads.path, undefined],
-      ['DELETE', routes.discardStagedDownload.path.replace(':id', stagedByOther.id), undefined],
-      ['POST', routes.addProductDownload.path, { productId: digital, stagedFileId: stagedByOther.id }],
-      ['POST', routes.replaceProductDownload.path, { productId: digital, replacesAssetId: ownerAsset.id, stagedFileId: stagedByOther.id }],
-      ['POST', routes.removeProductDownload.path, { productId: digital, assetId: ownerAsset.id }],
-    ];
-    for (const [method, path, body] of requests) {
-      const response = await keyed(proposer.secret, method, path, body);
-      expect(response.status, `${method} ${path}`).toBe(403);
-      expect((await errorOf(response)).message, `${method} ${path}`)
-        .toBe('A propose-mode shop management key cannot call this route (not-in-release): product download files are not available to a propose-mode key yet');
+  it('stages, lists, copies and discards its own private files, and no product gains a file', async () => {
+    const assetsBefore = JSON.stringify((await database.db.select().from(productDownloadAssets)).sort((left, right) => left.id.localeCompare(right.id)));
+    const staged = await stageUpload(proposer.secret, PDF, 'proposed.pdf');
+    expect(staged).toMatchObject({ fileName: 'proposed.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength, copiedFrom: null });
+    expect(storage.keysUnder(`acme/product-downloads/key-files/${proposer.apiKey.id}/${staged.id}/`)).toHaveLength(1);
+    const copied = await keyed(proposer.secret, 'POST', routes.copyStagedDownload.path, { productId: digital, assetId: ownerAsset.id });
+    expect(copied.status).toBe(200);
+    const copy = envelope(contracts.copyStagedDownload.output).parse(await copied.json()).data.file;
+    expect(copy).toMatchObject({ sha256: null, copiedFrom: { productId: digital, assetId: ownerAsset.id, versionNumber: 1 } });
+    const listed = await keyed(proposer.secret, 'GET', routes.listStagedDownloads.path);
+    expect(envelope(contracts.listStagedDownloads.output).parse(await listed.json()).data.files.map((file) => file.id).sort()).toEqual([staged.id, copy.id].sort());
+    for (const id of [staged.id, copy.id]) {
+      expect((await keyed(proposer.secret, 'DELETE', routes.discardStagedDownload.path.replace(':id', id))).status).toBe(200);
     }
-    expect(await fileState()).toBe(before);
-    expect(storage.calls.filter((call) => call.method === 'presignPut')).toHaveLength(presigns);
-    expect(storage.keysUnder(`acme/product-downloads/key-uploads/${proposer.apiKey.id}/`)).toEqual([]);
+    expect(storage.keysUnder(`acme/product-downloads/key-files/${proposer.apiKey.id}/`)).toEqual([]);
+    expect(JSON.stringify((await database.db.select().from(productDownloadAssets)).sort((left, right) => left.id.localeCompare(right.id)))).toBe(assetsBefore);
+    expect(storage.calls.filter((call) => call.method === 'presignGet')).toEqual([]);
   });
 
-  it('names the feature its route class carries in the refusal, so another route refused for this release names its own', async () => {
-    const path = '/api/m2m/shop/test-not-in-release';
-    const probe = new Hono<AppVars>();
-    registerShopMachineRoute(probe, appDeps, {
-      method: 'POST', path, scope: 'shop:catalog:write', proposeMode: notInRelease('product access items'), handler: (c) => c.json({ ok: true }),
-    });
-    const response = await probe.request(`${baseUrl}${path}`, {
-      method: 'POST', headers: { host: acmeHost, 'x-api-key': proposer.secret, 'content-type': 'application/json' }, body: '{}',
-    });
+  it('proposes an attach, a replacement and a removal instead of applying them, holds each staged file, and an approval after the key discarded its file changes nothing', async () => {
+    const added = await stageUpload(proposer.secret, PDF, 'added.pdf');
+    const replacing = await stageUpload(proposer.secret, PDF, 'replacing.pdf');
+    const assetsBefore = JSON.stringify((await database.db.select().from(productDownloadAssets)).sort((left, right) => left.id.localeCompare(right.id)));
+    const objectsBefore = storage.keysUnder('acme/product-downloads/');
+    const receipts = [];
+    for (const [path, body, operation] of [
+      [routes.addProductDownload.path, { productId: digital, stagedFileId: added.id, versionNote: 'Workbook' }, 'download.add'],
+      [routes.replaceProductDownload.path, { productId: digital, replacesAssetId: ownerAsset.id, stagedFileId: replacing.id }, 'download.replace'],
+      [routes.removeProductDownload.path, { productId: digital, assetId: ownerAsset.id }, 'download.remove'],
+    ] as const) {
+      const response = await keyed(proposer.secret, 'POST', path, body);
+      expect(response.status, path).toBe(202);
+      const text = await response.text();
+      expect(text, path).not.toContain('product-downloads/');
+      const receipt = envelope(changeProposalProposedOutputSchema).parse(JSON.parse(text)).data.proposal;
+      expect(receipt, path).toMatchObject({ operation, status: 'pending', target: { kind: 'product', id: digital } });
+      receipts.push(receipt);
+    }
+    expect(JSON.stringify((await database.db.select().from(productDownloadAssets)).sort((left, right) => left.id.localeCompare(right.id)))).toBe(assetsBefore);
+    expect(storage.keysUnder('acme/product-downloads/')).toEqual(objectsBefore);
+    const held = (await database.db.select().from(changeProposalDownloadFiles)).filter((row) => row.apiKeyId === proposer.apiKey.id);
+    expect(Object.fromEntries(held.map((row) => [row.id, row.proposalId]))).toEqual({ [added.id]: receipts[0]?.id, [replacing.id]: receipts[1]?.id });
+    expect((await keyed(proposer.secret, 'DELETE', routes.discardStagedDownload.path.replace(':id', added.id))).status).toBe(200);
+    const [addReceipt, ...others] = receipts;
+    if (addReceipt === undefined) throw new Error('missing receipt');
+    const approved = await sessionRequest(API_ROUTES.changeProposalApprove.method, API_PATHS.changeProposalApprove.replace(':id', addReceipt.id), {});
+    expect(approved.status).toBe(200);
+    expect(envelope(changeProposalApproveOutputSchema).parse(await approved.json()).data.proposal).toMatchObject({ status: 'stale', appliedResourceId: null });
+    const shown = envelope(changeProposalShowOutputSchema).parse(await (await sessionRequest('GET', API_PATHS.changeProposal.replace(':id', addReceipt.id))).json()).data.proposal;
+    expect(shown.events.map((event) => event.note).find((note) => note?.startsWith('file_unavailable: ') === true)).toBe(`file_unavailable: The proposed file ${added.id} is no longer available, so the proposal cannot be applied; nothing was changed`);
+    expect(JSON.stringify((await database.db.select().from(productDownloadAssets)).sort((left, right) => left.id.localeCompare(right.id)))).toBe(assetsBefore);
+    for (const receipt of others) {
+      expect((await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.withdrawProposal.path.replace(':id', receipt.id), {})).status).toBe(200);
+    }
+    expect((await database.db.select().from(changeProposalDownloadFiles)).filter((row) => row.apiKeyId === proposer.apiKey.id)).toEqual([]);
+  });
+
+  it('refuses to propose a file of another key, a file another pending proposal holds and an unknown file, naming the staged file and storing nothing', async () => {
+    const otherProposer = await createShopKey(WRITE_SCOPES, 'propose');
+    const own = await stageUpload(proposer.secret, PDF, 'own.pdf');
+    const others = await stageUpload(otherProposer.secret, PDF, 'others.pdf');
+    const byDirect = await stageUpload(direct.secret, PDF, 'direct.pdf');
+    const first = await keyed(proposer.secret, 'POST', routes.addProductDownload.path, { productId: digital, stagedFileId: own.id });
+    expect(first.status).toBe(202);
+    const proposalsBefore = (await database.db.select().from(changeProposals)).length;
+    for (const [stagedFileId, label] of [[others.id, 'another propose-mode key'], [byDirect.id, 'a direct-mode key'], [own.id, 'held'], ['unknown-staged', 'unknown']] as const) {
+      const response = await keyed(proposer.secret, 'POST', routes.addProductDownload.path, { productId: secondDigital, stagedFileId });
+      expect(response.status, label).toBe(400);
+      expect(JSON.stringify(await response.json()), label).toContain('"stagedFileId":["Must be a file this key staged that no other pending proposal attaches"]');
+    }
+    expect((await database.db.select().from(changeProposals)).length).toBe(proposalsBefore);
+    const receipt = envelope(changeProposalProposedOutputSchema).parse(await first.json()).data.proposal;
+    expect((await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.withdrawProposal.path.replace(':id', receipt.id), {})).status).toBe(200);
+    for (const [secret, id] of [[otherProposer.secret, others.id], [direct.secret, byDirect.id]] as const) {
+      expect((await keyed(secret, 'DELETE', routes.discardStagedDownload.path.replace(':id', id))).status).toBe(200);
+    }
+  });
+
+  it('adds a file proposal to a group, where it may name a product an earlier item creates', async () => {
+    const created = await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: 'New workbook' });
+    expect(created.status).toBe(201);
+    const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
+    const product = await keyed(proposer.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Workbook', type: 'digital_download', priceCents: 1000 }, acmeHost, { 'x-proposal-group': group.id });
+    expect(product.status).toBe(202);
+    const productProposal = envelope(changeProposalProposedOutputSchema).parse(await product.json()).data.proposal;
+    const staged = await stageUpload(proposer.secret, PDF, 'grouped.pdf');
+    const attach = await keyed(proposer.secret, 'POST', routes.addProductDownload.path, { productId: `$proposal:${productProposal.id}`, stagedFileId: staged.id }, acmeHost, { 'x-proposal-group': group.id });
+    expect(attach.status).toBe(202);
+    const receipt = envelope(changeProposalProposedOutputSchema).parse(await attach.json()).data;
+    expect(receipt.proposal).toMatchObject({ operation: 'download.add', groupId: group.id, target: { kind: 'product', id: `$proposal:${productProposal.id}` } });
+    expect(receipt.group?.items.map((item) => item.operation)).toEqual(['product.create', 'download.add']);
+    expect((await keyed(proposer.secret, 'POST', SHOP_PROPOSAL_ROUTES.withdrawGroup.path.replace(':id', group.id), {})).status).toBe(200);
+    expect((await database.db.select().from(changeProposalDownloadFiles)).find((row) => row.id === staged.id)).toBeUndefined();
+  });
+
+  it('refuses staging to a propose-mode key without catalogue write', async () => {
+    const settingsOnly = await createShopKey(['shop:settings:read', 'shop:settings:write'], 'propose');
+    const response = await keyed(settingsOnly.secret, 'POST', routes.uploadStagedDownload.path, { fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength });
     expect(response.status).toBe(403);
-    expect((await errorOf(response)).message)
-      .toBe('A propose-mode shop management key cannot call this route (not-in-release): product access items are not available to a propose-mode key yet');
-    const allowed = await probe.request(`${baseUrl}${path}`, {
-      method: 'POST', headers: { host: acmeHost, 'x-api-key': direct.secret, 'content-type': 'application/json' }, body: '{}',
-    });
-    expect(allowed.status).toBe(200);
+    expect((await database.db.select().from(changeProposalDownloadUploads)).filter((row) => row.apiKeyId === settingsOnly.apiKey.id)).toEqual([]);
   });
 
   it('still reads the file list of a product', async () => {

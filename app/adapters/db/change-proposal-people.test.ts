@@ -10,6 +10,7 @@ import { createChangeProposalGroupRepository } from './change-proposal-groups.js
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import type { Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import * as schema from './schema.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -160,6 +161,7 @@ describe('a person whose grant is in another workspace', () => {
       changeProposalGroups: createChangeProposalGroupRepository(db),
       shopManagementKeys: createShopManagementKeyRepository(db),
       changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+      keyDownloadFiles: createKeyDownloadFileRepository(db),
       changeProposalPeople: createChangeProposalPeopleReader(db),
       clock: { nowIso: () => NOW },
     });
@@ -196,6 +198,7 @@ describe('the owner list identities of a full page', () => {
     changeProposalGroups: createChangeProposalGroupRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    keyDownloadFiles: createKeyDownloadFileRepository(db),
     changeProposalPeople: createChangeProposalPeopleReader(db),
     clock: { nowIso: () => NOW },
   });

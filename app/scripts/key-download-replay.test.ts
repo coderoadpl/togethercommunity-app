@@ -50,6 +50,12 @@ const created = (result: Result<ChangeProposalProposedOutput | ({ outcome: 'appl
   return value.product.id;
 };
 
+const attachedAsset = <A extends { asset: unknown }>(result: Result<ChangeProposalProposedOutput | ({ outcome: 'applied' } & A), AppError>): A['asset'] => {
+  const value = unwrapped(result);
+  if (isProposedChange(value)) throw new Error('Expected a live change, got a proposal');
+  return value.asset;
+};
+
 const storageKeyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
 
 const bytesOf = async (body: unknown): Promise<Uint8Array | null> => {
@@ -149,7 +155,7 @@ describe('download file replay with a direct-mode key', () => {
     expect(await fileRows()).toMatchObject({ assets: [], staged: [first.id], uploads: [{ kind: 'upload', state: 'completed' }], deletions: [] });
     expect(unwrapped(await agent.listStagedDownloads()).files.map((file) => file.id)).toEqual([first.id]);
 
-    const attached = unwrapped(await agent.addProductDownload({ productId: guide, stagedFileId: first.id })).asset;
+    const attached = attachedAsset(await agent.addProductDownload({ productId: guide, stagedFileId: first.id }));
     expect(attached).toMatchObject({ id: first.id, productId: guide, versionNumber: 1, status: 'ready' });
     expect((await fileRows()).assets).toEqual([
       { id: first.id, productId: guide, lineageId: first.id, versionNumber: 1, latest: true, storageKey: `${keyFiles}${first.id}/field-guide.pdf`, sha256: first.sha256, status: 'ready' },
@@ -159,7 +165,7 @@ describe('download file replay with a direct-mode key', () => {
     expect(unwrapped(await agent.listProductDownloads(guide)).assets.map((asset) => [asset.id, asset.versionNumber, asset.supersededAt])).toEqual([[first.id, 1, null]]);
 
     const second = unwrapped(await agent.stageProductDownload({ fileName: 'field-guide.pdf', contentType: 'application/pdf', sizeBytes: SECOND.byteLength, body: new Blob([SECOND]) })).file;
-    const replaced = unwrapped(await agent.replaceProductDownload({ productId: guide, replacesAssetId: first.id, stagedFileId: second.id, versionNote: 'Revised' })).asset;
+    const replaced = attachedAsset(await agent.replaceProductDownload({ productId: guide, replacesAssetId: first.id, stagedFileId: second.id, versionNote: 'Revised' }));
     expect(replaced).toMatchObject({ id: second.id, lineageId: first.id, versionNumber: 2, versionNote: 'Revised', supersededAt: null });
     const afterReplace = await fileRows();
     expect(afterReplace.assets.map((asset) => [asset.id, asset.versionNumber, asset.latest])).toEqual(
@@ -177,7 +183,7 @@ describe('download file replay with a direct-mode key', () => {
     const copy = unwrapped(await agent.copyProductDownload({ productId: guide, assetId: first.id })).file;
     expect(copy).toMatchObject({ sha256: null, copiedFrom: { productId: guide, assetId: first.id, versionNumber: 1 }, sizeBytes: FIRST.byteLength });
     expect(storage.objects.get(`${keyFiles}${copy.id}/field-guide.pdf`)?.bytes).toEqual(FIRST);
-    const copied = unwrapped(await agent.addProductDownload({ productId: sequel, stagedFileId: copy.id })).asset;
+    const copied = attachedAsset(await agent.addProductDownload({ productId: sequel, stagedFileId: copy.id }));
     expect(copied).toMatchObject({ id: copy.id, productId: sequel, versionNumber: 1 });
     const finalRows = await fileRows();
     expect(finalRows.assets.map((asset) => [asset.productId, asset.id, asset.storageKey])).toEqual(

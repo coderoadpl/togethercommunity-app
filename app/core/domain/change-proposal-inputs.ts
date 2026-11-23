@@ -1,8 +1,14 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 
-import { changeProposalIdInputSchema, changeProposalProductIdInputSchema, type ChangeProposalOperation } from './change-proposal.js';
+import {
+  changeProposalIdInputSchema,
+  changeProposalProductIdInputSchema,
+  type ChangeProposal,
+  type RegisteredChangeProposalOperation,
+} from './change-proposal.js';
+import { keyDownloadAddInputSchema, keyDownloadRemoveInputSchema, keyDownloadReplaceInputSchema } from './change-proposal-download.js';
 import { newProductPriceSchema } from './commerce.js';
-import { newProductSchema, updateProductInputSchema } from './product.js';
+import { accessItemSchema, newProductSchema, setProductAccessInputSchema, updateProductInputSchema, type AccessItem } from './product.js';
 import { salesLinkDeleteInputSchema, salesLinkInputSchema, salesLinkUpdateSchema } from './sales-link.js';
 import { shopSettingsPatchSchema } from './shop-settings.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from './stock.js';
@@ -10,6 +16,7 @@ import { strictInput } from './strict-input.js';
 
 export const strictNewProductInputSchema = strictInput(newProductSchema);
 export const strictUpdateProductInputSchema = strictInput(updateProductInputSchema);
+export const strictSetProductAccessInputSchema = strictInput(setProductAccessInputSchema);
 export const strictNewProductPriceInputSchema = strictInput(newProductPriceSchema);
 export const strictEnableStockTrackingInputSchema = strictInput(enableStockTrackingInputSchema);
 export const strictAdjustStockInputSchema = strictInput(adjustStockInputSchema);
@@ -33,4 +40,36 @@ export const CHANGE_PROPOSAL_INPUT_SCHEMAS = {
   'sales-link.update': strictSalesLinkUpdateInputSchema,
   'sales-link.delete': strictInput(salesLinkDeleteInputSchema),
   'settings.update': strictShopSettingsPatchInputSchema,
-} as const satisfies Record<ChangeProposalOperation, z.ZodTypeAny>;
+  'product.set-access': strictSetProductAccessInputSchema,
+  'download.add': strictInput(keyDownloadAddInputSchema),
+  'download.replace': strictInput(keyDownloadReplaceInputSchema),
+  'download.remove': strictInput(keyDownloadRemoveInputSchema),
+} as const satisfies Record<RegisteredChangeProposalOperation, z.ZodTypeAny>;
+
+const storedAccessItemsSchema = z.array(accessItemSchema).nullable().transform((items) => items ?? []);
+
+export interface ChangeProposalAccessChange {
+  before: AccessItem[];
+  after: AccessItem[];
+}
+
+export const changeProposalAccessChange = (proposal: Pick<ChangeProposal, 'operation' | 'effect'>): ChangeProposalAccessChange | null => {
+  if (proposal.operation !== 'product.set-access') return null;
+  const change = proposal.effect['accessItems'];
+  if (change === undefined || !('before' in change)) return null;
+  const before = storedAccessItemsSchema.safeParse(change.before);
+  const after = storedAccessItemsSchema.safeParse(change.after);
+  return before.success && after.success ? { before: before.data, after: after.data } : null;
+};
+
+export interface AccessItemIds {
+  courseIds: string[];
+  moduleIds: string[];
+  lessonIds: string[];
+}
+
+export const accessItemIds = (items: readonly AccessItem[]): AccessItemIds => ({
+  courseIds: [...new Set(items.map((item) => item.courseId))],
+  moduleIds: [...new Set(items.flatMap((item) => item.level === 'modules' ? item.moduleIds : item.level === 'course' ? item.excludedModuleIds ?? [] : []))],
+  lessonIds: [...new Set(items.flatMap((item) => item.level === 'lessons' ? item.lessonIds : []))],
+});

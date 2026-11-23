@@ -26,6 +26,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
+import { noProposedFiles } from '../testing/key-download-fakes.js';
 import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
@@ -217,6 +218,10 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   state.downloadAssets.push(downloadAsset());
   state.salesLinks.push(salesLink());
   state.settings.push({ tenantId: TENANT, settings: shopSettings() });
+  state.courses.push({
+    id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false,
+    archivedAt: null, legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+  });
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const { storage, calls } = storageSpy();
@@ -228,7 +233,7 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   const ownerViews = changeProposalOwnerViewFakes(state, accounts);
   const notifications = createUnreadNotificationsFake(accounts);
   const logger = { error: vi.fn<(message: string) => void>() };
-  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger };
+  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger, ...noProposedFiles() };
   return {
     notifications,
     state,
@@ -280,6 +285,7 @@ const OPERATION_INPUTS: Record<ChangeProposalOperation, unknown> = {
   'sales-link.update': { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['product-live'] },
   'sales-link.delete': { id: 'link-spring' },
   'settings.update': { name: 'Acme shop', supportEmail: 'help@acme.example.test' },
+  'product.set-access': { id: 'product-draft', accessItems: [{ level: 'course', courseId: 'course-intro' }] },
 };
 
 describe('submitChangeProposal dry run', () => {

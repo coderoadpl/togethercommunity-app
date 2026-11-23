@@ -26,6 +26,7 @@ import {
   shopSettingsContracts,
 } from '#core/contract/index.js';
 import {
+  accessItemSchema,
   currencySchema,
   deliveryMethodSchema,
   err,
@@ -45,6 +46,7 @@ import {
   shipxEnvironmentSchema,
   stripeModeSchema,
   validation,
+  type AccessItem,
   type AppError,
   type ChangeProposalGroupKeyReceipt,
   type ChangeProposalKeyReceipt,
@@ -107,6 +109,15 @@ const productUpdateSchema = productFieldsSchema.extend({
   title: z.string().optional(),
   clearCover: z.boolean().default(false),
   clearVariant: z.boolean().default(false),
+});
+const productAccessSchema = z.object({
+  apiKeyEnv: z.string(),
+  course: z.array(idSchema).default([]),
+  module: z.array(idSchema).default([]),
+  lesson: z.array(idSchema).default([]),
+  excludeModule: z.array(idSchema).default([]),
+  accessItems: z.string().optional(),
+  clear: z.boolean().default(false),
 });
 const priceAddSchema = z.object({
   apiKeyEnv: z.string(),
@@ -245,17 +256,14 @@ const sizeLabel = (bytes: number): string => `${String(bytes)} bytes`;
 const downloadAssetLine = (asset: ProductDownloadAssetMetadata): string =>
   `- ${asset.fileName}  version ${String(asset.versionNumber)}${asset.supersededAt === null ? '' : ' (previous version)'}  ${asset.contentType}  ${sizeLabel(asset.sizeBytes)}  [${asset.status}]  (${asset.id})`;
 
-const stagedFileLine = (file: KeyDownloadStagedFileView): string => [
+const stagedFileLine = (file: KeyDownloadStagedFileView, lifetime = `expires ${file.expiresAt}`): string => [
   `- ${file.fileName}  ${file.contentType}  ${sizeLabel(file.sizeBytes)}`,
   file.copiedFrom === null
     ? `sha256 ${file.sha256 ?? '(not shown)'}`
     : `copy of file ${file.copiedFrom.assetId} version ${String(file.copiedFrom.versionNumber)} of product ${file.copiedFrom.productId}`,
-  `expires ${file.expiresAt}`,
+  lifetime,
   `(${file.id})`,
 ].join('  ');
-
-const attachedFileLines = (data: { asset: ProductDownloadAssetMetadata; staged: KeyDownloadStagedFileView }): string =>
-  [`attached: ${downloadAssetLine(data.asset).slice(2)}`, `staged as: ${stagedFileLine(data.staged).slice(2)}`].join('\n');
 
 const envNameSchema = z.string().min(1).optional();
 const secretSetSchema = keyOnlySchema.extend({ valueEnv: envNameSchema });
@@ -452,6 +460,36 @@ const describeStock = (stock: ProductStock): string =>
 
 const productLine = (product: { title: string; id: string }): string => `${product.title} (${product.id.slice(0, 8)})`;
 
+const repeatable = (value: string, previous: string[]): string[] => [...previous, value];
+
+const ACCESS_LIST_REQUIRED = 'State the whole new list of what the product grants: one or more --course, --access-items, or --clear for none';
+
+const shopProductAccessItems = (options: z.output<typeof productAccessSchema>): Result<AccessItem[], AppError> => {
+  const { course: courseIds, module: moduleIds, lesson: lessonIds, excludeModule: excludedModuleIds } = options;
+  const parts = moduleIds.length > 0 || lessonIds.length > 0;
+  const flags = courseIds.length > 0 || parts || excludedModuleIds.length > 0;
+  if (options.accessItems !== undefined) {
+    if (flags || options.clear) return err(validation('--access-items states the whole list alone; drop the other access options'));
+    const parsed = inlineJson(options.accessItems, 'access items');
+    if (!parsed.ok) return parsed;
+    const items = z.array(accessItemSchema).safeParse(parsed.value);
+    return items.success ? ok(items.data) : err(validation('Invalid access items', items.error.flatten()));
+  }
+  if (options.clear) return flags ? err(validation('--clear cannot be combined with other access options')) : ok([]);
+  if (courseIds.length === 0) return err(validation(ACCESS_LIST_REQUIRED));
+  const [courseId] = courseIds;
+  if (parts || excludedModuleIds.length > 0) {
+    if (courseId === undefined || courseIds.length > 1) return err(validation('--module, --lesson and --exclude-module need exactly one --course; state a list of another shape with --access-items'));
+    if (parts && excludedModuleIds.length > 0) return err(validation('--exclude-module applies to a whole course and cannot be combined with --module or --lesson'));
+    if (excludedModuleIds.length > 0) return ok([{ level: 'course', courseId, excludedModuleIds }]);
+    return ok([
+      ...(moduleIds.length === 0 ? [] : [{ level: 'modules' as const, courseId, moduleIds }]),
+      ...(lessonIds.length === 0 ? [] : [{ level: 'lessons' as const, courseId, lessonIds }]),
+    ]);
+  }
+  return ok(courseIds.map((id) => ({ level: 'course' as const, courseId: id })));
+};
+
 const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
   `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
   `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
@@ -486,6 +524,12 @@ const proposedLines = (value: ChangeProposalProposedOutput): string => [
 ].join('\n');
 
 type ProposableResult<A> = ChangeProposalProposedOutput | ({ outcome: 'applied' } & A);
+
+type StagedAttachResult = (ChangeProposalProposedOutput | { outcome: 'applied'; asset: ProductDownloadAssetMetadata }) & { staged: KeyDownloadStagedFileView };
+
+const attachedOrProposedLines = (data: StagedAttachResult): string => isProposedChange(data)
+  ? [proposedLines(data), `file: ${stagedFileLine(data.staged, 'kept while the proposal is pending').slice(2)}`, 'the file stays private until the owner approves this proposal; nothing reaches buyers before that'].join('\n')
+  : [`attached: ${downloadAssetLine(data.asset).slice(2)}`, `staged as: ${stagedFileLine(data.staged).slice(2)}`].join('\n');
 
 const BRANDING_FIELDS = {
   logo: 'logoUrl',
@@ -600,6 +644,17 @@ export const registerShopKeyCommands = (
       const input = await shopProductUpdateInput(id, options);
       return input.ok ? client.updateProduct(input.value, undefined, proposal) : input;
     }, (data) => `updated: ${productLine(data.product)}`));
+  proposableKeyed(products.command('access <productId>').description('Propose replacing the whole list of what a product grants (propose-mode key only; a direct-mode key is refused); once the owner approves, everyone with access to the product, current buyers included, gets the new list. --course alone grants whole courses; with one --course, --module grants those modules and --lesson those lessons, each wherever it is used')
+    .option('--course <id>', 'a course the product grants; repeat for several whole courses', repeatable, [])
+    .option('--module <id>', 'a module of the one --course to grant instead of the whole course; repeatable', repeatable, [])
+    .option('--lesson <id>', 'a lesson of the one --course to grant instead of the whole course; repeatable', repeatable, [])
+    .option('--exclude-module <id>', 'a module of the one whole --course the product does not grant; repeatable', repeatable, [])
+    .option('--access-items <json>', 'the whole list as inline JSON access items, for a shape the other options cannot state')
+    .option('--clear', 'the product grants no course, module or lesson'))
+    .action(runProposable(z.tuple([idSchema, productAccessSchema]), (client, [id, options], proposal) => {
+      const accessItems = shopProductAccessItems(options);
+      return accessItems.ok ? client.setProductAccess({ id, accessItems: accessItems.value }, undefined, proposal) : accessItems;
+    }, (data) => `access: ${productLine(data.product)} (${String(data.product.accessItems.length)} item(s))`));
   proposableKeyed(products.command('publish <id>').description('Publish a product'))
     .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id], proposal) => client.publishProduct({ id }, undefined, proposal), (data) => `published: ${productLine(data.product)}`));
   proposableKeyed(products.command('unpublish <id>').description('Return a published product to draft'))
@@ -776,47 +831,52 @@ export const registerShopKeyCommands = (
     productId: string,
     staged: KeyDownloadStagedFileView,
     options: { replaces?: string | undefined; note?: string | undefined },
-  ) => {
+    proposal: ProposalRequestOptions,
+  ): Promise<Result<StagedAttachResult, AppError>> => {
     const note = options.note === undefined ? {} : { versionNote: options.note };
     const attached = options.replaces === undefined
-      ? await client.addProductDownload({ productId, stagedFileId: staged.id, ...note })
-      : await client.replaceProductDownload({ productId, replacesAssetId: options.replaces, stagedFileId: staged.id, ...note });
-    return attached.ok ? ok({ asset: attached.value.asset, staged }) : err(withFileHint(attached.error, staged.id));
+      ? await client.addProductDownload({ productId, stagedFileId: staged.id, ...note }, undefined, proposal)
+      : await client.replaceProductDownload({ productId, replacesAssetId: options.replaces, stagedFileId: staged.id, ...note }, undefined, proposal);
+    return attached.ok ? ok({ ...attached.value, staged }) : err(withFileHint(attached.error, staged.id));
   };
 
-  const files = shop.command('files').description('Download files of digital products, staged by the key and attached live; a propose-mode key is refused on every files command except list in this release, and no command reads back the bytes of a file');
+  const targetCheck = async (client: ShopManagementClient, productId: string, proposal: ProposalRequestOptions) =>
+    proposal.groupId !== undefined && isChangeProposalReference(productId) ? ok(null) : client.listProductDownloads(productId);
+
+  const files = shop.command('files').description('Download files of digital products, staged by the key and attached live, or proposed for the owner\'s approval by a propose-mode key; no command reads back the bytes of a file');
   keyed(files.command('list <productId>').description('List the files of a digital product with their versions'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [productId]) => client.listProductDownloads(productId), (data) =>
       data.assets.length === 0 ? 'no files' : data.assets.map(downloadAssetLine).join('\n')));
-  keyed(files.command('upload <productId> <file>').description('Check that the product exists, stage the file (upload, PUT with the signed headers, completion) and attach it live as a new file or, with --replaces, as the next version of a file')
+  proposableKeyed(files.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read; with --group, a $proposal: reference is not checked), stage the file (upload, PUT with the signed headers, completion) and attach it as a new file or, with --replaces, as the next version of a file; a propose-mode key proposes the attachment, and its file stays private until the owner approves it')
     .option('--replaces <assetId>', 'attach the upload as the next version of this file of the product')
     .option('--note <text>', 'version note shown with the file'))
-    .action(run(z.tuple([idSchema, z.string().min(1), fileAttachSchema]), async (client, [productId, file, options]) => {
+    .action(run(z.tuple([idSchema, z.string().min(1), fileAttachSchema]), async (client, [productId, file, options], proposal) => {
       const input = await downloadFileInput(file);
       if (!input.ok) return input;
-      const product = await client.listProductDownloads(productId);
+      const product = await targetCheck(client, productId, proposal);
       if (!product.ok) return product;
-      const replacement = replacementCheck(product.value.assets, options.replaces);
+      const replacement = product.value === null ? ok(undefined) : replacementCheck(product.value.assets, options.replaces);
       if (!replacement.ok) return replacement;
       const staged = await client.stageProductDownload(input.value);
       if (!staged.ok) return err(withFileHint(staged.error));
-      return attachStaged(client, productId, staged.value.file, options);
-    }, attachedFileLines));
-  keyed(files.command('copy <fromProductId> <assetId> <toProductId>').description('Copy a ready file of one product on the server and attach the copy live to another product; the bytes never pass through this command')
+      return attachStaged(client, productId, staged.value.file, options, proposal);
+    }, attachedOrProposedLines));
+  proposableKeyed(files.command('copy <fromProductId> <assetId> <toProductId>').description('Copy a ready file of one product on the server and attach the copy to another product; a propose-mode key proposes the attachment; the bytes never pass through this command')
     .option('--note <text>', 'version note shown with the copied file'))
-    .action(run(z.tuple([idSchema, idSchema, idSchema, fileNoteSchema]), async (client, [fromProductId, assetId, toProductId, options]) => {
-      const target = await client.listProductDownloads(toProductId);
+    .action(run(z.tuple([idSchema, idSchema, idSchema, fileNoteSchema]), async (client, [fromProductId, assetId, toProductId, options], proposal) => {
+      const target = await targetCheck(client, toProductId, proposal);
       if (!target.ok) return target;
       const staged = await client.copyProductDownload({ productId: fromProductId, assetId });
       if (!staged.ok) return err(withFileHint(staged.error));
-      return attachStaged(client, toProductId, staged.value.file, { note: options.note });
-    }, attachedFileLines));
-  keyed(files.command('remove <productId> <assetId>').description('Remove one file version of a product live; buyers can no longer download it'))
-    .action(run(z.tuple([idSchema, idSchema, keyOnlySchema]), (client, [productId, assetId]) => client.removeProductDownload({ productId, assetId }), () => 'removed'));
+      return attachStaged(client, toProductId, staged.value.file, { note: options.note }, proposal);
+    }, attachedOrProposedLines));
+  proposableKeyed(files.command('remove <productId> <assetId>').description('Remove one file version of a product; buyers can no longer download it. A propose-mode key proposes the removal'))
+    .action(runProposable(z.tuple([idSchema, idSchema, keyOnlySchema]), (client, [productId, assetId], proposal) =>
+      client.removeProductDownload({ productId, assetId }, undefined, proposal), () => 'removed'));
   keyed(files.command('staged').description('List this key\'s staged files that are not attached yet'))
     .action(run(z.tuple([keyOnlySchema]), (client) => client.listStagedDownloads(), (data) =>
-      data.files.length === 0 ? 'no staged files' : data.files.map(stagedFileLine).join('\n')));
-  keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy'))
+      data.files.length === 0 ? 'no staged files' : data.files.map((file) => stagedFileLine(file)).join('\n')));
+  keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy; a pending proposal that attaches it can then no longer be applied'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.discardStagedDownload(id), () => 'discarded'));
 
   const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');

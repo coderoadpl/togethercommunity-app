@@ -5,6 +5,7 @@ import type {
   TenantTeamMember,
   TenantTeamOrganization,
   LessonEdition, LessonEditionInput,
+  AccessItemIds,
   ActivitySummary,
   ActivitySummaryQuery,
   AppError,
@@ -182,6 +183,7 @@ import type {
   CollectedShipping,
   FulfilmentStatus,
 } from '#core/domain/index.js';
+import type { ChangeProposalProductFiles, KeyDownloadAttachRepository } from './key-download-ports.js';
 import type { ProductDraftRepository } from './product-draft-ports.js';
 import type { StockRepository } from './stock-ports.js';
 
@@ -282,7 +284,7 @@ export interface ProductRepository {
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
     checkoutConsentDefinitionIds?: string[],
-  ): Promise<Product | null | 'course_unavailable'>;
+  ): Promise<Product | null | 'course_unavailable' | 'busy'>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
 }
@@ -2999,6 +3001,7 @@ export type ChangeProposalCreation =
   | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
   | { kind: 'key_inactive' }
   | { kind: 'image_missing' }
+  | { kind: 'file_unavailable' }
   | { kind: 'busy' };
 
 export interface ChangeProposalTransition {
@@ -3035,13 +3038,19 @@ type ChangeProposalDecisionOutcome =
  * Every status change and its event commit together, and events get the next per-proposal sequence.
  */
 export interface ChangeProposalRepository {
-  /** `images` are the quarantined images of the proposing key the proposal attaches; one that is gone by the insert answers `image_missing`. */
+  /**
+   * `images` are the quarantined images of the proposing key the proposal attaches; one that is gone by the insert answers
+   * `image_missing`. `files` are the staged files of the proposing key it attaches: holding their rows, each must still
+   * be staged and attached by no other pending, unexpired proposal, or the answer is `file_unavailable`; the stored
+   * proposal then holds each of them.
+   */
   create(
     tenantId: string,
     proposal: ChangeProposal,
     event: ChangeProposalEventDraft,
     now: string,
     images?: readonly ProposalImageReference[],
+    files?: readonly string[],
   ): Promise<ChangeProposalCreation>;
   countCapReached(tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null>;
   findById(tenantId: string, id: string): Promise<ChangeProposal | null>;
@@ -3128,6 +3137,7 @@ export interface ChangeProposalGroupRepository {
     event: ChangeProposalEventDraft,
     clock: Clock,
     images?: readonly ProposalImageReference[],
+    files?: readonly string[],
   ): Promise<ChangeProposalGroupItemAddition>;
   /** Locks the group row, then its item rows in the order key revocation takes them, until the surrounding transaction ends. */
   lock(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
@@ -3172,6 +3182,14 @@ export interface ChangeProposalTargetLabelReader {
    * target has no entry.
    */
   labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
+  /** The live title of each course, module and lesson of the workspace among the ids; an id that names none has no entry. */
+  accessTitles(tenantId: string, ids: AccessItemIds): Promise<ChangeProposalAccessTitles>;
+}
+
+interface ChangeProposalAccessTitles {
+  courses: ReadonlyArray<{ id: string; title: string; archived: boolean }>;
+  modules: ReadonlyArray<{ id: string; title: string; courseIds: readonly string[] }>;
+  lessons: ReadonlyArray<{ id: string; title: string }>;
 }
 
 interface ChangeProposalPerson {
@@ -3205,14 +3223,17 @@ export interface ChangeProposalOwnerNotifier {
   ): Promise<ChangeProposalWrite<Notification[]>>;
 }
 
-export type ChangeProposalTargetLockPurpose = 'change' | 'delete';
+export type ChangeProposalTargetLockPurpose = 'change' | 'delete' | 'files';
 
 export interface ChangeProposalTargetLocks {
   /**
    * Locks the live row a proposal changes until the surrounding transaction ends; false when it does not exist.
    * `delete` takes the row exclusively and locks what the deletion destroys with it, so nothing referencing it can be added or changed meanwhile.
+   * `files` takes a product the way live file writes do (key-share compatibly, its stock row, then exclusively), so they serialise with it.
    */
   lock(tenantId: string, target: ChangeProposalTarget, purpose?: ChangeProposalTargetLockPurpose): Promise<boolean>;
+  /** Locks the workspace's courses among `courseIds` the way the live write of a product's access items does, before any product row. */
+  lockCourses(tenantId: string, courseIds: readonly string[]): Promise<void>;
 }
 
 export interface SalesLinkRepository {
@@ -3315,6 +3336,9 @@ export interface ChangeProposalRepositories {
   tenants: Pick<TenantRepository, 'findSettings' | 'changeSettings'>;
   downloadAssets: Pick<ProductDownloadAssetRepository, 'listByProduct' | 'listReadyByProduct'>;
   spaces: Pick<SpaceRepository, 'list' | 'findById'>;
+  courses: Pick<CourseRepository, 'findByIds'>;
+  modules: Pick<CourseModuleRepository, 'findByIds' | 'list'>;
+  lessons: Pick<CourseLessonRepository, 'findByIds'>;
   stock: StockRepository;
   productDrafts: ProductDraftRepository;
   salesLinks: SalesLinkRepository;
@@ -3323,6 +3347,8 @@ export interface ChangeProposalRepositories {
   changeProposalGroups: ChangeProposalGroupRepository;
   targets: ChangeProposalTargetLocks;
   quarantinedImages: QuarantinedImageLocks;
+  keyDownloadAttach: KeyDownloadAttachRepository;
+  productFiles: ChangeProposalProductFiles;
 }
 
 export interface ChangeProposalPostCommitEffects {

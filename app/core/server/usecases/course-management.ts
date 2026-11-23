@@ -12,10 +12,12 @@ import {
   notFound,
   ok,
   restoreCourseInputSchema,
+  sameAccessItems,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
   updateProductAccessItemsInputSchema,
+  appError,
   validation,
   type AccessItem,
   type AppError,
@@ -52,6 +54,12 @@ import type {
 } from '../ports.js';
 import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
+import {
+  checkProductAccessItems,
+  checkProposedAccessExclusions,
+  PRODUCT_ACCESS_COURSE_MESSAGE,
+  type ProductAccessCatalog,
+} from './product-access-items.js';
 
 export interface CourseManagementDeps {
   logger: { error(message: string): void };
@@ -636,10 +644,16 @@ export const deleteLesson = async (
   return ok(references);
 };
 
+type ProductAccessItemsDeps =ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'>;
+
+const productAccessBusy = (): AppError =>
+  appError('unavailable', 'The product is busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });
+
 export const updateProductAccessItems = async (
   ctx: Ctx,
   input: UpdateProductAccessItemsInput,
-  deps: CourseManagementDeps,
+  deps: ProductAccessItemsDeps,
+  options: { proposed?: boolean } = {},
 ): Promise<Result<Product, AppError>> => {
   const tenant = requireStaffTenant(ctx, 'product:access:write');
   if (!tenant.ok) return tenant;
@@ -653,40 +667,13 @@ export const updateProductAccessItems = async (
     return err(validation('Physical products cannot grant access items'));
   }
 
-  const courseIds = unique(parsed.data.accessItems.map((item) => item.courseId));
-  const courses = await deps.courses.findByIds(tenant.value, courseIds);
-  if (courses.length !== courseIds.length || courses.some((course) => course.archivedAt)) {
-    return err(validation('Product access items may only reference existing, active courses'));
+  if (!sameAccessItems(parsed.data.accessItems, product.accessItems)) {
+    const checked = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
+    if (!checked.ok) return checked;
   }
-
-  for (const item of parsed.data.accessItems) {
-    if (item.level === 'modules') {
-      const moduleIds = unique(item.moduleIds);
-      const modules = await deps.modules.findByIds(tenant.value, moduleIds);
-      if (modules.length !== moduleIds.length) {
-        return err(validation('Product access items may only reference existing modules'));
-      }
-      if (modules.some((module) => !module.courseIds.includes(item.courseId))) {
-        return err(validation('Product access moduleIds must belong to the item courseId'));
-      }
-    } else if (item.level === 'lessons') {
-      const lessonIds = unique(item.lessonIds);
-      const lessons = await deps.lessons.findByIds(tenant.value, lessonIds);
-      if (lessons.length !== lessonIds.length) {
-        return err(validation('Product access items may only reference existing lessons'));
-      }
-    } else {
-      const excludedModuleIds = unique(item.excludedModuleIds ?? []);
-      if (excludedModuleIds.length > 0) {
-        const modules = await deps.modules.findByIds(tenant.value, excludedModuleIds);
-        if (modules.length !== excludedModuleIds.length) {
-          return err(validation('Product access items may only reference existing modules'));
-        }
-        if (modules.some((module) => !module.courseIds.includes(item.courseId))) {
-          return err(validation('Product access excludedModuleIds must belong to the item courseId'));
-        }
-      }
-    }
+  if (options.proposed === true) {
+    const exclusions = await checkProposedAccessExclusions(tenant.value, parsed.data.accessItems, deps);
+    if (!exclusions.ok) return exclusions;
   }
 
   const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
@@ -700,8 +687,9 @@ export const updateProductAccessItems = async (
     parsed.data.checkoutConsentDefinitionIds,
   );
   if (updated === 'course_unavailable') {
-    return err(validation('Product access items may only reference existing, active courses'));
+    return err(validation(PRODUCT_ACCESS_COURSE_MESSAGE));
   }
+  if (updated === 'busy') return err(productAccessBusy());
   if (updated && parsed.data.checkoutConsentDefinitionIds !== undefined) {
     await deps.products.bumpContentVersion(tenant.value);
   }

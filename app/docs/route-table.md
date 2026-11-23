@@ -164,6 +164,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/products/publish` | self-authenticating | mutating | api m2m shop products publish |
 | `POST /api/m2m/shop/products/unpublish` | self-authenticating | mutating | api m2m shop products unpublish |
 | `POST /api/m2m/shop/products/delete` | self-authenticating | mutating | api m2m shop products delete |
+| `POST /api/m2m/shop/products/access` | self-authenticating | mutating | api m2m shop products access |
 | `GET /api/m2m/shop/products/:productId/prices` | self-authenticating | read | api m2m shop products productId prices |
 | `POST /api/m2m/shop/products/prices` | self-authenticating | mutating | api m2m shop products prices |
 | `POST /api/m2m/shop/products/prices/deactivate` | self-authenticating | mutating | api m2m shop products prices deactivate |
@@ -280,6 +281,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/change-proposals/:id/reject` | authenticated | mutating | change proposal reject |
 | `POST /api/change-proposals/:id/approve` | authenticated | mutating | change proposal approve |
 | `GET /api/change-proposals/:id/assets/:digest` | authenticated | read | change proposal image |
+| `GET /api/change-proposals/:id/files/:fileId` | authenticated | read | change proposal file |
 | `GET /api/change-proposals/groups/:id` | authenticated | read | change proposal group |
 | `POST /api/change-proposals/groups/:id/reject` | authenticated | mutating | change proposal group reject |
 | `POST /api/change-proposals/groups/:id/approve` | authenticated | mutating | change proposal group approve |

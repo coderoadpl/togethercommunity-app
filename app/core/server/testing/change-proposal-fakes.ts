@@ -22,6 +22,9 @@ import {
   type ChangeProposalGroup,
   type ChangeProposalTarget,
   type ChangeProposalTargetPrice,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
   type Notification,
   type Product,
   type ProductDownloadAsset,
@@ -38,6 +41,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
+import type { KeyDownloadFileRepository } from '../key-download-ports.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
@@ -61,6 +65,7 @@ import type {
   TenantSecretResolver,
 } from '../ports.js';
 import type { StockRepository } from '../stock-ports.js';
+import { noProposedFiles } from './key-download-fakes.js';
 
 export interface FakeCatalogState {
   products: Product[];
@@ -74,6 +79,9 @@ export interface FakeCatalogState {
   downloadAssets: ProductDownloadAsset[];
   salesLinks: Array<SalesLink & { deleted: boolean }>;
   settings: Array<{ tenantId: string; settings: TenantSettings }>;
+  courses: Course[];
+  modules: CourseModule[];
+  lessons: CourseLesson[];
 }
 
 export const emptyCatalogState = (): FakeCatalogState => ({
@@ -88,6 +96,9 @@ export const emptyCatalogState = (): FakeCatalogState => ({
   downloadAssets: [],
   salesLinks: [],
   settings: [],
+  courses: [],
+  modules: [],
+  lessons: [],
 });
 
 const unavailable = (name: string) => () => Promise.reject(new Error(`${name} is not part of the change proposal fake`));
@@ -199,10 +210,16 @@ const removeWhere = <T>(rows: T[], matches: (row: T) => boolean): void => {
 
 type FakeTransactionStore = Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows' | 'proposals' | 'imagePublications'>;
 
+interface FakeCourseLock {
+  courseIds: string[];
+  targetLocksBefore: number;
+}
+
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
   store: FakeTransactionStore,
   locks: ChangeProposalTarget[],
+  courseLocks: FakeCourseLock[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
   return {
@@ -230,7 +247,18 @@ const catalogRepositoriesOver = (
         state.entityVersionAuthors.push(version.createdBy);
         return { ...saved };
       },
-      updateAccessItems: unavailable('products.updateAccessItems'),
+      updateAccessItems: async (tenantId, id, accessItems, version) => {
+        const referenced = new Set(accessItems.map((item) => item.courseId));
+        if (state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
+        const found = product(tenantId, id);
+        if (found === null) return null;
+        found.accessItems = structuredClone(accessItems);
+        if (version !== undefined) {
+          state.entityVersions += 1;
+          state.entityVersionAuthors.push(version.createdBy);
+        }
+        return { ...found };
+      },
       setPublished: async (tenantId, id, published) => {
         const found = product(tenantId, id);
         if (found === null) return;
@@ -278,6 +306,12 @@ const catalogRepositoriesOver = (
         state.downloadAssets.filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready'),
     },
     spaces: { list: async () => [], findById: async () => null },
+    courses: { findByIds: async (tenantId, ids) => state.courses.filter((course) => course.tenantId === tenantId && ids.includes(course.id)) },
+    modules: {
+      findByIds: async (tenantId, ids) => state.modules.filter((module) => module.tenantId === tenantId && ids.includes(module.id)),
+      list: async (tenantId) => state.modules.filter((module) => module.tenantId === tenantId),
+    },
+    lessons: { findByIds: async (tenantId, ids) => state.lessons.filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)) },
     stock: stockRepositoryOver(state),
     productDrafts: {
       deleteDraft: async (tenantId, productId) => {
@@ -303,6 +337,19 @@ const catalogRepositoriesOver = (
         if (target.kind === 'sales-link') return state.salesLinks.some((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted);
         return product(tenantId, target.id) !== null;
       },
+      lockCourses: async (_tenantId, courseIds) => {
+        courseLocks.push({ courseIds: [...courseIds], targetLocksBefore: locks.length });
+      },
+    },
+    keyDownloadAttach: { attach: unavailable('keyDownloadAttach.attach'), remove: unavailable('keyDownloadAttach.remove') },
+    productFiles: {
+      listReady: async (tenantId, productId) => state.downloadAssets
+        .filter((asset) => asset.tenantId === tenantId && asset.productId === productId && asset.status === 'ready')
+        .map((asset) => ({
+          id: asset.id, lineageId: asset.lineageId, versionNumber: asset.versionNumber, latest: asset.supersededAt === null,
+          fileName: asset.fileName, contentType: asset.contentType, sizeBytes: asset.sizeBytes, fingerprint: null, versionNote: asset.versionNote,
+        })),
+      lockStaged: async () => null,
     },
     quarantinedImages: {
       inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
@@ -728,7 +775,11 @@ type FakeTargetLabel = Awaited<ReturnType<ChangeProposalTargetLabelReader['label
 export const changeProposalOwnerViewFakes = (
   state: FakeCatalogState,
   accounts: readonly FakeProposalAccount[] = [],
-): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & { changeProposalPeople: FakeChangeProposalPeople } => ({
+): Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'> & {
+  changeProposalPeople: FakeChangeProposalPeople;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'proposable' | 'release' | 'listProposed' | 'findStaged' | 'finishDeletion'>;
+} => ({
+  ...noProposedFiles(),
   changeProposalTargetLabels: {
     labels: async (tenantId, targets) => targets.flatMap((target): FakeTargetLabel[] => {
       const titleOf = (productId: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === productId)?.title;
@@ -741,6 +792,13 @@ export const changeProposalOwnerViewFakes = (
         ? titleOf(target.id)
         : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
       return label === undefined ? [] : [{ ...target, label, price: null }];
+    }),
+    accessTitles: async (tenantId, ids) => ({
+      courses: state.courses.filter((row) => row.tenantId === tenantId && ids.courseIds.includes(row.id))
+        .map((row) => ({ id: row.id, title: row.name, archived: Boolean(row.archivedAt) })),
+      modules: state.modules.filter((row) => row.tenantId === tenantId && ids.moduleIds.includes(row.id))
+        .map((row) => ({ id: row.id, title: row.name, courseIds: row.courseIds })),
+      lessons: state.lessons.filter((row) => row.tenantId === tenantId && ids.lessonIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
     }),
   },
   changeProposalPeople: createChangeProposalPeopleFake(accounts),
@@ -801,6 +859,7 @@ export interface FakeChangeProposalTransaction extends ChangeProposalTransaction
   calls: Array<'run' | 'dryRun'>;
   dryRunGroups: Array<string | null>;
   locks: ChangeProposalTarget[];
+  courseLocks: FakeCourseLock[];
   deferredDropped: number;
 }
 
@@ -814,9 +873,10 @@ export const createChangeProposalTransactionFake = (
   const calls: Array<'run' | 'dryRun'> = [];
   const dryRunGroups: Array<string | null> = [];
   const locks: ChangeProposalTarget[] = [];
+  const courseLocks: FakeCourseLock[] = [];
   const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
-    repositories: catalogRepositoriesOver(target, store, locks),
+    repositories: catalogRepositoriesOver(target, store, locks, courseLocks),
     secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
     savepoint: async (operation) => {
@@ -836,6 +896,7 @@ export const createChangeProposalTransactionFake = (
     calls,
     dryRunGroups,
     locks,
+    courseLocks,
     deferredDropped: 0,
     run: async (_tenantId, operation) => {
       calls.push('run');

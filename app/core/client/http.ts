@@ -42,6 +42,7 @@ import {
   changeProposalApproveOutputSchema,
   changeProposalGroupOutputSchema,
   changeProposalRejectOutputSchema,
+  changeProposalFileOutputSchema,
   changeProposalShowOutputSchema,
   changeProposalSummaryOutputSchema,
   changeProposalsListOutputSchema,
@@ -2743,6 +2744,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  getChangeProposalFileLink: (input: { id: string; fileId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.changeProposalFile.method,
+      API_ROUTES.changeProposalFile.path.replace(':id', encodeURIComponent(input.id)).replace(':fileId', encodeURIComponent(input.fileId)),
+      changeProposalFileOutputSchema,
+      undefined,
+      signal,
+    ),
   getChangeProposalGroup: (input: { id: string }, signal?: AbortSignal) =>
     request(
       options,
@@ -3206,6 +3216,8 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
       request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, proposable.unpublishProduct, input, signal, proposalHeaders(proposal)),
     deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
       request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, proposable.deleteProductDraft, input, signal, proposalHeaders(proposal)),
+    setProductAccess: (input: ShopCatalogInput<'setProductAccess'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.setProductAccess.method, routes.setProductAccess.path, proposable.setProductAccess, input, signal, proposalHeaders(proposal)),
     listProductPrices: (productId: string, signal?: AbortSignal) =>
       request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
     createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
@@ -3245,6 +3257,7 @@ const proposable = {
   publishProduct: proposableOutputSchema(shopCatalogContracts.publishProduct.output),
   unpublishProduct: proposableOutputSchema(shopCatalogContracts.unpublishProduct.output),
   deleteProductDraft: proposableOutputSchema(shopCatalogContracts.deleteProductDraft.output),
+  setProductAccess: proposableOutputSchema(shopCatalogContracts.setProductAccess.output),
   createProductPrice: proposableOutputSchema(shopCatalogContracts.createProductPrice.output),
   deactivateProductPrice: proposableOutputSchema(shopCatalogContracts.deactivateProductPrice.output),
   enableProductStock: proposableOutputSchema(shopCatalogContracts.enableProductStock.output),
@@ -3254,6 +3267,9 @@ const proposable = {
   createSalesLink: proposableOutputSchema(shopAssetsContracts.createSalesLink.output),
   updateSalesLink: proposableOutputSchema(shopAssetsContracts.updateSalesLink.output),
   deleteSalesLink: proposableOutputSchema(shopAssetsContracts.deleteSalesLink.output),
+  addProductDownload: proposableOutputSchema(shopDownloadContracts.addProductDownload.output),
+  replaceProductDownload: proposableOutputSchema(shopDownloadContracts.replaceProductDownload.output),
+  removeProductDownload: proposableOutputSchema(shopDownloadContracts.removeProductDownload.output),
 };
 
 const shopProposalMethods = (options: ApiClientOptions) => {
@@ -3371,12 +3387,12 @@ const shopDownloadMethods = (options: ApiClientOptions) => {
       request(options, routes.listStagedDownloads.method, routes.listStagedDownloads.path, contracts.listStagedDownloads.output, undefined, signal),
     discardStagedDownload: (id: string, signal?: AbortSignal) =>
       request(options, routes.discardStagedDownload.method, routes.discardStagedDownload.path.replace(':id', encodeURIComponent(id)), contracts.discardStagedDownload.output, undefined, signal),
-    addProductDownload: (input: ShopDownloadInput<'addProductDownload'>, signal?: AbortSignal) =>
-      request(options, routes.addProductDownload.method, routes.addProductDownload.path, contracts.addProductDownload.output, input, signal),
-    replaceProductDownload: (input: ShopDownloadInput<'replaceProductDownload'>, signal?: AbortSignal) =>
-      request(options, routes.replaceProductDownload.method, routes.replaceProductDownload.path, contracts.replaceProductDownload.output, input, signal),
-    removeProductDownload: (input: ShopDownloadInput<'removeProductDownload'>, signal?: AbortSignal) =>
-      request(options, routes.removeProductDownload.method, routes.removeProductDownload.path, contracts.removeProductDownload.output, input, signal),
+    addProductDownload: (input: ShopDownloadInput<'addProductDownload'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.addProductDownload.method, routes.addProductDownload.path, proposable.addProductDownload, input, signal, proposalHeaders(proposal)),
+    replaceProductDownload: (input: ShopDownloadInput<'replaceProductDownload'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.replaceProductDownload.method, routes.replaceProductDownload.path, proposable.replaceProductDownload, input, signal, proposalHeaders(proposal)),
+    removeProductDownload: (input: ShopDownloadInput<'removeProductDownload'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.removeProductDownload.method, routes.removeProductDownload.path, proposable.removeProductDownload, input, signal, proposalHeaders(proposal)),
   };
 };
 

@@ -3,7 +3,17 @@ import { z } from 'zod';
 
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { entityVersions, shopManagementKeyEvents, stockEvents, tenantAdmins, tenantApiKeys, tenants } from '#adapters/db/schema.js';
+import {
+  courseLessons,
+  courseModules,
+  courses,
+  entityVersions,
+  shopManagementKeyEvents,
+  stockEvents,
+  tenantAdmins,
+  tenantApiKeys,
+  tenants,
+} from '#adapters/db/schema.js';
 import {
   API_PATHS,
   API_ROUTES,
@@ -90,6 +100,7 @@ const writeRoutes = (productId: string) => [
   [SHOP_CATALOG_ROUTES.publishProduct.path, { id: productId }],
   [SHOP_CATALOG_ROUTES.unpublishProduct.path, { id: productId }],
   [SHOP_CATALOG_ROUTES.deleteProductDraft.path, { productId }],
+  [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: productId, accessItems: [] }],
   [SHOP_CATALOG_ROUTES.createProductPrice.path, { productId, kind: 'one_time', amountCents: 100 }],
   [SHOP_CATALOG_ROUTES.deactivateProductPrice.path, { id: 'price' }],
   [SHOP_CATALOG_ROUTES.enableProductStock.path, { productId, onHand: 1, lowStockThreshold: null }],
@@ -194,6 +205,48 @@ describe('shop catalog routes with a shop management key', () => {
     expect(offered).toMatchObject({ title: 'Printed handbook', type: 'physical', prices: [expect.objectContaining({ id: price.id })] });
   });
 
+  it('checks what a new product grants with the shared access check and never lets the key change what an existing product grants', async () => {
+    const chapter = (moduleId: string, lessonId: string) => [{ id: `${moduleId}-chapter`, name: 'Chapter', contents: [{ id: `${moduleId}-${lessonId}`, lessonId, name: 'Lesson' }] }];
+    await database.db.insert(courses).values([
+      { id: 'grant-course-a', tenantId: 'acme', name: 'Course A', description: '', createdAt: now },
+      { id: 'grant-course-b', tenantId: 'acme', name: 'Course B', description: '', createdAt: now },
+      { id: 'grant-course-studio', tenantId: 'studio', name: 'Studio course', description: '', createdAt: now },
+    ]);
+    await database.db.insert(courseModules).values([
+      { id: 'grant-module-a', tenantId: 'acme', courseIds: ['grant-course-a'], title: 'Module A', chapters: chapter('grant-module-a', 'grant-lesson-a'), createdAt: now },
+      { id: 'grant-module-b', tenantId: 'acme', courseIds: ['grant-course-b'], title: 'Module B', chapters: chapter('grant-module-b', 'grant-lesson-b'), createdAt: now },
+    ]);
+    await database.db.insert(courseLessons).values([
+      { id: 'grant-lesson-a', tenantId: 'acme', name: 'Lesson A', createdAt: now },
+      { id: 'grant-lesson-b', tenantId: 'acme', name: 'Lesson B', createdAt: now },
+      { id: 'grant-lesson-studio', tenantId: 'studio', name: 'Studio lesson', createdAt: now },
+    ]);
+    const { secret } = await createShopKey(['shop:catalog:read', 'shop:catalog:write']);
+    const create = (slug: string, accessItems: unknown[]) =>
+      keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: slug, slug, type: 'course', priceCents: 1000, accessItems });
+
+    const refusals: Array<[string, unknown[], string]> = [
+      ['lesson-elsewhere', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-b'] }], 'Product access lessonIds must belong to the item courseId through its modules and chapters'],
+      ['module-elsewhere', [{ level: 'modules', courseId: 'grant-course-a', moduleIds: ['grant-module-b'] }], 'Product access moduleIds must belong to the item courseId'],
+      ['studio-course', [{ level: 'course', courseId: 'grant-course-studio' }], 'Product access items may only reference existing, active courses'],
+      ['studio-lesson', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-studio'] }], 'Product access items may only reference existing lessons'],
+    ];
+    for (const [slug, accessItems, message] of refusals) {
+      const refused = await create(slug, accessItems);
+      expect(refused.status, slug).toBe(400);
+      expect(await errorOf(refused), slug).toEqual({ code: 'validation', message });
+    }
+    const accepted = await create('lesson-in-course', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-a'] }]);
+    expect(accepted.status).toBe(200);
+    const { product } = envelope(shopCatalogContracts.createProduct.output).parse(await accepted.json()).data;
+
+    const changed = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [] });
+    expect(changed.status).toBe(403);
+    expect((await errorOf(changed)).code).toBe('forbidden');
+    const listed = envelope(shopCatalogContracts.listProducts.output).parse(await (await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).json()).data;
+    expect(listed.products.find((entry) => entry.id === product.id)?.accessItems).toEqual([{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-a'] }]);
+  });
+
   it('unpublishes, deactivates a price and deletes only a never-published draft', async () => {
     const { secret } = await createShopKey(['shop:catalog:write']);
     const created = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Short run', type: 'physical', priceCents: 1000 });
@@ -225,7 +278,7 @@ describe('shop catalog routes with a shop management key', () => {
       expect(response.status, path).toBe(403);
       expect(await errorOf(response), path).toEqual({ code: 'forbidden', message: 'shop:catalog:write is not permitted' });
     }
-    expect(writeRoutes('any-product')).toHaveLength(10);
+    expect(writeRoutes('any-product')).toHaveLength(11);
     expect((await keyed(secret, 'GET', SHOP_CATALOG_ROUTES.listProducts.path)).status).toBe(200);
   });
 
@@ -276,7 +329,8 @@ describe('shop catalog routes with a shop management key', () => {
     const { price: foreignPrice } = envelope(shopCatalogContracts.createProductPrice.output).parse(await priced.json()).data;
 
     for (const [path, body] of [
-      ...writeRoutes(foreign.id).filter(([path]) => path !== SHOP_CATALOG_ROUTES.createProduct.path && path !== SHOP_CATALOG_ROUTES.deactivateProductPrice.path),
+      ...writeRoutes(foreign.id).filter(([path]) => path !== SHOP_CATALOG_ROUTES.createProduct.path && path !== SHOP_CATALOG_ROUTES.deactivateProductPrice.path
+        && path !== SHOP_CATALOG_ROUTES.setProductAccess.path),
       [SHOP_CATALOG_ROUTES.deactivateProductPrice.path, { id: foreignPrice.id }],
     ] as const) {
       const response = await keyed(secret, 'POST', path, body);
@@ -310,6 +364,10 @@ describe('shop catalog routes with a shop management key', () => {
       [SHOP_CATALOG_ROUTES.publishProduct.path, { id: product.id, force: true }],
       [SHOP_CATALOG_ROUTES.createProductPrice.path, { productId: product.id, kind: 'one_time', amountCents: 700, curency: 'PLN' }],
       [SHOP_CATALOG_ROUTES.deleteProductDraft.path, { productId: product.id, cascade: true }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [], checkoutConsentDefinitionIds: [] }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'course', courseId: 'any', moduleIds: ['any'] }] }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'course', courseId: 'any' }, { level: 'course', courseId: 'any' }] }],
+      [SHOP_CATALOG_ROUTES.setProductAccess.path, { id: product.id, accessItems: [{ level: 'modules', courseId: 'any', moduleIds: ['m', 'm'] }] }],
     ] as const) {
       const response = await keyed(secret, 'POST', path, body);
       expect(response.status, path).toBe(400);

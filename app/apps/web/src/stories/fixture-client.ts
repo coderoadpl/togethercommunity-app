@@ -10,7 +10,7 @@ import {
   regenerateBackupCodesMutation,
 } from '#core/client/index.js';
 import { z } from 'zod';
-import { createApiClient, type ApiClient, type AuthClientPort } from '#core/client/index.js';
+import { ApiError, createApiClient, type ApiClient, type AuthClientPort } from '#core/client/index.js';
 import { abortVisualMutation } from '../../../../scripts/visual-request-policy.js';
 import { canonicalJson, fixtureKey, fixtureSchema, type Fixture } from './fixture-key.js';
 
@@ -72,6 +72,11 @@ export const fixtureProposalImagePath = (realPath: (proposalId: string, digest: 
   if (digest === STORY_PROPOSAL_IMAGE_DIGESTS.unreadable) return 'data:image/png;base64,';
   return realPath(proposalId, digest);
 };
+
+export const STORY_PROPOSAL_GONE_FILE_ID = 'staged-file-discarded-workbook';
+
+export const goneProposalFile = (): Promise<never> =>
+  Promise.reject(new ApiError({ code: 'not_found', message: 'The proposed file is no longer available' }));
 
 const unavailableAuthPreview = () => Promise.resolve({ ok: false, error: { code: 'internal', message: 'This operation is available in the focused account previews.' } } as const);
 export const fixtureAuth = {

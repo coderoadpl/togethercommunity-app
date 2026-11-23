@@ -13,7 +13,7 @@ import {
   unavailable,
   validation,
   type AppError,
-  type ChangeProposalOperation,
+  type RegisteredChangeProposalOperation,
   type Result,
   type ShopManagementKeysSwitch,
   type ShopManagementScope,
@@ -59,12 +59,10 @@ type ShopMachineDeps = ShopMachineAuthDeps & ResolveTenantDeps & ShopManagementK
 
 type ShopMachineRequest = ShopMachineAuthentication & { tenant: Tenant };
 
-type ShopMachineRefusal =
-  | { kind: 'refuse'; reason: 'secret' | 'side-effect' }
-  | { kind: 'refuse'; reason: 'not-in-release'; feature: string };
+type ShopMachineRefusal = { kind: 'refuse'; reason: 'secret' | 'side-effect' };
 
 type ShopMachineProposeMode =
-  | { kind: 'proposal'; operation: ChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
+  | { kind: 'proposal'; operation: RegisteredChangeProposalOperation; toInput: (c: Context<AppVars>) => Promise<Result<unknown, AppError>> }
   | ShopMachineRefusal
   | { kind: 'direct'; reason: string };
 
@@ -148,9 +146,8 @@ const resourceIdOf = async (c: Context<AppVars>, route: ShopMachineRoute, body: 
   );
 };
 
-const proposeModeRefusal = (refusal: ShopMachineRefusal): AppError => forbidden(refusal.reason === 'not-in-release'
-  ? `A propose-mode shop management key cannot call this route (${refusal.reason}): ${refusal.feature} are not available to a propose-mode key yet`
-  : `A propose-mode shop management key cannot call this route (${refusal.reason})`);
+const proposeModeRefusal = (refusal: ShopMachineRefusal): AppError =>
+  forbidden(`A propose-mode shop management key cannot call this route (${refusal.reason})`);
 
 const proposalManagementRefusal = (): AppError =>
   forbidden('Only a propose-mode shop management key manages change proposals');
@@ -158,8 +155,6 @@ const proposalManagementRefusal = (): AppError =>
 const isDirectModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'direct';
 
 export const isProposeModeKey = (request: ShopMachineRequest): boolean => request.apiKey.mode === 'propose';
-
-export const notInRelease = (feature: string): ShopMachineRefusal => ({ kind: 'refuse', reason: 'not-in-release', feature });
 
 export const PROPOSED_IMAGE_UPLOAD = {
   kind: 'direct',
@@ -186,7 +181,7 @@ const proposalGroupOf = (c: Context<AppVars>): Result<string | null, AppError> =
 
 const submitProposal = async (
   request: ShopMachineRequest,
-  operation: ChangeProposalOperation,
+  operation: RegisteredChangeProposalOperation,
   input: unknown,
   groupId: string | null,
   deps: ShopMachineDeps,

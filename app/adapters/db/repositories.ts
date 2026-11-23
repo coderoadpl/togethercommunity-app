@@ -169,6 +169,7 @@ import type {
 } from '#core/server/index.js';
 
 import { oweKeyFileDeletions } from './key-download-files.js';
+import { busyAfterRollback } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { undefinedRelation, uniqueViolation } from './pg-errors.js';
@@ -487,7 +488,7 @@ export const createProductRepository = (
     return row ? parseProduct(row) : null;
   }),
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
-    db.transaction(async (tx) => {
+    busyAfterRollback(() => db.transaction(async (tx) => {
       if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
         return 'course_unavailable';
       }
@@ -502,7 +503,7 @@ export const createProductRepository = (
         .returning();
       const row = rows[0];
       return row ? parseProduct(row) : null;
-    }),
+    }), 'busy' as const),
   setPublished: async (tenantId, id, published) => {
     await db
       .update(products)

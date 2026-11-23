@@ -24,8 +24,12 @@ import {
   createChangeProposalTargetLocks,
 } from './change-proposals.js';
 import type { Db } from './client.js';
+import { createChangeProposalProductFiles, createKeyDownloadAttachRepository } from './key-download-files.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import {
+  createCourseLessonRepository,
+  createCourseModuleRepository,
+  createCourseRepository,
   createProductDownloadAssetRepository,
   createProductPriceRepository,
   createProductRepository,
@@ -43,6 +47,9 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
   const tenants = createTenantRepository(tx);
   const downloadAssets = createProductDownloadAssetRepository(tx);
   const spaces = createSpaceRepository(tx);
+  const courses = createCourseRepository(tx);
+  const modules = createCourseModuleRepository(tx);
+  const lessons = createCourseLessonRepository(tx);
   return {
     products: createProductRepository(tx),
     prices: createProductPriceRepository(tx),
@@ -58,6 +65,12 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
       list: (tenantId, options) => spaces.list(tenantId, options),
       findById: (tenantId, id) => spaces.findById(tenantId, id),
     },
+    courses: { findByIds: (tenantId, ids) => courses.findByIds(tenantId, ids) },
+    modules: {
+      findByIds: (tenantId, ids) => modules.findByIds(tenantId, ids),
+      list: (tenantId) => modules.list(tenantId),
+    },
+    lessons: { findByIds: (tenantId, ids) => lessons.findByIds(tenantId, ids) },
     stock: createStockRepository(tx),
     productDrafts: createProductDraftRepository(tx),
     salesLinks: createSalesLinkRepository(tx),
@@ -66,6 +79,8 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
     changeProposalGroups: createChangeProposalGroupRepository(tx, bounds),
     targets: createChangeProposalTargetLocks(tx),
     quarantinedImages: createQuarantinedImageLocks(tx),
+    keyDownloadAttach: createKeyDownloadAttachRepository(tx),
+    productFiles: createChangeProposalProductFiles(tx),
   };
 };
 

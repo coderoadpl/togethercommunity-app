@@ -2,6 +2,8 @@ import {
   appError,
   approveChangeProposalGroupInputSchema,
   changeProposalExpired,
+  changeProposalFileMissingNote,
+  changeProposalFileUnavailable,
   changeProposalImageMissingNote,
   CHANGE_PROPOSAL_GROUP_LIMITS,
   changeProposalCapExceeded,
@@ -55,6 +57,7 @@ import {
 import { notifyOwnersOfProposal, type ChangeProposalNotifyDeps } from '../change-proposal-notifications.js';
 import { changeProposalOwnerFacts, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type { Ctx } from '../context.js';
+import type { KeyDownloadFileRepository } from '../key-download-ports.js';
 import type {
   ChangeProposalEventDraft,
   ChangeProposalEventRepository,
@@ -70,7 +73,16 @@ import type {
   QuarantinedImageRepository,
   ShopManagementKeyRepository,
 } from '../ports.js';
-import { applyLockedProposal, changeProposalGroupReferences, previewChangeProposal } from './change-proposal-apply.js';
+import { applyLockedProposal, changeProposalGroupReferences, lockGroupCourses, previewChangeProposal } from './change-proposal-apply.js';
+import {
+  checkApprovalFiles,
+  checkProposedFiles,
+  prepareApprovalFiles,
+  releaseFilesOfProposals,
+  type ChangeProposalFileApprovalDeps,
+  type ChangeProposalFileReleaseDeps,
+  type ProposedFileCheckDeps,
+} from './change-proposal-files.js';
 import {
   changeProposalImageGone,
   checkProposedImages,
@@ -93,7 +105,7 @@ export interface ChangeProposalGroupCreateDeps {
   clock: Clock;
 }
 
-export interface ChangeProposalGroupSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps, ProposedImageCheckDeps {
+export interface ChangeProposalGroupSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps, ProposedImageCheckDeps, ProposedFileCheckDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   changeProposals: Pick<ChangeProposalRepository, 'countCapReached'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findByKey' | 'addItem'>;
@@ -106,7 +118,7 @@ export interface ChangeProposalGroupKeyDeps {
   clock: Clock;
 }
 
-export type ChangeProposalGroupWithdrawDeps = ChangeProposalGroupKeyDeps & ChangeProposalImageReleaseDeps;
+export type ChangeProposalGroupWithdrawDeps = ChangeProposalGroupKeyDeps & ChangeProposalImageReleaseDeps & ChangeProposalFileReleaseDeps;
 
 export interface ChangeProposalGroupOwnerReadDeps extends ChangeProposalOwnerViewDeps {
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds'>;
@@ -114,14 +126,17 @@ export interface ChangeProposalGroupOwnerReadDeps extends ChangeProposalOwnerVie
   clock: Clock;
 }
 
-export interface ChangeProposalGroupDecisionDeps extends ChangeProposalGroupOwnerReadDeps, ChangeProposalImageReleaseDeps {
+export interface ChangeProposalGroupDecisionDeps extends ChangeProposalGroupOwnerReadDeps, ChangeProposalImageReleaseDeps, ChangeProposalFileReleaseDeps {
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'release' | 'finishDeletion'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'decide'>;
   ids: IdGenerator;
 }
 
 export interface ChangeProposalGroupApprovalDeps
-  extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps, ChangeProposalImageReleaseDeps, ChangeProposalImagePublishDeps {
+  extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps, ChangeProposalImageReleaseDeps, ChangeProposalImagePublishDeps,
+  ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
   quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'recordExpiry'>;
   changeProposalEvents: ChangeProposalEventRepository;
@@ -250,6 +265,8 @@ export const submitGroupedChangeProposal = async (
   if (!storedReferencesChecked.ok) return storedReferencesChecked;
   const reachedCap = await deps.changeProposals.countCapReached(tenantId, keyId, startedAt);
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
+  const files = await checkProposedFiles(tenantId, keyId, operationName, prepared.value.input, operation.invalidInputMessage, deps);
+  if (!files.ok) return files;
 
   const proposalId = deps.ids.nextId();
   const ownerEquivalent: Ctx = { identity: ctx.identity };
@@ -260,6 +277,7 @@ export const submitGroupedChangeProposal = async (
     if (!changeProposalGroupOpen(inside.group, inside.items, readAt)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt));
     if (!sameItemIds(inside.items, earlier)) return err(changeProposalGroupConflict(inside.group, inside.items, readAt, GROUP_CHANGED_MESSAGE));
     const references = changeProposalGroupReferences();
+    await lockGroupCourses(tenantId, [...earlier, { operation: operationName, input: prepared.value.input }], scope);
     for (const [index, item] of earlier.entries()) {
       const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
       if (outcome.status === 'aborted') return err(outcome.error);
@@ -269,7 +287,7 @@ export const submitGroupedChangeProposal = async (
     if (resolved === null) return err(validation('A proposal reference names an item that created nothing'));
     const runnable = operation.prepare(resolved);
     if (!runnable.ok) return runnable;
-    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references });
+    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId });
   }, { groupId });
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, operationName, dryRun.value, operation.invalidInputMessage, deps);
@@ -299,7 +317,7 @@ export const submitGroupedChangeProposal = async (
     failureMessage: null,
   };
   const event: ChangeProposalEventDraft = { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now };
-  const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, deps.clock, images.value);
+  const added = await deps.changeProposalGroups.addItem(tenantId, proposal, event, deps.clock, images.value, files.value);
   switch (added.kind) {
     case 'created':
       await notifyOwnersOfProposal(deps, {
@@ -316,6 +334,8 @@ export const submitGroupedChangeProposal = async (
       return err(forbidden('This shop management key can no longer propose changes'));
     case 'image_missing':
       return err(changeProposalImageGone(operation.invalidInputMessage));
+    case 'file_unavailable':
+      return err(changeProposalFileUnavailable(operation.invalidInputMessage));
     case 'busy':
       return err(changeProposalsBusy());
     case 'not_found':
@@ -378,7 +398,10 @@ export const withdrawOwnChangeProposalGroup = async (
   if (decided.kind === 'busy') return err(changeProposalsBusy());
   if (decided.kind === 'not_found') return err(keyGroupMissing(id));
   const { decision, group, items } = decided;
-  if (decision.kind !== 'refuse') await releaseImagesOfProposals(tenantId, items, deps);
+  if (decision.kind !== 'refuse') {
+    await releaseImagesOfProposals(tenantId, items, deps);
+    await releaseFilesOfProposals(tenantId, items, deps);
+  }
   if (decision.kind === 'move') return ok(keyReceipt({ group, items }, decision.at));
   return err(changeProposalGroupConflict(group, items, decision.at));
 };
@@ -427,7 +450,10 @@ export const rejectChangeProposalGroup = async (
   if (decided.kind === 'busy') return err(changeProposalsBusy());
   if (decided.kind === 'not_found') return err(ownerGroupMissing(id));
   const { decision, group, items } = decided;
-  if (decision.kind !== 'refuse') await releaseImagesOfProposals(tenantId, items, deps);
+  if (decision.kind !== 'refuse') {
+    await releaseImagesOfProposals(tenantId, items, deps);
+    await releaseFilesOfProposals(tenantId, items, deps);
+  }
   if (decision.kind === 'move') return ok(await ownerView({ group, items }, deps, decision.at));
   return err(changeProposalGroupConflict(group, items, decision.at));
 };
@@ -477,12 +503,15 @@ export const approveChangeProposalGroup = async (
     const recorded = await deps.changeProposalGroups.recordExpiry(tenantId, id, expiryEvent(deps.ids, now, { actorUserId: owner, apiKeyId: null }));
     if (recorded.kind === 'busy') return err(changeProposalsBusy());
     await releaseImagesOfProposals(tenantId, found.items, deps);
+    await releaseFilesOfProposals(tenantId, found.items, deps);
   }
   if (found.items.length === 0 || !changeProposalGroupOpen(found.group, found.items, now)) {
     return err(changeProposalGroupConflict(found.group, found.items, now));
   }
   if (shownItemsDiffer(found.items, itemIds)) return err(itemsChangedSinceShown(found.items));
 
+  const fileChecks = await checkApprovalFiles(tenantId, found.items, deps);
+  if (!fileChecks.ok) return fileChecks;
   const publication = await recordApprovalPublications(tenantId, found.items, deps);
   if (!publication.ok) return publication;
   const writes = noApprovalImageWrites();
@@ -493,17 +522,25 @@ export const approveChangeProposalGroup = async (
     const afterLock = deps.clock.nowIso();
     if (locked.items.some((item) => item.status !== 'pending')) return err(changeProposalGroupConflict(locked.group, locked.items, afterLock));
     if (shownItemsDiffer(locked.items, itemIds)) return err(itemsChangedSinceShown(locked.items));
+    await lockGroupCourses(tenantId, locked.items, scope);
     const references = changeProposalGroupReferences();
     const halted = appError('conflict', 'An item of the group did not apply');
     const halt: { current: GroupHalt | null } = { current: null };
-    const images = locked.items.some((item) => changeProposalExpired(item, deps.clock.nowIso()))
+    const expired = locked.items.some((item) => changeProposalExpired(item, deps.clock.nowIso()));
+    const images = expired
       ? { kind: 'ready' as const, images: [], configuration: null }
       : await prepareApprovalImages(tenantId, locked.items, scope, deps);
     if (images.kind === 'failed') return err(images.error);
     if (images.kind === 'missing') {
       halt.current = { item: images.proposal, outcome: { status: 'stale', note: changeProposalImageMissingNote(images.image), at: deps.clock.nowIso() } };
     }
-    const applied = images.kind === 'missing' ? err(halted) : await scope.savepoint(async (nested) => {
+    const files = expired || images.kind === 'missing'
+      ? { kind: 'ready' as const }
+      : await prepareApprovalFiles(tenantId, locked.items, fileChecks.value, scope);
+    if (files.kind === 'missing') {
+      halt.current = { item: files.proposal, outcome: { status: 'stale', note: changeProposalFileMissingNote(files.fileId), at: deps.clock.nowIso() } };
+    }
+    const applied = images.kind === 'missing' || files.kind === 'missing' ? err(halted) : await scope.savepoint(async (nested) => {
       const outcomes: Array<{ item: ChangeProposal; appliedResourceId: string | null; at: string }> = [];
       for (const [index, item] of locked.items.entries()) {
         const outcome = await applyLockedProposal(item, ctx, nested, deps, { earlier: locked.items.slice(0, index), references });
@@ -562,6 +599,7 @@ export const approveChangeProposalGroup = async (
   }
   if (!decided.ok) return decided;
   await releaseImagesOfProposals(tenantId, found.items, deps);
+  await releaseFilesOfProposals(tenantId, decided.value.kind === 'decided' ? decided.value.items : found.items, deps);
   if (decided.value.kind === 'expired') {
     const current = await deps.changeProposalGroups.findById(tenantId, id);
     return err(changeProposalGroupConflict(found.group, current?.items ?? found.items, decided.value.at));

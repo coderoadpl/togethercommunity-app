@@ -15,8 +15,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(547);
-    expect(inventory.useCases).toHaveLength(414);
+    expect(inventory.routes).toHaveLength(549);
+    expect(inventory.useCases).toHaveLength(415);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     for (const row of [
@@ -25,14 +25,16 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(59);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(60);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(59);
-    for (const row of shopRoutes) {
+    expect(shopRoutes).toHaveLength(60);
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/access'))
+      .toMatchObject({ capability: 'product:access:write', before: [], after: [], derivable: true });
+    for (const row of shopRoutes.filter((entry) => entry.subject !== 'POST /api/m2m/shop/products/access')) {
       const principals = row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
         : row.subject.startsWith('GET ') && !row.subject.includes(' /api/m2m/shop/downloads/')
@@ -285,6 +287,7 @@ describe('permission inventory', () => {
       ['POST /api/change-proposals/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/:id/approve', 'proposal:decide'],
       ['GET /api/change-proposals/:id/assets/:digest', 'proposal:read'],
+      ['GET /api/change-proposals/:id/files/:fileId', 'proposal:read'],
       ['GET /api/change-proposals/groups/:id', 'proposal:read'],
       ['POST /api/change-proposals/groups/:id/reject', 'proposal:decide'],
       ['POST /api/change-proposals/groups/:id/approve', 'proposal:decide'],
@@ -329,6 +332,13 @@ describe('permission inventory', () => {
       ['completeProposedProductCoverUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
       ['completeProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
       ['getChangeProposalImage', 'proposal:read', ['owner']],
+    ]);
+  });
+
+  it('gives the link to a proposed download file to the owner only', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('change-proposal-files.ts#'));
+    expect(useCases.map(({ subject, capability, after }) => [subject.replace('change-proposal-files.ts#', ''), capability, after])).toEqual([
+      ['getChangeProposalFileLink', 'proposal:read', ['owner']],
     ]);
   });
 

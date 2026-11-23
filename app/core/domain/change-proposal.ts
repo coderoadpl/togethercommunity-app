@@ -32,9 +32,23 @@ const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
   { operation: 'sales-link.update', family: 'catalog', targetKind: 'sales-link' },
   { operation: 'sales-link.delete', family: 'catalog', targetKind: 'sales-link' },
   { operation: 'settings.update', family: 'settings', targetKind: 'settings' },
+  { operation: 'product.set-access', family: 'catalog', targetKind: 'product' },
 ] as const satisfies readonly ChangeProposalOperationDefinition[];
 
+const CHANGE_PROPOSAL_FILE_OPERATION_DEFINITIONS = [
+  { operation: 'download.add', family: 'catalog', targetKind: 'product' },
+  { operation: 'download.replace', family: 'catalog', targetKind: 'product' },
+  { operation: 'download.remove', family: 'catalog', targetKind: 'product' },
+] as const satisfies readonly ChangeProposalOperationDefinition[];
+
+const REGISTERED_OPERATION_DEFINITIONS: readonly ChangeProposalOperationDefinition[] = [
+  ...CHANGE_PROPOSAL_OPERATION_DEFINITIONS,
+  ...CHANGE_PROPOSAL_FILE_OPERATION_DEFINITIONS,
+];
+
 type ChangeProposalOperationName = (typeof CHANGE_PROPOSAL_OPERATION_DEFINITIONS)[number]['operation'];
+
+type ChangeProposalFileOperationName = (typeof CHANGE_PROPOSAL_FILE_OPERATION_DEFINITIONS)[number]['operation'];
 
 const nonEmpty = <T extends string>(values: readonly T[]): [T, ...T[]] => {
   const [first, ...rest] = values;
@@ -48,6 +62,22 @@ export const changeProposalOperationSchema = z.enum(
 
 export type ChangeProposalOperation = z.output<typeof changeProposalOperationSchema>;
 
+const changeProposalFileOperationSchema = z.enum(
+  nonEmpty<ChangeProposalFileOperationName>(CHANGE_PROPOSAL_FILE_OPERATION_DEFINITIONS.map((definition) => definition.operation)),
+);
+
+/**
+ * Every operation the registry of this release applies, which the owner panel and the CLI display and approve.
+ * `changeProposalOperationSchema` leaves out the three file operations: each needs a staged file or a ready product
+ * file before it can be proposed, so a table that proposes every operation of that list runs without one.
+ */
+export const registeredChangeProposalOperationSchema = z.enum([
+  ...changeProposalOperationSchema.options,
+  ...changeProposalFileOperationSchema.options,
+]);
+
+export type RegisteredChangeProposalOperation = z.output<typeof registeredChangeProposalOperationSchema>;
+
 const CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH = 64;
 
 // The database holds any operation of this shape, so a row written by a later release still reads; only the registry decides what applies.
@@ -55,16 +85,16 @@ const changeProposalStoredOperationSchema = z.string()
   .max(CHANGE_PROPOSAL_STORED_OPERATION_MAX_LENGTH)
   .regex(/^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$/);
 
-export const knownChangeProposalOperation = (operation: string): ChangeProposalOperation | null => {
-  const known = changeProposalOperationSchema.safeParse(operation);
+export const registeredChangeProposalOperation = (operation: string): RegisteredChangeProposalOperation | null => {
+  const known = registeredChangeProposalOperationSchema.safeParse(operation);
   return known.success ? known.data : null;
 };
 
 export const unknownChangeProposalOperationNote = (operation: string): string =>
   `This release does not know the operation "${operation}", so the proposal cannot be applied; nothing was changed`;
 
-const operationDefinition = (operation: ChangeProposalOperation): ChangeProposalOperationDefinition => {
-  const found = CHANGE_PROPOSAL_OPERATION_DEFINITIONS.find((definition) => definition.operation === operation);
+const operationDefinition = (operation: RegisteredChangeProposalOperation): ChangeProposalOperationDefinition => {
+  const found = REGISTERED_OPERATION_DEFINITIONS.find((definition) => definition.operation === operation);
   if (found === undefined) throw new Error(`Unknown change proposal operation "${operation}"`);
   return found;
 };
@@ -74,13 +104,13 @@ const submitCapabilityByFamily: Record<ChangeProposalFamily, Capability> = {
   settings: 'proposal:submit:settings',
 };
 
-export const changeProposalFamily = (operation: ChangeProposalOperation): ChangeProposalFamily =>
+export const changeProposalFamily = (operation: RegisteredChangeProposalOperation): ChangeProposalFamily =>
   operationDefinition(operation).family;
 
-export const changeProposalTargetKind = (operation: ChangeProposalOperation): ChangeProposalTargetKind =>
+export const changeProposalTargetKind = (operation: RegisteredChangeProposalOperation): ChangeProposalTargetKind =>
   operationDefinition(operation).targetKind;
 
-export const changeProposalSubmitCapability = (operation: ChangeProposalOperation): Capability =>
+export const changeProposalSubmitCapability = (operation: RegisteredChangeProposalOperation): Capability =>
   submitCapabilityByFamily[changeProposalFamily(operation)];
 
 export const changeProposalStatusSchema = z.enum(['pending', 'applied', 'rejected', 'stale', 'withdrawn', 'failed']);
@@ -230,7 +260,7 @@ export const changeProposalSchema = z.object({
   if ((proposal.groupId === null) !== (proposal.groupPosition === null)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['groupPosition'], message: 'A group position needs a group and a group needs a position' });
   }
-  const expectedKind = CHANGE_PROPOSAL_OPERATION_DEFINITIONS.find((definition) => definition.operation === proposal.operation)?.targetKind;
+  const expectedKind = REGISTERED_OPERATION_DEFINITIONS.find((definition) => definition.operation === proposal.operation)?.targetKind;
   if (expectedKind !== undefined && proposal.target.kind !== expectedKind) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['target', 'kind'], message: `${proposal.operation} targets a ${String(expectedKind)}` });
   }
@@ -312,6 +342,32 @@ export type ChangeProposalTargetPrice = z.output<typeof changeProposalTargetPric
 
 type ChangeProposalIssuer = z.output<typeof changeProposalIssuerSchema>;
 
+const changeProposalProposedFileSchema = z.object({
+  id: z.string(),
+  available: z.boolean(),
+  copiedFrom: z.object({
+    productId: z.string(),
+    productTitle: z.string().nullable(),
+    versionNumber: z.number().int(),
+  }).strict().nullable(),
+}).strict();
+
+export type ChangeProposalProposedFile = z.output<typeof changeProposalProposedFileSchema>;
+
+/** A null title marks an id that no longer names a course, module or lesson of the workspace. */
+const changeProposalAccessLabelSchema = z.object({ id: z.string(), title: z.string().nullable() }).strict();
+
+const changeProposalAccessLabelsSchema = z.object({
+  courses: z.array(changeProposalAccessLabelSchema),
+  modules: z.array(changeProposalAccessLabelSchema),
+  lessons: z.array(changeProposalAccessLabelSchema),
+  /** Excluded modules of either list that are also attached to a course other than the one their item names. */
+  excludedModulesInOtherCourses: z.array(z.string()).optional(),
+  archivedCourses: z.array(z.string()).optional(),
+}).strict();
+
+export type ChangeProposalAccessLabels = z.output<typeof changeProposalAccessLabelsSchema>;
+
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
@@ -339,6 +395,8 @@ export const changeProposalOwnerViewSchema = z.object({
   appliedResourceId: z.string().nullable(),
   failureCode: z.string().nullable(),
   failureMessage: z.string().nullable(),
+  proposedFiles: z.array(changeProposalProposedFileSchema).optional(),
+  accessLabels: changeProposalAccessLabelsSchema.optional(),
 }).strict();
 
 export type ChangeProposalOwnerView = z.output<typeof changeProposalOwnerViewSchema>;
@@ -414,7 +472,7 @@ export const rejectChangeProposalInputSchema = z.object({
 export type RejectChangeProposalInput = z.input<typeof rejectChangeProposalInputSchema>;
 
 export const submitChangeProposalInputSchema = z.object({
-  operation: changeProposalOperationSchema,
+  operation: registeredChangeProposalOperationSchema,
   input: z.unknown(),
 }).strict();
 
@@ -437,6 +495,8 @@ export interface ChangeProposalOwnerFacts {
   decidedBy: { email: string | null; formerTeamMember: boolean };
   targetLabel: string | null;
   targetPrice: ChangeProposalTargetPrice | null;
+  proposedFiles: ChangeProposalProposedFile[];
+  accessLabels: ChangeProposalAccessLabels | null;
 }
 
 export const toChangeProposalOwnerView = (
@@ -472,6 +532,8 @@ export const toChangeProposalOwnerView = (
   appliedResourceId: proposal.appliedResourceId,
   failureCode: proposal.failureCode,
   failureMessage: proposal.failureMessage,
+  ...(facts.proposedFiles.length === 0 ? {} : { proposedFiles: facts.proposedFiles }),
+  ...(facts.accessLabels === null ? {} : { accessLabels: facts.accessLabels }),
 });
 
 export const toChangeProposalOwnerDetail = (

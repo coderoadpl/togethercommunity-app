@@ -79,6 +79,8 @@ export interface ProductDownloadRemoveDeps {
   secretResolver: TenantSecretResolver;
   clock: Clock;
   logger: { error(message: string): void };
+  /** A proposal removes only a ready file: a file still uploading is in no snapshot, so its removal would show no effect. */
+  readyOnly?: boolean;
 }
 
 /** The deletion is owed in the removing transaction, so a storage delete that fails afterwards is retried by the sweep. */
@@ -93,8 +95,9 @@ export const removeProductDownloadFile = async (
   if (!parsed.success) return invalid('Invalid product file removal', parsed.error);
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
-  const removed = await deps.keyDownloadAttach.remove(tenant.value, { ...parsed.data, now: deps.clock.nowIso() });
+  const removed = await deps.keyDownloadAttach.remove(tenant.value, { ...parsed.data, readyOnly: deps.readyOnly === true, now: deps.clock.nowIso() });
   if (removed.kind === 'not_found') return err(notFound(`No download asset "${parsed.data.assetId}" on this product`));
+  if (removed.kind === 'not_ready') return err(validation('Only a ready file can be removed by a proposal'));
   if (removed.owedDeletion === null) {
     await deleteStoredProductDownload(tenant.value, removed.asset, deps);
   } else {

@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/query-core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_ROUTES, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import { shopSettingsSchema } from '#core/domain/index.js';
 
 import { createApiClient, createShopManagementClient, isProposedChange } from './http.js';
@@ -14,6 +14,7 @@ import {
   changeProposalsInvalidates,
   changeProposalsQuery,
   changeProposalSummaryQuery,
+  productDownloadAssetsQuery,
   productPricesQuery,
   productsQuery,
   productStockQuery,
@@ -58,6 +59,7 @@ describe('shop management client with a propose-mode key', () => {
       await client.publishProduct({ id: 'product-1' }),
       await client.unpublishProduct({ id: 'product-1' }),
       await client.deleteProductDraft({ productId: 'product-1' }),
+      await client.setProductAccess({ id: 'product-1', accessItems: [] }),
       await client.createProductPrice({ productId: 'product-1', kind: 'one_time', amountCents: 4900 }),
       await client.deactivateProductPrice({ id: 'price-1' }),
       await client.enableProductStock({ productId: 'product-1', onHand: 3, lowStockThreshold: null }),
@@ -111,6 +113,37 @@ describe('shop management client with a propose-mode key', () => {
     ]);
   });
 
+  it('returns the receipt of a 202 as a proposed outcome on the file attach, replace and remove calls, with the group header when given', async () => {
+    const seen: Array<{ call: string; group: string | null }> = [];
+    const fileReceipt = { ...receipt, operation: 'download.add', input: { productId: 'product-1', stagedFileId: 'staged-1' } };
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      seen.push({ call: `${init?.method ?? 'GET'} ${urlOf(input).pathname}`, group: new Headers(init?.headers).get('x-proposal-group') });
+      return Response.json({ ok: true, data: { outcome: 'proposed', proposal: fileReceipt } }, { status: 202 });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const results = [
+      await client.addProductDownload({ productId: 'product-1', stagedFileId: 'staged-1' }, undefined, { groupId: 'group-1' }),
+      await client.replaceProductDownload({ productId: 'product-1', replacesAssetId: 'asset-1', stagedFileId: 'staged-1' }),
+      await client.removeProductDownload({ productId: 'product-1', assetId: 'asset-1' }, undefined, { groupId: 'group-1' }),
+    ];
+    for (const result of results) expect(result).toEqual({ ok: true, value: { outcome: 'proposed', proposal: fileReceipt } });
+    expect(seen).toEqual([
+      { call: `POST ${SHOP_DOWNLOAD_ROUTES.addProductDownload.path}`, group: 'group-1' },
+      { call: `POST ${SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path}`, group: null },
+      { call: `POST ${SHOP_DOWNLOAD_ROUTES.removeProductDownload.path}`, group: 'group-1' },
+    ]);
+  });
+
+  it('marks a live file attach as applied and keeps the attached file', async () => {
+    const asset = {
+      id: 'staged-1', lineageId: 'staged-1', versionNumber: 1, versionNote: null, supersededAt: null, productId: 'product-1', fileName: 'workbook.pdf',
+      contentType: 'application/pdf', sizeBytes: 4, status: 'ready', createdAt: '2026-11-15T10:00:00.000Z', personalisationSizeExceeded: false,
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: true, data: { asset } }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.addProductDownload({ productId: 'product-1', stagedFileId: 'staged-1' })).toEqual({ ok: true, value: { outcome: 'applied', asset } });
+  });
+
   it('marks a live sales-link deletion and settings update as applied', async () => {
     const settings = shopSettingsSchema.parse({ name: 'Acme shop', supportEmail: 'help@acme.example.test' });
     const fetchImpl = vi.fn<typeof fetch>(async (input) => Response.json({ ok: true, data: urlOf(input).pathname === SHOP_SETTINGS_ROUTES.updateSettings.path ? { settings } : { deleted: true } }));
@@ -132,6 +165,16 @@ describe('shop management client with a propose-mode key', () => {
     if (!result.ok) throw new Error(result.error.message);
     expect(isProposedChange(result.value)).toBe(false);
     expect(result.value).toMatchObject({ outcome: 'applied', product: { id: 'product-1' } });
+  });
+
+  it('marks a live answer about what a product grants as applied and keeps the product', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: true, data: { product: { ...product, accessItems: [{ level: 'course', courseId: 'course-1' }] } } }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    const result = await client.setProductAccess({ id: 'product-1', accessItems: [{ level: 'course', courseId: 'course-1' }] });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(isProposedChange(result.value)).toBe(false);
+    expect(result.value).toMatchObject({ outcome: 'applied', product: { accessItems: [{ level: 'course', courseId: 'course-1' }] } });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(`https://platform.example.test${SHOP_CATALOG_ROUTES.setProductAccess.path}`);
   });
 
   it('refuses a 202 body that is not a key receipt', async () => {
@@ -189,6 +232,7 @@ describe('shop management client with a proposal group', () => {
       await client.publishProduct({ id: '$proposal:proposal-0' }, undefined, group),
       await client.unpublishProduct({ id: 'product-1' }, undefined, group),
       await client.deleteProductDraft({ productId: 'product-1' }, undefined, group),
+      await client.setProductAccess({ id: '$proposal:proposal-0', accessItems: [{ level: 'course', courseId: 'course-1' }] }, undefined, group),
       await client.createProductPrice({ productId: '$proposal:proposal-0', kind: 'one_time', amountCents: 4900 }, undefined, group),
       await client.deactivateProductPrice({ id: 'price-1' }, undefined, group),
       await client.enableProductStock({ productId: 'product-1', onHand: 3, lowStockThreshold: null }, undefined, group),
@@ -199,7 +243,7 @@ describe('shop management client with a proposal group', () => {
       await client.deleteSalesLink({ id: 'link-1' }, undefined, group),
       await client.updateSettings({ name: 'Acme shop' }, undefined, group),
     ];
-    expect(results).toHaveLength(14);
+    expect(results).toHaveLength(15);
     for (const result of results) expect(result).toMatchObject({ ok: true, value: { outcome: 'proposed', group: { id: 'group-1' } } });
     for (const headers of seen) expect(headers.get('x-proposal-group')).toBe('group-1');
     await client.publishProduct({ id: 'product-1' });
@@ -297,6 +341,17 @@ describe('owner change proposal client', () => {
     ]);
   });
 
+  it('asks for a short-lived link to a proposed file by proposal and file id, and reads the answer without keeping it', async () => {
+    const requested: string[] = [];
+    const download = { url: 'https://storage.example.test/acme/file?X-Amz-Signature=1', expiresAt: '2026-11-15T10:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: 4 };
+    const api = createApiClient({ baseUrl: 'http://localhost:48730', fetchImpl: async (url) => {
+      requested.push(String(url));
+      return Response.json({ ok: true, data: { download } });
+    } });
+    expect(await api.getChangeProposalFileLink({ id: 'proposal/1', fileId: 'staged/1' })).toEqual({ ok: true, value: { download } });
+    expect(requested).toEqual([`http://localhost:48730${API_ROUTES.changeProposalFile.path.replace(':id', 'proposal%2F1').replace(':fileId', 'staged%2F1')}`]);
+  });
+
   it('asks for the decided proposals by status, keeps that page apart in the cache and reads whether more pages exist', async () => {
     const requested: string[] = [];
     const decided = { ...ownerView, status: 'expired' };
@@ -342,6 +397,7 @@ describe('owner change proposal client', () => {
       tenantSettingsQuery(api).queryKey,
       productPricesQuery(api, 'product-1').queryKey,
       productStockQuery(api, 'product-1').queryKey,
+      productDownloadAssetsQuery(api, 'product-1').queryKey,
     ]) expect(covered(queryKey), JSON.stringify(queryKey)).toBe(true);
   });
 });

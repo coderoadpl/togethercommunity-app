@@ -577,10 +577,33 @@ scopes on every shop key.
   and the minute sweep, which has its own time budget and never holds back
   e-mail or refund dispatch, retries owed deletions
   ([Download file prefixes](storage.md#download-file-prefixes)). A propose-mode
-  key is refused on every download file route except the product file list in
-  this release (route class `refuse`, reason `not-in-release`), so it can
-  neither stage bytes nor change a file. See
-  [Download files](shop-management-keys.md#download-files).
+  key stages files through the same routes and limits (route class `direct`,
+  with `proposal:asset:upload` and `proposal:submit:catalog`), but changes no
+  file: its attach, replace and remove requests become `download.add`,
+  `download.replace` and `download.remove` proposals that only an owner
+  approval applies. A staged file is held by at most one pending proposal,
+  checked before the dry run and again under the staged row's lock in the
+  transaction that stores the proposal; a removal may name only a ready file,
+  and a file proposal whose dry run changes nothing is refused. The approval
+  asks the storage about each attached object before its transaction, at most
+  4 at a time within one 25-second budget that leaves the rest of the
+  60-second server function to the transaction, so none of these file checks
+  waits under the workspace's approval lock, then locks the staged row and
+  checks it is the same file
+  (key, object, size, SHA-256, held by that proposal); a gone file ends the
+  proposal or its whole group `stale` and nothing is attached. Because only the
+  server writes the staged object and the row stays locked until the commit,
+  the bytes an approval attaches are the bytes the owner could download. The
+  owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
+  (verified owner session, `proposal:read`, a file the pending proposal holds):
+  a 60-second signed `GET` that forces a download of type
+  `application/octet-stream` with `no-store`, answered `private, no-store` with
+  `referrer-policy: no-referrer`. It is a bearer link: whoever holds the
+  address can fetch the file until it expires, so the server never logs it and
+  the CLI never prints it. Rejection, withdrawal, expiry and revocation discard
+  the held files. See
+  [Download files](shop-management-keys.md#download-files) and
+  [Change proposals](change-proposals.md#download-files).
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
   `proposal:submit:settings`, each with `proposal:asset:upload` for images
@@ -596,14 +619,17 @@ scopes on every shop key.
   values it cannot read; with the rule, a propose-mode key learns nothing from
   a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
-  without one: the ten catalogue write routes, the three sales-link write
-  routes and the settings update store a
+  without one: the eleven catalogue write routes, the three sales-link write
+  routes, the settings update and the three product file write routes store a
   [change proposal](change-proposals.md) instead of running their handler,
-  the four product cover and branding image routes (class `direct`) upload
-  into the key's private quarantine, every other write route (fulfilment,
-  integrations, the download file routes) and the staged download file list
-  answer `403`, and a test drives a propose-mode key over every
-  registered shop route and asserts that no live row changed and no object
+  the four product cover and branding image routes and the four download file
+  staging routes (class `direct`) run their handler: the image routes upload
+  into the key's private quarantine, the upload, completion and copy routes
+  stage a file in the key's private staging, and
+  `DELETE /api/m2m/shop/downloads/staged/:id` discards one of the key's staged
+  files and deletes its object; every other write route (fulfilment, integrations) answers `403`,
+  and a test drives a propose-mode key over every registered shop route and
+  asserts that no live row changed, no product file appeared and no object
   appeared under the public image prefix. A quarantined image is stored under
   `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
   private prefix the public asset route never serves; its address names its
@@ -696,6 +722,51 @@ scopes on every shop key.
   clear it. The owner view shows an account's e-mail only while that account
   holds a staff grant in the workspace; a former team member or a deleted
   account is shown as such, without its address.
+- **What a product grants.** No scope of a shop management key grants
+  `product:access:write`. `POST /api/m2m/shop/products/access` runs the
+  owner's access editor use-case, which needs that capability, so a
+  direct-mode key gets `403` there and changes nothing. A propose-mode key with
+  `shop:catalog:write` can only propose the whole new list as
+  `product.set-access`; its input is strict (`{ id, accessItems }`, no checkout
+  consent definitions), and only an owner approval applies it, running the
+  use-case with the approving owner's session after locking the courses the
+  list names and then the product, and ending `stale` when the product's list
+  no longer grants what it granted when the proposal was made. A direct-mode
+  key can still set what a new product grants with `accessItems` on product
+  creation. The owner's editor, product creation for a session, a key or a
+  `product.create` proposal, and `product.set-access` run one check,
+  `checkProductAccessItems`: every course exists in the workspace and is not
+  archived, every module is attached to its item's course, and every lesson
+  sits in a chapter of a module attached to its item's course; a course,
+  module or lesson of another workspace is never found. The owner's editor
+  skips the check when the list it is sent grants the same as the stored one,
+  so a consent save does not fail on a stored list the check would refuse,
+  unless that list names an archived course. A module
+  or lesson item opens that module or lesson wherever it is used, so the check
+  only keeps the course shown next to it true. It is a point-in-time check:
+  the write locks only the courses, and a later module detach or lesson move
+  is not prevented. The content import, the legacy importer and lesson
+  deletion write access items without this check; an import key can thereby
+  change, with no owner approval, what members with active grants to an
+  unpublished product it imported open. Excluded modules are pooled across
+  courses in access resolution (`buildAccessLookup`): a module that every
+  `course` item for one course excludes stays closed in every course the
+  member holds in full unless a `modules` item names it, even when another
+  product grants that course in full. A `product.set-access` proposal therefore may not exclude a module
+  attached to more than one course (`400 validation` at submit, `failed` at
+  approval); the owner's editor and product creation still may. Access is
+  resolved from a product's current list on every request, so an applied
+  change reaches everyone who already holds the product at once. No shop route
+  serves a course, module or lesson to a key, and the receipt carries only the
+  ids the key sent; a refusal of the check names no title but tells the key
+  whether an id it sent is an active course of the workspace and whether a
+  module or lesson belongs to the course it named, and the refusal of an
+  excluded module tells it only that the module is attached to more than one
+  course. The course, module and lesson titles of the owner view
+  (`accessLabels`), its `excludedModulesInOtherCourses` and its
+  `archivedCourses` are read at read time for display only and never take
+  part in a decision. See
+  [Product access](change-proposals.md#product-access).
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

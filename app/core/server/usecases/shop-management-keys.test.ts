@@ -12,7 +12,9 @@ import type {
 
 import type { Ctx } from '../context.js';
 import type { QuarantinedImageRelease, ShopManagementKeyRepository } from '../ports.js';
+import { noProposedFiles } from '../testing/key-download-fakes.js';
 import { createObjectStorageFake, fakeStorageSecrets } from '../testing/object-storage-fake.js';
+import type { ChangeProposalFileReleaseDeps } from './change-proposal-files.js';
 import type { ChangeProposalImageReleaseDeps } from './change-proposal-images.js';
 import {
   createShopManagementKey,
@@ -85,7 +87,8 @@ const harness = (rows: ShopManagementKey[] = [], shopManagementKeysSwitch: ShopM
     },
   };
   const releases: Array<{ tenantId: string; selection: QuarantinedImageRelease }> = [];
-  const deps: ShopManagementKeyDeps & ChangeProposalImageReleaseDeps = {
+  const deps: ShopManagementKeyDeps & ChangeProposalImageReleaseDeps & ChangeProposalFileReleaseDeps = {
+    ...noProposedFiles(),
     quarantinedImages: {
       release: async (tenantId, selection) => {
         releases.push({ tenantId, selection });

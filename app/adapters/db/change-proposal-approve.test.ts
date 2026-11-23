@@ -38,11 +38,15 @@ import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } f
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
-import { createTenantSecretRepository } from './repositories.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
+import { createProductRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
   changeProposals,
+  courseLessons,
+  courseModules,
+  courses,
   entityVersions,
   productDownloadAssets,
   productPrices,
@@ -119,6 +123,7 @@ const deps = (db: Db = database.db, lockWait: { lockWaitMs?: number } = {}) => {
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, lockWait),
     realtimeBus: { publish: () => undefined },
     quarantinedImages: createQuarantinedImageRepository(db, lockWait),
+    keyDownloadFiles: createKeyDownloadFileRepository(db, lockWait),
     secretResolver: createTenantSecretResolver(createTenantSecretRepository(db), secretCrypto),
     contentHash: createContentHash(),
     storage,
@@ -186,6 +191,15 @@ beforeAll(async () => {
       provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'downloads', accessKeyId: 'a', secretAccessKey: 's',
     })),
   });
+  await database.db.insert(courses).values([
+    { id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', createdAt: NOW },
+    { id: 'course-advanced', tenantId: TENANT, name: 'Advanced course', description: '', createdAt: NOW },
+  ]);
+  await database.db.insert(courseModules).values({
+    id: 'module-basics', tenantId: TENANT, courseIds: ['course-intro'], title: 'Basics', createdAt: NOW,
+    chapters: [{ id: 'chapter-basics', name: 'Basics', contents: [{ id: 'content-welcome', lessonId: 'lesson-welcome', name: 'Welcome' }] }],
+  });
+  await database.db.insert(courseLessons).values({ id: 'lesson-welcome', tenantId: TENANT, name: 'Welcome', createdAt: NOW });
 });
 
 afterAll(async () => { await database?.close(); });
@@ -401,6 +415,68 @@ describe('approving a change proposal over the database', () => {
 
     expect((await database.db.select({ name: tenants.name, vatMode: tenants.invoiceVatMode, vatRate: tenants.invoiceVatRatePercent }).from(tenants)
       .where(eq(tenants.id, TENANT)))).toEqual([{ name: 'Acme shop', vatMode: 'rate', vatRate: 8 }]);
+  });
+});
+
+describe('approving what a product grants over the database', () => {
+  const accessOf = async (id: string) => (await productRow(id))?.accessItems;
+
+  it('applies the stored list as the approving owner after locking the courses, and is stale once the list moved', async () => {
+    const lessonItem = [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome'] }];
+    await insertProduct('workbook', { type: 'digital_download' });
+    const id = await submit('product.set-access', { id: 'draft', accessItems: lessonItem });
+    const moved = await submit('product.set-access', { id: 'workbook', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
+    expect(await accessOf('draft')).toEqual([]);
+    await database.db.update(products).set({ accessItems: [{ level: 'course', courseId: 'course-intro' }] }).where(eq(products.id, 'workbook'));
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied', appliedResourceId: 'draft' } });
+    expect(await accessOf('draft')).toEqual(lessonItem);
+    expect(await productVersionAuthors('draft')).toEqual([OWNER]);
+    expect(await approve(moved)).toMatchObject({ ok: true, value: { status: 'stale', appliedResourceId: null } });
+    expect(await accessOf('workbook')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
+  });
+
+  it('fails with the validation error and applies nothing once a course of the list is archived after the proposal', async () => {
+    const id = await submit('product.set-access', { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
+    await database.db.update(courses).set({ archivedAt: NOW }).where(eq(courses.id, 'course-advanced'));
+    try {
+      expect((await createChangeProposalTargetLabelReader(database.db).accessTitles(TENANT, { courseIds: ['course-advanced', 'course-intro'], moduleIds: [], lessonIds: [] }))
+        .courses.map((course) => [course.id, course.archived]).toSorted()).toEqual([['course-advanced', true], ['course-intro', false]]);
+      expect(await approve(id)).toMatchObject({
+        ok: true, value: { status: 'failed', failureCode: 'validation', failureMessage: 'Product access items may only reference existing, active courses' },
+      });
+    } finally {
+      await database.db.update(courses).set({ archivedAt: null }).where(eq(courses.id, 'course-advanced'));
+    }
+    expect(await accessOf('draft')).toEqual([]);
+    expect(await eventsOf(id)).toEqual(['1:proposed', '2:apply_failed']);
+  });
+
+  it('answers busy from the live access write that the database picks as a deadlock victim, and writes nothing', async () => {
+    const other = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await other.query('begin');
+      await other.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'draft']);
+      const write = createProductRepository(database.db).updateAccessItems(TENANT, 'draft', [{ level: 'course', courseId: 'course-intro' }]);
+      await untilLockWaiters(observer, 1);
+      const crossing = other.query('select id from courses where tenant_id = $1 and id = $2 for update', [TENANT, 'course-intro']);
+      expect(await write).toBe('busy');
+      await crossing;
+      await other.query('rollback');
+    } finally {
+      await other.end();
+      await observer.end();
+    }
+    expect(await accessOf('draft')).toEqual([]);
+  }, 30_000);
+
+  it('refuses at submission a lesson that sits in no module of the named course and stores nothing', async () => {
+    const result = await submitChangeProposal(keyCtx, {
+      operation: 'product.set-access', input: { id: 'draft', accessItems: [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-welcome'] }] },
+    }, deps());
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } });
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
   });
 });
 

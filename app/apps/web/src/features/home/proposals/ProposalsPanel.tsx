@@ -5,7 +5,6 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import {
   CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
-  isChangeProposalImageMissingNote,
   type ChangeProposalEventView,
   type ChangeProposalOwnerView,
 } from '#core/domain/index.js';
@@ -20,13 +19,15 @@ import { usePanelContext } from '../panel-context.js';
 import {
   GroupProposalCard,
   GroupTitle,
-  mayBeStaleForMissingImage,
+  mayBeStaleForMissingAsset,
+  missingAssetOf,
   outcomeExplanation,
   ProposalBody,
   ProposedBy,
   SingleProposalCard,
-  staleForMissingImage,
+  staleForMissingAsset,
   TargetLine,
+  type MissingAsset,
   type SettledOutcome,
 } from './ProposalCards.js';
 import { groupReferences } from './proposal-display.js';
@@ -77,7 +78,7 @@ const SettledNotice = ({ outcome, onDismiss }: { outcome: SettledOutcome; onDism
       data-testid={`proposal-outcome-${outcome.key}`}
     >
       <AlertTitle>{outcome.title}</AlertTitle>
-      {outcomeExplanation(t, outcome.status, outcome.reason, outcome.imageUnavailable)}
+      {outcomeExplanation(t, outcome.status, outcome.reason, outcome.missing)}
     </Alert>
   );
 };
@@ -163,8 +164,16 @@ const PendingTab = () => {
   );
 };
 
-const eventLabel = (t: Translations, event: ChangeProposalEventView): string =>
-  event.kind === 'stale' && isChangeProposalImageMissingNote(event.note) ? t.eventStaleImageUnavailable : t.event[event.kind];
+const eventLabel = (t: Translations, event: ChangeProposalEventView): string => {
+  const missing = missingAssetOf(event);
+  if (missing === 'image') return t.eventStaleImageUnavailable;
+  return missing === 'file' ? t.eventStaleFileUnavailable : t.event[event.kind];
+};
+
+const statusLabel = (t: Translations, proposal: Pick<ChangeProposalOwnerView, 'status'>, missing: MissingAsset | null): string => {
+  if (missing === 'image') return t.statusStaleImageUnavailable;
+  return missing === 'file' ? t.statusStaleFileUnavailable : t.status[proposal.status];
+};
 
 const eventNote = (t: Translations, event: ChangeProposalEventView): string | null => {
   if (event.note === null) return null;
@@ -221,10 +230,10 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
   const { language } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  const imageStale = mayBeStaleForMissingImage(proposal);
-  const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: imageStale });
-  const imageUnavailable = imageStale && detail.data !== undefined && staleForMissingImage(detail.data.proposal.events);
-  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage, imageUnavailable);
+  const assetStale = mayBeStaleForMissingAsset(proposal);
+  const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: assetStale });
+  const missing = assetStale && detail.data !== undefined ? staleForMissingAsset(detail.data.proposal.events) : null;
+  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage, missing);
   const decided = decidedLine(t, proposal, language);
   const keyName = proposal.proposedBy.keyName;
   return (
@@ -236,7 +245,7 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
           <Chip
             size="small"
             variant="outlined"
-            label={imageUnavailable ? t.statusStaleImageUnavailable : t.status[proposal.status]}
+            label={statusLabel(t, proposal, missing)}
             data-testid="proposal-history-status"
           />
           <Button

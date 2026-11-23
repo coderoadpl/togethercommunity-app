@@ -47,7 +47,7 @@ Product files live under the workspace's private download prefix:
 |---|---|---|
 | `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
 | `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included |
-| `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never while staged; an attached file is served like any other product file |
+| `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never to a key or a buyer while staged; the verified owner gets a 60-second signed download of one a pending change proposal holds ([Download files](change-proposals.md#download-files)); an attached file is served like any other product file |
 
 A key writes only its own `key-uploads/` object, through the presigned `PUT`
 of its upload ([Download files](shop-management-keys.md#download-files)).
@@ -65,8 +65,14 @@ Who deletes them:
   refused), and the minute sweep once its upload record is 20 minutes old and
   the lease of its last completion attempt (10 minutes) has ended;
 - a `key-files/` object that is still staged: a completion or copy that wrote
-  it and then failed for a definite reason, the key's discard, and the minute
-  sweep 7 days after staging or once the key is revoked, expired or purged;
+  it and then failed for a definite reason; the key's discard, also of a file a
+  pending proposal holds (an approval of that proposal then ends `stale`);
+  the release after a rejection, withdrawal or recorded expiry of the change
+  proposal that held it, or after the revocation or purge of its key; and the
+  minute sweep 7 days after staging, once the key is revoked, expired or purged,
+  or once the proposal that held it was rejected, withdrawn or expired. The
+  release and the sweep never delete a file a pending, unexpired proposal
+  holds;
 - the destination of a completion or copy whose storage outcome is unknown (a
   copy or read the storage did not answer in time, a connection error, a server
   error, a copy answer without a copy result): only the minute sweep, once its
@@ -80,8 +86,9 @@ Who deletes them:
   that is due 30 minutes after the earlier attempt started. The minute sweep
   deletes it then, whether or not an object is there, and it counts against the
   key's limits until the storage confirms the delete;
-- a `key-files/` object that is attached: removing that file version (by a key
-  or in the product editor) or deleting the draft product.
+- a `key-files/` object that is attached: removing that file version (by a
+  direct-mode key, by an approved `download.remove` proposal or in the product
+  editor) or deleting the draft product.
 
 Every staged or upload object is owned by a database row: an upload or copy
 record (its upload object, and its destination until a completion hands it to a
@@ -96,9 +103,9 @@ whoever removed the file; the owed bytes count against that key's and the
 workspace's staging limits until the storage confirms the delete
 ([Download files](shop-management-keys.md#download-files)). After a key's
 removal or discard the deletion that follows holds and removes that row; after
-a removal in the product editor or a draft deletion the object is deleted once
-after its row as before, without the owed row, and the minute sweep deletes it
-once more and removes the row. That delete cannot remove a newer file: every
+a removal in the product editor, an approved removal proposal or a draft
+deletion the object is deleted once after its row as before, without the owed
+row, and the minute sweep deletes it once more and removes the row. That delete cannot remove a newer file: every
 completion attempt and every copy writes a destination of its own under a fresh
 file id, and no path writes to a `key-files/` address that a staged file or a
 product file names. A late copy of a superseded completion attempt lands only on
@@ -172,7 +179,7 @@ published but has no downloadable file until another upload completes. A new
 publication still requires a ready file or another supported delivery method.
 
 New versions do not automatically email buyers. The publisher can send a
-campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI has no product-file upload command for an owner session; a direct-mode shop management key uploads and attaches files with `shop files upload` ([Download files](shop-management-keys.md#download-files)).
+campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI has no product-file upload command for an owner session; a direct-mode shop management key uploads and attaches files with `shop files upload`, and a propose-mode key uploads them and proposes attaching them with the same command ([Download files](shop-management-keys.md#download-files)).
 
 The additive migration backfills existing files as version 1 in their own
 lineages. Pending replacements retain their target until completion; retries of

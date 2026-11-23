@@ -40,6 +40,32 @@ export const KEY_DOWNLOAD_STORAGE_DEADLINES = {
   digestMs: 30_000,
 } as const;
 
+/** `maxDuration` of the hosted server function in vercel.json: a request still running then is ended unanswered. */
+export const SERVER_FUNCTION_LIMIT_MS = 60_000;
+
+const APPROVAL_FILE_CHECK_CONCURRENCY = 4;
+
+const APPROVAL_FILE_CHECK_BUDGET_MS = Math.ceil(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey / APPROVAL_FILE_CHECK_CONCURRENCY)
+  * KEY_DOWNLOAD_STORAGE_DEADLINES.headMs;
+
+/**
+ * The file checks before an approval transaction: a group holds at most as many file items as its key has staged
+ * files, so every check of the largest group fits the budget even when each storage answer takes its whole deadline,
+ * and the rest of the function's time is left to the transaction and the answer.
+ */
+export const CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS = {
+  concurrency: APPROVAL_FILE_CHECK_CONCURRENCY,
+  budgetMs: APPROVAL_FILE_CHECK_BUDGET_MS,
+  leftForDecisionMs: SERVER_FUNCTION_LIMIT_MS - APPROVAL_FILE_CHECK_BUDGET_MS,
+  minimumHeadMs: 1_000,
+  retryAfterSeconds: 5,
+} as const;
+
+export const changeProposalFileChecksOutOfTime = (): AppError =>
+  appError('unavailable', 'The storage did not confirm every proposed file in time; nothing was decided, retry the request', {
+    retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds,
+  });
+
 export const KEY_DOWNLOAD_CONTENT_TYPES = [
   'application/pdf',
   'application/epub+zip',
@@ -364,3 +390,44 @@ export const keyDownloadCopyRefused = (): AppError => validation('This file cann
 
 export const keyDownloadFilesBusy = (): AppError =>
   appError('unavailable', 'Staged files of this workspace are busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });
+
+const ATTACHING_OPERATIONS: ReadonlySet<string> = new Set(['download.add', 'download.replace']);
+
+export const changeProposalStagedFileId = (operation: string, input: Readonly<Record<string, unknown>>): string | null => {
+  if (!ATTACHING_OPERATIONS.has(operation)) return null;
+  const id = input['stagedFileId'];
+  return typeof id === 'string' && id.length > 0 ? id : null;
+};
+
+export const changeProposalStagedFileIds = (
+  proposals: ReadonlyArray<{ operation: string; input: Readonly<Record<string, unknown>> }>,
+): string[] => [...new Set(proposals.flatMap((proposal) => {
+  const id = changeProposalStagedFileId(proposal.operation, proposal.input);
+  return id === null ? [] : [id];
+}))];
+
+export const changeProposalFileUnavailable = (invalidInputMessage: string): AppError => validation(invalidInputMessage, {
+  formErrors: [],
+  fieldErrors: { stagedFileId: ['Must be a file this key staged that no other pending proposal attaches'] },
+});
+
+const CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE = 'file_unavailable';
+
+export const changeProposalFileMissingNote = (stagedFileId: string): string =>
+  `${CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE}: The proposed file ${stagedFileId} is no longer available, so the proposal cannot be applied; nothing was changed`;
+
+export const isChangeProposalFileMissingNote = (note: string | null): boolean =>
+  note !== null && note.startsWith(`${CHANGE_PROPOSAL_FILE_MISSING_NOTE_CODE}: `);
+
+export const CHANGE_PROPOSAL_FILE_LINK_TTL_SECONDS = 60;
+
+export const changeProposalFileInputSchema = z.object({
+  id: z.string().min(1).max(200),
+  fileId: z.string().min(1).max(200),
+}).strict();
+
+export type ChangeProposalFileInput = z.input<typeof changeProposalFileInputSchema>;
+
+export interface ChangeProposalFileLink {
+  download: { url: string; expiresAt: string; fileName: string; sizeBytes: number };
+}

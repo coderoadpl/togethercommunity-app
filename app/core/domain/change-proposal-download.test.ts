@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  changeProposalCreatedKind,
+  checkChangeProposalReferences,
+  resolveChangeProposalReferences,
+} from './change-proposal-group.js';
+import { CHANGE_PROPOSAL_INPUT_SCHEMAS } from './change-proposal-inputs.js';
+import {
+  changeProposalFamily,
+  changeProposalOperationSchema,
+  changeProposalSchema,
+  changeProposalTargetKind,
+  registeredChangeProposalOperation,
+} from './change-proposal.js';
+import {
+  changeProposalFileMissingNote,
+  changeProposalFileUnavailable,
+  changeProposalStagedFileId,
+  changeProposalStagedFileIds,
+  isChangeProposalFileMissingNote,
   KEY_DOWNLOAD_CONTENT_TYPES,
   KEY_DOWNLOAD_FILE_LIMITS,
   keyDownloadBytesMatch,
@@ -162,5 +180,76 @@ describe('staged file keys and views', () => {
     const copy = keyDownloadStagedFileView({ ...file, copiedFrom: { productId: 'p', assetId: 'x', versionNumber: 2 } });
     expect(copy.sha256).toBeNull();
     expect(JSON.stringify(copy)).not.toContain('a'.repeat(64));
+  });
+});
+
+describe('download file proposals', () => {
+  it('registers the three file operations as catalogue proposals on a product, outside the list of operations that need no file', () => {
+    for (const operation of ['download.add', 'download.replace', 'download.remove'] as const) {
+      expect(registeredChangeProposalOperation(operation)).toBe(operation);
+      expect(changeProposalFamily(operation)).toBe('catalog');
+      expect(changeProposalTargetKind(operation)).toBe('product');
+      expect(changeProposalOperationSchema.safeParse(operation).success).toBe(false);
+      expect(changeProposalCreatedKind(operation)).toBeNull();
+    }
+    expect(registeredChangeProposalOperation('download.rename')).toBeNull();
+  });
+
+  it('validates each file operation strictly, with the version note trimmed and optional', () => {
+    const add = CHANGE_PROPOSAL_INPUT_SCHEMAS['download.add'];
+    expect(add.safeParse({ productId: 'p', stagedFileId: 'f', versionNote: '  First  ' })).toEqual({ success: true, data: { productId: 'p', stagedFileId: 'f', versionNote: 'First' } });
+    expect(add.safeParse({ productId: 'p', stagedFileId: 'f', replacesAssetId: 'a' }).success).toBe(false);
+    expect(add.safeParse({ productId: 'p', stagedFileId: 'f', storageKey: 'x' }).success).toBe(false);
+    const replace = CHANGE_PROPOSAL_INPUT_SCHEMAS['download.replace'];
+    expect(replace.safeParse({ productId: 'p', stagedFileId: 'f' }).success).toBe(false);
+    expect(replace.safeParse({ productId: 'p', stagedFileId: 'f', replacesAssetId: 'a' }).success).toBe(true);
+    const remove = CHANGE_PROPOSAL_INPUT_SCHEMAS['download.remove'];
+    expect(remove.safeParse({ productId: 'p', assetId: 'a' }).success).toBe(true);
+    expect(remove.safeParse({ productId: 'p', assetId: 'a', stagedFileId: 'f' }).success).toBe(false);
+  });
+
+  it('accepts a group reference only in the product position and resolves it to the created product', () => {
+    const earlier = [{ id: 'create', operation: 'product.create' }, { id: 'price', operation: 'price.create' }];
+    expect(checkChangeProposalReferences('download.add', { productId: '$proposal:create', stagedFileId: 'f' }, earlier)).toEqual({ ok: true, value: undefined });
+    expect(checkChangeProposalReferences('download.add', { productId: 'p', stagedFileId: '$proposal:create' }, earlier).ok).toBe(false);
+    expect(checkChangeProposalReferences('download.remove', { productId: '$proposal:price', assetId: 'a' }, earlier).ok).toBe(false);
+    expect(checkChangeProposalReferences('download.replace', { productId: 'p', stagedFileId: 'f', replacesAssetId: 'a', versionNote: '$proposal:create' }, earlier).ok).toBe(false);
+    expect(resolveChangeProposalReferences('download.add', { productId: '$proposal:create', stagedFileId: 'f' }, (id) => id === 'create' ? 'product-1' : null))
+      .toEqual({ productId: 'product-1', stagedFileId: 'f' });
+  });
+
+  it('reads the staged file of an attaching operation only', () => {
+    expect(changeProposalStagedFileId('download.add', { productId: 'p', stagedFileId: 'f' })).toBe('f');
+    expect(changeProposalStagedFileId('download.replace', { productId: 'p', stagedFileId: 'g', replacesAssetId: 'a' })).toBe('g');
+    expect(changeProposalStagedFileId('download.remove', { productId: 'p', assetId: 'f' })).toBeNull();
+    expect(changeProposalStagedFileId('product.update', { id: 'p', stagedFileId: 'f' })).toBeNull();
+    expect(changeProposalStagedFileIds([
+      { operation: 'download.add', input: { stagedFileId: 'f' } },
+      { operation: 'download.replace', input: { stagedFileId: 'f' } },
+      { operation: 'download.add', input: { stagedFileId: 'g' } },
+    ])).toEqual(['f', 'g']);
+  });
+
+  it('builds and recognises the coded note of a file that is gone, and one refusal names no other key', () => {
+    const note = changeProposalFileMissingNote('staged-1');
+    expect(note).toBe('file_unavailable: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed');
+    expect(isChangeProposalFileMissingNote(note)).toBe(true);
+    expect(isChangeProposalFileMissingNote('image_unavailable: gone')).toBe(false);
+    expect(isChangeProposalFileMissingNote(null)).toBe(false);
+    expect(changeProposalFileUnavailable('Invalid product file attachment')).toMatchObject({
+      code: 'validation', message: 'Invalid product file attachment',
+      details: { fieldErrors: { stagedFileId: ['Must be a file this key staged that no other pending proposal attaches'] } },
+    });
+  });
+
+  it('checks the target kind of a stored file proposal', () => {
+    const stored = {
+      id: 'p-1', tenantId: 't', groupId: null, groupPosition: null, operation: 'download.add', input: { productId: 'x', stagedFileId: 'f' }, effect: {},
+      target: { kind: 'price', id: 'x' }, status: 'pending', proposedByKeyId: 'k', proposedByKeyName: 'Agent', proposedByIssuerUserId: 'u',
+      createdAt: '2026-03-01T10:00:00.000Z', expiresAt: '2026-03-31T10:00:00.000Z', decidedByUserId: null, decidedAt: null, decisionNote: null,
+      appliedResourceId: null, failureCode: null, failureMessage: null,
+    };
+    expect(changeProposalSchema.safeParse(stored).success).toBe(false);
+    expect(changeProposalSchema.safeParse({ ...stored, target: { kind: 'product', id: 'x' } }).success).toBe(true);
   });
 });

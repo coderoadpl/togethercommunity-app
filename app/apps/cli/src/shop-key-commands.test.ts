@@ -297,6 +297,17 @@ describe('shop key CLI', () => {
     expect(calls[0]?.headers.has('authorization')).toBe(false);
   });
 
+  it('passes the refusal a direct-mode key gets for what a product grants through with the forbidden exit code', async () => {
+    h.fetchImpl = async (input, init) => {
+      await fetchImpl(input, init);
+      return Response.json({ ok: false, error: { code: 'forbidden', message: 'product:access:write is not permitted' } }, { status: 403 });
+    };
+    await run('shop', 'products', 'access', 'product-1', '--course', 'course-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(['POST /api/m2m/shop/products/access']);
+  });
+
   it('never prints the key in human output and honours --tenant', async () => {
     process.argv = ['node', 'together', '--tenant', 'studio', 'shop', 'products', 'list'];
     vi.resetModules();
@@ -725,6 +736,7 @@ describe('shop key CLI with a propose-mode key', () => {
     [['shop', 'stock', 'enable', 'product-1', '--on-hand', '3']],
     [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
     [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
+    [['shop', 'products', 'access', 'product-1', '--course', 'course-1']],
   ])('prints the receipt and exits 0 when %j answers 202', async (args) => {
     await run(...args);
     expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
@@ -748,6 +760,36 @@ describe('shop key CLI with a propose-mode key', () => {
     } finally {
       await rm(directory, { recursive: true });
     }
+  });
+
+  it.each([
+    ['whole courses', ['--course', 'course-1', '--course', 'course-2'], [{ level: 'course', courseId: 'course-1' }, { level: 'course', courseId: 'course-2' }]],
+    ['a course without some modules', ['--course', 'course-1', '--exclude-module', 'module-2'], [{ level: 'course', courseId: 'course-1', excludedModuleIds: ['module-2'] }]],
+    ['modules and lessons of one course', ['--course', 'course-1', '--module', 'module-1', '--lesson', 'lesson-1', '--lesson', 'lesson-2'], [
+      { level: 'modules', courseId: 'course-1', moduleIds: ['module-1'] },
+      { level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1', 'lesson-2'] },
+    ]],
+    ['a list in another shape', ['--access-items', '[{"level":"course","courseId":"course-1"},{"level":"modules","courseId":"course-2","moduleIds":["module-9"]}]'], [
+      { level: 'course', courseId: 'course-1' }, { level: 'modules', courseId: 'course-2', moduleIds: ['module-9'] },
+    ]],
+    ['nothing', ['--clear'], []],
+  ])('states the whole new access list of %s in one request', async (_label, flags, accessItems) => {
+    await run('shop', 'products', 'access', 'product-1', ...flags);
+    expect(calls).toMatchObject([{ method: 'POST', path: '/api/m2m/shop/products/access', body: { id: 'product-1', accessItems } }]);
+  });
+
+  it.each([
+    ['no list', []],
+    ['--clear with a course', ['--clear', '--course', 'course-1']],
+    ['a module without a course', ['--module', 'module-1']],
+    ['modules of two courses', ['--course', 'course-1', '--course', 'course-2', '--module', 'module-1']],
+    ['an excluded module beside a lesson', ['--course', 'course-1', '--exclude-module', 'module-1', '--lesson', 'lesson-1']],
+    ['a JSON list beside a flag', ['--access-items', '[]', '--course', 'course-1']],
+    ['a JSON item of an unknown level', ['--access-items', '[{"level":"chapter","courseId":"course-1"}]']],
+  ])('refuses %s before any request', async (_label, flags) => {
+    await run('shop', 'products', 'access', 'product-1', ...flags);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
   });
 
   it('prints the receipt of a proposed sales-link deletion without sending a body', async () => {
@@ -875,6 +917,7 @@ describe('shop key CLI with a proposal group', () => {
     [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
     [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
     [['shop', 'sales-links', 'delete', 'link-1']],
+    [['shop', 'products', 'access', '$proposal:proposal-1', '--course', 'course-1']],
   ])('sends the group header once for %j with --group', async (args) => {
     await run(...args, '--group', 'group-1');
     expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { groupId: 'group-1' }, group: { id: 'group-1' } } });
@@ -1066,7 +1109,9 @@ const downloadAsset = {
   id: 'staged-1', lineageId: 'staged-1', versionNumber: 1, versionNote: null, supersededAt: null, productId: 'product-1', fileName: 'workbook.pdf',
   contentType: 'application/pdf', sizeBytes: 9, status: 'ready', createdAt: '2026-11-15T10:00:00.000Z', personalisationSizeExceeded: false,
 };
-const NOT_IN_RELEASE_REFUSAL = 'A propose-mode shop management key cannot call this route (not-in-release): product download files are not available to a propose-mode key yet';
+const fileReceipt = (operation: string, groupId: string | null) => ({
+  ...receipt, operation, groupId, target: { kind: 'product', id: 'product-1' }, input: { productId: 'product-1', stagedFileId: 'staged-1' },
+});
 
 const fileAnswer = (method: string, path: string): unknown => {
   if (path === '/api/m2m/shop/downloads/upload') {
@@ -1129,7 +1174,7 @@ describe('shop files CLI', () => {
   it('checks the product, stages the file with a streamed PUT that carries no key, completes it and attaches it with the note', async () => {
     await withPdf(async (file) => {
       await run('shop', 'files', 'upload', 'product-1', file, '--note', 'First edition');
-      expect(soleJson()).toEqual({ ok: true, data: { asset: downloadAsset, staged: stagedFile } });
+      expect(soleJson()).toEqual({ ok: true, data: { outcome: 'applied', asset: downloadAsset, staged: stagedFile } });
       expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
         'GET /api/m2m/shop/products/product-1/downloads',
         'POST /api/m2m/shop/downloads/upload', 'PUT /candidate', 'POST /api/m2m/shop/downloads/complete',
@@ -1219,7 +1264,7 @@ describe('shop files CLI', () => {
 
   it('copies a file on the server after checking the target product and attaches the copy there', async () => {
     await run('shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2');
-    expect(soleJson()).toEqual({ ok: true, data: { asset: downloadAsset, staged: stagedCopy } });
+    expect(soleJson()).toEqual({ ok: true, data: { outcome: 'applied', asset: downloadAsset, staged: stagedCopy } });
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       'GET /api/m2m/shop/products/product-2/downloads', 'POST /api/m2m/shop/downloads/copy', 'POST /api/m2m/shop/products/downloads',
     ]);
@@ -1248,16 +1293,79 @@ describe('shop files CLI', () => {
       '- workbook.pdf  application/pdf  9 bytes  copy of file asset-1 version 2 of product product-1  expires 2026-11-22T10:00:00.000Z  (staged-2)',
     ]);
   });
+});
 
-  it('prints the refusal of a propose-mode key plainly and stops before any upload', async () => {
+const proposingFileFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  const method = init?.method ?? 'GET';
+  const operation = url.pathname === '/api/m2m/shop/products/downloads' ? 'download.add'
+    : url.pathname === '/api/m2m/shop/products/downloads/replace' ? 'download.replace'
+      : url.pathname === '/api/m2m/shop/products/downloads/remove' ? 'download.remove' : null;
+  if (operation === null || method !== 'POST') return fileFetch(input, init);
+  const headers = new Headers(init?.headers);
+  calls.push({ method, path: url.pathname, search: url.search, headers, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+  const group = headers.get('x-proposal-group');
+  const proposal = fileReceipt(operation, group);
+  return Response.json({ ok: true, data: { outcome: 'proposed', proposal, ...(group === null ? {} : { group: groupReceipt([proposal]) }) } }, { status: 202 });
+};
+
+describe('shop files CLI with a propose-mode key', () => {
+  beforeEach(() => { h.fetchImpl = proposingFileFetch; });
+
+  it('stages the file, proposes the attachment in the group without checking a product an earlier item creates, and says the file stays private', async () => {
     await withPdf(async (file) => {
-      h.fetchImpl = failingAt('/api/m2m/shop/downloads/upload', 403, { code: 'forbidden', message: NOT_IN_RELEASE_REFUSAL });
-      process.argv = ['node', 'together', 'shop', 'files', 'upload', 'product-1', file];
+      process.argv = ['node', 'together', 'shop', 'files', 'upload', '$proposal:proposal-0', file, '--group', 'group-1'];
       vi.resetModules();
       await import('./main.js');
-      expect(errorSpy).toHaveBeenCalledWith(`error(forbidden): ${NOT_IN_RELEASE_REFUSAL}`);
-      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
-      expect(calls.map((call) => call.path)).toEqual(['/api/m2m/shop/products/product-1/downloads', '/api/m2m/shop/downloads/upload']);
+      const printed = String(logSpy.mock.calls[0]?.[0]);
+      expect(printed).toContain('proposed, waiting for the owner\'s decision:');
+      expect(printed).toContain('proposal proposal-1: download.add [pending]');
+      expect(printed).toContain(`file: workbook.pdf  application/pdf  9 bytes  sha256 ${'b'.repeat(64)}  kept while the proposal is pending  (staged-1)`);
+      expect(printed).not.toContain('expires 2026-11-22T10:00:00.000Z');
+      expect(printed).toContain('the file stays private until the owner approves this proposal; nothing reaches buyers before that');
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'POST /api/m2m/shop/downloads/upload', 'PUT /candidate', 'POST /api/m2m/shop/downloads/complete', 'POST /api/m2m/shop/products/downloads',
+      ]);
+      expect(calls.at(-1)?.body).toEqual({ productId: '$proposal:proposal-0', stagedFileId: 'staged-1' });
+      expect(calls.at(-1)?.headers.get('x-proposal-group')).toBe('group-1');
+      for (const call of calls.slice(0, 3)) expect(call.headers.has('x-proposal-group')).toBe(false);
+    });
+  });
+
+  it('checks the product before a replacement and proposes it with the staged file', async () => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, '--replaces', 'asset-1');
+      expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { operation: 'download.replace' }, staged: stagedFile } });
+      expect(calls.map((call) => call.path)[0]).toBe('/api/m2m/shop/products/product-1/downloads');
+      expect(calls.at(-1)?.body).toEqual({ productId: 'product-1', replacesAssetId: 'asset-1', stagedFileId: 'staged-1' });
+    });
+  });
+
+  it('proposes the attachment of a server-side copy and the removal of a file, each in the named group', async () => {
+    await run('shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2', '--group', 'group-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { operation: 'download.add', groupId: 'group-1' }, staged: stagedCopy } });
+    expect(calls.at(-1)?.headers.get('x-proposal-group')).toBe('group-1');
+    logSpy.mockClear();
+    calls = [];
+    process.argv = ['node', 'together', 'shop', 'files', 'copy', 'product-1', 'asset-1', 'product-2'];
+    vi.resetModules();
+    await import('./main.js');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed).toContain('file: workbook.pdf  application/pdf  9 bytes  copy of file asset-1 version 2 of product product-1  kept while the proposal is pending  (staged-2)');
+    expect(printed).not.toContain('expires 2026-11-22T10:00:00.000Z');
+    logSpy.mockClear();
+    calls = [];
+    await run('shop', 'files', 'remove', 'product-1', 'asset-1', '--group', 'group-1');
+    expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { operation: 'download.remove', groupId: 'group-1' } } });
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(['POST /api/m2m/shop/products/downloads/remove']);
+    expect(calls[0]?.headers.get('x-proposal-group')).toBe('group-1');
+  });
+
+  it('refuses an invalid --group before any request', async () => {
+    await withPdf(async (file) => {
+      await run('shop', 'files', 'upload', 'product-1', file, '--group', 'not a group');
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(calls).toEqual([]);
     });
   });
 });

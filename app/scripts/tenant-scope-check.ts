@@ -178,6 +178,8 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   PersonalisationSlots: 'Instance-local memory reservations with no persistence or tenant data access.',
   PgRealtimeBus: 'Ephemeral event-delivery boundary with no persistence access.',
   PgRealtimeBusOptions: 'Realtime transport connection settings and error callback.',
+  ProposedFileHandle: 'Local file handle of a CLI download with no persistence access.',
+  ProposedFileSystem: 'Local file system of a CLI download with no persistence access.',
   PublicMarketingMessages: 'Localized message formatter callbacks.',
   RawSesClient: 'External SES API boundary.',
   RealtimeBusPort: 'Ephemeral event-delivery boundary with no persistence access.',

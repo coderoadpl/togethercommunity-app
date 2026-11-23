@@ -28,11 +28,12 @@ and no session route accepts it. The shop routes look keys up only in
 | Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
 | Product cover image and sales-link routes (below) | Available |
-| Download files of digital products: staging, server-side copy and live attach, replace and remove for a direct-mode key ([below](#download-files)); refused to a propose-mode key in this release | Available |
+| Download files of digital products: staging, server-side copy and live attach, replace and remove for a direct-mode key; staging and proposed attach, replace and remove for a propose-mode key ([below](#download-files)) | Available |
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
-| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects, product cover and branding images included | Available |
+| Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects, product cover and branding images and download files included | Available |
+| What a product grants: proposed by a propose-mode key, refused to a direct-mode key ([below](#what-a-product-grants)) | Available |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -152,17 +153,18 @@ A key is created in one of two modes, fixed for its lifetime:
 - `direct` (the default): every write the scopes allow changes the live shop,
   as described in the rest of this guide.
 - `propose`: the key's writes never change live state. A write to one of the
-  ten catalogue routes, the three sales-link write routes or the settings
-  update is dry-run, stored as a [change proposal](change-proposals.md) with
-  its field-level effect, and answered `202` with a receipt; the owner then
-  approves or rejects it in their own session. An approval applies the change
-  only when the live state still gives exactly the effect the owner saw.
-  The four product cover and branding image upload and completion routes run
-  for it too, but keep the image in a private quarantine until an approval
-  publishes it (below). Every other write route (order fulfilment,
-  integrations, the [download file](#download-files) routes) answers `403`.
-  Reads behave as on a direct key, except the list of staged download files,
-  which also answers `403`.
+  eleven catalogue routes, the three sales-link write routes, the settings
+  update or the three product file write routes is dry-run, stored as a
+  [change proposal](change-proposals.md) with its field-level effect, and
+  answered `202` with a receipt; the owner then approves or rejects it in
+  their own session. An approval applies the change only when the live state
+  still gives exactly the effect the owner saw. The four product cover and
+  branding image upload and completion routes run for it too, but keep the
+  image in a private quarantine until an approval publishes it (below), and so
+  do the [download file](#download-files) upload, completion, copy and discard
+  routes, which stage a private file that reaches buyers only through an
+  approved proposal. Every other write route (order fulfilment, integrations)
+  answers `403`. Reads behave as on a direct key.
 
 ```bash
 pnpm --silent run cli api-key shop-management create Catalogue agent \
@@ -173,8 +175,8 @@ pnpm --silent run cli api-key shop-management create Catalogue agent \
 Over HTTP the creation body carries `"mode": "propose"`. On a propose-mode key
 `shop:catalog:write` and `shop:settings:write` grant only
 `proposal:submit:catalog` and `proposal:submit:settings`, each with
-`proposal:asset:upload` for [images awaiting approval](change-proposals.md#images),
-instead of the live write capabilities, and each needs its read scope (`shop:catalog:read`,
+`proposal:asset:upload` for [images awaiting approval](change-proposals.md#images)
+and staged [download files](#download-files), instead of the live write capabilities, and each needs its read scope (`shop:catalog:read`,
 `shop:settings:read`): creation without it answers `400` and the database
 refuses such a row. `shop:fulfilment:write` and `shop:integrations:write` are
 refused at creation with `400`. The key lists, reads and withdraws only its
@@ -184,7 +186,8 @@ list (`GET /api/api-keys/shop-management`, CLI `api-key shop-management list`
 in its last column) shows each key's mode. Revoking or purging a propose-mode
 key withdraws its pending, unexpired proposals, those in its open
 [groups](change-proposals.md#groups) included, and deletes its empty groups,
-in the same transaction.
+in the same transaction. Revoking it then also releases its quarantined images
+and its staged download files.
 
 A propose-mode key uploads a product cover or a branding image through the same
 image routes as a direct-mode key, but the image stays private: completion
@@ -358,10 +361,11 @@ workspace lists nothing.
 
 Each route reuses the request body, response envelope, validation and
 use-case of its session counterpart under `/api/products`, including body field
-names (`id` for update, publish and unpublish and for price deactivation;
-`productId` for draft deletion, price creation and stock). The route checks the
-scope, and the reused use-case checks the matching capability again. A product
-or price id from another workspace answers `404 not_found`.
+names (`id` for update, publish, unpublish and access and for price
+deactivation; `productId` for draft deletion, price creation and stock); the
+access route takes the session body without `checkoutConsentDefinitionIds`. The
+route checks the scope, and the reused use-case checks the matching capability
+again. A product or price id from another workspace answers `404 not_found`.
 
 Request bodies on every shop route are strict: a field the route does not
 know, at the top level or inside a nested object such as `compliance`, an
@@ -379,6 +383,7 @@ dropped. The session routes keep ignoring unknown fields.
 | `POST /api/m2m/shop/products/publish` | `shop:catalog:write` | `POST /api/products/publish` |
 | `POST /api/m2m/shop/products/unpublish` | `shop:catalog:write` | `POST /api/products/unpublish` |
 | `POST /api/m2m/shop/products/delete` | `shop:catalog:write` | `POST /api/products/delete` (existing draft-only policy) |
+| `POST /api/m2m/shop/products/access` | `shop:catalog:write` | `POST /api/products/access-items` without `checkoutConsentDefinitionIds` ([below](#what-a-product-grants)) |
 | `GET /api/m2m/shop/products/:productId/prices` | `shop:catalog:read` | `GET /api/products/:productId/prices` |
 | `POST /api/m2m/shop/products/prices` | `shop:catalog:write` | `POST /api/products/prices` |
 | `POST /api/m2m/shop/products/prices/deactivate` | `shop:catalog:write` | `POST /api/products/prices/deactivate` |
@@ -455,12 +460,39 @@ pnpm --silent run cli --tenant acme shop products unpublish <product-id>
 pnpm --silent run cli --tenant acme shop products delete <product-id> --confirm
 ```
 
+### What a product grants
+
+`POST /api/m2m/shop/products/access` takes `{ id, accessItems }`, the whole new
+list of the courses, modules and lessons a product grants, and nothing else.
+Its live handler is the owner's access editor use-case, which needs
+`product:access:write`; no scope grants a key that capability, so a direct-mode
+key gets `403 forbidden` there and changes nothing. A propose-mode key with
+`shop:catalog:write` gets `202` with a receipt: the request becomes a
+`product.set-access` [change proposal](change-proposals.md#product-access) that
+only the owner can approve. A direct-mode key still sets what a new product
+grants through `accessItems` on `POST /api/m2m/shop/products`. Product
+creation, the owner's editor and `product.set-access` run the same check: each
+course exists in the workspace and is not archived, each module belongs to its
+item's course, and each lesson sits in a module of its item's course. The
+content import, the legacy importer and lesson deletion write access items
+without it ([Product access](change-proposals.md#product-access)). A
+`product.set-access` proposal may not repeat an item or an id, nor exclude a
+module that is attached to more than one course. No shop route serves a
+course, module or lesson; a key sees their ids in the access items of the
+products it lists.
+
+```bash
+pnpm --silent run cli --tenant acme shop products access <product-id> --course <course-id>
+pnpm --silent run cli --tenant acme shop products access <product-id> --course <course-id> --lesson <lesson-id> --lesson <lesson-id>
+pnpm --silent run cli --tenant acme shop products access <product-id> --clear
+```
+
 ### Typed client
 
 `createShopManagementClient({ baseUrl, apiKey, tenant })` from `core/client`
-exposes the thirteen calls with the same method names as the session client
+exposes the fourteen calls with the same method names as the session client
 (`listProducts`, `createProduct`, `updateProduct`, `publishProduct`,
-`unpublishProduct`, `deleteProductDraft`, `listProductPrices`,
+`unpublishProduct`, `deleteProductDraft`, `setProductAccess`, `listProductPrices`,
 `createProductPrice`, `deactivateProductPrice`, `getProductStock`,
 `enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
 sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
@@ -469,12 +501,14 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
 
-The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
-`deleteSalesLink` and `updateSettings` resolve to `{ outcome: 'applied', ... }`
-with the resource for a direct-mode key and to `{ outcome: 'proposed', proposal }` with
-the [receipt](change-proposals.md#receipts) for a propose-mode key;
+The eleven catalogue writes, `createSalesLink`, `updateSalesLink`,
+`deleteSalesLink`, `updateSettings`, `addProductDownload`,
+`replaceProductDownload` and `removeProductDownload` resolve to
+`{ outcome: 'applied', ... }` with the resource for a direct-mode key and to
+`{ outcome: 'proposed', proposal }` with the
+[receipt](change-proposals.md#receipts) for a propose-mode key;
 `isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
-and `withdrawProposal` reach the key's own proposals. Each of these fourteen
+and `withdrawProposal` reach the key's own proposals. Each of these eighteen
 writes takes an optional third argument `{ groupId }` that sends the
 `x-proposal-group` header, and its proposed outcome then also carries the
 `group` receipt; `createProposalGroup`, `getProposalGroup` and
@@ -560,15 +594,20 @@ then **attaches** it live, as a new file of a product or as the next version of
 one of its files. It also removes file versions. Buyers with access to the
 product get an attached file on their next download, personalised like any
 other file ([File versions](storage.md#file-versions)). No key reads a file's
-bytes: no route answers a download link, a storage address or file content,
-and duplicating a file is a copy made by the storage itself.
+bytes: no route answers a key a download link, a signed read address or any
+other address of a staged or attached file, or file content, and duplicating
+a file is a copy made by the storage itself. The only storage address a
+download file route gives a key is the presigned `PUT` of its own upload, which
+writes that upload object and reads nothing.
 
-A propose-mode key is refused with `403` on every route of this section except
-the product file list, before the route's handler runs, with the message `A
-propose-mode shop management key cannot call this route (not-in-release):
-product download files are not available to a propose-mode key yet`. Download
-files cannot be proposed in this release
-([Not yet available](change-proposals.md#not-yet-available)).
+A propose-mode key with `shop:catalog:write` stages files through the same
+routes and under the same limits, and the attach, replace and remove routes
+store a [change proposal](change-proposals.md#download-files) of
+`download.add`, `download.replace` or `download.remove` instead, alone or in a
+group, answered `202` with the receipt. Its staged file stays private, is held
+by at most one pending proposal, and reaches buyers only when the owner
+approves a proposal that attaches it; the owner can download it before
+deciding through a 60-second link.
 
 | Method and path | Scope | What it does |
 |---|---|---|
@@ -695,8 +734,11 @@ conflict` and changes nothing, and any other staged file that is gone answers
 `404`.
 
 **Remove.** Removing deletes one version of any file of the product, a file the
-owner uploaded included, and promotes the newest remaining ready version of its
-lineage; buyers can no longer download the removed version. The answer is
+owner uploaded included, also one still uploading, and promotes the newest
+remaining ready version of its lineage; buyers can no longer download the
+removed version. A propose-mode key's removal proposes only the removal of a
+ready file: a file still uploading answers `400 validation` and nothing is
+stored ([Download files](change-proposals.md#download-files)). The answer is
 `{ "deleted": true }`. When the file's object was staged by a key, its deletion
 is recorded in the same transaction and the minute sweep retries a storage
 delete that failed ([Download file prefixes](storage.md#download-file-prefixes)).
@@ -706,7 +748,13 @@ delete, and blocks that key's new uploads and copies while it lasts.
 
 **Staged files.** A staged file that is not attached becomes due for the minute
 sweep 7 days after it was staged, and once its key is revoked, expires or is
-purged. Discarding it removes it from the staged list at once and deletes its
+purged, unless a pending, unexpired proposal holds it; a rejection, a
+withdrawal or a recorded expiry of that proposal discards it at once
+([Release on decisions](change-proposals.md#download-files)). After a
+propose-mode upload or copy, the CLI prints such a file as `kept while the
+proposal is pending` instead of its 7-day expiry. The key may discard a file
+a pending proposal holds; an approval of that proposal then ends `stale`.
+Discarding it removes it from the staged list at once and deletes its
 object, or, when that delete fails, owes the deletion, which the sweep
 retries; the discard answers success either way. An upload that is never
 completed becomes due for the same sweep 20 minutes after it started, and one
@@ -787,17 +835,23 @@ the command that discards it. `shop files copy` checks the target product the
 same way, copies on the server and attaches the copy to the target; both
 commands take `--note`. A cap refusal adds what to do next: discard staged
 files, wait for the window, or remove a file of the product. With a
-propose-mode key every `shop files` command except `list` prints the refusal;
-`upload` and `copy` print it after their product check, before anything is
-staged.
+propose-mode key `upload` and `copy` stage the file the same way and propose
+its attachment, and `remove` proposes the removal: each prints the receipt,
+and `upload` and `copy` also the staged file and that it stays private until
+the owner approves. `upload`, `copy` and `remove` take `--group <id>`; with
+it, a product id written as `'$proposal:<id>'` is not checked first, since an
+earlier item of the group creates it.
 
 The typed client exposes `listProductDownloads`, `stageProductDownload` (start,
 the storage `PUT` with the signed headers, completion; only the two API
 requests carry the key, and a `Blob` body such as one from `fs.openAsBlob` is
 streamed, not read into memory), `copyProductDownload`, `listStagedDownloads`,
 `discardStagedDownload`, `addProductDownload`, `replaceProductDownload` and
-`removeProductDownload`. They resolve to the live answers; none of them has a
-proposed outcome in this release.
+`removeProductDownload`. The last three resolve to
+`{ outcome: 'applied', asset }` (`{ outcome: 'applied', deleted: true }` for a
+removal) for a direct-mode key and to `{ outcome: 'proposed', proposal }` for a
+propose-mode key, and take `{ groupId }` as their third argument; the others
+resolve to the answers of their routes.
 
 ## Order and fulfilment routes
 
@@ -1688,7 +1742,8 @@ content-addressed image as not shown. Before the retreat, count the pending
 proposals that attach a content-addressed image and the live image fields that
 show one and, before retreating further than `8141fd15`, delete its
 `change-proposal` notifications, as Rolling back under
-[Images](change-proposals.md#images) shows.
+[Images](change-proposals.md#images) and at the end of
+[Download files](change-proposals.md#download-files) shows.
 
 A retreat to a release that predates migration `0170_key_download_files` needs
 no data step either. The migration only adds
@@ -1711,7 +1766,29 @@ staging rows and never deletes a staged or upload object, which stays under the
 private download prefix while its row stays. After rolling forward, the minute
 sweep of this release removes them, as far as the rows that own them still
 exist. A file a key attached is an ordinary product file row there, served and
-deleted by its stored object key like any other file.
+deleted by its stored object key like any other file; that release neither
+selects nor parses the `sha256` column.
+
+The release on production when download file proposals were added,
+`8141fd15`, is such a release (it also predates `0168` and `0169`).
+`scripts/change-proposal-download-rollback-8141fd15.test.ts` holds literal
+copies of its schemas and parsing steps and proves what it does with what this
+release stores. It lists and shows a pending `download.add`,
+`download.replace` or `download.remove` proposal, alone or in a group, to the
+owner and to its key, lets the key withdraw it and the owner reject it, and
+ends its approval `stale` with the unknown-operation note before any target
+lock, applying nothing (a group with such an item applies none of its items).
+It reads the `stale` event note `file_unavailable: …` like any other note, and
+the storage probe's new `signedResponseOverrides` is never stored. It never
+releases a staged file, so a file of a proposal it rejected or withdrew stays
+staged and private until the minute sweep of this release removes it after
+rolling forward. A panel tab or CLI of that release that talks to this
+release's server fails to parse an owner answer carrying `proposedFiles`
+until it is reloaded or updated. Before the retreat, count the pending
+download file proposals and, before retreating further than `8141fd15`,
+delete its `change-proposal` notifications, as
+[Rolling back](change-proposals.md#download-files) under Download files
+shows.
 
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and

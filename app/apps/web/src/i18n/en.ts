@@ -405,6 +405,7 @@ export const en: Messages = {
     signInRateLimitedRetryNow: 'You can try again now.',
     signInRateLimitedLeadRetryIn: ({ delay }) => format('Try again in {delay}.', { delay }),
     signInRateLimitedLeadWait: 'Wait a moment, then try again.',
+    signInRateLimitedChooseMethod: 'Choose a sign-in method',
     signInTitle: 'Sign in',
     signInToTenant: ({ tenant }) => format('Sign in to {tenant}', { tenant }),
     signInLead: 'Enter the email you used when you bought or joined.',

@@ -15,6 +15,8 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { ToastProvider } from '../../components/ui/Toast.js';
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -23,7 +25,7 @@ import { RegisterPage } from './RegisterPage.js';
 const HomeAfterRegistration = () => <div>Home after registration</div>;
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const renderRegisterPage = async (hostname?: string, initialEntry = '/register') => {
+const renderRegisterPage = async (hostname?: string, initialEntry = '/register', withLanguage = false) => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -46,14 +48,15 @@ const renderRegisterPage = async (hostname?: string, initialEntry = '/register')
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
+  const page = (
+    <ThemeModeProvider>
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
+    </ThemeModeProvider>
+  );
   return {
-    ...renderWithProviders(
-      <ThemeModeProvider>
-        <ToastProvider>
-          <RouterProvider router={router} />
-        </ToastProvider>
-      </ThemeModeProvider>,
-    ),
+    ...renderWithProviders(withLanguage ? <LanguageProvider>{page}</LanguageProvider> : page),
     router,
   };
 };
@@ -236,12 +239,20 @@ describe('RegisterPage', () => {
     expect(requested).toBe(false);
   });
 
-  it('names a malformed email under its field and focuses it', async () => {
-    server.use(anonymousMe(), noTenantOffer);
+  it.each(['new@together', 'a,b@example.com'])('names the malformed email %s under its field, focuses it and sends nothing', async (address) => {
+    let requested = false;
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
 
     await renderRegisterPage();
     await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
-    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), address);
     await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
@@ -251,6 +262,38 @@ describe('RegisterPage', () => {
     expect(email).toHaveAttribute('aria-describedby', error.id);
     expect(email).toHaveFocus();
     expect(screen.getByLabelText(en.auth.nameLabel)).toHaveAttribute('aria-invalid', 'false');
+    expect(requested).toBe(false);
+  });
+
+  it('shows visible field errors in the language switched to after submit', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    server.use(
+      anonymousMe(),
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: tenantOffer({ termsUrl: 'https://akademia.test/terms', privacyUrl: null }),
+        })),
+    );
+
+    await renderRegisterPage('akademia.localhost', '/register', true);
+    await screen.findByRole('checkbox');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'a,b@example.com');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), 'short');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+    expect(await screen.findByText(en.auth.nameRequired)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'pl' }));
+
+    for (const [before, after] of [
+      [en.auth.nameRequired, pl.auth.nameRequired],
+      [en.auth.emailInvalid, pl.auth.emailInvalid],
+      [en.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }), pl.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH })],
+      [en.consent.required, pl.consent.required],
+    ] as const) {
+      expect(screen.getByText(after)).toBeInTheDocument();
+      expect(screen.queryByText(before)).not.toBeInTheDocument();
+    }
   });
 
   it('keeps provider errors in the alert and drops them on the next submit', async () => {

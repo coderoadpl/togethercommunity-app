@@ -5,12 +5,14 @@ import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { anonymousMe, memberMe, server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
 
-const renderForgotPasswordPage = async (initialEntry = '/forgot-password') => {
+const renderForgotPasswordPage = async (initialEntry = '/forgot-password', withLanguage = false) => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -27,11 +29,12 @@ const renderForgotPasswordPage = async (initialEntry = '/forgot-password') => {
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  return renderWithProviders(
+  const page = (
     <ThemeModeProvider>
       <RouterProvider router={router} />
-    </ThemeModeProvider>,
+    </ThemeModeProvider>
   );
+  return renderWithProviders(withLanguage ? <LanguageProvider>{page}</LanguageProvider> : page);
 };
 
 const LESSON_RETURN_TO = '/my/courses/course-1/lessons/lesson-1?thread=t1';
@@ -62,6 +65,22 @@ describe('ForgotPasswordPage', () => {
     await renderForgotPasswordPage();
 
     expect(await screen.findByText('Signed in home')).toBeInTheDocument();
+  });
+
+  it.each([
+    { address: '', before: en.forgotPassword.emailRequired, after: pl.forgotPassword.emailRequired },
+    { address: 'a,b@example.com', before: en.forgotPassword.invalidEmail, after: pl.forgotPassword.invalidEmail },
+  ])('shows the visible email error for "$address" in the language switched to after submit', async ({ address, before, after }) => {
+    server.use(anonymousMe());
+    await renderForgotPasswordPage('/forgot-password', true);
+
+    if (address !== '') await userEvent.type(screen.getByTestId('forgot-password-email'), address);
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    expect(await screen.findByTestId('forgot-password-email-error')).toHaveTextContent(before);
+
+    await userEvent.click(screen.getByRole('button', { name: 'pl' }));
+
+    expect(screen.getByTestId('forgot-password-email-error')).toHaveTextContent(after);
   });
 
   it('sits on the auth shell, signed once with the Together wordmark', async () => {

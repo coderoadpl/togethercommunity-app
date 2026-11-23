@@ -24,6 +24,8 @@ import { AuthShell } from './AuthShell.js';
 const PASSWORD_HINT_ID = 'reset-password-minimum';
 const PASSWORD_ERROR_ID = 'reset-password-error';
 const CONFIRM_ERROR_ID = 'reset-password-confirm-error';
+type PasswordError = 'required' | 'tooShort';
+type ConfirmError = 'required' | 'mismatch';
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
@@ -35,8 +37,8 @@ export const ResetPasswordPage = () => {
   const t = useTranslations();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<PasswordError | null>(null);
+  const [confirmError, setConfirmError] = useState<ConfirmError | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
   const invalidTitleRef = useRef<HTMLHeadingElement>(null);
@@ -56,12 +58,12 @@ export const ResetPasswordPage = () => {
     event.preventDefault();
     resetPassword.reset();
     if (!token) return;
-    const nextPasswordError = password === ''
-      ? t.resetPassword.passwordRequired
-      : passwordMeetsMinimumLength(password) ? null : t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH });
-    const nextConfirmError = confirm === ''
-      ? t.resetPassword.confirmRequired
-      : confirm === password ? null : t.resetPassword.mismatch;
+    const nextPasswordError: PasswordError | null = password === ''
+      ? 'required'
+      : passwordMeetsMinimumLength(password) ? null : 'tooShort';
+    const nextConfirmError: ConfirmError | null = confirm === ''
+      ? 'required'
+      : confirm === password ? null : 'mismatch';
     setPasswordError(nextPasswordError);
     setConfirmError(nextConfirmError);
     if (nextPasswordError !== null) {
@@ -136,7 +138,11 @@ export const ResetPasswordPage = () => {
                   required
                 />
                 {passwordError === null ? null : (
-                  <FormHelperText id={PASSWORD_ERROR_ID} data-testid="reset-password-error">{passwordError}</FormHelperText>
+                  <FormHelperText id={PASSWORD_ERROR_ID} data-testid="reset-password-error">
+                    {passwordError === 'required'
+                      ? t.resetPassword.passwordRequired
+                      : t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH })}
+                  </FormHelperText>
                 )}
                 <FormHelperText id={PASSWORD_HINT_ID} error={false}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
               </FormControl>
@@ -156,7 +162,9 @@ export const ResetPasswordPage = () => {
                   required
                 />
                 {confirmError === null ? null : (
-                  <FormHelperText id={CONFIRM_ERROR_ID} data-testid="reset-password-confirm-error">{confirmError}</FormHelperText>
+                  <FormHelperText id={CONFIRM_ERROR_ID} data-testid="reset-password-confirm-error">
+                    {confirmError === 'required' ? t.resetPassword.confirmRequired : t.resetPassword.mismatch}
+                  </FormHelperText>
                 )}
               </FormControl>
               <Button

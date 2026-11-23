@@ -421,6 +421,7 @@ export interface Messages {
     signInRateLimitedRetryNow: string;
     signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
     signInRateLimitedLeadWait: string;
+    signInRateLimitedChooseMethod: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;

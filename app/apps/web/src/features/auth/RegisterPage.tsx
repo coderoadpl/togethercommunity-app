@@ -17,11 +17,11 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { useToast } from '../../components/ui/Toast.js';
-import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
 import { AuthAccentLink, AuthHelp, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
-import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
+import { describedBy, isEmailAddress } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
@@ -29,7 +29,24 @@ import { AuthShell } from './AuthShell.js';
 const PASSWORD_HINT_ID = 'register-password-minimum';
 const REGISTER_FIELDS = ['name', 'email', 'password', 'terms'] as const;
 type RegisterField = (typeof REGISTER_FIELDS)[number];
-type RegisterFieldErrors = Record<RegisterField, string | null>;
+type RegisterFieldError =
+  | 'nameRequired'
+  | 'emailRequired'
+  | 'emailInvalid'
+  | 'passwordRequired'
+  | 'passwordTooShort'
+  | 'termsRequired';
+type RegisterFieldErrors = Record<RegisterField, RegisterFieldError | null>;
+const fieldErrorMessage = (error: RegisterFieldError, t: Messages): string => {
+  switch (error) {
+    case 'nameRequired': return t.auth.nameRequired;
+    case 'emailRequired': return t.auth.emailRequired;
+    case 'emailInvalid': return t.auth.emailInvalid;
+    case 'passwordRequired': return t.auth.passwordRequired;
+    case 'passwordTooShort': return t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH });
+    case 'termsRequired': return t.consent.required;
+  }
+};
 const NO_FIELD_ERRORS: RegisterFieldErrors = { name: null, email: null, password: null, terms: null };
 const fieldErrorId = (field: RegisterField): string => `register-${field}-error`;
 const errorIdOf = (field: RegisterField, errors: RegisterFieldErrors): string | null =>
@@ -94,14 +111,14 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
     signUp.reset();
     const normalizedEmail = email.trim();
     const errors: RegisterFieldErrors = {
-      name: name.trim() === '' ? t.auth.nameRequired : null,
+      name: name.trim() === '' ? 'nameRequired' : null,
       email: normalizedEmail === ''
-        ? t.auth.emailRequired
-        : EMAIL_PATTERN.test(normalizedEmail) ? null : t.auth.emailInvalid,
+        ? 'emailRequired'
+        : isEmailAddress(normalizedEmail) ? null : 'emailInvalid',
       password: password === ''
-        ? t.auth.passwordRequired
-        : passwordMeetsMinimumLength(password) ? null : t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }),
-      terms: consentRequired && !termsAccepted ? t.consent.required : null,
+        ? 'passwordRequired'
+        : passwordMeetsMinimumLength(password) ? null : 'passwordTooShort',
+      terms: consentRequired && !termsAccepted ? 'termsRequired' : null,
     };
     setFieldErrors(errors);
     const firstInvalid = REGISTER_FIELDS.find((field) => errors[field] !== null);
@@ -186,7 +203,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               required
             />
             {fieldErrors.name === null ? null : (
-              <FormHelperText id={fieldErrorId('name')}>{fieldErrors.name}</FormHelperText>
+              <FormHelperText id={fieldErrorId('name')}>{fieldErrorMessage(fieldErrors.name, t)}</FormHelperText>
             )}
           </FormControl>
           <FormControl fullWidth error={fieldErrors.email !== null}>
@@ -205,7 +222,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               required
             />
             {fieldErrors.email === null ? null : (
-              <FormHelperText id={fieldErrorId('email')}>{fieldErrors.email}</FormHelperText>
+              <FormHelperText id={fieldErrorId('email')}>{fieldErrorMessage(fieldErrors.email, t)}</FormHelperText>
             )}
           </FormControl>
           <FormControl fullWidth error={fieldErrors.password !== null}>
@@ -223,7 +240,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               required
             />
             {fieldErrors.password === null ? null : (
-              <FormHelperText id={fieldErrorId('password')}>{fieldErrors.password}</FormHelperText>
+              <FormHelperText id={fieldErrorId('password')}>{fieldErrorMessage(fieldErrors.password, t)}</FormHelperText>
             )}
             <FormHelperText id={PASSWORD_HINT_ID} error={false}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
           </FormControl>
@@ -235,7 +252,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
                 setTermsAccepted(checked);
                 clearFieldError('terms');
               }}
-              error={fieldErrors.terms}
+              error={fieldErrors.terms === null ? null : fieldErrorMessage(fieldErrors.terms, t)}
               inputRef={termsRef}
             />
           ) : null}

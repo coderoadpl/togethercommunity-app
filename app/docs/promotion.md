@@ -197,7 +197,8 @@ Three surfaces run that comparison:
 
 - `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
   diff touches `.github/workflows/**`, `app/ci/dispatch-ci.manifest.json`,
-  `app/scripts/dispatch-ci.ts` or `app/scripts/rulesets-required-checks.ts`.
+  `app/scripts/dispatch-ci.ts`, `app/scripts/rulesets-required-checks.ts` or
+  `app/scripts/rulesets-drift.ts`.
   It warns on expected, legacy, ungated and deletion-protection findings, and
   fails only on unknown checks.
 - `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on

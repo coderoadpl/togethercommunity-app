@@ -92,7 +92,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git -C .. fetch --no-tags --depth=1 origin "$BASE_SHA"
-          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts)"
+          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts app/scripts/rulesets-drift.ts)"
           if [ -n "$changed" ]; then
             pnpm run rulesets-drift -- --mode=pull-request
           else

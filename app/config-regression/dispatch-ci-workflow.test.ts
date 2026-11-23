@@ -204,7 +204,7 @@ describe('dispatch-ci workflow binding', () => {
     const condition = String(job(id).if);
 
     expect(needsOf(id)).toEqual([manifest.gate]);
-    expect(condition).toContain(`needs.${manifest.gate}.result == 'success'`);
+    expect(condition).toContain(`!cancelled() && needs.${manifest.gate}.result == 'success'`);
     expect(condition).not.toContain('always()');
   });
 

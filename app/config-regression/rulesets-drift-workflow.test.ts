@@ -93,7 +93,7 @@ describe('rulesets-drift workflow', () => {
       GITHUB_TOKEN: '${{ github.token }}',
     });
     expect(ciDriftStep?.run).toContain(
-      'changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts)"',
+      'changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts app/scripts/rulesets-drift.ts)"',
     );
     expect(ciDriftStep?.run).not.toContain('grep -q .');
     expect(ciDriftStep?.run).toContain('pnpm run rulesets-drift -- --mode=pull-request');

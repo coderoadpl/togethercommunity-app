@@ -9,7 +9,7 @@ import { refundPreviewLines, runOrderRefund } from './order-refund-commands.js';
 const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => ({
   orderId: 'order-1', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 1000, remainderCents: 3099, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
-  hasInvoice: true, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
+  hasInvoice: true, cancelsSubscription: false, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
   waitingRefundId: null, ...over,
 });
 
@@ -55,7 +55,7 @@ describe('order refund command', () => {
     h.orderRefundPreview.mockResolvedValueOnce(ok(preview({ refundable: false, refundedCents: 4099, remainderCents: 0 })));
     h.createOrderRefund.mockResolvedValueOnce(ok({ refund: refundView(), created: false }));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'lost-full' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full', expectedAmountCents: 3099 });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'lost-full', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('(already requested with this request key)');
     expect(process.exitCode).toBeUndefined();
   });
@@ -63,7 +63,7 @@ describe('order refund command', () => {
   it('refunds the whole remainder with --yes and --remainder, leaving restock and packing to the server defaults', async () => {
     const h = harness();
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'retry-7' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099 });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('refund refund-1: 30.99 PLN (full), pending, stock returned, off the packing list\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
     expect(process.exitCode).toBeUndefined();
   });
@@ -73,7 +73,26 @@ describe('order refund command', () => {
     await h.refund({ amount: '12,50', reason: 'Damaged cover', restock: false, keepOnPackingList: true, yes: true, requestKey: 'part-1' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
       orderId: 'order-1', requestKey: 'part-1', amountCents: 1250, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
     });
+  });
+
+  it('sends the packing and label state its preview showed, so the server refuses the refund when it changed since', async () => {
+    const h = harness();
+    h.orderRefundPreview.mockResolvedValueOnce(ok(preview({ onPackingList: false, hasShipment: true })));
+    h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The packing list or shipping label of the order changed since the refund was checked; check the refund again before confirming it', {
+      shipmentState: { onPackingList: false, hasShipmentOrLabel: false },
+    })));
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'label-1' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-1', requestKey: 'label-1', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: false, hasShipmentOrLabel: true },
+    });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('names a subscription a full refund would cancel in the preview', () => {
+    expect(refundPreviewLines(preview({ cancelsSubscription: true }))).toContain('a full refund also cancels the subscription, so its future payments stop');
+    expect(refundPreviewLines(preview())).not.toContain('subscription');
   });
 
   it('generates a request key when none is given', async () => {
@@ -119,7 +138,7 @@ describe('order refund command', () => {
     expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --yes --remainder 30.99 to confirm');
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', { remainderCents: 4099 })));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'full-1' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099 });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.99 PLN; check the refund again before confirming it');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
@@ -143,7 +162,7 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
     const human = harness();
     await human.refund({ yes: true, amount: '5' }, () => 'made-1');
-    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500 });
+    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     expect(errorSpy).toHaveBeenCalledWith('request key: made-1 (after a network error repeat with --request-key made-1; the same key never refunds twice)');
   });
 

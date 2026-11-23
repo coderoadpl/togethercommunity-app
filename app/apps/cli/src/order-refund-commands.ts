@@ -50,6 +50,7 @@ export const refundPreviewLines = (preview: StaffRefundPreview): string => {
     `full refund defaults: return stock ${yesNo(preview.fullRefundOptions.restockDefault)}, take off the packing list ${yesNo(preview.fullRefundOptions.removeFromPackingListDefault)}`,
     ...(preview.waitingRefundId === null ? [] : [`refund still waiting to reach the payment provider: ${preview.waitingRefundId}`]),
     ...(preview.hasShipment ? ['a refund does not cancel the shipping label'] : []),
+    ...(preview.cancelsSubscription ? ['a full refund also cancels the subscription, so its future payments stop'] : []),
     ...(preview.hasInvoice ? ['the order has an invoice; issue a correcting invoice yourself'] : []),
   ].join('\n');
 };
@@ -74,6 +75,7 @@ type RefundRequest = {
   reason?: string;
   restock?: boolean;
   removeFromPackingList?: boolean;
+  expectedShipmentState: { onPackingList: boolean; hasShipmentOrLabel: boolean };
 };
 
 const refundRequest = (
@@ -95,6 +97,7 @@ const refundRequest = (
     ...(options.reason === undefined ? {} : { reason: options.reason }),
     ...(options.restock ? {} : { restock: false }),
     ...(options.keepOnPackingList === true ? { removeFromPackingList: false } : {}),
+    expectedShipmentState: { onPackingList: preview.onPackingList, hasShipmentOrLabel: preview.hasShipment },
   });
 };
 

@@ -26,6 +26,7 @@ export const STAFF_REFUND_RATE_LIMITS: StaffRefundRateLimits = {
 };
 
 type StaffRefundRouteDeps = Pick<AppDeps, 'orderDetails' | 'orderStaffRefunds' | 'ids' | 'clock' | 'logger' | 'dispatchOrderRefunds' | 'rateLimitBuckets'>
+  & Partial<Pick<AppDeps, 'paymentRefunds' | 'subscriptions'>>
   & Pick<StaffRefundDeps, 'payment'> & { invoices?: NonNullable<StaffRefundDeps['invoices']> };
 
 const staffRefundRateLimit = (
@@ -53,6 +54,8 @@ export const registerStaffRefundRoutes = (
       staffRefunds: deps.orderStaffRefunds,
       payment: deps.payment,
       ...(deps.invoices === undefined ? {} : { invoices: deps.invoices }),
+      ...(deps.paymentRefunds === undefined ? {} : { subscriptionOrders: deps.paymentRefunds }),
+      ...(deps.subscriptions === undefined ? {} : { subscriptions: deps.subscriptions }),
       ids: deps.ids,
       clock: deps.clock,
       logger: deps.logger,

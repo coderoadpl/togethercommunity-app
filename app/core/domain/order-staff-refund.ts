@@ -211,6 +211,7 @@ export const staffRefundPreviewSchema = z.object({
   onPackingList: z.boolean(),
   hasShipment: z.boolean(),
   hasInvoice: z.boolean(),
+  cancelsSubscription: z.boolean(),
   fullRefundOptions: staffRefundFulfilmentOptionsSchema,
   waitingRefundId: z.string().nullable(),
 });
@@ -232,6 +233,18 @@ export const staffRefundFulfilmentOptions = (
   };
 };
 
+const staffRefundShipmentStateSchema = z.object({ onPackingList: z.boolean(), hasShipmentOrLabel: z.boolean() }).strict();
+
+type StaffRefundShipmentState = z.output<typeof staffRefundShipmentStateSchema>;
+
+export const staffRefundShipmentState = (order: Pick<Order, 'fulfilmentStatus' | 'shipment'>, hasLabel: boolean): StaffRefundShipmentState =>
+  ({ onPackingList: order.fulfilmentStatus === 'to_pack', hasShipmentOrLabel: order.shipment != null || hasLabel });
+
+export const staffRefundShipmentConflict = (expected: StaffRefundShipmentState | undefined, actual: StaffRefundShipmentState): AppError | null =>
+  expected === undefined || (expected.onPackingList === actual.onPackingList && expected.hasShipmentOrLabel === actual.hasShipmentOrLabel)
+    ? null
+    : appError('conflict', 'The packing list or shipping label of the order changed since the refund was checked; check the refund again before confirming it', { shipmentState: actual });
+
 export const createStaffRefundInputSchema = z.object({
   requestKey: staffRefundRequestKeySchema,
   amountCents: z.number().int().positive().optional(),
@@ -239,6 +252,7 @@ export const createStaffRefundInputSchema = z.object({
   reason: staffRefundNoteSchema.optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
+  expectedShipmentState: staffRefundShipmentStateSchema.optional(),
 }).strict();
 
 export const resolveStaffRefundChoices = (

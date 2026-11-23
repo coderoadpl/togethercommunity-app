@@ -451,7 +451,7 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.orderRefundPreview.mockReset().mockResolvedValue(ok({
     orderId: 'order-number', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN',
-    mode: 'live', remainderSource: 'provider', returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false,
+    mode: 'live', remainderSource: 'provider', returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
     fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
     waitingRefundId: null,
   }));
@@ -2374,6 +2374,7 @@ describe('staff refund CLI', () => {
     expect(h.orderRefundPreview).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
       orderId: 'order-number', requestKey: 'retry-7', amountCents: 1250, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
     });
     expect(logSpy).toHaveBeenCalledWith('refund refund-1: 12.50 PLN (partial), pending\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
   });
@@ -2386,7 +2387,7 @@ describe('staff refund CLI', () => {
     process.exitCode = 0;
     logSpy.mockClear();
     await run('order', 'refund', 'order-number', '--yes', '--remainder', '40.99');
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099 });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('prints the refund preview and puts an order back on the packing list', async () => {

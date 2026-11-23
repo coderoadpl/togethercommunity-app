@@ -17,9 +17,12 @@ import {
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
   staffRefundRemainderCents,
+  staffRefundShipmentConflict,
+  staffRefundShipmentState,
   staffRefundWaitingConflict,
   validation,
   type AppError,
+  type MemberSubscription,
   type Order,
   type OrderRefundTotals,
   type OrderListItem,
@@ -35,9 +38,11 @@ import type {
   Clock,
   IdGenerator,
   InvoiceRepository,
+  MemberSubscriptionRepository,
   OrderDetailRepository,
   OrderStaffRefundRepository,
   PaymentProvider,
+  PaymentRefundRepository,
   StaffRefundCreationState,
   StaffRefundDecision,
 } from '../ports.js';
@@ -68,6 +73,8 @@ export interface StaffRefundDeps {
   staffRefunds: OrderStaffRefundRepository;
   payment: Pick<PaymentProvider, 'listRefunds'>;
   invoices?: Pick<InvoiceRepository, 'findCurrentByOrder'>;
+  subscriptionOrders?: Pick<PaymentRefundRepository, 'findLatestSubscriptionOrder'>;
+  subscriptions?: Pick<MemberSubscriptionRepository, 'findByProviderSubscriptionId'>;
   ids: IdGenerator;
   clock: Clock;
   logger: { warn(message: string): void };
@@ -88,10 +95,29 @@ const withinRateLimit = async (
   return limited.ok ? tenant : limited;
 };
 
+const runningSubscription = (subscription: MemberSubscription | null, order: Pick<Order, 'mode'>): boolean =>
+  subscription !== null && subscription.mode === order.mode && subscription.status !== 'canceled';
+
+// A full refund of the subscription's latest invoice also cancels the subscription when its charge.refunded arrives.
+const fullRefundCancelsSubscription = async (
+  tenantId: string,
+  order: Pick<Order, 'id' | 'kind' | 'mode' | 'providerObjectIds'>,
+  deps: Pick<StaffRefundDeps, 'subscriptionOrders' | 'subscriptions'>,
+): Promise<boolean> => {
+  const providerSubscriptionId = order.providerObjectIds['subscription'];
+  if (order.kind !== 'recurring' || providerSubscriptionId === undefined || order.providerObjectIds['invoice'] === undefined) return false;
+  if (deps.subscriptionOrders === undefined || deps.subscriptions === undefined) return false;
+  const [latest, subscription] = await Promise.all([
+    deps.subscriptionOrders.findLatestSubscriptionOrder(tenantId, providerSubscriptionId),
+    deps.subscriptions.findByProviderSubscriptionId(tenantId, providerSubscriptionId),
+  ]);
+  return latest?.id === order.id && runningSubscription(subscription, order);
+};
+
 export const previewStaffRefund = async (
   ctx: Ctx,
   orderId: string,
-  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices' | 'rateLimit'>,
+  deps: Pick<StaffRefundDeps, 'orderDetails' | 'staffRefunds' | 'payment' | 'invoices' | 'subscriptionOrders' | 'subscriptions' | 'rateLimit'>,
 ): Promise<Result<StaffRefundPreview, AppError>> => {
   const refusal = machineKeyRefusal(ctx);
   if (refusal !== null) return refusal;
@@ -99,14 +125,16 @@ export const previewStaffRefund = async (
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
-  const [provider, platformCommittedCents, hasLabel, returnableStock, invoice, refunds] = await Promise.all([
+  const [provider, platformCommittedCents, hasLabel, returnableStock, invoice, refunds, cancelsSubscription] = await Promise.all([
     providerCommittedCents(order, deps.payment),
     deps.staffRefunds.platformCommittedCents(tenant.value, order.id),
     deps.staffRefunds.hasLabel(tenant.value, order.id),
     deps.staffRefunds.returnableStock(tenant.value, order.id),
     deps.invoices?.findCurrentByOrder(tenant.value, order.id) ?? null,
     deps.staffRefunds.listByOrder(tenant.value, order.id),
+    fullRefundCancelsSubscription(tenant.value, order, deps),
   ]);
+  const shipmentState = staffRefundShipmentState(order, hasLabel);
   const remainderCents = staffRefundRemainderCents(order, { providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents });
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
   const blocker = staffRefundOrderBlocker(order)
@@ -123,9 +151,10 @@ export const previewStaffRefund = async (
     mode: order.mode,
     remainderSource: provider.source,
     returnableStock,
-    onPackingList: order.fulfilmentStatus === 'to_pack',
-    hasShipment: order.shipment != null || hasLabel,
+    onPackingList: shipmentState.onPackingList,
+    hasShipment: shipmentState.hasShipmentOrLabel,
     hasInvoice: invoice !== null,
+    cancelsSubscription,
     fullRefundOptions: staffRefundFulfilmentOptions(order, { coversRemainder: true, hasLabel }),
     waitingRefundId: waiting?.id ?? null,
   });
@@ -142,6 +171,7 @@ const decideStaffRefund = (
     reason?: string | undefined;
     restock?: boolean | undefined;
     removeFromPackingList?: boolean | undefined;
+    expectedShipmentState?: { onPackingList: boolean; hasShipmentOrLabel: boolean } | undefined;
     provider: ProviderCommitted;
     actor: { userId: string; email: string };
     now: string;
@@ -155,6 +185,8 @@ const decideStaffRefund = (
   const blocker = staffRefundOrderBlocker(state.order);
   if (blocker !== null) return err(blocker);
   if (state.waiting !== null) return err(staffRefundWaitingConflict());
+  const shipmentConflict = staffRefundShipmentConflict(request.expectedShipmentState, staffRefundShipmentState(state.order, state.hasLabel));
+  if (shipmentConflict !== null) return err(shipmentConflict);
   const remainderCents = staffRefundRemainderCents(state.order, {
     providerCommittedCents: request.provider.cents,
     providerUncommittedCents: request.provider.uncommittedCents,

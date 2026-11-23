@@ -928,6 +928,28 @@ describe('staff refunds against a real database', () => {
     expect(await fulfilmentOf('order-1')).toBe('to_pack');
   });
 
+  it('refuses a refund confirmed for a packing and label state that changed since the preview, naming the new state, and changes nothing', async () => {
+    const h = harness();
+    const shown = unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps));
+    expect(shown).toMatchObject({ onPackingList: true, hasShipment: false, fullRefundOptions: { restockDefault: true, removeFromPackingListDefault: true } });
+    await database.db.insert(orderShipments).values({
+      id: 'shipment-1', tenantId: 'tenant-a', orderId: 'order-1', provider: 'inpost_shipx', environment: 'sandbox', organizationId: 'org-1',
+      providerShipmentId: 'shipx-1', status: 'confirmed', boughtAt: minutes(1), createAttemptedAt: minutes(1), createdAt: minutes(1), updatedAt: minutes(1),
+    });
+
+    expect(await h.refund('order-1', {
+      requestKey: 'req-1', expectedAmountCents: 4099, restock: true, removeFromPackingList: true,
+      expectedShipmentState: { onPackingList: shown.onPackingList, hasShipmentOrLabel: shown.hasShipment },
+    })).toMatchObject({ ok: false, error: { code: 'conflict', details: { shipmentState: { onPackingList: true, hasShipmentOrLabel: true } } } });
+    expect(await refundRows('order-1')).toStrictEqual([]);
+    expect(await fulfilmentOf('order-1')).toBe('to_pack');
+
+    const fresh = unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps));
+    expect(unwrap(await h.refund('order-1', {
+      requestKey: 'req-1', expectedAmountCents: 4099, expectedShipmentState: { onPackingList: fresh.onPackingList, hasShipmentOrLabel: fresh.hasShipment },
+    })).refund).toMatchObject({ restocked: false, removedFromPackingList: false });
+  });
+
   it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {
     const h = harness();
     expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });

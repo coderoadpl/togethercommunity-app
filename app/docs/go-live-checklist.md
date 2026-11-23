@@ -207,8 +207,12 @@ Every send mints an opaque token from 24 random bytes (`tokens.nextToken` in
 index in `unsubscribe_tokens` (`unsubscribeTokens` in `adapters/db/app-schema.ts`)
 and issued for broadcasts and test sends (`enqueueMarketingMessagesExecution`
 and `testSendCampaignToSelf` in `core/server/usecases/marketing-email.ts`).
-Links use `${APP_BASE_URL}/u/<token>` (`unsubscribeBaseUrl` in
-`apps/server/src/composition.ts`), and messages carry both one-click unsubscribe
+Links use `<workspace origin>/u/<token>`, where the workspace origin is the
+workspace's earliest verified custom domain or, without one, its own subdomain of
+the platform's base domain, or `APP_BASE_URL` itself in single-tenant mode (`unsubscribeBaseUrl` in
+`apps/server/src/composition.ts`, `resolveTenantOrigin` in
+`core/server/tenant-url.ts`); a workspace on a custom domain therefore gets
+links on that host, not on `APP_BASE_URL`. Messages carry both one-click unsubscribe
 headers (`canonicalMarketingHeaders` in `core/domain/marketing-email.ts`).
 Consumption marks `used_at` (`UnsubscribeTokenRepository.consume` in
 `core/server/ports.ts`, `unsubscribeOneClick` in

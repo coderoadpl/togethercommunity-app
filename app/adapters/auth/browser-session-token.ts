@@ -5,12 +5,16 @@ const EXPOSE_HEADERS = 'access-control-expose-headers';
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
+export const acceptedSessionCookieNames = (sessionCookieName: string): readonly [string, string] => {
+  const name = stripSecureCookiePrefix(sessionCookieName);
+  return [`__Secure-${name}`, name];
+};
+
 const carriesSessionCookie = (request: Request, sessionCookieName: string): boolean => {
   const cookie = request.headers.get('cookie');
   if (cookie === null) return false;
   const cookies = parseCookies(cookie);
-  const name = stripSecureCookiePrefix(sessionCookieName);
-  return cookies.has(`__Secure-${name}`) || cookies.has(name);
+  return acceptedSessionCookieNames(sessionCookieName).some((name) => cookies.has(name));
 };
 
 const isBrowserRequest = (request: Request, sessionCookieName: string): boolean =>

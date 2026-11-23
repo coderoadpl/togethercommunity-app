@@ -3024,15 +3024,16 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
 
     const discussionHeading = screen.getByRole('heading', { level: 2, name: en.discussion.heading });
-    const searchShown = (input: HTMLElement) =>
-      scrollIntoView.mock.instances.some((element) => element instanceof Element && element.contains(input));
+    const headingBlock = discussionHeading.parentElement;
     scrollTo.mockClear();
+    scrollIntoView.mockClear();
     await user.click(screen.getByTestId('back-to-discussion'));
     const input = await screen.findByTestId('discussion-search-input');
     expect(input).toHaveValue('hammocks');
     expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
     await waitFor(() => expect(discussionHeading).toHaveFocus());
-    expect(searchShown(input)).toBe(true);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    expect(scrollIntoView.mock.instances).toEqual([headingBlock]);
     expect(scrollTo).not.toHaveBeenCalled();
 
     await user.click(screen.getByTestId('search-hit-link-t1'));
@@ -3043,7 +3044,7 @@ describe('LessonPlayerPage', () => {
     expect(inputAfterBack).toHaveValue('hammocks');
     expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
     await waitFor(() => expect(discussionHeading).toHaveFocus());
-    expect(searchShown(inputAfterBack)).toBe(true);
+    expect(scrollIntoView.mock.instances).toEqual([headingBlock]);
 
     await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
     await waitFor(() => expect(screen.getByTestId('discussion-search-input')).toHaveValue(''));
@@ -3053,5 +3054,46 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('discussion-search-input')).toHaveValue('');
     expect(screen.queryByTestId('discussion-search-results')).not.toBeInTheDocument();
     expect(screen.queryByTestId('search-hit-link-t1')).not.toBeInTheDocument();
+  });
+
+  it.each(['the back button', 'browser history'])('reveals the discussion heading after leaving a hit whose thread is past the loaded threads through %s', async (exit) => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const loaded = discussionPost('t2', 'Question about panels');
+    const older = discussionPost('t1', 'Question about hammocks');
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [loaded], nextCursor: 'cursor-2', viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/discussion/threads/:postId', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [older], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/posts/search', () =>
+        HttpResponse.json({ ok: true, data: { hits: [{ post: older, lessonId: 'l1', snippet: 'Question about hammocks' }] } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1');
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'hammocks');
+    await user.click(await screen.findByTestId('search-hit-link-t1'));
+    await waitFor(() => expect(screen.getByTestId('discussion-subthread-t1')).toHaveFocus());
+
+    const discussionHeading = screen.getByRole('heading', { level: 2, name: en.discussion.heading });
+    scrollIntoView.mockClear();
+    if (exit === 'the back button') await user.click(screen.getByTestId('back-to-discussion'));
+    else router.history.back();
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    expect(await screen.findByTestId('discussion-thread-t2')).toBeInTheDocument();
+    await waitFor(() => expect(discussionHeading).toHaveFocus());
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    expect(scrollIntoView.mock.instances).toEqual([discussionHeading.parentElement]);
+
+    await user.click(await screen.findByTestId('search-hit-link-t1'));
+    await waitFor(() => expect(screen.getByTestId('discussion-subthread-t1')).toHaveFocus());
   });
 });

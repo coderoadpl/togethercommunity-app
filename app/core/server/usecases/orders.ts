@@ -48,19 +48,19 @@ export interface OrdersPage {
 const withStaffRefundStatus = async (
   tenantId: string,
   orders: OrderListItem[],
-  staffRefunds: Pick<OrderStaffRefundRepository, 'activeStatusByOrder'>,
+  staffRefunds: Pick<OrderStaffRefundRepository, 'activeRefundByOrder'>,
 ): Promise<OrderListItem[]> => {
-  const statuses = await staffRefunds.activeStatusByOrder(tenantId, orders.flatMap((order) => (order.cancelReason == null ? [order.id] : [])));
+  const active = await staffRefunds.activeRefundByOrder(tenantId, orders.flatMap((order) => (order.cancelReason == null ? [order.id] : [])));
   return orders.map((order) => {
-    const staffRefundStatus = statuses.get(order.id);
-    return staffRefundStatus === undefined ? order : { ...order, staffRefundStatus };
+    const refund = active.get(order.id);
+    return refund === undefined ? order : { ...order, staffRefundStatus: refund.status, staffRefundAmountCents: refund.amountCents };
   });
 };
 
 export const listOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'activeStatusByOrder'> },
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'activeRefundByOrder'> },
 ): Promise<Result<OrdersPage, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;

@@ -1179,6 +1179,8 @@ export interface Messages {
       deliverySubtotal: string;
       paidTotal: string;
       refunded: string;
+      requestedRefund: string;
+      waitingForPermission: string;
       inProgress: (params: { amount: string }) => string;
       remaining: string;
       action: string;
@@ -1186,6 +1188,7 @@ export interface Messages {
       waitingBlocksAction: string;
       notPaidOut: string;
       stateChip: (params: { state: string }) => string;
+      listChip: (params: { amount: string; state: string }) => string;
       states: Record<OrderRefundJobView['status'], string>;
       historyTitle: string;
       historyCount: (params: { count: number }) => string;
@@ -1201,6 +1204,9 @@ export interface Messages {
       failedHelp: string;
       blockedTitle: string;
       blockedBuyerEmail: string;
+      blockedBody: string;
+      blockedNoAction: string;
+      paymentSettingsLink: string;
       offPackingChip: string;
       offPackingNote: string;
       offPackingRestockedNote: string;
@@ -1233,10 +1239,13 @@ export interface Messages {
       shippedWarningBody: string;
       partialInfoTitle: string;
       partialInfoBody: string;
+      partialFullInfoTitle: string;
+      partialFullInfoBody: string;
       reasonPlaceholder: string;
       reasonCount: (params: { count: number; max: number }) => string;
       consequencesTitle: string;
       consequenceProvider: (params: { amount: string }) => string;
+      consequenceProviderCap: (params: { remainder: string }) => string;
       consequenceProviderHint: string;
       consequenceEmail: (params: { buyer: string }) => string;
       consequenceTestMode: string;
@@ -1244,6 +1253,7 @@ export interface Messages {
       consequenceAccessEnds: string;
       consequenceAccessStays: string;
       consequenceRestock: (params: { units: string }) => string;
+      consequenceRestockAndRemove: (params: { units: string }) => string;
       consequenceNoRestock: string;
       consequenceRemoveFromPackingList: string;
       consequenceStaysOnPackingList: string;

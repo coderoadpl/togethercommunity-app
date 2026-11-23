@@ -140,13 +140,13 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
     }
     return committed;
   },
-  activeStatusByOrder: async (tenantId, orderIds) => {
+  activeRefundByOrder: async (tenantId, orderIds) => {
     if (orderIds.length === 0) return new Map();
-    const latest = await db.selectDistinctOn([orderStaffRefunds.orderId], { orderId: orderStaffRefunds.orderId, status: orderStaffRefunds.status })
+    const latest = await db.selectDistinctOn([orderStaffRefunds.orderId], { orderId: orderStaffRefunds.orderId, status: orderStaffRefunds.status, amountCents: orderStaffRefunds.amountCents })
       .from(orderStaffRefunds)
       .where(and(eq(orderStaffRefunds.tenantId, tenantId), inArray(orderStaffRefunds.orderId, [...orderIds])))
       .orderBy(orderStaffRefunds.orderId, desc(orderStaffRefunds.createdAt), desc(orderStaffRefunds.id));
-    return new Map(latest.flatMap((row) => isActiveStaffRefundStatus(row.status) ? [[row.orderId, row.status]] : []));
+    return new Map(latest.flatMap((row) => isActiveStaffRefundStatus(row.status) ? [[row.orderId, { status: row.status, amountCents: row.amountCents }]] : []));
   },
   returnableStock: async (tenantId, orderId) => returnableOrderStock(db, tenantId, orderId, STAFF_REFUND_STOCK_REASON),
   noteChargeRefunded: async (tenantId, orderId, now) =>

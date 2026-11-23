@@ -557,10 +557,10 @@ describe('staff refunds against a real database', () => {
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
     const listDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
     const listed = unwrap(await listOrders(staff('tenant-a'), {}, listDeps));
-    expect(listed.orders.map((order) => [order.id, order.staffRefundStatus, order.refundJobStatus])).toStrictEqual([['order-1', 'pending', undefined]]);
+    expect(listed.orders.map((order) => [order.id, order.staffRefundStatus, order.staffRefundAmountCents, order.refundJobStatus])).toStrictEqual([['order-1', 'pending', 1000, undefined]]);
     const machineKey: Ctx = { ...staff('tenant-a'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' } };
     const machineListed = unwrap(await listOrders(machineKey, {}, listDeps));
-    expect(machineListed.orders.map((order) => [order.id, order.staffRefundStatus, order.refundJobStatus])).toStrictEqual([['order-1', undefined, undefined]]);
+    expect(machineListed.orders.map((order) => [order.id, order.staffRefundStatus, order.staffRefundAmountCents, order.refundJobStatus])).toStrictEqual([['order-1', undefined, undefined, undefined]]);
     expect((await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 })).orders[0]?.refundJobStatus).toBeUndefined();
     await h.dispatch(minutes(1));
     const settled = unwrap(await listOrders(staff('tenant-a'), {}, listDeps));

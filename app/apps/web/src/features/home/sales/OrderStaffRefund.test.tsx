@@ -171,7 +171,8 @@ describe('staff refund dialog', () => {
     const consequences = within(dialog).getByTestId('staff-refund-consequences');
     expect(within(consequences).getByText(messages.consequenceProvider({ amount: pln(24900) }))).toBeVisible();
     expect(within(consequences).getByText(messages.consequenceEmail({ buyer: 'Alex Smith' }))).toBeVisible();
-    expect(within(consequences).getByText(messages.consequenceRestock({ units: 'Ceramic mug × 1' }))).toBeVisible();
+    expect(within(consequences).getByText(messages.consequenceRestockAndRemove({ units: 'Ceramic mug × 1' }))).toBeVisible();
+    expect(within(consequences).queryByText(messages.consequenceRestock({ units: 'Ceramic mug × 1' }))).toBeNull();
     expect(within(consequences).getByText(messages.consequenceAccessEnds)).toBeVisible();
 
     await userEvent.type(within(dialog).getByLabelText(messages.reasonLabel), '  The buyer cancelled before shipping  ');
@@ -193,6 +194,9 @@ describe('staff refund dialog', () => {
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.removeFromPackingList) }));
     expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceStaysOnPackingList)).toBeVisible();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
+    expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceRestock({ units: 'Ceramic mug × 1' }))).toBeVisible();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
     expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), restock: false, removeFromPackingList: false });
@@ -232,7 +236,31 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByText(message)).toBeVisible();
     expect(amount).toHaveAttribute('aria-invalid', 'true');
     expect(within(dialog).getByRole('button', { name: named(button) })).toBeDisabled();
+    const consequences = within(dialog).getByTestId('staff-refund-consequences');
+    expect(within(consequences).getByText(messages.consequenceProviderCap({ remainder: pln(24900) }))).toBeVisible();
+    expect(within(consequences).queryByText(messages.consequenceProvider({ amount: pln(30000) }))).toBeNull();
     expect(calls.refunds).toHaveLength(0);
+  });
+
+  it('says access ends when the partial switch refunds the whole remainder, keeping stock and packing as they are', async () => {
+    const calls = serve({ order: paidOrder });
+    acceptRefunds(calls);
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('switch', { name: new RegExp(messages.partialSwitch) }));
+    const amount = within(dialog).getByLabelText(messages.amountLabel);
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '249');
+    const consequences = within(dialog).getByTestId('staff-refund-consequences');
+    expect(within(consequences).getAllByText(messages.consequenceAccessEnds)).toHaveLength(2);
+    expect(within(consequences).queryByText(messages.consequenceAccessStays)).toBeNull();
+    expect(within(consequences).getAllByText(messages.consequenceStatusFull)).toHaveLength(2);
+    const info = within(dialog).getByTestId('staff-refund-partial-info');
+    expect(info).toHaveTextContent(messages.partialFullInfoTitle);
+    expect(info).toHaveTextContent(messages.partialFullInfoBody);
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
+    await waitFor(() => expect(calls.refunds).toHaveLength(1));
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 24900, restock: false, removeFromPackingList: false });
   });
 
   it('reuses the request key of the dialog when a failed request is retried and takes a new one on the next opening', async () => {
@@ -351,7 +379,14 @@ describe('staff refund history and ship anyway', () => {
     expect(within(done).getByText(messages.restocked)).toBeVisible();
 
     expect(screen.getByTestId('order-staff-refund-chip')).toHaveTextContent(messages.stateChip({ state: messages.states.blocked_permission }));
-    expect(within(screen.getByTestId('order-payment')).getByText(messages.notPaidOut)).toBeVisible();
+    const payment = screen.getByTestId('order-payment');
+    expect(within(payment).getByText(messages.notPaidOut)).toBeVisible();
+    expect(within(payment).getByText(`−${pln(9900)}`)).toBeVisible();
+    expect(within(payment).getByText(messages.requestedRefund)).toBeVisible();
+    expect(within(payment).getByText(`−${pln(1000)}`)).toBeVisible();
+    expect(within(payment).getByText(messages.waitingForPermission)).toBeVisible();
+    expect(within(blocked).getByText(messages.blockedNoAction)).toBeVisible();
+    expect(within(blocked).getByRole('link', { name: messages.paymentSettingsLink })).toHaveAttribute('href', '/panel/integrations#stripe');
   });
 
   it('puts an order taken off the packing list back with ship anyway', async () => {
@@ -390,7 +425,7 @@ describe('staff refund history and ship anyway', () => {
   it('shows the state of an unsettled staff refund in the orders list from its own field', async () => {
     server.use(
       http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
-        orders: [{ ...paidOrder, staffRefundStatus: 'running' }, { ...paidOrder, id: 'o2', refundJobStatus: 'failed' }, { ...paidOrder, id: 'o3' }], total: 3, page: 1, pageSize: 25, sources: [],
+        orders: [{ ...paidOrder, staffRefundStatus: 'running', staffRefundAmountCents: 4900 }, { ...paidOrder, id: 'o2', refundJobStatus: 'failed' }, { ...paidOrder, id: 'o3' }], total: 3, page: 1, pageSize: 25, sources: [],
       } })),
       http.get('/api/orders/consumer-sales-summary', ({ request }) => {
         const params = new URL(request.url).searchParams;
@@ -401,7 +436,7 @@ describe('staff refund history and ship anyway', () => {
       http.get('/api/orders/reconciliation', () => HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-07-28T10:00:00.000Z' } })),
     );
     await renderAt('/panel/sales', SalesPanel);
-    expect(await screen.findByTestId('sales-staff-refund-chip')).toHaveTextContent(messages.stateChip({ state: messages.states.running }));
+    expect(await screen.findByTestId('sales-staff-refund-chip')).toHaveTextContent(messages.listChip({ amount: pln(4900), state: messages.states.running }));
     expect(screen.getAllByTestId('sales-staff-refund-chip')).toHaveLength(1);
   });
 });

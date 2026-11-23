@@ -1739,8 +1739,8 @@ rate-limited with the shared limiter per staff member and per workspace: 10 and
 refused request answers `429 rate_limited` with `Retry-After`. The order detail
 (`GET /api/orders/:orderId`) carries `staffRefunds` (newest first) and
 `refundTotals` (paid, refunded, remaining). The Studio orders list
-(`GET /api/orders`) carries `staffRefundStatus`, the state of the order's latest
-staff refund while it is unsettled; `refundJobStatus` keeps meaning only the
+(`GET /api/orders`) carries `staffRefundStatus` and `staffRefundAmountCents`,
+the state and amount of the order's latest staff refund while it is unsettled; `refundJobStatus` keeps meaning only the
 sold-out refund job, and the shop key order list and the order feed carry no
 staff refund state. The orders export gains a
 trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
@@ -1749,7 +1749,9 @@ shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
 In Studio the order detail shows a **Payment** card with the paid, refunded and
-remaining amounts (refunds not yet confirmed by Stripe are counted and named),
+remaining amounts (refunds not yet confirmed by Stripe are counted and named;
+a refund waiting for the refund permission is listed apart as a requested
+refund, with a warning that it has not been paid out),
 a **Refund history** with each refund's amount, requester, time, staff-only
 reason and state (a refund waiting for the refund permission also names its
 attempts, the next attempt and the last possible one, 72 hours after the first
@@ -1762,8 +1764,10 @@ disabled with the reason. The dialog refunds the whole remainder by default;
 remainder when the amount is refused. The stock option is hidden when nothing
 can return to stock (a test-mode order). One request key is generated per
 opening of the dialog and reused on a retry, so a double click or a repeated
-request returns the same refund. The orders list shows the state of the latest
-unsettled staff refund next to the order status.
+request returns the same refund. On a phone the dialog opens as a bottom sheet
+with the actions pinned below the scrolling content. The orders list shows the
+amount and state of the latest unsettled staff refund next to the order status;
+on a phone it shows one card per order instead of the table.
 
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview <orderId>

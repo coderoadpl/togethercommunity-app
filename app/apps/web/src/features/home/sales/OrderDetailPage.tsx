@@ -1,6 +1,6 @@
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
-import { Alert, Box, Button, Chip, Link, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Link, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import {
@@ -46,6 +46,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const { tenant, emailVerified, impersonating = false } = usePanelContext();
+  const theme = useTheme();
+  const detailsInRail = useMediaQuery(theme.breakpoints.only('lg'), { noSsr: true });
   const queryClient = useQueryClient();
   const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
   const detail = useQuery(actions.order(orderId));
@@ -202,6 +204,26 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
         label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
     );
   const preview = refundAction.kind === 'ready' ? refundAction.preview : null;
+  const detailsCard = (
+    <Slot order={6}>
+      <SectionCard title={t.sales.orderDetailsHeading}>
+        <Stack useFlexGap spacing="0.75rem">
+          {rows.map(([label, value]) => (
+            <Stack
+              key={label}
+              direction={{ xs: 'column', sm: 'row' }}
+              useFlexGap
+              spacing="0.5rem"
+              sx={{ justifyContent: 'space-between' }}
+            >
+              <Typography color="textSecondary">{label}</Typography>
+              <Typography>{value}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+      </SectionCard>
+    </Slot>
+  );
 
   return (
     <PanelPage
@@ -230,24 +252,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Slot order={8}><DownloadCopies query={{ orderId }} /></Slot>
           </Box>
           <Box sx={columnSx}>
-            <Slot order={6}>
-              <SectionCard title={t.sales.orderDetailsHeading}>
-                <Stack useFlexGap spacing="0.75rem">
-                  {rows.map(([label, value]) => (
-                    <Stack
-                      key={label}
-                      direction={{ xs: 'column', sm: 'row' }}
-                      useFlexGap
-                      spacing="0.5rem"
-                      sx={{ justifyContent: 'space-between' }}
-                    >
-                      <Typography color="text.secondary">{label}</Typography>
-                      <Typography>{value}</Typography>
-                    </Stack>
-                  ))}
-                </Stack>
-              </SectionCard>
-            </Slot>
+            {detailsInRail ? null : detailsCard}
             {attributionRows.length === 0 ? null : (
               <Slot order={7}>
                 <SectionCard title={t.sales.source}>
@@ -257,7 +262,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                     ) : null}
                     {attributionRows.map(([label, value]) => (
                       <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">{label}</Typography>
+                        <Typography color="textSecondary">{label}</Typography>
                         <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
                       </Stack>
                     ))}
@@ -407,7 +412,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                     { label: t.shipping.orderPhone, value: order.shipping.phone ?? '—', stacked: false },
                   ].map(({ label, value, stacked }) => (
                     <Stack key={label} direction={stacked ? 'column' : { xs: 'column', sm: 'row' }} useFlexGap spacing={stacked ? '0.25rem' : '0.5rem'} sx={{ justifyContent: 'space-between' }}>
-                      <Typography color="text.secondary">{label}</Typography>
+                      <Typography color="textSecondary">{label}</Typography>
                       <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
                     </Stack>
                   ))}
@@ -455,6 +460,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               </SectionCard>
             </Slot>
           )}
+          {detailsInRail ? detailsCard : null}
         </Box>
       </Box>
       {preview === null || refundDialog.requestKey === '' ? null : (

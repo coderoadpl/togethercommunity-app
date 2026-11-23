@@ -1,22 +1,37 @@
-import { Alert, AlertTitle, Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
+import { Alert, AlertTitle, Box, Button, Chip, Divider, Link as MuiLink, Stack, Typography } from '@mui/material';
+import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { orderRefundPermissionDeadline, SALES_LINK_TIME_ZONE, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { SectionCard } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatMinorUnitsPrice } from '../../../lib/format.js';
-import { PreLineText, RefundAmountLabel, RefundAmountValue, RefundHistoryAmount, RefundHistoryItem, RefundMutedRow, WrapAnywhereText } from '../../../theme.js';
+import {
+  PreLineText,
+  RefundAmountLabel,
+  RefundAmountValue,
+  RefundHistoryAmount,
+  RefundHistoryCard,
+  RefundHistoryItem,
+  RefundMutedRow,
+  RefundNote,
+  RefundWarningRow,
+  WrapAnywhereText,
+} from '../../../theme.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
-import { CheckCircleIcon, ClockIcon, RefundIcon } from './refund-icons.js';
+import { CheckCircleIcon, ClockIcon, RefundIcon, WarningIcon } from './refund-icons.js';
 
-const UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['pending', 'running', 'submitted', 'blocked_permission', 'unconfirmed'];
+const UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['pending', 'running', 'submitted', 'unconfirmed'];
+
+const sumOf = (refunds: readonly OrderStaffRefundView[], statuses: readonly OrderStaffRefundView['status'][]): number =>
+  refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
 
 const AmountRow = ({ label, children, sub, total = false }: { label: string; children: ReactNode; sub?: string | undefined; total?: boolean }) => (
   <Stack direction="row" useFlexGap spacing="1rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
     <RefundAmountLabel total={total}>{label}</RefundAmountLabel>
     <Stack sx={{ alignItems: 'flex-end' }}>
       <RefundAmountValue total={total}>{children}</RefundAmountValue>
-      {sub === undefined ? null : <Typography variant="caption" color="text.secondary">{sub}</Typography>}
+      {sub === undefined ? null : <Typography variant="caption" color="textSecondary">{sub}</Typography>}
     </Stack>
   </Stack>
 );
@@ -44,10 +59,9 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const paidCents = totals?.paidCents ?? order.amountCents;
   const refundedCents = totals?.refundedCents ?? (order.status === 'refunded' ? order.amountCents : 0);
   const remainingCents = totals?.remainingCents ?? paidCents - refundedCents;
-  const unconfirmedCents = Math.min(
-    refundedCents,
-    staffRefunds.filter((refund) => UNCONFIRMED_STATUSES.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0),
-  );
+  const blockedCents = Math.min(refundedCents, sumOf(staffRefunds, ['blocked_permission']));
+  const settledCents = refundedCents - blockedCents;
+  const unconfirmedCents = Math.min(settledCents, sumOf(staffRefunds, UNCONFIRMED_STATUSES));
   const shippingCents = order.shipping?.amountCents ?? 0;
   const blocked = staffRefunds.some((refund) => refund.status === 'blocked_permission');
 
@@ -65,23 +79,31 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
         ) : (
           <>
             <AmountRow label={messages.paidTotal}>{money(paidCents)}</AmountRow>
-            <AmountRow label={messages.refunded} sub={unconfirmedCents === 0 ? undefined : messages.inProgress({ amount: money(unconfirmedCents) })}>
-              {`−${money(refundedCents)}`}
-            </AmountRow>
+            {settledCents === 0 ? null : (
+              <AmountRow label={messages.refunded} sub={unconfirmedCents === 0 ? undefined : messages.inProgress({ amount: money(unconfirmedCents) })}>
+                {`−${money(settledCents)}`}
+              </AmountRow>
+            )}
+            {blockedCents === 0 ? null : (
+              <AmountRow label={messages.requestedRefund} sub={messages.waitingForPermission}>{`−${money(blockedCents)}`}</AmountRow>
+            )}
             <Divider />
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
         )}
       </Stack>
       {blocked ? (
-        <Typography variant="body2" color="warning.main" data-testid="order-payment-not-paid-out">{messages.notPaidOut}</Typography>
+        <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-not-paid-out">
+          <WarningIcon />
+          <Typography variant="body2">{messages.notPaidOut}</Typography>
+        </RefundWarningRow>
       ) : refundedCents > 0 && remainingCents === 0 && unconfirmedCents === 0 ? (
         <RefundMutedRow direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
           <CheckCircleIcon />
           <Typography variant="body2">{messages.fullyRefunded}</Typography>
         </RefundMutedRow>
       ) : null}
-      {action.kind === 'loading' ? <Typography variant="body2" color="text.secondary">{messages.previewLoading}</Typography> : null}
+      {action.kind === 'loading' ? <Typography variant="body2" color="textSecondary">{messages.previewLoading}</Typography> : null}
       {action.kind === 'error' ? <Alert severity="error">{action.message}</Alert> : null}
       {action.kind === 'ready' && action.preview.refundable ? (
         <Button variant="outlined" fullWidth startIcon={<RefundIcon />} onClick={onRefund} data-testid="order-refund">
@@ -93,7 +115,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
           <Button variant="outlined" fullWidth startIcon={<RefundIcon />} disabled aria-describedby="order-refund-waiting" data-testid="order-refund">
             {messages.action}
           </Button>
-          <Typography id="order-refund-waiting" variant="body2" color="text.secondary">{messages.waitingBlocksAction}</Typography>
+          <Typography id="order-refund-waiting" variant="body2" color="textSecondary">{messages.waitingBlocksAction}</Typography>
         </Stack>
       ) : null}
     </SectionCard>
@@ -116,40 +138,48 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
   ].filter((fact) => fact !== null);
 
   return (
-    <RefundHistoryItem attention={blocked} data-testid={`order-staff-refund-${refund.id}`}>
-      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '0.75rem', rowGap: '0.25rem' }}>
-        <RefundHistoryAmount>{formatMinorUnitsPrice(refund.amountCents, refund.currency, language)}</RefundHistoryAmount>
-        <WrapAnywhereText variant="body2" color="text.secondary" sx={{ flex: '1 1 12rem', minWidth: 0 }}>
-          {messages.requestedBy({ who: refund.requestedByEmail, time: time(refund.createdAt) })}
-        </WrapAnywhereText>
-        <RefundStatusChip status={refund.status} label={messages.states[refund.status]} data-testid="order-staff-refund-state" />
-      </Stack>
-      {refund.note === null ? null : (
-        <Box sx={{ mt: '0.5rem' }}>
-          <Typography variant="caption" color="text.secondary">{messages.reasonLabel}</Typography>
-          <PreLineText variant="body2">{refund.note}</PreLineText>
-        </Box>
-      )}
-      {waiting ? (
-        <RefundMutedRow direction="row" useFlexGap spacing="0.35rem" sx={{ mt: '0.5rem', alignItems: 'center' }}>
-          <ClockIcon />
-          <Typography variant="body2">{messages.waitingForStripe}</Typography>
-        </RefundMutedRow>
-      ) : null}
-      {facts.length === 0 ? null : (
-        <Stack direction="row" useFlexGap sx={{ mt: '0.5rem', flexWrap: 'wrap', columnGap: '1rem', rowGap: '0.25rem' }}>
-          {facts.map((fact) => <Typography key={fact} variant="body2" color="text.secondary">{fact}</Typography>)}
+    <RefundHistoryItem data-testid={`order-staff-refund-${refund.id}`}>
+      <RefundHistoryCard attention={blocked}>
+        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '0.75rem', rowGap: '0.25rem' }}>
+          <RefundHistoryAmount>{formatMinorUnitsPrice(refund.amountCents, refund.currency, language)}</RefundHistoryAmount>
+          <WrapAnywhereText variant="body2" color="textSecondary" sx={{ flex: '1 1 12rem', minWidth: 0 }}>
+            {messages.requestedBy({ who: refund.requestedByEmail, time: time(refund.createdAt) })}
+          </WrapAnywhereText>
+          <RefundStatusChip status={refund.status} label={messages.states[refund.status]} data-testid="order-staff-refund-state" />
         </Stack>
-      )}
+        {refund.note === null ? null : (
+          <Box sx={{ mt: '0.5rem' }}>
+            <Typography variant="caption" color="textSecondary">{messages.reasonLabel}</Typography>
+            <PreLineText variant="body2">{refund.note}</PreLineText>
+          </Box>
+        )}
+        {waiting ? (
+          <RefundMutedRow direction="row" useFlexGap spacing="0.35rem" sx={{ mt: '0.5rem', alignItems: 'center' }}>
+            <ClockIcon />
+            <Typography variant="body2">{messages.waitingForStripe}</Typography>
+          </RefundMutedRow>
+        ) : null}
+        {facts.length === 0 ? null : (
+          <Stack direction="row" useFlexGap sx={{ mt: '0.5rem', flexWrap: 'wrap', columnGap: '1rem', rowGap: '0.25rem' }}>
+            {facts.map((fact) => <Typography key={fact} variant="body2" color="textSecondary">{fact}</Typography>)}
+          </Stack>
+        )}
+      </RefundHistoryCard>
       {blocked ? (
-        <Alert severity="warning" sx={{ mt: '0.75rem' }}>
+        <Alert severity="warning">
           <AlertTitle>{messages.blockedTitle}</AlertTitle>
-          {t.sales.refundJobBlockedHelp}
-          <Typography variant="body2" sx={{ mt: '0.5rem' }}>{messages.blockedBuyerEmail}</Typography>
+          <Stack useFlexGap spacing="0.5rem">
+            <Typography variant="body2">{messages.blockedBody}</Typography>
+            <Typography variant="body2">{messages.blockedNoAction}</Typography>
+            <MuiLink component={Link} to="/panel/integrations" hash="stripe" variant="body2" sx={{ alignSelf: 'flex-start' }}>
+              {messages.paymentSettingsLink}
+            </MuiLink>
+            <Typography variant="body2">{messages.blockedBuyerEmail}</Typography>
+          </Stack>
         </Alert>
       ) : null}
-      {refund.status === 'failed' ? <Alert severity="error" sx={{ mt: '0.75rem' }}>{messages.failedHelp}</Alert> : null}
-      {refund.status === 'unconfirmed' ? <Alert severity="error" sx={{ mt: '0.75rem' }}>{t.sales.refundJobUnconfirmedHelp}</Alert> : null}
+      {refund.status === 'failed' ? <Alert severity="error">{messages.failedHelp}</Alert> : null}
+      {refund.status === 'unconfirmed' ? <Alert severity="error">{t.sales.refundJobUnconfirmedHelp}</Alert> : null}
     </RefundHistoryItem>
   );
 };
@@ -181,7 +211,10 @@ export const OffPackingListNote = ({ restocked, pending, error, canShip, onShipA
   const messages = t.sales.staffRefund;
   return (
     <Stack useFlexGap spacing="0.75rem" data-testid="order-off-packing-list">
-      <Alert severity="success">{restocked ? messages.offPackingRestockedNote : messages.offPackingNote}</Alert>
+      <RefundNote direction="row" useFlexGap spacing="0.5rem">
+        <CheckCircleIcon />
+        <Typography variant="body2">{restocked ? messages.offPackingRestockedNote : messages.offPackingNote}</Typography>
+      </RefundNote>
       {canShip ? (
         <Button variant="outlined" fullWidth disabled={pending} onClick={onShipAnyway} data-testid="order-ship-anyway">
           {pending ? messages.shippingAnyway : messages.shipAnyway}

@@ -74,7 +74,7 @@ const staffRefundsFake = (order: OrderListItem) => {
     hasLabel: async () => false,
     returnableStock: async (tenantId, orderId) => (owns(tenantId, orderId) ? [{ productId: 'book', quantity: 1 }] : []),
     committedCentsByOrder: async () => new Map(),
-    activeStatusByOrder: async () => new Map(),
+    activeRefundByOrder: async () => new Map(),
     noteChargeRefunded: async () => [],
     shipAnyway: async () => {
       order.fulfilmentStatus = 'to_pack';

@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  Dialog,
   DialogContent,
   FormControlLabel,
   InputAdornment,
@@ -25,6 +24,7 @@ import { actions } from '../../../api.js';
 import { errorCodeOf, errorDetailsOf, localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { currencyFractionDigits, formatDate, formatMinorUnitsDecimal, formatMinorUnitsPrice } from '../../../lib/format.js';
 import {
+  RefundAmountField,
   RefundConsequenceGroup,
   RefundConsequenceIcon,
   RefundConsequenceItem,
@@ -33,8 +33,10 @@ import {
   RefundDialogActions,
   RefundDialogTitle,
   RefundFieldset,
-  RefundMutedRow,
+  RefundFinalNote,
   RefundPlainList,
+  RefundSheetDialog,
+  RefundSheetHandle,
   WrapAnywhereText,
 } from '../../../theme.js';
 import { AccessIcon, InvoiceIcon, LockIcon, MailIcon, PackageIcon, RefundIcon, StatusIcon, TestModeIcon, TruckIcon } from './refund-icons.js';
@@ -77,16 +79,26 @@ const Consequence = ({ icon, children, hint, strong = false }: { icon: ReactNode
     <RefundConsequenceIcon>{icon}</RefundConsequenceIcon>
     <Box sx={{ minWidth: 0 }}>
       <RefundConsequenceText variant="body2" strong={strong}>{children}</RefundConsequenceText>
-      {hint === undefined ? null : <Typography variant="body2" color="text.secondary">{hint}</Typography>}
+      {hint === undefined ? null : <Typography variant="body2" color="textSecondary">{hint}</Typography>}
     </Box>
   </RefundConsequenceItem>
 );
 
-const Stacked = ({ active, children }: { active: boolean; children: ReactNode }) => (
+const VariantSlot = ({ active, children }: { active: boolean; children: ReactNode }) => (
   <Box aria-hidden={active ? undefined : true} sx={{ gridArea: '1 / 1', minWidth: 0, visibility: active ? 'visible' : 'hidden' }}>
     {children}
   </Box>
 );
+
+const Variants = ({ compact, partial, full, part }: { compact: boolean; partial: boolean; full: ReactNode; part: ReactNode }) => {
+  if (compact) return partial ? part : full;
+  return (
+    <Box sx={{ display: 'grid' }}>
+      <VariantSlot active={!partial}>{full}</VariantSlot>
+      <VariantSlot active={partial}>{part}</VariantSlot>
+    </Box>
+  );
+};
 
 interface StaffRefundDialogProps {
   open: boolean;
@@ -101,7 +113,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const messages = t.sales.staffRefund;
   const { language } = useLanguage();
   const theme = useTheme();
-  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const compact = useMediaQuery(theme.breakpoints.down('md'));
   const titleId = useId();
   const queryClient = useQueryClient();
   const { currency, remainderCents, fullRefundOptions: options } = preview;
@@ -135,6 +147,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const amountError = partial && amountTouched ? amountMessage(check, t, currency, remainder) : null;
   const effectiveCents = check.amountCents;
   const fullAmount = check.ok && check.amountCents === remainderCents;
+  const endsAccess = partial && fullAmount && accessNames.length > 0;
 
   const submit = () => {
     if (!check.ok) {
@@ -177,12 +190,20 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const paidDate = formatDate(order.paidAt ?? order.createdAt, language, SALES_LINK_TIME_ZONE);
   const laterCents = check.ok ? remainderCents - check.amountCents : null;
 
+  const restocking = restockVisible && restock;
+  const units = returnableUnits.join(', ');
   const fullConsequences = (
     <>
-      {restockVisible && restock ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestock({ units: returnableUnits.join(', ') })}</Consequence> : null}
-      {options.removeFromPackingListOffered
-        ? <Consequence icon={<PackageIcon />}>{removeFromPackingList ? messages.consequenceRemoveFromPackingList : messages.consequenceStaysOnPackingList}</Consequence>
-        : null}
+      {restocking && options.removeFromPackingListOffered && removeFromPackingList
+        ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestockAndRemove({ units })}</Consequence>
+        : (
+          <>
+            {restocking ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestock({ units })}</Consequence> : null}
+            {options.removeFromPackingListOffered
+              ? <Consequence icon={<PackageIcon />}>{removeFromPackingList ? messages.consequenceRemoveFromPackingList : messages.consequenceStaysOnPackingList}</Consequence>
+              : null}
+          </>
+        )}
       {preview.hasShipment ? <Consequence icon={<TruckIcon />} hint={messages.consequenceLabelHint}>{messages.consequenceLabel}</Consequence> : null}
       {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{messages.consequenceAccessEnds}</Consequence>}
       <Consequence icon={<StatusIcon />}>{messages.consequenceStatusFull}</Consequence>
@@ -193,7 +214,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       <Consequence icon={<PackageIcon />}>
         {preview.onPackingList ? `${messages.consequenceNoRestock} ${messages.consequenceStaysOnPackingList}` : messages.consequenceNoRestock}
       </Consequence>
-      {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{messages.consequenceAccessStays}</Consequence>}
+      {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{endsAccess ? messages.consequenceAccessEnds : messages.consequenceAccessStays}</Consequence>}
       <Consequence
         icon={<StatusIcon />}
         hint={laterCents === null || laterCents <= 0 ? undefined : messages.consequenceLaterRemainder({ amount: money(laterCents) })}
@@ -203,20 +224,24 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
     </>
   );
 
+  const providerConsequence = check.ok
+    ? messages.consequenceProvider({ amount: money(check.amountCents) })
+    : messages.consequenceProviderCap({ remainder });
+
   return (
-    <Dialog
+    <RefundSheetDialog
       open={open}
       onClose={close}
-      fullScreen={fullScreen}
       fullWidth
       maxWidth="md"
       aria-labelledby={titleId}
       data-testid="staff-refund-dialog"
     >
+      <RefundSheetHandle aria-hidden />
       <RefundDialogTitle id={titleId} component="div">
         <Box sx={{ minWidth: 0 }}>
           <WrapAnywhereText variant="h2" component="h2">{messages.dialogTitle({ id: order.id })}</WrapAnywhereText>
-          <WrapAnywhereText variant="body2" color="text.secondary" sx={{ mt: '0.25rem' }}>
+          <WrapAnywhereText variant="body2" color="textSecondary" sx={{ mt: '0.25rem' }}>
             {messages.dialogSubtitle({ buyer, paid: money(preview.paidCents), date: paidDate })}
           </WrapAnywhereText>
         </Box>
@@ -224,7 +249,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       </RefundDialogTitle>
       <DialogContent sx={{ p: 0 }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr)' } }}>
-          <Stack useFlexGap spacing="1.25rem" sx={{ p: '1.5rem' }}>
+          <Stack useFlexGap spacing="1.25rem" sx={{ p: { xs: '1rem', sm: '1.5rem' } }}>
             <Box>
               <FormControlLabel
                 sx={{ alignItems: 'flex-start', m: 0, gap: '0.5rem' }}
@@ -232,15 +257,18 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                 label={(
                   <Box sx={{ pt: '0.4rem' }}>
                     <Typography>{messages.partialSwitch}</Typography>
-                    <Box sx={{ display: 'grid' }}>
-                      <Stacked active={!partial}><Typography variant="body2" color="text.secondary">{messages.partialOffHint}</Typography></Stacked>
-                      <Stacked active={partial}><Typography variant="body2" color="text.secondary">{messages.partialOnHint}</Typography></Stacked>
-                    </Box>
+                    <Variants
+                      compact={compact}
+                      partial={partial}
+                      full={<Typography variant="body2" color="textSecondary">{messages.partialOffHint}</Typography>}
+                      part={<Typography variant="body2" color="textSecondary">{messages.partialOnHint}</Typography>}
+                    />
                   </Box>
                 )}
               />
             </Box>
-            <TextField
+            <RefundAmountField
+              locked={!partial}
               label={messages.amountLabel}
               value={partial ? amountText : formatMinorUnitsDecimal(remainderCents, currency, language)}
               onChange={(event) => { setAmountText(event.target.value); setAmountTouched(true); refund.reset(); }}
@@ -252,18 +280,10 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                 htmlInput: { inputMode: 'decimal', autoComplete: 'off', 'data-testid': 'staff-refund-amount' },
               }}
             />
-            <TextField
-              label={messages.reasonLabel}
-              placeholder={messages.reasonPlaceholder}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              multiline
-              minRows={3}
-              helperText={messages.reasonCount({ count: reason.length, max: REASON_MAX_LENGTH })}
-              slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: REASON_MAX_LENGTH, 'data-testid': 'staff-refund-reason' } }}
-            />
-            <Box sx={{ display: 'grid' }}>
-              <Stacked active={!partial}>
+            <Variants
+              compact={compact}
+              partial={partial}
+              full={(
                 <Stack useFlexGap spacing="0.75rem">
                   {preview.hasShipment ? (
                     <Alert severity="warning">
@@ -273,7 +293,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                   ) : null}
                   {restockVisible || options.removeFromPackingListOffered || preview.onPackingList ? (
                     <RefundFieldset>
-                      <Typography component="legend" variant="overline" color="text.secondary" sx={{ px: '0.25rem' }}>
+                      <Typography component="legend" variant="overline" color="textSecondary" sx={{ px: '0.25rem' }}>
                         {preview.onPackingList ? messages.goodsAndPackingTitle : messages.goodsTitle}
                       </Typography>
                       <Stack useFlexGap spacing="0.5rem">
@@ -284,7 +304,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                             label={(
                               <Box>
                                 <Typography>{messages.restock}</Typography>
-                                <Typography variant="body2" color="text.secondary">{preview.hasShipment ? messages.restockHintShipped : messages.restockHintUnshipped}</Typography>
+                                <Typography variant="body2" color="textSecondary">{preview.hasShipment ? messages.restockHintShipped : messages.restockHintUnshipped}</Typography>
                                 <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.35rem' }}>
                                   {returnableUnits.map((unit) => <Chip key={unit} size="small" variant="outlined" icon={<PackageIcon />} label={unit} />)}
                                 </Stack>
@@ -300,7 +320,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                             label={(
                               <Box>
                                 <Typography>{messages.removeFromPackingList}</Typography>
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography variant="body2" color="textSecondary">
                                   {options.removeFromPackingListOffered ? messages.removeFromPackingListHint : messages.removeFromPackingListUnavailable}
                                 </Typography>
                               </Box>
@@ -311,41 +331,53 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                     </RefundFieldset>
                   ) : null}
                 </Stack>
-              </Stacked>
-              <Stacked active={partial}>
+              )}
+              part={(
                 <Alert severity="info" data-testid="staff-refund-partial-info">
-                  <AlertTitle>{messages.partialInfoTitle}</AlertTitle>
-                  {messages.partialInfoBody}
+                  <AlertTitle>{endsAccess ? messages.partialFullInfoTitle : messages.partialInfoTitle}</AlertTitle>
+                  {endsAccess ? messages.partialFullInfoBody : messages.partialInfoBody}
                 </Alert>
-              </Stacked>
-            </Box>
+              )}
+            />
+            <TextField
+              label={messages.reasonLabel}
+              placeholder={messages.reasonPlaceholder}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              multiline
+              minRows={3}
+              helperText={messages.reasonCount({ count: reason.length, max: REASON_MAX_LENGTH })}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: REASON_MAX_LENGTH, 'data-testid': 'staff-refund-reason' } }}
+            />
           </Stack>
           <RefundConsequencesPanel>
-            <Typography component="h3" variant="overline" color="text.secondary">{messages.consequencesTitle}</Typography>
+            <Typography component="h3" variant="overline" color="textSecondary">{messages.consequencesTitle}</Typography>
             <RefundPlainList data-testid="staff-refund-consequences">
-              <Consequence icon={<RefundIcon />} hint={messages.consequenceProviderHint}>
-                {messages.consequenceProvider({ amount: money(effectiveCents ?? remainderCents) })}
-              </Consequence>
+              <Consequence icon={<RefundIcon />} hint={messages.consequenceProviderHint}>{providerConsequence}</Consequence>
               {testMode
                 ? <Consequence icon={<TestModeIcon />} hint={messages.consequenceTestModeHint}>{messages.consequenceTestMode}</Consequence>
                 : <Consequence icon={<MailIcon />}>{messages.consequenceEmail({ buyer })}</Consequence>}
               {preview.hasInvoice ? <Consequence icon={<InvoiceIcon />}>{messages.consequenceInvoice}</Consequence> : null}
               {preview.remainderSource === 'platform' ? <Consequence icon={<StatusIcon />}>{messages.consequencePlatformRecords}</Consequence> : null}
-              <Box component="li" sx={{ display: 'grid' }}>
-                <Stacked active={!partial}><RefundConsequenceGroup>{fullConsequences}</RefundConsequenceGroup></Stacked>
-                <Stacked active={partial}><RefundConsequenceGroup>{partialConsequences}</RefundConsequenceGroup></Stacked>
+              <Box component="li">
+                <Variants
+                  compact={compact}
+                  partial={partial}
+                  full={<RefundConsequenceGroup>{fullConsequences}</RefundConsequenceGroup>}
+                  part={<RefundConsequenceGroup>{partialConsequences}</RefundConsequenceGroup>}
+                />
               </Box>
               <Consequence icon={<LockIcon />} hint={messages.consequenceFinalHint} strong>{messages.consequenceFinal}</Consequence>
             </RefundPlainList>
           </RefundConsequencesPanel>
         </Box>
-        {submitError === null ? null : <Alert severity="error" sx={{ mx: '1.5rem', mb: '1rem' }} data-testid="staff-refund-error">{submitError}</Alert>}
+        {submitError === null ? null : <Alert severity="error" sx={{ mx: { xs: '1rem', sm: '1.5rem' }, mb: '1rem' }} data-testid="staff-refund-error">{submitError}</Alert>}
       </DialogContent>
-      <RefundDialogActions>
-        <RefundMutedRow direction="row" useFlexGap spacing="0.4rem" sx={{ mr: 'auto', alignItems: 'center', display: { xs: 'none', sm: 'flex' } }}>
+      <RefundDialogActions disableSpacing>
+        <RefundFinalNote direction="row" useFlexGap spacing="0.4rem">
           <LockIcon />
           <Typography variant="body2">{messages.footerFinal}</Typography>
-        </RefundMutedRow>
+        </RefundFinalNote>
         <Button variant="outlined" onClick={close} disabled={refund.isPending}>{t.common.cancel}</Button>
         <Button
           variant="contained"
@@ -360,6 +392,6 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
             : effectiveCents === null ? messages.submitWithoutAmount : messages.submit({ amount: money(effectiveCents) })}
         </Button>
       </RefundDialogActions>
-    </Dialog>
+    </RefundSheetDialog>
   );
 };

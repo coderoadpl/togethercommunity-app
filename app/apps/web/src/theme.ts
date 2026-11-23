@@ -4478,6 +4478,15 @@ export const AccountSessionDisclosure = styled(ButtonBase)(({ theme }) => ({
   '&.Mui-focusVisible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
 }));
 
+export const ConsentDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialogContent-root[data-more-below=true]': { maskImage: 'linear-gradient(to bottom, #000 calc(100% - 2rem), transparent)' },
+  '& .MuiDialogActions-root': { borderTop: `1px solid ${theme.palette.divider}` },
+}));
+
+export const ConsentDialogHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: { fontSize: '1.0625rem', lineHeight: 1.45, fontWeight: 600 },
+}));
+
 export const AccountGlyph = styled(SvgIcon)({ fill: 'none' });
 export const AccountWrappingText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
 export const AccountBackupCode = styled(Typography)<AsElement>({ fontFamily: FONT_MONO });

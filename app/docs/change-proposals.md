@@ -1911,9 +1911,12 @@ holds only inside that course.
 
 The effect compares the product as `{ exists, accessItems }`, so it is
 `{ "accessItems": { "before": [...], "after": [...] } }`, each list as stored and
-as sent. Lists are compared by what they grant: items and ids in any order,
-repeats ignored. A list that grants the same as the live one would change
-nothing and is refused at submit with `400 validation` ("Invalid product access
+as sent. Lists are compared item by item: items in any order, ids within an
+item in any order, repeats ignored; two lists that grant the same through
+differently shaped items (a module list split into two items, intersecting
+exclusions) count as different, which can only make a proposal stale or let a
+change of nothing through to the owner, never treat a different grant as the
+same. A list equal to the live one in this comparison would change nothing and is refused at submit with `400 validation` ("Invalid product access
 payload: it would change nothing the owner can see"); the list is stored and
 applied in the order it was sent.
 The dry run runs the use-case with the identity of the owner who issued the
@@ -1934,7 +1937,7 @@ before they write the product. When Postgres aborts the editor's write as a
 deadlock victim, or a lock or statement wait runs out, the editor answers
 `503 unavailable` ("The product is busy; nothing was changed, retry the
 request") and nothing is written. The approval is `stale` when the product's
-list no longer grants the same as the "before" the owner saw, `failed` with the
+list no longer equals, in that comparison, the "before" the owner saw, `failed` with the
 `validation` error when the list no longer passes the check (a lesson moved out
 of its course, a course archived or deleted), and `applied` otherwise, with the
 product as `appliedResourceId`.

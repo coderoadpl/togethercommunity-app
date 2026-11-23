@@ -34,7 +34,7 @@ const order = {
 
 const preview = {
   orderId: ORDER_ID, refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN', mode: 'live',
-  remainderSource: 'provider', returnableStock: [{ productId: 'product-mug', quantity: 1 }], onPackingList: true, hasShipment: false, hasInvoice: false,
+  remainderSource: 'provider', returnableStock: [{ productId: 'product-mug', quantity: 1 }], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true }, waitingRefundId: null,
 };
 

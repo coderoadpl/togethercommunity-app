@@ -1190,6 +1190,7 @@ export interface Messages {
       remaining: string;
       action: string;
       fullyRefunded: string;
+      paymentPlatformTotals: string;
       waitingBlocksAction: string;
       notPaidOut: string;
       stateChip: (params: { state: string }) => string;
@@ -1258,6 +1259,7 @@ export interface Messages {
       consequenceTestModeHint: string;
       consequenceAccessEnds: string;
       consequenceAccessStays: string;
+      consequenceSubscriptionCancelled: string;
       consequenceRestock: (params: { units: string }) => string;
       consequenceRestockAndRemove: (params: { units: string }) => string;
       consequenceNoRestock: string;
@@ -1279,6 +1281,7 @@ export interface Messages {
       errorConflict: string;
       errorRefused: string;
       errorRemainderChanged: (params: { remainder: string }) => string;
+      errorShipmentChanged: string;
       errorRateLimited: string;
     };
     invoiceDownload: string;

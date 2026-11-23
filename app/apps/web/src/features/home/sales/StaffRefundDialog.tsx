@@ -73,6 +73,10 @@ const remainderDetailSchema = z.object({ remainderCents: z.number().int().nonneg
 
 const waitingDetailSchema = z.object({ waitingRefund: z.literal(true) });
 
+const shipmentDetailSchema = z.object({ shipmentState: z.object({ onPackingList: z.boolean(), hasShipmentOrLabel: z.boolean() }) });
+
+const shipmentStateKey = (preview: StaffRefundPreview): string => JSON.stringify([preview.onPackingList, preview.hasShipment, preview.fullRefundOptions]);
+
 const currencySymbol = (currency: string, language: string): string =>
   new Intl.NumberFormat(language, { style: 'currency', currency }).formatToParts(0).find((part) => part.type === 'currency')?.value ?? currency;
 
@@ -137,6 +141,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const [restock, setRestock] = useState(restockVisible && options.restockDefault);
   const [removeFromPackingList, setRemoveFromPackingList] = useState(options.removeFromPackingListOffered && options.removeFromPackingListDefault);
   const [reason, setReason] = useState('');
+  const [shownShipmentState, setShownShipmentState] = useState(() => shipmentStateKey(preview));
+  if (shownShipmentState !== shipmentStateKey(preview)) {
+    setShownShipmentState(shipmentStateKey(preview));
+    setRestock(restockVisible && options.restockDefault);
+    setRemoveFromPackingList(options.removeFromPackingListOffered && options.removeFromPackingListDefault);
+  }
 
   const refund = useMutation({
     ...actions.createOrderRefund,
@@ -173,6 +183,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       requestKey,
       ...(partial ? { amountCents: check.amountCents } : { expectedAmountCents: remainderCents }),
       ...(note === '' ? {} : { reason: note }),
+      expectedShipmentState: { onPackingList: preview.onPackingList, hasShipmentOrLabel: preview.hasShipment },
       ...(partial
         ? { restock: false, removeFromPackingList: false }
         : {
@@ -188,10 +199,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
 
   const conflict = refund.isError && errorCodeOf(refund.error) === 'conflict';
   const changedRemainder = conflict ? remainderDetailSchema.safeParse(errorDetailsOf(refund.error)) : null;
-  const blocked = conflict && changedRemainder?.success !== true;
+  const changedShipment = conflict && shipmentDetailSchema.safeParse(errorDetailsOf(refund.error)).success;
+  const blocked = conflict && changedRemainder?.success !== true && !changedShipment;
   const submitError = (() => {
     if (!refund.isError) return null;
     if (changedRemainder?.success === true) return messages.errorRemainderChanged({ remainder: money(changedRemainder.data.remainderCents) });
+    if (changedShipment) return messages.errorShipmentChanged;
     if (conflict) return waitingDetailSchema.safeParse(errorDetailsOf(refund.error)).success ? messages.errorConflict : messages.errorRefused;
     const code = errorCodeOf(refund.error);
     if (code === 'rate_limited') return messages.errorRateLimited;
@@ -222,6 +235,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
         )}
       {preview.hasShipment ? <Consequence icon={<TruckIcon />} hint={messages.consequenceLabelHint}>{messages.consequenceLabel}</Consequence> : null}
       {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{messages.consequenceAccessEnds}</Consequence>}
+      {preview.cancelsSubscription ? <Consequence icon={<StatusIcon />}>{messages.consequenceSubscriptionCancelled}</Consequence> : null}
       <Consequence icon={<StatusIcon />}>{messages.consequenceStatusFull}</Consequence>
     </>
   );
@@ -231,6 +245,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
         {preview.onPackingList ? `${messages.consequenceNoRestock} ${messages.consequenceStaysOnPackingList}` : messages.consequenceNoRestock}
       </Consequence>
       {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{endsAccess ? messages.consequenceAccessEnds : messages.consequenceAccessStays}</Consequence>}
+      {preview.cancelsSubscription && fullAmount ? <Consequence icon={<StatusIcon />}>{messages.consequenceSubscriptionCancelled}</Consequence> : null}
       <Consequence
         icon={<StatusIcon />}
         hint={laterCents === null || laterCents <= 0 ? undefined : messages.consequenceLaterRemainder({ amount: money(laterCents) })}

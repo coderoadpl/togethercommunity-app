@@ -44,7 +44,7 @@ const paidOrder: OrderListItem = {
 const preview: StaffRefundPreview = {
   orderId: 'o1', refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', returnableStock: [{ productId: 'mug', quantity: 1 }], onPackingList: true,
-  hasShipment: false, hasInvoice: false, waitingRefundId: null,
+  hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
 };
 
@@ -64,6 +64,7 @@ const requestBodySchema = z.object({
   reason: z.string().optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
+  expectedShipmentState: z.object({ onPackingList: z.boolean(), hasShipmentOrLabel: z.boolean() }).strict(),
 }).strict();
 
 type Detail = { order: OrderListItem; staffRefunds?: OrderStaffRefundView[]; refundTotals?: { paidCents: number; refundedCents: number; remainingCents: number; currency: string } };
@@ -163,6 +164,43 @@ describe('staff refund action', () => {
   });
 });
 
+describe('payment card totals', () => {
+  it('shows the refund the provider no longer holds as still to refund, although the platform marked the order refunded', async () => {
+    serve(
+      { order: { ...paidOrder, status: 'refunded' }, staffRefunds: [staffRefund({ kind: 'remainder', status: 'failed', amountCents: 24900 })], refundTotals: { paidCents: 24900, refundedCents: 24900, remainingCents: 0, currency: 'PLN' } },
+      { ...preview, refundedCents: 0, remainderCents: 24900 },
+    );
+    await renderDetail();
+    expect(await screen.findByRole('button', { name: messages.action })).toBeEnabled();
+    const payment = screen.getByTestId('order-payment');
+    expect(within(payment).queryByText(messages.fullyRefunded)).toBeNull();
+    expect(within(payment).queryByText(`−${pln(24900)}`)).toBeNull();
+    expect(within(payment).getAllByText(pln(24900)).length).toBeGreaterThan(0);
+    expect(within(payment).queryByText(messages.paymentPlatformTotals)).toBeNull();
+  });
+
+  it('counts a refund made in the Stripe Dashboard that the platform never recorded', async () => {
+    serve({ order: { ...paidOrder, status: 'partially_refunded' } }, { ...preview, refundedCents: 5000, remainderCents: 19900 });
+    await renderDetail();
+    expect(await screen.findByRole('button', { name: messages.action })).toBeEnabled();
+    const payment = screen.getByTestId('order-payment');
+    expect(within(payment).getByText(`−${pln(5000)}`)).toBeVisible();
+    expect(within(payment).getByText(pln(19900))).toBeVisible();
+  });
+
+  it('labels the totals as the platform\'s records when the provider\'s refund list could not be read', async () => {
+    serve(
+      { order: { ...paidOrder, status: 'partially_refunded' }, refundTotals: { paidCents: 24900, refundedCents: 4900, remainingCents: 20000, currency: 'PLN' } },
+      { ...preview, remainderSource: 'platform', refundedCents: 4900, remainderCents: 20000 },
+    );
+    await renderDetail();
+    expect(await screen.findByRole('button', { name: messages.action })).toBeEnabled();
+    const payment = screen.getByTestId('order-payment');
+    expect(within(payment).getByText(messages.paymentPlatformTotals)).toBeVisible();
+    expect(within(payment).getByText(pln(20000))).toBeVisible();
+  });
+});
+
 describe('staff refund dialog', () => {
   it('requests a full refund with the default stock and packing choices and refreshes the order', async () => {
     const calls = serve({ order: paidOrder });
@@ -187,7 +225,7 @@ describe('staff refund dialog', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(calls.detail).toBeGreaterThan(1));
   });
@@ -213,7 +251,7 @@ describe('staff refund dialog', () => {
     expect(removeBox()).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: false });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('requests a partial refund of the typed amount that keeps stock and packing as they are even if the remainder shrank meanwhile', async () => {
@@ -231,7 +269,7 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByText(messages.consequenceAccessStays)).toBeVisible();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(5050) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050, restock: false, removeFromPackingList: false });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it.each([
@@ -274,7 +312,7 @@ describe('staff refund dialog', () => {
     expect(info).toHaveTextContent(messages.partialFullInfoBody);
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 24900, restock: false, removeFromPackingList: false });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 24900, restock: false, removeFromPackingList: false, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('reuses the request key of the dialog when a failed request is retried and takes a new one on the next opening', async () => {
@@ -386,6 +424,64 @@ describe('staff refund dialog', () => {
     expect(calls.refunds[1]?.requestKey).toBe(calls.refunds[0]?.requestKey);
   });
 
+  it('reloads the refund after a label was bought since it was opened, shows the new choices and confirms them for the new state', async () => {
+    const calls = serve({ order: paidOrder });
+    const labelled: StaffRefundPreview = {
+      ...preview, hasShipment: true, fullRefundOptions: { ...preview.fullRefundOptions, restockDefault: false, removeFromPackingListDefault: false },
+    };
+    server.use(http.get('/api/orders/o1/refund-preview', () => {
+      calls.preview += 1;
+      return HttpResponse.json({ ok: true, data: calls.preview === 1 ? preview : labelled });
+    }));
+    acceptRefunds(calls, (attempt) => attempt === 1
+      ? HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Changed', details: { shipmentState: { onPackingList: true, hasShipmentOrLabel: true } } } }, { status: 409 })
+      : undefined);
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
+
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(messages.errorShipmentChanged);
+    expect(await within(dialog).findByText(messages.shippedWarningTitle)).toBeVisible();
+    expect(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: new RegExp(messages.removeFromPackingList) })).not.toBeChecked();
+    const resend = within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) });
+    expect(resend).toBeEnabled();
+
+    await userEvent.click(resend);
+    await waitFor(() => expect(calls.refunds).toHaveLength(2));
+    expect(calls.refunds.map((body) => [body.expectedShipmentState, body.restock, body.removeFromPackingList])).toStrictEqual([
+      [{ onPackingList: true, hasShipmentOrLabel: false }, true, true],
+      [{ onPackingList: true, hasShipmentOrLabel: true }, false, false],
+    ]);
+    expect(calls.refunds[1]?.requestKey).toBe(calls.refunds[0]?.requestKey);
+  });
+
+  it('says a full refund of the latest invoice of a subscription also cancels the subscription, and a partial one does not', async () => {
+    serve({ order: { ...paidOrder, kind: 'recurring' } }, { ...preview, cancelsSubscription: true });
+    await renderDetail();
+    const dialog = await openDialog();
+    const consequences = within(dialog).getByTestId('staff-refund-consequences');
+    expect(within(consequences).getAllByText(messages.consequenceSubscriptionCancelled)).toHaveLength(2);
+
+    await userEvent.click(within(dialog).getByRole('switch', { name: new RegExp(messages.partialSwitch) }));
+    const amount = within(dialog).getByLabelText(messages.amountLabel);
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '10');
+    expect(within(consequences).getAllByText(messages.consequenceSubscriptionCancelled)).toHaveLength(1);
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '249');
+    expect(within(consequences).getAllByText(messages.consequenceSubscriptionCancelled)).toHaveLength(2);
+  });
+
+  it('says access ends unless another purchase keeps it', async () => {
+    serve({ order: paidOrder });
+    await renderDetail();
+    const dialog = await openDialog();
+    expect(messages.consequenceAccessEnds).toContain('unless another purchase keeps it');
+    expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceAccessEnds)).toBeVisible();
+    expect(within(within(dialog).getByTestId('staff-refund-consequences')).queryByText(messages.consequenceSubscriptionCancelled)).toBeNull();
+  });
+
   it('keeps the refusal outside the scrolling content, right above the buttons', async () => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Refused' } }, { status: 409 }));
@@ -443,7 +539,7 @@ describe('staff refund dialog', () => {
     expect(within(consequences).queryByText(messages.consequenceEmail({ buyer: 'Alex Smith' }))).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: true });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: true, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
   });
 
   it('warns about a shipment and offers the packing option disabled with its reason', async () => {

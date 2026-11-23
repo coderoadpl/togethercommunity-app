@@ -56,9 +56,11 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const messages = t.sales.staffRefund;
   const { language } = useLanguage();
   const money = (cents: number) => formatMinorUnitsPrice(cents, order.currency, language);
-  const paidCents = totals?.paidCents ?? order.amountCents;
-  const refundedCents = totals?.refundedCents ?? (order.status === 'refunded' ? order.amountCents : 0);
-  const remainingCents = totals?.remainingCents ?? paidCents - refundedCents;
+  const providerTotals = action.kind === 'ready' && action.preview.remainderSource === 'provider' ? action.preview : null;
+  const platformTotalsOnly = action.kind === 'error' || (action.kind === 'ready' && action.preview.remainderSource === 'platform');
+  const paidCents = providerTotals?.paidCents ?? totals?.paidCents ?? order.amountCents;
+  const refundedCents = providerTotals?.refundedCents ?? totals?.refundedCents ?? (order.status === 'refunded' ? order.amountCents : 0);
+  const remainingCents = providerTotals?.remainderCents ?? totals?.remainingCents ?? paidCents - refundedCents;
   const blockedCents = Math.min(refundedCents, sumOf(staffRefunds, ['blocked_permission']));
   const settledCents = refundedCents - blockedCents;
   const unconfirmedCents = Math.min(settledCents, sumOf(staffRefunds, UNCONFIRMED_STATUSES));
@@ -91,6 +93,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
         )}
+        {platformTotalsOnly ? <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{messages.paymentPlatformTotals}</Typography> : null}
       </Stack>
       {blocked ? (
         <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-not-paid-out">

@@ -134,6 +134,25 @@ at all.
   `MemberEventRepository.append` write the event, the per-tenant telemetry
   accounting row and the outbox row in one commit, so the outbox sequence
   follows commit order and an event is never stored without its accounting.
+- Staged download files of shop management keys:
+  `KeyDownloadFileRepository.reserve` checks the staging limits under the
+  workspace's and the key's staging locks and inserts the upload or copy record
+  with its `started` event in one commit. `KeyDownloadFileRepository.claimCompletion`,
+  `KeyDownloadFileRepository.finishCompletion`,
+  `KeyDownloadFileRepository.interruptAttempt` and
+  `KeyDownloadFileRepository.releaseRecord` lock the record row and write its
+  state, attempt, staged file row, owed deletions and append-only
+  `change_proposal_download_upload_events` row together; `releaseRecord` and
+  `KeyDownloadFileRepository.finishDeletion` hold the owning row until the
+  storage answers the delete and remove the row only when it confirms.
+  `KeyDownloadFileRepository.discard`, `KeyDownloadFileRepository.sweepStaged`
+  and `KeyDownloadFileRepository.release` move a staged file to the owed
+  deletions in the commit that deletes its row, before any storage delete.
+  `KeyDownloadAttachRepository.attach` turns a staged row into a product file
+  version and `KeyDownloadAttachRepository.remove` deletes a file version with
+  its owed deletion, each in one commit. The protocol is in
+  [Download file prefixes](storage.md#download-file-prefixes) and
+  [Download files](shop-management-keys.md#download-files).
 
 <!-- MUST-ATOMIC:end -->
 

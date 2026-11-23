@@ -18,6 +18,10 @@ export type ProposalImageExtension = z.output<typeof proposalImageExtensionSchem
 
 const proposalImageDigestSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
+const PUBLICATION_WRITE_WINDOW_MS = 5 * 60 * 1000;
+
+const UNRESOLVED_DELETE_GRACE_MS = 10 * 60 * 1000;
+
 export const QUARANTINED_IMAGE_LIMITS = {
   assetsPerKey: 100,
   bytesPerKey: 50 * 1024 * 1024,
@@ -28,9 +32,9 @@ export const QUARANTINED_IMAGE_LIMITS = {
   uploadSweepAfterMs: (IMAGE_ASSET_UPLOAD_TTL_SECONDS + 5 * 60) * 1000,
   uploadSecondDeleteAfterMs: 10 * 60 * 1000,
   sweepUploadsPerTenant: 200,
-  publicationSweepAfterMs: 10 * 60 * 1000,
-  publicationWriteWindowMs: 5 * 60 * 1000,
-  unresolvedDeleteGraceMs: 10 * 60 * 1000,
+  publicationSweepAfterMs: PUBLICATION_WRITE_WINDOW_MS + UNRESOLVED_DELETE_GRACE_MS,
+  publicationWriteWindowMs: PUBLICATION_WRITE_WINDOW_MS,
+  unresolvedDeleteGraceMs: UNRESOLVED_DELETE_GRACE_MS,
   sweepPublicationsPerTenant: 20,
   sweepBudgetMs: 10_000,
 } as const;

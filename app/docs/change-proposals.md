@@ -1260,28 +1260,32 @@ later approval published. When the
 write of an image ended without a definite answer (no answer within its 5
 seconds, a connection error, a server error), the storage may still store it
 after this delete, so the withdrawal deletes the object but keeps its record,
-and the minute sweep deletes the object once more after the record's 10 minutes
+and the minute sweep deletes the object once more after the record's 15 minutes
 and only then removes the record; a write the storage refused (a `4xx` answer)
-is withdrawn like any other. The record's 10 minutes then count from the end
+is withdrawn like any other. The record's 15 minutes then count from the end
 of that write, not from the start of the attempt. This rests on the storage
-finishing or abandoning a write it accepted within those 10 minutes; the signed
-write itself expires 60 seconds after it was signed. An approval starts a write
-only within 5 minutes of committing its publication records, or it answers
-`503 unavailable` and writes nothing, so a process that dies during a write,
-whose record no withdrawal restarts, still leaves the storage at least 5
-minutes before the sweep deletes the object. A delete the storage refuses (a
+finishing or abandoning a write it accepted within 10 minutes of receiving it;
+the signed write itself expires 60 seconds after it was signed. An approval
+checks before each write that it starts within 5 minutes of committing its
+publication records, or it answers `503 unavailable` and writes nothing more;
+the check is per write, so images of a group written before it ran out are
+withdrawn like those of any approval that did not end applied. A record is
+due for the sweep only 15 minutes after its start, those 5 minutes plus the 10
+of the storage, so a process that dies during a write, whose record no
+withdrawal restarts, still leaves the storage the full 10 minutes after the
+latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
 `4xx` answer other than `404`) cannot land later, so the mark is cleared and the
 record stays for the sweep. When the delete ends without a definite answer (no
 answer, a connection error, a server error), or the process dies after sending
 it, the storage may still carry it out later, so the record keeps its mark; the
-minute sweep deletes the object again 10 minutes after the mark, under the same
+minute sweep deletes the object again 15 minutes after the mark, under the same
 assumption, and only then removes the record, so a retry after that publishes
 the image again. Once the withdrawal of an attempt without such a
 write succeeds, the attempt has left neither a record nor a public copy behind.
 A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
 stays, and the minute sweep retries it: it removes every record whose start,
-or whose last delete without a definite answer, is more than 10 minutes ago,
+or whose last delete without a definite answer, is more than 15 minutes ago,
 under the same lock, where it checks again that the record is still due: a
 record another sweep marked after this one listed it is left as it is, with no
 storage request and no change to the record. It always deletes its object with the same

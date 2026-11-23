@@ -509,11 +509,11 @@ describe('approving a proposal with an image', () => {
     await land();
     expect(h.publicKeys()).toHaveLength(1);
 
-    h.clock.now = '2026-03-01T10:09:00.000Z';
+    h.clock.now = '2026-03-01T10:14:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.publicKeys()).toHaveLength(1);
     expect(h.store.imagePublications).toHaveLength(1);
-    h.clock.now = '2026-03-01T10:11:00.000Z';
+    h.clock.now = '2026-03-01T10:16:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.publicKeys()).toEqual([]);
     expect(h.store.imagePublications).toEqual([]);
@@ -542,11 +542,11 @@ describe('approving a proposal with an image', () => {
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
     await land();
     expect(liveCover(h, 'product-mug')).toBeNull();
-    h.clock.now = '2026-03-01T10:09:00.000Z';
+    h.clock.now = '2026-03-01T10:14:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.store.imagePublications).toHaveLength(1);
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
-    h.clock.now = '2026-03-01T10:11:00.000Z';
+    h.clock.now = '2026-03-01T10:16:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.store.imagePublications).toEqual([]);
 
@@ -597,11 +597,11 @@ describe('approving a proposal with an image', () => {
     };
     expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
 
-    h.clock.now = '2026-03-01T10:11:00.000Z';
+    h.clock.now = '2026-03-01T10:16:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.store.imagePublications).toHaveLength(1);
     await land();
-    h.clock.now = '2026-03-01T10:15:00.000Z';
+    h.clock.now = '2026-03-01T10:20:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.publicKeys()).toEqual([]);
     expect(h.store.imagePublications).toEqual([]);
@@ -955,7 +955,7 @@ describe('releasing quarantined images', () => {
         tenantId: NEIGHBOUR, apiKeyId: NEIGHBOUR_KEY_ID, kind: 'product-cover', digest: sha256HexOfBytes(PNG(marker)), extension: 'png', sizeBytes: 10, createdAt: NOW,
       });
     }
-    h.clock.now = '2026-03-01T10:11:00.000Z';
+    h.clock.now = '2026-03-01T10:16:00.000Z';
     const storage: StorageProvider = {
       ...h.objects.storage,
       delete: async (input) => {

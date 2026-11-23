@@ -439,8 +439,9 @@ export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], 
  * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
  * recorded must still be public with bytes that hash to its digest, or the approval answers busy; the workspace lock
  * this transaction holds, and the refusal of any address with an unresolved delete, keep it there until the commit.
- * A write starts only within `publicationWriteWindowMs` of the intent record, or the approval answers busy, so a process
- * that dies mid-write still leaves the sweep's age bound minus that window after the write began.
+ * A write starts only within `publicationWriteWindowMs` of the intent record, or the approval answers busy; the sweep's
+ * age bound is that window plus `unresolvedDeleteGraceMs`, so a process that dies mid-write still leaves the storage the
+ * whole grace after the latest write it could have started.
  */
 export const publishApprovalImages = async (
   tenantId: string,

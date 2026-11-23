@@ -433,10 +433,10 @@ describe('public copies of an approval that did not end applied', () => {
     expect(await publications()).toHaveLength(1);
 
     harness.objects.failDeletes = () => false;
-    harness.clock.now = '2026-03-01T10:09:00.000Z';
+    harness.clock.now = '2026-03-01T10:14:00.000Z';
     await sweepQuarantinedImages(harness.deps);
     expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
-    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
     expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { tenants: 1 } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
     expect(await publications()).toEqual([]);
@@ -460,7 +460,7 @@ describe('public copies of an approval that did not end applied', () => {
     await pendingProposal('p-applied', { coverUrl: pathOf(applied) }, { status: 'applied' });
     await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [live, applied, orphan], NOW);
 
-    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
     expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 3 } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([live, applied].map((reference) => `image-assets/${TENANT}/product-cover/${reference.digest}.png`));
     expect(await publications()).toEqual([]);
@@ -475,7 +475,7 @@ describe('public copies of an approval that did not end applied', () => {
     await pendingProposal('p-applied-settings', { logoUrl: pathOf(mentioned) }, { status: 'applied', operation: 'settings.update' });
     await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [mentioned], NOW);
 
-    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
     expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
     expect(await publications()).toEqual([]);
@@ -485,7 +485,7 @@ describe('public copies of an approval that did not end applied', () => {
     const harness = endToEnd({ lockWaitMs: 200 });
     harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${digestOf(1)}.png`, { bytes: PNG_BYTES, contentType: 'image/png' });
     await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-running', [image(1)], NOW);
-    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
     const approval = new pg.Client({ connectionString: database.url });
     await approval.connect();
     try {
@@ -569,6 +569,22 @@ describe('public copies of an approval that did not end applied', () => {
     expect(cover?.coverUrl).toBeNull();
     expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
       .toEqual([{ unresolvedAt: NOW }]);
+  });
+
+  it('keeps a record no withdrawal restarted until the write window and the provider grace after its intent have passed', async () => {
+    const harness = endToEnd();
+    const publicKey = `image-assets/${TENANT}/product-cover/${digestOf(1)}.png`;
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [image(1)], NOW);
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+    expect(await publications()).toEqual(['1']);
+    harness.objects.objects.set(publicKey, { bytes: PNG_BYTES, contentType: 'image/png' });
+    harness.clock.now = '2026-03-01T10:14:59.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+    harness.clock.now = '2026-03-01T10:15:01.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
+    expect(await publications()).toEqual([]);
   });
 
   it('writes nothing when the record of its attempt is gone by the time it holds the lock', async () => {

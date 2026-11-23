@@ -2744,7 +2744,7 @@ export const en: Messages = {
     editionGoToCurrent: 'Go to the current lesson',
     mediaFailedTitle: 'Unable to load the material',
     videoFailedTitle: 'Unable to load the video',
-    videoUnavailable: 'This video is temporarily unavailable. Contact your instructor.',
+    videoUnavailable: 'This video is temporarily unavailable. Contact the course creator.',
     videoUnavailableNoContact: 'This video is temporarily unavailable.',
     mediaOpenExternal: 'Open in a new tab',
     loading: 'Loading lesson…',

@@ -541,7 +541,7 @@ const signupForm: MarketingSignupForm = {
   id: 'form-1', tenantId: 'tenant-1', slug: 'newsletter', name: 'Internal newsletter form',
   consentDefinitionId: 'newsletter',
   consentVersion: { id: 'newsletter-v1', tenantId: 'tenant-1', definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.test/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
-  listId: null, tags: [], collectName: true, successText: { en: 'Welcome aboard.', pl: 'Witamy.' },
+  listId: null, tags: [], collectName: true, successText: { en: 'Welcome aboard.', pl: 'Welcome text for the Polish page.' },
   redirectUrl: null, allowedOrigins: [], token: 'form_token_1234567890123456', status: 'active', revision: 1,
   createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
 };
@@ -593,7 +593,7 @@ describe('sign-up pages', () => {
   });
 
   it('makes the pending confirmation the headline of the thanks page with double opt-in', () => {
-    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: { ...signupForm, successText: { en: 'Welcome <aboard>.', pl: 'Witamy.' } }, wording: 'news', doubleOptIn: true, thanks: true });
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: { ...signupForm, successText: { en: 'Welcome <aboard>.', pl: 'Welcome text for the Polish page.' } }, wording: 'news', doubleOptIn: true, thanks: true });
     expect(html).toContain('data-testid="marketing-signup-thanks"');
     expect(html).toContain('<h1>One more step: confirm your email</h1>');
     expect(html).toContain('status-cue--info');
@@ -715,7 +715,7 @@ describe('sign-up pages', () => {
     expect(pending).toContain(`<h1>${publicMarketingMessagesPl.signupPendingTitle}</h1>`);
     expect(pending).toContain(`<p class="lede">${publicMarketingMessagesPl.signupPending}</p>`);
     expect(pending).toContain(`<a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
-    expect(pending).toContain('</div><p class="fine status-after">Witamy.</p></div>');
+    expect(pending).toContain('</div><p class="fine status-after">Welcome text for the Polish page.</p></div>');
   });
 });
 

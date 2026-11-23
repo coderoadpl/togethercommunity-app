@@ -1,4 +1,4 @@
-import { Stack, Typography } from '@mui/material';
+import { Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
@@ -11,6 +11,8 @@ const PAGE_SIZE = 5;
 export const PublicSpaceEventsSection = ({ spaceId }: { spaceId: string }) => {
   const t = useTranslations();
   const events = useQuery(actions.publicSpaceEvents({ spaceId, scope: 'upcoming', limit: PAGE_SIZE }));
+
+  if (events.isSuccess && events.data.events.length === 0) return null;
 
   return (
     <SectionCard title={t.events.sectionTitle} data-testid="public-space-events">
@@ -25,10 +27,6 @@ export const PublicSpaceEventsSection = ({ spaceId }: { spaceId: string }) => {
             retry: { label: t.common.retry, onRetry: () => void events.refetch() },
           }}
         />
-      ) : events.data.events.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" data-testid="public-space-events-empty">
-          {t.events.emptyUpcoming}
-        </Typography>
       ) : (
         <Stack useFlexGap sx={{ rowGap: '0.75rem' }}>
           {events.data.events.map((event) => (

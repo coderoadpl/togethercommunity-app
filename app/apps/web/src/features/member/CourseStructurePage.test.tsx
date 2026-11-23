@@ -1,14 +1,15 @@
+import { AppBar } from '@mui/material';
 import {
   createMemoryHistory,
   createRootRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
@@ -232,6 +233,43 @@ const anonCoursePage = (imageUrl: string | null, offer: NonNullable<CourseStruct
       }),
     ),
   );
+};
+
+const STUB_HEADER_HEIGHT = 52;
+const STUB_BUTTON_HEIGHT = 48;
+
+const stubRect = (top: number, height: number): DOMRect => ({
+  x: 0, y: top, top, left: 0, width: 350, height, right: 350, bottom: top + height, toJSON: () => ({}),
+});
+
+const stubOfferLayout = () => {
+  const header = screen.getByTestId('test-sticky-header');
+  const cardButton = screen.getByTestId('public-course-unlock-cta');
+  const cardButtonSlot = cardButton.parentElement;
+  let buttonTop = window.innerHeight;
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this === header) return stubRect(0, STUB_HEADER_HEIGHT);
+    if (this === cardButton || this === cardButtonSlot) return stubRect(buttonTop, STUB_BUTTON_HEIGHT);
+    return measure.call(this);
+  });
+  const heights = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(72);
+  onTestFinished(() => {
+    rects.mockRestore();
+    heights.mockRestore();
+  });
+  return {
+    placeCardButton: async (top: number, trigger: 'scroll' | 'resize' = 'scroll') => {
+      buttonTop = top;
+      await act(async () => {
+        if (trigger === 'scroll') document.dispatchEvent(new Event('scroll'));
+        else window.dispatchEvent(new Event('resize'));
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      });
+    },
+  };
 };
 
 const renderPage = async (node: ReactNode) => {
@@ -567,14 +605,113 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('course-tree')).toBeInTheDocument();
     expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
-    expect(screen.getByTestId('stat-tile-lessons')).toHaveTextContent('5');
+    expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-lessons')).toHaveTextContent(
+      en.courseOverview.lessonCount({ count: 5 }),
+    );
+    expect(within(screen.getByTestId('guest-course-offer')).getByTestId('guest-course-duration')).toHaveTextContent(
+      en.courseOverview.durationHoursMinutes({ hours: 1, minutes: 0 }),
+    );
+    expect(screen.queryByTestId('stat-tile-lessons')).not.toBeInTheDocument();
     expect(screen.queryByTestId('stat-tile-completed')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-progress-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-discussion-search')).not.toBeInTheDocument();
-    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
+    for (const testId of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile', 'public-course-unlock-cta-repeat']) {
       expect(screen.getByTestId(testId)).toHaveAttribute('href', '/checkout/prod-advanced');
     }
     expect(screen.getByTestId('member-breadcrumbs')).toHaveTextContent(en.shell.start);
+  });
+
+  it('names the course once and leads the offer card with the price', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const offer = await screen.findByTestId('guest-course-offer');
+    expect(screen.getAllByRole('heading', { name: structure.name })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: structure.name })).toBeInTheDocument();
+    expect(within(offer).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(offer).queryByText(anonOffer.description)).not.toBeInTheDocument();
+    expect(screen.getAllByText(anonOffer.description)).toHaveLength(1);
+    const price = within(offer).getByTestId('guest-course-price');
+    expect(price).toHaveClass('MuiTypography-h2');
+    expect(price.compareDocumentPosition(within(offer).getByTestId('guest-course-facts')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('repeats the price and the unlock button under the curriculum from md up', async () => {
+    anonCoursePage(null);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const repeat = await screen.findByTestId('guest-course-offer-repeat');
+    expect(repeat).toHaveTextContent(en.anon.unlockCta);
+    expect(repeat).toHaveTextContent((screen.getByTestId('guest-course-price').textContent ?? '').replaceAll('\u00a0', ' '));
+    expect(screen.getByTestId('anon-course-program').compareDocumentPosition(repeat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(stylesAt(repeat, 390).display).toBe('none');
+    expect(stylesAt(repeat, 1440).display).toBe('flex');
+  });
+
+  it('repeats no offer under the curriculum when the course has nothing to buy', async () => {
+    anonCoursePage(null, { ...anonOffer, product: null, salesUrl: null });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    await screen.findByTestId('anon-course-program');
+    expect(screen.queryByTestId('guest-course-offer-repeat')).not.toBeInTheDocument();
+  });
+
+  it('keeps the phone bar hidden and inert while the in-card button is on screen', async () => {
+    anonCoursePage(null);
+    await renderPage(<><AppBar position="sticky" data-testid="test-sticky-header" /><CourseStructurePage courseId="course-1" /></>);
+
+    const bar = await screen.findByTestId('guest-course-sticky-offer');
+    const layout = stubOfferLayout();
+    await layout.placeCardButton(300);
+    expect(bar).toHaveAttribute('data-shown', 'false');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+    expect(bar).toHaveAttribute('inert');
+    expect(stylesAt(bar, 390).visibility).toBe('hidden');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('');
+
+    await layout.placeCardButton(10);
+    expect(bar).toHaveAttribute('data-shown', 'false');
+    expect(bar).toHaveAttribute('inert');
+  });
+
+  it('shows the phone bar and reserves its height once the in-card button passes under the header', async () => {
+    anonCoursePage(null);
+    const view = await renderPage(<><AppBar position="sticky" data-testid="test-sticky-header" /><CourseStructurePage courseId="course-1" /></>);
+
+    const bar = await screen.findByTestId('guest-course-sticky-offer');
+    const layout = stubOfferLayout();
+    await layout.placeCardButton(300);
+    expect(bar).toHaveAttribute('inert');
+
+    await layout.placeCardButton(0);
+    expect(bar).toHaveAttribute('data-shown', 'true');
+    expect(bar).not.toHaveAttribute('aria-hidden');
+    expect(bar).not.toHaveAttribute('inert');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('72px');
+
+    await layout.placeCardButton(200, 'resize');
+    expect(bar).toHaveAttribute('aria-hidden', 'true');
+    expect(bar).toHaveAttribute('inert');
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('');
+
+    await layout.placeCardButton(-300);
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('72px');
+    view.unmount();
+    expect(document.documentElement.style.scrollPaddingBottom).toBe('');
+  });
+
+  it('shows the phone bar after a jump that skips the in-card button entirely', async () => {
+    anonCoursePage(null);
+    await renderPage(<><AppBar position="sticky" data-testid="test-sticky-header" /><CourseStructurePage courseId="course-1" /></>);
+
+    const bar = await screen.findByTestId('guest-course-sticky-offer');
+    const layout = stubOfferLayout();
+    await layout.placeCardButton(window.innerHeight + 200);
+    expect(bar).toHaveAttribute('inert');
+
+    await layout.placeCardButton(-2000);
+    expect(bar).toHaveAttribute('data-shown', 'true');
+    expect(bar).not.toHaveAttribute('inert');
   });
 
   it('crops the anonymous cover exactly like the member cover', async () => {
@@ -663,7 +800,7 @@ describe('CourseStructurePage', () => {
     const user = userEvent.setup();
     const module = await screen.findByTestId('module-toggle-m1');
     expect(module.closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
-    expect(module).toHaveTextContent(`3 ${en.courseOverview.statLessons({ count: 3 })}`);
+    expect(module).toHaveTextContent(en.courseOverview.lessonCount({ count: 3 }));
     await user.click(module);
     expect((await screen.findByTestId('chapter-toggle-c1')).closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
     expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(en.anon.previewChip);

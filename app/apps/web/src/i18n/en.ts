@@ -2707,6 +2707,7 @@ export const en: Messages = {
     aboutCourse: 'About this course',
     coverAlt: ({ name }) => format('Course cover for {name}', { name }),
     statLessons: ({ count }) => (count === 1 ? 'Lesson' : 'Lessons'),
+    lessonCount: ({ count }) => format(count === 1 ? '{count} lesson' : '{count} lessons', { count }),
     statDuration: 'Total duration',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} h {minutes} min', { hours, minutes }),
     durationMinutesOnly: ({ minutes }) => format('{minutes} min', { minutes }),

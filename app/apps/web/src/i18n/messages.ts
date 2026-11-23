@@ -2391,6 +2391,7 @@ export interface Messages {
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
+    lessonCount: (params: { count: number }) => string;
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;

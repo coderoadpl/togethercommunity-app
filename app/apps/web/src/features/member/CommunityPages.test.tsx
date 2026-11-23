@@ -23,6 +23,7 @@ import {
 } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -972,10 +973,38 @@ describe('community pages', () => {
     const cta = screen.getByTestId('anon-join-cta');
     expect(cta).toHaveAttribute('href', '/#offer');
     expect(cta).toHaveTextContent(en.anon.joinOfferCta);
-    expect(cta).toHaveStyle({ width: '100%', minHeight: '44px' });
+    expect(cta).toHaveStyle({ minHeight: '44px' });
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
+  });
+
+  it('leads a phone visitor with a compact notice, then the description and the feed, events last', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]),
+      http.get('/api/public/spaces/:spaceId/events', () => new Promise<never>(() => undefined)),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-p1');
+    const leading = screen.getByTestId('member-rail-leading');
+    const trailing = screen.getByTestId('member-rail-trailing');
+    const main = screen.getByRole('main');
+    expect(within(leading).getByTestId('anon-guest-notice')).toHaveTextContent(en.anon.readOnlyBanner);
+    expect(within(leading).getByTestId('anon-join-cta')).toBeInTheDocument();
+    expect(screen.queryByText(en.anon.guestHeading)).not.toBeInTheDocument();
+    expect(within(leading).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(trailing).getByTestId('public-space-events')).toBeInTheDocument();
+    expect(stylesAt(leading, 390).order).toBe('1');
+    expect(stylesAt(main, 390).order).toBe('2');
+    expect(stylesAt(trailing, 390).order).toBe('3');
+    expect(stylesAt(main, 1440).order).toBe('1');
+    expect(stylesAt(main.parentElement?.querySelector('aside'), 1440).display).toBe('flex');
+    const description = screen.getByTestId('anon-space-description');
+    expect(description.nextElementSibling).toContainElement(screen.getByTestId('public-feed-post-p1'));
   });
 
   it('sends a guest to the plain home page when the space is not the visitors start space', async () => {

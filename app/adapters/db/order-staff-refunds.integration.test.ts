@@ -1,4 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { outOfStockRefundJob, refundFailure, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
@@ -172,6 +173,38 @@ describe('staff refunds against a real database', () => {
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.flatMap((result) => (result.ok ? [] : [result.error.code]))).toStrictEqual(['conflict']);
     expect(await refundRows('order-1')).toHaveLength(1);
+  });
+
+  it('names the waiting refund, not the request key, when another refund reopens while the request is being saved', async () => {
+    const h = harness();
+    const holder = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    await observer.connect();
+    try {
+      await holder.query(
+        `INSERT INTO order_staff_refunds (id, tenant_id, order_id, payment_intent_id, amount_cents, currency, kind, request_key, idempotency_key, status,
+          requested_by_user_id, requested_by_email, created_at, updated_at)
+         VALUES ('reopened', 'tenant-a', 'order-1', 'pi_order-1', 1000, 'PLN', 'remainder', 'req-reopened', 'staff-refund-reopened', 'submitted', 'staff', 'staff@example.com', $1, $1)`,
+        [start],
+      );
+      // The order feed trigger locks the order row, which would make the request wait for the reopen before it reads the waiting refunds.
+      await holder.query('ALTER TABLE order_staff_refunds DISABLE TRIGGER order_staff_refunds_record_status');
+      await holder.query('BEGIN');
+      await holder.query("UPDATE order_staff_refunds SET status = 'pending' WHERE id = 'reopened'");
+      const requested = h.refund('order-1', { requestKey: 'req-1', amountCents: 500 });
+      for (;;) {
+        const waiting = await observer.query<{ count: number }>("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+        if ((waiting.rows[0]?.count ?? 0) >= 1) break;
+      }
+      await holder.query('COMMIT');
+
+      expect(await requested).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('Another refund of this order is still waiting') } });
+    } finally {
+      await holder.query('ALTER TABLE order_staff_refunds ENABLE TRIGGER order_staff_refunds_record_status');
+      await holder.end();
+      await observer.end();
+    }
   });
 
   it('returns the committed refund for a retried request after it settled and refuses the key for another amount', async () => {

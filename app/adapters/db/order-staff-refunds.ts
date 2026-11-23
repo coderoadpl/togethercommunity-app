@@ -72,6 +72,14 @@ const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string,
   return row !== undefined;
 };
 
+const WAITING_REFUND_CONFLICT = 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed';
+
+const insertConflict = async (executor: Pick<Executor, 'select'>, tenantId: string, requestKey: string) => {
+  const [sameKey] = await executor.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
+    .where(and(eq(orderStaffRefunds.tenantId, tenantId), eq(orderStaffRefunds.requestKey, requestKey)));
+  return appError('conflict', sameKey === undefined ? WAITING_REFUND_CONFLICT : 'This refund request key was already used');
+};
+
 export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundRepository => ({
   create: async (tenantId, input) => db.transaction(async (tx) => {
     const [orderRow] = await tx.select().from(orders)
@@ -98,7 +106,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
       throw new Error(`Staff refund ${refund.id} does not belong to the locked order`);
     }
     const [inserted] = await tx.insert(orderStaffRefunds).values(refund).onConflictDoNothing().returning();
-    if (inserted === undefined) return err(appError('conflict', 'This refund request key was already used'));
+    if (inserted === undefined) return err(await insertConflict(tx, tenantId, input.requestKey));
     const returnedToStock = refund.restocked
       ? await returnCommittedOrderStock(tx, tenantId, { orderId: input.orderId, reason: STAFF_REFUND_STOCK_REASON, actorUserId: input.actorUserId, now: input.now })
       : [];

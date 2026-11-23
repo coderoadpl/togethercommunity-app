@@ -128,9 +128,8 @@ describe('dispatch-ci manifest', () => {
     ['separateRequiredChecks.staging[0].reason must be a non-empty string', () => withField((raw) => {
       raw.separateRequiredChecks.staging = [{ name: 'ai-review', reason: ' ' }];
     })],
-    ['ungatedChecks is missing', () => withField((raw) => {
-      delete raw['ungatedChecks'];
-    })],
+    ['ungatedChecks is missing', () =>
+      Object.fromEntries(Object.entries(validManifest()).filter(([key]) => key !== 'ungatedChecks'))],
     ['ungatedChecks.staging must not repeat the gate "dispatch-ci"', () => withField((raw) => {
       raw.ungatedChecks.staging = [{ name: 'dispatch-ci', reason: 'duplicate' }];
     })],

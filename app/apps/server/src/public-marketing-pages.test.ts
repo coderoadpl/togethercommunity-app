@@ -588,7 +588,17 @@ describe('sign-up pages', () => {
     });
     expect(html).toContain('<h1>Sign up for emails from Studio Demo</h1>');
     expect(html).not.toContain('Internal newsletter form');
-    expect(html).toContain('<p class="signup-consent">By signing up you agree to receive from Studio Demo: the monthly newsletter. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/2">Privacy policy</a></p><div class="actions"><button type="submit">Sign up</button></div>');
+    expect(html).toContain('<p class="signup-consent">By signing up you give Studio Demo this consent: “the monthly newsletter”. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/2">Privacy policy</a></p><div class="actions"><button type="submit">Sign up</button></div>');
+  });
+
+  it.each([
+    ['en', '<p class="signup-consent">By signing up you give Studio Demo this consent: “I want to receive the monthly newsletter from Studio Demo”. We will email you a link to confirm.'],
+    ['pl', '<p class="signup-consent">Zapisując się, wyrażasz wobec nadawcy Studio Demo zgodę o treści: „I want to receive the monthly newsletter from Studio Demo”.'],
+  ] as const)('quotes a first-person consent label exactly as recorded in %s', (language, sentence) => {
+    const html = renderSignupFormPage({
+      nonce: 'test-nonce', brand, language, form: signupForm, wording: '  I want to receive the monthly newsletter from Studio Demo.  ', doubleOptIn: true, thanks: false,
+    });
+    expect(html).toContain(sentence);
   });
 
   it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {
@@ -608,7 +618,7 @@ describe('sign-up pages', () => {
     });
     expect(html).not.toContain('<img src=x');
     expect(html).not.toContain('<script>alert(1)</script>');
-    expect(html).toContain('from Studio &lt;b&gt;&amp;&lt;/b&gt;: &lt;img src=x onerror=alert(1)&gt;.');
+    expect(html).toContain('give Studio &lt;b&gt;&amp;&lt;/b&gt; this consent: “&lt;img src=x onerror=alert(1)&gt;”.');
     expect(html).toContain('<a href="/legal/privacy/v/2?a=&quot;b&quot;">&lt;script&gt;alert(1)&lt;/script&gt;</a>');
   });
 
@@ -808,9 +818,9 @@ describe('public signup persistence and confirmation', () => {
       await marketing.definitions.create('directory-a', { ...definition, id: 'hosted', key: 'hosted', documentRef: { mode: 'hosted', documentId: 'privacy-doc' } }, { id: 'hosted-v1', tenantId: 'directory-a', definitionId: 'hosted', version: 1, label: 'Hosted news', documentVersionRef: { mode: 'hosted', documentVersionId: published.version.id }, createdAt: fixture.now, createdBy: 'owner' });
       directoryValue(await createMarketingSignupForm(directoryCtx(), { slug: 'hosted', name: 'Hosted', consentDefinitionId: 'hosted', successText: { en: 'Thank you', pl: 'Thank you' } }, fixture.deps.marketingSignup));
       const hosted = await (await fixture.request('/marketing/forms/hosted?lang=en')).text();
-      expect(hosted).toContain(`Hosted news. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
+      expect(hosted).toContain(`“Hosted news”. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
       const linked = await (await fixture.request('/marketing/forms/newsletter?lang=en')).text();
-      expect(linked).toContain('Newsletter consent. We will email you a link to confirm. You can unsubscribe at any time.</p>');
+      expect(linked).toContain('“Newsletter consent”. We will email you a link to confirm. You can unsubscribe at any time.</p>');
       expect(linked).not.toContain('More information:');
     } finally { await fixture.close(); }
   });

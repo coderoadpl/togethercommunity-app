@@ -5,7 +5,7 @@ export const publicMarketingMessagesPl = {
   signupTitle: ({ tenant }) => `Zapisz się na wiadomości e-mail od nadawcy ${tenant}`,
   signupEmail: 'Adres e-mail',
   signupName: 'Imię (opcjonalnie)',
-  signupConsent: ({ tenant, wording }) => `Zapisując się, zgadzasz się na otrzymywanie od nadawcy ${tenant}: ${wording}.`,
+  signupConsent: ({ tenant, wording }) => `Zapisując się, wyrażasz wobec nadawcy ${tenant} zgodę o treści: „${wording}”.`,
   signupConsentConfirm: 'Wyślemy Ci e-mail z linkiem do potwierdzenia.',
   signupConsentUnsubscribe: 'W każdej chwili możesz się wypisać.',
   signupConsentDocument: 'Więcej informacji:',

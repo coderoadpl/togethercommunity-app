@@ -143,3 +143,112 @@ describe('lesson locations across the courses of a shared module', () => {
     ]))).toBeNull();
   });
 });
+
+// Copied from release 8141fd15 (pooled buildAccessLookup and the first-location locateLesson gate): it is the baseline the table below compares against, so it must never be updated to follow access.ts.
+const releasedLookup = (items: AccessItem[]) => {
+  const courseLevel = new Set<string>();
+  const moduleIds = new Set<string>();
+  const lessonIds = new Set<string>();
+  const perCourse = new Map<string, Set<string>>();
+  for (const item of items) {
+    if (item.level === 'course') {
+      courseLevel.add(item.courseId);
+      const excluded = new Set(item.excludedModuleIds ?? []);
+      const current = perCourse.get(item.courseId);
+      perCourse.set(item.courseId, current ? new Set([...current].filter((id) => excluded.has(id))) : excluded);
+    } else if (item.level === 'modules') {
+      for (const moduleId of item.moduleIds) moduleIds.add(moduleId);
+    } else {
+      for (const lessonId of item.lessonIds) lessonIds.add(lessonId);
+    }
+  }
+  const excludedModuleIds = new Set<string>();
+  for (const excluded of perCourse.values()) {
+    for (const moduleId of excluded) if (!moduleIds.has(moduleId)) excludedModuleIds.add(moduleId);
+  }
+  return (location: { courseId: string; moduleId: string; lessonId: string }): boolean =>
+    (courseLevel.has(location.courseId) && !excludedModuleIds.has(location.moduleId)) ||
+    moduleIds.has(location.moduleId) ||
+    lessonIds.has(location.lessonId);
+};
+
+const releasedFirstLocation = (lessonId: string, courses: Course[], modules: CourseModule[]) => {
+  for (const candidate of [...modules].sort((a, b) => (a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt)))) {
+    for (const chapter of candidate.chapters) {
+      if (!chapter.contents.some((content) => content.lessonId === lessonId)) continue;
+      const owner = candidate.courseIds.map((id) => courses.find((row) => row.id === id)).find((row) => row !== undefined);
+      if (owner) return { courseId: owner.id, moduleId: candidate.id, lessonId };
+    }
+  }
+  return null;
+};
+
+describe('every combination the lookup can express opens at least what release 8141fd15 opened', () => {
+  const courseRow = (id: string): Course => ({ ...course([]), id });
+  const holding = (id: string, createdAt: string, courseIds: string[], lessonIds: string[]): CourseModule => ({
+    ...module(id, createdAt, courseIds),
+    chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: lessonIds.map((lessonId) => ({ id: `${id}-${lessonId}`, name: lessonId, lessonId })) }],
+  });
+  const courses = [courseRow('c1'), courseRow('c2')];
+  const modules = [
+    holding('m-shared', '2026-01-01T00:00:00.000Z', ['c1', 'c2'], ['l-shared']),
+    holding('m-first', '2026-01-02T00:00:00.000Z', ['c1'], ['l-first', 'l-twice']),
+    holding('m-again', '2026-01-03T00:00:00.000Z', ['c1'], ['l-twice']),
+    holding('m-second', '2026-01-04T00:00:00.000Z', ['c2'], ['l-second', 'l-across']),
+    holding('m-across', '2026-01-05T00:00:00.000Z', ['c1'], ['l-across']),
+  ];
+  const lessonIds = ['l-shared', 'l-first', 'l-twice', 'l-second', 'l-across'];
+  const rows = modules.flatMap((row) => row.courseIds.flatMap((courseId) =>
+    row.chapters.flatMap((chapter) => chapter.contents.map((content) => ({ courseId, moduleId: row.id, lessonId: content.lessonId })))));
+  const pool: AccessItem[] = [
+    { level: 'course', courseId: 'c1' },
+    { level: 'course', courseId: 'c1', excludedModuleIds: ['m-shared'] },
+    { level: 'course', courseId: 'c1', excludedModuleIds: ['m-first'] },
+    { level: 'course', courseId: 'c1', excludedModuleIds: ['m-shared', 'm-again'] },
+    { level: 'course', courseId: 'c2' },
+    { level: 'course', courseId: 'c2', excludedModuleIds: ['m-shared'] },
+    { level: 'course', courseId: 'c2', excludedModuleIds: ['m-second'] },
+    { level: 'modules', courseId: 'c1', moduleIds: ['m-shared'] },
+    { level: 'modules', courseId: 'c1', moduleIds: ['m-again'] },
+    { level: 'lessons', courseId: 'c1', lessonIds: ['l-twice'] },
+    { level: 'lessons', courseId: 'c2', lessonIds: ['l-shared'] },
+  ];
+  const combinations: AccessItem[][] = [[]];
+  for (const [i, a] of pool.entries()) {
+    combinations.push([a]);
+    for (const [j, b] of pool.entries()) {
+      if (j <= i) continue;
+      combinations.push([a, b]);
+      for (const c of pool.slice(j + 1)) combinations.push([a, b, c]);
+    }
+  }
+
+  it.each([
+    ['a course row', 'row'],
+    ['a lesson request', 'lesson'],
+  ])('never closes %s the release opened', (_label, kind) => {
+    let gained = 0;
+    for (const items of combinations) {
+      const released = releasedLookup(items);
+      const lookup = buildAccessLookup(items);
+      if (kind === 'row') {
+        for (const row of rows) {
+          const before = released(row);
+          const after = isLessonAccessibleByLookup(lookup, row);
+          expect({ items, row, after: before ? after : true }).toEqual({ items, row, after: true });
+          if (after && !before) gained += 1;
+        }
+      } else {
+        for (const lessonId of lessonIds) {
+          const first = releasedFirstLocation(lessonId, courses, modules);
+          const before = first !== null && released(first);
+          const after = locateAccessibleLesson(lessonId, courses, modules, lookup) !== null;
+          expect({ items, lessonId, after: before ? after : true }).toEqual({ items, lessonId, after: true });
+          if (after && !before) gained += 1;
+        }
+      }
+    }
+    expect(combinations).toHaveLength(232);
+    expect(gained).toBeGreaterThan(0);
+  });
+});

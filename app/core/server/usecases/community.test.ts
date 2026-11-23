@@ -63,6 +63,7 @@ import {
   type CommunityDeps,
 } from './community.js';
 import { openHeuristicReport } from './moderation.js';
+import { subscriberCanAccessContext } from './thread-context.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
 
@@ -824,6 +825,54 @@ const deps = (
 
 const allAccess = product('all', [{ level: 'course', courseId: 'c1' }]);
 const previewAccess = product('preview', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
+
+describe('a lesson whose module two courses share, for a member who holds only the second course', () => {
+  const secondCourse: Course = { ...course, id: 'c2' };
+  const sharedModule: CourseModule = { ...moduleRow, courseIds: ['c1', 'c2'] };
+  const secondOnly = product('second', [{ level: 'course', courseId: 'c2' }]);
+  const firstWithoutModule = product('first-without', [{ level: 'course', courseId: 'c1', excludedModuleIds: ['mod1'] }]);
+  const sharedDeps = (grants: ProductGrant[]): CommunityDeps => ({
+    ...deps([allAccess, secondOnly, firstWithoutModule], grants),
+    courses: { ...coursesRepo, list: async (tenantId) => (tenantId === 't1' ? [course, secondCourse] : []) },
+    modules: { ...modulesRepo, list: async (tenantId) => (tenantId === 't1' ? [sharedModule] : []) },
+  });
+  const member = ctx({ userId: 'u1', memberId: 'm1', name: 'One' });
+
+  it('lets them read and post on the lesson discussion', async () => {
+    const d = sharedDeps([grant('m1', 'second')]);
+    expect(await createPostAndDrain(member, { contextKind: 'lesson', contextId: 'l1', body: 'question' }, d)).toMatchObject({ ok: true });
+    expect(await listDiscussion(member, { contextKind: 'lesson', contextId: 'l1' }, d)).toMatchObject({ ok: true });
+    const excluded = sharedDeps([grant('m1', 'first-without')]);
+    expect(await listDiscussion(member, { contextKind: 'lesson', contextId: 'l1' }, excluded)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('finds the lesson discussion in search', async () => {
+    const d = sharedDeps([grant('m1', 'second')]);
+    await createPostAndDrain(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l1', body: 'needle shared' }, d);
+    expect(await searchPosts(member, { query: 'needle', limit: 10 }, d)).toMatchObject({ ok: true, value: [{ lessonId: 'l1' }] });
+    const excluded = sharedDeps([grant('m1', 'first-without')]);
+    await createPostAndDrain(ctx({ staffRole: 'owner', memberId: null }), { contextKind: 'lesson', contextId: 'l1', body: 'needle shared' }, excluded);
+    expect(await searchPosts(member, { query: 'needle', limit: 10 }, excluded)).toEqual({ ok: true, value: [] });
+  });
+
+  it('keeps them a reply recipient, passes the subscriber re-check and links them into the second course', async () => {
+    const d = sharedDeps([grant('m1', 'second'), grant('m2', 'all')]);
+    const delivered: Array<{ recipient: string; courseId: string | null; url: string }> = [];
+    d.notificationChannels.push({
+      deliver: async (notification, context) => {
+        delivered.push({ recipient: notification.recipientUserId, courseId: notification.payload.courseId, url: context.contextUrl });
+        return { ok: true, value: undefined };
+      },
+    });
+    const root = await createPostAndDrain(member, { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
+    if (!root.ok) throw new Error('root failed');
+    expect(await subscriberCanAccessContext('t1', 'm1', root.value, d)).toBe(true);
+    await createPostAndDrain(ctx({ userId: 'u2', memberId: 'm2', name: 'Two' }), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
+    expect(delivered).toEqual([{ recipient: 'u1', courseId: 'c2', url: 'http://tenant.localhost/my/courses/c2/lessons/l1' }]);
+    const excluded = sharedDeps([grant('m1', 'first-without')]);
+    expect(await subscriberCanAccessContext('t1', 'm1', root.value, excluded)).toBe(false);
+  });
+});
 
 describe('community use-cases', () => {
   it('returns a lesson question with staff subscriptions and an atomic job before channel delivery', async () => {

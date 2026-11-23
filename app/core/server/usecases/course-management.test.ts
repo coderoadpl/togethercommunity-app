@@ -909,7 +909,7 @@ describe('course management use-cases', () => {
     const setup = () => {
       const lessons = [lesson('l1', 't-acme')];
       const products = [{ ...product('p1', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }] }];
-      const d = deps({ lessons, products, ids: ['snap-p1'] });
+      const d = deps({ lessons, products, ids: ['snap-p1-1', 'snap-p1-2', 'snap-p1-3'] });
       const write = d.products.updateAccessItems;
       let calls = 0;
       return { lessons, products, d, write, calls: () => calls, count: () => { calls += 1; } };
@@ -924,10 +924,59 @@ describe('course management use-cases', () => {
     const stuck = setup();
     stuck.d.products.updateAccessItems = async () => { stuck.count(); return 'busy'; };
     expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, stuck.d)).toMatchObject({
-      ok: false, error: { code: 'unavailable', message: 'The lesson was deleted, but a product that granted it was busy and still names it in its access list' },
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: 'The lesson was deleted, but products that granted it were busy and still name it in their access lists; remove it from their lists',
+        details: { productIds: ['p1'] },
+      },
     });
     expect(stuck.calls()).toBe(3);
     expect(stuck.lessons).toHaveLength(0);
+  });
+
+  it('retries a busy product cleanup from the list an editor committed meanwhile, not from the list read before', async () => {
+    const lessons = [lesson('l1', 't-acme')];
+    const products = [{
+      ...product('p1', 't-acme'),
+      accessItems: [
+        { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] },
+        { level: 'course' as const, courseId: 'c2' },
+      ],
+    }];
+    const versions: EntityVersionRecord[] = [];
+    const d = deps({ lessons, products, versions, ids: ['snap-1', 'snap-2', 'snap-3'] });
+    const write = d.products.updateAccessItems;
+    let calls = 0;
+    d.products.updateAccessItems = async (...args) => {
+      calls += 1;
+      if (calls > 1) return write(...args);
+      const stored = products[0];
+      if (stored) stored.accessItems = [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }];
+      return 'busy';
+    };
+
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual([]);
+    expect(versions.at(-1)).toMatchObject({ id: 'snap-2', payload: expect.objectContaining({ accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }] }) });
+  });
+
+  it('cleans every later product when one stays busy and names the busy ones at the end', async () => {
+    const lessons = [lesson('l1', 't-acme')];
+    const grant = [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }];
+    const products = [
+      { ...product('p1', 't-acme'), accessItems: grant },
+      { ...product('p2', 't-acme'), accessItems: grant },
+    ];
+    const d = deps({ lessons, products, ids: ['s1', 's2', 's3', 's4'] });
+    const write = d.products.updateAccessItems;
+    d.products.updateAccessItems = async (tenantId, id, ...rest) => (id === 'p1' ? 'busy' : write(tenantId, id, ...rest));
+
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d)).toMatchObject({
+      ok: false, error: { code: 'unavailable', details: { productIds: ['p1'] } },
+    });
+    expect(products[0]?.accessItems).toEqual(grant);
+    expect(products[1]?.accessItems).toEqual([]);
   });
 
   it('reports not found when deleting a missing lesson', async () => {

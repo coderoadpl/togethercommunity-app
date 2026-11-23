@@ -1994,11 +1994,18 @@ Three paths write access items without the check: the content import
 (`adapters/db/importer.ts`), and lesson deletion (`deleteLesson`), which removes
 the deleted lesson from every `lessons` item. Lesson deletion deletes the lesson
 first and then writes each product that names it, up to 3 times when the
-product is busy; when a product stays busy it answers `503 unavailable` ("The
-lesson was deleted, but a product that granted it was busy and still names it
-in its access list"), and that product keeps the id of the deleted lesson,
-which grants nothing, until its list is saved again: deleting the lesson again
-answers `404`. An import key with
+product is busy. Every attempt reads the product again and removes the lesson
+from the list stored at that moment, so a retry never writes back a list an
+editor replaced in the meantime; a write that is not busy is not compared with
+what was read, so an editor's change committed between that read and that write
+is still overwritten. A product that stays busy does not stop the cleanup of
+the other products: after all of them the request answers `503 unavailable`
+("The lesson was deleted, but products that granted it were busy and still
+name it in their access lists; remove it from their lists") with the ids of
+those products in `details.productIds`. Each of them keeps the id of the
+deleted lesson, which grants nothing, until a list without that id is saved:
+saving the unchanged list keeps it, and deleting the lesson again answers
+`404`, so the operator removes the id from each named product's list. An import key with
 `import:content-write` updates a product it imported only while that product is
 unpublished, but an unpublished product can still have members with active
 grants from earlier sales or owner grants. A re-import therefore changes what

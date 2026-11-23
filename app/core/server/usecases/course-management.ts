@@ -588,8 +588,12 @@ const withoutLesson = (item: AccessItem, lessonId: string): AccessItem | null =>
 
 const LESSON_CLEANUP_ATTEMPTS = 3;
 
-const lessonCleanupBusy = (): AppError =>
-  appError('unavailable', 'The lesson was deleted, but a product that granted it was busy and still names it in its access list');
+const lessonCleanupBusy = (productIds: string[]): AppError =>
+  appError(
+    'unavailable',
+    'The lesson was deleted, but products that granted it were busy and still name it in their access lists; remove it from their lists',
+    { productIds },
+  );
 
 export const deleteLesson = async (
   ctx: Ctx,
@@ -627,25 +631,40 @@ export const deleteLesson = async (
     await deps.modules.update(tenant.value, { ...module, chapters }, snapshot.value);
   }
 
-  const products = await deps.products.listByTenant(tenant.value);
-  for (const product of products) {
-    const referencesLesson = product.accessItems.some(
-      (item) => item.level === 'lessons' && item.lessonIds.includes(lesson.id),
-    );
-    if (!referencesLesson) continue;
+  const busyProductIds: string[] = [];
+  for (const listed of await deps.products.listByTenant(tenant.value)) {
+    if (!namesLesson(listed, lesson.id)) continue;
+    const cleaned = await removeLessonFromProduct(ctx, tenant.value, listed.id, lesson.id, deps);
+    if (!cleaned.ok) return cleaned;
+    if (cleaned.value === 'busy') busyProductIds.push(listed.id);
+  }
+  if (busyProductIds.length > 0) return err(lessonCleanupBusy(busyProductIds));
+
+  return ok(references);
+};
+
+const namesLesson = (product: Product, lessonId: string): boolean =>
+  product.accessItems.some((item) => item.level === 'lessons' && item.lessonIds.includes(lessonId));
+
+const removeLessonFromProduct = async (
+  ctx: Ctx,
+  tenantId: string,
+  productId: string,
+  lessonId: string,
+  deps: CourseManagementDeps,
+): Promise<Result<'done' | 'busy', AppError>> => {
+  for (let attempt = 0; attempt < LESSON_CLEANUP_ATTEMPTS; attempt += 1) {
+    const product = await deps.products.findById(tenantId, productId);
+    if (!product || !namesLesson(product, lessonId)) return ok('done');
     const accessItems = product.accessItems
-      .map((item) => withoutLesson(item, lesson.id))
+      .map((item) => withoutLesson(item, lessonId))
       .filter((item): item is AccessItem => item !== null);
     const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
     if (!snapshot.ok) return snapshot;
-    let cleaned = await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
-    for (let attempt = 1; cleaned === 'busy' && attempt < LESSON_CLEANUP_ATTEMPTS; attempt += 1) {
-      cleaned = await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
-    }
-    if (cleaned === 'busy') return err(lessonCleanupBusy());
+    const cleaned = await deps.products.updateAccessItems(tenantId, product.id, accessItems, snapshot.value);
+    if (cleaned !== 'busy') return ok('done');
   }
-
-  return ok(references);
+  return ok('busy');
 };
 
 type ProductAccessItemsDeps =ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'>;

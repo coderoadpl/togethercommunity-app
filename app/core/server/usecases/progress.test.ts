@@ -322,6 +322,22 @@ describe('progress on a module that two courses share', () => {
       expect(await markLessonCompleted(ctx({}), 'l1', d, 'c-unknown')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
     });
 
+    it('records under the first opening course when the viewed course is held but lacks the lesson, or lives in another workspace', async () => {
+      const store = makeProgressStore();
+      const held = course('c4', 't1');
+      const elsewhere = course('c-elsewhere', 't2');
+      const m4: CourseModule = { ...m1, id: 'm4', courseIds: ['c4'], chapters: [] };
+      const d = deps(
+        store.repo, [activeGrant],
+        [{ ...pCourse, accessItems: [c1WithoutM1, { level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c4' }] }],
+        [c1, c2, c3, held, elsewhere], [inThree, m4],
+      );
+
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c4')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1'] } });
+      expect(await markLessonCompleted(ctx({}), 'l2', d, 'c-elsewhere')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1', 'l2'] } });
+      expect(store.rows.map((row) => row.courseId)).toEqual(['c2']);
+    });
+
     it('records under the first course that opens the lesson when no course is sent', async () => {
       const store = makeProgressStore();
       const d = threeDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c3' }]);

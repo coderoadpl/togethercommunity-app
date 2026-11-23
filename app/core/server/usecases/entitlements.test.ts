@@ -880,6 +880,13 @@ describe('getNextLesson', () => {
       ]))).toEqual({ ok: true, value: { id: 'l7', name: 'Lesson l7' } });
     });
 
+    it('walks the first course for a member whose items open no course holding the lesson', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([
+        { level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] },
+      ]))).toEqual({ ok: true, value: null });
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([]))).toEqual({ ok: true, value: null });
+    });
+
     it('keeps walking the first course for a member it opens the lesson for, and for staff', async () => {
       const both = withGrants([{ level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c1' }]);
       expect(await getNextLesson(ctx({}), 'l6', both)).toEqual({ ok: true, value: null });

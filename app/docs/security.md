@@ -645,7 +645,10 @@ scopes on every shop key.
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the
-  key's. Owed deletions count against the key whose prefix holds the object;
+  key's. A completion that takes over an interrupted upload owes the earlier
+  destination and writes a new one, so it takes the same two locks and is
+  refused with the cap when that extra file or its bytes would pass a limit.
+  Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
   only by what the key attached before, and it blocks the key's new uploads and
   copies until the storage confirms the delete. Completions, copies and the

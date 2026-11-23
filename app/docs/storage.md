@@ -92,7 +92,9 @@ Who deletes them:
   record keeps the upload object and the destination, and both count against
   the key's limits;
 - the destination of a completion attempt that a later completion took over:
-  the takeover writes a destination of its own under a fresh file id and, in
+  the takeover, which counts that extra object against the key's and the
+  workspace's limits under their staging locks and is refused when it does not
+  fit, writes a destination of its own under a fresh file id and, in
   the same transaction, records the earlier destination as an owed deletion
   that is due 30 minutes after the earlier attempt started. The minute sweep
   deletes it then, whether or not an object is there, and it counts against the

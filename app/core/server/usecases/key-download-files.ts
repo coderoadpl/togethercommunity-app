@@ -311,6 +311,8 @@ export const completeKeyDownloadUpload = async (
       return err(completeAgainLater(claim.until, claim.reclaimable, now));
     case 'closed':
       return err(appError('conflict', 'This upload can no longer be completed; start a new upload'));
+    case 'cap_exceeded':
+      return err(keyDownloadFileCapExceeded(claim.cap));
     case 'completed':
       return claim.file === null
         ? err(appError('conflict', 'This upload was completed and its file is no longer staged'))

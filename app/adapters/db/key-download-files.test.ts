@@ -1105,7 +1105,7 @@ const late = (h: ReturnType<typeof harness>) => {
 describe('a completion that takes over an interrupted upload', () => {
   it('writes a destination of its own, so a late copy of the earlier attempt changes neither the staged bytes nor their hash, and the sweep deletes that copy after its not-before time', async () => {
     const h = harness();
-    await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 1, 10);
+    await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 2, 10);
     const { id, candidate } = await h.begin(PDF);
     const copy = late(h);
     const deps = { ...h.deps, storage: copy.storage };
@@ -1130,6 +1130,7 @@ describe('a completion that takes over an interrupted upload', () => {
     expect(asset?.sha256).toBe(createContentHash().sha256(second));
     const owed = await database.db.select().from(changeProposalDownloadDeletions);
     expect(owed).toEqual([expect.objectContaining({ objectKey: superseded, apiKeyId: KEY_ID, sizeBytes: PDF.byteLength, notBefore: at(30) })]);
+    await sizeFiller('after-takeover', 10);
 
     h.clock.now = at(29);
     await sweepKeyDownloadFiles(h.deps);
@@ -1143,6 +1144,60 @@ describe('a completion that takes over an interrupted upload', () => {
     expect(h.objects.keysUnder(superseded)).toEqual([]);
     expect(h.objects.objects.get(staged)?.bytes).toEqual(second);
     expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
+  });
+
+  const interruptedAtTen = async (h: ReturnType<typeof harness>) => {
+    const { id } = await h.begin(PDF);
+    await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, { ...h.deps, storage: late(h).storage });
+    h.clock.now = at(10);
+    return id;
+  };
+
+  const sizeFiller = async (id: string, sizeBytes: number, apiKeyId = KEY_ID) => {
+    await database.db.insert(changeProposalDownloadFiles).values({
+      tenantId: TENANT, id, apiKeyId, fileName: 'f.pdf', contentType: 'application/pdf', sizeBytes,
+      sha256: 'f'.repeat(64), objectKey: `${TENANT}/product-downloads/key-files/${apiKeyId}/${id}/f.pdf`, createdAt: NOW,
+    });
+  };
+
+  it('refuses a takeover that would pass the key\'s file limit, changes nothing, and takes it over once a file was discarded', async () => {
+    const h = harness();
+    const fillers = await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 1, 10);
+    const id = await interruptedAtTen(h);
+    const copies = h.objects.calls.filter((call) => call.method === 'copyObject').length;
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_staged_files' } } });
+    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toHaveLength(copies);
+    expect(await owedRows()).toEqual([]);
+    expect(await recordStates()).toEqual(['interrupted']);
+    await discardKeyDownloadFile(keyCtx(), { id: fillers[0]?.id ?? '-' }, h.deps);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps)).toMatchObject({ ok: true });
+    expect(await owedRows()).toHaveLength(1);
+  });
+
+  it('takes an interrupted upload over at exactly the key\'s byte limit and refuses it one byte past', async () => {
+    const h = harness();
+    const fullFillers = KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerKey / KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 1;
+    await stagedFillers(fullFillers, KEY_DOWNLOAD_FILE_LIMITS.maxBytes);
+    await sizeFiller('gap', KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength + 1);
+    const id = await interruptedAtTen(h);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_staged_bytes' } } });
+    expect(await owedRows()).toEqual([]);
+    await database.db.update(changeProposalDownloadFiles).set({ sizeBytes: KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength })
+      .where(eq(changeProposalDownloadFiles.id, 'gap'));
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps)).toMatchObject({ ok: true });
+  });
+
+  it('refuses a takeover one byte past the workspace\'s byte limit', async () => {
+    const h = harness();
+    const fullFillers = KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerWorkspace / KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 1;
+    await stagedFillers(fullFillers, KEY_DOWNLOAD_FILE_LIMITS.maxBytes, OTHER_KEY_ID);
+    await sizeFiller('gap', KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength + 1, OTHER_KEY_ID);
+    const id = await interruptedAtTen(h);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'workspace_staged_bytes' } } });
+    expect(await owedRows()).toEqual([]);
   });
 
   it('deletes the superseded destination after its not-before time also when no copy ever landed there', async () => {

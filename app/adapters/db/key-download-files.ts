@@ -192,6 +192,15 @@ const capReached = (usage: Usage, record: KeyDownloadUploadRecord): KeyDownloadF
   return null;
 };
 
+/** A takeover keeps the record's two objects and owes the superseded destination, so it adds one file and its bytes. */
+const takeoverCapReached = (usage: Usage, declaredBytes: number): KeyDownloadFileCap | null => {
+  const limits = KEY_DOWNLOAD_FILE_LIMITS;
+  if (usage.keyFiles >= limits.stagedFilesPerKey) return 'key_staged_files';
+  if (usage.keyBytes + declaredBytes > limits.stagedBytesPerKey) return 'key_staged_bytes';
+  if (usage.workspaceBytes + declaredBytes > limits.stagedBytesPerWorkspace) return 'workspace_staged_bytes';
+  return null;
+};
+
 const recordValues = (record: KeyDownloadUploadRecord) => ({
   tenantId: record.tenantId,
   id: record.id,
@@ -347,8 +356,15 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       }), { kind: 'busy' } as const);
     },
     claimCompletion: (tenantId, apiKeyId, uploadId, attemptId, now, nextFileId) => locked(async (tx): Promise<KeyDownloadClaim> => {
-      const [row] = await tx.select().from(records)
-        .where(and(recordOf(tenantId, uploadId), eq(records.apiKeyId, apiKeyId), eq(records.kind, 'upload'))).for('update');
+      const ownRecord = and(recordOf(tenantId, uploadId), eq(records.apiKeyId, apiKeyId), eq(records.kind, 'upload'));
+      const [seen] = await tx.select({ attemptAt: records.attemptAt }).from(records)
+        .where(and(ownRecord, inArray(records.state, ['completing', 'interrupted'])));
+      const budgetLocked = seen?.attemptAt !== null && seen?.attemptAt !== undefined && now >= leaseEnd(seen.attemptAt);
+      if (budgetLocked) {
+        if (!await boundedAdvisoryLock(tx, workspaceLock(tenantId), waits)) return { kind: 'busy' };
+        if (!await boundedAdvisoryLock(tx, keyLock(tenantId, apiKeyId), waits)) return { kind: 'busy' };
+      }
+      const [row] = await tx.select().from(records).where(ownRecord).for('update');
       if (row === undefined) return { kind: 'not_found' };
       const open = Date.parse(now) - Date.parse(row.createdAt) <= KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000;
       const claim = async (reason: string | null, destination: { fileId: string; stagedKey: string | null }): Promise<KeyDownloadClaim> => {
@@ -362,6 +378,9 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         const fileId = nextFileId();
         const stagedKey = keyDownloadDestinationForFile(superseded.stagedKey, row.apiKeyId, fileId);
         if (stagedKey === null) return { kind: 'closed' };
+        if (!budgetLocked) return { kind: 'busy' };
+        const cap = takeoverCapReached(await usageOf(tx, tenantId, apiKeyId, now), row.declaredBytes);
+        if (cap !== null) return { kind: 'cap_exceeded', cap };
         await tx.insert(deletions).values({
           tenantId,
           objectKey: superseded.stagedKey,

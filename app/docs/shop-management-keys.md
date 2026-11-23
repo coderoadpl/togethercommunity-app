@@ -659,7 +659,11 @@ earliest a day after it started. Completion also answers:
   under a fresh file id, so whatever the failed attempt's copy still writes
   lands only on that attempt's destination; of two such completions at once,
   one copies and the other answers `409 conflict`, or that staged file once the
-  first finished;
+  first finished. Because the failed attempt's destination stays owed until its
+  delete is confirmed, such a completion counts one more file and the declared
+  bytes against the limits below and answers `409 conflict` with
+  the cap in `error.details.changeProposalCap`, changing nothing, when they do
+  not fit; discard a staged file and complete the upload again;
 - `503 integration_unavailable` when that lease ends after the 15 minutes, and
   when the storage refused to copy the upload (start a new upload);
 - `503 unavailable` with `Retry-After: 1` when the upload is held by another

@@ -23,6 +23,7 @@ export type KeyDownloadClaim =
   | { kind: 'interrupted'; until: string; reclaimable: boolean }
   | { kind: 'expired' }
   | { kind: 'closed' }
+  | { kind: 'cap_exceeded'; cap: KeyDownloadFileCap }
   | { kind: 'not_found' }
   | { kind: 'busy' };
 
@@ -74,7 +75,8 @@ export interface KeyDownloadFileRepository {
    * once its attempt's lease ended, while the upload is open and still owns its upload object: the new attempt gets a
    * fresh file id from `nextFileId` and its own destination, and the superseded destination becomes an owed deletion
    * due 30 minutes after the superseded attempt started, so a copy of that attempt that lands late is never staged and
-   * is still counted and deleted.
+   * is still counted and deleted. A takeover holds the workspace's staging lock and then the key's, as a reservation
+   * does, and answers `cap_exceeded` without changing anything when that extra file or its bytes would pass a limit.
    */
   claimCompletion(
     tenantId: string,

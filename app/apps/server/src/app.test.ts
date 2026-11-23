@@ -2697,6 +2697,37 @@ describe('marketing HTTP surfaces', () => {
     expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
   });
 
+  it('withdraws the unticked consent of a suppressed address and tells it the new one was not added', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const before = await preferencePage(app);
+    expect(before).toContain('name="consent" value="definition-news" checked>');
+    expect(before).toContain('name="consent" value="definition-events" disabled>');
+    expect(before).not.toContain('data-state="subscriptions-refused"');
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
+    expect(post.status).toBe(303);
+    const location = post.headers.get('location') ?? '';
+    expect(location).toBe('/u/unsubscribe_token_123456789012345?lang=en&notice=subscriptions-refused');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test'))
+      .map((row) => [row.definitionId, row.status])).toEqual([['definition-news', 'confirmed'], ['definition-news', 'withdrawn']]);
+    const html = await preferencePage(app, location);
+    expect(html).toContain('<p class="notice" role="status" data-state="subscriptions-refused">Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.</p>');
+    expect(html).toContain('You are unsubscribed from all marketing e-mails from Acme.');
+  });
+
   it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
     const marketing = await memberSurfaceMarketing();
     await marketing.marketingConsents.record('t-acme', {

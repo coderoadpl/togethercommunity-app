@@ -35,9 +35,10 @@ the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
 76, Firefox before 90 and Safari before 16.4 (on macOS and iOS), browsers and
 in-app webviews built on those engine versions, and plain-HTTP local
 development hosts a browser does not treat as potentially trustworthy do not
-send it, which is why a cookie-bearing request is treated as a browser too. Such a request gets no `set-auth-token`
-header, no `Access-Control-Expose-Headers` entry for it, no top-level `token`,
-no `session.token` and no `token` on session-list entries.
+send it, which is why a cookie-bearing request is treated as a browser too.
+Such a request gets no `set-auth-token` header, no
+`Access-Control-Expose-Headers` entry for it, no top-level `token`, no
+`session.token` and no `token` on session-list entries.
 Cookies, status codes and every other field stay unchanged, so browser
 sign-in, sign-out, magic-link, passkey, two-factor and impersonation flows run
 on the `HttpOnly` cookie alone; the web app never reads the token. The CLI,
@@ -58,7 +59,8 @@ Remaining gaps (not closed by this change):
   before 76, Firefox before 90, Safari before 16.4, browsers and in-app
   webviews built on those engine versions, or a plain-HTTP local development
   host the browser does not treat as potentially trustworthy) still carries the
-  token, because that request has no session cookie yet. Every later cookie-bearing response is stripped.
+  token, because that request has no session cookie yet. Every later
+  cookie-bearing response is stripped.
 - Google One Tap hands its credential (a Google ID token) to page JavaScript
   before the page posts it to `/api/auth/one-tap/callback`. A script already
   running on the page can intercept that credential and exchange it for a

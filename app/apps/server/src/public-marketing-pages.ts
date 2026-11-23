@@ -615,10 +615,23 @@ export const renderConfirmationPage = (input: {
   });
 };
 
-export interface SignupConsentDocument {
-  title: string;
-  href: string;
-}
+export type SignupConsentDocument =
+  | { kind: 'hosted'; title: string; href: string }
+  | { kind: 'external'; url: string };
+
+const externalHref = (value: string): string | null => {
+  const safe = safeHref(value);
+  if (safe === null || !URL.canParse(safe)) return null;
+  const protocol = new URL(safe).protocol;
+  return protocol === 'http:' || protocol === 'https:' ? safe : null;
+};
+
+const renderConsentDocumentLink = (t: PublicMarketingMessages, document: SignupConsentDocument | null): string => {
+  if (document === null) return '';
+  if (document.kind === 'hosted') return `<a href="${escapeHtml(document.href)}">${escapeHtml(document.title)}</a>`;
+  const href = externalHref(document.url);
+  return href === null ? '' : `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.signupConsentExternalDocument)}</a>`;
+};
 
 const consentWording = (wording: string): string => wording.trim().replace(/\.+$/, '');
 
@@ -630,9 +643,8 @@ const renderSignupConsent = (input: {
     ...(input.doubleOptIn ? [input.t.signupConsentConfirm] : []),
     input.t.signupConsentUnsubscribe,
   ].map(escapeHtml).join(' ');
-  const document = input.document === null
-    ? ''
-    : ` ${escapeHtml(input.t.signupConsentDocument)} <a href="${escapeHtml(input.document.href)}">${escapeHtml(input.document.title)}</a>`;
+  const link = renderConsentDocumentLink(input.t, input.document);
+  const document = link === '' ? '' : ` ${escapeHtml(input.t.signupConsentDocument)} ${link}`;
   return `<p class="signup-consent">${sentences}${document}</p>`;
 };
 

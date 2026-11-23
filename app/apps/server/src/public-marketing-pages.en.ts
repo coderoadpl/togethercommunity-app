@@ -9,6 +9,7 @@ export const publicMarketingMessagesEn = {
   signupConsentConfirm: 'We will email you a link to confirm.',
   signupConsentUnsubscribe: 'You can unsubscribe at any time.',
   signupConsentDocument: 'More information:',
+  signupConsentExternalDocument: 'privacy and consent details',
   signupSubmit: 'Sign up',
   signupSubmitPending: 'Signing up…',
   signupEmailInvalid: 'Enter a complete email address, for example name@example.com.',

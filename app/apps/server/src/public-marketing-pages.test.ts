@@ -584,7 +584,7 @@ describe('sign-up pages', () => {
   it('states the consent as a sentence above the button and links the hosted document', () => {
     const html = renderSignupFormPage({
       nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'the monthly newsletter.', doubleOptIn: true, thanks: false,
-      consentDocument: { title: 'Privacy policy', href: '/legal/privacy/v/2' },
+      consentDocument: { kind: 'hosted', title: 'Privacy policy', href: '/legal/privacy/v/2' },
     });
     expect(html).toContain('<h1>Sign up for emails from Studio Demo</h1>');
     expect(html).not.toContain('Internal newsletter form');
@@ -601,6 +601,27 @@ describe('sign-up pages', () => {
     expect(html).toContain(sentence);
   });
 
+  it.each([
+    ['en', 'https://studio.test/privacy?a="b"&c=<d>', ' More information: <a href="https://studio.test/privacy?a=&quot;b&quot;&amp;c=&lt;d&gt;" target="_blank" rel="noopener noreferrer">privacy and consent details</a></p>'],
+    ['pl', 'http://studio.test/zgody', ' Więcej informacji: <a href="http://studio.test/zgody" target="_blank" rel="noopener noreferrer">szczegóły zgody i przetwarzania danych</a></p>'],
+  ] as const)('links an external consent document with a generic %s label', (language, url, link) => {
+    const html = renderSignupFormPage({
+      nonce: 'test-nonce', brand, language, form: signupForm, wording: 'the monthly newsletter', doubleOptIn: true, thanks: false,
+      consentDocument: { kind: 'external', url },
+    });
+    expect(html).toContain(link);
+  });
+
+  it.each(['javascript:alert(1)', 'mailto:privacy@studio.test', '/legal/privacy', '#privacy', 'data:text/html,hi', 'not a url'])('renders no document link for the rejected external address %s', (url) => {
+    const html = renderSignupFormPage({
+      nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'the monthly newsletter', doubleOptIn: true, thanks: false,
+      consentDocument: { kind: 'external', url },
+    });
+    expect(html).toContain('You can unsubscribe at any time.</p>');
+    expect(html).not.toContain('More information:');
+    expect(html).not.toContain('privacy and consent details');
+  });
+
   it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {
     const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'newsletter', doubleOptIn: false, thanks: false });
     expect(html).toContain(`<h1>${publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })}</h1>`);
@@ -614,7 +635,7 @@ describe('sign-up pages', () => {
     const html = renderSignupFormPage({
       nonce: 'test-nonce', brand: { ...brand, tenant: { ...brand.tenant, name: 'Studio <b>&</b>' } }, language: 'en', form: signupForm,
       wording: '<img src=x onerror=alert(1)>', doubleOptIn: true, thanks: false,
-      consentDocument: { title: '<script>alert(1)</script>', href: '/legal/privacy/v/2?a="b"' },
+      consentDocument: { kind: 'hosted', title: '<script>alert(1)</script>', href: '/legal/privacy/v/2?a="b"' },
     });
     expect(html).not.toContain('<img src=x');
     expect(html).not.toContain('<script>alert(1)</script>');
@@ -820,8 +841,7 @@ describe('public signup persistence and confirmation', () => {
       const hosted = await (await fixture.request('/marketing/forms/hosted?lang=en')).text();
       expect(hosted).toContain(`“Hosted news”. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
       const linked = await (await fixture.request('/marketing/forms/newsletter?lang=en')).text();
-      expect(linked).toContain('“Newsletter consent”. We will email you a link to confirm. You can unsubscribe at any time.</p>');
-      expect(linked).not.toContain('More information:');
+      expect(linked).toContain('“Newsletter consent”. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="https://courses.example.org/legal" target="_blank" rel="noopener noreferrer">privacy and consent details</a></p>');
     } finally { await fixture.close(); }
   });
   it('sends an expired confirmation back to its active sign-up form and otherwise to the workspace home', async () => {

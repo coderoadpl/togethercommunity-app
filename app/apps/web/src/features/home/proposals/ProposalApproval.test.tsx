@@ -548,8 +548,8 @@ describe('the approval confirmation of what a product grants', () => {
     expect(polish.operation['product.set-access']).toMatch(/^Dost\p{L}p, kt\p{L}ry daje produkt$/u);
     expect(polish.accessName({ name: 'Kurs' })).toBe('„Kurs”');
     expect(polish.accessWholeCourse({ course: '„Kurs”' })).toMatch(/^ca\p{L}y kurs „Kurs”$/u);
-    expect(polish.accessModules({ course: '„Kurs”', modules: '„A”', count: 1 })).toMatch(/^modu\p{L} „A” – w ka\p{L}dym kursie, kt\p{L}ry go zawiera \(wybrany z kursu „Kurs”\)$/u);
-    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B” – ka\p{L}da w ka\p{L}dym kursie, kt\p{L}ry j\p{L} zawiera/u);
+    expect(polish.accessModules({ course: '„Kurs”', modules: '„A”', count: 1 })).toMatch(/^modu\p{L} „A”\u00a0– w ka\p{L}dym kursie, kt\p{L}ry go zawiera \(wybrany z kursu „Kurs”\)$/u);
+    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B”\u00a0– ka\p{L}da w ka\p{L}dym kursie, kt\p{L}ry j\p{L} zawiera/u);
     expect(polish.approveProductSetAccess({ target: 'Kubek', access: 'ACCESS' }))
       .toMatch(/^Po zatwierdzeniu produkt „Kubek” b\p{L}dzie dawa\p{L} dost\p{L}p do nast\p{L}puj\p{L}cych tre\p{L}ci: ACCESS\. .+ od razu zyska dost\p{L}p do tego, co jest na li\p{L}cie, /u);
     expect(polish.accessNothing).toMatch(/^brak kurs\p{L}w, modu\p{L}\p{L}w i lekcji$/u);

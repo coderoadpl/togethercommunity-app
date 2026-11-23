@@ -142,7 +142,7 @@ const AccessNotes = ({ change, labels }: { change: ChangeProposalAccessChange; l
     <>
       {facts.refused ? <Alert severity="warning" data-testid="proposal-access-refused">{t.accessListRefused}</Alert> : null}
       {facts.sharedNow.length === 0 ? null : (
-        <WrapAnywhereText variant="body2" component="p" data-testid="proposal-access-shared">
+        <Alert severity="info" data-testid="proposal-access-shared" sx={{ overflowWrap: 'anywhere' }}>
           <ModulesSentence text={t.accessSharedExclusionNow} ids={facts.sharedNow} labels={labels} />
           {facts.refused || facts.lifted.length === 0 ? null : (
             <>
@@ -150,7 +150,7 @@ const AccessNotes = ({ change, labels }: { change: ChangeProposalAccessChange; l
               <ModulesSentence text={t.accessSharedExclusionLifted} ids={facts.lifted} labels={labels} />
             </>
           )}
-        </WrapAnywhereText>
+        </Alert>
       )}
     </>
   );

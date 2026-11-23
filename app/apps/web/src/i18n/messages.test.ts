@@ -97,8 +97,12 @@ describe('i18n dictionaries', () => {
       expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
       expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
     }
-    expect(en.auth.methodMagicLinkTitle).toContain('sign-in link');
-    expect(pl.auth.methodMagicLinkTitle).toContain(SIGN_IN_LINK_TERM);
+    for (const text of [en.auth.methodMagicLinkTitle, en.auth.magicLinkFetching, en.auth.openMagicLink]) {
+      expect(text).toContain('sign-in link');
+    }
+    for (const text of [pl.auth.methodMagicLinkTitle, pl.auth.magicLinkFetching, pl.auth.openMagicLink]) {
+      expect(text).toContain(SIGN_IN_LINK_TERM);
+    }
   });
 
   it('labels exactly the e-mail send source kinds in every language', () => {

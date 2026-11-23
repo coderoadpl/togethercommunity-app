@@ -169,6 +169,9 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const effectiveCents = check.amountCents;
   const fullAmount = check.ok && check.amountCents === remainderCents;
   const endsAccess = partial && fullAmount && accessNames.length > 0;
+  const mayEndLater = partial && !fullAmount && (accessNames.length > 0 || preview.cancelsSubscription)
+    ? messages.partialMayEndAccess({ access: accessNames.length > 0, subscription: preview.cancelsSubscription })
+    : null;
   const restocking = restockVisible && restock;
   const removingFromPackingList = removeFromPackingList || restocking;
 
@@ -247,6 +250,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       </Consequence>
       {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{endsAccess ? messages.consequenceAccessEnds : messages.consequenceAccessStays}</Consequence>}
       {preview.cancelsSubscription && fullAmount ? <Consequence icon={<StatusIcon />}>{messages.consequenceSubscriptionCancelled}</Consequence> : null}
+      {mayEndLater === null ? null : <Consequence icon={<StatusIcon />}>{mayEndLater}</Consequence>}
       <Consequence
         icon={<StatusIcon />}
         hint={laterCents === null || laterCents <= 0 ? undefined : messages.consequenceLaterRemainder({ amount: money(laterCents) })}
@@ -394,7 +398,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
               part={(
                 <Alert severity="info" data-testid="staff-refund-partial-info">
                   <AlertTitle>{endsAccess ? messages.partialFullInfoTitle : messages.partialInfoTitle}</AlertTitle>
-                  {endsAccess ? messages.partialFullInfoBody : messages.partialInfoBody}
+                  {endsAccess ? messages.partialFullInfoBody : mayEndLater === null ? messages.partialInfoBody : `${messages.partialInfoBody} ${mayEndLater}`}
                 </Alert>
               )}
             />

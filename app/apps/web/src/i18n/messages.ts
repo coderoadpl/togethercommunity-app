@@ -1193,7 +1193,9 @@ export interface Messages {
       fullyRefunded: string;
       paymentPlatformTotals: string;
       paymentPreviewFailedTotals: string;
-      remainderWithheld: string;
+      refundedUnknownValue: string;
+      refundedUnknown: string;
+      notSentYet: string;
       waitingBlocksAction: string;
       notPaidOut: string;
       stateChip: (params: { state: string }) => string;
@@ -1249,6 +1251,7 @@ export interface Messages {
       shippedWarningBody: string;
       partialInfoTitle: string;
       partialInfoBody: string;
+      partialMayEndAccess: (params: { access: boolean; subscription: boolean }) => string;
       partialFullInfoTitle: string;
       partialFullInfoBody: string;
       reasonPlaceholder: string;

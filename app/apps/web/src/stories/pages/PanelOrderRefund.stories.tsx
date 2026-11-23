@@ -34,7 +34,7 @@ const order = {
 
 const preview = {
   orderId: ORDER_ID, refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN', mode: 'live',
-  remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'product-mug', quantity: 1 }], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
+  remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: true, returnableStock: [{ productId: 'product-mug', quantity: 1 }], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true }, waitingRefundId: null,
 };
 
@@ -49,6 +49,7 @@ type RefundState = {
   order: Record<string, unknown>;
   staffRefunds: Record<string, unknown>[];
   refunded: number;
+  remaining?: number;
   preview: Record<string, unknown>;
   calls?: Record<string, unknown>;
 };
@@ -68,7 +69,7 @@ const refundStory = (state: RefundState): Story => ({
           ...recorded,
           order: { ...order, ...state.order },
           staffRefunds: state.staffRefunds,
-          refundTotals: { paidCents: 24900, refundedCents: state.refunded, remainingCents: 24900 - state.refunded, currency: 'PLN' },
+          refundTotals: { paidCents: 24900, refundedCents: state.refunded, remainingCents: state.remaining ?? 24900 - state.refunded, currency: 'PLN' },
         } },
         [`orderRefundPreview:[{"orderId":"${ORDER_ID}"}]`]: { ok: true, value: { ...preview, ...state.preview } },
         ...state.calls,
@@ -103,14 +104,18 @@ export const RefundedOffPackingList: Story = refundStory({
   order: { status: 'refunded', fulfilmentStatus: null },
   staffRefunds: [refund({ kind: 'remainder', amountCents: 24900, restocked: true, removedFromPackingList: true, note: 'The buyer cancelled before shipping' })],
   refunded: 24900,
-  preview: { refundable: false, blockedReason: 'Nothing is left to refund on this order', refundedCents: 24900, remainderCents: 0, onPackingList: false },
+  preview: {
+    refundable: false, refundedCents: 24900, remainderCents: 0, onPackingList: false,
+    blockedReason: 'The order is marked refunded: refunded in full, refunded outside the platform or disputed; nothing more can be refunded here; check the payment in the payment provider\'s dashboard',
+  },
 });
 
 export const BlockedPermission: Story = refundStory({
   order: { fulfilmentStatus: null },
   staffRefunds: [refund({ kind: 'remainder', status: 'blocked_permission', amountCents: 24900, providerRefundStatus: null, submittedAt: null, restocked: true, removedFromPackingList: true, note: 'The buyer cancelled before shipping', nextAttemptAt: '2026-11-22T10:05:00.000Z', permissionBlockedAt: '2026-11-22T09:05:00.000Z', createdAt: '2026-11-22T09:05:00.000Z', updatedAt: '2026-11-22T09:05:00.000Z' })],
-  refunded: 24900,
-  preview: { refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', refundedCents: 24900, remainderCents: 0, onPackingList: false, waitingRefundId: 'refund-demo-1' },
+  refunded: 0,
+  remaining: 0,
+  preview: { refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', refundedCents: 0, remainderCents: 0, onPackingList: false, waitingRefundId: 'refund-demo-1' },
 });
 
 const listed = (overrides: Record<string, unknown>) => ({ ...order, invoice: null, ...overrides });

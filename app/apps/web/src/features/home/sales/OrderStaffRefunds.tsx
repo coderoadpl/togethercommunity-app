@@ -1,7 +1,16 @@
 import { Alert, AlertTitle, Box, Button, Chip, Divider, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { orderRefundPermissionDeadline, SALES_LINK_TIME_ZONE, staffRefundReason, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
+import {
+  orderRefundPermissionDeadline,
+  refundedAmountUnknown,
+  SALES_LINK_TIME_ZONE,
+  staffRefundReason,
+  type OrderListItem,
+  type OrderRefundTotals,
+  type OrderStaffRefundView,
+  type StaffRefundPreview,
+} from '#core/domain/index.js';
 
 import { SectionCard } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -21,9 +30,11 @@ import {
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { CheckCircleIcon, ClockIcon, RefundIcon, WarningIcon } from './refund-icons.js';
 
-const UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['pending', 'running', 'submitted', 'unconfirmed'];
+type Statuses = readonly OrderStaffRefundView['status'][];
 
-const PROVIDER_UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['running', 'submitted', 'unconfirmed'];
+// Stripe's list may already hold a refund being sent; the platform counts it as refunded only once Stripe accepted it.
+const IN_PROGRESS_STATUSES: Record<'provider' | 'platform', Statuses> = { provider: ['running', 'submitted', 'unconfirmed'], platform: ['submitted', 'unconfirmed'] };
+const REQUESTED_STATUSES: Record<'provider' | 'platform', Statuses> = { provider: ['pending', 'blocked_permission'], platform: ['pending', 'running', 'blocked_permission'] };
 
 const sumOf = (refunds: readonly OrderStaffRefundView[], statuses: readonly OrderStaffRefundView['status'][]): number =>
   refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
@@ -58,26 +69,24 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const messages = t.sales.staffRefund;
   const { language } = useLanguage();
   const money = (cents: number) => formatMinorUnitsPrice(cents, order.currency, language);
-  const providerTotals = action.kind === 'ready' && action.preview.remainderSource === 'provider' ? action.preview : null;
+  const preview = action.kind === 'ready' ? action.preview : null;
   const totalsNote = action.kind === 'error'
     ? messages.paymentPreviewFailedTotals
-    : action.kind === 'ready' && action.preview.remainderSource === 'platform' ? messages.paymentPlatformTotals : null;
-  const withheld = action.kind === 'ready' && action.preview.remainderWithheld;
-  const paidCents = providerTotals?.paidCents ?? totals?.paidCents ?? order.amountCents;
-  const refundedCents = providerTotals?.refundedCents ?? totals?.refundedCents ?? (order.status === 'refunded' ? order.amountCents : 0);
-  const remainingCents = providerTotals?.remainderCents ?? totals?.remainingCents ?? paidCents - refundedCents;
-  const requestedCents = sumOf(staffRefunds, ['blocked_permission']);
-  // Stripe's list holds no refund that never reached it, so a blocked one is listed beside the provider's total, not inside it.
-  const blockedCents = providerTotals === null ? Math.min(refundedCents, requestedCents) : requestedCents;
-  const settledCents = providerTotals === null ? refundedCents - blockedCents : refundedCents;
-  const unconfirmedCents = Math.min(settledCents, sumOf(staffRefunds, providerTotals === null ? UNCONFIRMED_STATUSES : PROVIDER_UNCONFIRMED_STATUSES));
+    : preview?.remainderSource === 'platform' ? messages.paymentPlatformTotals : null;
+  const source = preview?.remainderSource ?? 'platform';
+  const paidCents = preview?.paidCents ?? totals?.paidCents ?? order.amountCents;
+  const refundedCents = preview?.refundedCents ?? totals?.refundedCents ?? 0;
+  const remainingCents = preview?.remainderCents ?? totals?.remainingCents ?? 0;
+  const unknown = refundedAmountUnknown(order, refundedCents);
+  const requestedCents = sumOf(staffRefunds, REQUESTED_STATUSES[source]);
+  const unconfirmedCents = Math.min(refundedCents, sumOf(staffRefunds, IN_PROGRESS_STATUSES[source]));
   const shippingCents = order.shipping?.amountCents ?? 0;
   const blocked = staffRefunds.some((refund) => refund.status === 'blocked_permission');
 
   return (
     <SectionCard title={messages.paymentTitle} headerActions={chips} data-testid="order-payment">
       <Stack useFlexGap spacing="0.6rem">
-        {refundedCents === 0 && blockedCents === 0 ? (
+        {refundedCents === 0 && requestedCents === 0 && !unknown ? (
           <>
             <AmountRow label={messages.productsSubtotal}>{money(paidCents - shippingCents + order.discountCents)}</AmountRow>
             {order.shipping == null ? null : <AmountRow label={messages.deliverySubtotal}>{money(shippingCents)}</AmountRow>}
@@ -88,13 +97,14 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
         ) : (
           <>
             <AmountRow label={messages.paidTotal}>{money(paidCents)}</AmountRow>
-            {settledCents === 0 ? null : (
+            {unknown ? <AmountRow label={messages.refunded}>{messages.refundedUnknownValue}</AmountRow> : null}
+            {unknown || refundedCents === 0 ? null : (
               <AmountRow label={messages.refunded} sub={unconfirmedCents === 0 ? undefined : messages.inProgress({ amount: money(unconfirmedCents) })}>
-                {`−${money(settledCents)}`}
+                {`−${money(refundedCents)}`}
               </AmountRow>
             )}
-            {blockedCents === 0 ? null : (
-              <AmountRow label={messages.requestedRefund} sub={messages.waitingForPermission}>{`−${money(blockedCents)}`}</AmountRow>
+            {requestedCents === 0 ? null : (
+              <AmountRow label={messages.requestedRefund} sub={blocked ? messages.waitingForPermission : messages.notSentYet}>{`−${money(requestedCents)}`}</AmountRow>
             )}
             <Divider />
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
@@ -102,10 +112,10 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
         )}
         {totalsNote === null ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{totalsNote}</Typography>}
       </Stack>
-      {withheld ? (
-        <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-withheld">
+      {unknown ? (
+        <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-refunded-unknown">
           <WarningIcon />
-          <Typography variant="body2">{messages.remainderWithheld}</Typography>
+          <Typography variant="body2">{messages.refundedUnknown}</Typography>
         </RefundWarningRow>
       ) : null}
       {blocked ? (
@@ -113,7 +123,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
           <WarningIcon />
           <Typography variant="body2">{messages.notPaidOut}</Typography>
         </RefundWarningRow>
-      ) : refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && unconfirmedCents === 0 ? (
+      ) : !unknown && refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && unconfirmedCents === 0 ? (
         <RefundMutedRow direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
           <CheckCircleIcon />
           <Typography variant="body2">{messages.fullyRefunded}</Typography>
@@ -138,14 +148,14 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   );
 };
 
-const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
+const RefundItem = ({ refund, order }: { refund: OrderStaffRefundView; order: Pick<OrderListItem, 'status'> }) => {
   const t = useTranslations();
   const messages = t.sales.staffRefund;
   const { language } = useLanguage();
   const time = (value: string) => formatDateTime(value, language, SALES_LINK_TIME_ZONE);
   const waiting = refund.status === 'pending' || refund.status === 'running' || refund.status === 'submitted';
   const blocked = refund.status === 'blocked_permission';
-  const reason = staffRefundReason(refund);
+  const reason = staffRefundReason(refund, order);
   const facts = [
     refund.status === 'succeeded' ? messages.completedAt({ time: time(refund.updatedAt) }) : null,
     blocked ? [messages.attempts({ count: refund.attempts }), refund.nextAttemptAt === null ? null : messages.nextAttempt({ time: time(refund.nextAttemptAt) })].filter((part) => part !== null).join(' · ') : null,
@@ -200,7 +210,7 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
   );
 };
 
-export const OrderStaffRefundHistory = ({ refunds }: { refunds: readonly OrderStaffRefundView[] }) => {
+export const OrderStaffRefundHistory = ({ refunds, order }: { refunds: readonly OrderStaffRefundView[]; order: Pick<OrderListItem, 'status'> }) => {
   const t = useTranslations();
   const messages = t.sales.staffRefund;
   return (
@@ -210,7 +220,7 @@ export const OrderStaffRefundHistory = ({ refunds }: { refunds: readonly OrderSt
       data-testid="order-staff-refunds"
     >
       <Stack component="ul" useFlexGap spacing="0.75rem" sx={{ m: 0, p: 0 }}>
-        {refunds.map((refund) => <RefundItem key={refund.id} refund={refund} />)}
+        {refunds.map((refund) => <RefundItem key={refund.id} refund={refund} order={order} />)}
       </Stack>
     </SectionCard>
   );

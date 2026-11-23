@@ -247,7 +247,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             {order.lines === undefined || order.lines.length === 0 ? null : (
               <Slot order={2}><SectionCard title={t.salesLinks.products}><OfferLines lines={order.lines} currency={order.currency} lineName={orderLineLabel} afterName={linePersonalization} /></SectionCard></Slot>
             )}
-            {staffRefunds.length === 0 ? null : <Slot order={3}><OrderStaffRefundHistory refunds={staffRefunds} /></Slot>}
+            {staffRefunds.length === 0 ? null : <Slot order={3}><OrderStaffRefundHistory refunds={staffRefunds} order={order} /></Slot>}
             {detail.data.refundJob === null ? null : <Slot order={4}><OrderRefundJob job={detail.data.refundJob} /></Slot>}
             <Slot order={8}><DownloadCopies query={{ orderId }} /></Slot>
           </Box>

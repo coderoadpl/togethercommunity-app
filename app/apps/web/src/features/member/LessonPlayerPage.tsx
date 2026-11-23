@@ -359,23 +359,33 @@ export const LessonPlayerPage = ({
     lessonId: string;
     done: boolean;
   } | null>(null);
+  const [recordedIn, setRecordedIn] = useState<{ lessonId: string; courseId: string } | null>(null);
+  const recordedElsewhere = recordedIn !== null && recordedIn.lessonId === lessonId && recordedIn.courseId !== courseId;
+  const recordedProgress = useQuery({
+    ...actions.studentProgress(recordedIn?.courseId ?? courseId),
+    enabled: authenticated && recordedElsewhere,
+    meta: { background: true },
+  });
   const completedFromServer =
-    progress.data?.progress.completedLessonIds.includes(lessonId) ?? false;
+    (progress.data?.progress.completedLessonIds.includes(lessonId) ?? false) ||
+    (recordedElsewhere && (recordedProgress.data?.progress.completedLessonIds.includes(lessonId) ?? false));
   const completed = optimisticDone?.lessonId === lessonId
     ? optimisticDone.done
     : completedFromServer;
 
   const settleCompletion = async (
-    written: { courseId: string; completedLessonIds: string[] } | undefined,
+    written: { courseId: string } | undefined,
     settledLessonId: string,
   ) => {
     await Promise.all([
       queryClient.invalidateQueries(actions.studentCourseInvalidates()),
       queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+      written === undefined || written.courseId === courseId
+        ? undefined
+        : queryClient.prefetchQuery(actions.studentProgress(written.courseId)),
     ]);
-    setOptimisticDone(written === undefined || written.courseId === courseId
-      ? null
-      : { lessonId: settledLessonId, done: written.completedLessonIds.includes(settledLessonId) });
+    if (written !== undefined) setRecordedIn({ lessonId: settledLessonId, courseId: written.courseId });
+    setOptimisticDone(null);
   };
 
   const complete = useMutation({

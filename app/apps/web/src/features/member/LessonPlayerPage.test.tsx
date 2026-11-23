@@ -1449,6 +1449,51 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 
+  it('follows the recorded progress after settling instead of holding what it wrote', async () => {
+    const written = new Map<string, string[]>([['course-1', ['l1']]]);
+    let posts = 0;
+    let readsAfterPost = 0;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        if (posts > 0) readsAfterPost += 1;
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
+      }),
+      http.post('/api/student/lessons/uncomplete', () => {
+        posts += 1;
+        written.set('course-1', []);
+        written.set('course-other', []);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), courseId: 'course-other' } } });
+      }),
+      http.post('/api/student/lessons/complete', () => {
+        posts += 1;
+        written.set('course-other', ['l1']);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await user.click(await screen.findByTestId('unmark-complete'));
+    await waitFor(() => expect(readsAfterPost).toBeGreaterThan(0));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(screen.getByTestId('mark-complete')).toBeEnabled();
+
+    const readsBeforeComplete = readsAfterPost;
+    await user.click(screen.getByTestId('mark-complete'));
+    await waitFor(() => expect(readsAfterPost).toBeGreaterThan(readsBeforeComplete));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(screen.getByTestId('unmark-complete')).toBeEnabled();
+
+    written.set('course-other', []);
+    const readsBeforeReset = readsAfterPost;
+    await act(() => queryClient.invalidateQueries(actions.studentCourseInvalidates()));
+    await waitFor(() => expect(readsAfterPost).toBeGreaterThan(readsBeforeReset));
+    expect(await screen.findByTestId('mark-complete')).toBeEnabled();
+  });
+
   it('un-marks a completed lesson and restores the mark button', async () => {
     let uncompleteCalls = 0;
     server.use(

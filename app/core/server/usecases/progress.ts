@@ -64,7 +64,7 @@ const completionLocation = async (
   lessonId: string,
   viewedCourseId: string | undefined,
   deps: ProgressDeps,
-): Promise<Result<LessonLocation, AppError>> => {
+): Promise<Result<{ progressAt: LessonLocation; viewed: LessonLocation | undefined }, AppError>> => {
   if (!lessonId) return err(validation('lessonId is required'));
   const [courses, modules] = await Promise.all([
     deps.courses.list(scope.tenantId),
@@ -78,7 +78,8 @@ const completionLocation = async (
     isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId });
   const opening = ctx.identity.staffRole !== null ? locations : locations.filter(opensForMember);
   const progressAt = opening.find((location) => location.course.id === viewedCourseId) ?? opening[0];
-  return progressAt === undefined ? err(forbidden('This lesson is not accessible')) : ok(progressAt);
+  if (progressAt === undefined) return err(forbidden('This lesson is not accessible'));
+  return ok({ progressAt, viewed: locations.find((location) => location.course.id === viewedCourseId) });
 };
 
 export const markLessonCompleted = async (
@@ -91,7 +92,7 @@ export const markLessonCompleted = async (
   if (!scope.ok) return scope;
   const located = await completionLocation(ctx, scope.value, lessonId, viewedCourseId, deps);
   if (!located.ok) return located;
-  const progressAt = located.value;
+  const { progressAt } = located.value;
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),
@@ -110,6 +111,21 @@ export const markLessonCompleted = async (
   return saved ? ok(saved) : err(notFound('Progress row vanished while updating'));
 };
 
+const removeCompletion = async (
+  tenantId: string,
+  current: MemberCourseProgress,
+  lessonId: string,
+  deps: Pick<ProgressDeps, 'progress' | 'clock'>,
+): Promise<Result<MemberCourseProgress, AppError>> => {
+  const updated: MemberCourseProgress = {
+    ...current,
+    completedLessonIds: current.completedLessonIds.filter((id) => id !== lessonId),
+    updatedAt: deps.clock.nowIso(),
+  };
+  const saved = await deps.progress.update(tenantId, updated);
+  return saved ? ok(saved) : err(notFound('Progress row vanished while updating'));
+};
+
 export const unmarkLessonCompleted = async (
   ctx: Ctx,
   lessonId: string,
@@ -120,7 +136,18 @@ export const unmarkLessonCompleted = async (
   if (!scope.ok) return scope;
   const located = await completionLocation(ctx, scope.value, lessonId, viewedCourseId, deps);
   if (!located.ok) return located;
-  const progressAt = located.value;
+  const { progressAt, viewed } = located.value;
+
+  if (viewed !== undefined && viewed.course.id !== progressAt.course.id) {
+    const viewedRow = await deps.progress.findByMemberAndCourse(scope.value.tenantId, {
+      memberId: scope.value.memberId,
+      courseId: viewed.course.id,
+    });
+    if (viewedRow !== null && viewedRow.completedLessonIds.includes(lessonId)) {
+      const cleared = await removeCompletion(scope.value.tenantId, viewedRow, lessonId, deps);
+      if (!cleared.ok) return cleared;
+    }
+  }
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),
@@ -129,14 +156,7 @@ export const unmarkLessonCompleted = async (
     now: deps.clock.nowIso(),
   });
   if (!current.completedLessonIds.includes(lessonId)) return ok(current);
-
-  const updated: MemberCourseProgress = {
-    ...current,
-    completedLessonIds: current.completedLessonIds.filter((id) => id !== lessonId),
-    updatedAt: deps.clock.nowIso(),
-  };
-  const saved = await deps.progress.update(scope.value.tenantId, updated);
-  return saved ? ok(saved) : err(notFound('Progress row vanished while updating'));
+  return removeCompletion(scope.value.tenantId, current, lessonId, deps);
 };
 
 export interface ResetMemberCourseProgressDeps {

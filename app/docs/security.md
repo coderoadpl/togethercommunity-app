@@ -859,9 +859,10 @@ scopes on every shop key.
   receipt shows that outcome only after an owner chose to approve. A key that
   creates a product gets one refusal message for every reason the check or the
   write refuses its list; an owner or admin session gets the specific message. The owner's editor
-  skips the check when the list it is sent grants the same as the stored one,
-  so a consent save does not fail on a stored list the check would refuse,
-  unless that list names an archived course. A module
+  skips the check and the list write when the list it is sent equals the
+  stored one, so a consent save writes only the consents, does not fail on a
+  stored list the check would refuse and never writes back a list another
+  editor changed after it was read. A module
   or lesson item opens that module or lesson wherever it is used, so the check
   only keeps the course shown next to it true. It is a point-in-time check:
   the write locks only the courses, and a later module detach or lesson move

@@ -2049,15 +2049,17 @@ long list costs the locks it runs under no more round trips than a short one,
 and its memory grows with the named ids and the workspace's modules, not with
 the content of the lessons it names.
 
-Stored lists are not rewritten. The owner's editor runs the check only when the
-list it is sent differs from the stored list item by item (items and the ids
-within an item compared in any order, repeats ignored), not by what the items
-grant: a list that splits one `modules` item into two that open the same
-modules is checked again. So a save that resends the stored list,
-as the checkout consent save of the product editor does, succeeds for a product
-whose stored list the check would refuse, unless that list names an archived
-course, which the write itself refuses. Changing the list is refused until
-every item passes. A `product.create` or `product.set-access` proposal is
+Stored lists are not rewritten. The owner's editor checks and writes the list
+only when the list it is sent differs from the stored list item by item (items
+and the ids within an item compared in any order, repeats ignored), not by what
+the items grant: a list that splits one `modules` item into two that open the
+same modules is checked again. A save that resends the stored list, as the
+checkout consent save of the product editor does, writes only the checkout
+consents and leaves the access list as it is stored when the write runs, so it
+succeeds for a product whose stored list the check would refuse, an archived
+course included, and never writes back a list it read after another editor
+changed it; with no consents either, it writes nothing. Changing the list is
+refused until every item passes. A `product.create` or `product.set-access` proposal is
 checked at its approval and ends `failed` when its list fails it, as does a
 `product.create` proposal stored before the check existed.
 

@@ -353,6 +353,15 @@ describe('product repository', () => {
     }))).resolves.toBe('slug_taken');
   });
 
+  it('writes only the checkout consents and keeps the stored access list when the access list is left out', async () => {
+    const repo = createProductRepository(db);
+    await repo.create(GLOBEX, product({ id: 'prod-globex-consents', tenantId: GLOBEX, slug: 'prod-globex-consents' }));
+    await db.update(products).set({ accessItems: [{ level: 'course', courseId: 'course-kept' }] })
+      .where(and(eq(products.tenantId, GLOBEX), eq(products.id, 'prod-globex-consents')));
+    expect(await repo.updateAccessItems(GLOBEX, 'prod-globex-consents', null, undefined, ['consent-kept']))
+      .toMatchObject({ accessItems: [{ level: 'course', courseId: 'course-kept' }], checkoutConsentDefinitionIds: ['consent-kept'] });
+  });
+
   it('stores the sales channel, defaults it to any, and returns it on every product read', async () => {
     const repo = createProductRepository(db);
     await repo.create(GLOBEX, product({ id: 'prod-globex-link-only', tenantId: GLOBEX, salesChannel: 'sales_links_only' }));

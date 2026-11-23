@@ -224,11 +224,12 @@ const productRepo = (
     store.push(item);
     return 'created';
   },
-  updateAccessItems: async (tenantId, id, accessItems, version) => {
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const found = store.find((item) => item.tenantId === tenantId && item.id === id);
     if (!found) return null;
     if (version) versions.push(version);
-    found.accessItems = accessItems;
+    if (accessItems !== null) found.accessItems = accessItems;
+    if (checkoutConsentDefinitionIds !== undefined) found.checkoutConsentDefinitionIds = checkoutConsentDefinitionIds;
     return found;
   },
   setPublished: async (tenantId, id, published) => {
@@ -496,7 +497,7 @@ describe('course management use-cases', () => {
 
     await updateModule(ctx, { id: 'm1', title: 'New title' }, d);
     await updateLesson(ctx, { id: 'l1', name: 'New lesson name' }, d);
-    await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
+    await updateProductAccessItems(ctx, { id: 'p1', accessItems: [{ level: 'course', courseId: 'c1' }] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
     expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 11]);
@@ -1160,11 +1161,25 @@ describe('saving a product whose stored access list the check refuses', () => {
     return { products, d };
   };
 
-  it('saves the checkout consents with the stored list resent, in any order and with repeats', async () => {
+  it('saves the checkout consents with the stored list resent, in any order and with repeats, and leaves the stored list as it is', async () => {
     const { products, d } = setup();
     const resent = [{ level: 'course' as const, courseId: 'c2' }, { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l2', 'l2'] }];
     expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: resent, checkoutConsentDefinitionIds: ['consent-1'] }, d)).toMatchObject({ ok: true });
-    expect(products[0]?.accessItems).toEqual(resent);
+    expect(products[0]).toMatchObject({ accessItems: stored, checkoutConsentDefinitionIds: ['consent-1'] });
+  });
+
+  it('never restores the list it read once another editor removed a grant before its write', async () => {
+    const { products, d } = setup();
+    const narrowed = [{ level: 'course' as const, courseId: 'c2' }];
+    const read = d.products.findById;
+    d.products.findById = async (tenantId, id) => {
+      const found = structuredClone(await read(tenantId, id));
+      const live = products[0];
+      if (live !== undefined) live.accessItems = structuredClone(narrowed);
+      return found;
+    };
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: stored, checkoutConsentDefinitionIds: ['consent-1'] }, d)).toMatchObject({ ok: true });
+    expect(products[0]).toMatchObject({ accessItems: narrowed, checkoutConsentDefinitionIds: ['consent-1'] });
   });
 
   it('refuses the list itself until the item is corrected', async () => {

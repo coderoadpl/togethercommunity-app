@@ -255,13 +255,13 @@ const catalogRepositoriesOver = (
         return { ...saved };
       },
       updateAccessItems: async (tenantId, id, accessItems, version, _checkoutConsentDefinitionIds, options = {}) => {
-        repositoryCourseLocks.push({ courseIds: accessItems.map((item) => item.courseId), targetLocksBefore: locks.length });
-        const referenced = new Set(accessItems.map((item) => item.courseId));
+        repositoryCourseLocks.push({ courseIds: (accessItems ?? []).map((item) => item.courseId), targetLocksBefore: locks.length });
+        const referenced = new Set((accessItems ?? []).map((item) => item.courseId));
         if (options.archivedCourses !== 'write'
           && state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
         const found = product(tenantId, id);
         if (found === null) return null;
-        found.accessItems = structuredClone(accessItems);
+        if (accessItems !== null) found.accessItems = structuredClone(accessItems);
         if (version !== undefined) {
           state.entityVersions += 1;
           state.entityVersionAuthors.push(version.createdBy);

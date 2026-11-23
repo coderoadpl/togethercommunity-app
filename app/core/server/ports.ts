@@ -285,7 +285,7 @@ export interface ProductRepository {
   updateAccessItems(
     tenantId: string,
     id: string,
-    accessItems: Product['accessItems'],
+    accessItems: Product['accessItems'] | null,
     version?: EntityVersionRecord,
     checkoutConsentDefinitionIds?: string[],
     options?: ProductAccessWriteOptions,

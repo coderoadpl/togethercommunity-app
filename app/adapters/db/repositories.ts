@@ -489,12 +489,13 @@ export const createProductRepository = (
   }),
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds, options = {}) =>
     busyAfterRollback(() => db.transaction(async (tx) => {
-      const active = await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId));
+      const active = await lockActiveCourses(tx, tenantId, (accessItems ?? []).map((item) => item.courseId));
       if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
       if (version) await insertEntityVersion(tx, tenantId, version);
-      const changes = checkoutConsentDefinitionIds === undefined
-        ? { accessItems }
-        : { accessItems, checkoutConsentDefinitionIds };
+      const changes = {
+        ...(accessItems === null ? {} : { accessItems }),
+        ...(checkoutConsentDefinitionIds === undefined ? {} : { checkoutConsentDefinitionIds }),
+      };
       const rows = await tx
         .update(products)
         .set(changes)

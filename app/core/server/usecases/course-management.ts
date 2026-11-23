@@ -690,8 +690,10 @@ export const updateProductAccessItems = async (
   }
 
   const accessCheck = deps.accessCheck ?? 'now';
-  if (accessCheck === 'now' && !sameAccessItems(parsed.data.accessItems, product.accessItems)) {
-    const checked = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
+  const accessItems = sameAccessItems(parsed.data.accessItems, product.accessItems) ? null : parsed.data.accessItems;
+  if (accessItems === null && parsed.data.checkoutConsentDefinitionIds === undefined) return ok(product);
+  if (accessCheck === 'now' && accessItems !== null) {
+    const checked = await checkProductAccessItems(tenant.value, accessItems, deps);
     if (!checked.ok) return checked;
   }
 
@@ -701,7 +703,7 @@ export const updateProductAccessItems = async (
   const updated = await deps.products.updateAccessItems(
     tenant.value,
     product.id,
-    parsed.data.accessItems,
+    accessItems,
     snapshot.value,
     parsed.data.checkoutConsentDefinitionIds,
     { archivedCourses: accessCheck === 'now' ? 'refuse' : 'write' },

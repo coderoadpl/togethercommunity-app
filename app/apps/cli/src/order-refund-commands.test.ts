@@ -8,7 +8,7 @@ import { refundPreviewLines, runOrderRefund } from './order-refund-commands.js';
 
 const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => ({
   orderId: 'order-1', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 1000, remainderCents: 3099, currency: 'PLN',
-  mode: 'live', remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
+  mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
   hasInvoice: true, cancelsSubscription: false, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
   waitingRefundId: null, ...over,
 });
@@ -68,9 +68,9 @@ describe('order refund command', () => {
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('converts --amount from the order currency to minor units and passes the reason and the fulfilment choices', async () => {
+  it('converts --amount from the order currency to minor units and passes the reason, keeping stock and the packing list as they are', async () => {
     const h = harness();
-    await h.refund({ amount: '12,50', reason: 'Damaged cover', restock: false, keepOnPackingList: true, yes: true, requestKey: 'part-1' });
+    await h.refund({ amount: '12,50', remainder: '30.99', reason: 'Damaged cover', restock: false, keepOnPackingList: true, yes: true, requestKey: 'part-1' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
       orderId: 'order-1', requestKey: 'part-1', amountCents: 1250, expectedRemainderCents: 3099, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
       expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
@@ -90,14 +90,22 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 
-  it('prints the amount actually refunded and says why nothing more can be refunded on an order a dispute marked refunded', () => {
+  it('says the refunded amount of an order marked refunded is not known here instead of printing a number the platform did not see', () => {
     const lines = refundPreviewLines(preview({
-      refundable: false, blockedReason: 'The order is marked refunded although its refunds do not cover the payment, for example after a dispute; nothing more can be refunded here',
-      refundedCents: 0, remainderCents: 0, remainderWithheld: true,
+      refundable: false, blockedReason: 'The order is marked refunded: refunded in full, refunded outside the platform or disputed; nothing more can be refunded here; check the payment in the payment provider\'s dashboard',
+      refundedCents: 0, remainderCents: 0, refundedAmountUnknown: true,
     })).split('\n');
-    expect(lines[1]).toBe('paid 40.99 PLN, refunded 0.00 PLN, remaining 0.00 PLN (read from the payment provider)');
-    expect(lines).toContain('the order is marked refunded although its refunds do not cover the payment (for example after a dispute); nothing more can be refunded here, check the payment in the Stripe Dashboard');
-    expect(refundPreviewLines(preview())).not.toContain('marked refunded');
+    expect(lines[1]).toBe('paid 40.99 PLN, refunded not known here (refunded outside the platform or disputed), remaining 0.00 PLN (read from the payment provider)');
+    expect(refundPreviewLines(preview())).not.toContain('not known here');
+  });
+
+  it.each([
+    [{ grantsAccess: true, cancelsSubscription: true }, 'a partial refund keeps access and the subscription, but if the payment ends fully refunded (for example through another refund, also one made in the Stripe Dashboard), access may end and the subscription stops, as for a full refund'],
+    [{ grantsAccess: true, cancelsSubscription: false }, 'a partial refund keeps access, but if the payment ends fully refunded (for example through another refund, also one made in the Stripe Dashboard), access may end, as for a full refund'],
+    [{ grantsAccess: false, cancelsSubscription: true }, 'a partial refund keeps the subscription, but if the payment ends fully refunded (for example through another refund, also one made in the Stripe Dashboard), the subscription stops, as for a full refund'],
+  ] as const)('says in the preview that a partial refund may still end access or a subscription once the payment ends fully refunded (%o)', (flags, line) => {
+    expect(refundPreviewLines(preview(flags)).split('\n')).toContain(line);
+    expect(refundPreviewLines(preview())).not.toContain('fully refunded');
   });
 
   it('names a subscription a full refund would cancel in the preview', () => {
@@ -107,9 +115,9 @@ describe('order refund command', () => {
 
   it('generates a request key when none is given', async () => {
     const h = harness();
-    await h.refund({ yes: true, amount: '5' });
+    await h.refund({ yes: true, amount: '5', remainder: '30.99' });
     expect(h.createOrderRefund.mock.calls[0]?.[0].requestKey).toMatch(/^cli-[0-9a-f-]{36}$/);
-    await h.refund({ yes: true, amount: '5' }, () => 'fixed-key');
+    await h.refund({ yes: true, amount: '5', remainder: '30.99' }, () => 'fixed-key');
     expect(h.createOrderRefund.mock.calls[1]?.[0].requestKey).toBe('fixed-key');
   });
 
@@ -133,11 +141,11 @@ describe('order refund command', () => {
     expect(printed()).toEqual({ ok: false, error: { code: 'internal', message: 'Network error calling /api/orders/order-1/refunds: TypeError: fetch failed', details: { requestKey: 'lost-2' } } });
   });
 
-  it('refuses without --yes, names the amount and shows the preview, and sends nothing', async () => {
+  it('refuses without --yes, names the amount, the exact command to confirm with and shows the preview, and sends nothing', async () => {
     const h = harness();
-    await h.refund({ amount: '5' });
+    await h.refund({ amount: '5', reason: "Buyer's choice" });
     expect(h.createOrderRefund).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 5.00 PLN of order order-1 cannot be undone; repeat the command with --yes to confirm');
+    expect(errorSpy.mock.calls[0]?.[0]).toBe("error(validation): Refunding 5.00 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --amount 5 --remainder 30.99 --reason 'Buyer'\\''s choice' --yes");
     expect(String(errorSpy.mock.calls[1]?.[0])).toContain('paid 40.99 PLN, refunded 10.00 PLN, remaining 30.99 PLN');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
   });
@@ -145,7 +153,7 @@ describe('order refund command', () => {
   it('names the remainder to confirm a full refund with, sends the confirmed remainder and shows the refusal when it changed since', async () => {
     const h = harness();
     await h.refund({});
-    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --yes --remainder 30.99 to confirm');
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --remainder 30.99 --yes');
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', { remainderCents: 4099 })));
     await h.refund({ yes: true, remainder: '30.99', requestKey: 'full-1' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
@@ -153,27 +161,48 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 
-  it('sends the remainder its preview showed with a partial amount and prints the new preview when the server says it changed', async () => {
+  it('sends the remainder the operator confirmed from the dry run, never the one a later preview read, so a stale confirmation writes nothing', async () => {
     const h = harness();
-    h.orderRefundPreview
-      .mockResolvedValueOnce(ok(preview({ refundedCents: 0, remainderCents: 10_000, paidCents: 10_000 })))
-      .mockResolvedValueOnce(ok(preview({ refundedCents: 6000, remainderCents: 4000, paidCents: 10_000 })));
-    h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.00 PLN; check the refund again before confirming it', { remainderCents: 4000 })));
-    await h.refund({ amount: '40', yes: true, requestKey: 'typed-1' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
-      orderId: 'order-1', requestKey: 'typed-1', amountCents: 4000, expectedRemainderCents: 10_000, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    let remainderCents = 10_000;
+    h.orderRefundPreview.mockImplementation(async () => ok(preview({ paidCents: 10_000, refundedCents: 10_000 - remainderCents, remainderCents })));
+    const written: unknown[] = [];
+    h.createOrderRefund.mockImplementation(async (input) => {
+      if (input.expectedRemainderCents !== remainderCents) {
+        return err(appError('conflict', `The refundable remainder is now ${String(remainderCents / 100)}.00 PLN; check the refund again before confirming it`, { remainderCents }));
+      }
+      written.push(input);
+      return ok({ refund: refundView({ kind: 'amount', amountCents: input.amountCents ?? 0 }), created: true });
     });
-    expect(h.orderRefundPreview).toHaveBeenCalledTimes(2);
-    expect(errorSpy.mock.calls.map((call) => String(call[0]))).toContain(refundPreviewLines(preview({ refundedCents: 6000, remainderCents: 4000, paidCents: 10_000 })));
+
+    await h.refund({ amount: '40' });
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 40.00 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --amount 40 --remainder 100.00 --yes');
+    remainderCents = 4000;
+    await h.refund({ amount: '40', remainder: '100.00', yes: true, requestKey: 'typed-1' });
+
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-1', requestKey: 'typed-1', amountCents: 4000, expectedRemainderCents: 10_000, restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    });
+    expect(written).toStrictEqual([]);
+    expect(errorSpy.mock.calls.map((call) => String(call[0]))).toContain(refundPreviewLines(preview({ paidCents: 10_000, refundedCents: 6000, remainderCents: 4000 })));
     expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.00 PLN; check the refund again before confirming it');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('sends a partial refund that covers the whole remainder with stock and the packing list kept, never the full refund defaults', async () => {
+    const h = harness();
+    await h.refund({ amount: '30.99', remainder: '30.99', yes: true, requestKey: 'typed-all' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-1', requestKey: 'typed-all', amountCents: 3099, expectedRemainderCents: 3099, restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    });
   });
 
   it('puts the new preview into the error envelope with --json when the remainder changed', async () => {
     const h = harness(true);
     h.orderRefundPreview.mockResolvedValueOnce(ok(preview())).mockResolvedValueOnce(ok(preview({ remainderCents: 1000 })));
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 10.00 PLN; check the refund again before confirming it', { remainderCents: 1000 })));
-    await h.refund({ amount: '5', yes: true, requestKey: 'typed-json' });
+    await h.refund({ amount: '5', remainder: '30.99', yes: true, requestKey: 'typed-json' });
     expect(printed()).toMatchObject({ ok: false, error: { code: 'conflict', details: { remainderCents: 1000, requestKey: 'typed-json', preview: { remainderCents: 1000 } } } });
   });
 
@@ -195,8 +224,11 @@ describe('order refund command', () => {
     });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
     const human = harness();
-    await human.refund({ yes: true, amount: '5' }, () => 'made-1');
-    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'made-1', amountCents: 500, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    await human.refund({ yes: true, amount: '5', remainder: '30.99' }, () => 'made-1');
+    expect(human.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-1', requestKey: 'made-1', amountCents: 500, expectedRemainderCents: 3099, restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    });
     expect(errorSpy).toHaveBeenCalledWith('request key: made-1 (after a network error repeat with --request-key made-1; the same key never refunds twice)');
   });
 
@@ -204,15 +236,17 @@ describe('order refund command', () => {
     const h = harness();
     await h.refund({ yes: true, requestKey: 'full-2' });
     expect(h.createOrderRefund).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --remainder 30.99 to confirm');
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --remainder 30.99 --request-key full-2 --yes');
     expect(String(errorSpy.mock.calls[1]?.[0])).toContain('paid 40.99 PLN, refunded 10.00 PLN, remaining 30.99 PLN');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
   });
 
-  it('refuses --remainder together with --amount before any request', async () => {
+  it('refuses a partial refund with --yes but without --remainder, shows the preview and names the command to confirm with, never confirming the fresh remainder', async () => {
     const h = harness();
-    await h.refund({ amount: '5', remainder: '30.99', yes: true });
+    await h.refund({ amount: '5', yes: true, requestKey: 'part-2' });
     expect(h.createOrderRefund).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 5.00 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --amount 5 --remainder 30.99 --request-key part-2 --yes');
+    expect(String(errorSpy.mock.calls[1]?.[0])).toContain('paid 40.99 PLN, refunded 10.00 PLN, remaining 30.99 PLN');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
   });
 
@@ -229,7 +263,7 @@ describe('order refund command', () => {
     expect(printed()).toEqual({ ok: true, data: { refund: refundView(), created: true, requestKey: 'json-1' } });
     logSpy.mockClear();
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'Another refund of this order is still waiting to reach the payment provider')));
-    await h.refund({ yes: true, amount: '5', requestKey: 'json-2' });
+    await h.refund({ yes: true, amount: '5', remainder: '30.99', requestKey: 'json-2' });
     expect(printed()).toEqual({
       ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider', details: { requestKey: 'json-2' } },
     });

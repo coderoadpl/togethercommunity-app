@@ -451,7 +451,7 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.orderRefundPreview.mockReset().mockResolvedValue(ok({
     orderId: 'order-number', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN',
-    mode: 'live', remainderSource: 'provider', remainderWithheld: false, returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
+    mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
     fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
     waitingRefundId: null,
   }));
@@ -2369,8 +2369,8 @@ describe('shipping CLI', () => {
 });
 
 describe('staff refund CLI', () => {
-  it('parses the refund flags and sends only the choices staff changed', async () => {
-    await run('order', 'refund', 'order-number', '--amount', '12.50', '--reason', 'Damaged cover', '--no-restock', '--keep-on-packing-list', '--request-key', 'retry-7', '--yes');
+  it('parses the refund flags and sends a partial refund with stock and the packing list kept', async () => {
+    await run('order', 'refund', 'order-number', '--amount', '12.50', '--remainder', '40.99', '--reason', 'Damaged cover', '--request-key', 'retry-7', '--yes');
     expect(h.orderRefundPreview).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
     expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
       orderId: 'order-number', requestKey: 'retry-7', amountCents: 1250, expectedRemainderCents: 4099, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
@@ -2382,7 +2382,7 @@ describe('staff refund CLI', () => {
   it('leaves the full-refund defaults to the server and refuses without --yes', async () => {
     await run('--json', 'orders', 'refund', 'order-number', '--request-key', 'auto-1');
     expect(h.createOrderRefund).not.toHaveBeenCalled();
-    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; repeat the command with --yes --remainder 40.99 to confirm' } });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; to confirm, repeat it as: order refund order-number --remainder 40.99 --request-key auto-1 --yes', details: { command: 'order refund order-number --remainder 40.99 --request-key auto-1 --yes' } } });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
     process.exitCode = 0;
     logSpy.mockClear();

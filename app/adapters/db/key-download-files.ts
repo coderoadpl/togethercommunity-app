@@ -272,8 +272,9 @@ const stagedSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => a
 const distinctIds = (ids: readonly string[]): string[] => [...new Set(ids)].sort();
 
 /**
- * Locks first and checks the hold in a statement of its own: a check inside the locking statement would still read the
- * snapshot taken before its lock wait, and so miss a proposal that took the file while it waited.
+ * The caller must already hold the rows. The hold is checked in a statement after the locking one because a check inside
+ * the locking statement would read the snapshot taken before its lock wait, and so miss a proposal that took the file
+ * while it waited.
  */
 const unheldAmong = async (tx: Db, tenantId: string, ids: readonly string[], now: string): Promise<Set<string>> => {
   if (ids.length === 0) return new Set();

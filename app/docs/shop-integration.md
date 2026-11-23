@@ -48,7 +48,9 @@ header from a protected secret store. An auth request that carries the session
 cookie counts as a browser, so a client with a cookie jar that still holds the
 session cookie gets no token (no `set-auth-token` header, no body `token`) on a
 later sign-in; it keeps using that cookie, or signs in from a client without a
-cookie jar to receive a token. Use the actual workspace origin, such as
+cookie jar to receive a token. A backend that signs in to obtain a bearer token
+must therefore send neither a session cookie nor browser fetch metadata
+(`Sec-Fetch-*` headers) on that sign-in request. Use the actual workspace origin, such as
 `https://acme.togethercommunity.app`, throughout this guide. The tenantless
 platform host intentionally ignores the tenant selector; a tenant header is not
 a substitute for selecting the correct workspace host.

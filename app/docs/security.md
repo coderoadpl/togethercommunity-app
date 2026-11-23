@@ -50,7 +50,9 @@ a cookie jar (a cookie-keeping HTTP session object, `curl -b`/`-c`) is treated
 as a browser once its jar holds the session cookie: a later sign-in that still
 sends that cookie gets the new session cookie but no `set-auth-token` header and
 no body `token`. Such a client keeps using the session cookie it holds, or signs
-in from a client without a cookie jar.
+in from a client without a cookie jar. A backend that signs in to obtain a
+bearer token must send neither a session cookie nor browser fetch metadata
+(`Sec-Fetch-*` headers) on that request, or it gets no token to hand on.
 The auth end-to-end run (`scripts/auth-e2e.ts`) signs a browser in with a
 virtual passkey, by identifier and as a discoverable credential, and asserts
 that each `/passkey/verify-authentication` response (whose unstripped body
@@ -72,7 +74,10 @@ Remaining gaps (not closed by this change):
   before the page posts it to `/api/auth/one-tap/callback`. A script already
   running on the page can intercept that credential and exchange it for a
   session. A server-issued nonce bound to the One Tap prompt would close this
-  and is the follow-up.
+  and is the follow-up. The One Tap leg of `scripts/two-factor-e2e.ts` bypasses
+  the login document's content security policy and uses a fake Google provider,
+  so it proves the callback and the response it gets, not that the production
+  prompt loads (see [the Google smoke notes](social-google-smoke.md)).
 
 Better Auth's provider-token routes `/get-access-token`, `/refresh-token` and
 `/account-info` are disabled (`disabledPaths`, answering 404): the app never

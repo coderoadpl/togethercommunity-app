@@ -1271,6 +1271,7 @@ export interface Messages {
       submitWithoutAmount: string;
       submitting: string;
       errorConflict: string;
+      errorRemainderChanged: (params: { remainder: string }) => string;
       errorRateLimited: string;
     };
     invoiceDownload: string;

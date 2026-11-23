@@ -1668,24 +1668,34 @@ the larger of the refunds Stripe lists for the payment (not `failed` or
 money; when Stripe's list cannot be read, the platform's records decide and the
 preview says so, and Stripe still refuses anything above the charge.
 
-- **Full refund** (no amount): stored as a remainder refund. The dispatcher
-  applies the sold-out coverage rule with the paid amount as the target, so a
-  refund made in the Stripe Dashboard in the meantime is never paid twice, and a
-  dashboard refund that fails later is paid again. The shortfall of another
-  staff refund of the order that fails after the full refund was requested
-  (one still committed at that moment or one requested later) is left to that
-  refund, whose staff alert asks for the money to be returned another way, so
-  it is never paid twice. A staff refund that had already failed when the full
-  refund was requested is part of its remainder, so the full refund pays it;
-  the row keeps the ids of those failed refunds from the moment of the
-  request.
+- **Every staff refund issues exactly its stored amount, once.** Its own
+  Stripe refund is the one whose metadata `refundJobId` names the staff refund,
+  or whose id was stored. A staff refund never re-derives its amount from other
+  refunds, never pays another refund's shortfall and never reopens because
+  another refund failed; a staff refund that fails alerts staff about its own
+  amount.
+- **Full refund** (no amount): the remainder computed under the order lock when
+  it is requested, stored as a remainder refund (`kind = remainder`, which
+  offers the stock and packing choices below). The request names the remainder
+  staff confirmed in `expectedAmountCents`; when the remainder changed since
+  (another refund failed, was issued or was made in the Stripe Dashboard), the
+  request is refused with `conflict`, a message naming the current remainder
+  and `details.remainderCents`, and nothing is stored. A dashboard refund made
+  after the request that leaves less on the charge than the stored amount makes
+  Stripe refuse the refund: it ends `failed`, nothing is refunded, no buyer
+  e-mail is sent and the staff alert names the stored amount and says the
+  provider refused it. A dashboard refund that fails after a staff refund was
+  paid is not paid again by the platform.
 - **Partial refund** (any typed amount, also one equal to the remainder):
-  stored as an amount refund and issued exactly once, never more than the typed
-  amount. Its own Stripe refund is the one whose metadata `refundJobId` names
-  the staff refund, or whose id was stored. Once dashboard refunds that have
-  succeeded cover the whole charge it ends `skipped_refunded`; while such a
-  dashboard refund is still pending it keeps watching, and it issues its amount
-  if that refund fails. Partial refunds may follow each other.
+  stored as an amount refund; `expectedAmountCents` may be left out or must
+  equal the amount. Partial refunds may follow each other.
+- **Already refunded**: when Stripe answers that the charge is already refunded
+  (dashboard refunds cover it), the staff refund has no refund of its own and
+  keeps watching. Once dashboard refunds that have succeeded cover the whole
+  charge it ends `skipped_refunded`; while such a dashboard refund is still
+  pending it keeps watching, and it issues its own amount if that refund fails,
+  waiting an hour at a time while another staff refund of the order is waiting
+  to reach Stripe.
 - **One at a time**: at most one staff refund of an order may wait to reach
   Stripe (`pending`, `running`, `blocked_permission`); a second one is refused
   with `conflict` until the first is accepted or failed. Every request carries
@@ -1734,7 +1744,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 | Method and path | Purpose |
 |---|---|
 | `GET /api/orders/:orderId/refund-preview` | Paid, refunded and remaining amounts, currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, the default choices and any refund still waiting |
-| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, reason?, restock?, removeFromPackingList? }` → `{ refund, created }` |
+| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, reason?, restock?, removeFromPackingList? }` (`expectedAmountCents` required without `amountCents`) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
 The routes follow the origin and CSRF policy of other Studio writes and are
@@ -1763,7 +1773,13 @@ refusal, from the view's `permissionBlockedAt`), and **Ship anyway** in the deli
 took off the packing list. The **Refund** action appears only to an owner or
 admin with a verified e-mail outside impersonation, for an order the preview
 can refund; while another refund of the order waits for Stripe it stays
-disabled with the reason. The dialog refunds the whole remainder by default;
+disabled with the reason. The dialog refunds the whole remainder it shows by
+default and sends that remainder as `expectedAmountCents`; when the server
+answers that the remainder changed, the dialog reloads the preview, names the
+new remainder and lets staff confirm it. Another refund still waiting for
+Stripe disables the refund button and offers Close; any other `conflict`
+(nothing left, an order that can no longer be refunded, a request key used for
+other values) shows the server's message the same way;
 **Partial amount** takes a decimal amount in the order's currency and names the
 remainder when the amount is refused; it always asks to keep stock and the
 packing list as they are, so a remainder that shrank after the dialog opened
@@ -1780,7 +1796,7 @@ on a card opens the order while the buyer name still opens the member.
 
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview <orderId>
-pnpm --silent run cli --tenant acme order refund <orderId> --yes
+pnpm --silent run cli --tenant acme order refund <orderId> --yes --remainder 40.99
 pnpm --silent run cli --tenant acme order refund <orderId> --amount 12.50 --reason 'Damaged cover' --yes
 pnpm --silent run cli --tenant acme order ship-anyway <orderId>
 ```

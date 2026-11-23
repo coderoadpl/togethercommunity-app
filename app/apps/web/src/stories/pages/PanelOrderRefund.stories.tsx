@@ -77,14 +77,14 @@ const refundStory = (state: RefundState): Story => ({
   },
 });
 
-// A capture that pins crypto.randomUUID to this key gets the refusal a reused request key answers.
+// A capture that pins crypto.randomUUID to this key gets the refusal a refund still waiting for the provider answers.
 const REFUSED_REQUEST_KEY = 'story-refused-request';
 
 export const Paid: Story = refundStory({
   order: {}, staffRefunds: [], refunded: 0, preview: {},
   calls: {
-    [`createOrderRefund:[{"orderId":"${ORDER_ID}","removeFromPackingList":true,"requestKey":"${REFUSED_REQUEST_KEY}","restock":true}]`]: {
-      ok: false, error: { code: 'conflict', message: 'This refund request key was already used' },
+    [`createOrderRefund:[{"expectedAmountCents":24900,"orderId":"${ORDER_ID}","removeFromPackingList":true,"requestKey":"${REFUSED_REQUEST_KEY}","restock":true}]`]: {
+      ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', details: { waitingRefund: true } },
     },
   },
 });

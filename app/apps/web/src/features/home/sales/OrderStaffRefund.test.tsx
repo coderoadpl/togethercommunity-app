@@ -60,6 +60,7 @@ const owner: PanelContextValue = { tenant: { id: 't1', slug: 'acme', name: 'Acme
 const requestBodySchema = z.object({
   requestKey: z.string(),
   amountCents: z.number().optional(),
+  expectedAmountCents: z.number().optional(),
   reason: z.string().optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
@@ -186,7 +187,7 @@ describe('staff refund dialog', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, reason: 'The buyer cancelled before shipping', restock: true, removeFromPackingList: true });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(calls.detail).toBeGreaterThan(1));
   });
@@ -204,7 +205,7 @@ describe('staff refund dialog', () => {
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), restock: false, removeFromPackingList: false });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: false });
   });
 
   it('requests a partial refund of the typed amount that keeps stock and packing as they are even if the remainder shrank meanwhile', async () => {
@@ -325,9 +326,9 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByRole('button', { name: en.common.cancel })).toBeEnabled();
   });
 
-  it('shows a conflict refusal with the refund button disabled and a close button until the request changes', async () => {
+  it('shows a waiting-refund refusal with the refund button disabled and a close button until the request changes', async () => {
     const calls = serve({ order: paidOrder });
-    acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Refused' } }, { status: 409 }));
+    acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Refused', details: { waitingRefund: true } } }, { status: 409 }));
     await renderDetail();
     const dialog = await openDialog();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
@@ -341,6 +342,40 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByTestId('staff-refund-submit')).toBeEnabled();
     expect(within(dialog).getByRole('button', { name: en.common.cancel })).toBeEnabled();
     expect(calls.refunds).toHaveLength(1);
+  });
+
+  it('shows the server message of another conflict that retrying cannot help, with the refund button disabled', async () => {
+    const calls = serve({ order: paidOrder });
+    acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Nothing is left to refund on this order' } }, { status: 409 }));
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent('Nothing is left to refund on this order');
+    expect(within(dialog).getByTestId('staff-refund-submit')).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: en.common.close })).toBeEnabled();
+  });
+
+  it('shows the new remainder after a refusal says it changed and sends the refund again only for that remainder', async () => {
+    const calls = serve({ order: paidOrder });
+    server.use(http.get('/api/orders/o1/refund-preview', () => {
+      calls.preview += 1;
+      return HttpResponse.json({ ok: true, data: calls.preview === 1 ? preview : { ...preview, refundedCents: 5000, remainderCents: 19900 } });
+    }));
+    acceptRefunds(calls, (attempt) => attempt === 1
+      ? HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 199.00 PLN', details: { remainderCents: 19900 } } }, { status: 409 })
+      : undefined);
+    await renderDetail();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
+    expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(messages.errorRemainderChanged({ remainder: pln(19900) }));
+    const resend = await within(dialog).findByRole('button', { name: named(messages.submit({ amount: pln(19900) })) });
+    expect(resend).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: en.common.cancel })).toBeEnabled();
+
+    await userEvent.click(resend);
+    await waitFor(() => expect(calls.refunds).toHaveLength(2));
+    expect(calls.refunds.map((body) => body.expectedAmountCents)).toStrictEqual([24900, 19900]);
+    expect(calls.refunds[1]?.requestKey).toBe(calls.refunds[0]?.requestKey);
   });
 
   it('keeps the refusal outside the scrolling content, right above the buttons', async () => {
@@ -400,7 +435,7 @@ describe('staff refund dialog', () => {
     expect(within(consequences).queryByText(messages.consequenceEmail({ buyer: 'Alex Smith' }))).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), restock: false, removeFromPackingList: true });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: true });
   });
 
   it('warns about a shipment and offers the packing option disabled with its reason', async () => {

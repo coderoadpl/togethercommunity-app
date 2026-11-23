@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { SALES_LINK_TIME_ZONE, minorUnitsFromDecimal, productLines, type OrderListItem, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { errorCodeOf, errorDetailsOf, localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { errorCodeOf, errorDetailsOf, localizePanelError, serverMessageOf, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { currencyFractionDigits, formatDate, formatMinorUnitsDecimal, formatMinorUnitsPrice } from '../../../lib/format.js';
 import {
   RefundAmountField,
@@ -70,6 +70,8 @@ const amountMessage = (check: AmountCheck, t: Messages, currency: string, remain
 };
 
 const remainderDetailSchema = z.object({ remainderCents: z.number().int().nonnegative() });
+
+const waitingDetailSchema = z.object({ waitingRefund: z.literal(true) });
 
 const currencySymbol = (currency: string, language: string): string =>
   new Intl.NumberFormat(language, { style: 'currency', currency }).formatToParts(0).find((part) => part.type === 'currency')?.value ?? currency;
@@ -142,6 +144,9 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       await queryClient.invalidateQueries(actions.ordersInvalidates());
       onClose();
     },
+    onError: async (error) => {
+      if (errorCodeOf(error) === 'conflict') await queryClient.invalidateQueries(actions.ordersInvalidates());
+    },
   });
 
   const pending = refund.isPending;
@@ -164,7 +169,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
     refund.mutate({
       orderId: order.id,
       requestKey,
-      ...(partial ? { amountCents: check.amountCents } : {}),
+      ...(partial ? { amountCents: check.amountCents } : { expectedAmountCents: remainderCents }),
       ...(note === '' ? {} : { reason: note }),
       ...(partial
         ? { restock: false, removeFromPackingList: false }
@@ -180,9 +185,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   };
 
   const conflict = refund.isError && errorCodeOf(refund.error) === 'conflict';
+  const changedRemainder = conflict ? remainderDetailSchema.safeParse(errorDetailsOf(refund.error)) : null;
+  const blocked = conflict && changedRemainder?.success !== true;
   const submitError = (() => {
     if (!refund.isError) return null;
-    if (conflict) return messages.errorConflict;
+    if (changedRemainder?.success === true) return messages.errorRemainderChanged({ remainder: money(changedRemainder.data.remainderCents) });
+    if (conflict) return waitingDetailSchema.safeParse(errorDetailsOf(refund.error)).success ? messages.errorConflict : serverMessageOf(refund.error) ?? messages.errorConflict;
     const code = errorCodeOf(refund.error);
     if (code === 'rate_limited') return messages.errorRateLimited;
     if (code === 'validation') {
@@ -241,14 +249,14 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       <Typography variant="body2">{messages.footerFinal}</Typography>
     </RefundFinalNote>
   );
-  const cancelButton = <Button key="cancel" variant="outlined" onClick={close} disabled={pending}>{conflict ? t.common.close : t.common.cancel}</Button>;
+  const cancelButton = <Button key="cancel" variant="outlined" onClick={close} disabled={pending}>{blocked ? t.common.close : t.common.cancel}</Button>;
   const submitButton = (
     <Button
       key="submit"
       variant="contained"
       color="primary"
       startIcon={<RefundIcon />}
-      disabled={pending || conflict || (partial && !check.ok)}
+      disabled={pending || blocked || (partial && !check.ok)}
       onClick={submit}
       data-testid="staff-refund-submit"
     >

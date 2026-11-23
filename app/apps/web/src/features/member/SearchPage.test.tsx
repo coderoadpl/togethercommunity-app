@@ -27,10 +27,10 @@ const post = (input: {
   authorDisplay: `Autor ${input.id}`,
   authorIsStaff: false,
   authorAvatarUrl: null,
-  body: 'Silnik i zabudowa',
+  body: 'Engine and build-out',
   bodyFormat: 'plain',
-  bodyHtml: 'Silnik i zabudowa',
-  bodyPlainText: 'Silnik i zabudowa',
+  bodyHtml: 'Engine and build-out',
+  bodyPlainText: 'Engine and build-out',
   createdAt: '2026-08-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
@@ -45,7 +45,7 @@ const hit = (input: {
 }): PostSearchHit => ({
   post: post(input),
   lessonId: input.contextId,
-  snippet: 'Silnik i zabudowa',
+  snippet: 'Engine and build-out',
 });
 
 const navigationCourse = (courseId: string) => ({
@@ -190,7 +190,7 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     const spaceGroup = await screen.findByTestId('search-space-s1');
     expect(within(spaceGroup).getByRole('heading', { name: 'General' })).toBeInTheDocument();
@@ -205,7 +205,7 @@ describe('SearchPage', () => {
       'href',
       '/my/courses/c1/lessons/l1',
     );
-    expect(within(lessonGroup).getByText('Silnik').tagName).toBe('MARK');
+    expect(within(lessonGroup).getByText('Engine').tagName).toBe('MARK');
   });
 
   it.each([
@@ -221,7 +221,7 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     expect(await screen.findByTestId('search-hit-h2')).toHaveAttribute('href', href);
   });
@@ -242,7 +242,7 @@ describe('SearchPage', () => {
       const user = userEvent.setup();
 
       await renderSearch();
-      await user.type(screen.getByTestId('search-input'), 'silnik');
+      await user.type(screen.getByTestId('search-input'), 'engine');
 
       expect(await screen.findByTestId('search-hit-h5')).toHaveAttribute('href', '/my/courses/c1/lessons/l-c1');
       expect(screen.queryByTestId('search-hit-h2')).not.toBeInTheDocument();
@@ -262,7 +262,7 @@ describe('SearchPage', () => {
       const user = userEvent.setup();
 
       await renderSearch();
-      await user.type(screen.getByTestId('search-input'), 'silnik');
+      await user.type(screen.getByTestId('search-input'), 'engine');
 
       expect(await screen.findByTestId('search-hit-h2')).toHaveAttribute('href', '/my/courses/c2/lessons/l1');
 
@@ -279,7 +279,7 @@ describe('SearchPage', () => {
       const user = userEvent.setup();
 
       await renderSearch();
-      await user.type(screen.getByTestId('search-input'), 'silnik');
+      await user.type(screen.getByTestId('search-input'), 'engine');
 
       const section = await screen.findByTestId('search-unresolved');
       expect(within(section).getByTestId('search-hit-h2')).not.toHaveAttribute('href');
@@ -296,7 +296,7 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     expect(await screen.findByTestId('search-hit-h3')).toHaveAttribute(
       'href',
@@ -325,7 +325,7 @@ describe('SearchPage', () => {
     expect(screen.getByTestId('search-hint')).toHaveTextContent(en.search.hint);
     expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
 
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     const empty = await screen.findByTestId('search-empty');
     expect(empty).toHaveTextContent(en.search.empty);
@@ -342,7 +342,7 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     const section = await screen.findByTestId('search-unresolved');
     expect(within(section).getByRole('heading', { name: en.search.unresolvedHeading })).toBeInTheDocument();
@@ -363,7 +363,7 @@ describe('SearchPage', () => {
     const user = userEvent.setup();
 
     await renderSearch();
-    await user.type(screen.getByTestId('search-input'), 'silnik');
+    await user.type(screen.getByTestId('search-input'), 'engine');
 
     expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });

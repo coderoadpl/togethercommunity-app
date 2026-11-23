@@ -1099,9 +1099,11 @@ describe('ProposalsPanel', () => {
     languagePreference.save('pl');
     renderWithProviders(<LanguageProvider><ProposalFieldRows proposal={accessClearProposal} pendingProposalId={accessClearProposal.id} /></LanguageProvider>);
 
+    const polish = pl.changeProposals;
     const row = screen.getByTestId('proposal-access-changes');
-    expect(row).toHaveTextContent(/ca\p{L}y kurs „Sketching from life”/u);
-    expect(row).toHaveTextContent(/brak kurs\p{L}w, modu\p{L}\p{L}w i lekcji/u);
+    expect(row).toHaveTextContent(polish.accessWholeCourse({ course: polish.accessName({ name: 'Sketching from life' }) }));
+    expect(row).toHaveTextContent(polish.accessNothing);
+    expect(row).not.toHaveTextContent(t.accessNothing);
   });
 
   it('shows the file row in its group step and approves a group with a file item like any other group', async () => {

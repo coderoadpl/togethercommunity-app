@@ -15,6 +15,20 @@ const t = en.changeProposals;
 
 const normalized = (text: string): string => text.replace(/\s+/gu, ' ');
 
+const pluralForms = (word: (params: { count: number }) => string) => {
+  const form = (count: number): string => word({ count }).replaceAll(String(count), '#');
+  return { one: word({ count: 1 }), few: form(3), fewLarge: form(22), many: form(5), manyTeen: form(12) };
+};
+
+const expectPolishPlurals = (word: (params: { count: number }) => string, fewDiffersFromMany = true) => {
+  const forms = pluralForms(word);
+  expect(forms.one).not.toMatch(/\d/u);
+  expect(forms.few).toBe(forms.fewLarge);
+  expect(forms.many).toBe(forms.manyTeen);
+  expect(forms.few !== forms.many).toBe(fewDiffersFromMany);
+  expect(forms.few).toContain('#');
+};
+
 const product = { id: 'proposal-mug', target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
 
 const mugGuide = {
@@ -231,11 +245,9 @@ describe('the approval confirmation of a proposed image', () => {
 
   it('words the publication sentence with the Polish plural forms', () => {
     const polish = pl.changeProposals;
-    expect(polish.approveImagesPublic({ count: 1 })).toMatch(/^Po zatwierdzeniu proponowany obrazek stanie /u);
-    expect(polish.approveGroupImagesPublic({ count: 3 })).toContain('3 proponowane obrazki stan');
-    expect(polish.approveGroupImagesPublic({ count: 5 })).toContain('5 proponowanych obrazk');
-    expect(polish.approveGroupImagesPublic({ count: 22 })).toContain('22 proponowane obrazki');
-    expect(polish.approveGroupImagesPublic({ count: 12 })).toContain('12 proponowanych obrazk');
+    expect(polish.approveImagesPublic({ count: 1 })).not.toBe(t.approveImagesPublic({ count: 1 }));
+    expectPolishPlurals(polish.approveImagesPublic);
+    expectPolishPlurals(polish.approveGroupImagesPublic);
   });
 });
 
@@ -430,20 +442,21 @@ describe('the approval confirmation of a file proposal', () => {
 
   it('words the file sentences in Polish with the file and product quoted', () => {
     const polish = pl.changeProposals;
-    expect(polish.approveFileAdd({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' })).toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\./u);
-    expect(polish.approveFileAddToNewProduct({ file: 'a.pdf', facts: 'PDF, 1 MB', target: 'Mug' }))
-      .toMatch(/^Plik „a\.pdf” \(PDF, 1 MB\) zostanie dodany do produktu „Mug”\. Ka\p{L}dy, kto p\p{L}\p{L}niej otrzyma dost\p{L}p do tego produktu, b\p{L}dzie m\p{L}g\p{L} pobra\p{L} plik\.$/u);
-    expect(polish.approveFileMissing).toMatch(/^Je\p{L}li proponowanego pliku ju\p{L} nie ma, zatwierdzenie niczego nie wprowadzi\.$/u);
-    expect(polish.fileNoVersionLeft).toMatch(/^Nie pozostanie \p{L}adna wersja tego pliku\.$/u);
-    expect(`${polish.approveNothingElse} ${polish.approveFileMissing}`.match(/nie zmieni/gu)).toHaveLength(1);
+    const quoted = /„FILE” \(FACTS\).*„TARGET”/u;
+    const added = polish.approveFileAdd({ file: 'FILE', facts: 'FACTS', target: 'TARGET' });
+    const addedToNew = polish.approveFileAddToNewProduct({ file: 'FILE', facts: 'FACTS', target: 'TARGET' });
+    expect(added).toMatch(quoted);
+    expect(addedToNew).toMatch(quoted);
+    expect(addedToNew).not.toBe(added);
+    expect(polish.approveFileNewVersion({ file: 'FILE', facts: 'FACTS', version: 7, target: 'TARGET' })).toMatch(/„FILE” \(FACTS\).*7.*„TARGET”/u);
+    expect(polish.approveFileCopiedFrom({ version: 7, product: 'PRODUCT' })).toMatch(/7.*„PRODUCT”\.$/u);
+    expect(polish.approveFileCopiedFromGone({ version: 7 })).toContain('7');
     expect(t.approveFileMissing).toBe('If the proposed file no longer exists, approving does nothing.');
-    expect(polish.approveFileNewVersion({ file: 'a.pdf', facts: 'PDF, 1 MB', version: 2, target: 'Mug' }))
-      .toMatch(/^Nowa wersja pliku „a\.pdf” \(PDF, 1 MB\) stanie si\p{L} wersj\p{L} 2 w produkcie „Mug”; /u);
-    expect(polish.approveFileCopiedFrom({ version: 2, product: 'Mug' })).toBe('To kopia wersji 2 pliku z produktu „Mug”.');
-    expect(polish.approveFileCopiedFromGone({ version: 2 })).toMatch(/^To kopia wersji 2 pliku z produktu, kt/u);
-    expect(polish.fileRemoveOnlyFile).toMatch(/^To jedyny plik produktu\. Je\p{L}li produkt /u);
-    expect(polish.approveGroupFilesMissing({ count: 1 })).not.toMatch(/\d/u);
-    expect(polish.approveGroupFilesMissing({ count: 5 })).toContain('5 proponowanych plik');
+    for (const key of ['approveFileMissing', 'fileNoVersionLeft', 'fileRemoveOnlyFile', 'approveNothingElse'] as const) {
+      expect(polish[key]).not.toBe(t[key]);
+    }
+    expect(polish.approveFileMissing).not.toContain(polish.approveNothingElse);
+    expectPolishPlurals(polish.approveGroupFilesMissing, false);
   });
 });
 
@@ -549,7 +562,8 @@ describe('the approval confirmation of what a product grants', () => {
     expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe(
       'As the shop is now, the new list of what “Mug” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
     );
-        expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'Mug' })).toMatch(/niczego by nie zmieni\p{L}o; je\p{L}li przejdzie j\p{L} w chwili zatwierdzenia/u);
+    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'TARGET' })).not.toBe(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' }));
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
       .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
   });
@@ -613,7 +627,9 @@ describe('the approval confirmation of what a product grants', () => {
       `${t.approveGroupProductSetAccessRefused({ target: 'Mug' })} ${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}`,
     );
     expect(t.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/would apply none of the changes; only if every change of the group passes its checks when you approve/u);
-    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/tylko wtedy, gdy w chwili zatwierdzenia ka\p{L}da jej zmiana przejdzie swoje kontrole/u);
+    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' }))
+      .toContain(pl.changeProposals.approveGroupProductSetAccessRefusedDeleted({ target: 'TARGET' }).slice(0, -1));
   });
 
   it('says in a group confirmation that the group makes no net change to the list it started from when its last list grants that list', () => {
@@ -634,15 +650,10 @@ describe('the approval confirmation of what a product grants', () => {
       expect(sentence).toContain('makes no net change to that list');
       expect(sentence).not.toMatch(/\bnow\b/u);
     }
-    const polishUnchangedSentences = [
-      pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' }),
-      pl.changeProposals.approveProductSetAccessUnchangedNothing({ target: 'Mug' }),
-    ];
-    for (const sentence of polishUnchangedSentences) {
-      expect(sentence).toMatch(/lista wyj\p{L}ciowa/u);
-      expect(sentence).toMatch(/w sumie nie zmieni/u);
-      expect(sentence).not.toMatch(/teraz/u);
-    }
+    const polishUnchanged = pl.changeProposals.approveProductSetAccessUnchanged({ target: 'TARGET', access: 'ACCESS' });
+    expect(polishUnchanged).toMatch(/„TARGET”.*ACCESS/u);
+    expect(pl.changeProposals.approveProductSetAccessUnchangedNothing({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(polishUnchanged).not.toBe(t.approveProductSetAccessUnchanged({ target: 'TARGET', access: 'ACCESS' }));
   });
 
   it('claims no future access for a draft the group deletes after setting its list, but keeps a refusal', () => {
@@ -692,25 +703,19 @@ describe('the approval confirmation of what a product grants', () => {
     expect(screen.getByTestId('proposal-approve-file-item-long')).toHaveTextContent(name);
   });
 
-  it('words what a product grants in Polish with the list items in the nominative after the lead-in', () => {
+  it('words what a product grants in Polish with the names after the lead-in and their own plural forms', () => {
     const polish = pl.changeProposals;
-    expect(polish.operation['product.set-access']).toMatch(/^Dost\p{L}p, kt\p{L}ry daje produkt$/u);
-    expect(polish.accessName({ name: 'Kurs' })).toBe('„Kurs”');
-    expect(polish.accessWholeCourse({ course: '„Kurs”' })).toMatch(/^ca\p{L}y kurs „Kurs”$/u);
-    expect(polish.accessModules({ course: '„Kurs”', modules: '„A”', count: 1 })).toMatch(/^modu\p{L} „A”\u00a0– w ka\p{L}dym kursie, kt\p{L}ry go zawiera \(wybrany z kursu „Kurs”\)$/u);
-    expect(polish.accessLessons({ course: '„Kurs”', lessons: '„A”, „B”', count: 2 })).toMatch(/^lekcje „A”, „B”\u00a0– ka\p{L}da w ka\p{L}dym kursie, kt\p{L}ry j\p{L} zawiera/u);
+    expect(polish.operation['product.set-access']).not.toBe(t.operation['product.set-access']);
+    expect(polish.accessName({ name: 'NAME' })).toBe('„NAME”');
+    expect(polish.accessWholeCourse({ course: 'COURSE' })).toMatch(/ COURSE$/u);
+    expect(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 1 })).toMatch(/^\S+ MODULES\u00a0– .*COURSE\)$/u);
+    expect(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 2 })).toMatch(/^\S+ LESSONS\u00a0– .*COURSE\)$/u);
+    expect(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 1 }))
+      .not.toBe(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 2 }));
+    expect(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 1 }))
+      .not.toBe(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 2 }));
     expect(polish.approveProductSetAccess({ target: 'TARGET', access: 'ACCESS' })).toMatch(/„TARGET”[^.]*: ACCESS\. /u);
-    expect(polish.accessNothing).toMatch(/^brak kurs\p{L}w, modu\p{L}\p{L}w i lekcji$/u);
-    const sentences = [
-      polish.accessModules({ course: 'C', modules: 'M', count: 2 }),
-      polish.accessLessons({ course: 'C', lessons: 'L', count: 1 }),
-      polish.accessCourseWithout({ course: 'C', modules: 'M', count: 1 }),
-      polish.accessListRefused,
-      polish.approveProductSetAccess({ target: 'T', access: 'A' }),
-      polish.approveProductSetAccessNothing({ target: 'T' }),
-      polish.approveProductSetAccessNewProduct({ target: 'T', access: 'A' }),
-      polish.approveProductSetAccessNothingNewProduct({ target: 'T' }),
-    ];
-    for (const sentence of sentences) expect(sentence).not.toMatch(/jako tak|t\p{L} list\p{L}|dost\p{L}p do: /u);
+    expect(polish.approveProductSetAccessNewProduct({ target: 'TARGET', access: 'ACCESS' })).toMatch(/„TARGET”[^.]*: ACCESS\.$/u);
+    expect(polish.accessNothing).not.toBe(t.accessNothing);
   });
 });

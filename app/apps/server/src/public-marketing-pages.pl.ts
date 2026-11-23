@@ -74,6 +74,7 @@ export const publicMarketingMessagesPl = {
   confirmationPromptTitle: 'Potwierdź zapis',
   confirmationPromptBody: ({ tenant }) => `Potwierdź, że chcesz otrzymywać wiadomości od nadawcy ${tenant}.`,
   confirmationSubmit: 'Potwierdzam zapis',
+  confirmationSubmitPending: 'Potwierdzam…',
   confirmationSuccessTitle: 'Zapis potwierdzony',
   confirmationSuccessBody: ({ tenant }) => `Będziesz otrzymywać wiadomości e-mail od nadawcy ${tenant}. W każdej z nich znajdziesz link do wypisania się.`,
   confirmationExpiredTitle: 'Link nie jest już aktywny',

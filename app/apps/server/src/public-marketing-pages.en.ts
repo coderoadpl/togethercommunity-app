@@ -74,6 +74,7 @@ export const publicMarketingMessagesEn = {
   confirmationPromptTitle: 'Confirm your subscription',
   confirmationPromptBody: ({ tenant }) => `Confirm that you want to receive messages from ${tenant}.`,
   confirmationSubmit: 'Confirm subscription',
+  confirmationSubmitPending: 'Confirming…',
   confirmationSuccessTitle: 'You are subscribed',
   confirmationSuccessBody: ({ tenant }) => `You will receive emails from ${tenant}. Every message has a link to unsubscribe.`,
   confirmationExpiredTitle: 'This link is no longer active',

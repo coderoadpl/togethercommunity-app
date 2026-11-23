@@ -72,6 +72,7 @@ export interface PublicMarketingMessages {
   confirmationPromptTitle: string;
   confirmationPromptBody: (input: { tenant: string }) => string;
   confirmationSubmit: string;
+  confirmationSubmitPending: string;
   confirmationSuccessTitle: string;
   confirmationSuccessBody: (input: { tenant: string }) => string;
   confirmationExpiredTitle: string;

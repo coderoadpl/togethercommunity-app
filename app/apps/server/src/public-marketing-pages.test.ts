@@ -686,6 +686,21 @@ describe('sign-up pages', () => {
     expect(html).not.toContain('button-link--primary"');
   });
 
+  it.each([
+    ['en', 'Confirming…', 'Confirm subscription'],
+    ['pl', publicMarketingMessagesPl.confirmationSubmitPending, publicMarketingMessagesPl.confirmationSubmit],
+  ] as const)('marks the %s confirmation prompt as pending on submit while the plain form post keeps working', (language, pending, submit) => {
+    const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language, path: '/marketing/confirm/token', state: 'prompt' });
+    expect(html).toContain(`<form class="actions" method="post" action="/marketing/confirm/token?lang=${language}" data-pending-label="${pending}"><button type="submit">${submit}</button></form>`);
+    expect(html).toContain('<script nonce="test-nonce">');
+    expect(html).toContain("document.querySelector('form[data-pending-label]')");
+  });
+
+  it.each(['success', 'expired'] as const)('adds no pending script to the %s confirmation page', (state) => {
+    const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'en', path: '/marketing/confirm/token', state });
+    expect(html).not.toContain('<script');
+  });
+
   it('offers the sign-up form as the primary action on an expired link and escapes its address', () => {
     const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'pl', path: '/marketing/confirm/token', state: 'expired', signupHref: '/marketing/forms/news?lang=pl&x="y"' });
     expect(html).toContain(`<div class="actions"><a class="button-link button-link--primary" href="/marketing/forms/news?lang=pl&amp;x=&quot;y&quot;">${publicMarketingMessagesPl.signupAgain}</a><a class="button-link" href="/">${publicMarketingMessagesPl.homeLink}</a></div>`);

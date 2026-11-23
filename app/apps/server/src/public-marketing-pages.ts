@@ -584,6 +584,8 @@ export const renderLegalDocumentPage = (input: {
   return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: null, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
 };
 
+const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
+
 export const renderConfirmationPage = (input: {
   nonce: string;
   brand: PublicBrand;
@@ -608,12 +610,13 @@ export const renderConfirmationPage = (input: {
       links: signupHref === null ? [] : [{ label: t.signupAgain, href: signupHref, primary: true }],
     });
   }
-  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
+  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}" data-pending-label="${escapeHtml(t.confirmationSubmitPending)}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
   return renderPage({
     ...common,
     title: t.confirmationPromptTitle,
     body: `<div class="status"><p class="lede">${escapeHtml(t.confirmationPromptBody({ tenant }))}</p>${action}</div>`,
     cue: 'info',
+    script: submitPendingScript,
   });
 };
 
@@ -656,8 +659,6 @@ export interface SignupFormValues {
   email: string;
   displayName: string;
 }
-
-const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
 
 const focusAlertScript = "document.getElementById('signup-error')?.focus();";
 

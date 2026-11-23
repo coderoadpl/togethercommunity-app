@@ -213,7 +213,13 @@ answer `429` with `Retry-After` and a message that does not reveal which bucket
 was exhausted. Public checkout session-status polling uses a separate per-IP
 `checkout-status:ip` bucket of 600 requests per five minutes in production
 (60,000 in development and staging), so several buyers behind one NAT can poll
-without consuming checkout-start or coupon-validation capacity. Expired windows
+without consuming checkout-start or coupon-validation capacity. The public
+parcel locker lookup has its own `parcel-locker:ip` (30 per minute in
+production) and `parcel-locker:tenant` (600 per minute) buckets, and every
+call to the carrier, from that route or from checkout, draws on the
+platform-wide `parcel-locker:global` budget (1,200 per minute), of which the
+route may use at most its `parcel-locker:public` share (600 per minute), see
+[Parcel locker lookup](#parcel-locker-lookup). Expired windows
 are deleted by the hourly KSeF dispatch run.
 
 New passwords require at least 15 characters, with no character-class rules.
@@ -903,6 +909,56 @@ checks recorded size before fetching, enforces the storage Content-Length
 ceiling before reading a body, and writes the registry before sending a file
 or signed redirect. Personalised files are private, `no-store` responses.
 Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).
+
+## Parcel locker lookup
+
+`GET /api/public/parcel-lockers/<code>` is the one public route that makes the
+server call a third party on an anonymous request. Its limits:
+
+- The outbound call goes to one fixed host,
+  `https://api-shipx-pl.easypack24.net/v1/points/`, for live and test mode; no
+  part of the URL comes from configuration or from the request except the code.
+- The code must match `^[A-Z0-9]{4,12}$` after trimming and upper-casing before
+  any call, and is URL-encoded anyway. The route reads only its `:code` segment;
+  a query string or extra path segments are never forwarded.
+- The call sends no credentials (the Points resource is public), follows no
+  redirects, times out after 3 seconds and is never retried. Any failure answers
+  `unavailable`; the checkout then stores the code as unverified instead of
+  blocking the sale.
+- The answer is parsed with zod and reduced to the code, a name, an address and
+  a usable verdict; nothing else from the carrier reaches the caller.
+- The route answers only in a workspace with an active parcel locker option (a
+  `not_found` error otherwise, with no carrier call), is same-origin only (no
+  open CORS), returns `Cache-Control: no-store` and is limited per client
+  address (`parcel-locker:ip`, 30 per minute) and per workspace
+  (`parcel-locker:tenant`, 600 per minute). The per-address bucket keys a
+  single address, also for IPv6. Known limit: a client holding an IPv6 /64 can
+  rotate addresses and get a fresh per-address bucket each time; the
+  per-workspace bucket and the public share below still cap it.
+- Every call to the carrier, from the public route and from checkout session
+  creation alike, first claims the platform-wide `parcel-locker:global` budget
+  (1,200 per minute) in a wrapper around
+  the adapter, so lookups from many addresses, workspaces and checkouts cannot
+  add up at the carrier from the platform's one egress address. A lookup
+  refused before the carrier would be asked (malformed code, no parcel locker
+  option, a per-address or per-workspace limit) does not use the budget. When
+  the budget is spent the lookup answers `unavailable` without asking the
+  carrier, so checkout stores the code as unverified.
+- The public route also claims a platform-wide `parcel-locker:public` share
+  (600 per minute) right before the carrier
+  call, after every local refusal, so anonymous lookups can use at most half of
+  the global budget and checkout session creation always keeps the other half.
+  When the share is spent the route answers `unavailable` without asking the
+  carrier. Checkout never claims this share.
+- These four figures hold on every deployment that asks the real carrier
+  (`PAYMENT_PROVIDER=stripe`), whatever its `APP_ENV`, so a staging that runs
+  Stripe test mode cannot send InPost more than production does. Only a
+  deployment with the fake directory (`PAYMENT_PROVIDER=fake`) uses the
+  development values (3,000 per address, 60,000 per workspace, 120,000 global,
+  60,000 public), and none of them reaches the carrier.
+
+Checkout session creation asks the carrier through the same adapter, also
+within the existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).
 
 ## InPost ShipX credentials
 

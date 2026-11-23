@@ -14,6 +14,7 @@ import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   emptyCatalogState,
 } from '#core/server/testing/change-proposal-fakes.js';
@@ -393,6 +394,7 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
@@ -661,6 +663,7 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,

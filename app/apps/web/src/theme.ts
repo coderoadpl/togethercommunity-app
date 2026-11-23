@@ -3756,6 +3756,8 @@ export const VersionDiffRow = styled(Stack, {
 
 export const BreakAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
 
+export const UnbrokenSegment = styled('span')({ whiteSpace: 'nowrap' });
+
 export const ReorderDragHandle = styled('span', {
   shouldForwardProp: (prop) => prop !== 'pending',
 })<{ pending?: boolean }>(({ theme, pending }) => ({

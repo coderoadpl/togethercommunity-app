@@ -3,7 +3,12 @@ import { Alert, AlertTitle, Box, Button, Chip, Stack, Tab, Tabs, Typography } fr
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
-import { CHANGE_PROPOSAL_WITHDRAWAL_NOTES, type ChangeProposalEventView, type ChangeProposalOwnerView } from '#core/domain/index.js';
+import {
+  CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
+  isChangeProposalImageMissingNote,
+  type ChangeProposalEventView,
+  type ChangeProposalOwnerView,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, StatusView } from '../../../components/layout/index.js';
@@ -15,10 +20,12 @@ import { usePanelContext } from '../panel-context.js';
 import {
   GroupProposalCard,
   GroupTitle,
+  mayBeStaleForMissingImage,
   outcomeExplanation,
   ProposalBody,
   ProposedBy,
   SingleProposalCard,
+  staleForMissingImage,
   TargetLine,
   type SettledOutcome,
 } from './ProposalCards.js';
@@ -70,7 +77,7 @@ const SettledNotice = ({ outcome, onDismiss }: { outcome: SettledOutcome; onDism
       data-testid={`proposal-outcome-${outcome.key}`}
     >
       <AlertTitle>{outcome.title}</AlertTitle>
-      {outcomeExplanation(t, outcome.status, outcome.reason)}
+      {outcomeExplanation(t, outcome.status, outcome.reason, outcome.imageUnavailable)}
     </Alert>
   );
 };
@@ -156,6 +163,9 @@ const PendingTab = () => {
   );
 };
 
+const eventLabel = (t: Translations, event: ChangeProposalEventView): string =>
+  event.kind === 'stale' && isChangeProposalImageMissingNote(event.note) ? t.eventStaleImageUnavailable : t.event[event.kind];
+
 const eventNote = (t: Translations, event: ChangeProposalEventView): string | null => {
   if (event.note === null) return null;
   if (event.kind === 'rejected') return t.decisionNote({ note: event.note });
@@ -188,7 +198,7 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
             return (
               <Typography key={event.sequence} component="li" variant="body2">
                 <EntryDate component="time" dateTime={event.at}>{formatDateTime(event.at, language)}</EntryDate>
-                {` · ${t.changeProposals.event[event.kind]}`}
+                {` · ${eventLabel(t.changeProposals, event)}`}
                 {note === null ? null : <>{' · '}<bdi>{note}</bdi></>}
               </Typography>
             );
@@ -211,7 +221,10 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
   const { language } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage);
+  const imageStale = mayBeStaleForMissingImage(proposal);
+  const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: imageStale });
+  const imageUnavailable = imageStale && detail.data !== undefined && staleForMissingImage(detail.data.proposal.events);
+  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage, imageUnavailable);
   const decided = decidedLine(t, proposal, language);
   const keyName = proposal.proposedBy.keyName;
   return (
@@ -220,7 +233,12 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
       title={operationTitle(t, proposal.operation)}
       badges={(
         <>
-          <Chip size="small" variant="outlined" label={t.status[proposal.status]} data-testid="proposal-history-status" />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={imageUnavailable ? t.statusStaleImageUnavailable : t.status[proposal.status]}
+            data-testid="proposal-history-status"
+          />
           <Button
             size="small"
             variant="text"

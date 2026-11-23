@@ -43,6 +43,7 @@ const ownerNotification = (deps: ChangeProposalNotifyDeps, change: ProposedChang
       rootPostId: null,
       postId: null,
       contextKind: 'tenant',
+      // Release 8141fd15 names the key and the group only from these community fields, so they repeat the typed facts for a rollback.
       contextId: change.group?.id ?? null,
       courseId: null,
       eventId: null,
@@ -51,6 +52,7 @@ const ownerNotification = (deps: ChangeProposalNotifyDeps, change: ProposedChang
       authorDisplay: change.keyName,
       authorAvatarUrl: null,
       snippet: change.group?.title ?? '',
+      changeProposal: { keyName: change.keyName, groupId: change.group?.id ?? null, groupTitle: change.group?.title ?? null },
     },
     sourceKey: changeProposalNotificationSourceKey(change.keyId),
     readAt: null,

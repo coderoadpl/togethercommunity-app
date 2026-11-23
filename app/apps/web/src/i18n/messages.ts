@@ -640,6 +640,13 @@ export interface Messages {
     columnRemoved: string;
     newRecordCaption: string;
     imageNotShown: string;
+    proposedImageAlt: string;
+    proposedImageLoading: string;
+    proposedImageFailed: string;
+    proposedImageFacts: (params: { format: string; fingerprint: string }) => string;
+    proposedImagePrivate: string;
+    proposedImageSvgReason: string;
+    proposedImageSvgDownload: string;
     emptyValue: string;
     yes: string;
     no: string;
@@ -688,6 +695,8 @@ export interface Messages {
     approveOtherFields: (params: { count: number }) => string;
     approveGroupTitle: (params: { count: number }) => string;
     approveGroupBody: (params: { count: number }) => string;
+    approveImagesPublic: (params: { count: number }) => string;
+    approveGroupImagesPublic: (params: { count: number }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;
@@ -702,6 +711,7 @@ export interface Messages {
     outcomeRejected: string;
     outcomeGroupRejected: string;
     outcomeStale: string;
+    outcomeImageUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
     outcomeFailedUnknown: string;
     outcomeExpired: string;
@@ -719,6 +729,8 @@ export interface Messages {
     event: Record<ChangeProposalEventKind, string>;
     eventNoteKeyRevoked: string;
     eventNoteKeyPurged: string;
+    statusStaleImageUnavailable: string;
+    eventStaleImageUnavailable: string;
     fields: {
       type: string;
       slug: string;

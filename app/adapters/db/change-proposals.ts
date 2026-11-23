@@ -30,8 +30,15 @@ import type {
   ChangeProposalWrite,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
-import { boundLockWait, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import {
+  boundLockWait,
+  busyAfterRollback,
+  changeProposalBounds,
+  lockWorkspaceProposals,
+  type ChangeProposalBoundOptions,
+  type ChangeProposalBounds,
+} from './change-proposal-bounds.js';
+import { quarantinedImagesPresent } from './change-proposal-images.js';
 import type { Db } from './client.js';
 import {
   changeProposalEvents,
@@ -71,9 +78,6 @@ export const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeP
 });
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
-
-export const lockWorkspaceProposals = (executor: Db, tenantId: string, bounds: ChangeProposalBounds): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs });
 
 export const boundedWrite = <T>(db: Db, bounds: ChangeProposalBounds, work: (tx: Db) => Promise<T>): Promise<ChangeProposalWrite<T>> =>
   busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<T>> => {
@@ -324,7 +328,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
 };
 
 const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalRepository => ({
-  create: async (tenantId, proposal, event, now) => {
+  create: async (tenantId, proposal, event, now, images = []) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
@@ -332,6 +336,7 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
     return busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalCreation> => {
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
       return { kind: 'created', proposal: await insertProposal(tx, tenantId, parsed, event) };

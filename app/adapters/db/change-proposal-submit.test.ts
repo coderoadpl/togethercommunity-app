@@ -20,6 +20,7 @@ import {
 } from '#core/server/index.js';
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
@@ -97,6 +98,7 @@ const deps = (
   shopManagementKeys: createShopManagementKeyRepository(db),
   changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
   realtimeBus: { publish: (event) => { published.push(event); } },
+  quarantinedImages: createQuarantinedImageRepository(db, bounds),
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },
@@ -260,7 +262,10 @@ describe('the owner notification of a submitted proposal over the database', () 
       [OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
       [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
     ]);
-    expect(unread[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '' });
+    expect(unread[0]?.payload).toMatchObject({
+      contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '',
+      changeProposal: { keyName: key.name, groupId: null, groupTitle: null },
+    });
     const unreadIds = new Map(unread.map((row) => [row.recipientUserId, row.id]));
     expect(published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : null)).toEqual([
       [OWNER, unreadIds.get(OWNER), 'change-proposal'],

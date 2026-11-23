@@ -10,6 +10,7 @@ import {
   proposalRemovesRecord,
   proposalRows,
   proposalTarget,
+  proposedImagePaths,
   type DisplayRow,
   type TargetDisplay,
 } from './proposal-display.js';
@@ -17,7 +18,7 @@ import { Isolated, operationTitle, priceTerms, targetPriceTerms } from './propos
 
 export type ApprovalFacts = Pick<
   ChangeProposalOwnerView,
-  'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId'
+  'id' | 'operation' | 'target' | 'targetLabel' | 'targetPrice' | 'input' | 'effect' | 'appliedResourceId'
 >;
 
 type Translations = Messages['changeProposals'];
@@ -119,14 +120,28 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
   }
 };
 
+export const ApprovalImagesNote = ({ proposals, group }: { proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]; group: boolean }) => {
+  const t = useTranslations().changeProposals;
+  const count = proposedImagePaths(proposals).length;
+  if (count === 0) return null;
+  return (
+    <Typography variant="body2" data-testid="proposal-approve-images">
+      {group ? t.approveGroupImagesPublic({ count }) : t.approveImagesPublic({ count })}
+    </Typography>
+  );
+};
+
 export const ApprovalSummary = ({ proposal }: { proposal: ApprovalFacts }) => {
   const t = useTranslations().changeProposals;
   const rows = proposalRows(proposal);
   const sentence = useApprovalSentence(proposal, rows);
   return (
-    <Typography variant="body2" data-testid="proposal-approve-summary">
-      {sentence.text}
-      {` ${closingSentence(t, rows, sentence.names)}`}
-    </Typography>
+    <>
+      <Typography variant="body2" data-testid="proposal-approve-summary">
+        {sentence.text}
+        {` ${closingSentence(t, rows, sentence.names)}`}
+      </Typography>
+      <ApprovalImagesNote proposals={[proposal]} group={false} />
+    </>
   );
 };

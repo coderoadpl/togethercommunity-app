@@ -148,12 +148,17 @@ import type {
   ChangeProposal,
   ChangeProposalCap,
   ChangeProposalCountCap,
+  ChangeProposalImageCap,
   ChangeProposalListStatus,
   ChangeProposalEvent,
   ChangeProposalGroup,
   ChangeProposalTarget,
   ChangeProposalTargetPrice,
   ChangeProposalTerminalStatus,
+  ProposalImagePublication,
+  ProposalImageReference,
+  QuarantinedImageAsset,
+  QuarantinedImageUpload,
   SalesLink,
   TenantAuditEventListQuery,
   TenantAuditEventPage,
@@ -1656,6 +1661,7 @@ export interface StorageReferenceRepository {
   readInventory(tenantId: string): Promise<StorageReferenceInventory>;
 }
 
+/** `getObject` and `head` answer `not_found` only when the storage says the object does not exist; any other failure is another code. */
 export interface StorageProvider {
   list(input: StorageListInput): Promise<Result<StorageListPage, AppError>>;
   getObject(input: {
@@ -1681,12 +1687,14 @@ export interface StorageProvider {
     input: StorageConfiguration,
     origins: string[],
   ): Promise<StorageCorsProbeResult[]>;
+  /** With `contentLength`, the signature covers it, so the storage refuses a body of any other size. */
   presignPut(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
     expiresInSeconds: number;
+    contentLength?: number;
   }): Result<string, AppError>;
   presignGet(input: {
     url: string;
@@ -2961,6 +2969,7 @@ export type ChangeProposalCreation =
   | { kind: 'created'; proposal: ChangeProposal }
   | { kind: 'cap_exceeded'; cap: ChangeProposalCap }
   | { kind: 'key_inactive' }
+  | { kind: 'image_missing' }
   | { kind: 'busy' };
 
 export interface ChangeProposalTransition {
@@ -2997,7 +3006,14 @@ type ChangeProposalDecisionOutcome =
  * Every status change and its event commit together, and events get the next per-proposal sequence.
  */
 export interface ChangeProposalRepository {
-  create(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, now: string): Promise<ChangeProposalCreation>;
+  /** `images` are the quarantined images of the proposing key the proposal attaches; one that is gone by the insert answers `image_missing`. */
+  create(
+    tenantId: string,
+    proposal: ChangeProposal,
+    event: ChangeProposalEventDraft,
+    now: string,
+    images?: readonly ProposalImageReference[],
+  ): Promise<ChangeProposalCreation>;
   countCapReached(tenantId: string, keyId: string, now: string): Promise<ChangeProposalCountCap | null>;
   findById(tenantId: string, id: string): Promise<ChangeProposal | null>;
   list(tenantId: string, query: ChangeProposalListQuery): Promise<ChangeProposalPage>;
@@ -3077,7 +3093,13 @@ export interface ChangeProposalGroupRepository {
    * Stores `proposal` at its `groupPosition`, which must be the next free position of an open group of the same key;
    * whether the group is still open is judged at the clock's time once the group and its items are locked.
    */
-  addItem(tenantId: string, proposal: ChangeProposal, event: ChangeProposalEventDraft, clock: Clock): Promise<ChangeProposalGroupItemAddition>;
+  addItem(
+    tenantId: string,
+    proposal: ChangeProposal,
+    event: ChangeProposalEventDraft,
+    clock: Clock,
+    images?: readonly ProposalImageReference[],
+  ): Promise<ChangeProposalGroupItemAddition>;
   /** Locks the group row, then its item rows in the order key revocation takes them, until the surrounding transaction ends. */
   lock(tenantId: string, id: string): Promise<ChangeProposalGroupWithItems | null>;
   /**
@@ -3132,7 +3154,7 @@ interface ChangeProposalPerson {
 }
 
 export interface ChangeProposalPeopleReader {
-  /** Every existing account among `userIds`, read in a fixed number of queries whatever their count. */
+  /** Every account among `userIds` that holds a staff grant in the workspace, read in a fixed number of queries whatever their count. */
   read(tenantId: string, userIds: readonly string[]): Promise<ChangeProposalPerson[]>;
 }
 
@@ -3172,6 +3194,76 @@ export interface SalesLinkRepository {
   delete(tenantId: string, id: string, occurredAt: string, expectedRevision?: number): Promise<Result<void, AppError>>;
 }
 
+export type QuarantinedImageInsertion =
+  | { kind: 'stored'; asset: QuarantinedImageAsset }
+  | { kind: 'existing'; asset: QuarantinedImageAsset }
+  | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap }
+  | { kind: 'store_failed'; error: AppError };
+
+export type QuarantinedImageRelease =
+  | { kind: 'key'; apiKeyId: string; images?: readonly ProposalImageReference[] }
+  | { kind: 'sweep'; createdBefore: string; limit: number };
+
+export type QuarantinedImageReleaseEnd = 'removed' | 'revived' | 'gone' | 'failed' | 'busy';
+
+export type QuarantinedImageUploadRecord =
+  | { kind: 'recorded' }
+  | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap };
+
+export interface QuarantinedImageLiveUse {
+  /** Whether a live product cover or branding field of the workspace holds exactly this address. */
+  inLiveUse(tenantId: string, path: string): Promise<boolean>;
+}
+
+/** The private images a propose-mode key uploaded for proposals; the rows, not a storage listing, are the record of what is quarantined. */
+export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
+  /**
+   * Under a lock of the key, records the image (or revives a released row) after counting the key's unreleased images
+   * and bytes, then runs `store` to write the object before the lock is released; a failed `store` rolls back the row.
+   * The same bytes again answer the unreleased row already there, after `store` rewrote its object.
+   */
+  insert(tenantId: string, asset: QuarantinedImageAsset, store: () => Promise<Result<void, AppError>>): Promise<QuarantinedImageInsertion>;
+  find(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
+  /**
+   * Under the workspace proposal lock, locks the selected rows and marks released those no pending, unexpired proposal
+   * of their key attaches; answers them together with selected rows released earlier, whose objects the caller removes
+   * with `finishRelease` after this commit. `sweep` selects, oldest first, rows released earlier and the unattached rows
+   * created before `createdBefore` or of a revoked or deleted key.
+   */
+  release(tenantId: string, selection: QuarantinedImageRelease, now: string): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
+  /**
+   * In a short transaction under the lock of the key that `insert` takes: when the row is still released, runs
+   * `removeObject` and deletes the row once it answers true; a row a completion revived meanwhile is left as it is.
+   */
+  finishRelease(tenantId: string, asset: QuarantinedImageAsset, removeObject: () => Promise<boolean>): Promise<QuarantinedImageReleaseEnd>;
+  /** The workspaces holding rows a `sweep` selects. */
+  listTenantIdsToSweep(createdBefore: string, now: string, limit: number): Promise<string[]>;
+  /**
+   * Under the lock of the key, records a presigned upload unless the key already started `uploadsPerKey` uploads
+   * created after `countedAfter`.
+   */
+  recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
+  listTenantIdsWithUploadsBefore(createdBefore: string, limit: number): Promise<string[]>;
+  listUploadsBefore(tenantId: string, createdBefore: string, limit: number): Promise<QuarantinedImageUpload[]>;
+  deleteUpload(tenantId: string, objectKey: string): Promise<void>;
+  /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
+  recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
+  listTenantIdsWithPublicationsBefore(startedBefore: string, limit: number): Promise<string[]>;
+  listPublicationsBefore(tenantId: string, startedBefore: string, limit: number): Promise<ProposalImagePublication[]>;
+}
+
+export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
+  /** Locks the key's unreleased row against release until the surrounding transaction ends; null when there is none. */
+  lockForPublication(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
+  /** Whether an applied proposal of the workspace carries this address in its input. */
+  inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
+  /** Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone. */
+  claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[]): Promise<boolean>;
+  /** Deletes every publication record of the attempt, so they disappear exactly when the transaction commits. */
+  settlePublications(tenantId: string, attemptId: string): Promise<void>;
+  deletePublication(tenantId: string, attemptId: string, image: ProposalImageReference): Promise<void>;
+}
+
 export interface ChangeProposalRepositories {
   products: ProductRepository & ProductMetadataRepository & ProductBatchReader;
   prices: ProductPriceRepository;
@@ -3185,6 +3277,7 @@ export interface ChangeProposalRepositories {
   changeProposalEvents: ChangeProposalEventRepository;
   changeProposalGroups: ChangeProposalGroupRepository;
   targets: ChangeProposalTargetLocks;
+  quarantinedImages: QuarantinedImageLocks;
 }
 
 export interface ChangeProposalPostCommitEffects {

@@ -309,10 +309,10 @@ describe('propose-mode shop management keys', () => {
   const grantedTo = (ctx: Ctx) => CAPABILITIES.filter((capability) => authorize(ctx, capability) === null);
 
   it.each([
-    ['catalogue writes only', ['shop:catalog:write'], 'shop:catalog:write', ['proposal:own:manage', 'proposal:submit:catalog']],
-    ['settings writes only', ['shop:settings:write'], 'shop:settings:write', ['proposal:own:manage', 'proposal:submit:settings']],
+    ['catalogue writes only', ['shop:catalog:write'], 'shop:catalog:write', ['proposal:asset:upload', 'proposal:own:manage', 'proposal:submit:catalog']],
+    ['settings writes only', ['shop:settings:write'], 'shop:settings:write', ['proposal:asset:upload', 'proposal:own:manage', 'proposal:submit:settings']],
     ['catalogue reads and writes', ['shop:catalog:read', 'shop:catalog:write'], 'shop:catalog:write',
-      ['product:price:read', 'product:read', 'proposal:own:manage', 'proposal:submit:catalog']],
+      ['product:price:read', 'product:read', 'proposal:asset:upload', 'proposal:own:manage', 'proposal:submit:catalog']],
     ['reads only', ['shop:orders:read'], 'shop:orders:read', ['order:export', 'order:read', 'proposal:own:manage']],
   ] as const)('builds a propose-mode context for a key with %s', async (_label, scopes, scope, expected) => {
     const h = harness({ keys: [shopKey({ mode: 'propose', scopes: [...scopes] })] });

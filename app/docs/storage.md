@@ -22,6 +22,23 @@ per-run budget, and an unreachable endpoint is reported as unknown instead of
 as a bucket CORS failure. Until a verified custom domain has a successful stored
 result, Settings → Addresses links back to the storage wizard.
 
+## Image prefixes
+
+Image assets (covers, branding images, avatars) live under these prefixes in the
+tenant bucket:
+
+| Prefix | Holds | Served |
+|---|---|---|
+| `image-asset-candidates/<workspace>/<kind>/` | an upload between its presigned `PUT` and its completion | never. Completion deletes it, also when its checks fail; the minute sweep deletes a propose-mode key's candidate 20 minutes after its upload started, completed or not, a second `PUT` through a still valid URL included. A live upload that is never completed stays, and the storage orphan report lists it |
+| `image-assets/<workspace>/<kind>/` | completed images, and images a change proposal approval published under their SHA-256, written just before that approval commits; a copy written by an approval that then did not end applied stays until its withdrawal or the minute sweep deletes it | through `/api/public/assets/<kind>/<file>`, a redirect to a signed `GET` |
+| `image-asset-quarantine/<workspace>/<key id>/<kind>/` | images a propose-mode shop management key uploaded, awaiting the owner's approval | never publicly; the owner previews them through the change proposal owner route |
+
+A propose-mode key's presigned `PUT` targets the candidate prefix like any
+other upload, so the bucket CORS rules above cover it; its signature also
+covers `content-length`, so the bucket accepts only a body of the declared
+size. The quarantine is
+described in [Change proposals](change-proposals.md#images).
+
 ## File versions
 
 Digital download products deliver personalised PDF and EPUB copies or signed,

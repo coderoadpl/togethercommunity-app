@@ -46,7 +46,8 @@ import {
   shopProposalContracts,
   shopSettingsContracts,
 } from '#core/contract/index.js';
-import { shopManagementKeyHash } from '#core/server/index.js';
+import { shopManagementKeyHash, type TenantSecretResolver } from '#core/server/index.js';
+import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -77,6 +78,8 @@ let secretsMasterKey: string;
 let ownerToken: string;
 let ownerId: string;
 let adminToken: string;
+let imageStorage: FakeObjectStorage;
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWMwTptJEmIY1ZA2GkrGwzVpAABIfDIQjwcm5wAAAABJRU5ErkJggg==', 'base64');
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 const errorOf = async (response: Response) =>
@@ -200,6 +203,31 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_SETTINGS_ROUTES.updateSettings.path]: { name: 'Proposed shop name' },
 });
 
+const IMAGE_UPLOAD_BODIES: Record<string, unknown> = {
+  [SHOP_ASSETS_ROUTES.productCoverUpload.path]: { kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: PNG.byteLength },
+  [SHOP_SETTINGS_ROUTES.brandingAssetUpload.path]: { kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: PNG.byteLength },
+};
+
+const imageUploadKey = z.object({ ok: z.literal(true), data: z.object({ key: z.string(), quarantined: z.literal(true) }) });
+
+const imageUploadRoute = async (secret: string, route: ShopMachineRoute, candidate: { key: string | null }, extra: Record<string, string> = {}): Promise<number> => {
+  const upload = IMAGE_UPLOAD_BODIES[route.path];
+  if (upload !== undefined) {
+    const response = await keyed(secret, route.method, route.path, upload, acmeHost, extra);
+    if (response.status !== 200) return response.status;
+    const { key } = imageUploadKey.parse(await response.json()).data;
+    imageStorage.objects.set(key, { bytes: new Uint8Array(PNG), contentType: 'image/png' });
+    candidate.key = key;
+    return response.status;
+  }
+  const response = await keyed(secret, route.method, route.path, { key: candidate.key }, acmeHost, extra);
+  if (response.status === 200) {
+    const answer = z.object({ ok: z.literal(true), data: z.object({ url: z.string(), quarantined: z.literal(true) }) }).parse(await response.json()).data;
+    expect(answer.url).toMatch(/^\/api\/public\/assets\/(product-cover|logo)\/[0-9a-f]{64}\.png$/);
+  }
+  return response.status;
+};
+
 const salesLinkFields = () => ({ slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [fixture.published] });
 
 const salesLinkPath = (path: string): string => path.startsWith(SHOP_ASSETS_ROUTES.listSalesLinks.path)
@@ -217,7 +245,14 @@ beforeAll(async () => {
     BETTER_AUTH_SECRET: 'shop-propose-mode-test-secret-at-least-32-characters',
   });
   secretsMasterKey = env.SECRETS_MASTER_KEY;
-  deps = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  const created = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  imageStorage = createObjectStorageFake();
+  const resolver: TenantSecretResolver = created.secretResolver;
+  deps = {
+    ...created,
+    storage: imageStorage.storage,
+    secretResolver: { resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key) },
+  };
   app = buildApp(deps);
 
   const owner = await signUp('shop-propose-owner@example.test', 'Propose Owner');
@@ -288,10 +323,10 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/orders/:orderId/shipx/label': 'refuse side-effect',
       'GET /api/m2m/shop/settings': 'read',
       'POST /api/m2m/shop/settings': 'proposal settings.update',
-      'POST /api/m2m/shop/image-assets/branding/upload': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/branding/complete': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/product-cover/upload': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/product-cover/complete': 'refuse not-in-release',
+      'POST /api/m2m/shop/image-assets/branding/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/complete': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/complete': 'direct',
       'GET /api/m2m/shop/sales-links': 'read',
       'GET /api/m2m/shop/sales-links/:id': 'read',
       'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
@@ -324,11 +359,18 @@ describe('a propose-mode key on every registered shop route', () => {
   it('never reaches a live write: proposals answer 202, refusals 403, reads still read', async () => {
     const bodies = proposalBodies();
     const before = await liveState();
+    const publicBefore = imageStorage.keysUnder('image-assets/');
+    const candidate: { key: string | null } = { key: null };
     const outcomes: string[] = [];
     for (const route of registeredShopRoutes()) {
       const label = `${route.method} ${route.path}`;
       const mode = route.proposeMode;
       if (mode?.kind === 'proposal-management') continue;
+      if (mode?.kind === 'direct') {
+        expect(await imageUploadRoute(proposer.secret, route, candidate), label).toBe(200);
+        outcomes.push(`${label} quarantined`);
+        continue;
+      }
       const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
       const response = await keyed(proposer.secret, route.method, salesLinkPath(route.path), body);
       if (mode === undefined) {
@@ -347,8 +389,11 @@ describe('a propose-mode key on every registered shop route', () => {
       outcomes.push(`${label} refused`);
     }
     expect(await liveState()).toBe(before);
+    expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
+    expect(imageStorage.keysUnder('image-asset-quarantine/acme/').length).toBeGreaterThan(0);
     expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
+    expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(4);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(12);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
     expect(stored).toHaveLength(14);
   });
@@ -357,6 +402,8 @@ describe('a propose-mode key on every registered shop route', () => {
     const bodies = proposalBodies();
     const grouper = await createShopKey(PROPOSE_SCOPES, 'propose');
     const before = await liveState();
+    const publicBefore = imageStorage.keysUnder('image-assets/');
+    const candidate: { key: string | null } = { key: null };
     const proposed: string[] = [];
     for (const route of registeredShopRoutes()) {
       const label = `${route.method} ${route.path}`;
@@ -368,8 +415,12 @@ describe('a propose-mode key on every registered shop route', () => {
       expect(created.status, label).toBe(201);
       const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
       const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
-      const response = await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
-      if (mode === undefined) {
+      const response = mode?.kind === 'direct'
+        ? null
+        : await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
+      if (response === null) {
+        expect(await imageUploadRoute(grouper.secret, route, candidate, { 'x-proposal-group': group.id }), label).toBe(200);
+      } else if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
       } else if (mode.kind === 'proposal') {
         expect(response.status, label).toBe(202);
@@ -384,18 +435,19 @@ describe('a propose-mode key on every registered shop route', () => {
       expect(withdrawn.status, label).toBe(200);
     }
     expect(await liveState()).toBe(before);
+    expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
     expect(proposed).toHaveLength(14);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === grouper.apiKey.id);
     expect(stored).toHaveLength(14);
     expect(stored.every((row) => row.groupId !== null && row.groupPosition === 1)).toBe(true);
   });
 
-  it('answers a refused write with the refusal reason and records the request in the key history', async () => {
-    const response = await keyed(proposer.secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, { kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
-    expect(response.status).toBe(403);
-    expect(await errorOf(response)).toEqual({ code: 'forbidden', message: 'A propose-mode shop management key cannot call this route (not-in-release)' });
+  it('records an image upload of a propose-mode key in the key history like every other write', async () => {
+    const path = SHOP_ASSETS_ROUTES.productCoverUpload.path;
+    const response = await keyed(proposer.secret, 'POST', path, IMAGE_UPLOAD_BODIES[path]);
+    expect(response.status).toBe(200);
     const requests = (await database.db.select().from(shopManagementKeyEvents))
-      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === SHOP_SETTINGS_ROUTES.brandingAssetUpload.path);
+      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === path);
     expect(requests.length).toBeGreaterThan(0);
   });
 

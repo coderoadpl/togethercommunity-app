@@ -60,6 +60,7 @@ export interface PreparedChangeProposalOperation {
 
 interface ChangeProposalOperationEntry {
   capability: Capability;
+  invalidInputMessage: string;
   prepare(rawInput: unknown): Result<PreparedChangeProposalOperation, AppError>;
 }
 
@@ -324,6 +325,7 @@ const settingsDeps = (scope: ChangeProposalTransactionScope) => ({
 
 const entry = <I>(operation: ChangeProposalOperation, definition: ChangeProposalOperationDefinition<I>): ChangeProposalOperationEntry => ({
   capability: changeProposalSubmitCapability(operation),
+  invalidInputMessage: definition.invalidInputMessage,
   prepare: define(definition),
 });
 

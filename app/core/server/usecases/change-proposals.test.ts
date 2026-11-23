@@ -30,6 +30,7 @@ import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   type FakeChangeProposalPeople,
   emptyCatalogState,
@@ -50,7 +51,7 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalDecisionDeps,
-  type ChangeProposalKeyDeps,
+  type ChangeProposalWithdrawDeps,
   type ChangeProposalOwnerReadDeps,
   type ChangeProposalSubmitDeps,
   type ChangeProposalSummaryDeps,
@@ -191,7 +192,7 @@ interface Harness {
   transaction: FakeChangeProposalTransaction;
   storageCalls: string[];
   submitDeps: ChangeProposalSubmitDeps;
-  keyDeps: ChangeProposalKeyDeps;
+  keyDeps: ChangeProposalWithdrawDeps;
   ownerDeps: ChangeProposalOwnerReadDeps & ChangeProposalSummaryDeps & { changeProposalPeople: FakeChangeProposalPeople };
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
@@ -226,6 +227,8 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   const shopManagementKeys = { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) };
   const ownerViews = changeProposalOwnerViewFakes(state, accounts);
   const notifications = createUnreadNotificationsFake(accounts);
+  const logger = { error: vi.fn<(message: string) => void>() };
+  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger };
   return {
     notifications,
     state,
@@ -239,14 +242,13 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
       shopManagementKeys,
       changeProposalOwnerNotifier: notifications.changeProposalOwnerNotifier,
       realtimeBus: notifications.realtimeBus,
-      storage,
-      logger: { error: vi.fn<(message: string) => void>() },
+      ...images,
       ids,
       clock: clockPort,
     },
-    keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
+    keyDeps: { changeProposals: store.repository, ...images, ids, clock: clockPort },
     ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, clock: clockPort },
-    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ids, clock: clockPort },
+    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ...images, ids, clock: clockPort },
   };
 };
 
@@ -960,7 +962,10 @@ describe('the owner notification of a submitted proposal', () => {
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
       { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
     ]);
-    expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
+    expect(h.notifications.rows[0]?.payload).toMatchObject({
+      contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null,
+      changeProposal: { keyName: 'Catalogue agent', groupId: null, groupTitle: null },
+    });
     const rowIds = h.notifications.rows.map((row) => row.id);
     expect(h.notifications.published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : event.kind)).toEqual([
       [OWNER, rowIds[0], 'change-proposal'],

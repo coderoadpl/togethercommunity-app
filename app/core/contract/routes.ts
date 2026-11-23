@@ -1103,6 +1103,15 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
+export const shopImageAssetUploadOutputSchema = imageAssetUploadOutputSchema.extend({
+  servePath: z.string().startsWith('/').nullable(),
+  quarantined: z.literal(true).optional(),
+});
+
+export const shopImageAssetCompleteOutputSchema = imageAssetCompleteOutputSchema.extend({
+  quarantined: z.literal(true).optional(),
+});
+
 export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
 export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
 export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
@@ -2248,6 +2257,7 @@ export const API_ROUTES = {
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
+  changeProposalImage: { method: 'GET', path: '/api/change-proposals/:id/assets/:digest' },
   changeProposalGroup: { method: 'GET', path: '/api/change-proposals/groups/:id' },
   changeProposalGroupApprove: { method: 'POST', path: '/api/change-proposals/groups/:id/approve' },
   changeProposalGroupReject: { method: 'POST', path: '/api/change-proposals/groups/:id/reject' },
@@ -2665,6 +2675,7 @@ export const API_PATHS = {
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,
+  changeProposalImage: API_ROUTES.changeProposalImage.path,
   changeProposalGroup: API_ROUTES.changeProposalGroup.path,
   changeProposalGroupApprove: API_ROUTES.changeProposalGroupApprove.path,
   changeProposalGroupReject: API_ROUTES.changeProposalGroupReject.path,

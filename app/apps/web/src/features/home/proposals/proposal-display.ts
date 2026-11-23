@@ -1,8 +1,10 @@
 import {
   changeProposalCreatedKind,
   isChangeProposalReference,
+  parseProposalImagePath,
   type ChangeProposalOwnerView,
   type ChangeProposalReferenceKind,
+  type ProposalImageExtension,
 } from '#core/domain/index.js';
 
 type JsonValue = ChangeProposalOwnerView['input'][string];
@@ -25,11 +27,17 @@ export type DisplayValue =
     active: boolean | null;
   }
   | { kind: 'date'; iso: string }
-  | { kind: 'image'; path: string }
+  | { kind: 'image'; path: string; awaitingApproval: ImageAwaitingApproval | null }
   | { kind: 'reference'; thing: ChangeProposalReferenceKind | 'item'; position: number; label: string | null }
   | { kind: 'file'; fileName: string; sizeBytes: number | null }
   | { kind: 'list'; items: DisplayValue[] }
   | { kind: 'record'; entries: DisplayEntry[] };
+
+export interface ImageAwaitingApproval {
+  proposalId: string;
+  digest: string;
+  extension: ProposalImageExtension;
+}
 
 interface DisplayEntry {
   field: string;
@@ -80,6 +88,19 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{
 
 export const isSameOriginPublicAssetPath = (value: string): boolean => PUBLIC_ASSET_PATH.test(value);
 
+const IMAGE_FINGERPRINT_LENGTH = 12;
+
+const DIGEST_TAIL_LENGTH = 4;
+
+export const imageFingerprint = (digest: string): string => digest.slice(0, IMAGE_FINGERPRINT_LENGTH);
+
+export const shortProposedImagePath = (path: string): string | null => {
+  const proposed = parseProposalImagePath(path);
+  if (proposed === null) return null;
+  const digest = `${imageFingerprint(proposed.digest)}…${proposed.digest.slice(-DIGEST_TAIL_LENGTH)}`;
+  return `/api/public/assets/${proposed.kind}/${digest}.${proposed.extension}`;
+};
+
 const stringField = (record: { [key: string]: JsonValue }, field: string): string | null => {
   const value = record[field];
   return typeof value === 'string' && value.length > 0 ? value : null;
@@ -96,6 +117,7 @@ const intervalOf = (value: JsonValue | undefined): PriceInterval | null =>
 interface ValueContext {
   references: GroupReferences;
   currency: string | null;
+  pendingProposalId: string | null;
 }
 
 export type PriceDisplay = Extract<DisplayValue, { kind: 'price' }>;
@@ -130,7 +152,13 @@ const stringValue = (field: string, value: string, context: ValueContext): Displ
   if (value.length === 0) return { kind: 'empty' };
   const reference = referenceOf(value, context.references);
   if (reference !== null) return reference;
-  if (IMAGE_FIELDS.has(field) && isSameOriginPublicAssetPath(value)) return { kind: 'image', path: value };
+  if (IMAGE_FIELDS.has(field)) {
+    const proposed = context.pendingProposalId === null ? null : parseProposalImagePath(value);
+    if (proposed !== null && context.pendingProposalId !== null) {
+      return { kind: 'image', path: value, awaitingApproval: { proposalId: context.pendingProposalId, digest: proposed.digest, extension: proposed.extension } };
+    }
+    if (isSameOriginPublicAssetPath(value)) return { kind: 'image', path: value, awaitingApproval: null };
+  }
   if (ENUM_FIELDS.has(field)) return { kind: 'enum', field, value };
   if (ISO_DATE_TIME.test(value) && !Number.isNaN(Date.parse(value))) return { kind: 'date', iso: value };
   const breakAnywhere = !/\s/.test(value);
@@ -191,9 +219,14 @@ export const proposalCreatesRecord = (proposal: Pick<ChangeProposalOwnerView, 'e
 export const proposalRows = (
   proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'>,
   references: GroupReferences = NO_REFERENCES,
+  pendingProposalId: string | null = null,
 ): DisplayRow[] => {
   const existence = existenceChange(proposal);
-  const contextOn = (side: Side): ValueContext => ({ references, currency: currencyOn(proposal, side) });
+  const contextOn = (side: Side): ValueContext => ({
+    references,
+    currency: currencyOn(proposal, side),
+    pendingProposalId: side === 'after' ? pendingProposalId : null,
+  });
   return Object.entries(proposal.effect)
     .filter(([field]) => !HIDDEN_FIELDS.has(field))
     .sort(([left], [right]) => fieldRank(left) - fieldRank(right))
@@ -249,4 +282,10 @@ export const stockAdjustmentProductId = (proposal: Pick<ChangeProposalOwnerView,
   if (!isStockAdjustment(proposal)) return null;
   const productId = stringField(proposal.input, 'productId');
   return productId === null || isChangeProposalReference(productId) ? null : productId;
+};
+
+export const proposedImagePaths = (proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]): string[] => {
+  const paths = proposals.flatMap((proposal) => proposalRows(proposal, NO_REFERENCES, proposal.id).flatMap((row) =>
+    row.kind === 'change' && row.after?.kind === 'image' && row.after.awaitingApproval !== null ? [row.after.path] : []));
+  return [...new Set(paths)];
 };

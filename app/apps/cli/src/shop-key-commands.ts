@@ -29,6 +29,7 @@ import {
   err,
   fulfilmentStatusSchema,
   IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
+  isChangeProposalReference,
   ok,
   parcelTemplateSchema,
   priceKindSchema,
@@ -414,6 +415,33 @@ const proposedLines = (value: ChangeProposalProposedOutput): string => [
 
 type ProposableResult<A> = ChangeProposalProposedOutput | ({ outcome: 'applied' } & A);
 
+const BRANDING_FIELDS = {
+  logo: 'logoUrl',
+  'logo-dark': 'logoDarkUrl',
+  favicon: 'faviconUrl',
+  'share-image': 'ogImageUrl',
+} as const satisfies Record<z.output<typeof brandingKindSchema>, string>;
+
+interface UploadedImage {
+  url: string;
+  quarantined?: true | undefined;
+}
+
+type BrandingUploadResult =
+  | (UploadedImage & { field: string })
+  | (ProposableResult<{ settings: unknown }> & { image: UploadedImage });
+
+const quarantinedImageLine = (image: UploadedImage): string => image.quarantined === true
+  ? `image: ${image.url} (private until the owner approves this proposal; published at this address on approval)`
+  : `image: ${image.url}`;
+
+const uploadedBrandingLines = (image: UploadedImage & { field: string }): string => image.quarantined === true
+  ? [
+      image.url,
+      `quarantined: private until the owner approves a proposal that sets it; propose it with --attach on this command, or with: echo '${JSON.stringify({ [image.field]: image.url })}' | together shop settings set --json-file -`,
+    ].join('\n')
+  : image.url;
+
 export const registerShopKeyCommands = (
   program: Command,
   context: () => Result<ShopCliContext, AppError>,
@@ -637,23 +665,39 @@ export const registerShopKeyCommands = (
     }, (data) => JSON.stringify(data.settings, null, 2)));
 
   const branding = shop.command('branding').description('Brand images of the key\'s workspace');
-  keyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set'))
-    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema]), async (client, [kind, file]) => {
+  proposableKeyed(branding.command('upload <kind> <file>').description('Upload a logo, logo-dark, favicon or share-image file and print its URL for shop settings set; with --attach, also set it as the workspace image of that kind. A propose-mode key\'s image stays private until the owner approves the proposal that attaches it')
+    .option('--attach', 'set the uploaded image as the logo, dark logo, favicon or share image (a propose-mode key proposes this change)'))
+    .action(run(z.tuple([brandingKindSchema, z.string().min(1), keyOnlySchema.extend({ attach: z.boolean().optional() })]), async (client, [kind, file, options], proposal): Promise<Result<BrandingUploadResult, AppError>> => {
       const input = await imageUploadInput(kind, file);
-      return input.ok ? client.uploadBrandingAsset(input.value) : input;
-    }, (data) => data.url));
+      if (!input.ok) return input;
+      const uploaded = await client.uploadBrandingAsset(input.value);
+      if (!uploaded.ok) return uploaded;
+      if (options.attach !== true) return ok({ ...uploaded.value, field: BRANDING_FIELDS[kind] });
+      const patch = contractInput(shopSettingsContracts.updateSettings.input, { [BRANDING_FIELDS[kind]]: uploaded.value.url }, 'Invalid shop settings');
+      if (!patch.ok) return patch;
+      const attached = await client.updateSettings(patch.value, undefined, proposal);
+      return attached.ok ? ok({ ...attached.value, image: uploaded.value }) : attached;
+    }, (data) => {
+      if (!('outcome' in data)) return uploadedBrandingLines(data);
+      return isProposedChange(data) ? [proposedLines(data), quarantinedImageLine(data.image)].join('\n') : JSON.stringify(data.settings, null, 2);
+    }));
 
   const cover = shop.command('cover').description('Product cover images');
-  keyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read), upload a product cover and attach the completed image to the product'))
-    .action(runProposable(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file]) => {
+  proposableKeyed(cover.command('upload <productId> <file>').description('Check that the product exists (needs shop:catalog:read; with --group, a $proposal: reference is not checked), upload a product cover and attach the completed image to the product; a propose-mode key proposes the attachment, and its image stays private until the owner approves it'))
+    .action(run(z.tuple([idSchema, z.string().min(1), keyOnlySchema]), async (client, [id, file], proposal) => {
       const input = await imageUploadInput('product-cover', file);
       if (!input.ok) return input;
-      const product = await client.listProductPrices(id);
-      if (!product.ok) return product;
+      if (proposal.groupId === undefined || !isChangeProposalReference(id)) {
+        const product = await client.listProductPrices(id);
+        if (!product.ok) return product;
+      }
       const uploaded = await client.uploadProductCover(input.value);
       if (!uploaded.ok) return uploaded;
-      return client.updateProduct({ id, coverUrl: uploaded.value.url });
-    }, (data) => JSON.stringify(data.product, null, 2)));
+      const attached = await client.updateProduct({ id, coverUrl: uploaded.value.url }, undefined, proposal);
+      return attached.ok ? ok({ ...attached.value, image: uploaded.value }) : attached;
+    }, (data) => isProposedChange(data)
+      ? [proposedLines(data), quarantinedImageLine(data.image)].join('\n')
+      : JSON.stringify(data.product, null, 2)));
 
   const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');
   keyed(salesLinks.command('list').description('List sales links'))

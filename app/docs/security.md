@@ -524,7 +524,8 @@ scopes on every shop key.
   unit.
 - **Propose mode.** A key created with `mode: "propose"` (immutable) never
   changes live state. Its write scopes grant only `proposal:submit:catalog` and
-  `proposal:submit:settings` in place of the live write capabilities, and
+  `proposal:submit:settings`, each with `proposal:asset:upload` for images
+  that stay private until an approval, in place of the live write capabilities, and
   `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to
   it. A write scope requires its read scope (`shop:catalog:write` needs
   `shop:catalog:read`, `shop:settings:write` needs `shop:settings:read`): the
@@ -539,9 +540,28 @@ scopes on every shop key.
   without one: the ten catalogue write routes, the three sales-link write
   routes and the settings update store a
   [change proposal](change-proposals.md) instead of running their handler,
-  every other write route (images, fulfilment, integrations) answers `403`,
-  and a test drives a propose-mode key
-  over every registered shop route and asserts that no live row changed. A
+  the four product cover and branding image routes (class `direct`) upload
+  into the key's private quarantine, every other write route (fulfilment,
+  integrations) answers `403`, and a test drives a propose-mode key over every
+  registered shop route and asserts that no live row changed and no object
+  appeared under the public image prefix. A quarantined image is stored under
+  `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
+  private prefix the public asset route never serves; its address names its
+  SHA-256, so the bytes the owner previews are the bytes an approval publishes,
+  and approval checks the hash again before it writes the public copy. The owner
+  reads it only through `GET /api/change-proposals/:id/assets/:digest`
+  (verified owner session, `proposal:read`, an image the pending proposal
+  attaches), with `nosniff`, `private, no-store` and SVG always as an
+  attachment; the same route serves the already published copy of an attached
+  address that is no longer quarantined but that a live field shows. The owner
+  panel never renders a proposed SVG. No key can read
+  quarantined bytes. A propose-mode key cannot propose a new checkout
+  appearance logo or icon address (`checkoutAppearance.logoUrl`, `iconUrl`):
+  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB,
+  and starts at most 60 uploads in 15 minutes, each presigned for exactly its
+  declared size; decisions, revocation and a sweep on the minute tick remove
+  them, and the sweep also removes the key's upload candidates and the public
+  copies of approvals that did not end applied. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before

@@ -30,6 +30,7 @@ export * from './change-proposal.js';
 export * from './change-proposal-inputs.js';
 export * from './change-proposal-group.js';
 export * from './change-proposal-group-digest.js';
+export * from './change-proposal-image.js';
 export * from './strict-input.js';
 export * from './import.js';
 export * from './course.js';

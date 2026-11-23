@@ -805,19 +805,8 @@ export const en: Messages = {
     accessName: ({ name }) => format('“{name}”', { name }),
     accessGone: ({ id }) => format('something that no longer exists ({id})', { id }),
     accessArchived: ({ name }) => format('“{name}” (archived)', { name }),
-    accessUsedElsewhere: ({ name }) => format('“{name}” (also in other courses)', { name }),
     accessListRefused:
-      'The list after approval no longer passes the shop’s check: something on it no longer exists, a course on it is archived, or it excludes a module that other courses also use. Approving changes nothing.',
-    accessSharedExclusionNow: ({ modules, count }) => format(plural(
-      count,
-      'Now this product excludes the module {modules}, which other courses also use. Everyone who has this product therefore has it closed in those other courses too, even when another of their products grants such a course whole. Only a product that grants the module itself, or this same course without excluding it, opens it again, and a product that grants one of its lessons opens just that lesson.',
-      'Now this product excludes the modules {modules}, which other courses also use. Everyone who has this product therefore has them closed in those other courses too, even when another of their products grants such a course whole. Only a product that grants a module itself, or this same course without excluding it, opens it again, and a product that grants one of its lessons opens just that lesson.',
-    ), { modules }),
-    accessSharedExclusionLifted: ({ modules, count }) => format(plural(
-      count,
-      'After approval this product no longer excludes the module {modules}, which other courses also use, so for everyone who has this product it can open again in every course that contains it.',
-      'After approval this product no longer excludes the modules {modules}, which other courses also use, so for everyone who has this product they can open again in every course that contains them.',
-    ), { modules }),
+      'The list after approval no longer passes the shop’s check: something on it no longer exists or a course on it is archived. Approving changes nothing.',
     approveProductSetAccess: ({ target, access }) => format(
       'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them.',
       { target, access },

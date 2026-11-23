@@ -581,7 +581,7 @@ describe('release 8141fd15 reading what product access proposals store', () => {
     const h = harness();
     const view = await getChangeProposal(ownerSession, { id: await proposeAccess(h) }, h.deps);
     if (!view.ok) throw new Error(view.error.message);
-    expect(view.value.accessLabels).toEqual({ courses: [{ id: COURSE, title: 'Rollback course' }], modules: [], lessons: [], excludedModulesInOtherCourses: [] });
+    expect(view.value.accessLabels).toEqual({ courses: [{ id: COURSE, title: 'Rollback course' }], modules: [], lessons: [] });
     expect(changeProposalOwnerDetailSchema.safeParse(view.value).success).toBe(false);
     const withoutTheNewKey = Object.fromEntries(Object.entries(view.value).filter(([field]) => field !== 'accessLabels'));
     expect(changeProposalOwnerDetailSchema.parse(withoutTheNewKey).operation).toBe('product.set-access');

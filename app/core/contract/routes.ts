@@ -1189,12 +1189,14 @@ export type StudentLessonPlaybackOutput = z.infer<typeof studentLessonPlaybackOu
 
 export const lessonCompleteInputSchema = z.object({
   lessonId: z.string().min(1),
+  courseId: z.string().min(1).optional(),
 });
 
 export type LessonCompleteInput = z.input<typeof lessonCompleteInputSchema>;
 
 export const lessonUncompleteInputSchema = z.object({
   lessonId: z.string().min(1),
+  courseId: z.string().min(1).optional(),
 });
 
 export type LessonUncompleteInput = z.input<typeof lessonUncompleteInputSchema>;

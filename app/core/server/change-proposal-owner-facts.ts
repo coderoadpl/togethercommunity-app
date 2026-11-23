@@ -4,7 +4,6 @@ import {
   changeProposalKeyState,
   changeProposalStagedFileId,
   isChangeProposalReference,
-  type AccessItem,
   type ChangeProposal,
   type ChangeProposalAccessLabels,
   type ChangeProposalOwnerFacts,
@@ -86,21 +85,10 @@ const distinct = (values: ReadonlyArray<string | null>): string[] =>
 
 type AccessSubject = Pick<ChangeProposal, 'operation' | 'effect'>;
 
-type AccessModuleTitles = Awaited<ReturnType<ChangeProposalTargetLabelReader['accessTitles']>>['modules'];
-
-const accessItemsOf = (proposal: AccessSubject): AccessItem[] | null => {
-  const change = changeProposalAccessChange(proposal);
-  return change === null ? null : [...change.before, ...change.after];
-};
-
 const accessIdsOf = (proposal: AccessSubject) => {
-  const items = accessItemsOf(proposal);
-  return items === null ? null : accessItemIds(items);
+  const change = changeProposalAccessChange(proposal);
+  return change === null ? null : accessItemIds([...change.before, ...change.after]);
 };
-
-const excludedModulesInOtherCourses = (items: readonly AccessItem[], modules: AccessModuleTitles): string[] =>
-  distinct(items.flatMap((item) => item.level !== 'course' ? [] : (item.excludedModuleIds ?? []).filter((moduleId) =>
-    modules.find((module) => module.id === moduleId)?.courseIds.some((courseId) => courseId !== item.courseId) === true)));
 
 /** Read at view time for display only; the titles never take part in a decision. */
 const readAccessLabels = async (
@@ -117,15 +105,13 @@ const readAccessLabels = async (
   const labelled = (ids: readonly string[], found: ReadonlyArray<{ id: string; title: string }>) =>
     ids.map((id) => ({ id, title: found.find((entry) => entry.id === id)?.title ?? null }));
   return (proposal) => {
-    const items = accessItemsOf(proposal);
-    if (items === null || titles === null) return null;
-    const ids = accessItemIds(items);
+    const ids = accessIdsOf(proposal);
+    if (ids === null || titles === null) return null;
     const archivedCourses = titles.courses.filter((course) => course.archived && ids.courseIds.includes(course.id)).map((course) => course.id);
     return {
       courses: labelled(ids.courseIds, titles.courses),
       modules: labelled(ids.moduleIds, titles.modules),
       lessons: labelled(ids.lessonIds, titles.lessons),
-      excludedModulesInOtherCourses: excludedModulesInOtherCourses(items, titles.modules),
       ...(archivedCourses.length === 0 ? {} : { archivedCourses }),
     };
   };

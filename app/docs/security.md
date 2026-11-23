@@ -748,24 +748,18 @@ scopes on every shop key.
   is not prevented. The content import, the legacy importer and lesson
   deletion write access items without this check; an import key can thereby
   change, with no owner approval, what members with active grants to an
-  unpublished product it imported open. Excluded modules are pooled across
-  courses in access resolution (`buildAccessLookup`): a module that every
-  `course` item for one course excludes stays closed in every course the
-  member holds in full unless a `modules` item names it, even when another
-  product grants that course in full. A `product.set-access` proposal therefore may not exclude a module
-  attached to more than one course (`400 validation` at submit, `failed` at
-  approval); the owner's editor and product creation still may. Access is
-  resolved from a product's current list on every request, so an applied
-  change reaches everyone who already holds the product at once. No shop route
+  unpublished product it imported open. An excluded module stays closed only
+  inside the course whose `course` items all exclude it (`buildAccessLookup`),
+  so one product's exclusion never closes a module inside a course another
+  item grants as a whole. Access is resolved from a product's current list on
+  every request, so an applied change reaches everyone who already holds the
+  product at once. No shop route
   serves a course, module or lesson to a key, and the receipt carries only the
   ids the key sent; a refusal of the check names no title but tells the key
   whether an id it sent is an active course of the workspace and whether a
-  module or lesson belongs to the course it named, and the refusal of an
-  excluded module tells it only that the module is attached to more than one
-  course. The course, module and lesson titles of the owner view
-  (`accessLabels`), its `excludedModulesInOtherCourses` and its
-  `archivedCourses` are read at read time for display only and never take
-  part in a decision. See
+  module or lesson belongs to the course it named. The course, module and
+  lesson titles of the owner view (`accessLabels`) and its `archivedCourses`
+  are read at read time for display only and never take part in a decision. See
   [Product access](change-proposals.md#product-access).
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the

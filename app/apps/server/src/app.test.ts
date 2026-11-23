@@ -10101,6 +10101,8 @@ describe('staff member self-service routes', () => {
       [API_PATHS.studentLastViewed, { courseId: course.id, lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1', courseId: course.id }],
+      [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1', courseId: course.id }],
     ] as const) {
       const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
       expect(response.status, path).toBe(200);

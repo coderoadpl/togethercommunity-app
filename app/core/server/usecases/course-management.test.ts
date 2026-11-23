@@ -1109,24 +1109,10 @@ describe('excluding a module that other courses also use', () => {
     return { products, d };
   };
 
-  it('stays open to the owner editor', async () => {
+  it('is saved by the owner editor', async () => {
     const { products, d } = setup();
     expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: excluding }, d)).toMatchObject({ ok: true });
     expect(products[0]?.accessItems).toEqual(excluding);
-  });
-
-  it('is refused for a proposal with an answer on excludedModuleIds that names nothing else', async () => {
-    const { products, d } = setup();
-    const result = await updateProductAccessItems(ctx, { id: 'p1', accessItems: excluding }, d, { proposed: true });
-    expect(result).toEqual({
-      ok: false,
-      error: {
-        code: 'validation',
-        message: 'Product access excludedModuleIds: this module cannot be excluded through a proposal',
-        details: { formErrors: [], fieldErrors: { excludedModuleIds: ['This module cannot be excluded through a proposal'] } },
-      },
-    });
-    expect(products[0]?.accessItems).toEqual([]);
   });
 });
 

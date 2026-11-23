@@ -532,7 +532,6 @@ export const accessChangeProposal = fileProposal('proposal-field-guide-access', 
       { id: 'module-studio-mixing', title: 'Mixing colours' },
     ],
     lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }, { id: 'lesson-studio-shading', title: 'Light and shade' }],
-    excludedModulesInOtherCourses: [],
   },
 });
 
@@ -550,12 +549,11 @@ export const accessGoneProposal = fileProposal('proposal-field-guide-access-gone
     courses: [SKETCHING, { id: 'course-studio-life-2025', title: 'Life drawing 2025' }, { id: 'course-studio-retired', title: null }, COLOUR],
     modules: [],
     lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }, { id: 'lesson-studio-retired', title: null }],
-    excludedModulesInOtherCourses: [],
     archivedCourses: ['course-studio-life-2025'],
   },
 });
 
-export const accessSharedExclusionProposal = fileProposal('proposal-field-guide-access-shared', '2026-11-21T09:35:00.000Z', {
+export const accessExclusionLiftedProposal = fileProposal('proposal-field-guide-access-lifted', '2026-11-21T09:35:00.000Z', {
   operation: 'product.set-access',
   input: { id: FILE_PRODUCT_ID, accessItems: [{ level: 'course', courseId: SKETCHING.id }] },
   effect: {
@@ -568,7 +566,6 @@ export const accessSharedExclusionProposal = fileProposal('proposal-field-guide-
     courses: [SKETCHING],
     modules: [{ id: 'module-studio-warmups', title: 'Warm-up drills' }],
     lessons: [],
-    excludedModulesInOtherCourses: ['module-studio-warmups'],
   },
 });
 
@@ -616,7 +613,7 @@ const accessGroupItemViews = [
     target: { kind: 'product' as const, id: accessGroupProduct },
     input: { id: accessGroupProduct, accessItems: [{ level: 'course', courseId: COLOUR.id }] },
     effect: { accessItems: { before: [], after: [{ level: 'course', courseId: COLOUR.id }] } },
-    accessLabels: { courses: [COLOUR], modules: [], lessons: [], excludedModulesInOtherCourses: [] },
+    accessLabels: { courses: [COLOUR], modules: [], lessons: [] },
   }),
   accessGroupItem(3, 'proposal-starter-pack-field-guide-access', '2026-11-22T10:00:10.000Z', {
     operation: 'product.set-access',
@@ -629,7 +626,7 @@ const accessGroupItemViews = [
         after: [{ level: 'course', courseId: SKETCHING.id }, { level: 'lessons', courseId: COLOUR.id, lessonIds: ['lesson-studio-palettes'] }],
       },
     },
-    accessLabels: { courses: [SKETCHING, COLOUR], modules: [], lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }], excludedModulesInOtherCourses: [] },
+    accessLabels: { courses: [SKETCHING, COLOUR], modules: [], lessons: [{ id: 'lesson-studio-palettes', title: 'Mixing palettes' }] },
   }),
 ];
 
@@ -649,7 +646,7 @@ export const accessChangeProposalGroup = {
 export const pendingAccessChangeProposals = [
   ...accessGroupItemViews.toReversed(),
   accessChangeProposal,
-  accessSharedExclusionProposal,
+  accessExclusionLiftedProposal,
   accessGoneProposal,
   accessClearProposal,
 ];

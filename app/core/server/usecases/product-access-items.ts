@@ -65,23 +65,3 @@ export const checkProductAccessItems = async (
   }
   return ok(undefined);
 };
-
-const PROPOSED_EXCLUSION_MESSAGE = 'This module cannot be excluded through a proposal';
-
-// Access resolution pools the excluded modules of every course item, so excluding a module that other courses also use
-// closes it there too; until exclusions are per course, a proposal that replaces a live list may not write one.
-export const checkProposedAccessExclusions = async (
-  tenantId: string,
-  items: readonly AccessItem[],
-  catalog: Pick<ProductAccessCatalog, 'modules'>,
-): Promise<Result<void, AppError>> => {
-  const excluded = unique(items.flatMap((item) => item.level === 'course' ? item.excludedModuleIds ?? [] : []));
-  if (excluded.length === 0) return ok(undefined);
-  const modules = await catalog.modules.findByIds(tenantId, excluded);
-  return modules.some((module) => unique(module.courseIds).length > 1)
-    ? err(validation('Product access excludedModuleIds: this module cannot be excluded through a proposal', {
-      formErrors: [],
-      fieldErrors: { excludedModuleIds: [PROPOSED_EXCLUSION_MESSAGE] },
-    }))
-    : ok(undefined);
-};

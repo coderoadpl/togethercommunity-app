@@ -796,8 +796,7 @@ export const changeProposalOwnerViewFakes = (
     accessTitles: async (tenantId, ids) => ({
       courses: state.courses.filter((row) => row.tenantId === tenantId && ids.courseIds.includes(row.id))
         .map((row) => ({ id: row.id, title: row.name, archived: Boolean(row.archivedAt) })),
-      modules: state.modules.filter((row) => row.tenantId === tenantId && ids.moduleIds.includes(row.id))
-        .map((row) => ({ id: row.id, title: row.name, courseIds: row.courseIds })),
+      modules: state.modules.filter((row) => row.tenantId === tenantId && ids.moduleIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
       lessons: state.lessons.filter((row) => row.tenantId === tenantId && ids.lessonIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
     }),
   },

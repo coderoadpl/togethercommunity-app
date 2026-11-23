@@ -165,12 +165,6 @@ const attachModule = (h: Harness, moduleId: string, courseId: string) => {
   found.courseIds = [...found.courseIds, courseId];
 };
 
-const SHARED_EXCLUSION_REFUSAL = {
-  code: 'validation',
-  message: 'Product access excludedModuleIds: this module cannot be excluded through a proposal',
-  details: { formErrors: [], fieldErrors: { excludedModuleIds: ['This module cannot be excluded through a proposal'] } },
-};
-
 describe('proposing what a product grants', () => {
   it('stores the access lists before and after, changes nothing live and locks the courses before the product', async () => {
     const h = harness();
@@ -214,11 +208,11 @@ describe('proposing what a product grants', () => {
     expect(h.store.proposals).toEqual([]);
   });
 
-  it('refuses to exclude a module that another course also uses, names nothing about that course and stores nothing', async () => {
+  it('accepts excluding a module that another course also uses, since the exclusion holds only inside the course it names', async () => {
     const h = harness();
-    const result = await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared'] }] });
-    expect(result).toEqual({ ok: false, error: SHARED_EXCLUSION_REFUSAL });
-    expect(h.store.proposals).toEqual([]);
+    const accessItems = [{ level: 'course' as const, courseId: 'course-intro', excludedModuleIds: ['module-shared'] }];
+    expect(await h.submit({ id: 'product-guide', accessItems })).toMatchObject({ ok: true, value: { status: 'pending' } });
+    expect(h.store.proposals[0]?.effect).toEqual({ accessItems: { before: [{ level: 'course', courseId: 'course-intro' }], after: accessItems } });
   });
 
   it('is refused to a direct-mode key, which holds no capability to change what a product grants', async () => {
@@ -258,14 +252,14 @@ describe('approving what a product grants', () => {
     expect(accessOf(h, 'product-guide')).toEqual(sent);
   });
 
-  it('fails with the validation error and applies nothing once an excluded module is attached to another course', async () => {
+  it('applies an exclusion of a module that was attached to another course after the proposal', async () => {
     const h = harness();
-    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-basics'] }] }));
+    const accessItems = [{ level: 'course' as const, courseId: 'course-intro', excludedModuleIds: ['module-basics'] }];
+    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems }));
     attachModule(h, 'module-basics', 'course-advanced');
 
-    const approved = await approveChangeProposal(ownerSession, { id }, h.deps);
-    expect(approved).toMatchObject({ ok: true, value: { status: 'failed', failureCode: 'validation', failureMessage: SHARED_EXCLUSION_REFUSAL.message } });
-    expect(accessOf(h, 'product-guide')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied', appliedResourceId: 'product-guide' } });
+    expect(accessOf(h, 'product-guide')).toEqual(accessItems);
   });
 
   it('is stale and applies nothing once the list moved', async () => {
@@ -304,21 +298,8 @@ describe('the owner view of a proposed access change', () => {
       courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-advanced', title: 'Advanced course' }],
       modules: [{ id: 'module-basics', title: 'Basics' }],
       lessons: [{ id: 'lesson-deep', title: null }],
-      excludedModulesInOtherCourses: [],
     });
     expect(JSON.stringify(unwrap(await getOwnChangeProposal(keyCtx(), { id }, h.deps)))).not.toMatch(/Intro course|Basics|accessLabels/u);
-  });
-
-  it('marks every excluded module of both lists that another course also uses', async () => {
-    const h = harness();
-    setStored(h, 'product-guide', [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared', 'module-basics'] }]);
-    const { id } = unwrap(await h.submit({ id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-advanced', excludedModuleIds: ['module-deep'] }] }));
-    expect(changeProposalOwnerDetailSchema.parse(unwrap(await getChangeProposal(ownerSession, { id }, h.deps))).accessLabels?.excludedModulesInOtherCourses)
-      .toEqual(['module-shared']);
-
-    attachModule(h, 'module-deep', 'course-intro');
-    expect(changeProposalOwnerDetailSchema.parse(unwrap(await getChangeProposal(ownerSession, { id }, h.deps))).accessLabels?.excludedModulesInOtherCourses)
-      .toEqual(['module-shared', 'module-deep']);
   });
 
   it('lists the archived courses of both lists, and only once a course is archived', async () => {
@@ -354,7 +335,7 @@ describe('what a product grants in a group', () => {
     });
     const items = unwrap(await getChangeProposalGroup(ownerSession, { id: groupId }, h.deps)).items;
     expect(items.find((item) => item.id === access)?.accessLabels).toEqual({
-      courses: [{ id: 'course-advanced', title: 'Advanced course' }], modules: [], lessons: [], excludedModulesInOtherCourses: [],
+      courses: [{ id: 'course-advanced', title: 'Advanced course' }], modules: [], lessons: [],
     });
 
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [created, access] }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });

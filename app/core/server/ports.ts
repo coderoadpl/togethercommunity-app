@@ -1726,7 +1726,6 @@ export interface StorageProvider {
     region?: string;
     deadlineMs?: number;
   }): Promise<Result<{ deleted: true }, AppError>>;
-  /** `etag` is the entity tag the storage answers for the object, when it sends one. */
   head(input: {
     url: string;
     accessKeyId: string;
@@ -3375,7 +3374,7 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   deleteUnresolved(tenantId: string, image: ProposalImageReference): Promise<boolean>;
   /** Restarts the age bound of the record at `now`, after a write of its object that ended without a definite answer. */
   restartPublication(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
-  /** Marks the record with a delete of its object that may still land, from `now`; null clears the mark. */
+  /** `null` clears the mark. */
   markDeleteUnresolved(tenantId: string, attemptId: string, image: ProposalImageReference, now: string | null): Promise<void>;
 }
 

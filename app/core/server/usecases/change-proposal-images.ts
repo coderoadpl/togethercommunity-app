@@ -308,7 +308,7 @@ export const changeProposalImageGone = (invalidInputMessage: string): AppError =
   fieldErrors: {},
 });
 
-/** `bytes` is null for a public copy that already holds the digest, verified before the transaction and by metadata under its lock, so approval writes nothing for it. */
+/** `bytes` is null for a reused public copy, which approval never writes. */
 interface PreparedImage {
   image: ProposalImageReference;
   bytes: Uint8Array | null;
@@ -352,7 +352,6 @@ const readVerified = async (
   return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
 };
 
-/** A public copy that hashed to its digest before the transaction, with the metadata the check under the lock compares. */
 export interface ReusedPublicCopy {
   image: ProposalImageReference;
   sizeBytes: number;

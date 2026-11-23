@@ -1,0 +1,365 @@
+import {
+  Alert,
+  AlertTitle,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  Dialog,
+  DialogContent,
+  FormControlLabel,
+  InputAdornment,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useId, useState, type ReactNode } from 'react';
+import { z } from 'zod';
+import { SALES_LINK_TIME_ZONE, minorUnitsFromDecimal, productLines, type OrderListItem, type StaffRefundPreview } from '#core/domain/index.js';
+
+import { actions } from '../../../api.js';
+import { errorCodeOf, errorDetailsOf, localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { currencyFractionDigits, formatDate, formatMinorUnitsDecimal, formatMinorUnitsPrice } from '../../../lib/format.js';
+import {
+  RefundConsequenceGroup,
+  RefundConsequenceIcon,
+  RefundConsequenceItem,
+  RefundConsequencesPanel,
+  RefundConsequenceText,
+  RefundDialogActions,
+  RefundDialogTitle,
+  RefundFieldset,
+  RefundMutedRow,
+  RefundPlainList,
+  WrapAnywhereText,
+} from '../../../theme.js';
+import { AccessIcon, InvoiceIcon, LockIcon, MailIcon, PackageIcon, RefundIcon, StatusIcon, TestModeIcon, TruckIcon } from './refund-icons.js';
+
+const REASON_MAX_LENGTH = 500;
+
+export const newRefundRequestKey = (): string => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `refund-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+};
+
+type AmountCheck =
+  | { ok: true; amountCents: number }
+  | { ok: false; reason: 'format' | 'not_positive' | 'too_high'; amountCents: number | null };
+
+const checkAmount = (text: string, currency: string, remainderCents: number): AmountCheck => {
+  const parsed = minorUnitsFromDecimal(text, currency);
+  if (!parsed.ok) return { ok: false, reason: 'format', amountCents: null };
+  if (parsed.value <= 0) return { ok: false, reason: 'not_positive', amountCents: null };
+  if (parsed.value > remainderCents) return { ok: false, reason: 'too_high', amountCents: parsed.value };
+  return { ok: true, amountCents: parsed.value };
+};
+
+const amountMessage = (check: AmountCheck, t: Messages, currency: string, remainder: string): string | null => {
+  if (check.ok) return null;
+  const messages = t.sales.staffRefund;
+  if (check.reason === 'too_high') return messages.amountTooHigh({ remainder });
+  if (check.reason === 'not_positive') return messages.amountNotPositive({ remainder });
+  const decimals = currencyFractionDigits(currency);
+  return decimals === 0 ? messages.amountWhole({ remainder }) : messages.amountInvalid({ decimals, remainder });
+};
+
+const remainderDetailSchema = z.object({ remainderCents: z.number().int().nonnegative() });
+
+const currencySymbol = (currency: string, language: string): string =>
+  new Intl.NumberFormat(language, { style: 'currency', currency }).formatToParts(0).find((part) => part.type === 'currency')?.value ?? currency;
+
+const Consequence = ({ icon, children, hint, strong = false }: { icon: ReactNode; children: ReactNode; hint?: ReactNode; strong?: boolean }) => (
+  <RefundConsequenceItem>
+    <RefundConsequenceIcon>{icon}</RefundConsequenceIcon>
+    <Box sx={{ minWidth: 0 }}>
+      <RefundConsequenceText variant="body2" strong={strong}>{children}</RefundConsequenceText>
+      {hint === undefined ? null : <Typography variant="body2" color="text.secondary">{hint}</Typography>}
+    </Box>
+  </RefundConsequenceItem>
+);
+
+const Stacked = ({ active, children }: { active: boolean; children: ReactNode }) => (
+  <Box aria-hidden={active ? undefined : true} sx={{ gridArea: '1 / 1', minWidth: 0, visibility: active ? 'visible' : 'hidden' }}>
+    {children}
+  </Box>
+);
+
+interface StaffRefundDialogProps {
+  open: boolean;
+  order: OrderListItem;
+  preview: StaffRefundPreview;
+  requestKey: string;
+  onClose: () => void;
+}
+
+export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }: StaffRefundDialogProps) => {
+  const t = useTranslations();
+  const messages = t.sales.staffRefund;
+  const { language } = useLanguage();
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const titleId = useId();
+  const queryClient = useQueryClient();
+  const { currency, remainderCents, fullRefundOptions: options } = preview;
+  const money = (cents: number) => formatMinorUnitsPrice(cents, currency, language);
+  const remainder = money(remainderCents);
+  const returnableUnits = preview.returnableStock.filter((entry) => entry.quantity > 0).map((entry) => {
+    const name = order.lines?.find((line) => line.productId === entry.productId)?.name ?? order.productTitle;
+    return `${name} × ${String(entry.quantity)}`;
+  });
+  const restockVisible = options.restockOffered && returnableUnits.length > 0;
+  const accessNames = order.lines === undefined
+    ? [order.productTitle]
+    : productLines(order.lines).filter((line) => line.productType !== 'physical').map((line) => line.name);
+
+  const [partial, setPartial] = useState(false);
+  const [amountText, setAmountText] = useState(() => formatMinorUnitsDecimal(remainderCents, currency, language));
+  const [amountTouched, setAmountTouched] = useState(false);
+  const [restock, setRestock] = useState(restockVisible && options.restockDefault);
+  const [removeFromPackingList, setRemoveFromPackingList] = useState(options.removeFromPackingListOffered && options.removeFromPackingListDefault);
+  const [reason, setReason] = useState('');
+
+  const refund = useMutation({
+    ...actions.createOrderRefund,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.ordersInvalidates());
+      onClose();
+    },
+  });
+
+  const check: AmountCheck = partial ? checkAmount(amountText, currency, remainderCents) : { ok: true, amountCents: remainderCents };
+  const amountError = partial && amountTouched ? amountMessage(check, t, currency, remainder) : null;
+  const effectiveCents = check.amountCents;
+  const fullAmount = check.ok && check.amountCents === remainderCents;
+
+  const submit = () => {
+    if (!check.ok) {
+      setAmountTouched(true);
+      return;
+    }
+    const note = reason.trim();
+    refund.mutate({
+      orderId: order.id,
+      requestKey,
+      ...(partial ? { amountCents: check.amountCents } : {}),
+      ...(note === '' ? {} : { reason: note }),
+      ...(partial
+        ? (fullAmount ? { restock: false, removeFromPackingList: false } : {})
+        : {
+          ...(options.restockOffered ? { restock: restockVisible && restock } : {}),
+          ...(options.removeFromPackingListOffered ? { removeFromPackingList } : {}),
+        }),
+    });
+  };
+
+  const close = () => {
+    if (!refund.isPending) onClose();
+  };
+
+  const submitError = (() => {
+    if (!refund.isError) return null;
+    const code = errorCodeOf(refund.error);
+    if (code === 'conflict') return messages.errorConflict;
+    if (code === 'rate_limited') return messages.errorRateLimited;
+    if (code === 'validation') {
+      const detail = remainderDetailSchema.safeParse(errorDetailsOf(refund.error));
+      if (detail.success) return messages.amountTooHigh({ remainder: money(detail.data.remainderCents) });
+    }
+    return localizePanelError(refund.error, t);
+  })();
+
+  const buyer = order.memberName ?? order.memberEmail;
+  const testMode = preview.mode === 'test';
+  const paidDate = formatDate(order.paidAt ?? order.createdAt, language, SALES_LINK_TIME_ZONE);
+  const laterCents = check.ok ? remainderCents - check.amountCents : null;
+
+  const fullConsequences = (
+    <>
+      {restockVisible && restock ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestock({ units: returnableUnits.join(', ') })}</Consequence> : null}
+      {options.removeFromPackingListOffered
+        ? <Consequence icon={<PackageIcon />}>{removeFromPackingList ? messages.consequenceRemoveFromPackingList : messages.consequenceStaysOnPackingList}</Consequence>
+        : null}
+      {preview.hasShipment ? <Consequence icon={<TruckIcon />} hint={messages.consequenceLabelHint}>{messages.consequenceLabel}</Consequence> : null}
+      {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{messages.consequenceAccessEnds}</Consequence>}
+      <Consequence icon={<StatusIcon />}>{messages.consequenceStatusFull}</Consequence>
+    </>
+  );
+  const partialConsequences = (
+    <>
+      <Consequence icon={<PackageIcon />}>
+        {preview.onPackingList ? `${messages.consequenceNoRestock} ${messages.consequenceStaysOnPackingList}` : messages.consequenceNoRestock}
+      </Consequence>
+      {accessNames.length === 0 ? null : <Consequence icon={<AccessIcon />} hint={accessNames.join(', ')}>{messages.consequenceAccessStays}</Consequence>}
+      <Consequence
+        icon={<StatusIcon />}
+        hint={laterCents === null || laterCents <= 0 ? undefined : messages.consequenceLaterRemainder({ amount: money(laterCents) })}
+      >
+        {fullAmount ? messages.consequenceStatusFull : messages.consequenceStatusPartial}
+      </Consequence>
+    </>
+  );
+
+  return (
+    <Dialog
+      open={open}
+      onClose={close}
+      fullScreen={fullScreen}
+      fullWidth
+      maxWidth="md"
+      aria-labelledby={titleId}
+      data-testid="staff-refund-dialog"
+    >
+      <RefundDialogTitle id={titleId} component="div">
+        <Box sx={{ minWidth: 0 }}>
+          <WrapAnywhereText variant="h2" component="h2">{messages.dialogTitle({ id: order.id })}</WrapAnywhereText>
+          <WrapAnywhereText variant="body2" color="text.secondary" sx={{ mt: '0.25rem' }}>
+            {messages.dialogSubtitle({ buyer, paid: money(preview.paidCents), date: paidDate })}
+          </WrapAnywhereText>
+        </Box>
+        <Chip size="small" variant="outlined" label={testMode ? messages.modeTest : messages.modeLive} sx={{ flexShrink: 0 }} />
+      </RefundDialogTitle>
+      <DialogContent sx={{ p: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr)' } }}>
+          <Stack useFlexGap spacing="1.25rem" sx={{ p: '1.5rem' }}>
+            <Box>
+              <FormControlLabel
+                sx={{ alignItems: 'flex-start', m: 0, gap: '0.5rem' }}
+                control={<Switch checked={partial} onChange={(_, checked) => { setPartial(checked); setAmountTouched(false); refund.reset(); }} data-testid="staff-refund-partial" />}
+                label={(
+                  <Box sx={{ pt: '0.4rem' }}>
+                    <Typography>{messages.partialSwitch}</Typography>
+                    <Box sx={{ display: 'grid' }}>
+                      <Stacked active={!partial}><Typography variant="body2" color="text.secondary">{messages.partialOffHint}</Typography></Stacked>
+                      <Stacked active={partial}><Typography variant="body2" color="text.secondary">{messages.partialOnHint}</Typography></Stacked>
+                    </Box>
+                  </Box>
+                )}
+              />
+            </Box>
+            <TextField
+              label={messages.amountLabel}
+              value={partial ? amountText : formatMinorUnitsDecimal(remainderCents, currency, language)}
+              onChange={(event) => { setAmountText(event.target.value); setAmountTouched(true); refund.reset(); }}
+              onBlur={() => setAmountTouched(true)}
+              error={amountError !== null}
+              helperText={amountError ?? (partial ? messages.amountPartialHelp({ remainder, paid: money(preview.paidCents) }) : messages.amountFullHelp)}
+              slotProps={{
+                input: { readOnly: !partial, endAdornment: <InputAdornment position="end">{currencySymbol(currency, language)}</InputAdornment> },
+                htmlInput: { inputMode: 'decimal', autoComplete: 'off', 'data-testid': 'staff-refund-amount' },
+              }}
+            />
+            <Box sx={{ display: 'grid' }}>
+              <Stacked active={!partial}>
+                <Stack useFlexGap spacing="0.75rem">
+                  {preview.hasShipment ? (
+                    <Alert severity="warning">
+                      <AlertTitle>{messages.shippedWarningTitle}</AlertTitle>
+                      {messages.shippedWarningBody}
+                    </Alert>
+                  ) : null}
+                  {restockVisible || options.removeFromPackingListOffered || preview.onPackingList ? (
+                    <RefundFieldset>
+                      <Typography component="legend" variant="overline" color="text.secondary" sx={{ px: '0.25rem' }}>
+                        {preview.onPackingList ? messages.goodsAndPackingTitle : messages.goodsTitle}
+                      </Typography>
+                      <Stack useFlexGap spacing="0.5rem">
+                        {restockVisible ? (
+                          <FormControlLabel
+                            sx={{ alignItems: 'flex-start', m: 0 }}
+                            control={<Checkbox checked={restock} disabled={partial} onChange={(_, checked) => setRestock(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-restock" />}
+                            label={(
+                              <Box>
+                                <Typography>{messages.restock}</Typography>
+                                <Typography variant="body2" color="text.secondary">{preview.hasShipment ? messages.restockHintShipped : messages.restockHintUnshipped}</Typography>
+                                <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.35rem' }}>
+                                  {returnableUnits.map((unit) => <Chip key={unit} size="small" variant="outlined" icon={<PackageIcon />} label={unit} />)}
+                                </Stack>
+                              </Box>
+                            )}
+                          />
+                        ) : null}
+                        {options.removeFromPackingListOffered || preview.onPackingList ? (
+                          <FormControlLabel
+                            sx={{ alignItems: 'flex-start', m: 0 }}
+                            disabled={partial || !options.removeFromPackingListOffered}
+                            control={<Checkbox checked={options.removeFromPackingListOffered && removeFromPackingList} onChange={(_, checked) => setRemoveFromPackingList(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-remove-from-packing-list" />}
+                            label={(
+                              <Box>
+                                <Typography>{messages.removeFromPackingList}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {options.removeFromPackingListOffered ? messages.removeFromPackingListHint : messages.removeFromPackingListUnavailable}
+                                </Typography>
+                              </Box>
+                            )}
+                          />
+                        ) : null}
+                      </Stack>
+                    </RefundFieldset>
+                  ) : null}
+                </Stack>
+              </Stacked>
+              <Stacked active={partial}>
+                <Alert severity="info" data-testid="staff-refund-partial-info">
+                  <AlertTitle>{messages.partialInfoTitle}</AlertTitle>
+                  {messages.partialInfoBody}
+                </Alert>
+              </Stacked>
+            </Box>
+            <TextField
+              label={messages.reasonLabel}
+              placeholder={messages.reasonPlaceholder}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              multiline
+              minRows={3}
+              helperText={messages.reasonCount({ count: reason.length, max: REASON_MAX_LENGTH })}
+              slotProps={{ htmlInput: { maxLength: REASON_MAX_LENGTH, 'data-testid': 'staff-refund-reason' } }}
+            />
+          </Stack>
+          <RefundConsequencesPanel>
+            <Typography component="h3" variant="overline" color="text.secondary">{messages.consequencesTitle}</Typography>
+            <RefundPlainList data-testid="staff-refund-consequences">
+              <Consequence icon={<RefundIcon />} hint={messages.consequenceProviderHint}>
+                {messages.consequenceProvider({ amount: money(effectiveCents ?? remainderCents) })}
+              </Consequence>
+              {testMode
+                ? <Consequence icon={<TestModeIcon />} hint={messages.consequenceTestModeHint}>{messages.consequenceTestMode}</Consequence>
+                : <Consequence icon={<MailIcon />}>{messages.consequenceEmail({ buyer })}</Consequence>}
+              <Box component="li" sx={{ display: 'grid' }}>
+                <Stacked active={!partial}><RefundConsequenceGroup>{fullConsequences}</RefundConsequenceGroup></Stacked>
+                <Stacked active={partial}><RefundConsequenceGroup>{partialConsequences}</RefundConsequenceGroup></Stacked>
+              </Box>
+              {preview.hasInvoice ? <Consequence icon={<InvoiceIcon />}>{messages.consequenceInvoice}</Consequence> : null}
+              {preview.remainderSource === 'platform' ? <Consequence icon={<StatusIcon />}>{messages.consequencePlatformRecords}</Consequence> : null}
+              <Consequence icon={<LockIcon />} hint={messages.consequenceFinalHint} strong>{messages.consequenceFinal}</Consequence>
+            </RefundPlainList>
+          </RefundConsequencesPanel>
+        </Box>
+        {submitError === null ? null : <Alert severity="error" sx={{ mx: '1.5rem', mb: '1rem' }} data-testid="staff-refund-error">{submitError}</Alert>}
+      </DialogContent>
+      <RefundDialogActions>
+        <RefundMutedRow direction="row" useFlexGap spacing="0.4rem" sx={{ mr: 'auto', alignItems: 'center', display: { xs: 'none', sm: 'flex' } }}>
+          <LockIcon />
+          <Typography variant="body2">{messages.footerFinal}</Typography>
+        </RefundMutedRow>
+        <Button variant="outlined" onClick={close} disabled={refund.isPending}>{t.common.cancel}</Button>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<RefundIcon />}
+          disabled={refund.isPending || (partial && !check.ok)}
+          onClick={submit}
+          data-testid="staff-refund-submit"
+        >
+          {refund.isPending
+            ? messages.submitting
+            : effectiveCents === null ? messages.submitWithoutAmount : messages.submit({ amount: money(effectiveCents) })}
+        </Button>
+      </RefundDialogActions>
+    </Dialog>
+  );
+};

@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4529,3 +4529,58 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
   } : {}),
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
+
+export const RefundStrokeIcon = styled(SvgIcon)({ fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' });
+export const RefundAmountLabel = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ theme, total }) => ({
+  color: total ? theme.palette.text.primary : theme.palette.text.secondary,
+  fontWeight: total ? 600 : undefined,
+}));
+export const RefundAmountValue = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ total }) => (
+  total ? { fontSize: '1.5rem', fontWeight: 700, lineHeight: 1.2 } : {}
+));
+export const RefundMutedRow = styled(Stack)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const RefundHistoryItem = styled('li', { shouldForwardProp: (prop) => prop !== 'attention' })<{ attention: boolean }>(({ theme, attention }) => ({
+  listStyle: 'none',
+  padding: '1rem',
+  border: `1px solid ${attention ? theme.palette.warning.main : theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+export const RefundHistoryAmount = styled(Typography)({ fontSize: '1.125rem', fontWeight: 700 });
+export const RefundPlainList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
+export const RefundConsequenceGroup = styled(RefundPlainList)(({ theme }) => ({ borderBottom: `1px solid ${theme.palette.divider}` }));
+export const RefundConsequenceItem = styled('li')(({ theme }) => ({
+  display: 'flex',
+  gap: '0.75rem',
+  padding: '0.75rem 0',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  '&:last-of-type': { borderBottom: 0 },
+}));
+export const RefundConsequenceIcon = styled(Box)(({ theme }) => ({ display: 'flex', paddingTop: '0.1rem', color: theme.palette.text.secondary }));
+export const RefundConsequenceText = styled(Typography, { shouldForwardProp: (prop) => prop !== 'strong' })<{ strong: boolean }>(({ strong }) => ({
+  fontWeight: strong ? 600 : undefined,
+}));
+export const RefundConsequencesPanel = styled(Box)(({ theme }) => ({
+  padding: '1.5rem',
+  backgroundColor: theme.palette.action.hover,
+  borderTop: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.up('md')]: { borderTop: 0, borderLeft: `1px solid ${theme.palette.divider}` },
+}));
+export const RefundDialogTitle = styled(DialogTitle)<AsElement>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '1rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+export const RefundDialogActions = styled(DialogActions)(({ theme }) => ({
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  padding: '1rem 1.5rem',
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+export const RefundFieldset = styled('fieldset')(({ theme }) => ({
+  margin: 0,
+  padding: '0.75rem 1rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));

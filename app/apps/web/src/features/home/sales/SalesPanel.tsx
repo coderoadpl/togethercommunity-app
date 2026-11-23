@@ -1,5 +1,6 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { RefundStatusChip } from './OrderRefundJob.js';
 import { useState } from 'react';
 import {
   Alert,
@@ -413,6 +414,13 @@ export const SalesPanel = () => {
                     <TableCell>
                       <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
                       <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
+                      {order.cancelReason != null || order.refundJobStatus == null ? null : (
+                        <RefundStatusChip
+                          status={order.refundJobStatus}
+                          label={t.sales.staffRefund.stateChip({ state: t.sales.staffRefund.states[order.refundJobStatus] })}
+                          data-testid="sales-staff-refund-chip"
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       {order.fulfilmentStatus == null ? '—' : (

@@ -56,7 +56,7 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
     passkeys: { data: state === 'PasskeysLoading' || state === 'PasskeysError' ? undefined : state === 'PasskeysEmpty' || state === 'ProofAbsent' ? [] : accountPasskeys, pending: state === 'PasskeysLoading', error: state === 'PasskeysError' ? previewFailure : null, retry: () => undefined },
     registerPasskey: { ...idleOperation, pending: state === 'AddPending', error: state === 'AddError' ? previewFailure : null },
     removePasskey: { ...idleOperation, pending: state === 'RemovalPending' },
-    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordlessLinkPending', error: state.endsWith('LinkError') ? previewFailure : null },
+    requestPasswordSetup: { ...idleOperation, pending: state === 'PasswordlessLinkPending', success: state === 'PasswordlessLinkSent', error: state.endsWith('LinkError') ? previewFailure : null },
     enableTwoFactor: { ...idleOperation, submittedAt: 0, data: state === 'LaterDisable' ? enrollment : undefined },
     verifyTotp: { ...idleOperation, submittedAt: 0 },
     disableTwoFactor: { ...idleOperation, submittedAt: 3, success: state === 'LaterDisable' },
@@ -67,7 +67,7 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
     if (['ProofAbsent', 'ProofPresent', 'AddPending', 'AddError', 'AddDialog'].includes(state) || state.startsWith('PasswordlessLink') || state === 'PasswordlessAddDialog') {
       await userEvent.click(canvas.getByTestId('add-passkey-open'));
       if (['ProofPresent', 'AddPending', 'AddError'].includes(state)) await userEvent.type(canvas.getByTestId('passkey-proof-password'), 'fresh-proof-password');
-      if (state.endsWith('LinkError')) await userEvent.click(canvas.getByTestId('passkey-set-password'));
+      if (state.endsWith('LinkError') || state === 'PasswordlessLinkSent') await userEvent.click(canvas.getByTestId('passkey-set-password'));
     }
     if (state === 'RemovalConfirmation' || state === 'RemovalPending') {
       await userEvent.click(within(canvas.getByTestId('passkey-laptop')).getByRole('button'));
@@ -194,6 +194,10 @@ export const PasswordlessLinkPendingLightDesktop1440: Story = stateStory('Passwo
 export const PasswordlessLinkPendingLightMobile390: Story = stateStory('PasswordlessLinkPending', 'light', 'mobile');
 export const PasswordlessLinkPendingDarkDesktop1440: Story = stateStory('PasswordlessLinkPending', 'dark', 'desktop');
 export const PasswordlessLinkPendingDarkMobile390: Story = stateStory('PasswordlessLinkPending', 'dark', 'mobile');
+export const PasswordlessLinkSentLightDesktop1440: Story = stateStory('PasswordlessLinkSent', 'light', 'desktop');
+export const PasswordlessLinkSentLightMobile390: Story = stateStory('PasswordlessLinkSent', 'light', 'mobile');
+export const PasswordlessLinkSentDarkDesktop1440: Story = stateStory('PasswordlessLinkSent', 'dark', 'desktop');
+export const PasswordlessLinkSentDarkMobile390: Story = stateStory('PasswordlessLinkSent', 'dark', 'mobile');
 export const PasswordlessLinkErrorLightDesktop1440: Story = stateStory('PasswordlessLinkError', 'light', 'desktop');
 export const PasswordlessLinkErrorLightMobile390: Story = stateStory('PasswordlessLinkError', 'light', 'mobile');
 export const PasswordlessLinkErrorDarkDesktop1440: Story = stateStory('PasswordlessLinkError', 'dark', 'desktop');

@@ -2647,7 +2647,6 @@ export interface Messages {
     forgotPasswordPrompt: string;
     forgotPasswordEmailLink: string;
     resetSending: string;
-    resetSent: string;
     billingHeading: string;
     billingIntro: string;
     managePayments: string;

@@ -217,12 +217,7 @@ export const MemberAccountPage = () => {
   }, [redirectToLogin, unauthorized]);
 
   const [passwordLinkFromCard, setPasswordLinkFromCard] = useState(false);
-  const requestPasswordLink = useMutation({
-    ...actions.requestPasswordReset,
-    onSuccess: () => {
-      toast.success(t.account.resetSent);
-    },
-  });
+  const requestPasswordLink = useMutation(actions.requestPasswordReset);
   const changePassword = useMutation({
     ...actions.changePassword,
     onSuccess: async (_data, { revokeOtherSessions }) => {
@@ -434,6 +429,7 @@ export const MemberAccountPage = () => {
                     {requestPasswordLink.isPending ? t.account.resetSending : me.data.hasPassword ? t.account.forgotPasswordEmailLink : t.security.setOrResetPassword}
                   </Button>
                 </Stack>
+                {passwordLinkFromCard && requestPasswordLink.isSuccess ? <Typography variant="body2" role="status" data-testid="account-reset-password-sent">{t.security.resetSent}</Typography> : null}
                 {passwordLinkFromCard && requestPasswordLink.error ? <Alert severity="error" data-testid="account-reset-password-error">{localizeError(requestPasswordLink.error, t)}</Alert> : null}
                 <AccountHelp title={t.account.passwordLinkHelp}>
                   <Typography variant="body2">{t.account.passwordLinkDescription}</Typography>
@@ -478,7 +474,7 @@ export const MemberAccountPage = () => {
                 }}
                 requestPasswordSetup={{
                   pending: requestPasswordLink.isPending,
-                  success: requestPasswordLink.isSuccess,
+                  success: passwordLinkFromCard ? false : requestPasswordLink.isSuccess,
                   error: passwordLinkFromCard ? null : requestPasswordLink.error,
                   run: () => {
                     setPasswordLinkFromCard(false);

@@ -3001,7 +3001,6 @@ export const en: Messages = {
     forgotPasswordPrompt: 'Forgot your current password?',
     forgotPasswordEmailLink: 'Email me a reset link',
     resetSending: 'Sending…',
-    resetSent: 'We sent you an email with a link to set your password. Check your inbox.',
     billingHeading: 'Payments',
     billingIntro: 'Manage your subscription, payment methods and invoices.',
     managePayments: 'Manage payments',

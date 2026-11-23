@@ -225,6 +225,29 @@ describe('AuthenticationMethods', () => {
     expect(screen.queryByText(en.security.passkeyPasswordlessHint)).not.toBeInTheDocument();
   });
 
+  it('replaces the passwordless dialog button with the sent sentence after its own request succeeds', async () => {
+    const props = propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, success: true, run: vi.fn() } });
+    renderMethods(props);
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    expect(screen.queryByTestId('passkey-set-password-sent')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('passkey-set-password'));
+
+    expect(screen.getByTestId('passkey-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.getByTestId('passkey-set-password-sent')).toHaveAttribute('role', 'status');
+    expect(screen.queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+  });
+
+  it('shows the sent sentence under the two-factor password button that sent the link', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, success: true, run: vi.fn() } }));
+    await userEvent.click(screen.getByTestId('two-factor-set-password'));
+
+    expect(screen.getByTestId('two-factor-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.getByTestId('two-factor-set-password')).toBeVisible();
+  });
+
   it('shows the pending password link label on the passwordless dialog button', async () => {
     renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, pending: true, run: vi.fn() } }));
     await userEvent.click(screen.getByTestId('add-passkey-open'));

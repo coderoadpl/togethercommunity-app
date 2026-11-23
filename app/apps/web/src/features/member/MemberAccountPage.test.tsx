@@ -1072,17 +1072,46 @@ describe('MemberAccountPage', () => {
     await renderAccount('/account?tab=security');
 
     await userEvent.click(await screen.findByTestId('add-passkey-open'));
-    await userEvent.click(within(await screen.findByRole('dialog')).getByTestId('passkey-set-password'));
-    expect(await findToast('success')).toHaveTextContent(
-      en.account.resetSent,
-    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByTestId('passkey-set-password'));
+    expect(await within(dialog).findByTestId('passkey-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(within(dialog).queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-reset-password-sent')).not.toBeInTheDocument();
+    expect(successToasts()).toHaveLength(0);
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',
     });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    const reopened = await screen.findByRole('dialog');
+    expect(within(reopened).queryByTestId('passkey-set-password-sent')).not.toBeInTheDocument();
+    expect(within(reopened).getByTestId('passkey-set-password')).toBeEnabled();
   });
 
-  it('requests an account password setup link and confirms it with a toast', async () => {
+  it('shows the sent password link once, under the button that sent it, and clears it on the next request', async () => {
+    server.use(
+      stubMe(true, {}, null, null, { hasPassword: false }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () => HttpResponse.json({ status: true })),
+    );
+    await renderAccount('/account?tab=security');
+
+    await userEvent.click(await screen.findByTestId('two-factor-set-password'));
+    expect(await screen.findByTestId('two-factor-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.queryByTestId('account-reset-password-sent')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('account-reset-password'));
+    expect(await screen.findByTestId('account-reset-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    expect(successToasts()).toHaveLength(0);
+  });
+
+  it('requests an account password setup link and confirms it under the button', async () => {
     let body: unknown;
     server.use(
       stubMe(),
@@ -1097,7 +1126,8 @@ describe('MemberAccountPage', () => {
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
 
-    expect(await findToast('success')).toHaveTextContent(en.account.resetSent);
+    expect(await screen.findByTestId('account-reset-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(successToasts()).toHaveLength(0);
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',

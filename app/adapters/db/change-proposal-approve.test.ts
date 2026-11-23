@@ -457,6 +457,8 @@ describe('approving what a product grants over the database', () => {
     const observer = await connectedClient();
     try {
       await other.query('begin');
+      // The session whose deadlock check fires first is the victim; the write keeps the default second.
+      await other.query("set local deadlock_timeout = '20s'");
       await other.query('select id from products where tenant_id = $1 and id = $2 for update', [TENANT, 'draft']);
       const write = createProductRepository(database.db).updateAccessItems(TENANT, 'draft', [{ level: 'course', courseId: 'course-intro' }]);
       await untilLockWaiters(observer, 1);

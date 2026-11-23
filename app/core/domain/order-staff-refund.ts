@@ -140,9 +140,7 @@ export const minorUnitsFromDecimal = (value: string, currency: string): Result<n
 
 export const resolveStaffRefundAmount = (input: { amountCents?: number | undefined; remainderCents: number; currency: string }): Result<{ kind: StaffRefundKind; amountCents: number }, AppError> => {
   if (input.remainderCents <= 0) return err(appError('conflict', 'Nothing is left to refund on this order'));
-  if (input.amountCents === undefined || input.amountCents === input.remainderCents) {
-    return ok({ kind: 'remainder', amountCents: input.remainderCents });
-  }
+  if (input.amountCents === undefined) return ok({ kind: 'remainder', amountCents: input.remainderCents });
   const remainder = formatMinorUnits(input.remainderCents, input.currency);
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
     return err(validation(`Refund amount must be a positive whole number of minor units, at most ${remainder}`, { remainderCents: input.remainderCents }));
@@ -184,9 +182,9 @@ export type StaffRefundPreview = z.output<typeof staffRefundPreviewSchema>;
 
 export const staffRefundFulfilmentOptions = (
   order: Pick<Order, 'fulfilmentStatus' | 'shipment'>,
-  input: { kind: StaffRefundKind; hasLabel: boolean },
+  input: { coversRemainder: boolean; hasLabel: boolean },
 ): StaffRefundFulfilmentOptions => {
-  const full = input.kind === 'remainder';
+  const full = input.coversRemainder;
   const toPack = order.fulfilmentStatus === 'to_pack';
   const untouched = toPack && order.shipment == null && !input.hasLabel;
   return {

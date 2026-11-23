@@ -54,9 +54,9 @@ describe('staff refund rules', () => {
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: 5000, platformCommittedCents: 0 })).toBe(0);
   });
 
-  it('stores a missing amount or the whole remainder as a remainder refund and refuses zero, fractions and amounts above the remainder', () => {
+  it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {
     expect(resolveStaffRefundAmount({ remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 3000 } });
-    expect(resolveStaffRefundAmount({ amountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 3000 } });
+    expect(resolveStaffRefundAmount({ amountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 3000 } });
     expect(resolveStaffRefundAmount({ amountCents: 1200, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1200 } });
     expect(resolveStaffRefundAmount({ amountCents: 3001, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 30.00 PLN' } });
     expect(resolveStaffRefundAmount({ amountCents: 0, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -84,13 +84,13 @@ describe('staff refund rules', () => {
   });
 
   it('defaults restock and packing removal on only for a full refund of an untouched order waiting to be packed', () => {
-    const untouched = staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { kind: 'remainder', hasLabel: false });
+    const untouched = staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { coversRemainder: true, hasLabel: false });
     expect(untouched).toStrictEqual({ restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true });
-    expect(staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { kind: 'remainder', hasLabel: true }))
+    expect(staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { coversRemainder: true, hasLabel: true }))
       .toStrictEqual({ restockOffered: true, restockDefault: false, removeFromPackingListOffered: true, removeFromPackingListDefault: false });
-    expect(staffRefundFulfilmentOptions({ fulfilmentStatus: 'shipped', shipment: null }, { kind: 'remainder', hasLabel: false }))
+    expect(staffRefundFulfilmentOptions({ fulfilmentStatus: 'shipped', shipment: null }, { coversRemainder: true, hasLabel: false }))
       .toStrictEqual({ restockOffered: true, restockDefault: false, removeFromPackingListOffered: false, removeFromPackingListDefault: false });
-    const partial = staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { kind: 'amount', hasLabel: false });
+    const partial = staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { coversRemainder: false, hasLabel: false });
     expect(resolveStaffRefundChoices(partial, {})).toStrictEqual({ ok: true, value: { restock: false, removeFromPackingList: false } });
     expect(resolveStaffRefundChoices(partial, { restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(resolveStaffRefundChoices(untouched, { restock: false })).toStrictEqual({ ok: true, value: { restock: false, removeFromPackingList: true } });

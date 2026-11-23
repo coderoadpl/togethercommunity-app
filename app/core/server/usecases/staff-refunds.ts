@@ -120,7 +120,7 @@ export const previewStaffRefund = async (
     onPackingList: order.fulfilmentStatus === 'to_pack',
     hasShipment: order.shipment != null || hasLabel,
     hasInvoice: invoice !== null,
-    fullRefundOptions: staffRefundFulfilmentOptions(order, { kind: 'remainder', hasLabel }),
+    fullRefundOptions: staffRefundFulfilmentOptions(order, { coversRemainder: true, hasLabel }),
     waitingRefundId: waiting?.id ?? null,
   });
 };
@@ -156,7 +156,7 @@ const decideStaffRefund = (
   const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, remainderCents, currency: state.order.currency });
   if (!amount.ok) return amount;
   const choices = resolveStaffRefundChoices(
-    staffRefundFulfilmentOptions(state.order, { kind: amount.value.kind, hasLabel: state.hasLabel }),
+    staffRefundFulfilmentOptions(state.order, { coversRemainder: amount.value.amountCents === remainderCents, hasLabel: state.hasLabel }),
     request,
   );
   if (!choices.ok) return choices;

@@ -425,6 +425,18 @@ describe('staff refunds against a real database', () => {
     expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
+  it('refunds no more than a typed amount equal to the remainder when a dashboard refund fails before it is issued, and offers the full refund choices with it', async () => {
+    const h = harness();
+    h.provider.refundByHand({ ...handRefund(1000), status: 'pending' });
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 3099 })).refund)
+      .toMatchObject({ kind: 'amount', amountCents: 3099, restocked: true, removedFromPackingList: true });
+    expect(await fulfilmentOf('order-1')).toBeNull();
+    h.provider.failRefund('re_hand', 'expired_or_canceled_card');
+
+    await h.dispatch(minutes(1));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([3099]);
+  });
+
   it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {
     const h = harness();
     expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });

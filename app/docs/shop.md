@@ -1668,14 +1668,20 @@ the larger of the refunds Stripe lists for the payment (not `failed` or
 money; when Stripe's list cannot be read, the platform's records decide and the
 preview says so, and Stripe still refuses anything above the charge.
 
-- **Full refund** (no amount, or an amount equal to the remainder): stored as a
-  remainder refund. The dispatcher applies the sold-out coverage rule with the
-  paid amount as the target, so a refund made in the Stripe Dashboard in the
-  meantime is never paid twice.
-- **Partial refund**: stored as an amount refund and issued exactly once. Its
-  own Stripe refund is the one whose metadata `refundJobId` names the staff
-  refund, or whose id was stored; a dashboard refund of the whole charge ends it
-  `skipped_refunded`. Partial refunds may follow each other.
+- **Full refund** (no amount): stored as a remainder refund. The dispatcher
+  applies the sold-out coverage rule with the paid amount as the target, so a
+  refund made in the Stripe Dashboard in the meantime is never paid twice, and a
+  dashboard refund that fails later is paid again. The shortfall of another
+  staff refund of the order that failed is left to that refund, whose staff
+  alert asks for the money to be returned another way, so it is never paid
+  twice.
+- **Partial refund** (any typed amount, also one equal to the remainder):
+  stored as an amount refund and issued exactly once, never more than the typed
+  amount. Its own Stripe refund is the one whose metadata `refundJobId` names
+  the staff refund, or whose id was stored. Once dashboard refunds that have
+  succeeded cover the whole charge it ends `skipped_refunded`; while such a
+  dashboard refund is still pending it keeps watching, and it issues its amount
+  if that refund fails. Partial refunds may follow each other.
 - **One at a time**: at most one staff refund of an order may wait to reach
   Stripe (`pending`, `running`, `blocked_permission`); a second one is refused
   with `conflict` until the first is accepted or failed. Every request carries
@@ -1687,8 +1693,10 @@ preview says so, and Stripe still refuses anything above the charge.
   product with `reference = { orderId, reason: "staff_refund" }`) and takes the
   order off the packing list by default; staff may untick either. With a
   shipment or bought label, stock return defaults to off and the label is not
-  cancelled; a `shipped` order is never moved. A partial refund changes no
-  stock, packing or access, and sending either choice with it is refused. Both
+  cancelled; a `shipped` order is never moved. A typed amount that covers the
+  whole remainder when it is requested gets the same stock and packing choices
+  and defaults; any smaller amount changes no stock, packing or access, and
+  asking for either change with it is refused. Both
   choices apply when the refund is requested; a refund that later fails leaves
   them as chosen and the staff alert says so. "Ship anyway"
   (`POST /api/orders/:orderId/packing-list`, `order ship-anyway`) puts an order

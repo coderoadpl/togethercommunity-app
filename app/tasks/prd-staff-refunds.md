@@ -140,11 +140,15 @@ workspace's restricted key and what to do about it.
   `conflict` otherwise. At most one staff refund per order may be waiting to reach the provider
   (`pending`, `running`, `blocked_permission`); a second one is refused with `conflict` until the
   first is accepted or failed.
-- FR-6: A full refund is stored as a remainder refund: the dispatcher applies the sold-out
-  coverage rule with the paid amount as the target (refund what the provider's list still leaves
-  unrefunded). A partial refund is stored as an amount refund: the dispatcher issues exactly that
-  amount once; its own refund is the listed refund whose metadata `refundJobId` equals the row id
-  or whose id is the stored provider refund id. Both use the existing idempotency-key
+- FR-6: A full refund (no amount) is stored as a remainder refund: the dispatcher applies the
+  sold-out coverage rule with the paid amount, less the failed refunds of other staff refunds of
+  the order (each staff refund owns its own failure), as the target (refund what the provider's
+  list still leaves unrefunded). A refund with a typed amount, also one equal to the remainder, is
+  stored as an amount refund: the dispatcher issues exactly that amount once; its own refund is
+  the listed refund whose metadata `refundJobId` equals the row id or whose id is the stored
+  provider refund id. It ends `skipped_refunded` only when succeeded provider refunds cover the
+  paid amount; while a pending one covers it, it keeps watching. A typed amount that covers the
+  whole remainder at request time gets the full refund's stock and packing choices (FR-9). Both use the existing idempotency-key
   generations (`staff-refund-<id>`, `staff-refund-<id>-<n>`), lease, retry delays,
   `blocked_permission`, status checks, `unconfirmed` and staff alerts.
 - FR-7: The dispatcher claims due jobs from both tables in one run under the existing cap and

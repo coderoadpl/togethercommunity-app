@@ -132,9 +132,25 @@ const personalisationScreens: ScreenSpec[] = [
   { name: 'personalisation-studio-order-corrected', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('personalization-order-preview').waitFor(visible); } },
 ];
 
+interface DisclosurePage {
+  viewportSize(): { width: number } | null;
+  getByRole(role: 'dialog'): { getByRole(role: 'button', options: { expanded: boolean }): { click(): Promise<void> } };
+}
+
+// The story opens expanded; collapsing first lets the phone capture show the scroll that a real tap on the disclosure produces.
+export const retapDisclosureOnPhone = async (page: DisclosurePage): Promise<void> => {
+  if ((page.viewportSize()?.width ?? 0) >= 600) return;
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { expanded: true }).click();
+  await dialog.getByRole('button', { expanded: false }).click();
+};
+
 export const componentScreens: readonly ScreenSpec[] = [
   { name: 'meta-capi-consent', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('dialog').waitFor(visible); } },
-  { name: 'meta-capi-expanded', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('listitem').first().waitFor(visible); } },
+  { name: 'meta-capi-expanded', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => {
+    await retapDisclosureOnPhone(page);
+    await page.getByRole('listitem').first().waitFor(visible);
+  } },
   { name: 'meta-capi-decided', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('meta-capi-preview').getByRole('status').waitFor(visible); } },
   { name: 'meta-capi-settings', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('meta-capi-settings-preview').waitFor(visible); } },
   { name: 'order-verification-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },

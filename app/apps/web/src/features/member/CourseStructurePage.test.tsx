@@ -182,17 +182,30 @@ const mockPage = ({
   );
 };
 
+const mediaQueryList = (query: string, matches: boolean) => ({
+  matches,
+  media: query,
+  onchange: null,
+  addListener: () => undefined,
+  removeListener: () => undefined,
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  dispatchEvent: () => false,
+});
+
 const stubViewport = (isCompact: boolean) => {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: isCompact && query.includes('max-width'),
-    media: query,
-    onchange: null,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    dispatchEvent: () => false,
-  }));
+  vi.stubGlobal('matchMedia', (query: string) => mediaQueryList(query, isCompact && query.includes('max-width')));
+};
+
+const stubViewportWidth = (width: number) => {
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const min = /min-width:\s*([\d.]+)px/u.exec(query)?.[1];
+    const max = /max-width:\s*([\d.]+)px/u.exec(query)?.[1];
+    return mediaQueryList(
+      query,
+      (min === undefined || width >= Number(min)) && (max === undefined || width <= Number(max)),
+    );
+  });
 };
 
 const anonOffer = {
@@ -301,6 +314,42 @@ describe('CourseStructurePage', () => {
       'false',
     );
     expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+  });
+
+  it('keeps the one-column compact order and the About clamp between md and lg', async () => {
+    stubViewportWidth(1000);
+    mockPage();
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(240);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const progressCard = await screen.findByTestId('course-progress-card');
+    const inlineProgram = screen.getByTestId('course-tree-inline');
+    const statTile = screen.getByTestId('stat-tile-lessons');
+    const cover = await screen.findByTestId('course-cover');
+    const aboutCard = screen.getByTestId('course-about-card');
+    const discussionSearch = screen.getByTestId('course-discussion-search');
+    const order = [progressCard, inlineProgram, statTile, cover, aboutCard, discussionSearch]
+      .map((element) => [...document.body.querySelectorAll('*')].indexOf(element));
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(screen.queryByTestId('member-rail-leading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('member-rail-trailing')).not.toBeInTheDocument();
+    expect(screen.getByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'true');
+    expect(screen.getByTestId('course-about-toggle')).toBeInTheDocument();
+    scrollHeight.mockRestore();
+    clientHeight.mockRestore();
+  });
+
+  it('moves progress and discussion search into the rail from lg up', async () => {
+    stubViewportWidth(1200);
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const leading = await screen.findByTestId('member-rail-leading');
+    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(within(screen.getByTestId('member-rail-trailing')).getByTestId('course-discussion-search')).toBeInTheDocument();
+    expect(screen.getByTestId('course-about-text')).toHaveAttribute('data-collapsed', 'false');
   });
 
   it('clamps a long compact About text to five lines behind a show more toggle', async () => {

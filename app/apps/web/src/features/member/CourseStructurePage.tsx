@@ -188,7 +188,7 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
   const courses = useQuery(actions.studentCourses);
   const redirectToLogin = useRedirectToLogin();
   const theme = useTheme();
-  const isCompact = useMediaQuery(theme.breakpoints.down('md'));
+  const isCompact = useMediaQuery(theme.breakpoints.down('lg'));
   const unauthorized = isUnauthorized(structure.error);
   const loadedStructure = structure.data?.structure;
   const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;

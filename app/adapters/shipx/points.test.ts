@@ -111,6 +111,21 @@ describe('InPost points directory', () => {
     expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
   });
 
+  it('aborts the request when the first chunk is not valid UTF-8 and the body stays open', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      signal = init?.signal ?? undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          controller.enqueue(Uint8Array.of(0x7b, 0xff));
+          signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    expect(await directory(fetchImpl).lookup('KRA14A')).toEqual({ kind: 'unavailable' });
+    expect(signal?.aborted).toBe(true);
+  });
+
   const replacing = (recorded: string, value: string): string => fixture('point-operating.json').replace(recorded, JSON.stringify(value));
 
   it.each([

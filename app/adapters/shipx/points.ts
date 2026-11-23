@@ -109,6 +109,7 @@ export const createInpostPointsDirectory = (options: InpostPointsDirectoryOption
         if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
         return response.status === 200 ? readPoint(code, body) : UNAVAILABLE;
       } catch {
+        controller.abort();
         return UNAVAILABLE;
       } finally {
         clearTimeout(timer);

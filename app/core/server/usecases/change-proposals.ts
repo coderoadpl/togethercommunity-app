@@ -431,7 +431,7 @@ export const approveChangeProposal = async (
     const expired = changeProposalExpired(locked, deps.clock.nowIso());
     const images = expired
       ? { kind: 'ready' as const, images: [], configuration: null }
-      : await prepareApprovalImages(tenantId, [locked], scope, deps);
+      : await prepareApprovalImages(tenantId, [locked], publication.value, scope, deps);
     if (images.kind === 'failed') return err(images.error);
     const files = expired || images.kind === 'missing'
       ? { kind: 'ready' as const }

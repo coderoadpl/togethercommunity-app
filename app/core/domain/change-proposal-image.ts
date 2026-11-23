@@ -47,6 +47,23 @@ export const PROPOSAL_IMAGE_STORAGE_DEADLINES = {
   deleteMs: 5_000,
 } as const;
 
+/**
+ * The checks before an approval transaction of the public copies an approval reuses: a few at a time, every storage
+ * request starting and ending within one wall-clock budget, so the rest of the server function's time is left to the
+ * file checks, the transaction and the answer.
+ */
+export const PROPOSAL_IMAGE_REUSE_CHECKS = {
+  concurrency: 4,
+  budgetMs: 15_000,
+  minimumRequestMs: 1_000,
+  retryAfterSeconds: 5,
+} as const;
+
+export const changeProposalImageChecksOutOfTime = (): AppError =>
+  appError('unavailable', 'The storage did not confirm every proposed image in time; nothing was decided, retry the request', {
+    retryAfterSeconds: PROPOSAL_IMAGE_REUSE_CHECKS.retryAfterSeconds,
+  });
+
 export const PROPOSAL_IMAGE_QUARANTINE_PREFIX = 'image-asset-quarantine';
 
 export interface ProposalImageReference {

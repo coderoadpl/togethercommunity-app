@@ -1726,13 +1726,14 @@ export interface StorageProvider {
     region?: string;
     deadlineMs?: number;
   }): Promise<Result<{ deleted: true }, AppError>>;
+  /** `etag` is the entity tag the storage answers for the object, when it sends one. */
   head(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     region?: string;
     deadlineMs?: number;
-  }): Promise<Result<{ sizeBytes: number }, AppError>>;
+  }): Promise<Result<{ sizeBytes: number; etag?: string }, AppError>>;
   /**
    * A server-side copy of `sourceKey` to `key` in the configured bucket; no byte passes through the server. The copy's
    * metadata is replaced with the server's own (octet-stream, attachment, no-store), so nothing a writer of the source

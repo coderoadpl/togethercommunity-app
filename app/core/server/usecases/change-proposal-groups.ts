@@ -531,7 +531,7 @@ export const approveChangeProposalGroup = async (
     const expired = locked.items.some((item) => changeProposalExpired(item, deps.clock.nowIso()));
     const images = expired
       ? { kind: 'ready' as const, images: [], configuration: null }
-      : await prepareApprovalImages(tenantId, locked.items, scope, deps);
+      : await prepareApprovalImages(tenantId, locked.items, publication.value, scope, deps);
     if (images.kind === 'failed') return err(images.error);
     if (images.kind === 'missing') {
       halt.current = { item: images.proposal, outcome: { status: 'stale', note: changeProposalImageMissingNote(images.image), at: deps.clock.nowIso() } };

@@ -862,7 +862,8 @@ export const createS3StorageProvider = (
       if (contentLength === null || !/^\d+$/.test(contentLength)) {
         return err(integrationUnavailable('S3 returned invalid object size metadata.'));
       }
-      return ok({ sizeBytes: Number(contentLength) });
+      const etag = response.value.headers.get('etag');
+      return ok({ sizeBytes: Number(contentLength), ...(etag === null ? {} : { etag }) });
     },
     putObject: async (input) => {
       const signed = presign('PUT', { ...input, expiresInSeconds: 60 }, now);

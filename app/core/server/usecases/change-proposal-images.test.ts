@@ -826,6 +826,79 @@ describe('a group with images', () => {
     expect(h.store.imageRows).toEqual([]);
   });
 
+  const reusingGroup = async (h: Harness, size: number) => {
+    for (let index = 1; index <= size; index += 1) {
+      const cover = pathOf(PNG(index));
+      h.state.products.push(
+        product({ id: `source-${String(index)}`, slug: `source-${String(index)}`, coverUrl: cover }),
+        product({ id: `target-${String(index)}`, slug: `target-${String(index)}` }),
+      );
+      h.objects.objects.set(`image-assets/${TENANT}/product-cover/${sha256HexOfBytes(PNG(index))}.png`, { bytes: PNG(index), contentType: 'image/png' });
+    }
+    const groupId = await groupOf(h);
+    let itemIds: string[] = [];
+    for (let index = 1; index <= size; index += 1) {
+      const receipt = await join(h, groupId, 'product.update', { id: `target-${String(index)}`, coverUrl: pathOf(PNG(index)) });
+      itemIds = receipt.items.map((item) => item.id);
+    }
+    return { groupId, itemIds };
+  };
+
+  it('verifies the reused public copies of a 20-item group four at a time before the transaction and only by metadata under the lock', async () => {
+    const h = harness();
+    const { groupId, itemIds } = await reusingGroup(h, 20);
+    const get = h.objects.storage.getObject;
+    let inFlight = 0;
+    let mostInFlight = 0;
+    h.objects.storage.getObject = async (input, options) => {
+      inFlight += 1;
+      mostInFlight = Math.max(mostInFlight, inFlight);
+      await new Promise((resolve) => { setTimeout(resolve, 5); });
+      inFlight -= 1;
+      return get(input, options);
+    };
+    h.objects.calls.length = 0;
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    const publicCalls = (method: string) => h.objects.calls.filter((call) => call.method === method && call.key.startsWith('image-assets/')).length;
+    expect({ reads: publicCalls('getObject'), heads: publicCalls('head'), writes: publicCalls('putObject'), mostInFlight })
+      .toEqual({ reads: 20, heads: 40, writes: 0, mostInFlight: 4 });
+    expect(liveCover(h, 'target-20')).toBe(pathOf(PNG(20)));
+  });
+
+  it('answers unavailable and records nothing when the checks of reused public copies run out of their budget', async () => {
+    const h = harness();
+    const { groupId, itemIds } = await reusingGroup(h, 20);
+    const get = h.objects.storage.getObject;
+    h.objects.storage.getObject = async (input, options) => {
+      h.clock.now = new Date(Date.parse(h.clock.now) + 4_000).toISOString();
+      return get(input, options);
+    };
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(h.store.imagePublications).toEqual([]);
+    expect(h.store.proposals.every((item) => item.status === 'pending')).toBe(true);
+    expect(liveCover(h, 'target-1')).toBeNull();
+  });
+
+  it('makes the group stale when a reused public copy changed between the check and the lock', async () => {
+    const h = harness();
+    const { groupId, itemIds } = await reusingGroup(h, 2);
+    const run = h.deps.changeProposalTransaction.run;
+    const changed = `image-assets/${TENANT}/product-cover/${sha256HexOfBytes(PNG(2))}.png`;
+    const transaction = {
+      ...h.deps.changeProposalTransaction,
+      run: async <T>(...args: Parameters<typeof run<T>>) => {
+        h.objects.objects.set(changed, { bytes: PNG(9), contentType: 'image/png' });
+        return run<T>(...args);
+      },
+    };
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds }, { ...h.deps, changeProposalTransaction: transaction }))
+      .toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(liveCover(h, 'target-1')).toBeNull();
+  });
+
   it('publishes nothing when an item of the group is stale, and releases the images', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));

@@ -359,6 +359,14 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests.at(-1)?.redirect).toBe('error');
   });
 
+  it('answers the entity tag a HEAD response carries', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': '12', etag: '"5d41402abc4b2a76b9719d911017c592"' }),
+    });
+    expect(await storage.head(DOCS_EXAMPLE)).toEqual({ ok: true, value: { sizeBytes: 12, etag: '"5d41402abc4b2a76b9719d911017c592"' } });
+  });
+
   it('tells an object that does not exist apart from a failed request on HEAD and GET', async () => {
     const bucket = fakeBucket();
     const storage = createS3StorageProvider(resolver, { now: () => new Date('2026-08-03T12:00:00.000Z'), fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true });

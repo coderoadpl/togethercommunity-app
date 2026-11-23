@@ -25,6 +25,8 @@ import {
   QUARANTINED_IMAGE_LIMITS,
   sameProposalImage,
   changeProposalImageCapExceeded,
+  changeProposalImageChecksOutOfTime,
+  PROPOSAL_IMAGE_REUSE_CHECKS,
   storageFailureIsDefinite,
   type AppError,
   type ChangeProposal,
@@ -306,11 +308,10 @@ export const changeProposalImageGone = (invalidInputMessage: string): AppError =
   fieldErrors: {},
 });
 
+/** `bytes` is null for a public copy that already holds the digest, verified before the transaction and by metadata under its lock, so approval writes nothing for it. */
 interface PreparedImage {
   image: ProposalImageReference;
-  bytes: Uint8Array;
-  /** Read from the public copy a live field already shows, so approval writes nothing for it. */
-  published: boolean;
+  bytes: Uint8Array | null;
 }
 
 export type ApprovalImages =
@@ -351,13 +352,38 @@ const readVerified = async (
   return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
 };
 
+/** A public copy that hashed to its digest before the transaction, with the metadata the check under the lock compares. */
+export interface ReusedPublicCopy {
+  image: ProposalImageReference;
+  sizeBytes: number;
+  etag: string | null;
+}
+
+const stillTheReusedCopy = async (
+  tenantId: string,
+  configuration: StorageConfiguration,
+  copy: ReusedPublicCopy,
+  deps: ChangeProposalImagePrepareDeps,
+): Promise<Result<boolean, AppError>> => {
+  const head = await deps.storage.head({
+    url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, copy.image)).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs,
+  });
+  if (!head.ok) return head.error.code === 'not_found' ? ok(false) : err(head.error);
+  return ok(head.value.sizeBytes === copy.sizeBytes && (copy.etag === null || head.value.etag === copy.etag));
+};
+
 /**
- * An address that is no longer quarantined is fine only when a live field already shows it and its public copy still
- * hashes to the digest, the copy the owner preview showed.
+ * An address that is no longer quarantined is fine only when a live field already shows it and its public copy hashed
+ * to the digest before the transaction, the copy the owner preview showed. A public copy checked before the transaction
+ * is checked again here by its size and entity tag only, never read again; one that changed meanwhile makes an address
+ * without a quarantined copy stale and answers busy for one with a quarantined copy.
  */
 export const prepareApprovalImages = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
+  publication: ApprovalPublication,
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalImagePrepareDeps,
 ): Promise<ApprovalImages> => {
@@ -374,11 +400,19 @@ export const prepareApprovalImages = async (
       if (!resolved.ok) return { kind: 'failed', error: resolved.error };
       configuration = resolved.value;
     }
-    const key = published ? proposalImagePublishedKey(tenantId, image) : proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image);
-    const read = await readVerified(configuration, key, image, deps);
+    const reused = publication.reused.find((copy) => sameProposalImage(copy.image, image));
+    if (reused !== undefined) {
+      const same = await stillTheReusedCopy(tenantId, configuration, reused, deps);
+      if (!same.ok) return { kind: 'failed', error: same.error };
+      if (!same.value) return published ? { kind: 'missing', proposal, image } : { kind: 'failed', error: changeProposalsBusy() };
+      images.push({ image, bytes: null });
+      continue;
+    }
+    if (published) return { kind: 'missing', proposal, image };
+    const read = await readVerified(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image), image, deps);
     if (!read.ok) return { kind: 'failed', error: read.error };
     if (read.value === null) return { kind: 'missing', proposal, image };
-    images.push({ image, bytes: read.value, published });
+    images.push({ image, bytes: read.value });
   }
   return { kind: 'ready', images, configuration };
 };
@@ -387,6 +421,7 @@ export interface ApprovalPublication {
   attemptId: string;
   images: ProposalImageReference[];
   startedAt: string;
+  reused: ReusedPublicCopy[];
 }
 
 export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepareDeps {
@@ -397,10 +432,40 @@ export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepa
 }
 
 /**
+ * The entity tag is read before the bytes, so a copy replaced after the read never passes the check under the lock
+ * with the metadata of the copy that was hashed.
+ */
+const checkPublicCopy = async (
+  tenantId: string,
+  configuration: StorageConfiguration,
+  image: ProposalImageReference,
+  deps: ChangeProposalImagePublishDeps,
+  left: () => number,
+): Promise<Result<ReusedPublicCopy | null, AppError>> => {
+  const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
+  const deadline = (requestMs: number): number | null => {
+    const remaining = left();
+    return remaining < PROPOSAL_IMAGE_REUSE_CHECKS.minimumRequestMs ? null : Math.min(requestMs, remaining);
+  };
+  const headMs = deadline(PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs);
+  if (headMs === null) return err(changeProposalImageChecksOutOfTime());
+  const head = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: headMs });
+  if (!head.ok) return head.error.code === 'not_found' ? ok(null) : err(head.error);
+  const getMs = deadline(PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs);
+  if (getMs === null) return err(changeProposalImageChecksOutOfTime());
+  const read = await deps.storage.getObject({ url, ...credentialsOf(configuration), deadlineMs: getMs }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+  if (!read.ok) return read.error.code === 'not_found' ? ok(null) : err(read.error);
+  if (read.value.byteLength !== head.value.sizeBytes || deps.contentHash.sha256(read.value) !== image.digest) return ok(null);
+  return ok({ image, sizeBytes: head.value.sizeBytes, etag: head.value.etag ?? null });
+};
+
+/**
  * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
- * holds one. It records, in a commit of its own, the attempt's intent to write each image the effect sets whose public
- * object is missing or no longer hashes to the digest; an object that does is never written or recorded. What a record
- * leaves behind when the attempt does not end applied, the withdrawal or the sweep removes.
+ * holds one, and no full read of a public copy runs under the workspace's approval lock. It checks the public copy of
+ * each image the effect sets, `PROPOSAL_IMAGE_REUSE_CHECKS.concurrency` at a time within its budget, and records, in a
+ * commit of its own, the attempt's intent to write each image whose public object is missing or no longer hashes to
+ * the digest; an object that does is never written or recorded. What a record leaves behind when the attempt does not
+ * end applied, the withdrawal or the sweep removes.
  */
 export const recordApprovalPublications = async (
   tenantId: string,
@@ -408,20 +473,38 @@ export const recordApprovalPublications = async (
   deps: ChangeProposalImagePublishDeps,
 ): Promise<Result<ApprovalPublication, AppError>> => {
   const images = changedImagesOf(proposals).map(({ image }) => image);
-  if (images.length === 0) return ok({ attemptId: '', images: [], startedAt: '' });
+  const none = { attemptId: '', images: [], startedAt: '' };
+  if (images.length === 0) return ok({ ...none, reused: [] });
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
+  const endsAt = Date.parse(deps.clock.nowIso()) + PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs;
+  const left = (): number => endsAt - Date.parse(deps.clock.nowIso());
+  const answers: Array<Result<ReusedPublicCopy | null, AppError> | undefined> = images.map(() => undefined);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let index = next; index < images.length; index = next) {
+      next += 1;
+      const image = images[index];
+      if (image === undefined) return;
+      const answer = await checkPublicCopy(tenantId, configuration.value, image, deps, left);
+      answers[index] = answer;
+      if (!answer.ok) next = images.length;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PROPOSAL_IMAGE_REUSE_CHECKS.concurrency, images.length) }, worker));
   const absent: ProposalImageReference[] = [];
-  for (const image of images) {
-    const found = await readVerified(configuration.value, proposalImagePublishedKey(tenantId, image), image, deps);
-    if (!found.ok) return found;
-    if (found.value === null) absent.push(image);
+  const reused: ReusedPublicCopy[] = [];
+  for (const [index, image] of images.entries()) {
+    const answer = answers[index] ?? err(changeProposalImageChecksOutOfTime());
+    if (!answer.ok) return answer;
+    if (answer.value === null) absent.push(image);
+    else reused.push(answer.value);
   }
-  if (absent.length === 0) return ok({ attemptId: '', images: [], startedAt: '' });
+  if (absent.length === 0) return ok({ ...none, reused });
   const attemptId = deps.ids.nextId();
   const startedAt = deps.clock.nowIso();
   await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, startedAt);
-  return ok({ attemptId, images: absent, startedAt });
+  return ok({ attemptId, images: absent, startedAt, reused });
 };
 
 export interface ApprovalImageWrites {
@@ -437,8 +520,8 @@ export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], 
  * never points at an object that does not exist and the records disappear exactly when the approval commits. Every
  * image it tries to write, a failed write included, is added to `writes.written`, and a write whose outcome is unknown
  * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
- * recorded must still be public with bytes that hash to its digest, or the approval answers busy; the workspace lock
- * this transaction holds, and the refusal of any address with an unresolved delete, keep it there until the commit.
+ * recorded was checked under this transaction's lock by `prepareApprovalImages`; that lock, and the refusal of any
+ * address with an unresolved delete, keep it there until the commit.
  * A write starts only within `publicationWriteWindowMs` of the intent record, or the approval answers busy; the sweep's
  * age bound is that window plus `unresolvedDeleteGraceMs`, so a process that dies mid-write still leaves the storage the
  * whole grace after the latest write it could have started.
@@ -456,18 +539,13 @@ export const publishApprovalImages = async (
   for (const image of [...publication.images, ...prepared.images.map((known) => known.image)]) {
     if (await images.deleteUnresolved(tenantId, image)) return err(changeProposalsBusy());
   }
-  const toWrite = prepared.images.filter(({ image, published }) => !published && recorded(image)).map(({ image }) => image);
+  const toWrite = prepared.images.filter(({ bytes }) => bytes !== null).map(({ image }) => image);
+  if (toWrite.some((image) => !recorded(image))) return err(changeProposalsBusy());
   if (toWrite.length > 0 && !await images.claimPublications(tenantId, publication.attemptId, toWrite)) return err(changeProposalsBusy());
   const { configuration } = prepared;
   if (configuration !== null) {
-    for (const { image, bytes, published } of prepared.images) {
-      if (published) continue;
-      if (!recorded(image)) {
-        const present = await readVerified(configuration, proposalImagePublishedKey(tenantId, image), image, deps);
-        if (!present.ok) return present;
-        if (present.value !== null) continue;
-        return err(changeProposalsBusy());
-      }
+    for (const { image, bytes } of prepared.images) {
+      if (bytes === null) continue;
       if (Date.parse(deps.clock.nowIso()) - Date.parse(publication.startedAt) > QUARANTINED_IMAGE_LIMITS.publicationWriteWindowMs) {
         return err(changeProposalsBusy());
       }

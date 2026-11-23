@@ -63,7 +63,7 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         calls.push({ method: 'head', key });
         if (fake.failReads(key)) return unreachable(key);
         const found = objects.get(key);
-        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength });
+        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength, etag: `"${placeholderDigest(found.bytes).slice(0, 32)}"` });
       },
       getObject: async (input, options) => {
         const key = keyOf(input.url);

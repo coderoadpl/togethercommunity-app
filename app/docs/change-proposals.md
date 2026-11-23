@@ -1198,7 +1198,8 @@ images the stored effect sets, the effect the owner reviewed: an image field
 left unchanged is not in the effect, so an address the input repeats unchanged
 is never read, recorded or written, even when the key holds a quarantined copy
 of it. It takes each such image's unreleased row with a share lock inside the approval
-transaction, reads its quarantined bytes and checks that they still hash to the
+transaction. Unless its public copy already holds the digest (below), it reads
+the quarantined bytes and checks that they still hash to the
 digest in the address. A missing row, an object the storage reports missing or
 bytes that no longer match make the proposal (or the whole group) `stale` with
 the note "image_unavailable: The proposed image … is no longer available …"
@@ -1206,10 +1207,10 @@ on the `stale` event of the item that attaches it (its group siblings carry the
 usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
-public already: approval reads its public copy inside the transaction and
-checks its hash the same way, and a missing copy or bytes that no longer match
-make the proposal `stale` with the same note, as the owner preview refuses
-it. Every storage request of an approval, of a
+public already: approval accepts it only when its public copy passed the check
+before the transaction and still passes the metadata check under the lock
+(below); otherwise the proposal is `stale` with the same note, as the owner
+preview refuses it. Every storage request of an approval, of a
 publication withdrawal and of the owner's image preview (the read of the
 quarantined copy, the check and the write of the public copy, a delete) gives up
 after 5 seconds without an answer, the lookup of the storage endpoint included,
@@ -1217,29 +1218,50 @@ the bound a statement of an approval has, and counts as a failed storage request
 `503 integration_unavailable` and the proposal stays `pending`, so no storage
 request holds the workspace's approval lock longer.
 
-Before the approval transaction opens, the approval reads, for each image the
+Before the approval transaction opens, the approval checks, for each image the
 effect sets, its public object
-`image-assets/<workspace>/<kind>/<sha256>.<ext>` and checks its hash. An object
-whose bytes hash to the digest is neither written nor recorded, so an approval
-never deletes a public object an earlier approval published; a missing object,
-or one whose bytes no longer match, is recorded and written again. A storage request that fails here answers its error, and nothing is
-recorded or changed. For every other image it commits a publication record of its attempt
+`image-assets/<workspace>/<kind>/<sha256>.<ext>`: a metadata request (`HEAD`)
+for its size and entity tag, then a read of its bytes, whose length must be
+that size and whose hash must be the digest. These checks run at most 4 at a
+time (`PROPOSAL_IMAGE_REUSE_CHECKS.concurrency`), each request within its 5
+seconds, and every request starts and ends within one wall-clock budget of 15
+seconds (`PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs`): a request that cannot start
+with at least 1 second of it left ends the checks with `503 unavailable`
+("retry the request", `Retry-After: 5`), nothing recorded or changed. With the
+25 seconds of the [file checks](#download-files), at most 40 seconds of the
+60-second server function go to checks before the transaction. An object that
+passes is neither written nor recorded and its bytes are not kept, so an
+approval never deletes a public object an earlier approval published; a missing
+object, or one whose bytes no longer match, is recorded and written again from
+the quarantined copy. An object that cannot be read as an image (empty, or
+larger than the image size limit), and a storage request that fails here,
+answer that error, and nothing is recorded or changed. Writing a copy again
+needs the key's quarantined copy: an address with no quarantined row whose
+public copy is missing or no longer matches is not written, and the proposal
+ends `stale` as above. For every image not passed it commits a publication record of its attempt
 in `change_proposal_image_publications` (workspace, attempt, kind, digest,
 extension, start time). This single insert runs on its own before the
 transaction, so the approval never waits for a second database connection while
-it holds one. When every item applied, the approval locks the records of the
+it holds one. Under the workspace's approval lock, each public copy that passed
+is checked again by a metadata request only, never read again: its size must be
+the size seen before the transaction and, when the storage sent an entity tag
+then, its entity tag must be the same. A copy that changed meanwhile makes an
+address without a quarantined copy `stale`, and answers `503 unavailable` for
+one with a quarantined copy. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
-approval commits. A quarantined image it did not record must still have its
-public object, with bytes that hash to the digest, at that moment, or the
-approval answers busy (a failed storage request answers its error); the
-workspace's approval lock it holds, and the refusal of every address with an
-unresolved delete (below), keep the object there until the commit. Publishing
-before the commit, and checking every reused address under that lock, mean
-committed live state never points at an object that was missing or did not
-match at the commit, also after a crash; only a delete outside the application
-or a loss in the storage can remove it later.
+approval commits. The workspace's approval lock it holds, and the refusal of
+every address with an unresolved delete (below), keep each reused public copy
+there until the commit. Publishing before the commit, and checking every reused
+address under that lock, mean committed live state never points at an object
+that was missing at the commit, also after a crash; a reused copy is known to
+match by its hash before the transaction and by its size and entity tag at the
+commit, so a copy replaced in between by other bytes of the same size on a
+storage that sends no entity tag is not detected. Only a delete outside the
+application or a loss in the storage can remove a committed object later: an
+application delete is sent only after its unresolved mark committed, and no
+sweep sends one for a record whose mark is newer than the record's 15 minutes.
 
 When the approval does not end `applied` (it ends `stale`, `failed` or
 expired, a write fails, a lock wait runs out, or the status change or the
@@ -1580,9 +1602,11 @@ and a check whose staged row read ends after the budget ends the checks with
 items as its key may have staged files (20), and 20 checks 4 at a time are 5
 rounds of at most 5 seconds. The other 35 seconds of the 60-second server
 function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
-left to the transaction and the answer. None of these file checks runs under
+left to the checks of the public image copies (at most 15 seconds,
+[Images](#images)), the transaction and the answer. None of these file checks runs under
 the workspace's approval lock; an image a proposal attaches, alone or in a
-mixed group, is still read and written under that lock, each storage request
+mixed group, has its public copy checked before the transaction too, and its
+quarantined copy read and written under that lock, each storage request
 within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the

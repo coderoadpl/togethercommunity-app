@@ -107,10 +107,9 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES'
-  | 'PAYMENT_PROVIDER'
->;
+> & Partial<Pick<Env, 'PAYMENT_PROVIDER'>>;
 
-export const wiresRealPickupPointDirectory = (env: Pick<Env, 'PAYMENT_PROVIDER'>): boolean =>
+export const wiresRealPickupPointDirectory = (env: { PAYMENT_PROVIDER?: Env['PAYMENT_PROVIDER'] | undefined }): boolean =>
   env.PAYMENT_PROVIDER === 'stripe';
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {

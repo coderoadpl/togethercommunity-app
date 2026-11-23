@@ -2750,6 +2750,27 @@ describe('marketing HTTP surfaces', () => {
     expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
   });
 
+  it('lets a suppressed address withdraw the linked consent after its definition was archived', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const definition = await marketing.definitions.findById('t-acme', 'definition-news');
+    if (definition === null) throw new Error('Missing consent definition');
+    await marketing.definitions.update('t-acme', { ...definition, status: 'archived', updatedAt: '1998-07-02T00:00:00.000Z' });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('data-state="consent-link"');
+    expect(html).toContain('<p class="fine">You will stop receiving messages from this list.</p><form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).not.toContain('definition-news');
+    const confirm = await app.request('/u/unsubscribe_token_123456789012345/confirm?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(confirm.status).toBe(200);
+    expect(await confirm.text()).toContain('Unsubscribe confirmed');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test', 'definition-news'))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+  });
+
   it('answers a missing hosted document or version with a branded page in the workspace language', async () => {
     const app = marketingApp();
     const headers = { host: 'acme.localhost:48730' };

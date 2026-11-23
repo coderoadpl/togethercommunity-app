@@ -1209,10 +1209,13 @@ When the preview cannot be loaded, a warning takes the place of the picture:
 the image could not be loaded; if it no longer exists, approving changes
 nothing and the image has to be uploaded and proposed again; otherwise try
 again in a moment. The preview note is not shown then. The preview reads the
-key's quarantined copy whenever its row exists, so the warning can be wrong:
-when that copy is lost but a public copy of the same image already passes the
-check before the transaction (below), the preview shows the warning while
-approval applies the image at once. A proposed SVG is never
+key's quarantined copy whenever the key holds a written, unreleased row of it;
+a row still pending its completion or already released is not used, even when
+its object still exists. So the warning can be wrong: when the quarantined
+copy behind such a row is lost but a public copy of the same image passes the
+check before the transaction (below), the preview shows the warning, while
+approval can still reuse that public copy, provided the check under the lock
+and every other check of the approval pass. A proposed SVG is never
 rendered: the panel shows a labelled download link through the same route, the
 same facts and the reason. For a decided proposal the panel keeps the rule for every image
 address: it shows an image only for a same-origin public asset path, and it
@@ -1344,10 +1347,12 @@ withdrawal restarts, still leaves the storage the full 10 minutes after the
 latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
 `4xx` answer other than `404`) cannot land later, so the mark is cleared and the
 record stays for the sweep. A `404` answer whose body is an S3 error with the
-code `NoSuchKey` means the object is not there and counts as a confirmed
-delete, so the record is removed; any other `404` (an empty or unreadable body,
-a proxy page, a missing bucket `NoSuchBucket`, another code) counts as a delete
-without a definite answer. When the delete ends without a definite answer (no
+code `NoSuchKey` counts as a confirmed delete: the code is read from the
+answer, not checked against the bucket. The record is then removed, except
+after a write without a definite answer (above), where the withdrawal keeps it
+and restarts its 15 minutes. Any other `404` (an empty body, or one that cannot
+be read within its size limit or deadline, a proxy page, a missing bucket
+`NoSuchBucket`, another code) counts as a delete without a definite answer. When the delete ends without a definite answer (no
 answer, a connection error, a server error), or the process dies after sending
 it, the storage may still carry it out later, so the record keeps its mark; the
 minute sweep deletes the object again 15 minutes after the mark, under the same
@@ -1393,9 +1398,10 @@ retries it; a busy step leaves it the same way. A bucket policy that refuses
 deletes therefore leaves such rows counted toward the key's limits, and the
 refusal logged on every sweep run, until the storage permits the delete; it
 never blocks a completion of the same image. A `404` answer with the S3 error
-code `NoSuchKey` means the object is not there and counts as a confirmed
-delete, so the row is removed; any other `404` counts as a delete without a
-definite answer. A delete that ended without a definite answer, or whose process
+code `NoSuchKey` counts as a confirmed delete, the code read from the answer
+and not checked against the bucket, so the row is removed; any other `404`,
+also one whose body cannot be read within its size limit or deadline, counts
+as a delete without a definite answer. A delete that ended without a definite answer, or whose process
 died, keeps the mark: for 10 minutes the sweep leaves the row alone, then
 deletes the object again and removes the row once that delete is confirmed,
 and the image can be uploaded again. The 10 minutes count from the time the
@@ -1424,14 +1430,18 @@ removal (recorded in `sweep_attempted_at`) or else their creation or start,
 so rows whose removal keeps failing move behind the others, inside a workspace
 and across workspaces. A workspace whose storage configuration cannot be read
 records that time on every released image and upload record the step listed,
-so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick
-(the `/api/internal/dispatch-email` cron route, after e-mail and refund
-dispatch, and the Node ticker, beside them), at most once every 50 seconds per
-server process, independently of the [download file
-sweep](storage.md#download-file-prefixes): each has its own failure and its own
-budget of 10 seconds, and on the cron route both end at the latest 50 seconds
-after the tick started, 10 seconds before the 60-second function limit; when
-the dispatch before them already reached that end, neither starts. Within
+so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick,
+at most once every 50 seconds per server process, independently of the
+[download file sweep](storage.md#download-file-prefixes), each with its own
+failure and its own budget of 10 seconds: the `/api/internal/dispatch-email`
+cron route runs both after e-mail and refund dispatch, and the Node ticker
+starts both before the dispatch and awaits them beside it. On the cron route
+both aim to end 50 seconds after the tick started, 10 seconds before the
+60-second function limit, and neither starts when the dispatch before them
+already reached that end. These ends are scheduling targets, not a guaranteed
+return time: no step starts after them, but the wait for a pool connection is
+not counted, and statements each bounded on its own can together run past
+them (below). Within
 its budget the three kinds of work, in this order, quarantined images, upload
 candidates and publication records, each get an equal share of what is left
 among the kinds that have work at the start of the run, and what one kind
@@ -1486,7 +1496,9 @@ columns (a digest and an extension check, and a check that both are set or
 neither) to `change_proposal_image_uploads`; each check reads its table once
 under that lock, which `0169` created moments before or
 which holds only rows of unreleased proposals. A release before it ignores these
-columns.
+columns: `8141fd15` has no schema, statement or query that names any of the
+three tables, so it never reads or writes these columns and never meets their
+checks.
 
 The release on production when proposed images were added, `8141fd15`,
 predates `0169`. What it does with what this release stores and answers is
@@ -1502,9 +1514,13 @@ holds literal copies of its schemas and parsing steps:
   before/after effect, the key receipt and the owner view parse as before. It
   publishes nothing, so approving such a proposal there sets the field to an
   address that has no public copy on either release, and after rolling
-  forward the sweep removes the quarantined bytes; the image then has to be
-  uploaded and proposed again. Reject such proposals or leave them pending
-  until rolling forward; do not approve them there.
+  forward the sweep removes the quarantined bytes. Uploading and proposing the
+  same image again does not repair the field: the same bytes get the same
+  address, the field already shows it, so the effect sets no image and the
+  approval writes no public copy. Repair it with an upload in the owner's
+  editor, which gives the image a new address, or clear the field first and
+  then propose the uploaded image again. Reject such proposals or leave them
+  pending until rolling forward; do not approve them there.
 - A `stale` event note `image_unavailable: …` reads like any other note within
   its 500 characters.
 - A product cover or a branding field (`logoUrl`, `logoDarkUrl`, `faviconUrl`,
@@ -1517,6 +1533,14 @@ holds literal copies of its schemas and parsing steps:
   logo image that does not load. The public copy stays in storage (that release deletes only avatar
   objects; its storage orphan report lists the copy as unreferenced, as a
   report only), and the address is served again after rolling forward.
+- It serves a public image the way this release does: a `302` to a presigned
+  link that asks the storage for `image/svg+xml` and `attachment` for an SVG.
+  An SVG this release stored with `content-disposition: attachment` under a
+  random-id name, a product cover, a branding image or a course cover, still
+  loads in an `img` element and downloads when its address is opened
+  directly, on both releases. An SVG uploaded on `8141fd15` during the rollback
+  is stored without that header, so a provider that ignores signed response
+  overrides serves it without `attachment`, also after rolling forward.
 - A `change-proposal` notification keeps the key name in `authorDisplay` and
   the group in `contextId` and `snippet`, as that release writes them; it drops
   the typed `changeProposal` field when it parses the row, so the bell names
@@ -1548,6 +1572,11 @@ select
   as count;
 ```
 
+Both are conservative candidate searches, not exact counts. The first
+matches such an address anywhere in the stored input, so a proposal whose
+description quotes one counts, and it counts a proposal still stored as
+`pending` whose expiry has passed. The second matches a branding field that
+contains such a path anywhere, so a foreign URL that contains one counts too.
 When the first is not `0`, keep those proposals unapproved during the
 rollback, as above. When the second is not `0`, those images are missing on
 that release until rolling forward; nothing is deleted.
@@ -1674,9 +1703,13 @@ answered by then, or answers after it, ends the checks with `503 unavailable`
 as below, whatever it answers later, instead of counting the file as gone or
 answering a configuration error. The approval stops waiting, but the read itself
 is not cancelled: a stalled read keeps its database connection until the
-database answers it. A group holds at most as many file
-items as its key may have staged files (20), and 20 checks 4 at a time are 5
-rounds of at most 5 seconds. The other 35 seconds of the 60-second server
+database answers it. A group holds at most 50 items of any
+operation. Only a `download.add` or `download.replace` item reads its staged
+row, and only one whose proposal still holds its file asks the storage; a
+`download.remove` makes no storage request. A key holds at most 20 staged
+files at a time and each is held by at most one pending proposal, so an
+approval asks the storage about at most 20 objects, and 20 requests 4 at a
+time are 5 rounds of at most 5 seconds. The other 35 seconds of the 60-second server
 function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
 the target for the checks of the public image copies (at most 15 seconds,
 [Images](#images)), the transaction and the answer; they are not reserved, so
@@ -1685,9 +1718,15 @@ longer for its transaction. None of these file checks runs under
 the workspace's approval lock; an image a proposal attaches, alone or in a
 mixed group, has its public copy checked before the transaction too. When that
 public copy passes, the approval neither reads the quarantined copy nor writes
-a public one: under that lock it only checks the public copy's metadata again.
-Otherwise it reads the quarantined copy and writes the public one under that
-lock, each storage request within its own 5 seconds ([Images](#images)). A row that is gone or no longer
+a public one: under that lock it checks the public copy again, by its metadata
+when the earlier read carried a strong entity tag and by reading and hashing it
+otherwise. A storage failure of the check before the transaction answers its
+error before the transaction opens. When the public copy does not pass and the
+key holds no written, unreleased quarantined copy, the proposal ends `stale`
+under that lock without another storage request. Otherwise the approval reads
+the quarantined copy under that lock and checks its hash, and only when every
+item applied writes the public copy before the commit, each storage request
+within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the
 budget left, a check whose staged row or configuration read has not answered
@@ -1703,7 +1742,14 @@ product lock of any item, the approval locks each attached staged row of the
 proposing key and checks that it is the row it read before the transaction
 (id, key, object key, size, SHA-256, held by this proposal). The storage
 confirmed only that the object exists with the recorded size; the SHA-256 is
-compared between the two database reads, not with the object. A file that is gone makes the proposal `stale` with the note
+compared between the two database reads, not with the object. A key cannot
+write a staged object, since the server writes it by a copy under a file id of
+its own, but bytes replaced with others of the same length outside the
+application are not detected. The owner link and the approval each resolve the
+workspace's current storage connection, and a staged row names no bucket: when
+the owner changes the connection between the review and the approval, the
+approval checks, and attaches, the object at the same key in the new bucket.
+Both are outside this check. A file that is gone makes the proposal `stale` with the note
 `file_unavailable: The proposed file <staged file id> is no longer available,
 so the proposal cannot be applied; nothing was changed` on its `stale` event,
 and nothing is applied; in a group every file is checked before any item
@@ -1820,8 +1866,13 @@ of its group keep the generic label.
 **Release on decisions.** After a decision commits, the files of the decided
 proposals are released, never failing the decision: a rejection, a
 withdrawal (by the key, or by revoking or purging it) and a recorded expiry
-discard the staged file (its deletion is owed and its object deleted, the
-sweep retrying a delete that fails); a `stale` or `failed` approval only lets
+discard the staged file in two steps. First one database transaction removes
+the staged row and records the owed deletion of its object; it needs no
+storage, and once it committed the file can no longer be attached or proposed.
+When it is busy or does not run, the file stays staged and linked to the ended
+proposal until the minute sweep removes it. Only then is the object deleted,
+which needs the workspace's storage configuration; a delete that cannot be
+sent or fails stays owed, and the sweep retries it. A `stale` or `failed` approval only lets
 go of the file, which stays staged for the key until it is discarded or its 7
 days pass, so the key can propose it again without uploading it again; an
 applied attach has made the file a product file. Revoking a propose-mode key
@@ -1832,8 +1883,9 @@ file still linked to a rejected, withdrawn or expired proposal, in case the
 release after that decision did not finish.
 
 **Rolling back.** The release on production when these operations were added,
-`8141fd15`, predates migrations `0168` to `0170`, so a rollback to it also
-retreats past `0170_key_download_files`; the tables and columns it then
+`8141fd15`, ends at migration `0167` (there is no `0168`; this release adds
+`0169` and `0170`), so a rollback to it also retreats past
+`0170_key_download_files`; the tables and columns it then
 ignores are listed under the [key rollback](shop-management-keys.md#rollback).
 What that release does with what this release stores is proven by
 `scripts/change-proposal-download-rollback-8141fd15.test.ts`, which holds
@@ -1858,13 +1910,25 @@ literal copies of that release's schemas and parsing steps:
   row linked to a proposal that is now `stale`. After rolling forward, the
   minute sweep of this release removes a file linked to a rejected, withdrawn
   or expired proposal, and any other staged file 7 days after staging or once
-  its key is revoked, expired or purged; a file linked to a proposal that ended
-  `stale` is free for its key to propose again until then.
+  its key is revoked, expired or purged, but never a file a pending, unexpired
+  proposal holds: a proposal left pending during the rollback keeps its file,
+  and the file's bytes count against the key's staging limits, until it is
+  decided or expires, also after those 7 days. A file linked to a proposal
+  that ended `stale` is free for its key to propose again until the sweep
+  removes it.
+- Its storage orphan report lists everything under
+  `<workspace>/product-downloads/` and has no inventory of the staging tables,
+  so it reports the key's staged files, upload objects under `key-uploads/` and
+  objects whose deletion is owed as unreferenced, as a report only; it does not
+  list the quarantined images under `image-asset-quarantine/`.
 - A `stale` event note `file_unavailable: …` reads as any note within its 500
   characters.
 - A product file an approval attached is a `ready` file row there, served and
   deleted by its stored object key like any other file; that release neither
-  selects nor parses the `sha256` column.
+  selects nor parses the `sha256` column. It serves the object with the row's
+  file name and type as signed response overrides, so the object's stored type
+  `application/octet-stream` shows only with a provider that ignores
+  overrides, the same on both releases.
 - The storage probe's `signedResponseOverrides` is part of an answer only and
   never stored; that release's diagnostic schema drops it.
 - This release adds no notification kind: a file proposal raises the
@@ -2008,10 +2072,12 @@ course are now a subset of what was pooled, and a lesson open in its first
 course is still open there, so no member loses a module or a lesson. Members
 gain:
 
-- (a) a module attached to two or more courses, excluded by a `course` item for
-  one of them, inside another of its courses that a `course` item of theirs
-  grants as a whole (without excluding it), from the same product or another
-  one;
+- (a) a module excluded by a `course` item for one course, inside another
+  course it is attached to that a `course` item of theirs grants as a whole
+  (without excluding it), from the same product or another one. This includes
+  a stale exclusion: a module moved entirely from course A to course B keeps
+  the stored exclusion for A, which closed it in B before and no longer does,
+  even when B is its only course;
 - (b) a lesson whose first course does not open it for them while another
   course that holds it does, for example a member who gets only the second
   course of a shared module;
@@ -2036,10 +2102,12 @@ join course_modules m on m.tenant_id = 'acme' and m.id = e.excluded_id
 where exists (select 1 from jsonb_array_elements_text(m.course_ids) other where other <> e.course_id);
 ```
 
-The query counts distinct excluded modules attached to another course and
-distinct products whose `course` items exclude them, not members: a member
-gains such a module only while they also hold a `course` item for another of
-its courses. It does not count cases (b) and (c).
+The query counts candidates, not member gains: distinct excluded modules now
+attached to a course other than the one the exclusion names (a module still
+attached to that course or moved away from it entirely alike), and distinct
+products whose `course` items exclude them. A member gains such a module only
+while they also hold a `course` item for another of its courses. It does not
+count cases (b) and (c).
 
 **One check.** `checkProductAccessItems`
 (`core/server/usecases/product-access-items.ts`) is the one check of an access
@@ -2107,7 +2175,9 @@ first and then writes each product that names it, up to 3 times when the
 product is busy. Only a busy write is reported: when the list left after the
 removal names an archived course, the repository refuses the write, the
 product keeps the id of the deleted lesson, and the lesson deletion still
-answers success without naming that product. Every attempt reads the product again and removes the lesson
+answers success without flagging that failure. Its answer is the lesson's
+references collected before the deletion, whose `products` name that product
+by id and title when it named the lesson then. Every attempt reads the product again and removes the lesson
 from the list stored at that moment, so a retry never writes back a list an
 editor replaced in the meantime; a write that is not busy is not compared with
 what was read, so an editor's change committed between that read and that write
@@ -2186,8 +2256,11 @@ list, all read at read time for display only. A page reads the titles of
 every access proposal on it together, in queries of at most 10,000 ids each
 (Postgres binds at most 65,535 parameters in one statement), so a page that
 names more ids than that still reads. A replaced list changes what
-its holders open only among the courses, modules and lessons that either list
-names; another product's items keep granting what they grant.
+its holders open only within what the items of either list reach: a whole
+course with every module and lesson attached to it, a module with its lessons
+in every course that uses it, a lesson in every course that uses it, so also
+in courses neither list names; another product's items keep granting what
+they grant.
 
 The panel shows one row, "Included access", with both lists in words: "the
 whole course “Intro course”", "the course “Intro course” without its module
@@ -2234,8 +2307,11 @@ leaves: when the two name the same items (compared item by item in any order, re
 ignored) it says that the proposed list is the same as the list it started
 from (or that both grant nothing) and that approving makes no net change to that
 list, so nobody who has access gains or loses anything through it. It does not
-say what the product grants now: it compares the two stored lists, and a list
-the owner changed meanwhile makes the approval stale. Titles that share a name get their ids from the labels of all the
+say what the product grants now: it compares the two stored lists. The
+product's list makes the approval stale only when its live list then differs, in the same
+comparison, from the list before the product's first access item; a list the
+owner reordered, or changed and restored, before the approval does not make it
+stale. Titles that share a name get their ids from the labels of all the
 product's access items, so a lesson replaced by another of the same title two
 items later still reads as a change. The warning comes from every access item
 of the product, each checked with its own list and labels, so an earlier item
@@ -2295,7 +2371,18 @@ release stores is proven by
   lesson-thread notification and walks the next lesson in the lesson's first
   course, and drops the `courseId` a lesson player of this release sends with
   a completion, recording it under the lesson's first course. Completions this
-  release recorded under another course stay in that course's progress.
+  release recorded under another course stay in that course's progress, parse
+  there, and count in that course wherever its access rule opens the lesson
+  there; its un-completion looks only in the lesson's first course, so such a
+  completion cannot be cleared until rolling forward. A last-viewed write this
+  release refused stored nothing.
+- A lesson-question or thread-reply notification this release stored names,
+  in its `courseId`, the course through which that recipient reaches the
+  lesson, which can be another course than the lesson's first. That release
+  reads it as an ordinary string and links it to
+  `/my/courses/<courseId>/lessons/<lessonId>`; for the members of cases (b) and
+  (c) its access rule does not open the lesson in that course, so the link
+  opens a page they cannot see. Nothing fails to parse.
 
 Before the rollback, count the proposals it can no longer apply:
 

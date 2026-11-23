@@ -16,12 +16,7 @@ const DocumentLink = ({ href, label }: { href: string; label: string }) => (
   </Link>
 );
 
-/**
- * Required terms/privacy acceptance for register and checkout. Renders only
- * when the tenant configured at least one document URL; native `required`
- * blocks form submission until checked, and a `noValidate` form passes
- * `error` instead.
- */
+/** Required terms/privacy acceptance for register and checkout. */
 export const TermsConsentField = ({
   legal,
   checked,

@@ -59,8 +59,8 @@ describe('order shipping persistence', () => {
     });
     await snapshots.create('workspace', snapshot('snapshot-non-ascii', 'By the café 📦'));
     expect((await snapshots.findById('workspace', 'snapshot-non-ascii'))?.shipping).toEqual(snapshotShipping('By the café 📦'));
-    await expect(snapshots.create('workspace', snapshot('snapshot-nul', `Kiosk${String.fromCharCode(0)}`))).rejects.toMatchObject({ cause: { message: 'unsupported Unicode escape sequence' } });
-    await expect(snapshots.create('workspace', snapshot('snapshot-surrogate', `Kiosk ${String.fromCharCode(0xd800)}`))).rejects.toMatchObject({ cause: { message: 'invalid input syntax for type json' } });
+    await expect(snapshots.create('workspace', snapshot('snapshot-nul', `Kiosk${String.fromCharCode(0)}`))).rejects.toMatchObject({ cause: { code: '22P05' } });
+    await expect(snapshots.create('workspace', snapshot('snapshot-surrogate', `Kiosk ${String.fromCharCode(0xd800)}`))).rejects.toMatchObject({ cause: { code: '22P02' } });
   });
 
   it('stores the delivery data and fulfilment status on paid orders and filters orders to pack', async () => {

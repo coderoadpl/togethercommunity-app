@@ -300,13 +300,23 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
     find: (tenantId, apiKeyId, image) => findUnreleased(db, tenantId, apiKeyId, image),
     release: (tenantId, selection, now, wait) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>> => {
       const scoped = boundsFor(wait);
-      if (!await lockWorkspaceProposals(tx, tenantId, scoped)) return { kind: 'busy' };
+      const endsAt = wait === undefined ? null : Date.now() + wait;
+      const inTime = async (): Promise<boolean> => {
+        if (endsAt === null) return true;
+        const left = Math.floor(endsAt - Date.now());
+        if (left < 1) return false;
+        await boundStatementTime(tx, left);
+        return true;
+      };
+      if (!await inTime() || !await lockWorkspaceProposals(tx, tenantId, scoped)) return { kind: 'busy' };
       await boundLockWait(tx, scoped);
+      if (!await inTime()) return { kind: 'busy' };
       const query = tx.select().from(changeProposalImages).where(selectionFilter(tenantId, selection, now))
         .orderBy(asc(imageWaiting), asc(changeProposalImages.apiKeyId), asc(changeProposalImages.kind), asc(changeProposalImages.digest), asc(changeProposalImages.extension));
       const candidates = selection.kind === 'sweep' ? await query.limit(selection.limit).for('update') : await query.for('update');
       const earlier = candidates.filter((row) => row.releasedAt !== null);
       const fresh = candidates.filter((row) => row.releasedAt === null);
+      if (fresh.length > 0 && !await inTime()) return { kind: 'busy' };
       const marked = fresh.length === 0 ? [] : await tx.update(changeProposalImages).set({ releasedAt: now, pendingSince: null }).where(and(
         eq(changeProposalImages.tenantId, tenantId),
         or(...fresh.map((row) => and(eq(changeProposalImages.apiKeyId, row.apiKeyId), sameImage(row)))),

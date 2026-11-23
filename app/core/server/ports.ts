@@ -3306,7 +3306,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * of their key attaches; answers them together with selected rows released earlier, whose objects the caller removes
    * with `finishRelease` after this commit. `sweep` selects, longest waiting first (by the last failed removal or else the
    * creation), rows released earlier and the unattached rows created before `createdBefore` or of a revoked or deleted key.
-   * `lockWaitMs` shortens every lock wait below the repository's own bound.
+   * `lockWaitMs` shortens every lock wait below the repository's own bound, and also bounds each statement by what is
+   * left of it, measured from the start of the call; once it is spent no statement starts and the answer is `busy`.
    */
   release(tenantId: string, selection: QuarantinedImageRelease, now: string, lockWaitMs?: number): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
   /**

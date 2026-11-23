@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1083,6 +1083,25 @@ describe('database statements of the sweep', () => {
       await holder.end();
     }
     expect(await releasedRows()).toEqual(['1']);
+  }, 15_000);
+});
+
+describe('the release of a sweep', () => {
+  it('ends a statement that runs longer than the time the sweep gives it, not only a lock wait', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1, { createdAt: '2026-02-01T10:00:00.000Z' }), stored);
+    await database.db.execute(sql`create or replace function slow_image_release() returns trigger language plpgsql as $$
+      begin perform pg_sleep(3); return new; end $$`);
+    await database.db.execute(sql`create trigger slow_image_release before update on change_proposal_images for each row execute function slow_image_release()`);
+    try {
+      const started = Date.now();
+      const outcome = await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-02-22T10:00:00.000Z', limit: 10 }, NOW, 500);
+      expect({ outcome, quick: Date.now() - started < 2_000 }).toEqual({ outcome: { kind: 'busy' }, quick: true });
+    } finally {
+      await database.db.execute(sql`drop trigger slow_image_release on change_proposal_images`);
+      await database.db.execute(sql`drop function slow_image_release()`);
+    }
+    expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
   }, 15_000);
 });
 

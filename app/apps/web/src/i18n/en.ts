@@ -832,11 +832,11 @@ export const en: Messages = {
       { target },
     ),
     approveProductSetAccessUnchanged: ({ target, access }) => format(
-      'After approval “{target}” grants the same as now: {access}. Nobody who already has access to this product gains or loses anything through it.',
+      'The proposed list of what “{target}” grants is the same as the list it started from: {access}. Approving makes no net change to that list, so nobody who has access to this product gains or loses anything through it.',
       { target, access },
     ),
     approveProductSetAccessUnchangedNothing: ({ target }) => format(
-      'After approval “{target}” grants no course, module or lesson, as now. Nobody who already has access to this product gains or loses anything through it.',
+      'The proposed list of what “{target}” grants is the same as the list it started from: no course, module or lesson. Approving makes no net change to that list, so nobody who has access to this product gains or loses anything through it.',
       { target },
     ),
     approveConfirm: 'Approve',

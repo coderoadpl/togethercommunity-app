@@ -2139,9 +2139,11 @@ transaction and no holder ever gets a list an earlier item sets; the cards of
 the group still show each item's lists before and after. The sentence compares
 the list before the product's first access item with the list its last item
 leaves: when the two name the same items (compared item by item in any order, repeats
-ignored) it says that after approval the product grants the same as now, or
-still nothing, and that nobody who already has access gains or loses anything
-through it. Titles that share a name get their ids from the labels of all the
+ignored) it says that the proposed list is the same as the list it started
+from (or that both grant nothing) and that approving makes no net change to that
+list, so nobody who has access gains or loses anything through it. It does not
+say what the product grants now: it compares the two stored lists, and a list
+the owner changed meanwhile makes the approval stale. Titles that share a name get their ids from the labels of all the
 product's access items, so a lesson replaced by another of the same title two
 items later still reads as a change. The warning comes from every access item
 of the product, each checked with its own list and labels, so an earlier item

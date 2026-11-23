@@ -878,11 +878,11 @@ export const pl: Messages = {
       { target },
     ),
     approveProductSetAccessUnchanged: ({ target, access }) => format(
-      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do tych samych treści co teraz: {access}. Nikt, kto ma już dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
+      'Proponowana lista tego, do czego daje dostęp produkt „{target}”, jest taka sama jak lista wyjściowa: {access}. Zatwierdzenie w sumie nie zmieni tej listy, więc nikt, kto ma dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
       { target, access },
     ),
     approveProductSetAccessUnchangedNothing: ({ target }) => format(
-      'Po zatwierdzeniu produkt „{target}”, tak jak teraz, nie będzie dawał dostępu do żadnego kursu, modułu ani lekcji. Nikt, kto ma już dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
+      'Proponowana lista tego, do czego daje dostęp produkt „{target}”, jest taka sama jak lista wyjściowa: żaden kurs, moduł ani lekcja. Zatwierdzenie w sumie nie zmieni tej listy, więc nikt, kto ma dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
       { target },
     ),
     approveConfirm: 'Zatwierdź',

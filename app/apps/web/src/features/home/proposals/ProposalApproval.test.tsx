@@ -570,7 +570,7 @@ describe('the approval confirmation of what a product grants', () => {
     expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/tylko wtedy, gdy w chwili zatwierdzenia ka\p{L}da jej zmiana przejdzie swoje kontrole/u);
   });
 
-  it('says in a group confirmation that a product keeps what it grants when its last list grants what its first list started from', () => {
+  it('says in a group confirmation that the group makes no net change to the list it started from when its last list grants that list', () => {
     const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[]) => ({ ...accessChange(after, LABELS, before), id });
     const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
     const items = [step('item-add', [], intro), step('item-clear', intro, [])];
@@ -579,8 +579,24 @@ describe('the approval confirmation of what a product grants', () => {
     expect(dialogText(<GroupAccessSentences items={back} references={groupReferences([])} />)).toBe(
       t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'the whole course “Intro course”' }),
     );
-    expect(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' })).toContain('gains or loses anything through it');
-    expect(pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' })).toMatch(/nie zyska ani nie straci/u);
+    const unchangedSentences = [
+      t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' }),
+      t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }),
+    ];
+    for (const sentence of unchangedSentences) {
+      expect(sentence).toContain('the same as the list it started from');
+      expect(sentence).toContain('makes no net change to that list');
+      expect(sentence).not.toMatch(/\bnow\b/u);
+    }
+    const polishUnchangedSentences = [
+      pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' }),
+      pl.changeProposals.approveProductSetAccessUnchangedNothing({ target: 'Mug' }),
+    ];
+    for (const sentence of polishUnchangedSentences) {
+      expect(sentence).toMatch(/lista wyj\p{L}ciowa/u);
+      expect(sentence).toMatch(/w sumie nie zmieni/u);
+      expect(sentence).not.toMatch(/teraz/u);
+    }
   });
 
   it('claims no future access for a draft the group deletes after setting its list, but keeps a refusal', () => {

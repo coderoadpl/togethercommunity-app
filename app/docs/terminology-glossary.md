@@ -117,7 +117,7 @@ add it here before using it in either dictionary.
 | Login identity | konto | account | Shared authentication identity. |
 | Automatic lesson text expansion | `account.lessonTextAutoExpandLabel` in the Polish dictionary | Expand lesson text automatically | A member preference for the initial reading-preview state, independent of video autoplay policy. |
 | Browser-local preference help | `account.lessonTextAutoExpandHint` in the Polish dictionary | Remembered in this browser. | Applies to the current browser only, not every device signed in to the account. |
-| Passwordless login URL | magiczny link | magic link | Use the canonical localized word order. |
+| Passwordless login URL | link do logowania | sign-in link | The one term on sign-in screens in both languages; avoid magic link there. |
 | Passwordless credential | klucz dostępu | passkey | Keep distinct from an API key. |
 | Additional sign-in factor | uwierzytelnianie dwuskładnikowe | two-factor authentication | Spell it out in action labels. |
 | S3-compatible service | magazyn plików | file storage | Its container is a bucket in both languages. |

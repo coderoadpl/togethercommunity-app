@@ -400,8 +400,12 @@ export const en: Messages = {
   auth: {
     signInNoticeLabel: 'Sign-in notice',
     invalidCredentials: 'Invalid email or password.',
-    signInRateLimitedRetryIn: ({ seconds }) => format('Too many attempts. Try again in {seconds} s.', { seconds }),
-    signInRateLimitedTitle: 'Please wait a moment',
+    signInRateLimitedRetryIn: ({ delay }) => format('Too many attempts. Try again in {delay}.', { delay }),
+    signInRateLimitedTitle: 'Too many attempts',
+    signInRateLimitedRetryNow: 'You can try again now.',
+    signInRateLimitedLeadRetryIn: ({ delay }) => format('Try again in {delay}.', { delay }),
+    signInRateLimitedLeadWait: 'Wait a moment, then try again.',
+    signInRateLimitedChooseMethod: 'Choose a sign-in method',
     signInTitle: 'Sign in',
     signInToTenant: ({ tenant }) => format('Sign in to {tenant}', { tenant }),
     signInLead: 'Enter the email you used when you bought or joined.',
@@ -459,7 +463,7 @@ export const en: Messages = {
     magicLinkSentHint: ({ minutes }) =>
       format('Nothing yet? Check your spam folder. The link is valid for {minutes} {unit}.', { minutes, unit: plural(minutes, 'minute', 'minutes') }),
     magicLinkResend: 'Send the link again',
-    magicLinkResendCooldown: ({ seconds }) => format('Send again ({seconds} s)', { seconds }),
+    magicLinkResendCooldown: ({ delay }) => format('Send again ({delay})', { delay }),
     magicLinkResent: 'If an account exists, we have sent another sign-in link.',
     magicLinkFetching: 'Fetching dev magic link…',
     openMagicLink: 'Open magic link (development mode)',

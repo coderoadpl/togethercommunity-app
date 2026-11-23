@@ -2,6 +2,7 @@ export { LanguageProvider, languageOptions, useLanguage, useTranslations } from 
 export {
   adoptionRefusalOf,
   errorCodeOf,
+  formatRetryDelay,
   localizeError,
   localizeErrorCode,
   localizeErrorCodeForPanel,

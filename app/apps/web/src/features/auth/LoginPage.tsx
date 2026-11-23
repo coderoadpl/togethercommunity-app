@@ -20,6 +20,7 @@ import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import {
   errorCodeOf,
+  formatRetryDelay,
   localizeError,
   providerCodeOf,
   retryAfterSecondsOf,
@@ -102,30 +103,43 @@ const isInvalidTwoFactorCode = (error: unknown): boolean => {
   return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
 };
 
+// Hidden tabs throttle timers, so the remaining time is read from the clock, never counted down.
 const useRetryCountdown = (error: unknown): number => {
   const [countdown, setCountdown] = useState<{ error: unknown; seconds: number }>({ error: null, seconds: 0 });
   if (countdown.error !== error) setCountdown({ error, seconds: retryAfterSecondsOf(error) ?? 0 });
-  const { seconds } = countdown;
   useEffect(() => {
-    if (seconds === 0) return undefined;
-    const timer = window.setTimeout(
-      () => setCountdown((current) => ({ ...current, seconds: Math.max(0, current.seconds - 1) })),
-      1000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [seconds]);
-  return countdown.error === error ? seconds : retryAfterSecondsOf(error) ?? 0;
+    const initial = retryAfterSecondsOf(error) ?? 0;
+    if (initial === 0) return undefined;
+    const endsAt = Date.now() + initial * 1000;
+    let timer: number | undefined;
+    const tick = () => {
+      window.clearTimeout(timer);
+      const left = Math.max(0, endsAt - Date.now());
+      const seconds = Math.ceil(left / 1000);
+      setCountdown({ error, seconds });
+      if (seconds > 0) timer = window.setTimeout(tick, left % 1000 || 1000);
+    };
+    timer = window.setTimeout(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [error]);
+  return countdown.error === error ? countdown.seconds : retryAfterSecondsOf(error) ?? 0;
 };
 
-// Assistive technology hears the delay once; only the visible copy ticks.
-const RateLimitMessage = ({ error, remaining }: { error: unknown; remaining: number }) => {
+// Announcing every tick would flood assistive technology.
+const RateLimitMessage = ({ error, remaining, lead = false }: { error: unknown; remaining: number; lead?: boolean }) => {
   const t = useTranslations();
   const initial = retryAfterSecondsOf(error);
-  if (initial === null || remaining === 0) return <>{t.errors.messageRateLimited}</>;
+  if (initial === null) return <>{lead ? t.auth.signInRateLimitedLeadWait : t.errors.messageRateLimited}</>;
+  if (remaining === 0) return <>{t.auth.signInRateLimitedRetryNow}</>;
+  const retryIn = lead ? t.auth.signInRateLimitedLeadRetryIn : t.auth.signInRateLimitedRetryIn;
   return (
     <>
-      <span aria-hidden data-testid="rate-limit-countdown">{t.auth.signInRateLimitedRetryIn({ seconds: remaining })}</span>
-      <VisuallyHidden>{t.auth.signInRateLimitedRetryIn({ seconds: initial })}</VisuallyHidden>
+      <span aria-hidden data-testid="rate-limit-countdown">{retryIn({ delay: formatRetryDelay(remaining) })}</span>
+      <VisuallyHidden>{retryIn({ delay: formatRetryDelay(initial) })}</VisuallyHidden>
     </>
   );
 };
@@ -223,6 +237,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
+  const methodTitleRef = useRef<HTMLHeadingElement>(null);
+  const magicLinkRequestGeneration = useRef(0);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -241,6 +257,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   useEffect(() => {
     if (resolveFailure !== null) rateLimitedTitleRef.current?.focus();
   }, [resolveFailure]);
+
+  const methodChosen = method !== null;
+  useEffect(() => {
+    if (methodChosen) methodTitleRef.current?.focus();
+  }, [methodChosen]);
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -333,23 +354,22 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     onError: selectTwoFactorCode,
   });
 
-  const requestMagicLink = useMutation({
-    ...actions.requestMagicLink,
-    onSuccess: (_data, variables) => {
-      setRequestedMagicEmail(variables.email);
-      if (magicLinkExpired) {
-        void navigate({
-          to: '.',
-          search: (previous) => {
-            const next = { ...previous };
-            delete next.error;
-            return next;
-          },
-          replace: true,
-        });
-      }
-    },
-  });
+  const requestMagicLink = useMutation(actions.requestMagicLink);
+
+  const confirmMagicLinkSent = (recipient: string) => {
+    setRequestedMagicEmail(recipient);
+    if (magicLinkExpired) {
+      void navigate({
+        to: '.',
+        search: (previous) => {
+          const next = { ...previous };
+          delete next.error;
+          return next;
+        },
+        replace: true,
+      });
+    }
+  };
 
   const signInRetryIn = useRetryCountdown(signIn.error);
   const magicLinkRetryIn = useRetryCountdown(requestMagicLink.error);
@@ -378,6 +398,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   };
 
   const editIdentifier = () => {
+    magicLinkRequestGeneration.current += 1;
     setMethod(null);
     setResolveFailure(null);
     setPassword('');
@@ -391,7 +412,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const switchMethod = (next: SignInMethod) => {
     signIn.reset();
-    requestMagicLink.reset();
+    if (errorCodeOf(requestMagicLink.error) !== 'rate_limited') requestMagicLink.reset();
     setResolveFailure(null);
     setPassword('');
     setMethod(next);
@@ -402,27 +423,33 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     signIn.mutate({ email, password });
   };
 
+  const mutateMagicLink = (recipient: string, onSent: (confirmed: string) => void) => {
+    magicLinkRequestGeneration.current += 1;
+    const generation = magicLinkRequestGeneration.current;
+    requestMagicLink.mutate(
+      {
+        email: recipient,
+        callbackURL: loginCallbackUrl(returnTo),
+        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+      },
+      {
+        onSuccess: (_data, variables) => {
+          if (generation === magicLinkRequestGeneration.current) onSent(variables.email);
+        },
+      },
+    );
+  };
+
   const sendMagicLink = () => {
     setRequestedMagicEmail('');
     setMagicLinkResent(false);
-    requestMagicLink.mutate({
-      email,
-      callbackURL: loginCallbackUrl(returnTo),
-      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
-    });
+    mutateMagicLink(email, confirmMagicLinkSent);
   };
 
   const resendMagicLink = () => {
     setMagicLinkResent(false);
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
-    requestMagicLink.mutate(
-      {
-        email: requestedMagicEmail,
-        callbackURL: loginCallbackUrl(returnTo),
-        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
-      },
-      { onSuccess: () => setMagicLinkResent(true) },
-    );
+    mutateMagicLink(requestedMagicEmail, () => setMagicLinkResent(true));
   };
 
   const submitTwoFactor = (event: FormEvent) => {
@@ -469,17 +496,18 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthAccentLink>
   );
 
-  const identityChip = (
+  const identityChipFor = (identity: string) => (
     <AuthIdentityChip
       data-testid={IDENTITY_ID}
       role="group"
-      aria-label={t.auth.signingInAs({ email })}
+      aria-label={t.auth.signingInAs({ email: identity })}
     >
-      <AuthIdentityAvatar aria-hidden>{initialsOf(email)}</AuthIdentityAvatar>
-      <AuthIdentityEmail>{email}</AuthIdentityEmail>
+      <AuthIdentityAvatar aria-hidden>{initialsOf(identity)}</AuthIdentityAvatar>
+      <AuthIdentityEmail>{identity}</AuthIdentityEmail>
       {changeIdentifierLink(t.auth.changeIdentifierShort)}
     </AuthIdentityChip>
   );
+  const identityChip = identityChipFor(email);
 
   const signInErrorCode = errorCodeOf(signIn.error);
   const credentialsRejected = signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials';
@@ -566,7 +594,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return shell(
       <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
         <Box>
-          {identityChip}
+          {identityChipFor(requestedMagicEmail)}
           <AuthTitle variant="h1" ref={magicLinkSentTitleRef} tabIndex={-1}>
             {t.auth.checkInboxTitle}
           </AuthTitle>
@@ -591,7 +619,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           onClick={resendMagicLink}
         >
           {resendWait > 0
-            ? t.auth.magicLinkResendCooldown({ seconds: resendWait })
+            ? t.auth.magicLinkResendCooldown({ delay: formatRetryDelay(resendWait) })
             : t.auth.magicLinkResend}
         </Button>
         {requestMagicLink.isError ? (
@@ -704,7 +732,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             {t.auth.signInRateLimitedTitle}
           </AuthTitle>
           <AuthLead component="p" data-testid="sign-in-rate-limited-message">
-            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} />
+            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} lead />
           </AuthLead>
         </Box>
         <Button
@@ -715,6 +743,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           onClick={() => resolveSignInMethods.mutate({ email })}
         >
           {t.common.retry}
+        </Button>
+        <Button
+          type="button"
+          variant="text"
+          size="small"
+          sx={{ px: 0, mt: '0.5rem', minHeight: 44 }}
+          data-testid="sign-in-rate-limited-choose-method"
+          onClick={() => switchMethod('magic-link')}
+        >
+          {t.auth.signInRateLimitedChooseMethod}
         </Button>
       </Box>,
       null,
@@ -822,7 +860,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     <>
       {identityChip}
       <Box sx={{ mb: '1.5rem' }}>
-        <AuthTitle variant="h1">{t.auth.methodTitle}</AuthTitle>
+        <AuthTitle variant="h1" ref={methodTitleRef} tabIndex={-1}>
+          {t.auth.methodTitle}
+        </AuthTitle>
         <AuthLead component="p">{t.auth.methodLead}</AuthLead>
       </Box>
       {magicLinkExpired ? (

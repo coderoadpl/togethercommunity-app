@@ -674,6 +674,7 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument();
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.activeElement?.getAttribute('type')).not.toBe('password');
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
 
     await userEvent.click(passwordCard);
 
@@ -751,6 +752,7 @@ describe('LoginPage', () => {
       await userEvent.type(screen.getByTestId('login-email'), email);
       await userEvent.click(screen.getByTestId('login-continue'));
       await screen.findByTestId('use-password');
+      await waitFor(() => expect(document.activeElement?.tagName).toBe('H1'));
       const content = screen.getByTestId('sign-in-content');
       const layout = [...content.querySelectorAll('*')].map((element) => [
         element.tagName,
@@ -771,6 +773,7 @@ describe('LoginPage', () => {
 
     expect(unknown).toEqual(known);
     expect(known.layout.some(([, testId]) => testId === 'login-password')).toBe(false);
+    expect(known.focused).toBe('H1');
   });
 
   it('offers password when reported, with the link card first', async () => {
@@ -907,15 +910,40 @@ describe('LoginPage', () => {
     expect(screen.queryByTestId('send-magic-link')).not.toBeInTheDocument();
   });
 
-  it('uses calm copy when the resolver rate-limits the visitor with a retry delay', async () => {
-    await renderLoginPage();
-    rateLimitSignInMethods(42);
-    await continueWithEmail();
+  it.each([
+    { language: 'en', t: en, seconds: 42, delay: '42 s' },
+    { language: 'en', t: en, seconds: 60, delay: '1 min' },
+    { language: 'en', t: en, seconds: 583, delay: '9 min 43 s' },
+    { language: 'pl', t: pl, seconds: 42, delay: '42 s' },
+    { language: 'pl', t: pl, seconds: 60, delay: '1 min' },
+    { language: 'pl', t: pl, seconds: 583, delay: '9 min 43 s' },
+  ] as const)('states a $seconds s lookup delay as $delay in $language', async ({ language, t, seconds, delay }) => {
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link'], [], anonymousMe(), null, language);
+    rateLimitSignInMethods(seconds);
+    await userEvent.type(screen.getByTestId('login-email'), 'creator@together.dev');
+    await userEvent.click(screen.getByTestId('login-continue'));
 
-    expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
-      en.auth.signInRateLimitedRetryIn({ seconds: 42 }),
-    );
+    const message = await screen.findByTestId('sign-in-rate-limited-message');
+    expect(within(message).getByTestId('rate-limit-countdown')).toHaveTextContent(t.auth.signInRateLimitedLeadRetryIn({ delay }));
+    expect(message).not.toHaveTextContent(t.auth.signInRateLimitedTitle);
+    expect(message).toHaveTextContent(delay);
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+  });
+
+  it('ends a countdown that ran out while the tab was hidden as soon as the tab is shown again', async () => {
+    await renderLoginPage();
+    rateLimitSignInMethods(583);
+    await continueWithEmail();
+    expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent('9 min 43 s');
+    expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
+
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 584_000);
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled());
+    expect(screen.queryByTestId('rate-limit-countdown')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
   });
 
   it('counts the lookup delay down and enables the retry when it ends', async () => {
@@ -924,12 +952,12 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('rate-limit-countdown')).toHaveTextContent(
-      en.auth.signInRateLimitedRetryIn({ seconds: 1 }),
+      en.auth.signInRateLimitedLeadRetryIn({ delay: '1 s' }),
     );
     expect(screen.getByTestId('sign-in-methods-retry')).toBeDisabled();
 
     await waitFor(() => expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.errors.messageRateLimited);
+    expect(screen.getByTestId('sign-in-rate-limited-message')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
   });
 
   it('states a rate limit without a delay when the resolver sends none', async () => {
@@ -938,7 +966,7 @@ describe('LoginPage', () => {
     await continueWithEmail();
 
     expect(await screen.findByTestId('sign-in-rate-limited-message')).toHaveTextContent(
-      en.errors.messageRateLimited,
+      en.auth.signInRateLimitedLeadWait,
     );
     expect(screen.getByTestId('sign-in-methods-retry')).toBeEnabled();
   });
@@ -958,10 +986,11 @@ describe('LoginPage', () => {
     await userEvent.type(await screen.findByTestId('login-password'), 'some-password');
     await userEvent.click(screen.getByTestId('signin-submit'));
 
-    expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(await screen.findByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('signin-submit')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('signin-submit')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('signin-error')).toHaveTextContent(t.errors.messageRateLimited);
+    expect(screen.getByTestId('signin-error')).toHaveTextContent(t.auth.signInRateLimitedRetryNow);
+    expect(screen.getByTestId('signin-error')).not.toHaveTextContent(t.errors.messageRateLimited);
   });
 
   it('holds the sign-in link card until the rate-limit delay ends', async () => {
@@ -975,10 +1004,40 @@ describe('LoginPage', () => {
     await continueWithEmail();
     await userEvent.click(await screen.findByTestId('send-magic-link'));
 
-    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ seconds: 1 }));
+    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '1 s' }));
     expect(screen.getByTestId('send-magic-link')).toBeDisabled();
     await waitFor(() => expect(screen.getByTestId('send-magic-link')).toBeEnabled(), { timeout: 3000 });
-    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.errors.messageRateLimited);
+    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryNow);
+    expect(screen.getByTestId('magic-link-error')).not.toHaveTextContent(en.errors.messageRateLimited);
+  });
+
+  it('shows the rate-limited link card as unavailable and keeps its countdown while the password card is open', async () => {
+    server.use(http.post('*', ({ request }) => new URL(request.url).pathname.endsWith('/sign-in/magic-link')
+      ? HttpResponse.json(
+        { ok: false, error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 583 } } },
+        { status: 429 },
+      )
+      : undefined));
+    await renderLoginPage(false, '/login', undefined, ['password', 'magic-link']);
+    await continueWithEmail();
+    const linkCard = await screen.findByTestId('send-magic-link');
+    const chevronOf = (card: HTMLElement) => card.querySelector('.AuthMethod-chevron');
+    expect(window.getComputedStyle(linkCard).opacity).not.toBe('0.6');
+    expect(window.getComputedStyle(chevronOf(linkCard) ?? linkCard).visibility).not.toBe('hidden');
+
+    await userEvent.click(linkCard);
+
+    expect(await screen.findByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }));
+    expect(linkCard).toBeDisabled();
+    expect(window.getComputedStyle(linkCard).opacity).toBe('0.6');
+    expect(chevronOf(linkCard)).not.toBeNull();
+    expect(window.getComputedStyle(chevronOf(linkCard) ?? linkCard).visibility).toBe('hidden');
+
+    await userEvent.click(screen.getByTestId('use-password'));
+
+    expect(await screen.findByLabelText(en.auth.passwordLabel)).toHaveFocus();
+    expect(screen.getByTestId('magic-link-error')).toHaveTextContent(en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }));
+    expect(screen.getByTestId('send-magic-link')).toBeDisabled();
   });
 
   it('opens the password step after a failed lookup', async () => {
@@ -1004,6 +1063,38 @@ describe('LoginPage', () => {
 
     expect(await screen.findByTestId('use-password')).toBeInTheDocument();
     expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
+  });
+
+  it('lets the visitor leave a lookup rate limit for the method step and sign in with a password', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+    const { router } = await renderLoginPage();
+    rateLimitSignInMethods(583);
+    await continueWithEmail();
+    const limited = await screen.findByTestId('sign-in-rate-limited');
+    expect(within(limited).getByTestId('sign-in-methods-retry')).toBeDisabled();
+    const chooseMethod = within(limited).getByRole('button', { name: en.auth.signInRateLimitedChooseMethod });
+    expect(chooseMethod).toBeEnabled();
+    expect(chooseMethod).not.toHaveClass('MuiButton-contained');
+
+    await userEvent.click(chooseMethod);
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
+    expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
+    expect(screen.getByTestId('signin-passkey')).toBeEnabled();
+    expect(within(screen.getByTestId('sign-in-content')).queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('use-password'));
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
   it('reuses the known password method when a later lookup for the same address fails', async () => {
@@ -1198,6 +1289,48 @@ describe('LoginPage', () => {
       'href',
       'https://studio.test/magic',
     );
+  });
+
+  it('ignores a late sign-in link confirmation for an address the visitor already changed', async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const answered: string[] = [];
+    server.use(
+      http.post('*', async ({ request }) => {
+        if (!new URL(request.url).pathname.endsWith('/sign-in/magic-link')) return undefined;
+        const body: unknown = await request.json();
+        const recipient = typeof body === 'object' && body !== null && 'email' in body && typeof body.email === 'string'
+          ? body.email
+          : '';
+        if (recipient === 'first@example.com') await firstHeld;
+        answered.push(recipient);
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    const { queryClient } = await renderLoginPage(false, '/login', undefined, ['magic-link']);
+    await continueWithEmail('first@example.com');
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+
+    await userEvent.click(screen.getByTestId('login-change-email'));
+    await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
+    await continueWithEmail('second@example.com');
+    await screen.findByTestId('send-magic-link');
+    releaseFirst();
+    await waitFor(() => expect(answered).toEqual(['first@example.com']));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+
+    expect(screen.queryByTestId('magic-link-sent')).not.toBeInTheDocument();
+    expect(screen.getByTestId('login-identity')).toHaveTextContent('second@example.com');
+
+    await userEvent.click(screen.getByTestId('send-magic-link'));
+
+    const sent = await screen.findByTestId('magic-link-sent');
+    expect(answered).toEqual(['first@example.com', 'second@example.com']);
+    expect(within(sent).getByTestId('login-identity')).toHaveTextContent('second@example.com');
+    expect(sent).not.toHaveTextContent('first@example.com');
   });
 
   it('does not request or surface the dev magic link when exposure is disabled', async () => {
@@ -1584,7 +1717,7 @@ describe('LoginPage', () => {
     await waitFor(() => expect(magicLinkCalls).toBe(2));
     expect(screen.getByTestId('resend-magic-link')).toBeDisabled();
     expect(screen.getByTestId('resend-magic-link')).toHaveTextContent(
-      en.auth.magicLinkResendCooldown({ seconds: 30 }),
+      en.auth.magicLinkResendCooldown({ delay: '30 s' }),
     );
 
     await userEvent.click(screen.getByTestId('login-change-email'));

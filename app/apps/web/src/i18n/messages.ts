@@ -416,8 +416,12 @@ export interface Messages {
   auth: {
     signInNoticeLabel: string;
     invalidCredentials: string;
-    signInRateLimitedRetryIn: (params: { seconds: number }) => string;
+    signInRateLimitedRetryIn: (params: { delay: string }) => string;
     signInRateLimitedTitle: string;
+    signInRateLimitedRetryNow: string;
+    signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedLeadWait: string;
+    signInRateLimitedChooseMethod: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -473,7 +477,7 @@ export interface Messages {
     magicLinkRequestedBody: (params: { email: string }) => string;
     magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
-    magicLinkResendCooldown: (params: { seconds: number }) => string;
+    magicLinkResendCooldown: (params: { delay: string }) => string;
     magicLinkResent: string;
     magicLinkFetching: string;
     openMagicLink: string;

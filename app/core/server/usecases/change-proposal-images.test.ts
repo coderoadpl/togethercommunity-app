@@ -583,6 +583,45 @@ describe('approving a proposal with an image', () => {
     expect(h.quarantinedKeys()).toHaveLength(1);
   });
 
+  it('counts the age bound of a record it keeps after a write without a definite answer from that write, not from the attempt start', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const put = h.objects.storage.putObject;
+    let land: () => Promise<unknown> = async () => undefined;
+    h.objects.storage.putObject = async (input) => {
+      if (!input.url.includes('/image-assets/')) return put(input);
+      h.clock.now = '2026-03-01T10:04:00.000Z';
+      land = () => put(input);
+      return err(integrationUnavailable('Could not store the published image: the storage request deadline passed'));
+    };
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+
+    h.clock.now = '2026-03-01T10:11:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.imagePublications).toHaveLength(1);
+    await land();
+    h.clock.now = '2026-03-01T10:15:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.publicKeys()).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
+  it('writes nothing once the approval runs longer than the write window after it recorded its intent, and answers busy', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const get = h.objects.storage.getObject;
+    h.objects.storage.getObject = async (input, options) => {
+      if (input.url.includes('/image-asset-quarantine/')) h.clock.now = '2026-03-01T10:05:00.001Z';
+      return get(input, options);
+    };
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(h.objects.calls.filter(({ method, key }) => method === 'putObject' && key.startsWith('image-assets/'))).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
+    expect(h.proposal(id)?.status).toBe('pending');
+  });
+
   it('removes the record with the withdrawal when the storage refused the write', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));

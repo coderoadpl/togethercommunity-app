@@ -1237,9 +1237,14 @@ seconds, a connection error, a server error), the storage may still store it
 after this delete, so the withdrawal deletes the object but keeps its record,
 and the minute sweep deletes the object once more after the record's 10 minutes
 and only then removes the record; a write the storage refused (a `4xx` answer)
-is withdrawn like any other. This rests on the storage finishing or abandoning
-a write it accepted within those 10 minutes; the signed write itself expires 60
-seconds after it was signed. When the delete itself ends without a definite
+is withdrawn like any other. The record's 10 minutes then count from the end
+of that write, not from the start of the attempt. This rests on the storage
+finishing or abandoning a write it accepted within those 10 minutes; the signed
+write itself expires 60 seconds after it was signed. An approval starts a write
+only within 5 minutes of committing its publication records, or it answers
+`503 unavailable` and writes nothing, so a process that dies during a write,
+whose record no withdrawal restarts, still leaves the storage at least 5
+minutes before the sweep deletes the object. When the delete itself ends without a definite
 answer, the storage may still carry it out later, after a new approval has
 committed the address, so the withdrawal keeps the record and marks it with the
 time of that delete (`delete_unresolved_at`). While such a mark exists, every

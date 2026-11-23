@@ -382,6 +382,7 @@ export const prepareApprovalImages = async (
 export interface ApprovalPublication {
   attemptId: string;
   images: ProposalImageReference[];
+  startedAt: string;
 }
 
 export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepareDeps {
@@ -403,7 +404,7 @@ export const recordApprovalPublications = async (
   deps: ChangeProposalImagePublishDeps,
 ): Promise<Result<ApprovalPublication, AppError>> => {
   const images = changedImagesOf(proposals).map(({ image }) => image);
-  if (images.length === 0) return ok({ attemptId: '', images: [] });
+  if (images.length === 0) return ok({ attemptId: '', images: [], startedAt: '' });
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const absent: ProposalImageReference[] = [];
@@ -412,10 +413,11 @@ export const recordApprovalPublications = async (
     if (!found.ok) return found;
     if (found.value === null) absent.push(image);
   }
-  if (absent.length === 0) return ok({ attemptId: '', images: [] });
+  if (absent.length === 0) return ok({ attemptId: '', images: [], startedAt: '' });
   const attemptId = deps.ids.nextId();
-  await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, deps.clock.nowIso());
-  return ok({ attemptId, images: absent });
+  const startedAt = deps.clock.nowIso();
+  await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, startedAt);
+  return ok({ attemptId, images: absent, startedAt });
 };
 
 export interface ApprovalImageWrites {
@@ -433,13 +435,15 @@ export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], 
  * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
  * recorded must still be public with bytes that hash to its digest, or the approval answers busy; the workspace lock
  * this transaction holds, and the refusal of any address with an unresolved delete, keep it there until the commit.
+ * A write starts only within `publicationWriteWindowMs` of the intent record, or the approval answers busy, so a process
+ * that dies mid-write still leaves the sweep's age bound minus that window after the write began.
  */
 export const publishApprovalImages = async (
   tenantId: string,
   prepared: Extract<ApprovalImages, { kind: 'ready' }>,
   publication: ApprovalPublication,
   scope: ChangeProposalTransactionScope,
-  deps: ChangeProposalImagePrepareDeps,
+  deps: ChangeProposalImagePrepareDeps & { clock: Clock },
   writes: ApprovalImageWrites,
 ): Promise<Result<void, AppError>> => {
   const images = scope.repositories.quarantinedImages;
@@ -457,6 +461,9 @@ export const publishApprovalImages = async (
         const present = await readVerified(configuration, proposalImagePublishedKey(tenantId, image), image, deps);
         if (!present.ok) return present;
         if (present.value !== null) continue;
+        return err(changeProposalsBusy());
+      }
+      if (Date.parse(deps.clock.nowIso()) - Date.parse(publication.startedAt) > QUARANTINED_IMAGE_LIMITS.publicationWriteWindowMs) {
         return err(changeProposalsBusy());
       }
       writes.written.push(image);
@@ -524,7 +531,10 @@ const removePublication = async (
           return ok(false);
         }
       }
-      if (written.keepRecord) return ok(false);
+      if (written.keepRecord) {
+        await images.restartPublication(tenantId, attemptId, image, deps.clock.nowIso());
+        return ok(false);
+      }
       await images.deletePublication(tenantId, attemptId, image);
       return ok(true);
     }, lockWaitMs === undefined ? {} : { lockWaitMs });

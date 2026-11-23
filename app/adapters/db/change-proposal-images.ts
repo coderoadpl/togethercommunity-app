@@ -178,6 +178,9 @@ export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks
     eq(changeProposalImagePublications.extension, image.extension),
     isNotNull(changeProposalImagePublications.deleteUnresolvedAt),
   )).limit(1)).length > 0,
+  restartPublication: async (tenantId, attemptId, image, now) => {
+    await executor.update(changeProposalImagePublications).set({ startedAt: now }).where(publicationOf(tenantId, attemptId, image));
+  },
   markDeleteUnresolved: async (tenantId, attemptId, image, now) => {
     await executor.update(changeProposalImagePublications).set({ deleteUnresolvedAt: now }).where(publicationOf(tenantId, attemptId, image));
   },

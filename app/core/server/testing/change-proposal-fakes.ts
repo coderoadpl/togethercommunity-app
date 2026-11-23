@@ -370,6 +370,11 @@ const catalogRepositoriesOver = (
       },
       deleteUnresolved: async (tenantId, image) => store.imagePublications.some((row) =>
         row.tenantId === tenantId && sameProposalImage(row.image, image) && row.deleteUnresolvedAt !== undefined),
+      restartPublication: async (tenantId, attemptId, image, now) => {
+        for (const row of store.imagePublications) {
+          if (samePublication(row, tenantId, attemptId, image)) row.startedAt = now;
+        }
+      },
       markDeleteUnresolved: async (tenantId, attemptId, image, now) => {
         for (const row of store.imagePublications) {
           if (samePublication(row, tenantId, attemptId, image)) row.deleteUnresolvedAt = now;

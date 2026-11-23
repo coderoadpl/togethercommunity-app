@@ -3344,6 +3344,8 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   deletePublication(tenantId: string, attemptId: string, image: ProposalImageReference): Promise<void>;
   /** Whether a publication record of the workspace holds an unresolved delete of this image's public object. */
   deleteUnresolved(tenantId: string, image: ProposalImageReference): Promise<boolean>;
+  /** Restarts the age bound of the record at `now`, after a write of its object that ended without a definite answer. */
+  restartPublication(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
   /** Records that the delete of this record's public object ended without a definite answer at `now`. */
   markDeleteUnresolved(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
 }

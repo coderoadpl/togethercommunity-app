@@ -111,19 +111,12 @@ describe('InPost points directory', () => {
     expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
   });
 
-  const withField = (field: string, value: string): string => {
-    const body = JSON.parse(fixture('point-operating.json')) as Record<string, unknown>;
-    return JSON.stringify({ ...body, [field]: value });
-  };
-  const withAddressLine = (value: string): string => {
-    const body = JSON.parse(fixture('point-operating.json')) as Record<string, unknown>;
-    return JSON.stringify({ ...body, address: { line1: value, line2: '00-001 Warsaw' } });
-  };
+  const replacing = (recorded: string, value: string): string => fixture('point-operating.json').replace(recorded, JSON.stringify(value));
 
   it.each([
-    ['a NUL in the location description', () => withField('location_description', `Next to the entrance${String.fromCharCode(0)}`)],
-    ['a lone surrogate in an address line', () => withAddressLine(`Main Street ${String.fromCharCode(0xd800)}`)],
-    ['a lone surrogate in a field the app does not read', () => withField('display_name', String.fromCharCode(0xdc00))],
+    ['a NUL in the location description', () => replacing('"Next to the main entrance"', `Next to the entrance${String.fromCharCode(0)}`)],
+    ['a lone surrogate in an address line', () => replacing('"Main Street 1"', `Main Street ${String.fromCharCode(0xd800)}`)],
+    ['a lone surrogate in a field the app does not read', () => replacing('"InPost locker KRA14A"', String.fromCharCode(0xdc00))],
   ])('answers unavailable for an operating locker whose answer carries %s', async (_case, body) => {
     const lookup = await directory(answering(() => json(body()))).lookup('KRA14A');
     expect(lookup).toEqual({ kind: 'unavailable' });
@@ -133,7 +126,7 @@ describe('InPost points directory', () => {
   });
 
   it('reads an answer with ordinary non-ASCII text and a paired surrogate', async () => {
-    const lookup = await directory(answering(() => json(withField('location_description', 'By the café 📦')))).lookup('KRA14A');
+    const lookup = await directory(answering(() => json(replacing('"Next to the main entrance"', 'By the café 📦')))).lookup('KRA14A');
     expect(lookup).toMatchObject({ kind: 'found', point: { locationDescription: 'By the café 📦' } });
   });
 

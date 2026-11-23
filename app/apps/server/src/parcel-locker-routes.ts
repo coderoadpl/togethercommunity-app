@@ -10,20 +10,16 @@ import type { PublicRateLimitPolicies } from './public-rate-limit.js';
 import { respond } from './respond.js';
 import { recordException } from './telemetry.js';
 
-interface ErrorLogger {
-  error(message: string): void;
-}
-
 export interface ParcelLockerRouteDeps extends ResolveTenantDeps {
   tenants: TenantRepository;
   pickupPoints?: PickupPointDirectory | undefined;
   rateLimitBuckets: PublicRateLimitRepository;
   publicRateLimitPolicies: Pick<PublicRateLimitPolicies, 'parcelLockerLookupsPublic'>;
   clock: Clock;
-  logger: ErrorLogger;
+  logger: { error(message: string): void };
 }
 
-export const lookupBudgetSpentOnError = (buckets: PublicRateLimitRepository, logger: ErrorLogger): PublicRateLimitRepository => ({
+export const lookupBudgetSpentOnError = (buckets: PublicRateLimitRepository, logger: ParcelLockerRouteDeps['logger']): PublicRateLimitRepository => ({
   claim: async (input) => {
     try {
       return await buckets.claim(input);

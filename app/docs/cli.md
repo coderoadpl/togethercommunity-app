@@ -152,11 +152,25 @@ private until the owner approves, and `shop files remove` proposes the
 removal of a ready file; all three accept `--group <id>`, and with it `upload` and `copy` do
 not check a `'$proposal:<id>'` product first; see
 [Download files](shop-management-keys.md#download-files).
+`shop products access <productId>` states the whole new list of what a product
+grants in one command: `--course <id>` alone, repeatable, grants whole courses;
+with exactly one `--course`, `--module <id>` and `--lesson <id>` (each
+repeatable) grant those modules and lessons instead of the whole course, each
+wherever it is used, and `--exclude-module <id>` grants the whole course without
+those modules; `--access-items <json>` states a list of any other shape, and
+`--clear` a list with nothing in it. A combination that states no list or
+mixes these forms is refused before any request. With a propose-mode key it
+prints the proposal receipt and accepts `--group <id>`, and the product may be
+a `'$proposal:<id>'`; a direct-mode key gets `forbidden` from the server and
+changes nothing ([What a product grants](shop-management-keys.md#what-a-product-grants)).
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
-before/after effect, approve it or reject it. `proposals show` also lists the
+before/after effect, approve it or reject it. `proposals show` and
+`proposals group show` print, under `names:`, the title of every course, module
+and lesson of a `product.set-access` proposal, or `no longer exists` for an id
+that no longer names one. `proposals show` also lists the
 staged file a download file proposal attaches, where a copy comes from and,
 while the proposal is pending, whether it still holds the file and the command
 that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the

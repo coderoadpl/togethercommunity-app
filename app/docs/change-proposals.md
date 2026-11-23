@@ -14,7 +14,7 @@ exactly the effect the owner saw, or applies nothing.
 | Surface | Status |
 |---|---|
 | Propose-mode shop management keys (`mode: "propose"`) | Available |
-| Proposals for the ten catalogue write routes | Available |
+| Proposals for the eleven catalogue write routes | Available |
 | Proposals for sales-link create, update and delete and the shop settings update | Available |
 | Key-side list, read and withdraw (`/api/m2m/shop/proposals`) | Available |
 | Owner-session list, read, approve and reject (`/api/change-proposals`) | Available |
@@ -25,6 +25,7 @@ exactly the effect the owner saw, or applies nothing.
 | Owner panel page `/panel/proposals` ([Owner panel](#owner-panel)) | Available |
 | Images (product covers, branding): private upload, address checks, owner preview, publication on approval and cleanup ([Images](#images)) | Available |
 | Download files of digital products: private staging, proposed attach, replacement and removal, owner download link, review and decision in the owner panel, release on decisions ([Download files](#download-files)) | Available |
+| What a product grants: one shared check of courses, modules and lessons, proposed replacement of the whole list, course, module and lesson titles in the owner view, rows and confirmation in the owner panel ([Product access](#product-access)) | Available |
 
 ## What a proposal is
 
@@ -55,7 +56,7 @@ the key, inside a transaction that always rolls back. What a key may propose is
 bounded by the operations registry and the
 [route classes](#route-classes), not by the context of the dry run, which
 carries the owner's identity and no capability list of the key. The registry
-holds the seventeen operations below.
+holds the eighteen operations below.
 
 The dry run never leaves a row, an event, an outbox message or a content
 version behind, and object storage deletes that a live operation would make
@@ -81,6 +82,7 @@ proposal is stored.
 | `sales-link.update` | `POST /api/m2m/shop/sales-links/:id` | sales link |
 | `sales-link.delete` | `DELETE /api/m2m/shop/sales-links/:id` | sales link |
 | `settings.update` | `POST /api/m2m/shop/settings` | the shop settings |
+| `product.set-access` | `POST /api/m2m/shop/products/access` | product |
 | `download.add` | `POST /api/m2m/shop/products/downloads` | product |
 | `download.replace` | `POST /api/m2m/shop/products/downloads/replace` | product |
 | `download.remove` | `POST /api/m2m/shop/products/downloads/remove` | product |
@@ -194,7 +196,7 @@ key is unaffected on every route.
 
 | Class | Routes | A propose-mode key gets |
 |---|---|---|
-| `proposal` | the seventeen write routes above | `202` with a receipt; the live handler never runs |
+| `proposal` | the eighteen write routes above | `202` with a receipt; the live handler never runs |
 | `direct` | branding and product cover image upload and completion; download file upload, completion, copy and discard (`POST /api/m2m/shop/downloads/upload`, `…/complete`, `…/copy`, `DELETE /api/m2m/shop/downloads/staged/:id`) | the handler runs; an image stays private until approval ([Images](#images)), and a staged file stays private and reaches buyers only through an approved proposal ([Download files](#download-files)) |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
@@ -241,7 +243,7 @@ After an approval, `appliedResourceId` names the created or changed resource
 (the new product of a `product.create`, the new price of a `price.create`, the
 new sales link of a `sales-link.create`, the attached file of a `download.add`
 or `download.replace`, whose id is the staged file's id, and the product of a
-`download.remove`; `null` for a settings change), so the key can name it in a
+`download.remove` or a `product.set-access`; `null` for a settings change), so the key can name it in a
 follow-up proposal. The key already reads that family, so
 the id tells it nothing its read scope does not. A receipt never contains the
 effect, a before value, a live label or the deciding account. Whether a proposal is accepted or refused still depends on
@@ -255,8 +257,8 @@ adds the effect, the proposing key's name, id, issuer and state (`active`,
 target, the decision with the deciding account and the event history (see
 [Owner view](#owner-view)).
 
-The typed client returns a discriminated result for the ten catalogue
-mutations, for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
+The typed client returns a discriminated result for the eleven catalogue
+mutations (`setProductAccess` included), for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
 `updateSettings`, and for `addProductDownload`, `replaceProductDownload` and
 `removeProductDownload`: `{ outcome: 'applied', product }` (or `price`,
 `stock`, `salesLink`, `settings`, `asset`, `deleted`) for a direct-mode key and
@@ -322,6 +324,7 @@ the panel reads one page and makes no further call per item:
 | `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail`, `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) and `issuerIsFormerTeamMember` |
 | `createdAt`, `expiresAt`, `status` | the times and the derived status |
 | `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
+| `accessLabels` | only on a `product.set-access`, absent on every other proposal: `{ courses, modules, lessons }`, each a list of `{ id, title }` for every course, module (named in `moduleIds` or `excludedModuleIds`) and lesson id of the access lists before and after, read from live state at read time; `title` is `null` for an id that no longer names a course, module or lesson of the workspace ([Product access](#product-access)) |
 | `proposedFiles` | only on a `download.add` or `download.replace`, absent on every other proposal: `[{ id, available, copiedFrom }]` for the staged file it attaches, read at read time: `available` says whether the proposal still holds that staged file, and `copiedFrom` is `{ productId, productTitle, versionNumber }` for a server-side copy (`productTitle` `null` when that product is gone), `null` for an upload or once the staged file is gone ([Download files](#download-files)) |
 
 `proposedFiles` is a key that a panel page or a CLI built from a release before
@@ -331,7 +334,9 @@ the group that holds it fail to parse there. A panel tab loaded before the
 deploy shows its error state until it is reloaded, and an earlier CLI reports
 the parse failure until it is updated; the server and the stored data are not
 affected. This is accepted and not worked around
-([Rolling back](#download-files) under Download files).
+([Rolling back](#download-files) under Download files). `accessLabels` is such
+a key too, with the same consequence once a `product.set-access` proposal
+exists ([Product access](#product-access)).
 
 An e-mail (`issuerEmail`, `decidedByEmail`) is returned only for an account
 that still holds a staff grant in this workspace, direct or derived from the
@@ -480,7 +485,9 @@ from the page. Every operation the server can store and apply has its own
 title and is approved from the page, the three download file operations
 included ("New download file", "New version of a download file", "Remove a
 download file"); their file rows, download and confirmation are described under
-[Download files](#download-files).
+[Download files](#download-files). A change of what a product grants ("What a
+product grants") shows its two access lists in words; its row and confirmation
+are described under [Product access](#product-access).
 
 A single proposal has **Approve** and **Reject**; a group has **Approve all N
 changes** ("Approve the change" for a group of one) and **Reject group**.
@@ -499,7 +506,9 @@ images the card loads through the owner preview), the confirmation adds one
 more sentence, counted per distinct image: approving makes the proposed image
 public at the address shown, and if it no longer exists nothing is changed (for
 a group: none of the changes is applied). A file proposal, alone or as a group
-item, adds the sentences described under [Download files](#download-files).
+item, adds the sentences described under [Download files](#download-files),
+and a product access proposal, alone or as a group item, the sentence described
+under [Product access](#product-access).
 Reject opens a
 dialog with an optional comment that is shown to the proposer.
 
@@ -569,8 +578,10 @@ desktop and mobile, Polish on desktop) and in `Pages/PanelProposalFilesHistory`
 (an approval that ended stale because its file was no longer available, with
 its timeline open). Storybook has no owner link route: its fixture API answers
 the link of the gone story's file with `404`, and the link of any other story
-file fails, so its row says the download could not be started. These stories
-have no committed golden.
+file fails, so its row says the download could not be started. Product access
+proposals are in `Panel/ProposalChanges` as well (a list that grants a course
+without one module and two lessons, one of them gone, and a list cleared to
+nothing, each in English and Polish). These stories have no committed golden.
 
 ## Approval
 
@@ -589,7 +600,9 @@ transaction:
    depth (a field retired since the proposal, a settings field outside the
    key's allow-list), makes the proposal `stale` without running anything;
 3. lock the target row (for a draft deletion: the product, its prices,
-   downloads and stock, exclusively), read the clock again with the same
+   downloads and stock, exclusively; for a product access change: first the
+   courses its new list names, then the product, see
+   [Product access](#product-access)), read the clock again with the same
    expiry rule, and read the target again;
 4. if a field the stored effect changes no longer holds the value the owner saw
    as "before", stop: the proposal is `stale`;
@@ -806,7 +819,7 @@ resource:
 
 | Operation | Positions that accept a reference |
 |---|---|
-| `product.update`, `product.publish`, `product.unpublish` | `id` (a product) |
+| `product.update`, `product.publish`, `product.unpublish`, `product.set-access` | `id` (a product) |
 | `product.delete-draft`, `price.create`, `stock.enable`, `stock.adjust`, `stock.set-threshold` | `productId` (a product) |
 | `price.deactivate` | `id` (a price) |
 | `sales-link.create` | each entry of `productIds` (a product) |
@@ -1325,8 +1338,9 @@ can be removed by a proposal" (the key's file list already shows that file as
 delete and a direct-mode key's live removal keep removing any file. A dry run of
 one of the three file operations whose effect is empty is refused with
 `400 validation` as well, so no file proposal with an empty effect is stored;
-the other operations store an empty effect, and its approval applies the
-command, which changes nothing. Every stored file proposal therefore compares
+so is a `product.set-access` whose list equals the live one
+([Product access](#product-access)). The other operations store an empty
+effect, and its approval applies the command, which changes nothing. Every stored file proposal therefore compares
 the product's ready file list, and a list that changed after the proposal in
 any way (another file attached, replaced or removed, or an upload of the
 product editor completed, live or by another approval) makes the approval
@@ -1573,10 +1587,147 @@ until the rows are deleted or the release rolls forward. The rows only point
 the owner to the proposals, which stay listed under
 [Change proposals](#owner-panel) after rolling forward.
 
+## Product access
+
+A propose-mode key with `shop:catalog:write` can propose the whole list of what
+a product grants: the courses, modules and lessons its access items name. A
+purchase does not copy that list. Access is resolved on every request from the
+current access items of every product the member holds an active grant for
+(`core/server/usecases/entitlements.ts`), so a changed list applies at once to
+everyone who already has access to the product, current buyers included: they
+get what the new list names and lose what it no longer names, unless another
+product they hold grants it. The download files of a product and the spaces
+that name it are not part of this list.
+
+What an item grants (`core/server/usecases/access.ts`):
+
+| Item | Grants |
+|---|---|
+| `{ level: "course", courseId }` | every module attached to the course, with every lesson in it |
+| `{ level: "course", courseId, excludedModuleIds }` | the same without the excluded modules; another item the member holds can still open them |
+| `{ level: "modules", courseId, moduleIds }` | each module as such, in every course it is attached to |
+| `{ level: "lessons", courseId, lessonIds }` | each lesson as such, in every course that uses it |
+
+The `courseId` of a `modules` or `lessons` item does not limit where its modules
+or lessons open; it names the course they were chosen from.
+
+**One check.** `checkProductAccessItems`
+(`core/server/usecases/product-access-items.ts`) is the one check of an access
+list. The owner's access editor (`updateProductAccessItems`, also reached by an
+admin), product creation (`createProduct`, so a direct-mode key's
+`POST /api/m2m/shop/products` and a `product.create` proposal as well) and
+`product.set-access` run it:
+
+- every course exists in the workspace and is not archived;
+- every module of a `modules` item, and every excluded module of a `course`
+  item, exists and is attached to the item's course;
+- every lesson of a `lessons` item exists and sits in a chapter of a module
+  attached to the item's course.
+
+A course, module or lesson of another workspace is never found. The check
+answers `400 validation` with one of the messages "Product access items may
+only reference existing, active courses", "… existing modules", "… existing
+lessons", "Product access moduleIds must belong to the item courseId",
+"Product access excludedModuleIds must belong to the item courseId" or
+"Product access lessonIds must belong to the item courseId through its modules
+and chapters". Lists stored earlier are not changed or checked again, and the
+content import (`core/server/usecases/m2m-import.ts`) writes the access items
+it resolves by key without this check; the access issues report
+(`GET /api/products/access-issues`) lists a stored module of a `modules` item
+or lesson of a `lessons` item that the item's course does not reach.
+
+**Proposing.** `POST /api/m2m/shop/products/access` takes `{ id, accessItems }`
+and nothing else: `checkoutConsentDefinitionIds`, which the owner's editor also
+sets, is refused with `400`. `id` may be a `$proposal:` reference to the product
+an earlier item of the same [group](#groups) creates; the group dry run replays
+that item first. A propose-mode key gets `202` with a receipt, which carries the
+ids the key sent and nothing about the courses. A direct-mode key reaches the
+live handler, `updateProductAccessItems`, which needs `product:access:write`; no
+scope grants a key that capability, so it gets `403` and nothing changes. A
+physical product cannot grant access items (`400`), as in the editor. The CLI
+command is `shop products access <productId>` ([CLI](cli.md)).
+
+The effect compares the product as `{ exists, accessItems }`, so it is
+`{ "accessItems": { "before": [...], "after": [...] } }`. A list equal to the
+live one would change nothing and is refused at submit with `400 validation`
+("Invalid product access payload: it would change nothing the owner can see").
+The dry run runs the use-case with the identity of the owner who issued the
+key and rolls back; the approval runs it with the session of the approving
+owner.
+
+**Locks and outcomes.** The dry run and the approval lock the courses the new
+list names first (`FOR UPDATE`, in id order, as the live write of access items
+does), then the product row (`FOR NO KEY UPDATE`) and its stock row, as for a
+product update; the use-case then writes the list and refuses an archived
+course. The owner's editor and the content import also lock the courses before
+they write the product. The approval is `stale` when the product's list is no
+longer the "before" the owner saw, `failed` with the check's `validation` error
+when the list no longer passes it (a lesson moved out of its course, a course
+archived or deleted), and `applied` otherwise, with the product as
+`appliedResourceId`.
+
+**Owner view and panel.** The owner view of a `product.set-access` carries
+[`accessLabels`](#owner-view), the titles of every course, module and lesson of
+both lists, read at read time for display only. The panel shows one row,
+"Included access", with both lists in words: "the whole course “Intro
+course”", "the course “Intro course” without its module “Extras”", "the module
+“Basics” as such, in every course that uses it (chosen from “Intro course”)",
+"the lessons “Welcome”, “Goodbye” as such, each in every course that uses it
+(chosen from “Intro course”)". An id that no longer exists reads "something
+that no longer exists" with the id, and an empty list "no course, module or
+lesson". The confirmation reads "Buyers of “Field guide” will get access to: the
+whole course “Intro course”. Everyone who already has access to this product,
+current buyers included, gets this list at once and loses what it no longer
+lists, unless another of their products grants it. Nothing else changes.";
+for an empty list it says that the product will no longer grant any course,
+module or lesson and that everyone who has access loses what it granted at
+once, unless another of their products grants it. A group confirmation adds
+that sentence for each access item. `proposals show` and
+`proposals group show` print the titles under `names:`, and "no longer exists"
+for an id that no longer exists.
+
+**What the key learns.** No shop route serves a key a course, module or lesson;
+the key sees their ids in the access items of the products it lists. A
+refusal of the check names no title, but it tells the key whether an id it
+sent is an active course of the workspace and whether a module or lesson
+belongs to the course it named; a direct-mode key's `product.create` already
+told it the first.
+
+**Rolling back.** The release on production when this operation was added,
+`8141fd15`, does not know `product.set-access`; what it does with what this
+release stores is proven by
+`scripts/change-proposal-download-rollback-8141fd15.test.ts`:
+
+- A `product.set-access` proposal, alone or as a group item, passes that
+  release's stored-operation shape check, and its `accessItems` effect is a
+  before/after change, so the owner and key lists, shows, rejections and
+  withdrawals read it as before. Its panel shows the unknown-operation notice
+  with **Approve** disabled, and its approval ends `stale` with the note
+  `This release does not know the operation "product.set-access", so the
+  proposal cannot be applied; nothing was changed` before any target lock;
+  in a group that item halts the group and nothing of it applies.
+- That release has no `POST /api/m2m/shop/products/access`, and its product
+  creation and owner editor do not check where a lesson sits, so after a
+  rollback they accept the lists this release refuses.
+- A panel tab or a CLI of that release talking to this release's server fails
+  to parse an owner view that carries `accessLabels` until it is reloaded or
+  updated; after a rollback the server no longer sends it.
+
+Before the rollback, count the proposals it can no longer apply:
+
+```sql
+select count(*) from change_proposals
+where status = 'pending' and operation = 'product.set-access';
+```
+
 ## Not yet available
 
-- **Other file changes.** Renaming and reordering files and changing what a
-  product grants cannot be proposed.
+- **Other file changes.** Renaming and reordering files cannot be proposed.
+- **Spaces of a product.** Which spaces a product opens is set on the space
+  (`space:write`); no shop management key can change it, directly or as a
+  proposal.
+- **Course reads.** No shop route serves a key a course, module or lesson; the
+  key sees their ids only in the access items of the products it lists.
 - **Other images.** Images other than product covers and branding (course
   covers, avatars) cannot be proposed.
 - **Checkout appearance images.** A propose-mode key cannot propose a new

@@ -619,7 +619,7 @@ scopes on every shop key.
   values it cannot read; with the rule, a propose-mode key learns nothing from
   a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
-  without one: the ten catalogue write routes, the three sales-link write
+  without one: the eleven catalogue write routes, the three sales-link write
   routes, the settings update and the three product file write routes store a
   [change proposal](change-proposals.md) instead of running their handler,
   the four product cover and branding image routes and the four download file
@@ -722,6 +722,34 @@ scopes on every shop key.
   clear it. The owner view shows an account's e-mail only while that account
   holds a staff grant in the workspace; a former team member or a deleted
   account is shown as such, without its address.
+- **What a product grants.** No scope of a shop management key grants
+  `product:access:write`. `POST /api/m2m/shop/products/access` runs the
+  owner's access editor use-case, which needs that capability, so a
+  direct-mode key gets `403` there and changes nothing. A propose-mode key with
+  `shop:catalog:write` can only propose the whole new list as
+  `product.set-access`; its input is strict (`{ id, accessItems }`, no checkout
+  consent definitions), and only an owner approval applies it, running the
+  use-case with the approving owner's session after locking the courses the
+  list names and then the product, and ending `stale` when the product's list
+  moved after the proposal. A direct-mode key can still set what a new product
+  grants with `accessItems` on product creation. Every use-case that writes
+  access items (the owner's editor, product creation for a session, a key or a
+  `product.create` proposal, and `product.set-access`) runs one check,
+  `checkProductAccessItems`: every course exists in the workspace and is not
+  archived, every module is attached to its item's course, and every lesson
+  sits in a chapter of a module attached to its item's course; a course,
+  module or lesson of another workspace is never found. A module or lesson item
+  opens that module or lesson wherever it is used, so the check only keeps the
+  course shown next to it true. The content import writes the access items it
+  resolves by key without this check. Access is resolved from a product's
+  current list on every request, so an applied change reaches everyone who
+  already holds the product at once. No shop route serves a course, module or
+  lesson to a key, and the receipt carries only the ids the key sent; a
+  refusal of the check names no title but tells the key whether an id it sent
+  is an active course of the workspace and whether a module or lesson belongs
+  to the course it named. The course, module and lesson titles of the owner
+  view (`accessLabels`) are read at read time for display only and never take
+  part in a decision. See [Product access](change-proposals.md#product-access).
 - **Proposal groups.** A propose-mode key may group proposals that depend on
   each other; the owner approves or rejects the group as one unit. Only the
   key that created a group joins, reads or withdraws it: the

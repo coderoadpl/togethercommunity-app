@@ -33,6 +33,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
 | Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects, product cover and branding images and download files included | Available |
+| What a product grants: proposed by a propose-mode key, refused to a direct-mode key ([below](#what-a-product-grants)) | Available |
 | Invoices and refunds | Not offered with a shop key; staff session routes only |
 
 ## Backend only
@@ -152,7 +153,7 @@ A key is created in one of two modes, fixed for its lifetime:
 - `direct` (the default): every write the scopes allow changes the live shop,
   as described in the rest of this guide.
 - `propose`: the key's writes never change live state. A write to one of the
-  ten catalogue routes, the three sales-link write routes, the settings
+  eleven catalogue routes, the three sales-link write routes, the settings
   update or the three product file write routes is dry-run, stored as a
   [change proposal](change-proposals.md) with its field-level effect, and
   answered `202` with a receipt; the owner then approves or rejects it in
@@ -360,10 +361,11 @@ workspace lists nothing.
 
 Each route reuses the request body, response envelope, validation and
 use-case of its session counterpart under `/api/products`, including body field
-names (`id` for update, publish and unpublish and for price deactivation;
-`productId` for draft deletion, price creation and stock). The route checks the
-scope, and the reused use-case checks the matching capability again. A product
-or price id from another workspace answers `404 not_found`.
+names (`id` for update, publish, unpublish and access and for price
+deactivation; `productId` for draft deletion, price creation and stock); the
+access route takes the session body without `checkoutConsentDefinitionIds`. The
+route checks the scope, and the reused use-case checks the matching capability
+again. A product or price id from another workspace answers `404 not_found`.
 
 Request bodies on every shop route are strict: a field the route does not
 know, at the top level or inside a nested object such as `compliance`, an
@@ -381,6 +383,7 @@ dropped. The session routes keep ignoring unknown fields.
 | `POST /api/m2m/shop/products/publish` | `shop:catalog:write` | `POST /api/products/publish` |
 | `POST /api/m2m/shop/products/unpublish` | `shop:catalog:write` | `POST /api/products/unpublish` |
 | `POST /api/m2m/shop/products/delete` | `shop:catalog:write` | `POST /api/products/delete` (existing draft-only policy) |
+| `POST /api/m2m/shop/products/access` | `shop:catalog:write` | `POST /api/products/access-items` without `checkoutConsentDefinitionIds` ([below](#what-a-product-grants)) |
 | `GET /api/m2m/shop/products/:productId/prices` | `shop:catalog:read` | `GET /api/products/:productId/prices` |
 | `POST /api/m2m/shop/products/prices` | `shop:catalog:write` | `POST /api/products/prices` |
 | `POST /api/m2m/shop/products/prices/deactivate` | `shop:catalog:write` | `POST /api/products/prices/deactivate` |
@@ -457,12 +460,35 @@ pnpm --silent run cli --tenant acme shop products unpublish <product-id>
 pnpm --silent run cli --tenant acme shop products delete <product-id> --confirm
 ```
 
+### What a product grants
+
+`POST /api/m2m/shop/products/access` takes `{ id, accessItems }`, the whole new
+list of the courses, modules and lessons a product grants, and nothing else.
+Its live handler is the owner's access editor use-case, which needs
+`product:access:write`; no scope grants a key that capability, so a direct-mode
+key gets `403 forbidden` there and changes nothing. A propose-mode key with
+`shop:catalog:write` gets `202` with a receipt: the request becomes a
+`product.set-access` [change proposal](change-proposals.md#product-access) that
+only the owner can approve. A direct-mode key still sets what a new product
+grants through `accessItems` on `POST /api/m2m/shop/products`, and every path
+that writes access items runs the same check: each course exists in the
+workspace and is not archived, each module belongs to its item's course, and
+each lesson sits in a module of its item's course. No shop route serves a
+course, module or lesson; a key sees their ids in the access items of the
+products it lists.
+
+```bash
+pnpm --silent run cli --tenant acme shop products access <product-id> --course <course-id>
+pnpm --silent run cli --tenant acme shop products access <product-id> --course <course-id> --lesson <lesson-id> --lesson <lesson-id>
+pnpm --silent run cli --tenant acme shop products access <product-id> --clear
+```
+
 ### Typed client
 
 `createShopManagementClient({ baseUrl, apiKey, tenant })` from `core/client`
-exposes the thirteen calls with the same method names as the session client
+exposes the fourteen calls with the same method names as the session client
 (`listProducts`, `createProduct`, `updateProduct`, `publishProduct`,
-`unpublishProduct`, `deleteProductDraft`, `listProductPrices`,
+`unpublishProduct`, `deleteProductDraft`, `setProductAccess`, `listProductPrices`,
 `createProductPrice`, `deactivateProductPrice`, `getProductStock`,
 `enableProductStock`, `adjustProductStock`, `setProductStockThreshold`). It
 sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
@@ -471,14 +497,14 @@ sends `x-api-key` and, when `tenant` is set, `x-tenant`; it never sends an
 `Shop management request to <path> refused a redirect`, so the key never
 reaches another URL. Use it only from a backend.
 
-The ten catalogue writes, `createSalesLink`, `updateSalesLink`,
+The eleven catalogue writes, `createSalesLink`, `updateSalesLink`,
 `deleteSalesLink`, `updateSettings`, `addProductDownload`,
 `replaceProductDownload` and `removeProductDownload` resolve to
 `{ outcome: 'applied', ... }` with the resource for a direct-mode key and to
 `{ outcome: 'proposed', proposal }` with the
 [receipt](change-proposals.md#receipts) for a propose-mode key;
 `isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
-and `withdrawProposal` reach the key's own proposals. Each of these seventeen
+and `withdrawProposal` reach the key's own proposals. Each of these eighteen
 writes takes an optional third argument `{ groupId }` that sends the
 `x-proposal-group` header, and its proposed outcome then also carries the
 `group` receipt; `createProposalGroup`, `getProposalGroup` and

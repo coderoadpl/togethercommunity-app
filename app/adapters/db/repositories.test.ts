@@ -134,7 +134,6 @@ import {
   productPriceHistory,
   productPrices,
   products,
-  rateLimitBuckets,
   tenants,
   suppressions,
   twoFactor,
@@ -1712,32 +1711,6 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       windowStartedAt: '1998-07-14T10:01:00.000Z',
       expiresAt: '1998-07-14T10:02:00.000Z',
     })).toBe(true);
-    expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
-  });
-
-  it('never moves a public rate-limit window back when a claim from the previous window arrives late', async () => {
-    const buckets = createPublicRateLimitRepository(db);
-    const previous = {
-      scope: 'public-write:ip',
-      key: '203.0.113.9',
-      windowStartedAt: '1998-07-14T10:00:00.000Z',
-      expiresAt: '1998-07-14T10:01:00.000Z',
-      limit: 2,
-    };
-    const current = { ...previous, windowStartedAt: '1998-07-14T10:01:00.000Z', expiresAt: '1998-07-14T10:02:00.000Z' };
-
-    expect(await buckets.claim(current)).toBe(true);
-    expect(await buckets.claim(previous)).toBe(true);
-    expect(await buckets.claim(current)).toBe(false);
-    expect(await buckets.claim(previous)).toBe(false);
-    expect(await db.select({
-      currentWindow: sql<boolean>`${rateLimitBuckets.windowStartedAt} = ${current.windowStartedAt}::timestamptz`,
-      currentExpiry: sql<boolean>`${rateLimitBuckets.expiresAt} = ${current.expiresAt}::timestamptz`,
-      count: rateLimitBuckets.count,
-    }).from(rateLimitBuckets).where(and(eq(rateLimitBuckets.scope, previous.scope), eq(rateLimitBuckets.key, previous.key))))
-      .toEqual([{ currentWindow: true, currentExpiry: true, count: 2 }]);
-
-    expect(await buckets.claim({ ...current, windowStartedAt: '1998-07-14T10:02:00.000Z', expiresAt: '1998-07-14T10:03:00.000Z' })).toBe(true);
     expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
   });
 

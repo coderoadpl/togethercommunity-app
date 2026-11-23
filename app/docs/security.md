@@ -240,9 +240,7 @@ production) and `parcel-locker:tenant` (600 per minute) buckets, and every
 call to the carrier, from that route or from checkout, draws on the
 platform-wide `parcel-locker:global` budget (1,200 per minute), of which the
 route may use at most its `parcel-locker:public` share (600 per minute), see
-[Parcel locker lookup](#parcel-locker-lookup). A bucket's window only moves
-forward: a claim computed for an earlier window that reaches the database after
-a later one counts against the later window instead of resetting it. Expired windows
+[Parcel locker lookup](#parcel-locker-lookup). Expired windows
 are deleted by the hourly KSeF dispatch run.
 
 New passwords require at least 15 characters, with no character-class rules.

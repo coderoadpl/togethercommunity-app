@@ -1998,6 +1998,10 @@ export const en: Messages = {
       'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',
     storageProbeStart: 'Run live probe',
     storageProbeSuccess: 'Write, read and delete all succeeded. You can now save this configuration.',
+    storageDownloadOverridesRefused:
+      'Write, read and delete succeeded, but your storage refused a signed download link that names the file type and file name. Buyer download links carry these, so buyers may not be able to download files. You can still save this configuration; check your provider’s support for response overrides on signed links first.',
+    storageDownloadOverridesIgnored:
+      'Write, read and delete succeeded, but your storage ignores the file type and file name a signed download link asks for. Buyers receive a file staged with an API key as a generic download named after its stored object. You can still save this configuration.',
     storageSave: 'Save encrypted configuration',
     storageSaving: 'Testing and saving…',
     storageSaved: 'Storage configuration saved.',

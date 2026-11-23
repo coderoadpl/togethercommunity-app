@@ -2045,6 +2045,10 @@ export const pl: Messages = {
       'Together wyśle mały plik testowy, odczyta go bajt po bajcie, usunie i sprawdzi CORS dla przeglądarki. Na tym etapie nic nie zostanie zapisane.',
     storageProbeStart: 'Uruchom test na żywo',
     storageProbeSuccess: 'Zapis, odczyt i usunięcie powiodły się. Możesz teraz zapisać konfigurację.',
+    storageDownloadOverridesRefused:
+      'Zapis, odczyt i usunięcie powiodły się, ale magazyn plików odrzucił podpisany link do pobrania, który podaje typ i nazwę pliku. Linki do pobrania dla kupujących je zawierają, więc kupujący mogą nie móc pobrać plików. Nadal możesz zapisać tę konfigurację; najpierw sprawdź, czy dostawca obsługuje nadpisywanie odpowiedzi w podpisanych linkach.',
+    storageDownloadOverridesIgnored:
+      'Zapis, odczyt i usunięcie powiodły się, ale magazyn plików pomija typ i nazwę pliku, o które prosi podpisany link do pobrania. Kupujący dostają plik przesłany kluczem API jako zwykły plik do pobrania z nazwą obiektu w magazynie. Nadal możesz zapisać tę konfigurację.',
     storageSave: 'Zapisz zaszyfrowaną konfigurację',
     storageSaving: 'Testowanie i zapisywanie…',
     storageSaved: 'Zapisano konfigurację magazynu plików.',

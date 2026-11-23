@@ -1744,6 +1744,8 @@ export interface Messages {
     storageProbeDescription: string;
     storageProbeStart: string;
     storageProbeSuccess: string;
+    storageDownloadOverridesRefused: string;
+    storageDownloadOverridesIgnored: string;
     storageSave: string;
     storageSaving: string;
     storageSaved: string;

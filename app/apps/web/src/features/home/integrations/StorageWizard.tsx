@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   STORAGE_PROBE_ERROR_CODES,
+  type ProviderDiagnostic,
   type StorageConfiguration,
   type StorageProbeErrorCode,
   type StorageProviderKind,
@@ -94,6 +95,19 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
   };
   const code = providerCodeOf(error);
   return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
+};
+
+const downloadWarning = (diagnostic: ProviderDiagnostic, t: Messages): string | null => {
+  if (diagnostic.signedResponseOverrides === 'refused') return t.integrations.storageDownloadOverridesRefused;
+  return diagnostic.signedResponseOverrides === 'ignored' ? t.integrations.storageDownloadOverridesIgnored : null;
+};
+
+const ProbeOutcome = ({ diagnostic, success, testId }: { diagnostic: ProviderDiagnostic; success: string; testId: string }) => {
+  const t = useTranslations();
+  const warning = downloadWarning(diagnostic, t);
+  return warning === null
+    ? <Alert severity="success" data-testid={`${testId}-success`}>{success}</Alert>
+    : <Alert severity="warning" data-testid={`${testId}-warning`}>{warning}</Alert>;
 };
 
 const StorageCorsSettings = ({ origins }: { origins: string[] }) => {
@@ -337,9 +351,7 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {probe.isSuccess ? (
-            <Alert severity="success" data-testid="storage-probe-success">
-              {t.integrations.storageProbeSuccess}
-            </Alert>
+            <ProbeOutcome diagnostic={probe.data.diagnostic} success={t.integrations.storageProbeSuccess} testId="storage-probe" />
           ) : null}
           {probe.isSuccess ? (
             <Button
@@ -359,9 +371,7 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {configure.isSuccess ? (
-            <Alert severity="success" data-testid="storage-save-success">
-              {t.integrations.storageSaved}
-            </Alert>
+            <ProbeOutcome diagnostic={configure.data.diagnostic} success={t.integrations.storageSaved} testId="storage-save" />
           ) : null}
         </Stack>
       ) : null}

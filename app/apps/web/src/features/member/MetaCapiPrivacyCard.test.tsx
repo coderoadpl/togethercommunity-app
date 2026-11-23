@@ -164,3 +164,14 @@ it('shows the card with an error and a working retry when the decisions request 
   expect(await screen.findByRole('button', { name: `${en.metaCapi.withdrawShort} ${en.metaCapi.order({ id: 'order-1' })}` })).toBeVisible();
   expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
 });
+
+it.each([
+  { dictionary: en, heading: 'Sending purchase data to Meta', prefix: 'Sending purchase data to Meta: ', confirmationPage: /confirmation page/i },
+  { dictionary: pl, heading: 'Przesyłanie danych o zakupach do Meta', prefix: 'Przesyłanie danych o zakupie do Meta: ', confirmationPage: /potwierdzenia/i },
+])('names the send with one verb in the card heading, statuses and hint', ({ dictionary, heading, prefix, confirmationPage }) => {
+  expect(dictionary.metaCapi.privacyHeading).toBe(heading);
+  for (const status of [dictionary.metaCapi.granted, dictionary.metaCapi.denied, dictionary.metaCapi.undecided, dictionary.metaCapi.withdrawn]) {
+    expect(status.startsWith(prefix)).toBe(true);
+  }
+  expect(dictionary.metaCapi.withdrawHint).not.toMatch(confirmationPage);
+});

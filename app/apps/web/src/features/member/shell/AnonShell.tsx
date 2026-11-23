@@ -9,6 +9,7 @@ import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitch
 import { useToastError } from '../../../components/ui/Toast.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { SHELL_TOOLBAR_MIN_HEIGHT } from '../../../theme.js';
+import { useLoginLinkWithReturn } from '../use-login-redirect.js';
 import { AnonSidebar } from './AnonSidebar.js';
 import { anonHomePath } from './member-nav.js';
 import { BrandLink, PublicSignInButton, SidebarColumn } from './shell-chrome.js';
@@ -57,6 +58,7 @@ export const AnonShell = ({
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const compactBrand = useMediaQuery(COMPACT_PUBLIC_HEADER_QUERY);
+  const loginLink = useLoginLinkWithReturn();
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${SHELL_TOOLBAR_MIN_HEIGHT + 1}px` }}>
@@ -84,7 +86,7 @@ export const AnonShell = ({
             {visitorEmail === null ? (
               <PublicSignInButton
                 component={Link}
-                to="/login"
+                {...loginLink}
                 color="inherit"
                 size="small"
               >

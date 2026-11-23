@@ -3344,6 +3344,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
     now: string,
     lockWaitMs?: number,
   ): Promise<QuarantinedImageReleaseEnd>;
+  /** Records a failed removal of these released rows, so they and their workspace move behind the others. */
+  markReleaseAttempted(tenantId: string, assets: readonly QuarantinedImageAsset[], now: string, boundMs?: number): Promise<void>;
   /**
    * The workspaces holding rows a `sweep` selects, the one waiting longest first, by the time of a row's last failed
    * removal or else its creation.

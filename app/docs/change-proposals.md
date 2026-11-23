@@ -1402,7 +1402,9 @@ records (see above). Workspaces, images, upload candidates and publication
 records are each taken longest waiting first, by the time of their last failed
 removal (recorded in `sweep_attempted_at`) or else their creation or start,
 so rows whose removal keeps failing move behind the others, inside a workspace
-and across workspaces. It runs on the existing minute tick
+and across workspaces. A workspace whose storage configuration cannot be read
+records that time on every released image and upload record the step listed,
+so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick
 (the `/api/internal/dispatch-email` cron route, after e-mail and refund
 dispatch, and the Node ticker, beside them), at most once every 50 seconds per
 server process, independently of the [download file

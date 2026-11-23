@@ -77,7 +77,7 @@ const credentialsOf = (configuration: StorageConfiguration) => ({
 });
 
 export interface ChangeProposalImageReleaseDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   logger: { error(message: string): void };
@@ -102,6 +102,7 @@ const finishReleases = async (
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove released quarantined images', configuration.error.message);
+    await deps.quarantinedImages.markReleaseAttempted(tenantId, assets, deps.clock.nowIso(), sweepStatementBound(budget));
     return 0;
   }
   let removed = 0;
@@ -737,6 +738,7 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     QuarantinedImageRepository,
     | 'release'
     | 'finishRelease'
+    | 'markReleaseAttempted'
     | 'listTenantIdsToSweep'
     | 'listTenantIdsWithUploadsBefore'
     | 'listUploadsBefore'
@@ -776,6 +778,9 @@ const sweepUploads = async (
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove expired image uploads', configuration.error.message);
+    for (const upload of uploads) {
+      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
+    }
     return 0;
   }
   let removed = 0;

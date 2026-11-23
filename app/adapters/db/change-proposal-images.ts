@@ -363,6 +363,13 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         return marked.length > 0 ? 'failed' : 'busy';
       });
     },
+    markReleaseAttempted: (tenantId, assets, now, boundMs) => within(boundMs, async (executor) => {
+      if (assets.length === 0) return;
+      await executor.update(changeProposalImages).set({ sweepAttemptedAt: now }).where(and(
+        or(...assets.map((asset) => imageOfKey(tenantId, asset.apiKeyId, asset))),
+        isNotNull(changeProposalImages.releasedAt),
+      ));
+    }, undefined),
     listTenantIdsToSweep: (createdBefore, now, limit, boundMs) => within(boundMs, async (executor) =>
       (await executor.select({ tenantId: changeProposalImages.tenantId }).from(changeProposalImages)
         .where(sweepable(createdBefore, now)).groupBy(changeProposalImages.tenantId)

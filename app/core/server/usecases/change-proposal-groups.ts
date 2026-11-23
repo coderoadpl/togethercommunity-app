@@ -138,7 +138,7 @@ export interface ChangeProposalGroupApprovalDeps
   ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted' | 'recordPublications'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'recordExpiry'>;
   changeProposalEvents: ChangeProposalEventRepository;
 }

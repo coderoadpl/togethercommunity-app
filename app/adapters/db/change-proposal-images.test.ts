@@ -1291,6 +1291,24 @@ describe('the order of the image sweep', () => {
     expect(attempted).toEqual([{ at: harness.clock.now }, { at: harness.clock.now }, { at: harness.clock.now }]);
   });
 
+  it('moves a workspace whose storage configuration cannot be read behind a healthy one, for its images and its upload records', async () => {
+    const harness = endToEnd();
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
+    const upload = (tenantId: string, createdAt: string) => ({
+      tenantId, apiKeyId: KEY_ID, objectKey: `image-asset-candidates/${tenantId}/product-cover/00000000-0000-4000-8000-000000000001.png`, createdAt,
+    });
+    await database.db.insert(changeProposalImages).values(released(1, NEIGHBOUR, '2026-02-01T10:00:00.000Z'));
+    await database.db.insert(changeProposalImageUploads).values(upload(NEIGHBOUR, '2026-03-01T09:00:00.000Z'));
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 0 } });
+
+    await database.db.insert(changeProposalImages).values(released(2, TENANT, '2026-02-15T10:00:00.000Z'));
+    await database.db.insert(changeProposalImageUploads).values(upload(TENANT, '2026-03-01T09:30:00.000Z'));
+    const repository = createQuarantinedImageRepository(database.db);
+    const due = '2026-03-01T09:56:00.000Z';
+    expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', harness.clock.now, 1)).toEqual([TENANT]);
+    expect(await repository.listTenantIdsWithUploadsBefore(due, due, 1)).toEqual([TENANT]);
+  });
+
   it('stops once storage deletes used its time budget and gives each delete only what is left of it', async () => {
     const harness = endToEnd();
     await database.db.insert(changeProposalImages).values([1, 2, 3, 4, 5].map((index) => released(index, TENANT, NOW)));

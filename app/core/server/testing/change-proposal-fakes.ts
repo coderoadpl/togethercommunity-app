@@ -736,6 +736,7 @@ export const createQuarantinedImagesFake = (
       unresolved.delete(row);
       return 'removed';
     },
+    markReleaseAttempted: async () => undefined,
     listTenantIdsToSweep: async (createdBefore, now, limit) => [...new Set([
       ...released.filter((row) => deleteSettled(row, now)).map((row) => row.tenantId),
       ...rows.filter((row) => sweepable(row, createdBefore) && !referenced(row, now)).map((row) => row.tenantId),

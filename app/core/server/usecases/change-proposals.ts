@@ -120,7 +120,7 @@ export interface ChangeProposalApprovalDeps
   ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted' | 'recordPublications'>;
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'recordExpiry'>;
 }
 

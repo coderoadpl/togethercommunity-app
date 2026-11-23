@@ -1,10 +1,27 @@
 export interface PublicMarketingMessages {
   signupEyebrow: string;
+  signupTitle: (input: { tenant: string }) => string;
   signupEmail: string;
   signupName: string;
+  signupConsent: (input: { tenant: string; wording: string }) => string;
+  signupConsentConfirm: string;
+  signupConsentUnsubscribe: string;
+  signupConsentDocument: string;
   signupSubmit: string;
+  signupSubmitPending: string;
+  signupEmailInvalid: string;
+  signupFailed: string;
+  signupRateLimited: string;
+  signupRateLimitedTitle: string;
+  errorTitlePrefix: string;
+  signupUnavailableTitle: string;
+  signupUnavailableBody: string;
   signupThanks: string;
+  signupPendingTitle: string;
   signupPending: string;
+  signupPendingValidity: string;
+  signupPendingSpam: string;
+  signupAgain: string;
 
   language: string;
   polish: string;
@@ -56,4 +73,5 @@ export interface PublicMarketingMessages {
   confirmationSuccessBody: (input: { tenant: string }) => string;
   confirmationExpiredTitle: string;
   confirmationExpiredBody: string;
+  confirmationExpiredNoLinkBody: string;
 }

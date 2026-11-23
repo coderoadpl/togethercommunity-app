@@ -244,8 +244,8 @@ const publicFontFaces = [
   ]),
 ].join('');
 
-const publicStyles = `${publicFontFaces}:root{color-scheme:light dark;--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18;--muted:#63615C;--line:#E6E5E2;--line-strong:#D6D4D0;--toggle-selected:#FFFFFF;--primary:#1B1A18;--primary-hover:#2F2D2A;--primary-active:#3B3936;--primary-ink:#FFFFFF;--danger:#C21E1E;--danger-strong:#A81A1A;--danger-ink:#FFFFFF;--shadow:0 1px 2px 0 rgba(0,0,0,.05);--accent:var(--accent-light);--radius:8px;--radius-card:12px;--font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--font-display:'Poppins','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-family:var(--font-body)}
-@media(prefers-color-scheme:dark){:root{--bg:#0F1012;--surface:#17181B;--muted-surface:#1B1D20;--pressed:#26282D;--ink:#EDEEF0;--muted:#A0A3A8;--line:#26282C;--line-strong:#33363C;--toggle-selected:#26282D;--primary:#EDEEF0;--primary-hover:#D9DBDE;--primary-active:#C9CCD0;--primary-ink:#101113;--danger:#F0857A;--danger-strong:#F0857A;--danger-ink:#2A0F0B;--shadow:0 1px 2px 0 rgba(0,0,0,.45);--accent:var(--accent-dark)}}
+const publicStyles = `${publicFontFaces}:root{color-scheme:light dark;--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18;--muted:#63615C;--line:#E6E5E2;--line-strong:#D6D4D0;--input-border:#8C8A85;--toggle-selected:#FFFFFF;--primary:#1B1A18;--primary-hover:#2F2D2A;--primary-active:#3B3936;--primary-ink:#FFFFFF;--danger:#C21E1E;--danger-strong:#A81A1A;--danger-ink:#FFFFFF;--shadow:0 1px 2px 0 rgba(0,0,0,.05);--accent:var(--accent-light);--radius:8px;--radius-card:12px;--font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--font-display:'Poppins','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-family:var(--font-body)}
+@media(prefers-color-scheme:dark){:root{--bg:#0F1012;--surface:#17181B;--muted-surface:#1B1D20;--pressed:#26282D;--ink:#EDEEF0;--muted:#A0A3A8;--line:#26282C;--line-strong:#33363C;--input-border:#6B6F76;--toggle-selected:#26282D;--primary:#EDEEF0;--primary-hover:#D9DBDE;--primary-active:#C9CCD0;--primary-ink:#101113;--danger:#F0857A;--danger-strong:#F0857A;--danger-ink:#2A0F0B;--shadow:0 1px 2px 0 rgba(0,0,0,.45);--accent:var(--accent-dark)}}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font-size:1rem;line-height:1.6;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
@@ -298,12 +298,16 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .status{margin-top:1rem}
 .status .lede,.status .fine{max-width:36rem}
 .status .lede{color:var(--ink)}
+.status .status-after{margin-top:1.25rem}
 .status-cue{display:flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;margin:0 0 1rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent)}
 .status-cue--error{background:color-mix(in srgb,var(--danger) 12%,var(--surface));color:var(--danger)}
 .status-cue svg{width:1.25rem;height:1.25rem}
 .button-link{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.7rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:.875rem;font-weight:500;line-height:1.45;text-decoration:none}
 .button-link:hover{border-color:var(--line-strong);background:var(--muted-surface)}
 .button-link:active{background:var(--pressed)}
+.button-link--primary{border-color:transparent;background:var(--primary);color:var(--primary-ink)}
+.button-link--primary:hover{border-color:transparent;background:var(--primary-hover)}
+.button-link--primary:active{background:var(--primary-active);box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}
 .prose{margin-top:2rem;overflow-wrap:anywhere}
 .prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--font-display);font-weight:600;letter-spacing:-.015em;line-height:1.35;margin:2rem 0 .6rem}
 .prose h2{font-size:1.5rem}
@@ -317,7 +321,13 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .prose img{display:block;max-width:100%;height:auto;border-radius:var(--radius);margin:0 0 1rem}
 .prose pre{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--muted-surface);padding:1rem}
 .prose code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}
-.signup-field{display:grid;gap:.5rem;margin-block:1.25rem}.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}.signup-trap{display:none}
+.signup-field{display:grid;gap:.5rem;margin-block:1.25rem}.signup-field:first-child{margin-top:0}.signup-field input{width:100%;min-height:48px;padding:.75rem;border:1px solid var(--input-border);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}.signup-trap{display:none}
+.signup-consent{margin:1.25rem 0 0;color:var(--ink);font-size:.9375rem;overflow-wrap:anywhere}
+.signup-form .actions{margin-top:.75rem}
+.signup-field input[aria-invalid="true"]{border-color:var(--danger)}
+.field-error{margin:0;color:var(--danger);font-size:.875rem;font-weight:500;overflow-wrap:anywhere}
+.signup-alert{margin:1.75rem 0 0;border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--danger) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem;overflow-wrap:anywhere}
+.signup-alert + .card{margin-top:1rem}
 .site-footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.875rem}
 .site-footer-line{margin:0;overflow-wrap:anywhere}
 .site-footer-line a{color:var(--muted);font-weight:400;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent)}
@@ -354,10 +364,12 @@ const renderPage = (input: {
   language: Language;
   path: string | null;
   title: string;
+  titlePrefix?: string;
   eyebrow: string;
   body: string;
   testId: string;
   cue?: StatusCue;
+  script?: string;
 }): string => {
   const t = messages[input.language];
   const settings = input.brand.settings;
@@ -389,12 +401,14 @@ const renderPage = (input: {
     : `<nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav>`;
   const cue = input.cue === undefined ? '' : renderStatusCue(input.cue);
   const contact = supportLink(settings, t);
-  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(input.title)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main></body></html>`;
+  const script = input.script === undefined || input.nonce === '' ? '' : `<script nonce="${escapeHtml(input.nonce)}">${input.script}</script>`;
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(accentLight)};--accent-dark:${escapeHtml(accentDark)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012">${favicon}<title>${escapeHtml(`${input.titlePrefix ?? ''}${input.title}`)} · ${brandName}</title><link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin><link rel="preload" as="font" type="font/woff2" href="/fonts/poppins-latin-700-normal.woff2" crossorigin><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><a class="brand-mark" href="/">${brandMark}</a>${languageSwitch}</header><section class="page">${cue}<p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section><footer class="site-footer">${socialNavigation}<p class="site-footer-line">${brandName}${contact === null ? '' : ` · ${contact}`}</p></footer></main>${script}</body></html>`;
 };
 
 interface StatusLink {
   label: string;
   href: string;
+  primary?: boolean;
 }
 
 export const renderStatusPage = (input: {
@@ -408,15 +422,18 @@ export const renderStatusPage = (input: {
   testId: string;
   cue?: StatusCue;
   links?: readonly StatusLink[];
+  afterActions?: readonly string[];
 }): string => {
   const t = messages[input.language];
   const [summary, ...details] = input.lines;
   const links = [...(input.links ?? []), { label: t.homeLink, href: '/' }]
-    .map((link) => `<a class="button-link" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
+    .map((link) => `<a class="button-link${link.primary === true ? ' button-link--primary' : ''}" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
     .join('');
   const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${details
     .map((line) => `<p class="fine">${escapeHtml(line)}</p>`)
-    .join('')}<div class="actions">${links}</div></div>`;
+    .join('')}<div class="actions">${links}</div>${(input.afterActions ?? [])
+    .map((line) => `<p class="fine status-after">${escapeHtml(line)}</p>`)
+    .join('')}</div>`;
   return renderPage({
     nonce: input.nonce,
     brand: input.brand,
@@ -564,39 +581,124 @@ export const renderConfirmationPage = (input: {
   language: Language;
   path: string;
   state: 'prompt' | 'success' | 'expired';
+  signupHref?: string | null;
 }): string => {
   const t = messages[input.language];
-  const success = input.state === 'success';
-  const prompt = input.state === 'prompt';
-  const title = prompt ? t.confirmationPromptTitle : success ? t.confirmationSuccessTitle : t.confirmationExpiredTitle;
-  const summary = success
-    ? t.confirmationSuccessBody({ tenant: input.brand.tenant.name })
-    : prompt
-      ? t.confirmationPromptBody({ tenant: input.brand.tenant.name })
-      : t.confirmationExpiredBody;
-  const action = prompt
-    ? `<form class="actions" method="post" action="${input.path}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`
-    : '';
+  const tenant = input.brand.tenant.name;
+  const common = { nonce: input.nonce, brand: input.brand, language: input.language, path: input.path, eyebrow: t.confirmationEyebrow, testId: `marketing-confirmation-${input.state}` };
+  if (input.state === 'success') {
+    return renderStatusPage({ ...common, title: t.confirmationSuccessTitle, lines: [t.confirmationSuccessBody({ tenant })], cue: 'success' });
+  }
+  if (input.state === 'expired') {
+    const signupHref = input.signupHref ?? null;
+    return renderStatusPage({
+      ...common,
+      title: t.confirmationExpiredTitle,
+      lines: [signupHref === null ? t.confirmationExpiredNoLinkBody : t.confirmationExpiredBody],
+      cue: 'error',
+      links: signupHref === null ? [] : [{ label: t.signupAgain, href: signupHref, primary: true }],
+    });
+  }
+  const action = `<form class="actions" method="post" action="${escapeHtml(input.path)}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`;
   return renderPage({
-    nonce: input.nonce,
-    brand: input.brand,
-    language: input.language,
-    path: input.path,
-    title,
-    eyebrow: t.confirmationEyebrow,
-    body: `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${action}</div>`,
-    testId: `marketing-confirmation-${input.state}`,
+    ...common,
+    title: t.confirmationPromptTitle,
+    body: `<div class="status"><p class="lede">${escapeHtml(t.confirmationPromptBody({ tenant }))}</p>${action}</div>`,
+    cue: 'info',
   });
+};
+
+export interface SignupConsentDocument {
+  title: string;
+  href: string;
+}
+
+const consentWording = (wording: string): string => wording.trim().replace(/\.+$/, '');
+
+const renderSignupConsent = (input: {
+  t: PublicMarketingMessages; tenant: string; wording: string; doubleOptIn: boolean; document: SignupConsentDocument | null;
+}): string => {
+  const sentences = [
+    input.t.signupConsent({ tenant: input.tenant, wording: consentWording(input.wording) }),
+    ...(input.doubleOptIn ? [input.t.signupConsentConfirm] : []),
+    input.t.signupConsentUnsubscribe,
+  ].map(escapeHtml).join(' ');
+  const document = input.document === null
+    ? ''
+    : ` ${escapeHtml(input.t.signupConsentDocument)} <a href="${escapeHtml(input.document.href)}">${escapeHtml(input.document.title)}</a>`;
+  return `<p class="signup-consent">${sentences}${document}</p>`;
+};
+
+export type SignupFormError = 'email' | 'generic' | 'rate_limited';
+
+export interface SignupFormValues {
+  email: string;
+  displayName: string;
+}
+
+const submitPendingScript = "(()=>{const form=document.querySelector('form[data-pending-label]');const button=form&&form.querySelector('button[type=\"submit\"]');if(!form||!button)return;const label=button.textContent;form.addEventListener('submit',(event)=>{if(form.dataset.pending==='true'){event.preventDefault();return;}form.dataset.pending='true';button.setAttribute('aria-busy','true');button.textContent=form.dataset.pendingLabel||label;setTimeout(()=>{button.disabled=true;},0);});window.addEventListener('pageshow',(event)=>{if(!event.persisted)return;delete form.dataset.pending;button.disabled=false;button.removeAttribute('aria-busy');button.textContent=label;});})();";
+
+const focusAlertScript = "document.getElementById('signup-error')?.focus();";
+
+const valueAttribute = (value: string): string => value === '' ? '' : ` value="${escapeHtml(value)}"`;
+
+export const renderSignupUnavailablePage = (input: {
+  nonce: string; brand: PublicBrand; language: Language; path: string | null;
+}): string => {
+  const t = messages[input.language];
+  return renderStatusPage({
+    ...input,
+    eyebrow: t.signupEyebrow,
+    title: t.signupUnavailableTitle,
+    lines: [t.signupUnavailableBody],
+    testId: 'marketing-signup-unavailable',
+    cue: 'error',
+  });
+};
+
+export const renderSignupRateLimitedPage = (language: Language): string => {
+  const t = messages[language];
+  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escapeHtml(`${t.errorTitlePrefix}${t.signupRateLimitedTitle}`)}</title><style>body{max-width:40rem;margin:0 auto;padding:2.5rem 1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6}h1{font-size:1.75rem;line-height:1.2}</style></head><body><main data-testid="marketing-signup-rate-limited"><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><p role="alert">${escapeHtml(t.signupRateLimited)}</p></main></body></html>`;
 };
 
 export const renderSignupFormPage = (input: {
   nonce: string; brand: PublicBrand; language: Language; form: MarketingSignupForm;
-  wording: string; doubleOptIn: boolean; thanks: boolean;
+  wording: string; doubleOptIn: boolean; thanks: boolean; consentDocument?: SignupConsentDocument | null;
+  values?: SignupFormValues; error?: SignupFormError;
 }): string => {
   const t = messages[input.language];
+  const tenant = input.brand.tenant.name;
   const path = `/marketing/forms/${encodeURIComponent(input.form.slug)}`;
-  const body = input.thanks
-    ? `<div class="status"><p class="lede">${escapeHtml(input.form.successText[input.language])}</p>${input.doubleOptIn ? `<p class="notice">${escapeHtml(t.signupPending)}</p>` : ''}</div>`
-    : `<form class="card" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}"><label class="signup-field" for="signup-email">${escapeHtml(t.signupEmail)}<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>${input.form.collectName ? `<label class="signup-field" for="signup-name">${escapeHtml(t.signupName)}<input id="signup-name" name="displayName" autocomplete="name" maxlength="120"></label>` : ''}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}"><p class="fine">${escapeHtml(input.wording)}</p><div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
-  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.thanks ? `${path}/thanks` : path, title: input.thanks ? t.signupThanks : input.form.name, eyebrow: t.signupEyebrow, body, testId: input.thanks ? 'marketing-signup-thanks' : 'marketing-signup-form' });
+  if (input.thanks) {
+    const successText = input.form.successText[input.language];
+    return renderStatusPage({
+      nonce: input.nonce,
+      brand: input.brand,
+      language: input.language,
+      path: `${path}/thanks`,
+      eyebrow: t.signupEyebrow,
+      title: input.doubleOptIn ? t.signupPendingTitle : t.signupThanks,
+      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam] : [successText],
+      testId: 'marketing-signup-thanks',
+      cue: input.doubleOptIn ? 'info' : 'success',
+      links: input.doubleOptIn ? [{ label: t.signupAgain, href: `${path}?lang=${input.language}` }] : [],
+      afterActions: input.doubleOptIn ? [successText] : [],
+    });
+  }
+  const consent = renderSignupConsent({ t, tenant, wording: input.wording, doubleOptIn: input.doubleOptIn, document: input.consentDocument ?? null });
+  const values = input.values ?? { email: '', displayName: '' };
+  const emailError = input.error === 'email';
+  const formError = input.error === 'generic' ? t.signupFailed : input.error === 'rate_limited' ? t.signupRateLimited : null;
+  const alert = formError === null ? '' : `<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">${escapeHtml(formError)}</p>`;
+  const emailDescription = emailError ? ' aria-invalid="true" aria-describedby="signup-email-error" autofocus' : formError === null ? '' : ' aria-describedby="signup-error"';
+  const emailField = `<div class="signup-field"><label for="signup-email">${escapeHtml(t.signupEmail)}</label><input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required${valueAttribute(values.email)}${emailDescription}>${emailError ? `<p class="field-error" id="signup-email-error" role="alert">${escapeHtml(t.signupEmailInvalid)}</p>` : ''}</div>`;
+  const nameField = input.form.collectName
+    ? `<div class="signup-field"><label for="signup-name">${escapeHtml(t.signupName)}</label><input id="signup-name" name="displayName" autocomplete="name" maxlength="120"${valueAttribute(values.displayName)}></div>`
+    : '';
+  const body = `${alert}<form class="card signup-form" method="post" action="/api/public/marketing/forms/${encodeURIComponent(input.form.slug)}/submit?lang=${input.language}" data-pending-label="${escapeHtml(t.signupSubmitPending)}"${formError === null ? '' : ' aria-describedby="signup-error"'}>${emailField}${nameField}<div class="signup-trap" aria-hidden="true" hidden><input name="website" tabindex="-1" autocomplete="off"></div><input type="hidden" name="token" value="${escapeHtml(input.form.token)}">${consent}<div class="actions"><button type="submit">${escapeHtml(t.signupSubmit)}</button></div></form>`;
+  return renderPage({
+    nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.signupTitle({ tenant }), eyebrow: t.signupEyebrow, body, testId: 'marketing-signup-form',
+    script: formError === null ? submitPendingScript : `${submitPendingScript}${focusAlertScript}`,
+    ...(input.error === undefined ? {} : { titlePrefix: t.errorTitlePrefix }),
+  });
 };

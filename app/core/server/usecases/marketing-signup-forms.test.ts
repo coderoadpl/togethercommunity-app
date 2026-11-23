@@ -177,7 +177,7 @@ describe('public signup consent workflow', () => {
     expect(fixture.submissions).toHaveBeenCalledOnce();
     const token = fixture.confirmations.rows[0]?.token;
     if (token === undefined) throw new Error('Missing confirmation');
-    expect(fixture.outbox.items[0]?.payload).toMatchObject({ confirmationUrl: `https://acme.example.org/marketing/confirm/${token}` });
+    expect(fixture.outbox.items[0]?.payload).toMatchObject({ confirmationUrl: `https://acme.example.org/marketing/confirm/${token}?lang=en` });
     const confirmed = await confirmMarketingConsent(marketingContactCtx(), { token, evidence: { collectedAt: now } }, { ...fixture.repos, ...fixture.deps });
     expect(confirmed).toMatchObject({ ok: true, value: { consent: { status: 'confirmed' } } });
     expect(fixture.contacts[0]).toMatchObject({ displayName: 'Real Name', source: 'import', archivedAt: null, tags: ['existing', 'newsletter'] });

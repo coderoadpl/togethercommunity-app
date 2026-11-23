@@ -5,16 +5,26 @@ import type { ErrorCode, MemberDownloadFailureCode } from '#core/domain/index.js
 
 import type { AppVars } from './app-vars.js';
 
+const specificityOf = (range: string, mediaType: string): number => {
+  if (range === mediaType) return 2;
+  if (range === `${mediaType.split('/')[0] ?? ''}/*`) return 1;
+  return range === '*/*' ? 0 : -1;
+};
+
 const qualityOf = (accept: string, mediaType: string): number => {
-  let quality = 0;
-  for (const range of accept.split(',')) {
-    const [type = '', ...params] = range.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== mediaType) continue;
+  let best = { specificity: -1, quality: 0 };
+  for (const entry of accept.split(',')) {
+    const [range = '', ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    const specificity = specificityOf(range, mediaType);
+    if (specificity < 0 || specificity < best.specificity) continue;
     const q = params.find((param) => param.startsWith('q='));
     const value = q === undefined ? 1 : Number(q.slice(2));
-    if (Number.isFinite(value)) quality = Math.max(quality, value);
+    if (!Number.isFinite(value)) continue;
+    best = specificity > best.specificity
+      ? { specificity, quality: value }
+      : { specificity, quality: Math.max(best.quality, value) };
   }
-  return quality;
+  return best.quality;
 };
 
 const isDocumentNavigation = (accept: string | undefined): boolean => {

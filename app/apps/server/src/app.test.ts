@@ -4945,6 +4945,21 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(303);
   });
 
+  it('ranks text/html and application/json by their most specific matching range', async () => {
+    const cases = [
+      { accept: 'application/*;q=1, text/html;q=0.5', status: 403 },
+      { accept: 'text/*;q=1, application/json;q=0.5', status: 303 },
+      { accept: '*/*;q=0.1, text/html;q=0', status: 403 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
   it('sends a signed-out browser download to sign-in with a return to My products', async () => {
     const anonymous = { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } };
     const browser = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {

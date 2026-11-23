@@ -498,6 +498,7 @@ export const LessonPlayerPage = ({
 
   const discussionScope = editionNumber === undefined ? lessonId : `${lessonId}/${editionNumber}`;
   const [discussionSearch, setDiscussionSearch] = useState({ scope: discussionScope, term: '' });
+  if (discussionSearch.scope !== discussionScope) setDiscussionSearch({ scope: discussionScope, term: '' });
   const discussionSearchTerm = discussionSearch.scope === discussionScope ? discussionSearch.term : '';
 
   const [continuing, setContinuing] = useState(false);

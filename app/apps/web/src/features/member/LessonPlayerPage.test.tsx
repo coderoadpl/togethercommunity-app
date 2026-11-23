@@ -2870,5 +2870,11 @@ describe('LessonPlayerPage', () => {
 
     await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
     await waitFor(() => expect(screen.getByTestId('discussion-search-input')).toHaveValue(''));
+
+    await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l1' } });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1'));
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('');
+    expect(screen.queryByTestId('discussion-search-results')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('search-hit-link-t1')).not.toBeInTheDocument();
   });
 });

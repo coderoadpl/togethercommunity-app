@@ -347,7 +347,8 @@ The directory follows the payment provider: a deployment with
 `PAYMENT_PROVIDER=stripe` (production and any staging that runs Stripe test
 mode) asks InPost, and one with `PAYMENT_PROVIDER=fake` (development,
 end-to-end runs and the smoke gate) uses the fake directory in
-`adapters/shipx/fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
+`adapters/shipx/fake.ts`, which answers from the same table as the use-case
+tests' fake in `core/server/testing/pickup-point-fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
 `CLOSED01` is not operating, `SENDONLY1` is a send-only point, `OUTAGE01`
 simulates the carrier being down, and every other code, such as `MISSING1`, is
 not found. The lookup limits above follow the directory too: every deployment

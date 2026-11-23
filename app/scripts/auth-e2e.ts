@@ -5,7 +5,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type BrowserContext, type Page, type Response } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page, type Response, type Route } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
@@ -297,6 +297,38 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
       'changing the e-mail did not keep the typed address',
     );
     console.log('auth-e2e: identifier-first path OK');
+
+    let limitedSignIns = 0;
+    const isPasswordSignIn = (url: URL): boolean => url.pathname.endsWith('/sign-in/email');
+    const answerRateLimited = async (route: Route): Promise<void> => {
+      limitedSignIns += 1;
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        headers: { 'X-Retry-After': '583' },
+        body: JSON.stringify({ message: 'Too many requests. Please try again later.' }),
+      });
+    };
+    await page.clock.setFixedTime(Date.now());
+    await page.route(isPasswordSignIn, answerRateLimited);
+    await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
+    const countdown = page.getByTestId('rate-limit-countdown');
+    await countdown.waitFor({ state: 'visible', timeout: 15000 });
+    assert(limitedSignIns === 1, `the password sign-in reached the rate-limit route ${limitedSignIns} times`);
+    const countdownText = await countdown.textContent();
+    assert(
+      countdownText === en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }),
+      `the rate-limited sign-in showed "${String(countdownText)}" instead of the header countdown`,
+    );
+    assert(await page.getByTestId('signin-submit').isDisabled(), 'the rate-limited sign-in left the submit enabled');
+    const limitedAlert = await page.getByTestId('signin-error').textContent();
+    assert(
+      limitedAlert !== null && !limitedAlert.includes(en.errors.messageRateLimited),
+      'the rate-limited sign-in fell back to the generic rate-limit text',
+    );
+    await page.unroute(isPasswordSignIn, answerRateLimited);
+    console.log('auth-e2e: password rate-limit countdown path OK');
   } finally {
     if (browser) await browser.close();
   }

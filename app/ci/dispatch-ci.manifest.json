@@ -1,0 +1,60 @@
+{
+  "gate": "dispatch-ci",
+  "workflow": "ci.yml",
+  "planJob": "plan",
+  "jobs": [
+    { "id": "check", "mode": "required" },
+    { "id": "dependency-audit", "mode": "advisory" },
+    { "id": "telemetry-mongodb", "mode": "advisory" },
+    { "id": "visual", "mode": "required" },
+    { "id": "smoke", "mode": "required" },
+    {
+      "id": "e2e",
+      "mode": "required",
+      "matrix": [
+        { "suite": "auth", "browser": true },
+        { "suite": "team-admins", "browser": true },
+        { "suite": "poc", "browser": false },
+        { "suite": "subs", "browser": false },
+        { "suite": "marketing", "browser": true },
+        { "suite": "coupon", "browser": true },
+        { "suite": "public-authz", "browser": true },
+        { "suite": "member-activity", "browser": true },
+        { "suite": "member-shell", "browser": true },
+        { "suite": "impersonation", "browser": true },
+        { "suite": "two-factor", "browser": true },
+        { "suite": "image-assets", "browser": true },
+        { "suite": "custom-domain", "browser": true },
+        { "suite": "meta-capi", "browser": true }
+      ]
+    }
+  ],
+  "afterGate": ["release-tag"],
+  "separateRequiredChecks": {
+    "staging": [
+      {
+        "name": "ai-review",
+        "reason": "Runs in its own workflow on pull request edits and draft changes that never start a ci run, so it cannot report through the gate."
+      },
+      {
+        "name": "staging-freeze",
+        "reason": "Is re-run on its own when the owner clears STAGING_FREEZE, without re-running the whole ci workflow."
+      }
+    ],
+    "main": [
+      {
+        "name": "ai-review",
+        "reason": "Runs in its own workflow on pull request edits and draft changes that never start a ci run, so it cannot report through the gate."
+      },
+      {
+        "name": "promotion-guard",
+        "reason": "Judges the promotion pull request against the staging tip and the staging runs, with its own token scope and concurrency group."
+      }
+    ]
+  },
+  "postDeploy": {
+    "staging": [],
+    "production": []
+  },
+  "deletionProtectedBranches": ["staging", "main"]
+}

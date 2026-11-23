@@ -63,7 +63,7 @@ describe('public marketing pages', () => {
     );
     expect(html).toContain('<section class="card" data-state="consent-link"><h2>Unsubscribe</h2>');
     expect(html).toContain('<p class="fine">You will stop receiving messages sent under the consent “Product news”.</p><form method="post" action="/u/token_1234567890123456789012/confirm?lang=en"><button type="submit">Unsubscribe</button></form>');
-    expect(html).toContain('<p class="fine">Stops every marketing e-mail from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing e-mails</button></form>');
+    expect(html).toContain('<p class="fine">Stops every marketing email from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing emails</button></form>');
     expect(html).toContain('<fieldset class="choices"><legend>Optional consents</legend>');
     expect(html).not.toContain('scope');
     expect(html).not.toContain('class="danger"');
@@ -120,7 +120,7 @@ describe('public marketing pages', () => {
       definitions: withdrawnDefinitions,
       brand: { ...brand, settings: { ...brand.settings, supportEmail: 'help@studio.test' } },
     }));
-    expect(html).toContain('<section class="card" data-state="unsubscribed-all"><p class="state-line">You are unsubscribed from all marketing e-mails from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p><p class="fine"><a href="mailto:help@studio.test">help@studio.test</a></p></section>');
+    expect(html).toContain('<section class="card" data-state="unsubscribed-all"><p class="state-line">You are unsubscribed from all marketing emails from Studio Demo.</p><p class="fine">You cannot subscribe again from this page; contact the sender.</p><p class="fine"><a href="mailto:help@studio.test">help@studio.test</a></p></section>');
     expect(html).not.toContain('<form');
     expect(html).not.toContain('Select the messages');
     expect(html).not.toContain('<h2>Unsubscribe</h2>');
@@ -152,7 +152,7 @@ describe('public marketing pages', () => {
     for (const definitions of [activeNews, pendingOffers]) {
       const html = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions }));
       expect(html).not.toContain('data-state="unsubscribed-all"');
-      expect(html).not.toContain('You are unsubscribed from all marketing e-mails');
+      expect(html).not.toContain('You are unsubscribed from all marketing emails');
       expect(html).toContain('<h2>Unsubscribe</h2>');
       expect(html).toContain('<form method="post" action="/u/token_1234567890123456789012/all?lang=en">');
       expect(html).toContain('<form method="post" action="/u/token_1234567890123456789012/preferences?lang=en">');
@@ -202,7 +202,7 @@ describe('public marketing pages', () => {
     expect(html).toContain('data-state="consent-withdrawn"');
     expect(html).toContain('<p class="state-line">You are unsubscribed from “Product news”.</p>');
     expect(html).not.toContain('/confirm?lang=en');
-    expect(html).toContain('/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing e-mails</button>');
+    expect(html).toContain('/all?lang=en"><button class="secondary danger-text" type="submit">Unsubscribe from all marketing emails</button>');
     expect(html).toContain('<fieldset class="choices">');
     const pending = renderPreferencesPage(preferenceInput({
       definitions: [{ id: 'newsletter', label: 'Product news', active: false, pendingConfirmation: true }],
@@ -214,8 +214,8 @@ describe('public marketing pages', () => {
   it('offers one unsubscribe button on a link issued for all marketing', () => {
     const html = renderPreferencesPage(preferenceInput({ scope: 'all_marketing', scopeLabel: null }));
     expect(html).toContain('data-state="all-marketing-link"');
-    expect(html.match(/<button[^>]*>Unsubscribe from all marketing e-mails<\/button>/g)).toHaveLength(1);
-    expect(html).toContain('<p class="fine">Stops every marketing e-mail from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button type="submit">');
+    expect(html.match(/<button[^>]*>Unsubscribe from all marketing emails<\/button>/g)).toHaveLength(1);
+    expect(html).toContain('<p class="fine">Stops every marketing email from Studio Demo. You cannot undo this from this page.</p><form method="post" action="/u/token_1234567890123456789012/all?lang=en"><button type="submit">');
     expect(html).not.toContain('/confirm?lang=en');
   });
 

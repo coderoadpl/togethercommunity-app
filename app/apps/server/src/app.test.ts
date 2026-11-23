@@ -2604,7 +2604,7 @@ describe('marketing HTTP surfaces', () => {
       const page = await response.text();
       expect(page).toContain('data-testid="marketing-link-invalid"');
       expect(page).toContain('This link does not work');
-      expect(page).toContain('Open the link from the newest e-mail, or contact the sender.');
+      expect(page).toContain('Open the link from the newest email, or contact the sender.');
       expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
     }
     const polish = await app.request('/u/missing_token_1234567890123456?lang=pl', { headers });
@@ -2650,7 +2650,7 @@ describe('marketing HTTP surfaces', () => {
     await suppress(marketing, reason);
     const app = marketingApp(marketing);
     const html = await preferencePage(app);
-    expect(html).not.toContain('You are unsubscribed from all marketing e-mails from Acme.');
+    expect(html).not.toContain('You are unsubscribed from all marketing emails from Acme.');
     expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
     expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
     expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
@@ -2725,7 +2725,7 @@ describe('marketing HTTP surfaces', () => {
       .map((row) => [row.definitionId, row.status])).toEqual([['definition-news', 'confirmed'], ['definition-news', 'withdrawn']]);
     const html = await preferencePage(app, location);
     expect(html).toContain('<p class="notice" role="status" data-state="subscriptions-refused">Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.</p>');
-    expect(html).toContain('You are unsubscribed from all marketing e-mails from Acme.');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
   });
 
   it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
@@ -2745,7 +2745,7 @@ describe('marketing HTTP surfaces', () => {
     expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
     expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
     const html = await preferencePage(app, post.headers.get('location') ?? '');
-    expect(html).toContain('You are unsubscribed from all marketing e-mails from Acme.');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
     expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
   });
 

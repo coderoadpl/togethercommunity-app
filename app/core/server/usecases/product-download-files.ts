@@ -83,7 +83,10 @@ export interface ProductDownloadRemoveDeps {
   readyOnly?: boolean;
 }
 
-/** The deletion is owed in the removing transaction, so a storage delete that fails afterwards is retried by the sweep. */
+/**
+ * A key-staged object's deletion is owed in the removing transaction, so the sweep retries a storage delete that fails
+ * afterwards; an owner-uploaded object is deleted once, as the product editor deletes it.
+ */
 export const removeProductDownloadFile = async (
   ctx: Ctx,
   input: KeyDownloadRemoveInput,

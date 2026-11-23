@@ -423,7 +423,7 @@ refund that never saw its own Stripe refund ends `unconfirmed` rather than
 `failed`. A request confirmed for a packing-list or label state that changed
 since its preview is refused, so no goods return to stock behind a bought
 label. The CLI refuses
-a full refund without the confirmed `--remainder` and, with `--json`, any
+any refund without the confirmed `--remainder` and, with `--json`, any
 refund without `--request-key`. Each refund row keeps the requesting user's id and e-mail address
 after the account is removed, as audit evidence of who moved money. The staff
 note refuses control characters other than line breaks and tabs, and the

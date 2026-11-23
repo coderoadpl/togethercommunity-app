@@ -91,24 +91,27 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
 
 ## Staff refunds
 
-`order refund-preview <orderId>` prints the paid amount, the amount actually
-refunded and the remainder that can still be refunded, whether they were read
-from Stripe, the stock a full refund can return and the packing, shipment,
-invoice and subscription consequences; for an order marked refunded whose
-refunds do not cover the payment (for example after a dispute) it says that
-nothing more can be refunded there. `order refund <orderId>`
+`order refund-preview <orderId>` prints the paid amount, the amount refunded
+as far as the platform sees it and the remainder that can still be refunded,
+whether they were read from Stripe, the stock a full refund can return and the
+packing, shipment, invoice and subscription consequences; for an order marked
+refunded whose observed refunds do not cover the payment (refunded outside the
+platform or disputed) it prints "not known here" instead of the refunded
+amount, and for an order with access or a running subscription it says that a
+partial refund may still end them once the payment ends fully refunded. An
+order marked refunded cannot be refunded here. `order refund <orderId>`
 refunds the whole remainder; `--amount <decimal>` refunds part of it in the
-order's currency (whole numbers for zero-decimal currencies). A full refund
-needs `--remainder <decimal>`, the remainder you confirm: without it the
-command refuses, prints the preview and names the `--remainder <decimal>` to
-add, and never confirms a remainder it just read. The request carries that
-remainder (with `--amount`, the remainder of the preview the command read), and
-when it changed in the meantime the server refuses with `conflict` naming the
-current remainder; the command then reads the preview again and prints it (with
-`--json`, under `error.details.preview`). It also carries the packing-list and
-label state of the preview the command read, and the server refuses with
-`conflict` when a label was bought or the order was packed since. Without `--yes` the command prints
-what it would refund and the flags to repeat it with. `--reason <text>`
+order's currency (whole numbers for zero-decimal currencies) and always keeps
+stock and the packing list as they are. Every confirmed refund, partial and
+full, needs `--remainder <decimal>`, the remainder you confirm: without it, or
+without `--yes`, the command refuses, prints the preview and the exact command
+to confirm with, and never confirms a remainder it just read. The request
+carries that remainder, and when it changed in the meantime the server refuses
+with `conflict` naming the current remainder and nothing is refunded; the
+command then reads the preview again and prints it (with `--json`, under
+`error.details.preview`). It also carries the packing-list and label state of
+the preview the command read, and the server refuses with `conflict` when a
+label was bought or the order was packed since. `--reason <text>`
 keeps a staff-only note, `--no-restock` turns off the stock return of a full
 refund, and `--keep-on-packing-list` keeps the order on the packing list; it
 needs `--no-restock`, because returned goods cannot stay on the list.
@@ -126,7 +129,7 @@ are in [the shop guide](shop.md#staff-refunds).
 
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview order-id
-pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --remainder 40.99 --reason 'Damaged cover' --yes
 pnpm --silent run cli --tenant acme --json order refund order-id --remainder 40.99 --request-key refund-2026-11-23-1 --yes
 ```
 

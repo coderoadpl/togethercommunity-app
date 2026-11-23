@@ -1564,19 +1564,17 @@ deadline: the job's deadline is the run's deadline, and on the cron tick at
 most 21 seconds after the job was claimed. The first page is read at once (claiming
 the job already made room for it); the list stops before any further page that
 could not end by that deadline less the worst case of the create call (a status
-read keeps no time for one), so the job still ends by its deadline. For a
-sold-out job a list cut short this way, or longer than 1,000 refunds, counts as
-a list that could not be read (a temporary failure, retried on the schedule
-below), never as Stripe refusing the refund; on the cron tick this leaves a
-payment with more than 100 refunds to be refunded by the kick after a webhook
-or the Node ticker, whose 30-second runs leave room for more pages. A staff
-refund treats such a list as sufficient (decision D20): Stripe lists refunds
-newest first and its own refund is always made by its own job, so it is
-matched among the newest refunds; a create call made while its own refund is
-not among them is still capped by Stripe at what is left on the charge; and the
-rule that ends a staff refund once refunds made outside the platform cover the
-whole charge only applies to a complete list. A staff refund of a payment with
-a long refund history therefore completes on cron ticks alone. Every refund call has a 5-second
+read keeps no time for one), so the job still ends by its deadline. A list cut
+short this way, or longer than 1,000 refunds, counts as a list that could not
+be read (a temporary failure, retried on the schedule below), never as Stripe
+refusing the refund, for sold-out and staff refunds alike (decision D-Q3'): no
+refund is created, reopened or settled from it. On the cron tick this leaves a
+payment with more than 100 refunds to be refunded by the kick after a webhook,
+the kick after a staff refund request or the Node ticker, whose 30-second runs
+leave room for more pages. A staff refund of a payment whose refunds no run can
+read in full ends when its retries end: `unconfirmed` with the staff alert when
+a create call may have reached Stripe, otherwise `failed` with nothing refunded;
+it never pays twice. Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
@@ -1809,22 +1807,20 @@ no second refund path. Staff refunds are stored in their own table,
 cannot stop the sold-out refunds; staff refunds waiting to reach Stripe then
 wait until the release is back.
 
-An order can be refunded by staff when it is `paid`, `partially_refunded` or
-`refunded`, was paid through Stripe with a payment intent, was paid more than
-zero, was not cancelled because its goods sold out (its own job refunds it) and
-something is left to refund. Anything else is refused with `conflict` or
+An order can be refunded by staff when it is `paid` or `partially_refunded`,
+was paid through Stripe with a payment intent, was paid more than zero, was not
+cancelled because its goods sold out (its own job refunds it) and something is
+left to refund. Anything else is refused with `conflict` or
 `validation` and a sentence naming the reason. The refundable remainder is the
 paid amount minus the larger of the refunds Stripe lists for the payment (not
 `failed` or `canceled`) and the staff refunds the platform recorded that may
 still move money; when Stripe's list cannot be read, the platform's records
 decide and the preview says so, and Stripe still refuses anything above the
-charge. An order marked `refunded` keeps a remainder only when its latest staff
-refund is a full refund that Stripe failed or canceled after it was issued
-(the platform saw it fail, decision D21): the remainder is at most that refund's
-amount and, when Stripe's list can be read, at most the sum of the failed or
-canceled refunds it shows. Any other order marked `refunded`, for example after
-a dispute, also one whose older partial staff refund failed, has nothing left
-to refund.
+charge. An order marked `refunded` is never refunded from Studio or the CLI
+(decision D-Q4'): it was refunded in full, refunded outside the platform or
+disputed, and the refusal says so. When a full staff refund fails at Stripe
+after `charge.refunded` marked the order refunded, the staff alert tells staff
+to refund the payment in the Stripe Dashboard.
 
 - **Every staff refund issues exactly its stored amount, once.** Its own
   Stripe refund is the one whose metadata `refundJobId` names the staff refund,
@@ -1854,7 +1850,9 @@ to refund.
   current remainder and `details.remainderCents`, and nothing is stored, so a
   typed amount that a dashboard refund made after the preview turned into the
   whole remainder never ends access or a subscription without staff seeing it.
-  Studio reloads the preview and the CLI prints the new one. A request without
+  Studio reloads the preview; the CLI sends the remainder its operator
+  confirmed with `--remainder`, never one it read itself, and prints the new
+  preview. A request without
   the field is refused with `validation`, except a replay of a stored refund by
   its request key.
 - **Already refunded**: when Stripe answers that the charge is already refunded
@@ -1937,9 +1935,12 @@ to refund.
   makes the order's waiting staff refunds due at once, so Studio shows the
   outcome within a minute. Access revoked that way is not given back when the
   refund fails later: the `failed_after_submission` alert of a staff refund
-  tells staff to grant it again on the member page, and the order can be
-  refunded again when that refund was the order's latest staff refund and a
-  full one.
+  tells staff to grant it again on the member page and, because an order
+  marked refunded cannot be refunded again here, to refund the payment in the
+  Stripe Dashboard. A partial refund keeps access and the subscription, but
+  the dialog and the CLI preview say that when the payment ends fully refunded
+  (for example through another refund, also one made in the Stripe Dashboard)
+  access may end and the subscription stops, as for a full refund.
 - **Buyer e-mail**: one refund notice per staff refund (outbox id
   `order-refund-issued:<refundId>`), queued in the transaction that records
   that Stripe holds the platform's own refund as `pending` or `succeeded`; a
@@ -1971,14 +1972,19 @@ to refund.
   may have reached Stripe but its refunds could not be read, Stripe still had
   the refund in progress at the last check, a full refund made outside the
   platform the key could not confirm, or no confirmation) and tells staff to
-  check the payment in the Stripe Dashboard: nothing more is needed when the
-  refund is listed there; when it is not, staff refund it there and the
-  order is updated once Stripe reports it. The explanation of a staff refund
+  check the refund in the Stripe Dashboard and act on the status shown there:
+  `Succeeded` or `Pending` needs nothing more, `Requires action` is completed
+  there, and `Failed`, `Canceled` or a refund that is not listed means
+  refunding the remaining amount there; the order is updated once Stripe
+  reports the refund. The `failed_after_submission` alert of an order already
+  marked refunded gives the same guidance. The explanation of a staff refund
   in the alerts and in Studio's refund history is derived in the reader's
   language from the refund's status and flags (`create_outcome_unknown`,
-  `provider_refund_status`, `permission_blocked_at`); `last_error` keeps only
-  Stripe's own diagnostic, or a short neutral token when there is none (for
-  example `waiting_for_other_refund` or `refund_pending`).
+  `provider_refund_status`, `permission_blocked_at`) and from the order's
+  status; `last_error` keeps only Stripe's own words, without the adapter's
+  English description of the call, or a short neutral token when the message
+  was written by the platform (for example `waiting_for_other_refund`,
+  `refund_pending` or `refund_list_incomplete`).
   Each alert is rendered per recipient in the recipient's language when it is
   queued and stored pre-rendered as an `m2m-transactional` message with source
   `staff-refunds`, like the buyer notice, so the previous release renders and
@@ -2005,7 +2011,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds actually committed (`refundedCents`: Stripe's list when it was read, else the platform's records) and the remainder staff may refund (`remainderCents`, which the rules above may hold below the rest of the payment; `remainderWithheld` says so for an order marked refunded), currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether a full refund cancels a subscription, the default choices and any refund still waiting |
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds that reached Stripe: `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting |
 | `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
@@ -2020,24 +2026,25 @@ the state and amount of the order's latest staff refund while it is unsettled; `
 sold-out refund job, and the shop key order list and the order feed carry no
 staff refund state. The orders export gains a
 trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
-the platform-recorded staff and sold-out refunds, or the paid amount for a
-`refunded` order. The
+the staff and sold-out refunds the platform saw reach Stripe (`submitted`,
+`succeeded` or `unconfirmed`), never inferred from a `refunded` status; refunds
+made outside the platform, disputes and refunds only requested (`pending`,
+`running`, `blocked_permission`) are not in it. The
 shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
 In Studio the order detail shows a **Payment** card with the paid, refunded and
-remaining amounts (refunds not yet confirmed by Stripe are counted and named;
-a refund waiting for the refund permission is listed apart as a requested
-refund, with a warning that it has not been paid out). When the refund preview
-read Stripe's list, the card takes its amounts from the preview, so a refund
-made in the Stripe Dashboard and a full refund that failed after
-`charge.refunded` show as Stripe holds them, and a refund waiting for the
-permission is listed beside Stripe's total, never inside it; otherwise it shows
-the platform's records and says why (Stripe's list could not be read, or the
-refund check itself could not be loaded). An order marked refunded whose
-refunds do not cover the payment (for example after a dispute) is never shown
-as wholly refunded: the card shows the amount actually refunded and says that
-nothing more can be refunded there,
+remaining amounts. Refunded counts only observed refunds (refunds not yet
+confirmed by Stripe are counted and named); a refund waiting for the refund
+permission or not yet sent to Stripe is listed apart as a requested refund,
+with a warning when it waits for the permission. Whenever the refund preview
+loaded, the card takes its amounts from the preview (Stripe's list, or the
+platform's records with a note saying Stripe's list could not be read), so a
+refund made in the Stripe Dashboard shows as Stripe holds it; only when the
+preview itself failed does it show the order detail's totals and say so. An
+order marked refunded whose observed refunds do not cover the payment (refunded
+outside the platform or disputed) shows "not known here" instead of a refunded
+amount, with a note that nothing more can be refunded there,
 a **Refund history** with each refund's amount, requester, time, staff-only
 reason and state (a refund waiting for the refund permission also names its
 attempts, the next attempt and the last possible one, 72 hours after the first
@@ -2055,7 +2062,9 @@ or label changed, the dialog reloads the preview, resets the stock and packing
 choices to the new defaults, says what happened and lets staff confirm again.
 The consequences say that access ends unless another purchase keeps it and,
 for the latest invoice of a running subscription, that a full refund cancels
-the subscription too. Another refund still waiting for
+the subscription too; for a smaller partial amount on an order with access or
+such a subscription they add that access may end and the subscription stop
+once the payment ends fully refunded. Another refund still waiting for
 Stripe disables the refund button and offers Close; any other `conflict`
 (nothing left, an order that can no longer be refunded, a request key used for
 other values) shows the server's message the same way;
@@ -2078,7 +2087,7 @@ on a card opens the order while the buyer name still opens the member.
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview <orderId>
 pnpm --silent run cli --tenant acme order refund <orderId> --yes --remainder 40.99
-pnpm --silent run cli --tenant acme order refund <orderId> --amount 12.50 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme order refund <orderId> --amount 12.50 --remainder 40.99 --reason 'Damaged cover' --yes
 pnpm --silent run cli --tenant acme order ship-anyway <orderId>
 ```
 

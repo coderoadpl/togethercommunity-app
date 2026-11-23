@@ -781,6 +781,20 @@ describe('quarantined rows and objects of one key', () => {
     expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
   });
 
+  it('releases a row a completion left pending even while a pending proposal repeats its address unchanged', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    const unanswered = async () => err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+    expect(await repository.insert(TENANT, image(1), unanswered)).toMatchObject({ kind: 'store_failed' });
+    await pendingProposal('p-title', { title: 'Renamed', coverUrl: pathOf(image(1)) });
+    const late = '2026-03-01T10:11:00.000Z';
+    expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', late, 10)).toEqual([TENANT]);
+    expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, late))
+      .toEqual({ kind: 'written', value: [image(1)] });
+    expect(await releasedRows()).toEqual(['1']);
+    expect(await repository.finishRelease(TENANT, image(1), async () => 'deleted' as const, late)).toBe('removed');
+    expect(await database.db.select().from(changeProposalImages)).toEqual([]);
+  });
+
   it('marks a publication record whose delete had no definite answer, blocks its address and lists it by that time', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     await repository.recordPublications(TENANT, 'attempt-unresolved', [image(1)], NOW);

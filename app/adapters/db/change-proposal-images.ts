@@ -311,7 +311,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         eq(changeProposalImages.tenantId, tenantId),
         or(...fresh.map((row) => and(eq(changeProposalImages.apiKeyId, row.apiKeyId), sameImage(row)))),
         unreleased,
-        not(attached(now)),
+        or(not(written), not(attached(now))),
       )).returning();
       return { kind: 'written', value: [...earlier, ...marked].map(parseImage) };
     }), { kind: 'busy' } as const),

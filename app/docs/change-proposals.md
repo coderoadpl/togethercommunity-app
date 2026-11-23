@@ -1318,7 +1318,9 @@ approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
 (every image of that key) and a purge. An image held by an approval in progress
 is released only after that approval ends. The sweep
 (`sweepQuarantinedImages`) finishes every released image, releases every row
-left pending for 10 minutes by a completion that did not finish, and releases every
+left pending for 10 minutes by a completion that did not finish (also when a
+pending proposal of its key repeats its address in an image field: no proposal
+can have attached a row that was never written), and releases every
 image older than 7 days that no pending, unexpired proposal of its key
 attaches, and every image of a revoked or deleted key, 50 workspaces and 200
 images per workspace at a time. Images a pending proposal attaches are left

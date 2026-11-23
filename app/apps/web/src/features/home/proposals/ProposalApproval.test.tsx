@@ -504,8 +504,7 @@ describe('the approval confirmation of what a product grants', () => {
     expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe(
       'As the shop is now, the new list of what “Mug” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
     );
-    expect(t.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/would apply none of the changes; if it passes the check when you approve, /u);
-    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'Mug' })).toMatch(/niczego by nie zmieni\p{L}o; je\p{L}li przejdzie j\p{L} w chwili zatwierdzenia/u);
+        expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'Mug' })).toMatch(/niczego by nie zmieni\p{L}o; je\p{L}li przejdzie j\p{L} w chwili zatwierdzenia/u);
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
       .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
   });
@@ -550,7 +549,59 @@ describe('the approval confirmation of what a product grants', () => {
       `${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}${t.approveProductSetAccess({ target: 'Cup', access: 'the whole course “Intro course”' })}`,
     );
     const emptied = step('item-emptied', deep, []);
-    expect(dialogText(<GroupAccessSentences items={[...items, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessNothing({ target: 'Mug' }));
+    expect(dialogText(<GroupAccessSentences items={[...items, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }));
+    const startsWithIntro = step('item-from-intro', intro, deep);
+    expect(dialogText(<GroupAccessSentences items={[startsWithIntro, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessNothing({ target: 'Mug' }));
+  });
+
+  it('warns in a group confirmation when an earlier access item of a product is refused although its last list passes', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[], labels: ApprovalFacts['accessLabels']) =>
+      ({ ...accessChange(after, labels, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const deep = [{ level: 'course' as const, courseId: 'course-deep' }];
+    const items = [
+      step('item-first', [], intro, { ...LABELS, archivedCourses: ['course-intro'] }),
+      step('item-second', intro, deep, { courses: [{ id: 'course-deep', title: 'Deep course' }], modules: [], lessons: [] }),
+    ];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toBe(
+      `${t.approveGroupProductSetAccessRefused({ target: 'Mug' })} ${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}`,
+    );
+    expect(t.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/would apply none of the changes; only if every change of the group passes its checks when you approve/u);
+    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/tylko wtedy, gdy w chwili zatwierdzenia ka\p{L}da jej zmiana przejdzie swoje kontrole/u);
+  });
+
+  it('says in a group confirmation that a product keeps what it grants when its last list grants what its first list started from', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[]) => ({ ...accessChange(after, LABELS, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const items = [step('item-add', [], intro), step('item-clear', intro, [])];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toBe(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }));
+    const back = [step('item-clear', intro, []), step('item-add', [], intro)];
+    expect(dialogText(<GroupAccessSentences items={back} references={groupReferences([])} />)).toBe(
+      t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'the whole course “Intro course”' }),
+    );
+    expect(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' })).toContain('gains or loses anything through it');
+    expect(pl.changeProposals.approveProductSetAccessUnchanged({ target: 'Mug', access: 'cały kurs „Intro”' })).toContain('nie zyska ani nie straci');
+  });
+
+  it('claims no future access for a draft the group deletes after setting its list, but keeps a refusal', () => {
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const access = { ...accessChange(intro, LABELS), id: 'item-access' };
+    const deleted = { ...samples['product.delete-draft'], id: 'item-delete' };
+    expect(dialogText(<GroupAccessSentences items={[access, deleted]} references={groupReferences([])} />)).toBe('');
+    const refused = { ...accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS), id: 'item-refused' };
+    expect(dialogText(<GroupAccessSentences items={[refused, deleted]} references={groupReferences([])} />)).toBe(
+      t.approveGroupProductSetAccessRefusedDeleted({ target: 'Mug' }),
+    );
+  });
+
+  it('adds the id to a title that a lesson of an earlier access item of the group shares with the final list', () => {
+    const labelsOf = (lessons: { id: string; title: string }[]) => ({ courses: [{ id: 'course-intro', title: 'Intro course' }], modules: [], lessons });
+    const lessons = (id: string) => [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: [id] }];
+    const items = [
+      { ...accessChange(lessons('lesson-bridge'), labelsOf([{ id: 'lesson-x', title: 'Introduction' }, { id: 'lesson-bridge', title: 'Bridge' }]), lessons('lesson-x')), id: 'item-first' },
+      { ...accessChange(lessons('lesson-y'), labelsOf([{ id: 'lesson-bridge', title: 'Bridge' }, { id: 'lesson-y', title: 'Introduction' }]), lessons('lesson-bridge')), id: 'item-second' },
+    ];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toContain('“Introduction” (lesson-y)');
   });
 
   it('words the access of a product an earlier item of the group creates without current buyers', () => {

@@ -870,7 +870,19 @@ export const pl: Messages = {
       { target },
     ),
     approveGroupProductSetAccessRefused: ({ target }) => format(
-      'Przy obecnym stanie sklepu nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian; jeśli przejdzie ją w chwili zatwierdzenia, zostanie wprowadzona cała grupa, a lista tak, jak opisano dalej.',
+      'Przy obecnym stanie sklepu jedna z ustawianych przez grupę list tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian; grupa zostanie wprowadzona tylko wtedy, gdy w chwili zatwierdzenia każda jej zmiana przejdzie swoje kontrole, a lista tak, jak opisano dalej.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefusedDeleted: ({ target }) => format(
+      'Przy obecnym stanie sklepu jedna z ustawianych przez grupę list tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian.',
+      { target },
+    ),
+    approveProductSetAccessUnchanged: ({ target, access }) => format(
+      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do tych samych treści co teraz: {access}. Nikt, kto ma już dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
+      { target, access },
+    ),
+    approveProductSetAccessUnchangedNothing: ({ target }) => format(
+      'Po zatwierdzeniu produkt „{target}”, tak jak teraz, nie będzie dawał dostępu do żadnego kursu, modułu ani lekcji. Nikt, kto ma już dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
       { target },
     ),
     approveConfirm: 'Zatwierdź',

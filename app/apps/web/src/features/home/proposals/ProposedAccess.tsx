@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Alert, Stack } from '@mui/material';
 
-import type { AccessItem, ChangeProposalAccessChange, ChangeProposalAccessLabels } from '#core/domain/index.js';
+import { sameAccessItems, type AccessItem, type ChangeProposalAccessChange, type ChangeProposalAccessLabels } from '#core/domain/index.js';
 
 import { useTranslations } from '../../../i18n/index.js';
 import { WrapAnywhereText } from '../../../theme.js';
@@ -148,17 +148,24 @@ export const AccessApprovalText = ({
   labels,
   newProduct,
   group,
+  refused,
 }: {
   target: string;
   change: ChangeProposalAccessChange;
   labels: Labels;
   newProduct: boolean;
   group: boolean;
+  refused: boolean;
 }) => {
   const t = useTranslations().changeProposals;
   const items = change.after;
-  const nothing = newProduct ? t.approveProductSetAccessNothingNewProduct : t.approveProductSetAccessNothing;
-  const grants = newProduct ? t.approveProductSetAccessNewProduct : t.approveProductSetAccess;
+  const unchanged = !newProduct && sameAccessItems(change.before, change.after);
+  const nothing = newProduct
+    ? t.approveProductSetAccessNothingNewProduct
+    : unchanged ? t.approveProductSetAccessUnchangedNothing : t.approveProductSetAccessNothing;
+  const grants = newProduct
+    ? t.approveProductSetAccessNewProduct
+    : unchanged ? t.approveProductSetAccessUnchanged : t.approveProductSetAccess;
   const applied = items.length === 0 ? <Isolated sentence={(slot) => nothing({ target: slot })} value={target} /> : (
     <Sentence
       text={(name, access) => grants({ target: name, access })}
@@ -175,7 +182,7 @@ export const AccessApprovalText = ({
       ]}
     />
   );
-  if (!accessFacts(change, labels).refused) return applied;
-  const refused = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
-  return <><Isolated sentence={(slot) => refused({ target: slot })} value={target} />{' '}{applied}</>;
+  if (!refused) return applied;
+  const warning = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
+  return <><Isolated sentence={(slot) => warning({ target: slot })} value={target} />{' '}{applied}</>;
 };

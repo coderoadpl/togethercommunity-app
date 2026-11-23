@@ -741,6 +741,9 @@ export interface Messages {
     approveProductSetAccessNothingNewProduct: (params: { target: string }) => string;
     approveProductSetAccessRefused: (params: { target: string }) => string;
     approveGroupProductSetAccessRefused: (params: { target: string }) => string;
+    approveGroupProductSetAccessRefusedDeleted: (params: { target: string }) => string;
+    approveProductSetAccessUnchanged: (params: { target: string; access: string }) => string;
+    approveProductSetAccessUnchangedNothing: (params: { target: string }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;

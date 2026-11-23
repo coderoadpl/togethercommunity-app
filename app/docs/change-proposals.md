@@ -2113,13 +2113,30 @@ lesson moved back in the meantime lets it apply. A group
 confirmation adds one access sentence per product, for the list that the
 product's last access item in the group leaves, since every item applies in one
 transaction and no holder ever gets a list an earlier item sets; the cards of
-the group still show each item's lists before and after. For a product an
+the group still show each item's lists before and after. The sentence compares
+the list before the product's first access item with the list its last item
+leaves: when the two name the same items (compared item by item in any order, repeats
+ignored) it says that after approval the product grants the same as now, or
+still nothing, and that nobody who already has access gains or loses anything
+through it. Titles that share a name get their ids from the labels of all the
+product's access items, so a lesson replaced by another of the same title two
+items later still reads as a change. The warning comes from every access item
+of the product, each checked with its own list and labels, so an earlier item
+whose list names an archived course or an id that no longer exists warns even
+when the last list passes. For a product an
 earlier item of the group creates it reads "Everyone who later gets access to
 the new product “Starter Pack” will get access to: …" (or "The new product
-“Starter Pack” will not grant any course, module or lesson."), and a list that
-does not pass the check leads with "… so approving would apply none of the
-changes; if it passes the check when you approve, the group applies and the
-list as follows.".
+“Starter Pack” will not grant any course, module or lesson."), and when any of
+the product's lists does not pass the check the sentence leads with "As the
+shop is now, a list of what “Starter Pack” grants that the group sets does not
+pass the shop’s check, so approving would apply none of the changes; only if
+every change of the group passes its checks when you approve does the group
+apply, with the list as follows.". This is what the dialog says, not all that
+approval checks: every item of the group must also pass its own validation,
+its stale checks and its replay, or nothing applies. For a draft that a later
+`product.delete-draft` of the group deletes, the confirmation makes no claim
+about what the product will grant; it keeps only the warning, without the list,
+when one of its lists does not pass the check.
 `proposals show` and `proposals group show` print the titles under `names:`,
 and "no longer exists" for an id that no longer exists; they do not mark an
 archived course.

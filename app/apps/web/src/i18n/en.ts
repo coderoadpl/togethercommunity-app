@@ -824,7 +824,19 @@ export const en: Messages = {
       { target },
     ),
     approveGroupProductSetAccessRefused: ({ target }) => format(
-      'As the shop is now, the new list of what “{target}” grants does not pass the shop’s check, so approving would apply none of the changes; if it passes the check when you approve, the group applies and the list as follows.',
+      'As the shop is now, a list of what “{target}” grants that the group sets does not pass the shop’s check, so approving would apply none of the changes; only if every change of the group passes its checks when you approve does the group apply, with the list as follows.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefusedDeleted: ({ target }) => format(
+      'As the shop is now, a list of what “{target}” grants that the group sets does not pass the shop’s check, so approving would apply none of the changes.',
+      { target },
+    ),
+    approveProductSetAccessUnchanged: ({ target, access }) => format(
+      'After approval “{target}” grants the same as now: {access}. Nobody who already has access to this product gains or loses anything through it.',
+      { target, access },
+    ),
+    approveProductSetAccessUnchangedNothing: ({ target }) => format(
+      'After approval “{target}” grants no course, module or lesson, as now. Nobody who already has access to this product gains or loses anything through it.',
       { target },
     ),
     approveConfirm: 'Approve',

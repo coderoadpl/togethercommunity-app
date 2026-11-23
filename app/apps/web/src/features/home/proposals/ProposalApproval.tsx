@@ -231,8 +231,9 @@ const useApprovalSentence = (proposal: ApprovalFacts, rows: readonly DisplayRow[
     case 'product.set-access': {
       const access = changeProposalAccessChange(proposal);
       if (access === null) return fallback;
-      const text = <AccessApprovalText target={name} change={access} labels={proposal.accessLabels} newProduct={false} group={false} />;
-      return accessFacts(access, proposal.accessLabels).refused ? { text, names: 'every-row', closing: false } : { text, names: ['accessItems'] };
+      const { refused } = accessFacts(access, proposal.accessLabels);
+      const text = <AccessApprovalText target={name} change={access} labels={proposal.accessLabels} newProduct={false} group={false} refused={refused} />;
+      return refused ? { text, names: 'every-row', closing: false } : { text, names: ['accessItems'] };
     }
     case 'download.add':
     case 'download.replace':
@@ -315,6 +316,35 @@ const accessStepsByProduct = (items: readonly ApprovalFacts[]): ApprovalFacts[][
   return [...byProduct.values()];
 };
 
+type AccessLabels = NonNullable<ApprovalFacts['accessLabels']>;
+
+const mergedAccessLabels = (steps: readonly ApprovalFacts[]): ApprovalFacts['accessLabels'] => {
+  const present = steps.flatMap((step) => (step.accessLabels === undefined ? [] : [step.accessLabels]));
+  if (present.length === 0) return undefined;
+  const merged = (kind: 'courses' | 'modules' | 'lessons'): AccessLabels[typeof kind] => {
+    const byId = new Map<string, AccessLabels[typeof kind][number]>();
+    for (const labels of present) for (const entry of labels[kind]) if (!byId.has(entry.id)) byId.set(entry.id, entry);
+    return [...byId.values()];
+  };
+  const archived = [...new Set(present.flatMap((labels) => labels.archivedCourses ?? []))];
+  return {
+    courses: merged('courses'),
+    modules: merged('modules'),
+    lessons: merged('lessons'),
+    ...(archived.length === 0 ? {} : { archivedCourses: archived }),
+  };
+};
+
+const stepRefused = (step: ApprovalFacts): boolean => {
+  const change = changeProposalAccessChange(step);
+  return change !== null && accessFacts(change, step.accessLabels).refused;
+};
+
+const deletedLater = (items: readonly ApprovalFacts[], last: ApprovalFacts): boolean =>
+  last.target.id !== null && items.slice(items.indexOf(last) + 1).some(
+    (later) => later.operation === 'product.delete-draft' && later.target.id === last.target.id,
+  );
+
 export const GroupAccessSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
   const t = useTranslations().changeProposals;
   const sentences = accessStepsByProduct(items).flatMap((steps) => {
@@ -325,15 +355,22 @@ export const GroupAccessSentences = ({ items, references }: { items: readonly Ap
     const after = changeProposalAccessChange(item);
     const shownTarget = proposalTarget(item, references);
     const target = targetName(shownTarget);
+    const refused = steps.some(stepRefused);
+    if (target !== null && deletedLater(items, item)) {
+      return refused
+        ? [{ item, text: <Isolated sentence={(slot) => t.approveGroupProductSetAccessRefusedDeleted({ target: slot })} value={target} /> }]
+        : [];
+    }
     return [{ item, text: before === null || after === null || target === null
       ? t.approveFallback({ operation: operationTitle(t, item.operation) })
       : (
         <AccessApprovalText
           target={target}
           change={{ before: before.before, after: after.after }}
-          labels={item.accessLabels}
+          labels={mergedAccessLabels(steps)}
           newProduct={shownTarget.kind === 'reference'}
           group
+          refused={refused}
         />
       ) }];
   });

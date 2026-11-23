@@ -51,6 +51,7 @@ export const publicMarketingMessagesEn = {
   savePreferences: 'Save preferences',
   unsubscribedEverything: ({ tenant }) => `You are unsubscribed from all marketing e-mails from ${tenant}.`,
   resubscribeBlocked: 'You cannot subscribe again from this page; contact the sender.',
+  subscriptionsRefusedAfterSave: 'Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.',
   supportLink: 'Help and contact',
   preferencesSavedTitle: 'Preferences saved',
   preferencesSavedBody: 'Your settings have been updated.',

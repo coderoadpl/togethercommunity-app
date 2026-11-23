@@ -49,6 +49,7 @@ export interface PublicMarketingMessages {
   savePreferences: string;
   unsubscribedEverything: (input: { tenant: string }) => string;
   resubscribeBlocked: string;
+  subscriptionsRefusedAfterSave: string;
   supportLink: string;
   preferencesSavedTitle: string;
   preferencesSavedBody: string;

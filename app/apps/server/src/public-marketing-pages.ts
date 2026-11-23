@@ -294,6 +294,7 @@ button.secondary.danger-text:hover{color:var(--danger-strong)}
 .choice input{width:1.15rem;height:1.15rem;margin:.28rem 0 0;accent-color:var(--accent)}
 .choice span{font-size:.9375rem;overflow-wrap:anywhere}
 .choice small{grid-column:2;color:var(--muted);font-size:.8125rem}
+.choice input:disabled,.choice input:disabled + span{color:var(--muted);cursor:not-allowed}
 .notice{margin-top:1.5rem;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--surface));padding:.85rem 1rem;font-size:.9375rem;overflow-wrap:anywhere}
 .status{margin-top:1rem}
 .status .lede,.status .fine{max-width:36rem}
@@ -485,12 +486,16 @@ export const renderPreferencesPage = (input: {
   scopeLabel: string | null;
   globallySuppressed: boolean;
   definitions: PublicPreferenceDefinition[];
+  subscriptionsRefused?: boolean;
 }): string => {
   const t = messages[input.language];
   const tenant = input.brand.tenant.name;
   const path = `/u/${encodeURIComponent(input.token)}`;
   const formSuffix = `?lang=${input.language}`;
-  const lede = `<p class="lede">${escapeHtml(t.preferencesFor({ email: input.email }))}</p>`;
+  const refusedNotice = input.subscriptionsRefused === true
+    ? `<p class="notice" role="status" data-state="subscriptions-refused">${escapeHtml(t.subscriptionsRefusedAfterSave)}</p>`
+    : '';
+  const lede = `<p class="lede">${escapeHtml(t.preferencesFor({ email: input.email }))}</p>${refusedNotice}`;
   const page = (body: string): string => renderPage({
     nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle,
     eyebrow: t.preferencesEyebrow, body: `${lede}${body}`, testId: 'marketing-preferences',
@@ -516,7 +521,7 @@ export const renderPreferencesPage = (input: {
     : `${scopedOption}<div class="unsubscribe-option">${everythingWarning}${everythingForm('secondary danger-text')}</div>`;
   const choices = input.definitions.length === 0
     ? `<p class="fine">${escapeHtml(t.noOptionalConsents)}</p>`
-    : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
+    : input.definitions.map((definition) => `<label class="choice"><input type="hidden" name="present-consent" value="${escapeHtml(definition.id)}"><input type="checkbox" name="consent" value="${escapeHtml(definition.id)}"${definition.active || definition.pendingConfirmation ? ' checked' : input.globallySuppressed ? ' disabled' : ''}><span>${escapeHtml(definition.label)}</span>${definition.pendingConfirmation ? `<small>${escapeHtml(t.pendingConfirmation)}</small>` : ''}</label>`).join('');
   return page(`<section class="card" data-state="${allMarketing ? 'all-marketing-link' : scopedWithdrawn ? 'consent-withdrawn' : 'consent-link'}"><h2>${escapeHtml(t.unsubscribeTitle)}</h2>${options}</section><div class="card"><form method="post" action="${path}/preferences${formSuffix}"><fieldset class="choices"><legend>${escapeHtml(t.consentsTitle)}</legend><p class="fine">${escapeHtml(t.consentsIntro)}</p>${input.globallySuppressed ? `<p class="fine">${escapeHtml(t.resubscribeBlocked)}</p>` : ''}${choices}</fieldset><div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form></div>`);
 };
 

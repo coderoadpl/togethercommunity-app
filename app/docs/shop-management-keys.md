@@ -474,9 +474,14 @@ key gets `403 forbidden` there and changes nothing. A propose-mode key with
 `product.set-access` [change proposal](change-proposals.md#product-access) that
 only the owner can approve. A direct-mode key still sets what a new product
 grants through `accessItems` on `POST /api/m2m/shop/products`. Product
-creation, the owner's editor and `product.set-access` run the same check: each
-course exists in the workspace and is not archived, each module belongs to its
-item's course, and each lesson sits in a module of its item's course. The
+creation, the owner's editor and the approval of a `product.create` or
+`product.set-access` proposal run the same check: each course exists in the
+workspace and is not archived, each module belongs to its item's course, and
+each lesson sits in a module of its item's course. The submission of such a
+proposal does not run it, so a propose-mode key learns from a refusal nothing
+about the courses, modules and lessons it named; a list that fails the check
+ends its proposal `failed` at the approval. A direct-mode key that creates a
+product gets one message for every reason the check refuses its list. The
 content import, the legacy importer and lesson deletion write access items
 without it ([Product access](change-proposals.md#product-access)). A
 `product.set-access` proposal may not repeat an item or an id. No shop route
@@ -506,10 +511,14 @@ reaches another URL. Use it only from a backend.
 The eleven catalogue writes, `createSalesLink`, `updateSalesLink`,
 `deleteSalesLink`, `updateSettings`, `addProductDownload`,
 `replaceProductDownload` and `removeProductDownload` resolve to
-`{ outcome: 'applied', ... }` with the resource for a direct-mode key and to
 `{ outcome: 'proposed', proposal }` with the
-[receipt](change-proposals.md#receipts) for a propose-mode key;
-`isProposedChange(value)` narrows the result. `listProposals`, `getProposal`
+[receipt](change-proposals.md#receipts) for a propose-mode key, and all of
+them except `setProductAccess` to `{ outcome: 'applied', ... }` with the
+resource for a direct-mode key; `isProposedChange(value)` narrows the result.
+`setProductAccess` never applies for a key: its live handler needs
+`product:access:write`, which no scope grants, so a direct-mode key gets
+`forbidden` whatever its scopes. Change what an existing product grants with a
+propose-mode key and an owner's approval, or in an owner's or admin's session. `listProposals`, `getProposal`
 and `withdrawProposal` reach the key's own proposals. Each of these eighteen
 writes takes an optional third argument `{ groupId }` that sends the
 `x-proposal-group` header, and its proposed outcome then also carries the
@@ -1263,7 +1272,7 @@ or use `createShopManagementClient`, which does that and returns a
 |---|---|---|---|---|
 | 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode; a download file whose stored bytes do not have the declared size or type, or a file a key cannot copy | 2 | Fix the request; never retry unchanged |
 | 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a key whose issuer is no longer a verified owner; a cookie or `Authorization` header on the request | 3 | Stop and alert; ask a current owner for a new key |
-| 403 | `forbidden` | The key lacks the route's scope, or a propose-mode key calls a route its mode refuses | 4 | Stop and alert; issue a key with the needed scope or mode |
+| 403 | `forbidden` | The key lacks the route's scope, a propose-mode key calls a route its mode refuses, or a direct-mode key calls `POST /api/m2m/shop/products/access`, whose capability no scope grants | 4 | Stop and alert; issue a key with the needed scope or mode; for a product's access list, use a propose-mode key or an owner's session |
 | 404 | `not_found` | The product, price, order, sales link, candidate upload, download file, file upload or staged file does not exist in this workspace or for this key | 5 | Treat as gone |
 | 404 | `tenant_not_found` | The host or `x-tenant` selects no workspace | 7 | Fix the base URL or workspace slug |
 | 409 | `conflict` | Stale sales-link revision, order line already issued, a download file limit (`error.details.changeProposalCap`), a file upload that is being completed, expired, failed or settled by the sweep, or completed and no longer staged | 6 | Re-read, then decide |
@@ -1780,12 +1789,23 @@ has no public copy on either release: keep such proposals unapproved until
 rolling forward. Its public asset route accepts only random-id file names and
 answers `404` for a `<sha256>.<ext>` address, so a product cover or branding
 image an approval published is missing on that release until rolling forward;
-nothing is deleted. It reads the `stale` event note `image_unavailable: …` like
+nothing is deleted. It serves a random-id image as this release does, with a
+`302` to a presigned link that asks the storage for `image/svg+xml` and
+`attachment` for an SVG, so an SVG this release stored with
+`content-disposition: attachment` still loads in an `img` element and
+downloads when opened directly; an SVG uploaded there during the retreat is
+stored without that header. It reads the `stale` event note `image_unavailable: …` like
 any other note, and names the key and the group of a `change-proposal`
 notification from its community fields, which this release still fills. A
 panel tab or CLI of that release refuses the begin answer of a propose-mode
 key's image upload (`servePath: null`) and shows a pending proposal's
-content-addressed image as not shown. Before the retreat, count the pending
+content-addressed image as not shown; reload open panel tabs and update the
+CLI after deploying this release or rolling back. A lesson-question or
+thread-reply notification this release stored can name a course other than
+the lesson's first, the one through which the recipient reaches the lesson;
+that release links it there, and for a member whose access it no longer opens
+there ([Rolling back](change-proposals.md#product-access) under Product
+access) the link opens a page they cannot see. Before the retreat, count the pending
 proposals that attach a content-addressed image and the live image fields that
 show one and, before retreating further than `8141fd15`, delete its
 `change-proposal` notifications, as Rolling back under
@@ -1793,31 +1813,45 @@ show one and, before retreating further than `8141fd15`, delete its
 [Download files](change-proposals.md#download-files) shows.
 
 A retreat to a release that predates migration `0170_key_download_files` needs
-no data step either. The migration only adds
+no data step either. The migration adds
 `change_proposal_download_files`, `change_proposal_download_uploads`,
 `change_proposal_download_deletions` and
-`change_proposal_download_upload_events` with their indexes, the nullable
-column `sha256` on `product_download_assets`, and the nullable column
-`sweep_attempted_at` on `change_proposal_images`,
-`change_proposal_image_uploads` and `change_proposal_image_publications`.
-Each new table's foreign key to `tenants` takes a `SHARE ROW EXCLUSIVE` lock
+`change_proposal_download_upload_events` with their indexes, and the nullable
+column `sha256`, without a check, on `product_download_assets`. On the three
+tables of `0169` it adds the nullable column `sweep_attempted_at` without a
+check to each, and nullable columns with checks: `delete_unresolved_at` on
+`change_proposal_images` and `change_proposal_image_publications`,
+`pending_since` on `change_proposal_images`, and `first_deleted_at`,
+`completed_digest` and `completed_extension` on
+`change_proposal_image_uploads`, with a check that the last two are set
+together. Each new table's foreign key to `tenants` takes a `SHARE ROW EXCLUSIVE` lock
 on `tenants`, which blocks writes to `tenants` (not reads) until the migration
 transaction commits; each `CREATE INDEX` locks only its new, empty table; each
-`ADD COLUMN` takes an `ACCESS EXCLUSIVE` lock on its table, a change of the
-catalog only (no default, no rewrite, no scan), so file lists, buyer downloads
-and quarantined image work wait until the migration commits. No constraint and
-no backfill touch an existing table. A release without this code has no shop
+`ADD COLUMN` takes an `ACCESS EXCLUSIVE` lock on its table until the migration
+commits, so file lists, buyer downloads and quarantined image work wait until
+then. A column without a check is a change of the catalog only (no default, no
+rewrite, no scan); each check reads its image table once under that lock, a
+table that holds only rows of unreleased proposals
+([Rolling back](change-proposals.md#images) under Images). No backfill touches
+an existing table. A release without this code has no shop
 key download file routes (`404`); the owner's file routes and buyer downloads
 answer as before. It ignores the four tables and the columns, never sweeps the
 staging rows and never deletes a staged or upload object, which stays under the
 private download prefix while its row stays. After rolling forward, the minute
 sweep of this release removes them, as far as the rows that own them still
-exist. A file a key attached is an ordinary product file row there, served and
+exist, but never a staged file a pending, unexpired proposal holds. A file a key attached is an ordinary product file row there, served and
 deleted by its stored object key like any other file; that release neither
 selects nor parses the `sha256` column.
 
 The release on production when download file proposals were added,
-`8141fd15`, is such a release (it also predates `0168` and `0169`).
+`8141fd15`, is such a release (it ends at `0167`; there is no `0168`).
+It has no schema, statement or query that names the three tables of `0169`
+or `change_proposal_download_deletions`, so the nullable columns and their
+checks, and the object key check of the owed deletions, which allows both the
+`key-files/` and the `key-uploads/` prefix, make no difference to it. Its
+storage orphan report lists the key's staged files and upload objects under
+`<workspace>/product-downloads/` as unreferenced, since it has no inventory of
+the staging tables; it is a report only and deletes nothing.
 `scripts/change-proposal-download-rollback-8141fd15.test.ts` holds literal
 copies of its schemas and parsing steps and proves what it does with what this
 release stores. It lists and shows a pending `download.add`,

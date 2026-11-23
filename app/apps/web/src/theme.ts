@@ -4345,6 +4345,8 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& .MuiAlert-root': { alignItems: 'center' },
+    '& .MuiAlert-action': { paddingTop: 0, alignItems: 'center' },
     '& .MuiAlert-action .MuiButton-root': { minHeight: 0 },
   },
   [theme.breakpoints.down('md')]: {

@@ -160,19 +160,26 @@ const stubMobileViewport = () => {
 };
 
 const MAX_WIDTH = /max-width:\s*([\d.]+)px/u;
+const MIN_WIDTH = /min-width:\s*([\d.]+)px/u;
 
-const stylesBelow = (element: Element, viewportWidth: number): Record<string, string> => Object.fromEntries(
+const mediaStyles = (element: Element, inViewport: (conditionText: string) => boolean): Record<string, string> => Object.fromEntries(
   [...document.styleSheets]
     .flatMap((sheet) => [...sheet.cssRules])
-    .flatMap((rule) => {
-      if (!(rule instanceof CSSMediaRule)) return [];
-      const maxWidth = MAX_WIDTH.exec(rule.conditionText);
-      return maxWidth !== null && Number(maxWidth[1]) >= viewportWidth ? [...rule.cssRules] : [];
-    })
+    .flatMap((rule) => rule instanceof CSSMediaRule && inViewport(rule.conditionText) ? [...rule.cssRules] : [])
     .flatMap((rule) => rule instanceof CSSStyleRule && element.matches(rule.selectorText)
       ? Array.from({ length: rule.style.length }, (_, index) => rule.style.item(index)).map((property) => [property, rule.style.getPropertyValue(property)] as const)
       : []),
 );
+
+const stylesBelow = (element: Element, viewportWidth: number): Record<string, string> => mediaStyles(element, (conditionText) => {
+  const maxWidth = MAX_WIDTH.exec(conditionText);
+  return maxWidth !== null && Number(maxWidth[1]) >= viewportWidth;
+});
+
+const stylesAbove = (element: Element, viewportWidth: number): Record<string, string> => mediaStyles(element, (conditionText) => {
+  const minWidth = MIN_WIDTH.exec(conditionText);
+  return minWidth !== null && Number(minWidth[1]) <= viewportWidth;
+});
 
 const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = false) => {
   if (shell) server.use(http.get('/api/public/offer', () => HttpResponse.json({
@@ -1660,6 +1667,12 @@ describe('LessonPlayerPage', () => {
     const retry = within(error).getByRole('button', { name: en.common.retry });
     expect(stylesBelow(retry, 375)).toMatchObject({ 'min-height': '44px' });
     expect(stylesAt(retry, 900)).toMatchObject({ 'min-height': '0px' });
+    expect(stylesAbove(error, 900)).toMatchObject({ 'align-items': 'center' });
+    expect(stylesBelow(error, 375)).not.toHaveProperty('align-items');
+    const action = error.querySelector('.MuiAlert-action');
+    if (action === null) throw new Error('Expected the alert action slot');
+    expect(stylesAbove(action, 900)).toMatchObject({ 'padding-top': '0px', 'align-items': 'center' });
+    expect(stylesBelow(action, 375)).not.toHaveProperty('padding-top');
     const close = within(error).getByRole('button', { name: en.common.close });
     expect(stylesBelow(close, 375)).toMatchObject({ width: '44px', height: '44px' });
 

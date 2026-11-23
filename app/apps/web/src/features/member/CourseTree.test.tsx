@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ListItemButton, ThemeProvider } from '@mui/material';
 import {
   createMemoryHistory,
@@ -480,6 +480,45 @@ describe('CourseTree', () => {
     const empty = await screen.findByTestId('tree-no-results');
     expect(empty).toHaveTextContent(en.courseTree.noMatches);
     expect(empty).toHaveTextContent(en.search.stemHint);
+  });
+
+  it('renders no filter when the caller leaves filtering to another tree', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll showFilter={false} />);
+
+    expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+  });
+
+  it('drops a typed filter once the caller hides the field', async () => {
+    const user = userEvent.setup();
+    const Harness = () => {
+      const [showFilter, setShowFilter] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setShowFilter(!showFilter)}>toggle filter</button>
+          <CourseTree courseId="course-1" structure={structure} expandAll showFilter={showFilter} />
+        </>
+      );
+    };
+    await renderNode(<Harness />);
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'Scope');
+    await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'toggle filter' }));
+
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.getByText('Intro to Variables')).toBeInTheDocument();
+    expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(document.querySelector('mark')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'toggle filter' }));
+
+    expect(screen.getByTestId('lesson-search')).toHaveValue('');
+    expect(screen.getByText('Intro to Variables')).toBeInTheDocument();
   });
 
   it('keeps module and chapter counts on the full structure while filtering', async () => {

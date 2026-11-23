@@ -127,13 +127,14 @@ const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
-const renderSidebar = async (currentLessonId: string | null) => {
+const renderSidebar = async (currentLessonId: string | null, showFilter = true) => {
   const rootRoute = createRootRoute({
     component: () => (
       <CourseSidebar
         courseId="course-1"
         currentLessonId={currentLessonId}
         tenantName="Acme"
+        showFilter={showFilter}
       />
     ),
   });
@@ -394,6 +395,18 @@ describe('CourseSidebar', () => {
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-pinned'));
     expect(scroller).not.toContainElement(screen.getByTestId('lesson-search'));
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
+  });
+
+  it('stays a compact navigator without its own filter when the page carries the program', async () => {
+    server.use(okStructure(), okProgress('l3'), okNavigation(), noNotifications());
+
+    await renderSidebar(null, false);
+
+    const scroller = await screen.findByTestId('course-tree-scroll');
+    expect(within(scroller).getByTestId('course-tree')).toBeInTheDocument();
+    expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
   });
 
   it('ends with the lesson tree, leaving notifications and the account to the app bar', async () => {

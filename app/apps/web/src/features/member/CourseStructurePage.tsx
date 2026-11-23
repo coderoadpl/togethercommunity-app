@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useId, useMemo } from 'react';
 import { Box, Button, Paper, Stack, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
@@ -92,13 +92,20 @@ const CourseProgramSection = ({
   focusLessonId: string | null;
 }) => {
   const t = useTranslations();
+  const headingId = useId();
   return (
-    <Box component="section" data-testid="course-tree-inline" sx={{ mt: '1.5rem' }}>
-      <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
+    <Paper
+      elevation={1}
+      component="section"
+      aria-labelledby={headingId}
+      data-testid="course-tree-inline"
+      sx={{ p: '1.25rem' }}
+    >
+      <Eyebrow variant="overline" component="h2" id={headingId} sx={{ mb: '0.75rem' }}>
         {t.courseOverview.curriculum}
-      </Typography>
+      </Eyebrow>
       <CourseTree courseId={courseId} structure={structure} focusLessonId={focusLessonId} />
-    </Box>
+    </Paper>
   );
 };
 
@@ -202,22 +209,21 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       resume={progress.data?.progress.resume}
     />
   );
-  const details = (
-    <>
-      <CourseStatTiles structure={course} />
-      {catalogEntry === undefined ? null : (
-        <Cover
-          src={catalogEntry.imageUrl}
-          title={course.name}
-          alt={t.courseOverview.coverAlt({ name: course.name })}
-          frame="standalone"
-          whenMissing="omit"
-          testId="course-cover"
-          fallbackTestId="course-cover-fallback"
-        />
-      )}
-    </>
+  const statTiles = <CourseStatTiles structure={course} />;
+  const cover = catalogEntry === undefined ? null : (
+    <Cover
+      src={catalogEntry.imageUrl}
+      title={course.name}
+      alt={t.courseOverview.coverAlt({ name: course.name })}
+      frame="standalone"
+      whenMissing="omit"
+      testId="course-cover"
+      fallbackTestId="course-cover-fallback"
+    />
   );
+  const program = hasModules ? (
+    <CourseProgramSection courseId={courseId} structure={course} focusLessonId={focusLessonId} />
+  ) : null;
   const emptyState = !hasModules ? (
     <StatusView
       state={{
@@ -234,16 +240,17 @@ const MemberCourseStructurePage = ({ courseId }: { courseId: string }) => {
       {progressCard}
       {aboutCard}
       {discussionSearch}
-      {details}
+      {statTiles}
+      {cover}
       {emptyState}
-      {hasModules ? (
-        <CourseProgramSection courseId={courseId} structure={course} focusLessonId={focusLessonId} />
-      ) : null}
+      {program}
     </>
   );
   const desktopSections = (
     <>
-      {details}
+      {statTiles}
+      {program}
+      {cover}
       {aboutCard}
       {emptyState}
     </>

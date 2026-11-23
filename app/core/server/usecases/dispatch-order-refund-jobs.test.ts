@@ -51,6 +51,7 @@ const harness = (input: {
   });
   const alerts = fake.alerts;
   const errors: string[] = [];
+  const warnings: string[] = [];
   const deps = {
     refundJobs: fake.repository,
     orderDetails: { findById: async (tenantId: string, orderId: string) => (tenantId === order.tenantId && orderId === order.id ? order : null) },
@@ -70,7 +71,7 @@ const harness = (input: {
     },
     tenantDomains: createInMemoryTenantDomainRepository(),
     clock: { nowIso: () => now },
-    logger: { warn: () => undefined, error: (message: string) => { errors.push(message); } },
+    logger: { warn: (message: string) => { warnings.push(message); }, error: (message: string) => { errors.push(message); } },
     dispatchEmail: () => undefined,
     appBaseUrl: 'https://togethercommunity.app',
     baseDomain: 'togethercommunity.app',
@@ -98,7 +99,7 @@ const harness = (input: {
     return fake.repository.noteChargeRefunded(order.tenantId, order.id, now);
   };
   return {
-    deps, queue, tick, job, refundCalls: provider.calls, listCalls: provider.listCalls, created: provider.created, alerts, alertKinds, keys, errors,
+    deps, queue, tick, job, refundCalls: provider.calls, listCalls: provider.listCalls, created: provider.created, alerts, alertKinds, keys, errors, warnings,
     failAlertWrites: fake.failAlertWrites, failRecipientLookups, chargeRefunded, refundByHand: provider.refundByHand, failRefund: provider.failRefund,
     setRefundStatus: provider.setRefundStatus, failLists: provider.failLists,
   };
@@ -671,6 +672,17 @@ describe('order refund dispatcher', () => {
     await h.tick(createdAt);
     expect(h.job()).toMatchObject({ status: 'failed', nextAttemptAt: null });
     expect(h.alertKinds()).toStrictEqual(['failed']);
+  });
+
+  it('keeps the provider message for staff but logs it without provider object ids', async () => {
+    const message = "No such payment_intent: 'pi_3PqRsTuVwXyZ1234'";
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('not_found', message, 'resource_missing') }] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    expect(h.job()).toMatchObject({ status: 'failed', lastError: message });
+    expect(h.warnings).toStrictEqual([`[order-refund] tenant=tenant-a order=order-1 job=job-1 attempt=1 status=failed next=none error=No such payment_intent: '[provider id]'`]);
+    expect(h.warnings.join('\n')).not.toContain('pi_3PqRsTuVwXyZ1234');
   });
 
   it('re-reads a refund at 24 hours and 7 days and stops checking once both confirm it', async () => {

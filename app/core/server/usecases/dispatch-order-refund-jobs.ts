@@ -20,7 +20,7 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
-import { safeErrorMessage, safeLogMessage } from '../log-safety.js';
+import { safeErrorMessage, safeProviderLogMessage } from '../log-safety.js';
 import type {
   Clock,
   EmailOutboxEnqueueInput,
@@ -390,7 +390,7 @@ const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: D
 const deferSettlement = async (claim: ClaimedRefundJob, cause: unknown, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
   const { job } = claim;
   const now = deps.clock.nowIso();
-  deps.logger.error(safeLogMessage(`[order-refund] settlement not saved, retrying tenant=${job.tenantId} order=${job.orderId} job=${job.id} phase=${claim.phase}: ${safeErrorMessage(cause)}`));
+  deps.logger.error(safeProviderLogMessage(`[order-refund] settlement not saved, retrying tenant=${job.tenantId} order=${job.orderId} job=${job.id} phase=${claim.phase}: ${safeErrorMessage(cause)}`));
   try {
     await deps.refundJobs.release(job.tenantId, job.id, claim.lease, {
       ...(claim.phase === 'refund' ? { status: 'pending' } : {}),
@@ -398,7 +398,7 @@ const deferSettlement = async (claim: ClaimedRefundJob, cause: unknown, deps: Di
       now,
     });
   } catch (releaseCause) {
-    deps.logger.error(safeLogMessage(`[order-refund] job left to its lease tenant=${job.tenantId} order=${job.orderId} job=${job.id}: ${safeErrorMessage(releaseCause)}`));
+    deps.logger.error(safeProviderLogMessage(`[order-refund] job left to its lease tenant=${job.tenantId} order=${job.orderId} job=${job.id}: ${safeErrorMessage(releaseCause)}`));
   }
   return 'deferred';
 };
@@ -427,7 +427,7 @@ const processClaim = async (claim: ClaimedRefundJob, deps: DispatchOrderRefundJo
     return 'lease_lost';
   }
   if (settlement.outcome !== 'refunded' && settlement.outcome !== 'checked') {
-    deps.logger.warn(safeLogMessage(`[order-refund] tenant=${job.tenantId} order=${job.orderId} job=${job.id} attempt=${String(job.attempts)} status=${released.status} next=${released.nextAttemptAt ?? 'none'} error=${released.lastError ?? 'none'}`));
+    deps.logger.warn(safeProviderLogMessage(`[order-refund] tenant=${job.tenantId} order=${job.orderId} job=${job.id} attempt=${String(job.attempts)} status=${released.status} next=${released.nextAttemptAt ?? 'none'} error=${released.lastError ?? 'none'}`));
   }
   if (staffAlerts.length > 0 || notice !== undefined) deps.dispatchEmail();
   return settlement.outcome;
@@ -438,7 +438,7 @@ const warnDueJobsLeft = async (stoppedBy: 'cap' | 'deadline', deps: DispatchOrde
     const due = await deps.refundJobs.countDue({ now: deps.clock.nowIso() });
     if (due > 0) deps.logger.warn(`[order-refund] run stopped by ${stoppedBy}, ${String(due)} due refund jobs left for the next run`);
   } catch (cause) {
-    deps.logger.error(safeLogMessage(`[order-refund] due refund jobs not counted after the run stopped by ${stoppedBy}: ${safeErrorMessage(cause)}`));
+    deps.logger.error(safeProviderLogMessage(`[order-refund] due refund jobs not counted after the run stopped by ${stoppedBy}: ${safeErrorMessage(cause)}`));
   }
 };
 

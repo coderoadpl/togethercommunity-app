@@ -4,6 +4,7 @@ import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
@@ -3415,7 +3416,7 @@ describe('public rate limiting', () => {
     purgeExpired: async () => 0,
   };
 
-  it('answers a per-IP over-limit sign-up form post with a minimal page before any workspace lookup', async () => {
+  it('answers a per-IP over-limit sign-up form post with a minimal page that needs no workspace lookup', async () => {
     const configured = deps({
       rateLimitBuckets: { claim: async (input) => input.scope !== 'signup:ip', purgeExpired: async () => 0 },
     });
@@ -3447,6 +3448,37 @@ describe('public rate limiting', () => {
       expect(rejected.headers.get('content-type')).toBe('application/json');
       expect(await rejected.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
     }
+  });
+
+  it('adds no workspace lookup to the per-IP over-limit page when the sign-up CORS check read the workspace first', async () => {
+    const configured = deps();
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const lookupCount = () => lookups.reduce((total, lookup) => total + lookup.mock.calls.length, 0);
+    let lookupsBeforeLimiter: number | null = null;
+    configured.rateLimitBuckets = {
+      claim: async (input) => {
+        lookupsBeforeLimiter ??= lookupCount();
+        return input.scope !== 'signup:ip';
+      },
+      purgeExpired: async () => 0,
+    };
+    const app = buildApp(configured);
+    const response = await app.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', origin: 'https://studio.example.org', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString(),
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(await response.text()).toContain(`<p role="alert">${publicMarketingMessagesEn.signupRateLimited}</p>`);
+    expect(lookupsBeforeLimiter).toBeGreaterThan(0);
+    expect(lookupCount()).toBe(lookupsBeforeLimiter);
   });
 
   it('answers a throttled checkout with 429 and Retry-After', async () => {

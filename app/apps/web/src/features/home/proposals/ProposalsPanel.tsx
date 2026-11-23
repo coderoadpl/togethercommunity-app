@@ -18,6 +18,7 @@ import { EntryDate, FinePrint, WrapAnywhereText } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 import {
   GroupProposalCard,
+  failureOf,
   GroupTitle,
   mayBeStaleForMissingAsset,
   missingAssetOf,
@@ -78,7 +79,7 @@ const SettledNotice = ({ outcome, onDismiss }: { outcome: SettledOutcome; onDism
       data-testid={`proposal-outcome-${outcome.key}`}
     >
       <AlertTitle>{outcome.title}</AlertTitle>
-      {outcomeExplanation(t, outcome.status, outcome.reason, outcome.missing)}
+      {outcomeExplanation(t, outcome.status, outcome.failure, outcome.missing)}
     </Alert>
   );
 };
@@ -233,7 +234,7 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
   const assetStale = mayBeStaleForMissingAsset(proposal);
   const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: assetStale });
   const missing = assetStale && detail.data !== undefined ? staleForMissingAsset(detail.data.proposal.events) : null;
-  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage, missing);
+  const explanation = outcomeExplanation(t, proposal.status, failureOf(proposal), missing);
   const decided = decidedLine(t, proposal, language);
   const keyName = proposal.proposedBy.keyName;
   return (

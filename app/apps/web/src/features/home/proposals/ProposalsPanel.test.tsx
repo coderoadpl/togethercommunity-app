@@ -20,6 +20,7 @@ import {
 import { actions } from '../../../api.js';
 import { ToastProvider } from '../../../components/ui/Toast.js';
 import { en } from '../../../i18n/en.js';
+import { pl } from '../../../i18n/pl.js';
 import { LanguageProvider } from '../../../i18n/index.js';
 import { formatPrice } from '../../../lib/format.js';
 import {
@@ -59,6 +60,7 @@ const normalized = (text: string): string => text.replace(/\s+/gu, ' ');
 const renderPanel = (
   staffRole: 'owner' | 'admin' = 'owner',
   { emailVerified = true, impersonating = false }: { emailVerified?: boolean; impersonating?: boolean } = {},
+  localized = false,
 ) => {
   const rootRoute = createRootRoute();
   const route = createRoute({
@@ -76,7 +78,8 @@ const renderPanel = (
     routeTree: rootRoute.addChildren([route]),
     history: createMemoryHistory({ initialEntries: ['/panel/proposals'] }),
   });
-  return renderWithProviders(<ToastProvider><RouterProvider router={router} /></ToastProvider>);
+  const page = <ToastProvider><RouterProvider router={router} /></ToastProvider>;
+  return renderWithProviders(localized ? <LanguageProvider>{page}</LanguageProvider> : page);
 };
 
 const stockLevel = {
@@ -1062,6 +1065,34 @@ describe('ProposalsPanel', () => {
     expect(access).toHaveTextContent('the whole course “Life drawing 2025” (archived)');
     expect(within(row).queryByTestId('proposal-access-refused')).toBeNull();
     expect(within(row).queryByTestId('proposal-approve')).toBeNull();
+  });
+
+  it('explains a refused access or file proposal in the language of the page, never with the server wording', async () => {
+    const accessMessage = 'Product access lessonIds must belong to the item courseId through its modules and chapters';
+    const unknownMessage = 'An unforeseen refusal';
+    const access = settledView(accessGoneProposal, { status: 'failed', failureCode: 'validation', failureMessage: accessMessage });
+    const file = settledView(fileAddProposal, { status: 'failed', failureCode: 'validation', failureMessage: unknownMessage });
+    const stock = settledView(stockAdjustmentProposal, { status: 'failed', failureCode: 'validation', failureMessage: 'Stock cannot go below zero' });
+    usePending([]);
+    server.use(
+      http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
+        ok: true,
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [access, file, stock] : [], nextCursor: null, hasMore: false },
+      })),
+    );
+    languagePreference.save('pl');
+    const polish = pl.changeProposals;
+
+    renderPanel('owner', {}, true);
+
+    await userEvent.click(await screen.findByRole('tab', { name: polish.tabHistory }));
+    const accessRow = await screen.findByTestId(`proposal-history-${access.id}`);
+    expect(accessRow).toHaveTextContent(polish.outcomeFailed({ reason: polish.refusal.accessLessonOutsideCourse }));
+    expect(accessRow).not.toHaveTextContent(accessMessage);
+    const fileRow = screen.getByTestId(`proposal-history-${file.id}`);
+    expect(fileRow).toHaveTextContent(polish.outcomeFailedUnknown);
+    expect(fileRow).not.toHaveTextContent(unknownMessage);
+    expect(screen.getByTestId(`proposal-history-${stock.id}`)).toHaveTextContent(polish.outcomeFailed({ reason: 'Stock cannot go below zero' }));
   });
 
   it('words an emptied list in Polish in the row', () => {

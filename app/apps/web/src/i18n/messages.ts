@@ -2,6 +2,7 @@ import type {
   ChangeProposalDisplayStatus,
   ChangeProposalEventKind,
   ChangeProposalReferenceKind,
+  ChangeProposalRefusal,
   ChangeProposalTargetKind,
   ImportAuditAction,
   ImportAuditResourceType,
@@ -763,6 +764,7 @@ export interface Messages {
     outcomeStaleUnconfirmed: string;
     outcomeFileUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
+    refusal: Record<ChangeProposalRefusal, string>;
     outcomeFailedUnknown: string;
     outcomeExpired: string;
     dismiss: string;

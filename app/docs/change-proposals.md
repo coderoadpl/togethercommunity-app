@@ -550,7 +550,16 @@ again. An item that attaches a file is read the same way for the note code
 `file_unavailable` ([Download files](#download-files)). When a single
 proposal's events cannot be read, the notice says neutrally that nothing was
 applied because the shop changed or a proposed image or file is no longer
-available, and that its history shows which. "Show more proposals" appends the next page
+available, and that its history shows which. A `failed` approval, in the
+notice and in its history row, says that the shop refused the change and
+nothing was applied, followed by the reason. The refusals of a product access
+list (a course gone or archived, a module or lesson gone or no longer part of
+the course named with it) and of a file change (a product without downloadable
+files, a file to be replaced or removed that is gone or not ready, a product
+already holding as many files as it can) are worded in the page's language
+(`CHANGE_PROPOSAL_REFUSALS` in `core/domain/change-proposal-refusals.ts`); any
+other refusal of those operations shows the sentence without a reason, and the
+refusal of another operation still shows the server's wording. "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
 first new card. The full-page error appears only when nothing has loaded yet: a
 next page that fails keeps the list and shows an inline error with a Retry of

@@ -7,6 +7,7 @@ import { ApiError } from '#core/client/index.js';
 import {
   CHANGE_PROPOSAL_LIMITS,
   changeProposalImageReferences,
+  changeProposalRefusalOf,
   changeProposalStagedFileId,
   isChangeProposalFileMissingNote,
   isChangeProposalImageMissingNote,
@@ -42,13 +43,30 @@ export type MissingAsset = 'image' | 'file';
 
 export type StaleCause = MissingAsset | 'unconfirmed';
 
+export interface Failure {
+  operation: string;
+  message: string;
+}
+
 export interface SettledOutcome {
   key: string;
   title: string;
   status: SettledStatus;
-  reason: string | null;
+  failure: Failure | null;
   missing: StaleCause | null;
 }
+
+export const failureOf = (proposal: Pick<ChangeProposalOwnerView, 'operation' | 'failureMessage'>): Failure | null =>
+  proposal.failureMessage === null ? null : { operation: proposal.operation, message: proposal.failureMessage };
+
+const UNWORDED_REFUSALS: ReadonlySet<string> = new Set(['product.set-access', 'download.add', 'download.replace', 'download.remove']);
+
+const failureReason = (t: Translations, failure: Failure | null): string | null => {
+  if (failure === null) return null;
+  const refusal = changeProposalRefusalOf(failure.message);
+  if (refusal !== null) return t.refusal[refusal];
+  return UNWORDED_REFUSALS.has(failure.operation) ? null : failure.message;
+};
 
 export interface DecisionCallbacks {
   onSettled: (outcome: SettledOutcome) => void;
@@ -68,9 +86,12 @@ const staleExplanation = (t: Translations, missing: StaleCause | null): string =
   return missing === 'unconfirmed' ? t.outcomeStaleUnconfirmed : t.outcomeStale;
 };
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null, missing: StaleCause | null = null): string | null => {
+export const outcomeExplanation = (t: Translations, status: string, failure: Failure | null, missing: StaleCause | null = null): string | null => {
   if (status === 'stale') return staleExplanation(t, missing);
-  if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+  if (status === 'failed') {
+    const reason = failureReason(t, failure);
+    return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+  }
   if (status === 'expired') return t.outcomeExpired;
   return null;
 };
@@ -396,9 +417,10 @@ export const SingleProposalCard = ({
       }
       if (isSettledStatus(decided.status)) {
         const missing = await missingAsset(decided);
-        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missing);
+        const failure = failureOf(decided);
+        const explanation = outcomeExplanation(t.changeProposals, decided.status, failure, missing);
         if (explanation !== null) toast.info(explanation);
-        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, missing });
+        onSettled({ key: decided.id, title, status: decided.status, failure, missing });
       }
     },
     onError: async (error) => {
@@ -546,11 +568,11 @@ export const GroupProposalCard = ({
       }
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
-      const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
+      const failure = status === 'failed' && offending !== undefined ? failureOf(offending) : null;
       const missing = status === 'stale' ? staleForMissingAsset(decided.items.flatMap((item) => item.events)) : null;
-      const explanation = outcomeExplanation(t.changeProposals, status, reason, missing);
+      const explanation = outcomeExplanation(t.changeProposals, status, failure, missing);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, missing });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, failure, missing });
     },
     onError: groupFailed,
   });

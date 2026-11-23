@@ -1,4 +1,13 @@
-import { err, ok, validation, type AccessItem, type AppError, type CourseModule, type Result } from '#core/domain/index.js';
+import {
+  CHANGE_PROPOSAL_REFUSALS,
+  err,
+  ok,
+  validation,
+  type AccessItem,
+  type AppError,
+  type CourseModule,
+  type Result,
+} from '#core/domain/index.js';
 
 import type { CourseLessonIdLookup, CourseModuleRepository, CourseRepository } from '../ports.js';
 
@@ -8,7 +17,7 @@ export interface ProductAccessCatalog {
   lessons: CourseLessonIdLookup;
 }
 
-export const PRODUCT_ACCESS_COURSE_MESSAGE = 'Product access items may only reference existing, active courses';
+export const PRODUCT_ACCESS_COURSE_MESSAGE = CHANGE_PROPOSAL_REFUSALS.accessCourseUnavailable;
 
 export const PRODUCT_ACCESS_KEY_REFUSAL =
   'Product access items may only reference active courses of this workspace, and modules and lessons that belong to the item courseId';
@@ -45,7 +54,7 @@ const checkModules = (
   modulesById: ReadonlyMap<string, CourseModule>,
 ): Result<void, AppError> => {
   const modules = moduleIds.flatMap((id) => modulesById.get(id) ?? []);
-  if (modules.length !== moduleIds.length) return err(validation('Product access items may only reference existing modules'));
+  if (modules.length !== moduleIds.length) return err(validation(CHANGE_PROPOSAL_REFUSALS.accessModuleMissing));
   return modules.every((module) => module.courseIds.includes(courseId)) ? ok(undefined) : err(validation(outsideCourseMessage));
 };
 
@@ -76,19 +85,19 @@ export const checkProductAccessItems = async (
   };
   for (const item of items) {
     if (item.level === 'modules') {
-      const modules = checkModules(unique(item.moduleIds), item.courseId, 'Product access moduleIds must belong to the item courseId', modulesById);
+      const modules = checkModules(unique(item.moduleIds), item.courseId, CHANGE_PROPOSAL_REFUSALS.accessModuleOutsideCourse, modulesById);
       if (!modules.ok) return modules;
     } else if (item.level === 'course') {
       const excluded = checkModules(
-        unique(item.excludedModuleIds ?? []), item.courseId, 'Product access excludedModuleIds must belong to the item courseId', modulesById,
+        unique(item.excludedModuleIds ?? []), item.courseId, CHANGE_PROPOSAL_REFUSALS.accessExcludedModuleOutsideCourse, modulesById,
       );
       if (!excluded.ok) return excluded;
     } else {
       const lessonIds = unique(item.lessonIds);
-      if (!lessonIds.every((lessonId) => existingLessonIds.has(lessonId))) return err(validation('Product access items may only reference existing lessons'));
+      if (!lessonIds.every((lessonId) => existingLessonIds.has(lessonId))) return err(validation(CHANGE_PROPOSAL_REFUSALS.accessLessonMissing));
       const reached = reachedBy(item.courseId);
       if (!lessonIds.every((lessonId) => reached.has(lessonId))) {
-        return err(validation('Product access lessonIds must belong to the item courseId through its modules and chapters'));
+        return err(validation(CHANGE_PROPOSAL_REFUSALS.accessLessonOutsideCourse));
       }
     }
   }

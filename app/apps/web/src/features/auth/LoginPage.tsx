@@ -53,6 +53,7 @@ import {
   AuthPasskeyLink,
   AuthTitle,
 } from './auth-chrome.js';
+import { EMAIL_PATTERN } from './auth-fields.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { PasskeyOutlineIcon } from './auth-icons.js';
 import { AuthShell } from './AuthShell.js';
@@ -68,7 +69,6 @@ const PASSKEY_CANCELLED_CODES: readonly string[] = [
   'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
   'ERROR_CEREMONY_ABORTED',
 ];
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
 const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
 

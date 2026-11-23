@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
-import { fireEvent, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -79,6 +79,21 @@ describe('ForgotPasswordPage', () => {
     },
   );
 
+  it('renders an identical outcome for a known and an unknown address', async () => {
+    server.use(anonymousMe(), http.post('*', () => HttpResponse.json({ status: true })));
+    const outcomes: string[] = [];
+    for (const email of ['known@example.com', 'random-unknown@example.com']) {
+      const view = await renderForgotPasswordPage();
+      await userEvent.type(screen.getByTestId('forgot-password-email'), email);
+      await userEvent.click(screen.getByTestId('forgot-password-submit'));
+      outcomes.push((await screen.findByTestId('forgot-password-success')).outerHTML);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      view.unmount();
+    }
+
+    expect(outcomes[0]).toBe(outcomes[1]);
+  });
+
   it('prefills a deep-linked email and submits the edited address', async () => {
     let body: unknown;
     server.use(anonymousMe(), http.post('*', async ({ request }) => {
@@ -95,13 +110,39 @@ describe('ForgotPasswordPage', () => {
     expect(body).toMatchObject({ email: 'edited@example.com' });
   });
 
-  it('validates the email before requesting a reset', async () => {
+  it.each([
+    ['an empty', '', en.forgotPassword.emailRequired],
+    ['a malformed', 'not-an-email', en.forgotPassword.invalidEmail],
+  ])('binds %s email error to the field and focuses it without requesting a reset', async (_case, typed, message) => {
+    let requested = false;
+    server.use(anonymousMe(), http.post('*', () => {
+      requested = true;
+      return HttpResponse.json({ status: true });
+    }));
+    await renderForgotPasswordPage();
+    const email = screen.getByTestId('forgot-password-email');
+    if (typed !== '') await userEvent.type(email, typed);
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+
+    const error = await screen.findByTestId('forgot-password-email-error');
+    expect(error).toHaveTextContent(message);
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveAttribute('aria-describedby', error.id);
+    expect(email).toHaveFocus();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
+  it('clears the field error once the address is edited', async () => {
     server.use(anonymousMe());
     await renderForgotPasswordPage();
-    await userEvent.type(screen.getByTestId('forgot-password-email'), 'not-an-email');
-    fireEvent.submit(screen.getByTestId('forgot-password-form'));
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    expect(await screen.findByTestId('forgot-password-email-error')).toBeInTheDocument();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(en.forgotPassword.invalidEmail);
+    await userEvent.type(screen.getByTestId('forgot-password-email'), 'm');
+
+    expect(screen.queryByTestId('forgot-password-email-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('forgot-password-email')).toHaveAttribute('aria-invalid', 'false');
   });
 
   it('disables submission while the provider request is pending', async () => {
@@ -129,5 +170,23 @@ describe('ForgotPasswordPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(en.errors.messageValidation);
     expect(screen.getByTestId('forgot-password-email')).toBeInTheDocument();
+    expect(screen.getByTestId('forgot-password-email')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('drops a previous provider error when the form is submitted again', async () => {
+    server.use(http.post('*', () =>
+      HttpResponse.json({ code: 'RESET_PASSWORD_DISABLED', message: 'Unavailable' }, { status: 400 })));
+    server.use(anonymousMe());
+    await renderForgotPasswordPage();
+    const email = screen.getByTestId('forgot-password-email');
+    await userEvent.type(email, 'member@example.com');
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    await userEvent.clear(email);
+    await userEvent.click(screen.getByTestId('forgot-password-submit'));
+
+    expect(await screen.findByTestId('forgot-password-email-error')).toHaveTextContent(en.forgotPassword.emailRequired);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

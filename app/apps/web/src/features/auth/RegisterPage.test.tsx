@@ -107,6 +107,53 @@ describe('RegisterPage', () => {
     expect(offerCalls).toBe(0);
   });
 
+  it('states the password minimum under the password field and describes the field with it', async () => {
+    server.use(anonymousMe(), noTenantOffer);
+
+    await renderRegisterPage();
+
+    const hint = screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH }));
+    expect(screen.getByLabelText(en.auth.passwordLabel)).toHaveAttribute('aria-describedby', hint.id);
+  });
+
+  it('reveals and hides the password with a pressed toggle that keeps the value and never submits', async () => {
+    let requested = false;
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
+
+    await renderRegisterPage();
+    const password = screen.getByLabelText(en.auth.passwordLabel);
+    const toggle = screen.getByRole('button', { name: en.auth.showPassword });
+    await userEvent.type(password, VALID_PASSWORD);
+    expect(password).toHaveAttribute('type', 'password');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', password.id);
+    expect(toggle).toHaveAttribute('type', 'button');
+
+    await userEvent.click(toggle);
+
+    expect(password).toHaveAttribute('type', 'text');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveAccessibleName(en.auth.showPassword);
+    expect(password).toHaveValue(VALID_PASSWORD);
+    expect(password).toHaveAttribute('autocomplete', 'new-password');
+
+    await userEvent.click(toggle);
+
+    expect(password).toHaveAttribute('type', 'password');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(password).toHaveValue(VALID_PASSWORD);
+    expect(password).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.queryByText(en.auth.nameRequired)).not.toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
     server.use(
@@ -124,10 +171,84 @@ describe('RegisterPage', () => {
     await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), 'short');
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
-    expect(
-      await screen.findByText(en.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH })),
-    ).toBeInTheDocument();
+    const error = await screen.findByText(en.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }));
+    const password = screen.getByLabelText(en.auth.passwordLabel);
+    const hint = screen.getByText(en.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH }));
+    expect(password).toHaveAttribute('aria-invalid', 'true');
+    expect(password).toHaveAttribute('aria-describedby', `${error.id} ${hint.id}`);
+    expect(password).toHaveFocus();
+    expect(screen.queryByTestId('register-error')).not.toBeInTheDocument();
     expect(requested).toBe(false);
+  });
+
+  it('binds each empty field error to its field and focuses the first one', async () => {
+    let requested = false;
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
+
+    await renderRegisterPage();
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    for (const [label, message] of [
+      [en.auth.nameLabel, en.auth.nameRequired],
+      [en.auth.emailLabel, en.auth.emailRequired],
+      [en.auth.passwordLabel, en.auth.passwordRequired],
+    ] as const) {
+      const field = screen.getByLabelText(label);
+      const error = screen.getByText(message);
+      expect(field).toHaveAttribute('aria-invalid', 'true');
+      expect(field.getAttribute('aria-describedby')?.split(' ')).toContain(error.id);
+    }
+    expect(screen.getByLabelText(en.auth.nameLabel)).toHaveFocus();
+    expect(screen.queryByTestId('register-error')).not.toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
+  it('names a malformed email under its field and focuses it', async () => {
+    server.use(anonymousMe(), noTenantOffer);
+
+    await renderRegisterPage();
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    const email = screen.getByLabelText(en.auth.emailLabel);
+    const error = await screen.findByText(en.auth.emailInvalid);
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveAttribute('aria-describedby', error.id);
+    expect(email).toHaveFocus();
+    expect(screen.getByLabelText(en.auth.nameLabel)).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('keeps provider errors in the alert and drops them on the next submit', async () => {
+    server.use(
+      anonymousMe(),
+      noTenantOffer,
+      http.post('*', () =>
+        HttpResponse.json({ code: 'SOME_PROVIDER_FAILURE', message: 'Failure' }, { status: 400 })),
+    );
+
+    await renderRegisterPage();
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByTestId('register-error')).toHaveTextContent(en.errors.messageValidation);
+    expect(screen.getByLabelText(en.auth.passwordLabel)).toHaveAttribute('aria-invalid', 'false');
+
+    await userEvent.clear(screen.getByLabelText(en.auth.passwordLabel));
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+
+    expect(await screen.findByText(en.auth.passwordRequired)).toBeInTheDocument();
+    expect(screen.queryByTestId('register-error')).not.toBeInTheDocument();
   });
 
   it('creates an account and lands on home', async () => {
@@ -234,6 +355,15 @@ describe('RegisterPage', () => {
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
+    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Member');
+    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'member@together.dev');
+    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
+    await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
+    const consentError = await screen.findByText(en.consent.required);
+    expect(checkbox).toHaveAttribute('aria-invalid', 'true');
+    expect(checkbox).toHaveAttribute('aria-describedby', consentError.id);
+    expect(checkbox).toHaveFocus();
+    expect(signupBodies).toEqual([]);
     const consentLabel = checkbox.closest('label');
     if (consentLabel === null) throw new Error('expected the checkbox to sit inside a label');
     const consentField = within(consentLabel);
@@ -246,10 +376,8 @@ describe('RegisterPage', () => {
       'https://akademia.test/privacy',
     );
 
-    await userEvent.type(screen.getByLabelText(en.auth.nameLabel), 'New Member');
-    await userEvent.type(screen.getByLabelText(en.auth.emailLabel), 'member@together.dev');
-    await userEvent.type(screen.getByLabelText(en.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(checkbox);
+    expect(screen.queryByText(en.consent.required)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.auth.createAccount }));
 
     expect(await screen.findByText(en.auth.registeredTitle)).toBeInTheDocument();

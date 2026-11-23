@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Link as MuiLink,
   Stack,
@@ -17,8 +18,14 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { FinePrint } from '../../theme.js';
-import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthLead, AuthTitle } from './auth-chrome.js';
+import { describedBy } from './auth-fields.js';
+import { AuthPasswordInput } from './auth-password-input.js';
 import { AuthShell } from './AuthShell.js';
+
+const PASSWORD_HINT_ID = 'reset-password-minimum';
+const PASSWORD_ERROR_ID = 'reset-password-error';
+const CONFIRM_ERROR_ID = 'reset-password-confirm-error';
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
@@ -30,7 +37,10 @@ export const ResetPasswordPage = () => {
   const t = useTranslations();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
   const token = tokenFromLocation();
   const invalidToken = invalidTokenFromLocation();
 
@@ -39,17 +49,22 @@ export const ResetPasswordPage = () => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setLocalError(null);
-    if (!token) {
-      setLocalError(t.resetPassword.missingToken);
+    resetPassword.reset();
+    if (!token) return;
+    const nextPasswordError = password === ''
+      ? t.resetPassword.passwordRequired
+      : passwordMeetsMinimumLength(password) ? null : t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH });
+    const nextConfirmError = confirm === ''
+      ? t.resetPassword.confirmRequired
+      : confirm === password ? null : t.resetPassword.mismatch;
+    setPasswordError(nextPasswordError);
+    setConfirmError(nextConfirmError);
+    if (nextPasswordError !== null) {
+      passwordRef.current?.focus();
       return;
     }
-    if (!passwordMeetsMinimumLength(password)) {
-      setLocalError(t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }));
-      return;
-    }
-    if (password !== confirm) {
-      setLocalError(t.resetPassword.mismatch);
+    if (nextConfirmError !== null) {
+      confirmRef.current?.focus();
       return;
     }
     resetPassword.mutate({ token, newPassword: password });
@@ -87,30 +102,45 @@ export const ResetPasswordPage = () => {
               <AuthTitle variant="h1">{t.resetPassword.title}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.intro}</AuthLead>
             </Box>
-            <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
-              <FormControl fullWidth>
+            <Stack component="form" noValidate onSubmit={submit} useFlexGap spacing="1rem">
+              <FormControl fullWidth error={passwordError !== null}>
                 <FormLabel htmlFor="reset-password">{t.resetPassword.newPasswordLabel}</FormLabel>
-                <AuthInput
+                <AuthPasswordInput
                   id="reset-password"
-                  type="password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setPasswordError(null);
+                  }}
                   autoComplete="new-password"
+                  inputRef={passwordRef}
+                  {...describedBy(passwordError === null ? null : PASSWORD_ERROR_ID, PASSWORD_HINT_ID)}
                   inputProps={{ 'data-testid': 'reset-password' }}
                   required
                 />
+                {passwordError === null ? null : (
+                  <FormHelperText id={PASSWORD_ERROR_ID} data-testid="reset-password-error">{passwordError}</FormHelperText>
+                )}
+                <FormHelperText id={PASSWORD_HINT_ID} error={false}>{t.changePassword.minimumHint({ min: PASSWORD_MIN_LENGTH })}</FormHelperText>
               </FormControl>
-              <FormControl fullWidth>
+              <FormControl fullWidth error={confirmError !== null}>
                 <FormLabel htmlFor="reset-password-confirm">{t.resetPassword.confirmPasswordLabel}</FormLabel>
-                <AuthInput
+                <AuthPasswordInput
                   id="reset-password-confirm"
-                  type="password"
                   value={confirm}
-                  onChange={(event) => setConfirm(event.target.value)}
+                  onChange={(event) => {
+                    setConfirm(event.target.value);
+                    setConfirmError(null);
+                  }}
                   autoComplete="new-password"
+                  inputRef={confirmRef}
+                  {...describedBy(confirmError === null ? null : CONFIRM_ERROR_ID)}
                   inputProps={{ 'data-testid': 'reset-password-confirm' }}
                   required
                 />
+                {confirmError === null ? null : (
+                  <FormHelperText id={CONFIRM_ERROR_ID} data-testid="reset-password-confirm-error">{confirmError}</FormHelperText>
+                )}
               </FormControl>
               <Button
                 type="submit"
@@ -122,11 +152,6 @@ export const ResetPasswordPage = () => {
                 {resetPassword.isPending ? t.resetPassword.submitPending : t.resetPassword.submitIdle}
               </Button>
             </Stack>
-            {localError ? (
-              <Alert severity="error" sx={{ mt: '0.6rem' }} data-testid="reset-local-error">
-                {localError}
-              </Alert>
-            ) : null}
             {resetPassword.isError ? (
               <Alert severity="error" sx={{ mt: '0.6rem' }}>
                 {localizeError(resetPassword.error, t)}

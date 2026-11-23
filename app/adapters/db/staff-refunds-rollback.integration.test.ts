@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { refundFailure, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
@@ -9,7 +9,7 @@ import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenan
 import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
 import { createRefundJobQueue } from './refund-job-queue.js';
 import { createMemberRepository, createOrderRepository } from './repositories.js';
-import { emailOutbox, members, orderChanges, orderRefundJobs, orders, products, productStock, stockEvents, tenants, user } from './schema.js';
+import { emailOutbox, members, orderChanges, orderRefundJobs, orders, orderStaffRefunds, products, productStock, stockEvents, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 // Literal copies of what the release on production (8141fd15) parses; they must not follow this release's schemas.
@@ -27,6 +27,8 @@ const previousEmailPayloadKinds = [
 ] as const;
 const previousRefundAlerts = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission', 'unconfirmed'] as const;
 const previousRefundAlertKeys = ['alert', 'amountCents', 'currency', 'error', 'kind', 'language', 'orderId', 'orderUrl', 'tenantName'] as const;
+// The tables holding this test's rows, in the order the previous release's demo and smoke reseed wipes them; its list has no order_staff_refunds.
+const previousReseedWipeOrder = ['order_refund_jobs', 'stock_events', 'product_stock', 'order_changes', 'email_outbox', 'orders'] as const;
 
 const listed = (values: readonly string[], value: unknown): boolean => values.some((candidate) => candidate === value);
 
@@ -151,5 +153,21 @@ describe('rows written by staff refunds, read by the previous release', () => {
   it('tags provider refunds so a previous-release sold-out job counts them as money but never takes them as its own', () => {
     const staffRefund: ProviderRefund = { refundId: 're_staff', paymentIntentId: 'pi_1', amountCents: 1000, status: 'succeeded', failureReason: null, orderId: 'order-1', reason: 'staff', refundJobId: 'refund-1' };
     expect(previousSoldOutOwnRefund({ orderId: 'order-1', reason: 'out_of_stock', providerRefundId: null }, staffRefund)).toBe(false);
+  });
+
+  it("lets the previous release's reseed delete orders that hold staff refunds, which go with them", async () => {
+    class RolledBack extends Error {
+      constructor(readonly remaining: unknown[]) { super('Rolled back'); }
+    }
+    const left = await database.db.transaction(async (tx) => {
+      expect((await tx.select().from(orderStaffRefunds)).length).toBeGreaterThan(0);
+      for (const table of previousReseedWipeOrder) await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE tenant_id = 'tenant-a'`);
+      throw new RolledBack(await tx.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds));
+    }).catch((error: unknown) => {
+      if (error instanceof RolledBack) return error.remaining;
+      throw error;
+    });
+    expect(left).toStrictEqual([]);
+    expect((await database.db.select().from(orders)).length).toBe(3);
   });
 });

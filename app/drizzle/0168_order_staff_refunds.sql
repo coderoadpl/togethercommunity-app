@@ -28,7 +28,7 @@ CREATE TABLE "order_staff_refunds" (
   "buyer_notified_at" timestamp with time zone,
   "created_at" timestamp with time zone NOT NULL,
   "updated_at" timestamp with time zone NOT NULL,
-  CONSTRAINT "order_staff_refunds_tenant_order_fk" FOREIGN KEY ("tenant_id", "order_id") REFERENCES "orders"("tenant_id", "id")
+  CONSTRAINT "order_staff_refunds_tenant_order_fk" FOREIGN KEY ("tenant_id", "order_id") REFERENCES "orders"("tenant_id", "id") ON DELETE CASCADE
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX "order_staff_refunds_tenant_request_key_uidx" ON "order_staff_refunds" ("tenant_id", "request_key");

@@ -36,7 +36,7 @@ export const orderStaffRefunds = pgTable('order_staff_refunds', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-  foreignKey({ name: 'order_staff_refunds_tenant_order_fk', columns: [table.tenantId, table.orderId], foreignColumns: [orders.tenantId, orders.id] }),
+  foreignKey({ name: 'order_staff_refunds_tenant_order_fk', columns: [table.tenantId, table.orderId], foreignColumns: [orders.tenantId, orders.id] }).onDelete('cascade'),
   uniqueIndex('order_staff_refunds_tenant_request_key_uidx').on(table.tenantId, table.requestKey),
   uniqueIndex('order_staff_refunds_tenant_order_waiting_uidx').on(table.tenantId, table.orderId)
     .where(sql`${table.status} IN ('pending', 'running', 'blocked_permission')`),

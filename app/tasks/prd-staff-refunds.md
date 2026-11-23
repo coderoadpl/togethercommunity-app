@@ -223,6 +223,10 @@ What the previous release does with rows written by this one:
 
 - `order_staff_refunds`: never read; staff refunds waiting to reach the provider wait until the
   release is back (Studio on the previous release does not show them).
+- Deletes of orders: the previous release's demo and smoke reseed deletes each listed table by
+  workspace and then `orders`, and its list has no `order_staff_refunds`. The table's foreign key
+  to `orders` is `ON DELETE CASCADE`, so deleting an order also deletes its staff refunds and the
+  reseed keeps working after a rollback.
 - `orders.fulfilment_status = NULL` on a paid order with shipping: already written by the sold-out
   flow and read as "not on the packing list".
 - `orders.status` `refunded` / `partially_refunded`: existing values, written by the existing
@@ -238,7 +242,9 @@ What the previous release does with rows written by this one:
 
 A test holds a literal copy of the previous release's schemas (`orderRefundJobSchema` reason and
 status lists, `orderSchema` status/cancel reason/fulfilment status, the e-mail payload kinds) and
-proves each stored shape above either is never read by it or parses.
+proves each stored shape above either is never read by it or parses. The same test deletes the
+workspace's orders in the previous release's wipe order and proves their staff refunds go with
+them.
 
 ### Migration
 

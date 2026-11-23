@@ -2997,12 +2997,12 @@ export const pl: Messages = {
     dataExportButton: 'Pobierz moje dane',
     dataExportPreparing: 'Przygotowywanie…',
     erasureHeading: 'Poproś o usunięcie konta',
-    erasureIntro: 'Poproś zespół o usunięcie Twoich danych w tej społeczności. Po realizacji wniosku:',
+    erasureIntro: 'Poproś zespół o usunięcie Twoich danych na tej platformie. Po realizacji wniosku:',
     erasureEffects: {
-      profile: 'Wyświetlana nazwa, e-mail i zdjęcie zostaną usunięte z profilu; z wcześniejszych zamówień zostaną usunięte imię i nazwisko, ulica i numer telefonu.',
+      profile: 'Wyświetlana nazwa, e-mail i zdjęcie zostaną usunięte z profilu; z wcześniejszych zamówień zostaną usunięte dane dostawy: imię i nazwisko, ulica i numer telefonu. Dane do faktur pozostaną.',
       posts: 'Wpisy pozostaną, podpisane jako „Konto usunięte”.',
-      access: 'Dostęp do kupionych treści wygaśnie, a zespół poprosi dostawcę płatności o anulowanie subskrypcji. Jeśli później pojawi się kolejne obciążenie, skontaktuj się z twórcą.',
-      signIn: 'Konto logowania również zostanie usunięte, chyba że nadal jest powiązane z inną społecznością lub rolą w zespole.',
+      access: 'Dostęp do kupionych treści wygaśnie, a zespół zleci dostawcy płatności anulowanie subskrypcji.',
+      signIn: 'Konto logowania również zostanie usunięte, chyba że jest jeszcze używane w innym miejscu serwisu.',
     },
     erasureDialogBody: ({ days }) =>
       `Wysłanie wniosku jeszcze niczego nie usuwa. Zespół go rozpatrzy i może go zrealizować albo odrzucić; termin odpowiedzi to ${days} ${plural(days, 'dzień', 'dni', 'dni')}. Otwarty wniosek można anulować. Jeśli potrzebujesz kopii danych, pobierz ją wcześniej.`,

@@ -33,7 +33,7 @@ import type {
 } from '#core/server/index.js';
 
 import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
-import { boundLockWait, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { boundLockWait, boundStatementTime, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import {
   changeProposalDownloadDeletions as deletions,
@@ -352,6 +352,15 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
     await boundLockWait(tx, { lockWaitMs: wait === undefined ? bounds.lockWaitMs : Math.min(bounds.lockWaitMs, lockWaitMs(wait)) });
     return work(tx);
   }), busy);
+  const within = async <T>(boundMs: number | undefined, run: (executor: Db) => Promise<T>, outOfTime: T): Promise<T> => {
+    if (boundMs === undefined) return run(db);
+    const ms = Math.max(1, Math.floor(boundMs));
+    return busyAfterRollback(() => db.transaction(async (tx) => {
+      await boundStatementTime(tx, ms);
+      await boundLockWait(tx, { lockWaitMs: ms });
+      return run(tx);
+    }), outOfTime);
+  };
   return {
     reserve: (tenantId, record, now) => {
       const parsed = keyDownloadUploadRecordSchema.parse(record);
@@ -549,7 +558,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       await tx.delete(stagedFiles).where(stagedOf(tenantId, id));
       return { kind: 'owed', deletion: owed };
     }, { kind: 'busy' }, wait),
-    listTenantIdsToSweep: async (cutoffs, limit) => {
+    listTenantIdsToSweep: (cutoffs, limit, boundMs) => within(boundMs, async (executor) => {
       const waiting = new Map<string, string>();
       const collect = (rows: ReadonlyArray<{ tenantId: string; waiting: string | null }>) => {
         for (const row of rows) {
@@ -557,26 +566,26 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
           if (row.waiting !== null && (known === undefined || row.waiting < known)) waiting.set(row.tenantId, row.waiting);
         }
       };
-      collect(await db.select({ tenantId: records.tenantId, waiting: sql<string | null>`min(${waitingSince(records)})` }).from(records)
+      collect(await executor.select({ tenantId: records.tenantId, waiting: sql<string | null>`min(${waitingSince(records)})` }).from(records)
         .where(or(recordSweepable(cutoffs), recordPurgeable(cutoffs))).groupBy(records.tenantId));
-      collect(await db.select({ tenantId: stagedFiles.tenantId, waiting: sql<string | null>`min(${waitingSince(stagedFiles)})` }).from(stagedFiles)
+      collect(await executor.select({ tenantId: stagedFiles.tenantId, waiting: sql<string | null>`min(${waitingSince(stagedFiles)})` }).from(stagedFiles)
         .where(stagedSweepable(cutoffs)).groupBy(stagedFiles.tenantId));
-      collect(await db.select({ tenantId: deletions.tenantId, waiting: sql<string | null>`min(${waitingSince(deletions)})` }).from(deletions)
+      collect(await executor.select({ tenantId: deletions.tenantId, waiting: sql<string | null>`min(${waitingSince(deletions)})` }).from(deletions)
         .where(deletionDue(cutoffs.now)).groupBy(deletions.tenantId));
-      collect(await db.select({ tenantId: recordEvents.tenantId, waiting: sql<string | null>`min(${recordEvents.at})` }).from(recordEvents)
+      collect(await executor.select({ tenantId: recordEvents.tenantId, waiting: sql<string | null>`min(${recordEvents.at})` }).from(recordEvents)
         .where(lt(recordEvents.at, cutoffs.eventsBefore)).groupBy(recordEvents.tenantId));
       return [...waiting.entries()]
         .sort(([leftId, left], [rightId, right]) => left < right ? -1 : left > right ? 1 : leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
         .slice(0, limit)
         .map(([tenantId]) => tenantId);
-    },
-    listToSweep: async (tenantId, cutoffs, limit) => {
-      const recordRows = await db.select({ row: records, waiting: waitingSince(records) }).from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
+    }, []),
+    listToSweep: (tenantId, cutoffs, limit, boundMs) => within(boundMs, async (executor): Promise<KeyDownloadSweepBatch> => {
+      const recordRows = await executor.select({ row: records, waiting: waitingSince(records) }).from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
         .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit);
-      const stagedRows = await db.select({ row: stagedFiles, waiting: waitingSince(stagedFiles) }).from(stagedFiles)
+      const stagedRows = await executor.select({ row: stagedFiles, waiting: waitingSince(stagedFiles) }).from(stagedFiles)
         .where(and(eq(stagedFiles.tenantId, tenantId), stagedSweepable(cutoffs)))
         .orderBy(asc(waitingSince(stagedFiles)), asc(stagedFiles.id)).limit(limit);
-      const deletionRows = await db.select({ row: deletions, waiting: waitingSince(deletions) }).from(deletions)
+      const deletionRows = await executor.select({ row: deletions, waiting: waitingSince(deletions) }).from(deletions)
         .where(and(eq(deletions.tenantId, tenantId), deletionDue(cutoffs.now)))
         .orderBy(asc(waitingSince(deletions)), asc(deletions.objectKey)).limit(limit);
       const queue: Array<{ waiting: string; tie: string; row: KeyDownloadSweepRow }> = [
@@ -586,23 +595,23 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       ];
       queue.sort((left, right) => left.waiting < right.waiting ? -1 : left.waiting > right.waiting ? 1 : left.tie < right.tie ? -1 : left.tie > right.tie ? 1 : 0);
       return { rows: queue.map(({ row }) => row) };
-    },
-    markAttempted: async (tenantId, batch, now) => {
+    }, { rows: [] }),
+    markAttempted: (tenantId, batch, now, boundMs) => within(boundMs, async (executor) => {
       const ids = (kind: KeyDownloadSweepRow['kind']) => batch.rows.flatMap((row) => row.kind !== kind ? []
         : [row.kind === 'record' ? row.record.id : row.kind === 'staged' ? row.file.id : row.deletion.objectKey]);
       const recordIds = ids('record');
       const stagedIds = ids('staged');
       const objectKeys = ids('deletion');
       if (recordIds.length > 0) {
-        await db.update(records).set({ sweepAttemptedAt: now }).where(and(eq(records.tenantId, tenantId), inArray(records.id, recordIds)));
+        await executor.update(records).set({ sweepAttemptedAt: now }).where(and(eq(records.tenantId, tenantId), inArray(records.id, recordIds)));
       }
       if (stagedIds.length > 0) {
-        await db.update(stagedFiles).set({ sweepAttemptedAt: now }).where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, stagedIds)));
+        await executor.update(stagedFiles).set({ sweepAttemptedAt: now }).where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, stagedIds)));
       }
       if (objectKeys.length > 0) {
-        await db.update(deletions).set({ sweepAttemptedAt: now }).where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, objectKeys)));
+        await executor.update(deletions).set({ sweepAttemptedAt: now }).where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, objectKeys)));
       }
-    },
+    }, undefined),
     proposable: async (tenantId, apiKeyId, ids) => {
       const wanted = distinctIds(ids);
       if (wanted.length === 0) return true;
@@ -646,6 +655,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
       return rows.map(({ row, copiedFromTitle }) => ({ file: parseStaged(row), copiedFromTitle }));
     },
     purgeSettled: (tenantId, cutoffs, limit, wait) => locked(async (tx) => {
+      if (wait !== undefined) await boundStatementTime(tx, Math.max(1, Math.floor(wait)));
       const oldest = tx.select({ id: records.id }).from(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs)))
         .orderBy(asc(records.createdAt), asc(records.id)).limit(limit);
       const purged = await tx.delete(records).where(and(eq(records.tenantId, tenantId), inArray(records.id, oldest)))

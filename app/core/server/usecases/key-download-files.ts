@@ -44,7 +44,7 @@ import type { KeyDownloadFileRepository, KeyDownloadObjectRemoval, KeyDownloadSw
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt, storageFileName } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStatementBound, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
 
 export interface KeyDownloadStagingDeps {
   keyDownloadFiles: KeyDownloadFileRepository;
@@ -455,12 +455,13 @@ const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, r
   const files = deps.keyDownloadFiles;
   const purgeWait = sweepLockWait(left, 0);
   if (purgeWait !== null) await files.purgeSettled(tenantId, cutoffs, rows, purgeWait);
-  const batch = await files.listToSweep(tenantId, cutoffs, rows);
+  if (sweepLockWait(left, 1) === null) return 0;
+  const batch = await files.listToSweep(tenantId, cutoffs, rows, sweepStatementBound(left));
   if (batch.rows.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
     logFailure(deps, tenantId, 'could not sweep staged download files', configuration.error.message);
-    await files.markAttempted(tenantId, batch, cutoffs.now);
+    await files.markAttempted(tenantId, batch, cutoffs.now, sweepStatementBound(left));
     return 0;
   }
   const remove = deleteObjects(tenantId, configuration.value, deps, left);
@@ -493,7 +494,7 @@ export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise
   const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? KEY_DOWNLOAD_FILE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
   const left: SweepBudget = () => endsAt - Date.parse(deps.clock.nowIso());
   const batch = deps.batch ?? { tenants: KEY_DOWNLOAD_FILE_LIMITS.sweepTenantsPerRun, rows: KEY_DOWNLOAD_FILE_LIMITS.sweepRowsPerTenant };
-  const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants);
+  const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants, sweepStatementBound(left));
   let removed = 0;
   let visited = 0;
   for (const tenantId of tenants) {

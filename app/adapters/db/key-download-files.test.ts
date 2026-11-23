@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1154,6 +1154,48 @@ describe('the time budget of the staged file sweep', () => {
     expect(deadlines.slice(3)).toEqual([5_000]);
     expect(await owedRows()).toHaveLength(10);
   });
+});
+
+describe('the database statements of the staged file sweep', () => {
+  const settled = {
+    tenantId: TENANT, id: 'settled-old', apiKeyId: KEY_ID, kind: 'upload' as const, state: 'settled' as const,
+    fileId: 'settled-old-file', fileName: 'a.pdf', contentType: 'application/pdf' as const, declaredBytes: 10, createdAt: '2026-02-27T10:00:00.000Z',
+  };
+
+  it('end the discovery of workspaces once a lock it waits on outlives the run budget', async () => {
+    const h = harness();
+    await database.db.insert(changeProposalDownloadUploads).values(settled);
+    const holder = await connected();
+    try {
+      await holder.query('begin');
+      await holder.query('lock table change_proposal_download_deletions in access exclusive mode');
+      const started = Date.now();
+      const released = new Promise((resolve) => { setTimeout(resolve, 5_000); }).then(() => holder.query('rollback'));
+      const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
+      const elapsed = Date.now() - started;
+      await released;
+      expect({ outcome, quick: elapsed < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 0, removed: 0 } }, quick: true });
+    } finally {
+      await holder.end();
+    }
+  }, 15_000);
+
+  it('end a retention purge that runs longer than the run budget, not only one that waits on a lock', async () => {
+    const h = harness();
+    await database.db.insert(changeProposalDownloadUploads).values(settled);
+    await database.db.execute(sql`create or replace function slow_download_purge() returns trigger language plpgsql as $$
+      begin perform pg_sleep(5); return old; end $$`);
+    await database.db.execute(sql`create trigger slow_download_purge before delete on change_proposal_download_uploads for each row execute function slow_download_purge()`);
+    try {
+      const started = Date.now();
+      const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
+      expect({ outcome, quick: Date.now() - started < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 1, removed: 0 } }, quick: true });
+    } finally {
+      await database.db.execute(sql`drop trigger slow_download_purge on change_proposal_download_uploads`);
+      await database.db.execute(sql`drop function slow_download_purge()`);
+    }
+    expect(await database.db.select({ id: changeProposalDownloadUploads.id }).from(changeProposalDownloadUploads)).toEqual([{ id: 'settled-old' }]);
+  }, 15_000);
 });
 
 const late = (h: ReturnType<typeof harness>) => {

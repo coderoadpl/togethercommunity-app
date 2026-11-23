@@ -128,18 +128,26 @@ export interface KeyDownloadFileRepository {
    * discard does, so the storage delete that follows starts only once no attach or proposal can take the file.
    */
   sweepStaged(tenantId: string, id: string, cutoffs: KeyDownloadSweepCutoffs, lockWaitMs?: number): Promise<KeyDownloadStagedSweep>;
-  /** Workspaces with rows the sweep selects, the one waiting longest first, by the attempt time or else the creation time. */
-  listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<string[]>;
+  /**
+   * Workspaces with rows the sweep selects, the one waiting longest first, by the attempt time or else the creation time.
+   * Given `boundMs`, its statements and lock waits end by then, and one that runs out answers none.
+   */
+  listTenantIdsToSweep(cutoffs: KeyDownloadSweepCutoffs, limit: number, boundMs?: number): Promise<string[]>;
   /**
    * The rows of one workspace the sweep selects (an owed deletion only once its not-before time passed), up to `limit`
-   * of each kind, in one queue ordered by the attempt time or else the creation time, longest waiting first.
+   * of each kind, in one queue ordered by the attempt time or else the creation time, longest waiting first. Given
+   * `boundMs`, its statements and lock waits end by then, and one that runs out answers an empty batch.
    */
-  listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number): Promise<KeyDownloadSweepBatch>;
-  /** Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others. */
-  markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string): Promise<void>;
+  listToSweep(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, boundMs?: number): Promise<KeyDownloadSweepBatch>;
+  /**
+   * Writes the attempt time on every row of the batch, so a workspace the sweep cannot serve moves behind the others;
+   * given `boundMs`, its statements end by then, and one that runs out writes nothing.
+   */
+  markAttempted(tenantId: string, batch: KeyDownloadSweepBatch, now: string, boundMs?: number): Promise<void>;
   /**
    * Deletes up to `limit` settled records started before `settledStartedBefore`, which own no object, oldest first, and
-   * up to `limit` events older than `eventsBefore`; 0 when its lock wait ran out.
+   * up to `limit` events older than `eventsBefore`; `lockWaitMs` bounds its statements as well as its lock waits, and
+   * 0 means it ran out and deleted nothing.
    */
   purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, lockWaitMs?: number): Promise<number>;
   /**

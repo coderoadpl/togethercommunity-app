@@ -162,10 +162,15 @@ runs it after them with an end 50 seconds after the tick started, 10 seconds
 before the 60-second function limit, and the Node ticker runs it beside them.
 It has a budget of 10 seconds of its own. It starts no workspace and no row
 after the earlier of the two ends, and its lock waits and storage requests end
-by then. Its discovery, retention purge and listing statements are not bounded
-by either end; the retention purge of a workspace deletes at most 50 settled
-records and 50 expired events per run, oldest first, so a backlog is worked
-off over several runs. It starts a row only when what is left covers a lock wait of at least 250
+by then. Its discovery of workspaces, the listing of a workspace's rows and the
+recording of their failed attempts run with a statement timeout and a lock
+timeout of what is left, but at least 1 second, and one that runs out lists or
+records nothing, so its rows wait for the next run; the retention purge of a
+workspace runs with a statement timeout and a lock timeout of what is left and
+deletes nothing when it runs out, and the listing after it starts only when
+what is left still covers a row. The retention purge of a workspace deletes at
+most 50 settled records and 50 expired events per run, oldest first, so a
+backlog is worked off over several runs. It starts a row only when what is left covers a lock wait of at least 250
 milliseconds and 1 second for each of the row's storage deletes (two for an
 upload record that still owns its upload object and its destination). The row's
 lock wait gets what is left minus those seconds, and each delete, the lookup of

@@ -1,4 +1,5 @@
 import type { MetaCapiConfig } from '#core/domain/index.js';
+import { metaCapiDefaultCopy } from '#core/domain/meta-capi-copy.en.js';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -14,6 +15,10 @@ const sessionId = 'cs_live_consent';
 const dismissal = sessionFlag(`meta-capi-dismissed:${sessionId}`);
 const renderConsent = (config: MetaCapiConfig = metaCapiConfig) => renderWithProviders(<MetaCapiConsent config={config} sessionId={sessionId} />);
 beforeEach(() => { dismissal.clear(); document.cookie = '_fbp=; Max-Age=0; Path=/'; });
+
+it('renders the shipped English default copy', () => {
+  expect({ heading: metaCapiConfig.heading, body: metaCapiConfig.body, acceptLabel: metaCapiConfig.acceptLabel, declineLabel: metaCapiConfig.declineLabel }).toEqual(metaCapiDefaultCopy);
+});
 
 it('shows labelled modal, equal choices, disclosures and privacy link without choosing', async () => {
   const user = userEvent.setup();

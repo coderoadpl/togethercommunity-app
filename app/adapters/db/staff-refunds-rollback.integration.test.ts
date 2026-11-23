@@ -1,6 +1,5 @@
 import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import { refundFailure, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
 import { createStaffRefund, dispatchOrderRefundJobs, shipRefundedOrderAnyway, type Ctx } from '#core/server/index.js';
@@ -29,37 +28,36 @@ const previousEmailPayloadKinds = [
   'support-message', 'thread-reply', 'verify-email', 'welcome-sign-in',
 ] as const;
 const previousRefundAlerts = ['retrying', 'blocked_permission', 'blocked_permission_failed', 'failed', 'failed_after_submission', 'unconfirmed'] as const;
-const previousCurrencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter uppercase code');
-const previousRefundAlertSchema = z.object({ kind: z.literal('order-refund-alert'), language: z.string(), tenantName: z.string(), alert: z.enum(previousRefundAlerts), orderId: z.string().min(1), amountCents: z.number().int().nonnegative(), currency: previousCurrencySchema, error: z.string(), orderUrl: z.string().url() });
-// The m2m-transactional member of the previous discriminated union and its render branch; a stored m2m-transactional row reaches only these.
-const previousM2mFields = {
-  subject: z.string().trim().min(1).max(200),
-  html: z.string().min(1).max(1_000_000).optional(),
-  text: z.string().min(1).max(500_000).optional(),
-  replyTo: z.string().email().optional(),
-};
-const previousM2mPayloadSchema = z.object({
-  kind: z.literal('m2m-transactional'),
-  subject: previousM2mFields.subject,
-  html: previousM2mFields.html,
-  text: previousM2mFields.text,
-  replyTo: previousM2mFields.replyTo,
-}).strict();
-const previousEmailMessageSchema = z.object({ subject: z.string().min(1), html: z.string().min(1), text: z.string().min(1) });
-const previousTextFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
-const previousHtmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;',
-})[character] ?? character)}</pre>`;
-const previousRenderM2m = (raw: unknown) => {
-  const parsed = previousM2mPayloadSchema.safeParse(raw);
-  if (!parsed.success) return parsed;
-  const value = parsed.data;
-  if (value.html === undefined && value.text === undefined) return previousEmailMessageSchema.safeParse({});
-  return previousEmailMessageSchema.safeParse({
-    subject: value.subject,
-    html: value.html ?? previousHtmlFromText(value.text ?? ''),
-    text: value.text ?? previousTextFromHtml(value.html ?? ''),
-  });
+// adapters/db may not import zod, so the previous release's schemas are spelled out check by check; their literal zod
+// copies run against the same builders in core/domain/staff-refund-rollback.test.ts.
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isUrl = (value: unknown): boolean => typeof value === 'string' && URL.canParse(value);
+const stringOfLength = (value: unknown, min: number, max: number): boolean => typeof value === 'string' && value.length >= min && value.length <= max;
+
+// z.object({ kind: z.literal('order-refund-alert'), language: z.string(), tenantName: z.string(), alert: z.enum(ORDER_REFUND_ALERTS),
+//   orderId: z.string().min(1), amountCents: z.number().int().nonnegative(), currency: currencySchema, error: z.string(), orderUrl: z.string().url() })
+const previousRefundAlertParses = (payload: unknown): boolean => isRecord(payload)
+  && payload['kind'] === 'order-refund-alert'
+  && typeof payload['language'] === 'string'
+  && typeof payload['tenantName'] === 'string'
+  && listed(previousRefundAlerts, payload['alert'])
+  && typeof payload['orderId'] === 'string' && payload['orderId'].length >= 1
+  && typeof payload['amountCents'] === 'number' && Number.isInteger(payload['amountCents']) && payload['amountCents'] >= 0
+  && typeof payload['currency'] === 'string' && /^[A-Z]{3}$/.test(payload['currency'])
+  && typeof payload['error'] === 'string'
+  && isUrl(payload['orderUrl']);
+
+// z.object({ kind: z.literal('m2m-transactional'), subject: z.string().trim().min(1).max(200), html: z.string().min(1).max(1_000_000).optional(),
+//   text: z.string().min(1).max(500_000).optional(), replyTo: z.string().email().optional() }).strict(), then the render branch that needs html or text.
+const previousM2mKeys = ['kind', 'subject', 'html', 'text', 'replyTo'] as const;
+const previousRenderM2m = (payload: unknown): { subject: string; html: unknown; text: unknown } | null => {
+  if (!isRecord(payload) || payload['kind'] !== 'm2m-transactional' || !Object.keys(payload).every((key) => listed(previousM2mKeys, key))) return null;
+  const { subject, html, text, replyTo } = payload;
+  if (typeof subject !== 'string' || !stringOfLength(subject.trim(), 1, 200)) return null;
+  if ((html !== undefined && !stringOfLength(html, 1, 1_000_000)) || (text !== undefined && !stringOfLength(text, 1, 500_000))) return null;
+  if (replyTo !== undefined && !(typeof replyTo === 'string' && replyTo.includes('@'))) return null;
+  if (html === undefined && text === undefined) return null;
+  return { subject: subject.trim(), html, text };
 };
 // The tables holding this test's rows, in the order the previous release's demo and smoke reseed wipes them; its list has no order_staff_refunds.
 const previousReseedWipeOrder = ['order_refund_jobs', 'stock_events', 'product_stock', 'order_changes', 'email_outbox', 'orders'] as const;
@@ -68,7 +66,7 @@ const listed = (values: readonly string[], value: unknown): boolean => values.so
 
 // What the previous Sent e-mails reader keeps of a row: kinds outside its union are dropped after the page is fetched.
 const previousRenders = (row: { kind: string; payload: unknown }): boolean =>
-  row.kind === 'm2m-transactional' ? previousRenderM2m(row.payload).success : listed(previousEmailPayloadKinds, row.kind);
+  row.kind === 'm2m-transactional' ? previousRenderM2m(row.payload) !== null : listed(previousEmailPayloadKinds, row.kind);
 
 // The previous transactional Sent page: limit + 1 rows newest first, unrenderable rows dropped, the cursor taken from what is left.
 const previousSentPage = async (tenantId: string, limit: number, cursor: { createdAt: string; key: string } | undefined) => {
@@ -189,10 +187,12 @@ describe('rows written by staff refunds, read by the previous release', () => {
     expect(rows.filter((row) => !listed(previousEmailPayloadKinds, row.kind))).toStrictEqual([]);
     const alerts = rows.filter((row) => row.kind === 'order-refund-alert');
     expect(alerts).toHaveLength(1);
-    for (const alert of alerts) expect(previousRefundAlertSchema.safeParse(alert.payload).success).toBe(true);
+    for (const alert of alerts) expect(previousRefundAlertParses(alert.payload)).toBe(true);
     const notices = rows.filter((row) => row.id.startsWith('order-refund-issued:'));
     expect(notices.map((row) => row.kind)).toStrictEqual(['m2m-transactional', 'm2m-transactional']);
-    for (const notice of notices) expect(previousRenderM2m(notice.payload)).toMatchObject({ success: true, data: { subject: expect.stringContaining('Acme') } });
+    for (const notice of notices) {
+      expect(previousRenderM2m(notice.payload)).toStrictEqual({ subject: expect.stringContaining('Acme'), html: expect.any(String), text: expect.any(String) });
+    }
   });
 
   it('lets the previous Sent e-mails list page past the buyer notices to every older e-mail', async () => {

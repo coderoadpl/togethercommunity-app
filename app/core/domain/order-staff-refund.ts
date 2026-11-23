@@ -16,7 +16,6 @@ const STAFF_REFUND_NOTE_MAX_LENGTH = 500;
 
 const staffRefundRequestKeySchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/, 'Request key may contain only letters, digits, dots, colons, underscores and hyphens');
 
-// eslint-disable-next-line no-control-regex -- the pattern exists to find control characters
 const NOTE_CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
 
 const staffRefundNoteSchema = z.string().trim()

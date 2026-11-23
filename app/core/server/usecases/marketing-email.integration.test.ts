@@ -1764,7 +1764,7 @@ describe('marketing e-mail use-case integration', () => {
     expect(deps.outbox.items).toHaveLength(0);
   });
 
-  it('lets a suppressed address withdraw one consent while keeping another and refuses only a new one', async () => {
+  it('applies the withdrawals of a suppressed address and records none of its new consents', async () => {
     const deps = await setup();
     const keptDefinition = { ...definition, id: 'definition-2', key: 'events' };
     const newDefinition = { ...definition, id: 'definition-3', key: 'updates' };
@@ -1792,14 +1792,29 @@ describe('marketing e-mail use-case integration', () => {
       confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
     }, deps);
 
-    expect(await save([definition.id, newDefinition.id])).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await save([keptDefinition.id])).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
-    expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).map((row) => ({
+    const rows = async () => (await deps.consents.listByEmail('tenant-1', 'member@example.test')).map((row) => ({
       definitionId: row.definitionId,
       status: row.status,
-    }))).toEqual([
+    }));
+
+    expect(await save([definition.id, keptDefinition.id, newDefinition.id]))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await rows()).toEqual([
       { definitionId: definition.id, status: 'confirmed' },
       { definitionId: keptDefinition.id, status: 'confirmed' },
+    ]);
+    expect(await save([definition.id, newDefinition.id]))
+      .toEqual({ ok: true, value: { pendingConfirmations: 0, subscriptionsRefused: true } });
+    expect(await rows()).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'withdrawn' },
+    ]);
+    expect(await save([])).toEqual({ ok: true, value: { pendingConfirmations: 0, subscriptionsRefused: false } });
+    expect(await rows()).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'withdrawn' },
       { definitionId: definition.id, status: 'withdrawn' },
     ]);
     expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({

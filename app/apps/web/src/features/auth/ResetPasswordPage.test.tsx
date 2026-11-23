@@ -48,14 +48,17 @@ describe('ResetPasswordPage', () => {
     {
       password: '',
       confirm: '',
-      passwordError: [en.resetPassword.passwordRequired, pl.resetPassword.passwordRequired],
-      confirmError: [en.resetPassword.confirmRequired, pl.resetPassword.confirmRequired],
+      passwordError: { en: en.resetPassword.passwordRequired, pl: pl.resetPassword.passwordRequired },
+      confirmError: { en: en.resetPassword.confirmRequired, pl: pl.resetPassword.confirmRequired },
     },
     {
       password: 'short',
       confirm: 'other',
-      passwordError: [en.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }), pl.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH })],
-      confirmError: [en.resetPassword.mismatch, pl.resetPassword.mismatch],
+      passwordError: {
+        en: en.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+        pl: pl.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+      },
+      confirmError: { en: en.resetPassword.mismatch, pl: pl.resetPassword.mismatch },
     },
   ])('shows visible errors for "$password"/"$confirm" in the language switched to after submit', async ({ password, confirm, passwordError, confirmError }) => {
     await renderResetPage('?token=valid-token', true);
@@ -63,13 +66,13 @@ describe('ResetPasswordPage', () => {
     if (password !== '') await userEvent.type(screen.getByTestId('reset-password'), password);
     if (confirm !== '') await userEvent.type(screen.getByTestId('reset-password-confirm'), confirm);
     await userEvent.click(screen.getByTestId('reset-submit'));
-    expect(await screen.findByTestId('reset-password-error')).toHaveTextContent(passwordError[0]);
-    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError[0]);
+    expect(await screen.findByTestId('reset-password-error')).toHaveTextContent(passwordError.en);
+    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError.en);
 
     await userEvent.click(screen.getByRole('button', { name: 'pl' }));
 
-    expect(screen.getByTestId('reset-password-error')).toHaveTextContent(passwordError[1]);
-    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError[1]);
+    expect(screen.getByTestId('reset-password-error')).toHaveTextContent(passwordError.pl);
+    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError.pl);
   });
 
   it('states the password minimum under the new password and describes the field with it', async () => {

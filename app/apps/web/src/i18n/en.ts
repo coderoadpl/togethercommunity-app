@@ -2699,7 +2699,6 @@ export const en: Messages = {
     courseUnavailable: 'Course unavailable',
     courseNotInLibrary: 'This course is not in your library. It may have been removed, or your access may have expired.',
     backToMyCourses: 'My courses',
-    searchLessons: 'Search lessons',
     filterPlaceholder: 'Filter lessons and modules',
     filterHint: 'Searches lesson and module titles — the start of a word is enough.',
     noMatches: 'No lessons match your search.',

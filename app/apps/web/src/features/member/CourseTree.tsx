@@ -493,7 +493,7 @@ export const CourseTree = ({
               value={rawSearch}
               onChange={setRawSearch}
               placeholder={t.courseTree.filterPlaceholder}
-              label={t.courseTree.searchLessons}
+              label={t.courseTree.filterPlaceholder}
               testId="lesson-search"
             />
           </Box>

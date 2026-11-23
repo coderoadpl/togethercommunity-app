@@ -524,7 +524,7 @@ describe('CourseTree', () => {
 
     const input = await screen.findByTestId('lesson-search');
     expect(input).toHaveAttribute('type', 'search');
-    expect(input).toHaveAccessibleName(en.courseTree.searchLessons);
+    expect(input).toHaveAccessibleName(en.courseTree.filterPlaceholder);
     expect(input).toHaveAttribute('placeholder', en.courseTree.filterPlaceholder);
   });
 

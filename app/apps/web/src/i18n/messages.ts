@@ -2377,7 +2377,6 @@ export interface Messages {
     courseUnavailable: string;
     courseNotInLibrary: string;
     backToMyCourses: string;
-    searchLessons: string;
     filterPlaceholder: string;
     filterHint: string;
     noMatches: string;

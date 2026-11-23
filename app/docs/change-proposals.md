@@ -1949,7 +1949,10 @@ product as `appliedResourceId`.
 **Owner view and panel.** The owner view of a `product.set-access` carries
 [`accessLabels`](#owner-view), the titles of every course, module and lesson of
 both lists and, when one is, `archivedCourses`, the archived courses of either
-list, all read at read time for display only. A replaced list changes what
+list, all read at read time for display only. A page reads the titles of
+every access proposal on it together, in queries of at most 10,000 ids each
+(Postgres binds at most 65,535 parameters in one statement), so a page that
+names more ids than that still reads. A replaced list changes what
 its holders open only among the courses, modules and lessons that either list
 names; another product's items keep granting what they grant.
 

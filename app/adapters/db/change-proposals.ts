@@ -440,6 +440,15 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
 const idsOfKind = (targets: readonly ChangeProposalTargetLabelRequest[], kind: ChangeProposalTargetLabelRequest['kind']): string[] =>
   [...new Set(targets.filter((target) => target.kind === kind).map((target) => target.id))];
 
+// Postgres binds at most 65,535 parameters per statement; a page of proposals can name more ids than that.
+const IDS_PER_TITLE_QUERY = 10_000;
+
+const inIdChunks = async <T>(ids: readonly string[], read: (chunk: string[]) => PromiseLike<T[]>): Promise<T[]> => {
+  const found: T[] = [];
+  for (let start = 0; start < ids.length; start += IDS_PER_TITLE_QUERY) found.push(...await read(ids.slice(start, start + IDS_PER_TITLE_QUERY)));
+  return found;
+};
+
 export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTargetLabelReader => ({
   labels: async (tenantId, targets) => {
     const productIds = idsOfKind(targets, 'product');
@@ -473,15 +482,15 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
     ];
   },
   accessTitles: async (tenantId, ids) => ({
-    courses: ids.courseIds.length === 0 ? [] : (await db.select({ id: courses.id, title: courses.name, archivedAt: courses.archivedAt }).from(courses)
-      .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, ids.courseIds))))
+    courses: (await inIdChunks(ids.courseIds, (chunk) => db.select({ id: courses.id, title: courses.name, archivedAt: courses.archivedAt }).from(courses)
+      .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, chunk)))))
       .map((row) => ({ id: row.id, title: row.title, archived: row.archivedAt !== null })),
-    modules: ids.moduleIds.length === 0 ? [] : (await db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
+    modules: (await inIdChunks(ids.moduleIds, (chunk) => db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
       .from(courseModules)
-      .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, ids.moduleIds))))
+      .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, chunk)))))
       .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title) })),
-    lessons: ids.lessonIds.length === 0 ? [] : await db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
-      .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids.lessonIds))),
+    lessons: await inIdChunks(ids.lessonIds, (chunk) => db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
+      .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, chunk)))),
   }),
 });
 

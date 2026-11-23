@@ -16,7 +16,12 @@ const STAFF_REFUND_NOTE_MAX_LENGTH = 500;
 
 const staffRefundRequestKeySchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/, 'Request key may contain only letters, digits, dots, colons, underscores and hyphens');
 
-const staffRefundNoteSchema = z.string().trim().max(STAFF_REFUND_NOTE_MAX_LENGTH, `Reason must be at most ${String(STAFF_REFUND_NOTE_MAX_LENGTH)} characters`);
+// eslint-disable-next-line no-control-regex -- the pattern exists to find control characters
+const NOTE_CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+
+const staffRefundNoteSchema = z.string().trim()
+  .max(STAFF_REFUND_NOTE_MAX_LENGTH, `Reason must be at most ${String(STAFF_REFUND_NOTE_MAX_LENGTH)} characters`)
+  .refine((note) => !NOTE_CONTROL_CHARACTERS.test(note), 'Reason may not contain control characters other than line breaks and tabs');
 
 export const orderStaffRefundSchema = z.object({
   id: z.string().min(1),

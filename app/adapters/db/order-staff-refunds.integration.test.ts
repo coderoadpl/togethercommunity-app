@@ -680,6 +680,12 @@ describe('staff refunds against a real database', () => {
     expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([3099]);
   });
 
+  it('refuses a note holding a NUL as a validation error and saves nothing', async () => {
+    const h = harness();
+    expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, reason: 'damaged\u0000cover' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await refundRows('order-1')).toStrictEqual([]);
+  });
+
   it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {
     const h = harness();
     expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });

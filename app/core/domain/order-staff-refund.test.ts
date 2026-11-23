@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { capabilitiesForPrincipal, isImpersonationReadCapability, PRINCIPALS, requiresVerifiedEmail } from './authorization.js';
 import {
+  createStaffRefundInputSchema,
   minorUnitsFromDecimal,
   newOrderStaffRefund,
   orderRefundIdempotencyKey,
@@ -29,6 +30,12 @@ const paidOrder = {
 };
 
 describe('staff refund rules', () => {
+  it('refuses a note with NUL or another control character and keeps line breaks and tabs', () => {
+    const parse = (reason: string) => createStaffRefundInputSchema.safeParse({ requestKey: 'req-1', amountCents: 100, reason });
+    for (const reason of ['bad\u0000note', 'bell\u0007', 'escape\u001b[31m', 'vertical\u000btab']) expect(parse(reason).success).toBe(false);
+    expect(parse('line one\nline two\r\n\tindented')).toMatchObject({ success: true, data: { reason: 'line one\nline two\r\n\tindented' } });
+  });
+
   it('grants order:refund to owners and admins only, behind a verified e-mail and never under impersonation or a shop key', () => {
     expect(PRINCIPALS.filter((principal) => capabilitiesForPrincipal(principal).includes('order:refund'))).toStrictEqual(['owner', 'admin']);
     expect(requiresVerifiedEmail('order:refund')).toBe(true);

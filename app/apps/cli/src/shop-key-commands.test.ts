@@ -297,6 +297,17 @@ describe('shop key CLI', () => {
     expect(calls[0]?.headers.has('authorization')).toBe(false);
   });
 
+  it('passes the refusal a direct-mode key gets for what a product grants through with the forbidden exit code', async () => {
+    h.fetchImpl = async (input, init) => {
+      await fetchImpl(input, init);
+      return Response.json({ ok: false, error: { code: 'forbidden', message: 'product:access:write is not permitted' } }, { status: 403 });
+    };
+    await run('shop', 'products', 'access', 'product-1', '--course', 'course-1');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(['POST /api/m2m/shop/products/access']);
+  });
+
   it('never prints the key in human output and honours --tenant', async () => {
     process.argv = ['node', 'together', '--tenant', 'studio', 'shop', 'products', 'list'];
     vi.resetModules();
@@ -725,6 +736,7 @@ describe('shop key CLI with a propose-mode key', () => {
     [['shop', 'stock', 'enable', 'product-1', '--on-hand', '3']],
     [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
     [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
+    [['shop', 'products', 'access', 'product-1', '--course', 'course-1']],
   ])('prints the receipt and exits 0 when %j answers 202', async (args) => {
     await run(...args);
     expect(soleJson()).toEqual({ ok: true, data: { outcome: 'proposed', proposal: receipt } });
@@ -748,6 +760,36 @@ describe('shop key CLI with a propose-mode key', () => {
     } finally {
       await rm(directory, { recursive: true });
     }
+  });
+
+  it.each([
+    ['whole courses', ['--course', 'course-1', '--course', 'course-2'], [{ level: 'course', courseId: 'course-1' }, { level: 'course', courseId: 'course-2' }]],
+    ['a course without some modules', ['--course', 'course-1', '--exclude-module', 'module-2'], [{ level: 'course', courseId: 'course-1', excludedModuleIds: ['module-2'] }]],
+    ['modules and lessons of one course', ['--course', 'course-1', '--module', 'module-1', '--lesson', 'lesson-1', '--lesson', 'lesson-2'], [
+      { level: 'modules', courseId: 'course-1', moduleIds: ['module-1'] },
+      { level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1', 'lesson-2'] },
+    ]],
+    ['a list in another shape', ['--access-items', '[{"level":"course","courseId":"course-1"},{"level":"modules","courseId":"course-2","moduleIds":["module-9"]}]'], [
+      { level: 'course', courseId: 'course-1' }, { level: 'modules', courseId: 'course-2', moduleIds: ['module-9'] },
+    ]],
+    ['nothing', ['--clear'], []],
+  ])('states the whole new access list of %s in one request', async (_label, flags, accessItems) => {
+    await run('shop', 'products', 'access', 'product-1', ...flags);
+    expect(calls).toMatchObject([{ method: 'POST', path: '/api/m2m/shop/products/access', body: { id: 'product-1', accessItems } }]);
+  });
+
+  it.each([
+    ['no list', []],
+    ['--clear with a course', ['--clear', '--course', 'course-1']],
+    ['a module without a course', ['--module', 'module-1']],
+    ['modules of two courses', ['--course', 'course-1', '--course', 'course-2', '--module', 'module-1']],
+    ['an excluded module beside a lesson', ['--course', 'course-1', '--exclude-module', 'module-1', '--lesson', 'lesson-1']],
+    ['a JSON list beside a flag', ['--access-items', '[]', '--course', 'course-1']],
+    ['a JSON item of an unknown level', ['--access-items', '[{"level":"chapter","courseId":"course-1"}]']],
+  ])('refuses %s before any request', async (_label, flags) => {
+    await run('shop', 'products', 'access', 'product-1', ...flags);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(calls).toEqual([]);
   });
 
   it('prints the receipt of a proposed sales-link deletion without sending a body', async () => {
@@ -875,6 +917,7 @@ describe('shop key CLI with a proposal group', () => {
     [['shop', 'stock', 'adjust', 'product-1', '--delta', '5', '--reason', 'delivery']],
     [['shop', 'stock', 'threshold', 'product-1', '--value', '2']],
     [['shop', 'sales-links', 'delete', 'link-1']],
+    [['shop', 'products', 'access', '$proposal:proposal-1', '--course', 'course-1']],
   ])('sends the group header once for %j with --group', async (args) => {
     await run(...args, '--group', 'group-1');
     expect(soleJson()).toMatchObject({ ok: true, data: { outcome: 'proposed', proposal: { groupId: 'group-1' }, group: { id: 'group-1' } } });

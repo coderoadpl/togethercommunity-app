@@ -4228,6 +4228,14 @@ const changeProposalFileLines = (proposal: Pick<ChangeProposalOwnerView, 'id' | 
   ...(file.available && proposal.status === 'pending' ? [`    download it with: together proposals file ${proposal.id} ${file.id} --out <path>`] : []),
 ]);
 
+const changeProposalAccessLabelLines = (proposal: Pick<ChangeProposalOwnerView, 'accessLabels'>): string[] => {
+  const labels = proposal.accessLabels;
+  if (labels === undefined) return [];
+  const lines = (kind: string, entries: ReadonlyArray<{ id: string; title: string | null }>) =>
+    entries.map((entry) => `  ${kind} ${entry.id}: ${entry.title ?? 'no longer exists'}`);
+  return ['names:', ...lines('course', labels.courses), ...lines('module', labels.modules), ...lines('lesson', labels.lessons)];
+};
+
 const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
   ...(proposal.groupId === null ? [] : [`in ${changeProposalGroupLabel(proposal)}; decide it with the whole group`]),
@@ -4237,6 +4245,7 @@ const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `expires: ${proposal.expiresAt}`,
   'effect:',
   ...changeProposalEffectLines(proposal.effect),
+  ...changeProposalAccessLabelLines(proposal),
   ...(proposal.proposedFiles === undefined ? [] : ['files:', ...changeProposalFileLines(proposal)]),
   ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
   ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
@@ -4350,6 +4359,7 @@ const changeProposalGroupItemLines = (group: ChangeProposalGroupOwnerView): stri
   group.items.flatMap((item) => [
     `item ${String(item.groupPosition ?? 0)}: ${item.operation} [${item.status}] ${item.target.kind}${item.target.id === null ? ' (new)' : ` ${item.target.id}`} (${item.id})`,
     ...changeProposalEffectLines(item.effect),
+    ...changeProposalAccessLabelLines(item).map((line) => `  ${line}`),
     ...(item.proposedFiles === undefined ? [] : ['  files:', ...changeProposalFileLines(item).map((line) => `  ${line}`)]),
     ...(item.status === 'applied' ? [`  ${changeProposalAppliedLine(item.operation, item.appliedResourceId)}`] : []),
     ...(item.status === 'failed' ? [`  failed: ${item.failureCode ?? 'error'}: ${item.failureMessage ?? ''}`] : []),

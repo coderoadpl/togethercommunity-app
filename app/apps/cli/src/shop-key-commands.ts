@@ -26,6 +26,7 @@ import {
   shopSettingsContracts,
 } from '#core/contract/index.js';
 import {
+  accessItemSchema,
   currencySchema,
   deliveryMethodSchema,
   err,
@@ -45,6 +46,7 @@ import {
   shipxEnvironmentSchema,
   stripeModeSchema,
   validation,
+  type AccessItem,
   type AppError,
   type ChangeProposalGroupKeyReceipt,
   type ChangeProposalKeyReceipt,
@@ -107,6 +109,15 @@ const productUpdateSchema = productFieldsSchema.extend({
   title: z.string().optional(),
   clearCover: z.boolean().default(false),
   clearVariant: z.boolean().default(false),
+});
+const productAccessSchema = z.object({
+  apiKeyEnv: z.string(),
+  course: z.array(idSchema).default([]),
+  module: z.array(idSchema).default([]),
+  lesson: z.array(idSchema).default([]),
+  excludeModule: z.array(idSchema).default([]),
+  accessItems: z.string().optional(),
+  clear: z.boolean().default(false),
 });
 const priceAddSchema = z.object({
   apiKeyEnv: z.string(),
@@ -449,6 +460,36 @@ const describeStock = (stock: ProductStock): string =>
 
 const productLine = (product: { title: string; id: string }): string => `${product.title} (${product.id.slice(0, 8)})`;
 
+const repeatable = (value: string, previous: string[]): string[] => [...previous, value];
+
+const ACCESS_LIST_REQUIRED = 'State the whole new list of what the product grants: one or more --course, --access-items, or --clear for none';
+
+const shopProductAccessItems = (options: z.output<typeof productAccessSchema>): Result<AccessItem[], AppError> => {
+  const { course: courseIds, module: moduleIds, lesson: lessonIds, excludeModule: excludedModuleIds } = options;
+  const parts = moduleIds.length > 0 || lessonIds.length > 0;
+  const flags = courseIds.length > 0 || parts || excludedModuleIds.length > 0;
+  if (options.accessItems !== undefined) {
+    if (flags || options.clear) return err(validation('--access-items states the whole list alone; drop the other access options'));
+    const parsed = inlineJson(options.accessItems, 'access items');
+    if (!parsed.ok) return parsed;
+    const items = z.array(accessItemSchema).safeParse(parsed.value);
+    return items.success ? ok(items.data) : err(validation('Invalid access items', items.error.flatten()));
+  }
+  if (options.clear) return flags ? err(validation('--clear cannot be combined with other access options')) : ok([]);
+  if (courseIds.length === 0) return err(validation(ACCESS_LIST_REQUIRED));
+  const [courseId] = courseIds;
+  if (parts || excludedModuleIds.length > 0) {
+    if (courseId === undefined || courseIds.length > 1) return err(validation('--module, --lesson and --exclude-module need exactly one --course; state a list of another shape with --access-items'));
+    if (parts && excludedModuleIds.length > 0) return err(validation('--exclude-module applies to a whole course and cannot be combined with --module or --lesson'));
+    if (excludedModuleIds.length > 0) return ok([{ level: 'course', courseId, excludedModuleIds }]);
+    return ok([
+      ...(moduleIds.length === 0 ? [] : [{ level: 'modules' as const, courseId, moduleIds }]),
+      ...(lessonIds.length === 0 ? [] : [{ level: 'lessons' as const, courseId, lessonIds }]),
+    ]);
+  }
+  return ok(courseIds.map((id) => ({ level: 'course' as const, courseId: id })));
+};
+
 const receiptLines = (proposal: ChangeProposalKeyReceipt): string => [
   `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
   `target: ${proposal.target.kind}${proposal.target.id === null ? ' (new)' : ` ${proposal.target.id}`}`,
@@ -603,6 +644,17 @@ export const registerShopKeyCommands = (
       const input = await shopProductUpdateInput(id, options);
       return input.ok ? client.updateProduct(input.value, undefined, proposal) : input;
     }, (data) => `updated: ${productLine(data.product)}`));
+  proposableKeyed(products.command('access <productId>').description('Propose replacing the whole list of what a product grants (propose-mode key only; a direct-mode key is refused); once the owner approves, everyone with access to the product, current buyers included, gets the new list. --course alone grants whole courses; with one --course, --module grants those modules and --lesson those lessons, each wherever it is used')
+    .option('--course <id>', 'a course the product grants; repeat for several whole courses', repeatable, [])
+    .option('--module <id>', 'a module of the one --course to grant instead of the whole course; repeatable', repeatable, [])
+    .option('--lesson <id>', 'a lesson of the one --course to grant instead of the whole course; repeatable', repeatable, [])
+    .option('--exclude-module <id>', 'a module of the one whole --course the product does not grant; repeatable', repeatable, [])
+    .option('--access-items <json>', 'the whole list as inline JSON access items, for a shape the other options cannot state')
+    .option('--clear', 'the product grants no course, module or lesson'))
+    .action(runProposable(z.tuple([idSchema, productAccessSchema]), (client, [id, options], proposal) => {
+      const accessItems = shopProductAccessItems(options);
+      return accessItems.ok ? client.setProductAccess({ id, accessItems: accessItems.value }, undefined, proposal) : accessItems;
+    }, (data) => `access: ${productLine(data.product)} (${String(data.product.accessItems.length)} item(s))`));
   proposableKeyed(products.command('publish <id>').description('Publish a product'))
     .action(runProposable(z.tuple([idSchema, keyOnlySchema]), (client, [id], proposal) => client.publishProduct({ id }, undefined, proposal), (data) => `published: ${productLine(data.product)}`));
   proposableKeyed(products.command('unpublish <id>').description('Return a published product to draft'))

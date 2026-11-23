@@ -7,6 +7,7 @@ import {
   CAPABILITIES,
   PRINCIPALS,
   ROLE_CAPABILITIES,
+  SHOP_CATALOG_ROUTES,
 } from '#core/contract/index.js';
 import {
   ORGANIZATION_PRINCIPALS,
@@ -362,6 +363,8 @@ const beforeForRoute = (
     if (selfAuthenticatingEntry.mechanism === 'Shop management key') {
       if (path === '/api/m2m/shop/proposals' || path.startsWith('/api/m2m/shop/proposals/')) return proposeShopManagementKey;
       if (path.startsWith('/api/m2m/shop/downloads/')) return directShopManagementKey;
+      // Its live handler is the owner's access editor use-case, whose capability no scope of any key carries.
+      if (path === SHOP_CATALOG_ROUTES.setProductAccess.path) return [];
       return method === 'GET' ? shopManagementKey : directShopManagementKey;
     }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
@@ -872,6 +875,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '`change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key\'s write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key. The four upload use-cases of `change-proposal-images.ts` authorize `proposal:asset:upload` with the submission capability of their family, `proposal:submit:catalog` for a product cover and `proposal:submit:settings` for a branding image; the table lists the first. They write only a private quarantined copy, which an owner approval publishes. `change-proposal-images.ts#getChangeProposalImage` needs `proposal:read` and applies the same owner-session guard, and so does `change-proposal-files.ts#getChangeProposalFileLink`, which answers a short-lived signed download of a file a pending proposal attaches.',
     '',
     'The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key needs `proposal:asset:upload` with `proposal:submit:catalog`. The table lists the first and the direct-mode key, as it does for the `/api/m2m/shop/downloads` routes, which a propose-mode key reaches as well. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read`. The attach and removal use-cases of `product-download-files.ts` need `product:write`; they are reached through the direct-mode shop routes and through a `download.add`, `download.replace` or `download.remove` proposal, which runs them in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner. The attach refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which only those two runs of a proposal do, naming the key that made it; a removal of a proposal removes only a ready file.',
+    '',
+    '`POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

@@ -90,6 +90,7 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_CATALOG_ROUTES.publishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
   { path: SHOP_CATALOG_ROUTES.unpublishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
   { path: SHOP_CATALOG_ROUTES.deleteProductDraft.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.setProductAccess.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:access:write' },
   { path: SHOP_CATALOG_ROUTES.listProductPrices.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:price:read' },
   { path: SHOP_CATALOG_ROUTES.createProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },
   { path: SHOP_CATALOG_ROUTES.deactivateProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },

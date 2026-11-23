@@ -3216,6 +3216,8 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
       request(options, routes.unpublishProduct.method, routes.unpublishProduct.path, proposable.unpublishProduct, input, signal, proposalHeaders(proposal)),
     deleteProductDraft: (input: ShopCatalogInput<'deleteProductDraft'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
       request(options, routes.deleteProductDraft.method, routes.deleteProductDraft.path, proposable.deleteProductDraft, input, signal, proposalHeaders(proposal)),
+    setProductAccess: (input: ShopCatalogInput<'setProductAccess'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
+      request(options, routes.setProductAccess.method, routes.setProductAccess.path, proposable.setProductAccess, input, signal, proposalHeaders(proposal)),
     listProductPrices: (productId: string, signal?: AbortSignal) =>
       request(options, routes.listProductPrices.method, productPath(routes.listProductPrices.path, productId), contracts.listProductPrices.output, undefined, signal),
     createProductPrice: (input: ShopCatalogInput<'createProductPrice'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
@@ -3255,6 +3257,7 @@ const proposable = {
   publishProduct: proposableOutputSchema(shopCatalogContracts.publishProduct.output),
   unpublishProduct: proposableOutputSchema(shopCatalogContracts.unpublishProduct.output),
   deleteProductDraft: proposableOutputSchema(shopCatalogContracts.deleteProductDraft.output),
+  setProductAccess: proposableOutputSchema(shopCatalogContracts.setProductAccess.output),
   createProductPrice: proposableOutputSchema(shopCatalogContracts.createProductPrice.output),
   deactivateProductPrice: proposableOutputSchema(shopCatalogContracts.deactivateProductPrice.output),
   enableProductStock: proposableOutputSchema(shopCatalogContracts.enableProductStock.output),

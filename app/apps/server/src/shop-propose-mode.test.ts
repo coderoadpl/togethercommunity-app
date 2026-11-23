@@ -13,6 +13,7 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   changeProposalEvents,
   changeProposals,
+  courses,
   emailOutbox,
   entityVersions,
   productPrices,
@@ -194,6 +195,7 @@ interface Fixture {
 }
 
 const OWNER_FILE = { id: 'owner-workbook', key: 'acme/product-downloads/owner/workbook.pdf' };
+const ACCESS_COURSE = 'course-propose-access';
 const PDF = new TextEncoder().encode('%PDF-1.7\nworkbook\n%%EOF\n');
 
 let fixture: Fixture;
@@ -206,6 +208,7 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_CATALOG_ROUTES.publishProduct.path]: { id: fixture.draft },
   [SHOP_CATALOG_ROUTES.unpublishProduct.path]: { id: fixture.published },
   [SHOP_CATALOG_ROUTES.deleteProductDraft.path]: { productId: fixture.draft },
+  [SHOP_CATALOG_ROUTES.setProductAccess.path]: { id: fixture.digital, accessItems: [{ level: 'course', courseId: ACCESS_COURSE }] },
   [SHOP_CATALOG_ROUTES.createProductPrice.path]: { productId: fixture.draft, kind: 'one_time', amountCents: 2500 },
   [SHOP_CATALOG_ROUTES.deactivateProductPrice.path]: { id: fixture.publishedPrice },
   [SHOP_CATALOG_ROUTES.enableProductStock.path]: { productId: fixture.draft, onHand: 4, lowStockThreshold: null },
@@ -346,6 +349,7 @@ beforeAll(async () => {
   const digitalCreated = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Workbook', type: 'digital_download', priceCents: 900 });
   expect(digitalCreated.status).toBe(200);
   const digital = envelope(shopCatalogContracts.createProduct.output).parse(await digitalCreated.json()).data.product.id;
+  await database.db.insert(courses).values({ id: ACCESS_COURSE, tenantId: 'acme', name: 'Field course', description: '', createdAt: now });
   await database.db.insert(productDownloadAssets).values({
     id: OWNER_FILE.id, tenantId: 'acme', productId: digital, lineageId: OWNER_FILE.id, versionNumber: 1, versionNote: null, supersededAt: null, replacesAssetId: null,
     fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength, storageKey: OWNER_FILE.key, status: 'ready', createdAt: now, sha256: null,
@@ -370,6 +374,7 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/products/publish': 'proposal product.publish',
       'POST /api/m2m/shop/products/unpublish': 'proposal product.unpublish',
       'POST /api/m2m/shop/products/delete': 'proposal product.delete-draft',
+      'POST /api/m2m/shop/products/access': 'proposal product.set-access',
       'GET /api/m2m/shop/products/:productId/prices': 'read',
       'POST /api/m2m/shop/products/prices': 'proposal price.create',
       'POST /api/m2m/shop/products/prices/deactivate': 'proposal price.deactivate',
@@ -443,6 +448,8 @@ describe('a propose-mode key on every registered shop route', () => {
       const label = `${route.method} ${route.path}`;
       const mode = route.proposeMode;
       if (mode?.kind === 'proposal-management') continue;
+      minute += 1;
+      now = new Date(START + minute * 60_000).toISOString();
       if (mode?.kind === 'direct') {
         expect(await directRoute(proposer.secret, route, candidate), label).toBe(200);
         outcomes.push(`${label} quarantined`);
@@ -469,11 +476,11 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
     expect(imageStorage.keysUnder('image-asset-quarantine/acme/').length).toBeGreaterThan(0);
     expect(imageStorage.keysUnder('acme/product-downloads/').filter((key) => !key.includes(`/${proposer.apiKey.id}/`))).toEqual([OWNER_FILE.key]);
-    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(17);
+    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(18);
     expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(8);
     expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(12);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
-    expect(stored).toHaveLength(17);
+    expect(stored).toHaveLength(18);
   });
 
   it('never reaches a live write with the group header either: every proposal joins its group, refusals stay 403, reads still read', async () => {
@@ -514,9 +521,9 @@ describe('a propose-mode key on every registered shop route', () => {
     }
     expect(await liveState()).toBe(before);
     expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
-    expect(proposed).toHaveLength(17);
+    expect(proposed).toHaveLength(18);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === grouper.apiKey.id);
-    expect(stored).toHaveLength(17);
+    expect(stored).toHaveLength(18);
     expect(stored.every((row) => row.groupId !== null && row.groupPosition === 1)).toBe(true);
   });
 
@@ -576,6 +583,14 @@ describe('a direct-mode key on every registered shop route', () => {
       expect(response.status, label).not.toBe(202);
       expect(error?.message ?? '', label).not.toContain('propose-mode');
     }
+  });
+
+  it('is refused what a product grants, which it holds no capability to change, and changes nothing', async () => {
+    const before = await liveState();
+    const response = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductAccess.path, { id: fixture.digital, accessItems: [{ level: 'course', courseId: ACCESS_COURSE }] });
+    expect(response.status).toBe(403);
+    expect((await errorOf(response)).code).toBe('forbidden');
+    expect(await liveState()).toBe(before);
   });
 
   it('applies a catalogue write live and answers it with the resource, not a receipt', async () => {
@@ -847,6 +862,23 @@ describe('the owner approval route', () => {
     }
     expect((await approved(proposal.id)).status).toBe('applied');
   }, 30_000);
+
+  it('proposes what a product grants, shows the owner the course title, and applies the stored list only on approval', async () => {
+    const accessOf = async () => (await database.db.select().from(products)).find((row) => row.id === fixture.digital)?.accessItems;
+    const before = await accessOf();
+    const accessItems = [{ level: 'course', courseId: ACCESS_COURSE }];
+    const proposal = await propose(SHOP_CATALOG_ROUTES.setProductAccess.path, { id: fixture.digital, accessItems });
+    expect(proposal).toMatchObject({ operation: 'product.set-access', input: { id: fixture.digital, accessItems } });
+    expect(await accessOf()).toEqual(before);
+    const shown = await sessionRequest(ownerToken, 'GET', API_PATHS.changeProposal.replace(':id', proposal.id));
+    const view = envelope(changeProposalShowOutputSchema).parse(await shown.json()).data.proposal;
+    expect(view.effect).toEqual({ accessItems: { before, after: accessItems } });
+    expect(view.accessLabels).toEqual({ courses: [{ id: ACCESS_COURSE, title: 'Field course' }], modules: [], lessons: [] });
+    const receipt = await (await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id))).text();
+    expect(receipt).not.toContain('Field course');
+    expect((await approved(proposal.id)).status).toBe('applied');
+    expect(await accessOf()).toEqual(accessItems);
+  });
 
   it.each([
     ['checkoutReturnOrigins', ['https://shop.example.test']],

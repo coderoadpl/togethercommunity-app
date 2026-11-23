@@ -2688,6 +2688,21 @@ describe('owner change proposal commands', () => {
     expect(applied).toContain('  staged-1');
     expect(applied.join('\n')).not.toContain('no longer available');
   });
+  it('names the courses, modules and lessons of a proposed access change and says which no longer exist', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'product.set-access', events: [],
+      effect: { accessItems: { before: [{ level: 'course', courseId: 'course-1' }], after: [{ level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1', 'lesson-2'] }] } },
+      accessLabels: { courses: [{ id: 'course-1', title: 'Intro course' }], modules: [], lessons: [{ id: 'lesson-1', title: 'Welcome' }, { id: 'lesson-2', title: null }] },
+    } }));
+    await run('proposals', 'show', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(printed).toEqual(expect.arrayContaining([
+      'names:', '  course course-1: Intro course', '  lesson lesson-1: Welcome', '  lesson lesson-2: no longer exists',
+    ]));
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, events: [] } }));
+    await run('proposals', 'show', 'proposal-1');
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('names:');
+  });
   it('downloads a proposed file through the short-lived link to --out, never printing the link, and refuses to overwrite without --force', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));
     const bytes = new TextEncoder().encode('%PDF-1.7\nreviewed\n');

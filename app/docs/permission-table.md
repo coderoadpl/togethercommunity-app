@@ -32,7 +32,9 @@ The workspace `owner` and `admin` principals in the rows below include organizat
 
 The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key needs `proposal:asset:upload` with `proposal:submit:catalog`. The table lists the first and the direct-mode key, as it does for the `/api/m2m/shop/downloads` routes, which a propose-mode key reaches as well. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read`. The attach and removal use-cases of `product-download-files.ts` need `product:write`; they are reached through the direct-mode shop routes and through a `download.add`, `download.replace` or `download.remove` proposal, which runs them in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner. The attach refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which only those two runs of a proposal do, naming the key that made it; a removal of a proposal removes only a ready file.
 
-Closed capability count: 144. Route rows: 548. Exported `Ctx` use-case rows: 415.
+`POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner.
+
+Closed capability count: 144. Route rows: 549. Exported `Ctx` use-case rows: 415.
 
 ## Human-readable diff
 
@@ -199,6 +201,7 @@ no changes
 | `POST /api/m2m/shop/products/publish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products/unpublish` | product:publish | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products/delete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/products/access` | product:access:write | none | none | yes | Shop management key |
 | `GET /api/m2m/shop/products/:productId/prices` | product:price:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products/prices` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/products/prices/deactivate` | product:price:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |

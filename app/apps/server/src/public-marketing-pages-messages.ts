@@ -23,6 +23,7 @@ export interface PublicMarketingMessages {
   signupPending: string;
   signupPendingValidity: string;
   signupPendingSpam: string;
+  signupAgainHint: string;
   signupAgain: string;
 
   language: string;

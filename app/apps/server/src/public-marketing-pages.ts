@@ -704,7 +704,7 @@ export const renderSignupFormPage = (input: {
       path: `${path}/thanks`,
       eyebrow: t.signupEyebrow,
       title: input.doubleOptIn ? t.signupPendingTitle : t.signupThanks,
-      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam] : [successText],
+      lines: input.doubleOptIn ? [t.signupPending, t.signupPendingValidity, t.signupPendingSpam, t.signupAgainHint] : [successText],
       testId: 'marketing-signup-thanks',
       cue: input.doubleOptIn ? 'info' : 'success',
       links: input.doubleOptIn ? [{ label: t.signupAgain, href: `${path}?lang=${input.language}` }] : [],

@@ -2,7 +2,7 @@ import type { PublicMarketingMessages } from './public-marketing-pages-messages.
 
 export const publicMarketingMessagesPl = {
   signupEyebrow: 'Bądźmy w kontakcie',
-  signupTitle: ({ tenant }) => `Zapisz się na wiadomości e-mail od nadawcy ${tenant}`,
+  signupTitle: ({ tenant }) => `${tenant}: zapisz się na wiadomości e-mail`,
   signupEmail: 'Adres e-mail',
   signupName: 'Imię (opcjonalnie)',
   signupConsent: ({ tenant, wording }) => `Zapisując się, wyrażasz wobec nadawcy ${tenant} zgodę o treści: „${wording}”.`,
@@ -22,9 +22,10 @@ export const publicMarketingMessagesPl = {
   signupUnavailableBody: 'Formularz został zamknięty albo zmienił adres.',
   signupThanks: 'Dziękujemy za zapis',
   signupPendingTitle: 'Jeszcze jeden krok: potwierdź adres e-mail',
-  signupPending: 'Jeśli ten adres nie jest jeszcze zapisany i może otrzymywać od nas e-maile, link potwierdzający jest już w drodze. Otwórz go, aby dokończyć zapis.',
+  signupPending: 'Otwórz link potwierdzający z wiadomości od nas, aby dokończyć zapis. Wiadomość nie przyjdzie, jeśli ten adres jest już zapisany albo został wypisany ze wszystkich wiadomości.',
   signupPendingValidity: 'Link jest ważny przez 24 godziny.',
   signupPendingSpam: 'Jeśli nie widzisz wiadomości, sprawdź folder spam lub oferty.',
+  signupAgainHint: 'Zły adres albo po kilku minutach nadal nie ma wiadomości?',
   signupAgain: 'Zapisz się ponownie',
 
   language: 'Język',

@@ -644,6 +644,7 @@ describe('sign-up pages', () => {
   it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {
     const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'newsletter', doubleOptIn: false, thanks: false });
     expect(html).toContain(`<h1>${publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })}</h1>`);
+    expect(publicMarketingMessagesPl.signupTitle({ tenant: 'Studio Demo' })).toMatch(/^Studio Demo: /);
     expect(html).toContain(`<p class="signup-consent">${publicMarketingMessagesPl.signupConsent({ tenant: 'Studio Demo', wording: 'newsletter' })} ${publicMarketingMessagesPl.signupConsentUnsubscribe}</p>`);
     expect(html).not.toContain(publicMarketingMessagesPl.signupConsentConfirm);
     expect(html).toContain(`<label for="signup-name">${publicMarketingMessagesPl.signupName}</label><input id="signup-name"`);
@@ -667,7 +668,7 @@ describe('sign-up pages', () => {
     expect(html).toContain('data-testid="marketing-signup-thanks"');
     expect(html).toContain('<h1>One more step: confirm your email</h1>');
     expect(html).toContain('status-cue--info');
-    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet and can receive our emails, a confirmation link is on its way. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the email, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
+    expect(html).toContain('<div class="status"><p class="lede">Open the confirmation link in the email from us to complete your sign-up. No email arrives if this address is already subscribed or has unsubscribed from everything.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the email, check your spam or promotions folder.</p><p class="fine">Wrong address, or still no email after a few minutes?</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
     expect(html).toContain('<a href="/marketing/forms/newsletter/thanks?lang=pl"');
     expect(html).not.toContain('Thank you for signing up');
   });
@@ -675,7 +676,7 @@ describe('sign-up pages', () => {
   it.each([
     ['success', 'You are subscribed', 'status-cue--success', 'You will receive emails from Studio Demo. Every message has a link to unsubscribe.'],
     ['expired', 'This link is no longer active', 'status-cue--error', 'The confirmation link has expired or is invalid. Ask the sender to send you a new link.'],
-    ['prompt', 'Confirm your subscription', 'status-cue--info', 'Confirm that you want to receive messages from Studio Demo.'],
+    ['prompt', 'Confirm your subscription', 'status-cue--info', 'Confirm that you want to receive emails from Studio Demo.'],
   ] as const)('renders the %s confirmation page left-aligned with a state cue', (state, title, cue, body) => {
     const html = renderConfirmationPage({ nonce: 'test-nonce', brand, language: 'en', path: '/marketing/confirm/token', state });
     expect(html).toContain(`data-testid="marketing-confirmation-${state}"`);
@@ -795,10 +796,12 @@ describe('sign-up pages', () => {
     expect(subscribed).toContain('<p class="lede">Welcome aboard.</p>');
     expect(subscribed).toContain('status-cue--success');
     expect(subscribed).not.toContain('Sign up again');
+    expect(subscribed).not.toContain('Wrong address');
     expect(subscribed).not.toContain('<p class="fine status-after">');
     const pending = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'pl', form: signupForm, wording: 'news', doubleOptIn: true, thanks: true });
     expect(pending).toContain(`<h1>${publicMarketingMessagesPl.signupPendingTitle}</h1>`);
     expect(pending).toContain(`<p class="lede">${publicMarketingMessagesPl.signupPending}</p>`);
+    expect(pending).toContain(`<p class="fine">${publicMarketingMessagesPl.signupAgainHint}</p><div class="actions">`);
     expect(pending).toContain(`<a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
     expect(pending).toContain('</div><p class="fine status-after">Welcome text for the Polish page.</p></div>');
   });
@@ -854,7 +857,7 @@ describe('public signup persistence and confirmation', () => {
       expect(thanksHtml).toContain('Thank you');
       if (doubleOptIn) {
         expect(thanksHtml).toContain(`<p class="lede">${publicMarketingMessagesEn.signupPending}</p>`);
-        expect(publicMarketingMessagesEn.signupPending).toMatch(/^If this address is not subscribed yet and can receive our emails, /);
+        expect(publicMarketingMessagesEn.signupPending).toMatch(/^Open the confirmation link in the email from us to complete your sign-up\. No email arrives if this address is already subscribed /);
         expect(thanksHtml).not.toMatch(/we have sent|we sent/i);
       }
       expect(await fixture.snapshot()).toEqual(before);

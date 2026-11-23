@@ -542,6 +542,34 @@ describe('public copies of an approval that did not end applied', () => {
       .toEqual([{ unresolvedAt: expect.any(String) }]);
   });
 
+  it('commits the delete mark before the withdrawal sends its delete, so a delete that outlives its process keeps the address from reuse', async () => {
+    const harness = endToEnd();
+    const { id } = await harness.proposeCover(PNG_BYTES);
+    const publicKey = `image-assets/${TENANT}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
+    const deleteObject = harness.objects.storage.delete;
+    let land: () => Promise<unknown> = async () => undefined;
+    const dying = {
+      ...harness.deps,
+      changeProposalTransaction: failingOnce(harness.deps.changeProposalTransaction),
+      storage: {
+        ...harness.objects.storage,
+        delete: async (input: Parameters<typeof deleteObject>[0]) => {
+          if (!input.url.includes('/image-assets/')) return deleteObject(input);
+          land = () => deleteObject(input);
+          throw new Error('Connection terminated unexpectedly');
+        },
+      },
+    };
+    expect(await approveChangeProposal(ownerSession, { id }, dying)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    expect(await approveChangeProposal(ownerSession, { id }, harness.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    await land();
+    const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(eq(products.id, 'mug'));
+    expect(cover?.coverUrl).toBeNull();
+    expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
+      .toEqual([{ unresolvedAt: NOW }]);
+  });
+
   it('writes nothing when the record of its attempt is gone by the time it holds the lock', async () => {
     const harness = endToEnd();
     const { id } = await harness.proposeCover(PNG_BYTES);
@@ -733,6 +761,22 @@ describe('quarantined rows and objects of one key', () => {
     const late = '2026-03-01T10:11:00.000Z';
     expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, late)).toEqual({ kind: 'written', value: [image(1)] });
     expect(await repository.finishRelease(TENANT, image(1), removeObject, late)).toBe('removed');
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+  });
+
+  it('commits the delete mark of a released row before its delete is sent, and clears it when the storage refuses the delete', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    await expect(repository.finishRelease(TENANT, image(1), async () => { throw new Error('Connection terminated unexpectedly'); }, NOW))
+      .rejects.toThrow('Connection terminated unexpectedly');
+    const store = vi.fn(stored);
+    expect(await repository.insert(TENANT, image(1), store)).toEqual({ kind: 'busy' });
+    expect(store).not.toHaveBeenCalled();
+    const late = '2026-03-01T10:11:00.000Z';
+    expect(await repository.finishRelease(TENANT, image(1), async () => 'failed' as const, late)).toBe('failed');
+    expect(await database.db.select({ unresolvedAt: changeProposalImages.deleteUnresolvedAt, attemptedAt: changeProposalImages.sweepAttemptedAt })
+      .from(changeProposalImages)).toEqual([{ unresolvedAt: null, attemptedAt: late }]);
     expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
   });
 

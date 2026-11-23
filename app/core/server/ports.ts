@@ -3304,10 +3304,12 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    */
   release(tenantId: string, selection: QuarantinedImageRelease, now: string, lockWaitMs?: number): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
   /**
-   * In a short transaction under the lock of the key that `insert` takes: when the row is still released, runs
-   * `removeObject` and deletes the row once it answers `deleted`, or records the failed attempt at `now`, and for an
-   * `unresolved` delete also the time it ended; a row a completion revived meanwhile is left as it is, and a row whose
-   * last delete was unresolved less than `unresolvedDeleteGraceMs` ago answers `busy` without a delete. `lockWaitMs`
+   * When the row is still released, commits, under the lock of the key that `insert` takes, the mark of a delete that
+   * may still land (`delete_unresolved_at` at `now`), so neither a completion nor another release finish takes the row
+   * until the delete is settled; then runs `removeObject` outside any transaction and, under the lock again, deletes the
+   * row once it answers `deleted`, or records the failed attempt at `now`, keeping the mark for an `unresolved` delete
+   * and clearing it for a `failed` one. A row a completion revived meanwhile is left as it is, and a row whose last
+   * delete was unresolved less than `unresolvedDeleteGraceMs` ago answers `busy` without a delete. `lockWaitMs`
    * shortens every lock wait below the repository's own bound.
    */
   finishRelease(
@@ -3366,7 +3368,8 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   deleteUnresolved(tenantId: string, image: ProposalImageReference): Promise<boolean>;
   /** Restarts the age bound of the record at `now`, after a write of its object that ended without a definite answer. */
   restartPublication(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
-  markDeleteUnresolved(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
+  /** Marks the record with a delete of its object that may still land, from `now`; null clears the mark. */
+  markDeleteUnresolved(tenantId: string, attemptId: string, image: ProposalImageReference, now: string | null): Promise<void>;
 }
 
 export interface ChangeProposalRepositories {

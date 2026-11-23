@@ -315,23 +315,30 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       )).returning();
       return { kind: 'written', value: [...earlier, ...marked].map(parseImage) };
     }), { kind: 'busy' } as const),
-    finishRelease: (tenantId, asset, removeObject, now, wait) => busyAfterRollback(() => db.transaction(async (tx): Promise<QuarantinedImageReleaseEnd> => {
+    finishRelease: async (tenantId, asset, removeObject, now, wait) => {
       const { lockWaitMs: scoped } = boundsFor(wait);
-      if (!await boundedAdvisoryLock(tx, keyLock(tenantId, asset.apiKeyId), { lockWaitMs: scoped, lockWaitAfterMs: scoped })) return 'busy';
-      const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset)).for('update');
-      if (row === undefined) return 'gone';
-      if (row.releasedAt === null) return 'revived';
-      if (row.deleteUnresolvedAt !== null && row.deleteUnresolvedAt >= unresolvedGraceEnd(now)) return 'busy';
+      const of = imageOfKey(tenantId, asset.apiKeyId, asset);
+      const underKeyLock = <T>(work: (tx: Db) => Promise<T>) => busyAfterRollback(() => db.transaction(async (tx): Promise<T | 'busy'> =>
+        await boundedAdvisoryLock(tx, keyLock(tenantId, asset.apiKeyId), { lockWaitMs: scoped, lockWaitAfterMs: scoped }) ? work(tx) : 'busy'), 'busy' as const);
+      const claimed = await underKeyLock(async (tx): Promise<QuarantinedImageReleaseEnd | 'claimed'> => {
+        const [row] = await tx.select().from(changeProposalImages).where(of).for('update');
+        if (row === undefined) return 'gone';
+        if (row.releasedAt === null) return 'revived';
+        if (row.deleteUnresolvedAt !== null && row.deleteUnresolvedAt >= unresolvedGraceEnd(now)) return 'busy';
+        await tx.update(changeProposalImages).set({ deleteUnresolvedAt: now }).where(of);
+        return 'claimed';
+      });
+      if (claimed !== 'claimed') return claimed;
       const removal = await removeObject();
-      if (removal !== 'deleted') {
-        await tx.update(changeProposalImages)
-          .set(removal === 'unresolved' ? { sweepAttemptedAt: now, deleteUnresolvedAt: now } : { sweepAttemptedAt: now })
-          .where(imageOfKey(tenantId, asset.apiKeyId, asset));
+      return underKeyLock(async (tx): Promise<QuarantinedImageReleaseEnd> => {
+        if (removal === 'deleted') {
+          await tx.delete(changeProposalImages).where(and(of, isNotNull(changeProposalImages.releasedAt)));
+          return 'removed';
+        }
+        await tx.update(changeProposalImages).set({ sweepAttemptedAt: now, deleteUnresolvedAt: removal === 'unresolved' ? now : null }).where(of);
         return 'failed';
-      }
-      await tx.delete(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset));
-      return 'removed';
-    }), 'busy' as const),
+      });
+    },
     listTenantIdsToSweep: (createdBefore, now, limit, boundMs) => within(boundMs, async (executor) =>
       (await executor.select({ tenantId: changeProposalImages.tenantId }).from(changeProposalImages)
         .where(sweepable(createdBefore, now)).groupBy(changeProposalImages.tenantId)

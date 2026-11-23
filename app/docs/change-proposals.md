@@ -1238,12 +1238,19 @@ or a loss in the storage can remove it later.
 When the approval does not end `applied` (it ends `stale`, `failed` or
 expired, a write fails, a lock wait runs out, or the status change or the
 commit fails), it withdraws its attempt right after the transaction: each
-record is removed in a short transaction of its own under the workspace's
-approval lock, so no concurrent approval can publish the same address in
-between. An object the attempt tried to write is deleted first, except when a
+record is handled in short transactions of its own under the workspace's
+approval lock. An object the attempt tried to write is deleted first, except when a
 live field shows the address or an applied proposal sets it in one of the five
 image fields of its input (an address that appears only in another field, such
-as a description, does not count); a record whose object the attempt never tried to write is only dropped. When the
+as a description, does not count); a record whose object the attempt never tried to write is only dropped. Before
+the delete is sent, a first transaction marks the record with the time of the
+coming delete (`delete_unresolved_at`) and commits; the delete is sent after that
+commit, outside the lock, and a second transaction under the lock clears the mark
+and removes the record once the storage confirmed the delete. While the mark
+exists, every approval whose effect sets the address answers `503 unavailable`
+and changes nothing, so a delete still in flight, or one that outlives a process
+or a database connection that died after sending it, never removes an image a
+later approval published. When the
 write of an image ended without a definite answer (no answer within its 5
 seconds, a connection error, a server error), the storage may still store it
 after this delete, so the withdrawal deletes the object but keeps its record,
@@ -1256,15 +1263,14 @@ write itself expires 60 seconds after it was signed. An approval starts a write
 only within 5 minutes of committing its publication records, or it answers
 `503 unavailable` and writes nothing, so a process that dies during a write,
 whose record no withdrawal restarts, still leaves the storage at least 5
-minutes before the sweep deletes the object. When the delete itself ends without a definite
-answer, the storage may still carry it out later, after a new approval has
-committed the address, so the withdrawal keeps the record and marks it with the
-time of that delete (`delete_unresolved_at`). While such a mark exists, every
-approval whose effect sets the address answers `503 unavailable` and changes
-nothing; the minute sweep deletes the
-object again 10 minutes after the marked delete, under the same assumption, and
-only then removes the record, so a retry after that publishes the image
-again. Once the withdrawal of an attempt without such a
+minutes before the sweep deletes the object. A delete the storage refuses (a
+`4xx` answer other than `404`) cannot land later, so the mark is cleared and the
+record stays for the sweep. When the delete ends without a definite answer (no
+answer, a connection error, a server error), or the process dies after sending
+it, the storage may still carry it out later, so the record keeps its mark; the
+minute sweep deletes the object again 10 minutes after the mark, under the same
+assumption, and only then removes the record, so a retry after that publishes
+the image again. Once the withdrawal of an attempt without such a
 write succeeds, the attempt has left neither a record nor a public copy behind.
 A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
@@ -1288,15 +1294,21 @@ stays until someone deletes it there.
 proposals are released: under the workspace's proposal lock, their rows are
 marked released when no pending, unexpired proposal of the same key still
 attaches them. Then, for each image, a short transaction under the key's lock
-that completion takes deletes the object and then the row, if the row is still
-released; a completion that revived it meanwhile keeps both. A failed or busy
-object delete leaves the row released and invisible, and the sweep retries it.
-A delete that ended without a definite answer also records its time in
-`delete_unresolved_at`: for 10 minutes after it the sweep leaves the row alone,
-and a completion of the same image by that key answers `503 unavailable` instead
-of reviving the row, so a late delete never removes a new quarantined copy;
-then the sweep deletes the object again and removes the row, and the image can
-be uploaded again.
+that completion takes marks the row with the time of the coming delete in
+`delete_unresolved_at`, if the row is still released, and commits; a completion
+that revived it meanwhile keeps the row and its object. The object delete is
+sent after that commit, outside any transaction, and a second short
+transaction under the key's lock removes the row once the storage confirmed
+the delete. While the mark exists, the sweep and another release leave the row
+alone and a completion of the same image by that key answers `503 unavailable`
+instead of reviving the row, so a delete in flight, or one that outlives the
+process that sent it, never removes a new quarantined copy. A delete the
+storage refuses (a `4xx` answer other than `404`) clears the mark and leaves
+the row released and invisible, and the sweep retries it; a busy step leaves it
+the same way. A delete that ended without a definite answer, or whose process
+died, keeps the mark: for 10 minutes after it the sweep leaves the row alone,
+then deletes the object again and removes the row, and the image can be
+uploaded again.
 The workspace's approval lock is never held across these storage requests. This
 follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key

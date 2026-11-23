@@ -380,7 +380,9 @@ const catalogRepositoriesOver = (
       },
       markDeleteUnresolved: async (tenantId, attemptId, image, now) => {
         for (const row of store.imagePublications) {
-          if (samePublication(row, tenantId, attemptId, image)) row.deleteUnresolvedAt = now;
+          if (!samePublication(row, tenantId, attemptId, image)) continue;
+          if (now === null) delete row.deleteUnresolvedAt;
+          else row.deleteUnresolvedAt = now;
         }
       },
     },

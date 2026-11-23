@@ -282,14 +282,15 @@ describe('real-provider sign-in and passkey proofs', () => {
       expect(verified.headers.get('location')).toBe(callbackURL);
       expect(challengeCookie).toBe('');
       const token = verified.headers.get('set-auth-token');
-      expect(token).not.toBeNull();
-      expect(await authPort.getAuthenticatedUser(new Headers({
-        authorization: `Bearer ${token}`,
-      }))).toMatchObject({ email, emailVerified: true });
       if (useExistingSession) {
-        expect(token).toBe(originalToken);
+        expect(token).toBeNull();
+        expect(verified.headers.getSetCookie().map((entry) => entry.split(';')[0])).toContain(originalCookie);
         expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie })))
           .toMatchObject({ email, emailVerified: true });
+      } else {
+        expect(await authPort.getAuthenticatedUser(new Headers({
+          authorization: `Bearer ${token ?? ''}`,
+        }))).toMatchObject({ email, emailVerified: true });
       }
     }
   });

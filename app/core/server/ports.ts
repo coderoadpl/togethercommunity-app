@@ -3260,9 +3260,9 @@ export type QuarantinedImageRelease =
 export type QuarantinedImageReleaseEnd = 'removed' | 'revived' | 'gone' | 'failed' | 'busy';
 
 /** `unresolved`: the delete ended without a definite answer, so the storage may still carry it out later. */
-export type QuarantinedImageObjectRemoval = 'deleted' | 'failed' | 'unresolved';
+type QuarantinedImageObjectRemoval = 'deleted' | 'failed' | 'unresolved';
 
-export type QuarantinedImageUploadDue = QuarantinedImageUpload & { deletedOnce: boolean };
+type QuarantinedImageUploadDue = QuarantinedImageUpload & { deletedOnce: boolean };
 
 export type QuarantinedImageUploadRecord =
   | { kind: 'recorded' }

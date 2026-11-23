@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner.
 
-Closed capability count: 144. Route rows: 549. Exported `Ctx` use-case rows: 415.
+Closed capability count: 144. Route rows: 550. Exported `Ctx` use-case rows: 415.
 
 ## Human-readable diff
 
@@ -90,6 +90,7 @@ no changes
 | `GET /api/student/lessons/:lessonId` | lesson:play | public | public | yes | public route manifest |
 | `GET /api/public/checkout/session-status` | checkout:read | public | public | yes | public route manifest |
 | `GET /api/public/payment-config` | checkout:read | public | public | yes | public route manifest |
+| `GET /api/public/parcel-lockers/:code` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/coupon` | checkout:read | public | public | yes | public route manifest |
 | `POST /api/public/checkout/session` | checkout:start | public | public | yes | public route manifest |
 | `GET /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
@@ -1022,12 +1023,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1316` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1318` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1340` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1354` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1884` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1884` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1312` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1314` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1336` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1350` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1880` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1880` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1036,7 +1037,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:113` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:119` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:587` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:679` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:680` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
 | api-key | `apps/server/src/shop-machine-auth.ts:114` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |

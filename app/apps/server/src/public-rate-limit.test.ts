@@ -17,6 +17,10 @@ describe('selectPublicRateLimitPolicies', () => {
       deepHealthPerIp: { limit: 12, windowMs: 60_000 },
       signupsPerIp: { limit: 10, windowMs: 60_000 },
       signupsPerEmail: { limit: 3, windowMs: 600_000 },
+      parcelLockerLookupsPerIp: { limit: 30, windowMs: 60_000 },
+      parcelLockerLookupsPerTenant: { limit: 600, windowMs: 60_000 },
+      parcelLockerLookupsGlobal: { limit: 1_200, windowMs: 60_000 },
+      parcelLockerLookupsPublic: { limit: 600, windowMs: 60_000 },
     });
   });
 
@@ -29,9 +33,41 @@ describe('selectPublicRateLimitPolicies', () => {
       authResolvesPerIp: { limit: 6_000 },
       authResolvesPerTenant: { limit: 100_000 },
       deepHealthPerIp: { limit: 1_200 },
+      parcelLockerLookupsPerIp: { limit: 3_000 },
+      parcelLockerLookupsPerTenant: { limit: 60_000 },
+      parcelLockerLookupsGlobal: { limit: 120_000 },
+      parcelLockerLookupsPublic: { limit: 60_000 },
     });
     expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production', APP_ENV: 'staging' }))
       .toMatchObject({ writesPerIp: { limit: 3_000 } });
+  });
+
+  const productionParcelLockerLimits = {
+    parcelLockerLookupsPerIp: { limit: 30, windowMs: 60_000 },
+    parcelLockerLookupsPerTenant: { limit: 600, windowMs: 60_000 },
+    parcelLockerLookupsGlobal: { limit: 1_200, windowMs: 60_000 },
+    parcelLockerLookupsPublic: { limit: 600, windowMs: 60_000 },
+  };
+
+  it('holds parcel locker lookups to production values on a staging that asks the real carrier', () => {
+    expect(selectPublicRateLimitPolicies({ NODE_ENV: 'production', APP_ENV: 'staging', PAYMENT_PROVIDER: 'stripe' }))
+      .toMatchObject({ ...productionParcelLockerLimits, writesPerIp: { limit: 3_000 } });
+  });
+
+  it('keeps development parcel locker values only while the fake directory answers', () => {
+    expect(selectPublicRateLimitPolicies({ APP_ENV: 'development', PAYMENT_PROVIDER: 'fake' })).toMatchObject({
+      parcelLockerLookupsPerIp: { limit: 3_000 },
+      parcelLockerLookupsPerTenant: { limit: 60_000 },
+      parcelLockerLookupsGlobal: { limit: 120_000 },
+      parcelLockerLookupsPublic: { limit: 60_000 },
+    });
+    expect(selectPublicRateLimitPolicies({ APP_ENV: 'development', PAYMENT_PROVIDER: 'stripe' }))
+      .toMatchObject(productionParcelLockerLimits);
+  });
+
+  it('uses production parcel locker values in production', () => {
+    expect(selectPublicRateLimitPolicies({ APP_ENV: 'production', PAYMENT_PROVIDER: 'stripe' }))
+      .toMatchObject(productionParcelLockerLimits);
   });
 
   it('lets the environment override configurable buckets, including switching them off', () => {
@@ -62,6 +98,10 @@ describe('selectPublicRateLimitPolicies', () => {
       deepHealthPerIp: { limit: 60, windowMs: 60_000 },
       signupsPerIp: { limit: 7, windowMs: 60_000 },
       signupsPerEmail: { limit: 2, windowMs: 600_000 },
+      parcelLockerLookupsPerIp: { limit: 30, windowMs: 60_000 },
+      parcelLockerLookupsPerTenant: { limit: 600, windowMs: 60_000 },
+      parcelLockerLookupsGlobal: { limit: 1_200, windowMs: 60_000 },
+      parcelLockerLookupsPublic: { limit: 600, windowMs: 60_000 },
     });
   });
 

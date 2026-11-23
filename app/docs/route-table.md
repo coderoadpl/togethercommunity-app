@@ -53,6 +53,7 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/checkout/session-status` | public | read | Rate-limited checkout payment confirmation with opt-in purchase analytics and, for Meta conversions, the order consent state with locale-resolved consent copy; no buyer name, email or address |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
+| `GET /api/public/parcel-lockers/:code` | public | read | Rate-limited same-origin parcel locker lookup at the carrier for a workspace with a locker delivery option; code pattern-checked before the call |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
 | `GET /api/public/auth-config` | public | read | Login capability discovery |

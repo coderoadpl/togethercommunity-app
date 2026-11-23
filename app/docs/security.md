@@ -17,6 +17,73 @@ host as the relying party. Non-local authentication origins are HTTPS-only. HTTP
 for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
 outside local development.
 
+## Session tokens and browsers
+
+Better Auth's bearer plugin copies the session cookie value into a readable
+`set-auth-token` response header (listed in `Access-Control-Expose-Headers`)
+whenever a response sets the session cookie, and its sign-in, sign-up,
+two-factor, session and session-list JSON bodies carry the session `token`.
+A script on the page could read either and replay it as
+`Authorization: Bearer` from anywhere for the rest of the session's lifetime,
+on the platform host and on every workspace where the user has a role, which
+defeats the cookie's `HttpOnly` flag. The auth adapter (`adapters/auth/browser-session-token.ts`,
+applied to every Better Auth response by `createAuth`) therefore strips them
+from responses to browser requests. A request counts as a browser when it
+carries `Sec-Fetch-Site` or the Better Auth session cookie (with or without
+the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
+`localhost` origins, and page scripts cannot set or remove it; Safari before
+16.4, and plain-HTTP local development hosts a browser does not treat as
+potentially trustworthy, do not send it, which is why a cookie-bearing request
+is treated as a browser too. Such a request gets no `set-auth-token`
+header, no `Access-Control-Expose-Headers` entry for it, no top-level `token`,
+no `session.token` and no `token` on session-list entries.
+Cookies, status codes and every other field stay unchanged, so browser
+sign-in, sign-out, magic-link, passkey, two-factor and impersonation flows run
+on the `HttpOnly` cookie alone; the web app never reads the token. The CLI,
+the auth end-to-end harness and server-to-server smoke checks send neither
+header nor session cookie (they authenticate with `Authorization: Bearer`) and
+still receive the token they authenticate with.
+Nothing stored changes; removing the wrapper restores the previous responses.
+
+Remaining gaps (not closed by this change):
+
+- A response that creates a session (sign-up, sign-in, two-factor, magic-link,
+  passkey or One Tap) to a browser that sends no `Sec-Fetch-Site` (Safari before
+  16.4, or a plain-HTTP local development host the browser does not treat as
+  potentially trustworthy) still carries the token, because that request has
+  no session cookie yet. Every later cookie-bearing response is stripped.
+- Google One Tap hands its credential (a Google ID token) to page JavaScript
+  before the page posts it to `/api/auth/one-tap/callback`. A script already
+  running on the page can intercept that credential and exchange it for a
+  session. A server-issued nonce bound to the One Tap prompt would close this
+  and is the follow-up.
+- No test drives a passkey sign-in (`verify-authentication`, whose response
+  carries `session.token`) end to end; the `session.token` strip covers that
+  shape, and adding that coverage is a follow-up.
+
+Better Auth's provider-token routes `/get-access-token`, `/refresh-token` and
+`/account-info` are disabled (`disabledPaths`, answering 404): the app never
+calls them, and they would hand a page script the stored Google ID token,
+which could then be exchanged for a fresh session. For the same reason the
+Google provider sets `disableIdTokenSignIn`, so `/sign-in/social` accepts only
+the redirect flow the web app uses; One Tap keeps its own callback route.
+
+Follow-up (defence in depth, not needed to close the browser leak):
+`bearer({ requireSignature: true })` would stop a raw `session.token` read
+from the session table (a backup, a replica, read-only SQL access) from
+working as a bearer credential without the auth secret. Before it can be
+enabled, the clients and harnesses that send the unsigned body `token` as
+`Authorization: Bearer` must switch to the signed `set-auth-token` header:
+`apps/server/src/request-origin.auth.test.ts`,
+`shop-management-switch.test.ts`, `shop-integration-routes.test.ts`,
+`shop-settings-routes.test.ts`, `shop-proposal-groups.test.ts`,
+`shop-propose-mode.test.ts`, `change-proposal-panel.test.ts`,
+`shop-assets-routes.test.ts`, `shop-catalog-routes.test.ts`,
+`shop-order-routes.test.ts`, `shop-management-keys-legacy-isolation.test.ts`
+and `sign-in-events.test.ts` under `apps/server/src/`, plus `scripts/stripe-webhook-old-api-redelivery.test.ts`,
+`scripts/change-proposal-replay.test.ts` and `scripts/shop-machine-replay.test.ts`.
+Outside integrators that copied the body token would need the header too.
+
 ## Unsafe request origins
 
 Every `/api/*` request other than `GET`, `HEAD` and `OPTIONS` passes an origin
@@ -92,7 +159,11 @@ continue to accept server-to-server delivery without browser metadata.
 This boundary does not isolate account-level cookies from trusted scripts already
 running on a tenant's own origin. The shared-cookie vendor-script exposure
 accepted in the repository policy remains; solving it requires cookie/account
-isolation rather than a broader claim about CSRF protection.
+isolation rather than a broader claim about CSRF protection. Such a script can
+act with the cookie while the page is open, but apart from the remaining gaps
+listed in [Session tokens and browsers](#session-tokens-and-browsers) it cannot
+read the session token from auth responses or take a stored Google ID token to
+mint a new session.
 
 ## Account and delivery boundaries
 
@@ -145,7 +216,13 @@ answer `429` with `Retry-After` and a message that does not reveal which bucket
 was exhausted. Public checkout session-status polling uses a separate per-IP
 `checkout-status:ip` bucket of 600 requests per five minutes in production
 (60,000 in development and staging), so several buyers behind one NAT can poll
-without consuming checkout-start or coupon-validation capacity. Expired windows
+without consuming checkout-start or coupon-validation capacity. The public
+parcel locker lookup has its own `parcel-locker:ip` (30 per minute in
+production) and `parcel-locker:tenant` (600 per minute) buckets, and every
+call to the carrier, from that route or from checkout, draws on the
+platform-wide `parcel-locker:global` budget (1,200 per minute), of which the
+route may use at most its `parcel-locker:public` share (600 per minute), see
+[Parcel locker lookup](#parcel-locker-lookup). Expired windows
 are deleted by the hourly KSeF dispatch run.
 
 New passwords require at least 15 characters, with no character-class rules.
@@ -982,6 +1059,56 @@ or signed redirect. Personalised files are private, `no-store` responses.
 Member erasure removes registry rows; see [copy identifiers](storage.md#copy-identifiers).
 A shop management key never reaches this path, which needs a member, and no
 shop route answers a signed link or the content of a product file.
+
+## Parcel locker lookup
+
+`GET /api/public/parcel-lockers/<code>` is the one public route that makes the
+server call a third party on an anonymous request. Its limits:
+
+- The outbound call goes to one fixed host,
+  `https://api-shipx-pl.easypack24.net/v1/points/`, for live and test mode; no
+  part of the URL comes from configuration or from the request except the code.
+- The code must match `^[A-Z0-9]{4,12}$` after trimming and upper-casing before
+  any call, and is URL-encoded anyway. The route reads only its `:code` segment;
+  a query string or extra path segments are never forwarded.
+- The call sends no credentials (the Points resource is public), follows no
+  redirects, times out after 3 seconds and is never retried. Any failure answers
+  `unavailable`; the checkout then stores the code as unverified instead of
+  blocking the sale.
+- The answer is parsed with zod and reduced to the code, a name, an address and
+  a usable verdict; nothing else from the carrier reaches the caller.
+- The route answers only in a workspace with an active parcel locker option (a
+  `not_found` error otherwise, with no carrier call), is same-origin only (no
+  open CORS), returns `Cache-Control: no-store` and is limited per client
+  address (`parcel-locker:ip`, 30 per minute) and per workspace
+  (`parcel-locker:tenant`, 600 per minute). The per-address bucket keys a
+  single address, also for IPv6. Known limit: a client holding an IPv6 /64 can
+  rotate addresses and get a fresh per-address bucket each time; the
+  per-workspace bucket and the public share below still cap it.
+- Every call to the carrier, from the public route and from checkout session
+  creation alike, first claims the platform-wide `parcel-locker:global` budget
+  (1,200 per minute) in a wrapper around
+  the adapter, so lookups from many addresses, workspaces and checkouts cannot
+  add up at the carrier from the platform's one egress address. A lookup
+  refused before the carrier would be asked (malformed code, no parcel locker
+  option, a per-address or per-workspace limit) does not use the budget. When
+  the budget is spent the lookup answers `unavailable` without asking the
+  carrier, so checkout stores the code as unverified.
+- The public route also claims a platform-wide `parcel-locker:public` share
+  (600 per minute) right before the carrier
+  call, after every local refusal, so anonymous lookups can use at most half of
+  the global budget and checkout session creation always keeps the other half.
+  When the share is spent the route answers `unavailable` without asking the
+  carrier. Checkout never claims this share.
+- These four figures hold on every deployment that asks the real carrier
+  (`PAYMENT_PROVIDER=stripe`), whatever its `APP_ENV`, so a staging that runs
+  Stripe test mode cannot send InPost more than production does. Only a
+  deployment with the fake directory (`PAYMENT_PROVIDER=fake`) uses the
+  development values (3,000 per address, 60,000 per workspace, 120,000 global,
+  60,000 public), and none of them reaches the carrier.
+
+Checkout session creation asks the carrier through the same adapter, also
+within the existing checkout write limits. See [the shop guide](shop.md#parcel-locker-lookup-at-the-carrier).
 
 ## InPost ShipX credentials
 

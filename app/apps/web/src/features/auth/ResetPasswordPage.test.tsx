@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
@@ -14,7 +16,7 @@ import { ResetPasswordPage } from './ResetPasswordPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const renderResetPage = async (search: string) => {
+const renderResetPage = async (search: string, withLanguage = false) => {
   window.history.replaceState({}, '', `/reset-password${search}`);
   const rootRoute = createRootRoute({ component: ResetPasswordPage });
   const router = createRouter({
@@ -22,11 +24,12 @@ const renderResetPage = async (search: string) => {
     history: createMemoryHistory({ initialEntries: ['/reset-password'] }),
   });
   await router.load();
-  return renderWithProviders(
+  const page = (
     <ThemeModeProvider>
       <RouterProvider router={router} />
-    </ThemeModeProvider>,
+    </ThemeModeProvider>
   );
+  return renderWithProviders(withLanguage ? <LanguageProvider>{page}</LanguageProvider> : page);
 };
 
 afterEach(() => {
@@ -39,6 +42,34 @@ describe('ResetPasswordPage', () => {
 
     expect(screen.getByTestId('auth-together-logo')).toHaveAttribute('alt', en.common.appName);
     expect(screen.getAllByTestId('language-switcher')).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      password: '',
+      confirm: '',
+      passwordError: [en.resetPassword.passwordRequired, pl.resetPassword.passwordRequired],
+      confirmError: [en.resetPassword.confirmRequired, pl.resetPassword.confirmRequired],
+    },
+    {
+      password: 'short',
+      confirm: 'other',
+      passwordError: [en.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }), pl.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH })],
+      confirmError: [en.resetPassword.mismatch, pl.resetPassword.mismatch],
+    },
+  ])('shows visible errors for "$password"/"$confirm" in the language switched to after submit', async ({ password, confirm, passwordError, confirmError }) => {
+    await renderResetPage('?token=valid-token', true);
+
+    if (password !== '') await userEvent.type(screen.getByTestId('reset-password'), password);
+    if (confirm !== '') await userEvent.type(screen.getByTestId('reset-password-confirm'), confirm);
+    await userEvent.click(screen.getByTestId('reset-submit'));
+    expect(await screen.findByTestId('reset-password-error')).toHaveTextContent(passwordError[0]);
+    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError[0]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'pl' }));
+
+    expect(screen.getByTestId('reset-password-error')).toHaveTextContent(passwordError[1]);
+    expect(screen.getByTestId('reset-password-confirm-error')).toHaveTextContent(confirmError[1]);
   });
 
   it('states the password minimum under the new password and describes the field with it', async () => {

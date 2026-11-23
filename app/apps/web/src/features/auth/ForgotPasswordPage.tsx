@@ -22,6 +22,7 @@ import { useRedirectSignedInWithTenant } from './auth-redirect.js';
 import { AuthShell } from './AuthShell.js';
 
 const EMAIL_ERROR_ID = 'forgot-password-email-error';
+type EmailError = 'required' | 'invalid';
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
@@ -30,7 +31,7 @@ export const ForgotPasswordPage = () => {
   const search = useRouterState({ select: (state) => state.location.searchStr });
   const returnTo = returnToFromSearch(search);
   const [email, setEmail] = useState(() => new URLSearchParams(search).get('email') ?? '');
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<EmailError | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
 
@@ -38,9 +39,9 @@ export const ForgotPasswordPage = () => {
     event.preventDefault();
     requestPasswordReset.reset();
     const normalizedEmail = email.trim();
-    const error = normalizedEmail === ''
-      ? t.forgotPassword.emailRequired
-      : isEmailAddress(normalizedEmail) ? null : t.forgotPassword.invalidEmail;
+    const error: EmailError | null = normalizedEmail === ''
+      ? 'required'
+      : isEmailAddress(normalizedEmail) ? null : 'invalid';
     setEmailError(error);
     if (error !== null) {
       emailRef.current?.focus();
@@ -97,7 +98,9 @@ export const ForgotPasswordPage = () => {
                 required
               />
               {emailError === null ? null : (
-                <FormHelperText id={EMAIL_ERROR_ID} data-testid="forgot-password-email-error">{emailError}</FormHelperText>
+                <FormHelperText id={EMAIL_ERROR_ID} data-testid="forgot-password-email-error">
+                  {emailError === 'required' ? t.forgotPassword.emailRequired : t.forgotPassword.invalidEmail}
+                </FormHelperText>
               )}
             </FormControl>
             <Button

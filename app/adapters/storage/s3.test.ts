@@ -942,6 +942,20 @@ describe('image publication storage operations', () => {
     });
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
+
+  it('stores the disposition it is given with the object', async () => {
+    const sent: Array<Record<string, string> | undefined> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        sent.push(init.headers);
+        return storageResponse(200, '');
+      },
+    });
+    const svg = new TextEncoder().encode('<svg/>');
+    expect((await storage.putObject({ ...credentials, body: svg, contentType: 'image/svg+xml', contentDisposition: 'attachment' })).ok).toBe(true);
+    expect(sent).toEqual([{ 'content-type': 'image/svg+xml', 'content-disposition': 'attachment' }]);
+  });
 });
 
 describe('download file storage operations', () => {

@@ -14,6 +14,7 @@ export const fakeStorageSecrets = {
 interface StoredObject {
   bytes: Uint8Array;
   contentType: string;
+  contentDisposition?: string;
 }
 
 export interface FakeObjectStorage {
@@ -77,7 +78,11 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         const key = keyOf(input.url);
         calls.push({ method: 'putObject', key });
         if (fake.failPuts(key)) return err(integrationUnavailable(`Storage refused the write of ${key}`));
-        objects.set(key, { bytes: input.body.slice(), contentType: input.contentType });
+        objects.set(key, {
+          bytes: input.body.slice(),
+          contentType: input.contentType,
+          ...(input.contentDisposition === undefined ? {} : { contentDisposition: input.contentDisposition }),
+        });
         return ok(undefined);
       },
       delete: async (input) => {

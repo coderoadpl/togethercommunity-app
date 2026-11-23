@@ -869,7 +869,8 @@ export const createS3StorageProvider = (
       return boundedRequest(signed.value, input.deadlineMs, OBJECT_TRANSFER_DEADLINE_MS, async (signal, dispatcher) => {
         const response = await abortable(fetchStorage(signed.value, {
           method: 'PUT', dispatcher, redirect: 'error', signal,
-          headers: { 'content-type': input.contentType }, body: input.body,
+          headers: { 'content-type': input.contentType, ...(input.contentDisposition === undefined ? {} : { 'content-disposition': input.contentDisposition }) },
+          body: input.body,
         }), signal);
         await abortable(discardStorageResponseBody(response), signal);
         if (response.status >= 400 && response.status < 500) {

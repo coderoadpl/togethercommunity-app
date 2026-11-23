@@ -1682,6 +1682,8 @@ export interface StorageProvider {
     region?: string;
     body: Uint8Array;
     contentType: string;
+    /** Stored with the object and sent on every read of it, whatever a signed read asks for. */
+    contentDisposition?: string;
     deadlineMs?: number;
   }): Promise<Result<void, AppError>>;
   objectUrl(configuration: StorageConfiguration, key: string): URL;

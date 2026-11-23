@@ -1145,6 +1145,23 @@ describe('the live image upload use-cases', () => {
       .toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
+  it('stores every public SVG as an attachment, so a storage that ignores the signed disposition still never renders it', async () => {
+    const h = harness();
+    const logo = await h.upload(SVG, { kind: 'logo', fileName: 'logo.svg', contentType: 'image/svg+xml' });
+    const raster = await h.upload(PNG(1), { kind: 'logo-dark', fileName: 'dark.png' });
+    const id = await h.proposed('settings.update', { logoUrl: logo, logoDarkUrl: raster });
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.objects.objects.get(`image-assets/${TENANT}/logo/${sha256HexOfBytes(SVG)}.svg`)).toMatchObject({ contentType: 'image/svg+xml', contentDisposition: 'attachment' });
+    expect(h.objects.objects.get(`image-assets/${TENANT}/logo-dark/${sha256HexOfBytes(PNG(1))}.png`)?.contentDisposition).toBeUndefined();
+
+    const started = await beginBrandingAssetUpload(ownerSession, { kind: 'favicon', fileName: 'icon.svg', contentType: 'image/svg+xml', sizeBytes: SVG.byteLength }, h.deps);
+    if (!started.ok) throw new Error(started.error.message);
+    h.objects.objects.set(started.value.key, { bytes: SVG, contentType: 'image/svg+xml' });
+    expect(await completeBrandingAssetUpload(ownerSession, { key: started.value.key }, h.deps)).toMatchObject({ ok: true });
+    expect(h.objects.objects.get(`image-assets/${TENANT}/favicon/${started.value.key.split('/').at(-1) ?? ''}`))
+      .toMatchObject({ contentType: 'image/svg+xml', contentDisposition: 'attachment' });
+  });
+
   it('serves a published content-addressed image from the public route, an SVG only as an attachment', async () => {
     const h = harness();
     const digest = sha256HexOfBytes(PNG(1));

@@ -472,6 +472,7 @@ export const publishApprovalImages = async (
         ...credentialsOf(configuration),
         body: bytes,
         contentType: proposalImageContentType(image.extension),
+        ...(image.extension === 'svg' ? { contentDisposition: 'attachment' } : {}),
         deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
       });
       if (!stored.ok) {

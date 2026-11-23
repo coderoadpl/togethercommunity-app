@@ -33,6 +33,15 @@ tenant bucket:
 | `image-assets/<workspace>/<kind>/` | completed images, and images a change proposal approval published under their SHA-256, written just before that approval commits; a copy written by an approval that then did not end applied stays until its withdrawal or the minute sweep deletes it | through `/api/public/assets/<kind>/<file>`, a redirect to a signed `GET` |
 | `image-asset-quarantine/<workspace>/<key id>/<kind>/` | images a propose-mode shop management key uploaded, awaiting the owner's approval | never publicly; the owner previews them through the change proposal owner route |
 
+The public asset route asks the storage for `attachment` on every SVG through
+the signed `response-content-disposition`. Since a provider that ignores
+signed overrides is accepted (below), the server also writes every SVG under
+`image-assets/` with a stored `content-disposition: attachment`, both a live
+completion and a change proposal approval, so a browser that opens such an
+address downloads it on any provider. An SVG written before this release
+keeps the metadata it was written with; on a provider that ignores overrides,
+upload such a logo again to give it the stored disposition.
+
 A propose-mode key's presigned `PUT` targets the candidate prefix like any
 other upload, so the bucket CORS rules above cover it; its signature also
 covers `content-length`, so the bucket accepts only a body of the declared

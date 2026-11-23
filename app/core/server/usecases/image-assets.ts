@@ -235,6 +235,7 @@ const completeUpload = async (
     ...credentials,
     body: bytes,
     contentType,
+    ...(contentType === 'image/svg+xml' ? { contentDisposition: 'attachment' } : {}),
   });
   if (!published.ok) return published;
   const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });

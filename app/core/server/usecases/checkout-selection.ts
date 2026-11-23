@@ -1,5 +1,7 @@
 import { CART_CURRENCY_MISMATCH_MESSAGE, CART_PRICE_REQUIRED_MESSAGE, cartCurrencies, checkoutShippingInputSchema, err, isSellableOneTimePrice, singleSellableOneTimePrice, notFound, ok, resolveCheckoutPersonalizations, resolveCheckoutReturnUrl, resolveCheckoutShipping, validation, type CheckoutPersonalizationRequest, type OrderLinePersonalization, resolveProductVat, type AppError, type CartLine, type CheckoutSessionInput, type CheckoutShippingSelection, type Product, type ProductPrice, type Result, type SalesLinkVariantSelection, type TenantSettings } from '#core/domain/index.js';
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { Clock, TenantRepository } from '../ports.js';
+import { verifyCheckoutPickupPoint } from './pickup-points.js';
 
 export interface CheckoutSelection {
   product: Product;
@@ -40,7 +42,7 @@ export const withCheckoutShipping = async (
   tenantId: string,
   selection: CheckoutSelection,
   shipping: CheckoutSessionInput['shipping'],
-  deps: { tenants?: Pick<TenantRepository, 'findSettings'> | undefined },
+  deps: { tenants?: Pick<TenantRepository, 'findSettings'> | undefined; pickupPoints?: PickupPointDirectory | undefined },
 ): Promise<Result<CheckoutSelection, AppError>> => {
   const shippingInput = shipping === undefined ? undefined : checkoutShippingInputSchema.safeParse(shipping);
   if (shippingInput !== undefined && !shippingInput.success) return err(validation('Invalid delivery selection', shippingInput.error.flatten()));
@@ -48,7 +50,9 @@ export const withCheckoutShipping = async (
   const settings = products.some((product) => product.deliveryMethod === 'shipping') ? await deps.tenants?.findSettings(tenantId) : null;
   const resolved = resolveCheckoutShipping(products, settings?.shippingRates, shippingInput?.data);
   if (!resolved.ok) return resolved;
-  return ok(resolved.value === null ? selection : { ...selection, shipping: resolved.value });
+  if (resolved.value === null) return ok(selection);
+  const verified = await verifyCheckoutPickupPoint(resolved.value, deps.pickupPoints);
+  return verified.ok ? ok({ ...selection, shipping: verified.value }) : verified;
 };
 
 export const withCheckoutPersonalizations = (

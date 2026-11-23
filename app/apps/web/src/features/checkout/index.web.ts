@@ -1,15 +1,23 @@
 export {
   createCheckoutState,
+  deliveryPickupPointCode,
   geowidgetAccess,
+  lockerCheckDue,
+  lockerCheckFrom,
+  lockerRefusal,
+  lockerRejection,
   parseGeowidgetPoint,
   pickedPickupPoint,
   reduceCheckoutState,
   selectDelivery,
+  submitLockerCheckDue,
+  typedLockerCheck,
   type CheckoutState,
+  type DeliverySelection,
   type GeowidgetAccess,
   acceptsPoint,
   closedLockerPicker,
   lockerEntry,
   reduceLockerPicker,
 } from './core/index.js';
-export type { CheckoutEvent, PickedPickupPoint } from './core/events.js';
+export type { CheckoutEvent, LockerCheck, PickedPickupPoint } from './core/events.js';

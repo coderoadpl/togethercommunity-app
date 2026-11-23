@@ -608,11 +608,11 @@ export const ThreadDiscussion = ({
     replyError: createErrorFor,
     editError: editErrorFor,
     cancelReply: () => {
-      create.reset();
+      if (create.isError) create.reset();
       setReplyingTo(null);
     },
     cancelEdit: () => {
-      update.reset();
+      if (update.isError) update.reset();
       setEditingId(null);
     },
     submitReply: (parent, body, bodyFormat, reset) => {
@@ -621,7 +621,7 @@ export const ThreadDiscussion = ({
         {
           onSuccess: () => {
             reset();
-            setReplyingTo(null);
+            setReplyingTo((current) => (current === parent.id ? null : current));
           },
         },
       );
@@ -632,7 +632,7 @@ export const ThreadDiscussion = ({
         {
           onSuccess: () => {
             reset();
-            setEditingId(null);
+            setEditingId((current) => (current === post.id ? null : current));
           },
         },
       );

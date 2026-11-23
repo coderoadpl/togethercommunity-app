@@ -684,6 +684,68 @@ describe('DiscussionSection', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
+  it('shows a reply that fails after the member pressed Cancel in the discussion alert', async () => {
+    let releasePost: ((value: undefined) => void) | undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', body: 'Question' }))]),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<LessonDiscussion courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-r1'));
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-r1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(within(screen.getByTestId('reply-composer-r1')).getByRole('button', { name: en.common.cancel }));
+    expect(screen.queryByTestId('reply-composer-r1')).not.toBeInTheDocument();
+    releasePost?.(undefined);
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('shows an edit that fails after the member pressed Cancel in the discussion alert', async () => {
+    let releaseUpdate: ((value: undefined) => void) | undefined;
+    const updateResponse = new Promise<undefined>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    server.use(
+      okMe(),
+      okDiscussion([asThread(post({ id: 'r1', isOwn: true, body: 'Original', bodyFormat: 'plain' }))]),
+      http.post('/api/posts/update', async () => {
+        await updateResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<LessonDiscussion courseId="course-1" lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('edit-button-r1'));
+    await user.type(screen.getByTestId('edit-composer-r1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-r1-submit'));
+    await waitFor(() => expect(screen.getByTestId('edit-composer-r1-submit')).toHaveTextContent(en.discussion.saving));
+
+    await user.click(within(screen.getByTestId('edit-composer-r1')).getByRole('button', { name: en.common.cancel }));
+    expect(screen.queryByTestId('edit-composer-r1')).not.toBeInTheDocument();
+    releaseUpdate?.(undefined);
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent(en.errors.messageInternal);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('shows a reply that fails after the member opened a sub-thread in that view', async () => {
     let releasePost: ((value: undefined) => void) | undefined;
     const postResponse = new Promise<undefined>((resolve) => {

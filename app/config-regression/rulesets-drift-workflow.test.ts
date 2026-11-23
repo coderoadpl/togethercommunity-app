@@ -85,7 +85,7 @@ describe('rulesets-drift workflow', () => {
     expect(checkout?.with?.['persist-credentials']).toBe(false);
   });
 
-  it('gates the pull-request run on a workflow change without masking a git failure', () => {
+  it('gates the pull-request run on a workflow or dispatch-ci manifest change without masking a git failure', () => {
     expect(ciDriftStep?.if).toBe("github.event_name == 'pull_request'");
     expect(ciDriftStep?.shell).toBe('bash');
     expect(ciDriftStep?.env).toEqual({
@@ -93,7 +93,7 @@ describe('rulesets-drift workflow', () => {
       GITHUB_TOKEN: '${{ github.token }}',
     });
     expect(ciDriftStep?.run).toContain(
-      'changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"',
+      'changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts)"',
     );
     expect(ciDriftStep?.run).not.toContain('grep -q .');
     expect(ciDriftStep?.run).toContain('pnpm run rulesets-drift -- --mode=pull-request');

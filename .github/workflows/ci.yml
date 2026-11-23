@@ -92,11 +92,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git -C .. fetch --no-tags --depth=1 origin "$BASE_SHA"
-          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/)"
+          changed="$(git -C .. diff --name-only "$BASE_SHA" HEAD -- .github/workflows/ app/ci/dispatch-ci.manifest.json app/scripts/dispatch-ci.ts app/scripts/rulesets-required-checks.ts)"
           if [ -n "$changed" ]; then
             pnpm run rulesets-drift -- --mode=pull-request
           else
-            echo "No workflow changes; ruleset drift check skipped"
+            echo "No workflow or dispatch-ci manifest changes; ruleset drift check skipped"
           fi
       - run: pnpm run db:migrate
       - name: pnpm run typecheck

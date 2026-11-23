@@ -184,7 +184,8 @@ deletion is restricted only inside the gate ruleset the report lists it under
 Three surfaces run that comparison:
 
 - `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
-  diff touches `.github/workflows/**`. It warns on expected, legacy and
+  diff touches `.github/workflows/**`, `app/ci/dispatch-ci.manifest.json`,
+  `app/scripts/dispatch-ci.ts` or `app/scripts/rulesets-required-checks.ts`. It warns on expected, legacy and
   deletion-protection findings, and fails only on unknown checks.
 - `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on
   demand, with `contents: read` + `issues: write`. It fails on any finding,

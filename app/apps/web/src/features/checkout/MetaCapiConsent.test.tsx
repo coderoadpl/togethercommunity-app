@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { en } from '../../i18n/en.js';
+import { localizeErrorCode } from '../../i18n/index.js';
 import { metaCapiConfig } from '../../test/meta-capi-fixtures.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -99,7 +100,8 @@ it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the
   await act(async () => { finish(HttpResponse.json({ ok: true, data: { consent: choice, withdrawnAt: null } })); });
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(choice === 'granted' ? en.metaCapi.granted : en.metaCapi.denied));
   expect(screen.getByRole('status')).toBe(region);
-  if (choice === 'granted') expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toBeVisible();
+  expect(region).not.toHaveFocus();
+  if (choice === 'granted') expect(screen.getByRole('button', { name: en.metaCapi.withdraw })).toHaveClass('MuiButton-outlined', 'MuiButton-sizeSmall');
   else expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
 });
 
@@ -191,8 +193,9 @@ it('refetches the consent copy on retry after the text changed and sends the cur
   expect(requestBody).toHaveBeenCalledTimes(2);
 });
 
-it('keeps the rejected copy closed when the refetch after a text change fails, and opens the new copy once it loads', async () => {
+it('keeps the rejected copy closed and shows the request error each time the refetch after a text change fails, then opens the new copy once it loads', async () => {
   const updated = { ...metaCapiConfig, heading: 'Updated heading for this purchase?', textVersion: 'c'.repeat(64) };
+  const requestError = localizeErrorCode('internal', en);
   const statusQuery = vi.fn();
   let statusAvailable = false;
   server.use(
@@ -205,17 +208,21 @@ it('keeps the rejected copy closed when the refetch after a text change fails, a
   renderConsent();
   fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
   expect(await screen.findByRole('alert')).toHaveTextContent(en.metaCapi.textChanged);
-  fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
-  await waitFor(() => expect(statusQuery).toHaveBeenCalledOnce());
-  await waitFor(() => expect(screen.getByRole('button', { name: en.common.retry })).toBeEnabled());
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('alert')).toHaveTextContent(en.metaCapi.textChanged);
+  expect(screen.getByRole('alert')).not.toHaveTextContent(requestError);
+  for (const attempt of [1, 2]) {
+    fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
+    expect(screen.getByRole('alert')).not.toHaveTextContent(requestError);
+    await waitFor(() => expect(statusQuery).toHaveBeenCalledTimes(attempt));
+    await waitFor(() => expect(screen.getByRole('button', { name: en.common.retry })).toBeEnabled());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent(`${en.metaCapi.decisionError} ${en.metaCapi.textChanged} ${requestError}`);
+  }
   statusAvailable = true;
   fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
   expect(await screen.findByRole('dialog', { name: updated.heading })).toBeVisible();
   expect(screen.queryByRole('dialog', { name: metaCapiConfig.heading })).toBeNull();
   expect(screen.queryByRole('alert')).toBeNull();
-  expect(statusQuery).toHaveBeenCalledTimes(2);
+  expect(statusQuery).toHaveBeenCalledTimes(3);
 });
 
 it('reopens a dismissed dialog from the no-decision row and records nothing until a choice', async () => {
@@ -224,6 +231,7 @@ it('reopens a dismissed dialog from the no-decision row and records nothing unti
   dismissal.save();
   renderConsent();
   expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: en.metaCapi.decide })).toHaveClass('MuiButton-outlined', 'MuiButton-sizeSmall');
   fireEvent.click(screen.getByRole('button', { name: en.metaCapi.decide }));
   expect(await screen.findByRole('dialog')).toBeVisible();
   expect(decide).not.toHaveBeenCalled();
@@ -268,6 +276,20 @@ it('keeps a granted state and retry action when guest withdrawal fails, even aft
   expect(screen.getByRole('status')).toHaveFocus();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button', { name: en.metaCapi.withdraw })).toBeNull();
+});
+
+it('labels the withdrawal button as in progress while the withdrawal runs', async () => {
+  let finish: (response: Response) => void = () => undefined;
+  server.use(http.post('/api/public/meta-capi/consent', () => new Promise<Response>((resolve) => { finish = resolve; })));
+  renderConsent({ ...metaCapiConfig, consent: 'granted' });
+  fireEvent.click(screen.getByRole('button', { name: en.metaCapi.withdraw }));
+  const pending = await screen.findByRole('button', { name: en.metaCapi.withdrawing });
+  expect(pending).toBeDisabled();
+  expect(pending).toHaveClass('MuiButton-outlined', 'MuiButton-sizeSmall');
+  expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.granted);
+  await act(async () => { finish(HttpResponse.json({ ok: true, data: { consent: 'granted', withdrawnAt: '2026-11-05T10:00:00.000Z' } })); });
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(en.metaCapi.withdrawn));
+  expect(screen.queryByRole('button', { name: en.metaCapi.withdrawing })).toBeNull();
 });
 
 it.each([

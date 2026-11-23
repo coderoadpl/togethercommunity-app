@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '#core/client/index.js';
 import type { MetaCapiConfig, MetaCapiState } from '#core/domain/index.js';
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { fieldErrorEntries } from '../../lib/validation-details.js';
 import { sessionFlag } from '../../theme-mode.js';
 import { MetaCapiConsentDialog } from './MetaCapiConsentDialog.js';
@@ -57,6 +57,7 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
   };
   const reopen = (next: MetaCapiConfig) => {
     choice.reset();
+    setRefreshError(null);
     dismissal.clear();
     setDismissed(false);
     if (next.enabled && next.consent === 'undecided' && next.withdrawnAt === null) setReopened(true);
@@ -68,10 +69,15 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
     requestFocus(choice.isError ? 'error' : 'status');
   };
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<unknown>(null);
   const retry = async () => {
     setRefreshing(true);
+    setRefreshError(null);
     const current = await queryClient.fetchQuery({ ...actions.publicCheckoutSessionStatus(sessionId, config.locale), staleTime: 0 })
-      .then((status) => status.metaCapi, () => undefined);
+      .then((status) => status.metaCapi, (error: unknown) => {
+        setRefreshError(error);
+        return undefined;
+      });
     if (current) setRefreshedConfig(current);
     setRefreshing(false);
     if (current) reopen(current);
@@ -80,7 +86,7 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
   const undecided = state.consent === 'undecided' && !withdrawn;
   const status = choice.isPending ? { text: t.metaCapi.saving }
     : withdrawn ? { text: t.metaCapi.withdrawn }
-      : state.consent === 'granted' ? { text: t.metaCapi.granted, action: { label: t.metaCapi.withdraw, pending: withdrawal.isPending, run: () => withdrawal.mutate({ sessionId, decision: 'withdrawn' }) } }
+      : state.consent === 'granted' ? { text: t.metaCapi.granted, action: { label: withdrawal.isPending ? t.metaCapi.withdrawing : t.metaCapi.withdraw, pending: withdrawal.isPending, run: () => withdrawal.mutate({ sessionId, decision: 'withdrawn' }) } }
         : state.consent === 'denied' ? { text: t.metaCapi.denied }
           : config.enabled && dismissed && !choice.isError ? { text: t.metaCapi.undecided, action: { label: t.metaCapi.decide, pending: false, run: () => reopen(config) } }
             : null;
@@ -100,13 +106,13 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
       />
       {choice.isError ? (
         <Alert ref={errorAlert} tabIndex={-1} severity="error" action={<Button color="inherit" size="small" disabled={refreshing} onClick={() => void retry()}>{t.common.retry}</Button>}>
-          {staleText(choice.error) ? `${t.metaCapi.decisionError} ${t.metaCapi.textChanged}` : t.metaCapi.decisionError}
+          {staleText(choice.error) ? [t.metaCapi.decisionError, t.metaCapi.textChanged, refreshError === null ? null : localizeError(refreshError, t)].filter(Boolean).join(' ') : t.metaCapi.decisionError}
         </Alert>
       ) : null}
       <Stack spacing={0.5} sx={status === null ? emptyStatus : { alignItems: 'flex-start' }} data-testid="meta-capi-status">
         <Typography ref={statusText} variant="body1" role="status" tabIndex={-1}>{status?.text ?? ''}</Typography>
         {status?.action ? (
-          <Button variant="text" disabled={status.action.pending} onClick={status.action.run} sx={{ px: 0, minWidth: 0, minHeight: 44 }}>{status.action.label}</Button>
+          <Button variant="outlined" size="small" disabled={status.action.pending} onClick={status.action.run} sx={{ minHeight: 44 }}>{status.action.label}</Button>
         ) : null}
       </Stack>
       {withdrawal.isError && !withdrawn ? <Alert severity="error">{t.metaCapi.withdrawError}</Alert> : null}

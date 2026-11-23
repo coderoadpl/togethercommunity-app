@@ -101,7 +101,7 @@ export interface ShipxShipmentRepository {
     now: string;
     leaseExpiredBefore: string;
     actorUserId: string | null;
-    /** Decides on the order row locked for update before the claim is taken; a refusal takes no claim. */
+    // A label purchase must serialise with a staff refund that takes the order off the packing list.
     orderShippable(order: ShipxLockedOrder | null): boolean;
   }): Promise<ShipxShipmentAcquisition>;
   update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch, step: ShipxShipmentStep): Promise<ShipxOwnedUpdate>;

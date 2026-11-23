@@ -4272,7 +4272,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
 }));
 
 export const LessonLightboxBackdrop = styled(Backdrop)(({ theme }) => ({
-  backgroundColor: alpha(theme.palette.common.black, 0.9),
+  backgroundColor: alpha(theme.palette.common.black, 0.96),
 }));
 
 export const LessonImageLightbox = styled(Box)(({ theme }) => ({

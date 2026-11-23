@@ -188,6 +188,15 @@ describe('RichTextContent', () => {
     rect.mockRestore();
   });
 
+  it('dims the page under the lightbox almost to black', async () => {
+    const user = userEvent.setup();
+    render(<RichTextContent html={'<img src="/diagram.png" alt="Diagram">'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) }));
+    screen.getByRole('dialog', { name: 'Diagram' });
+
+    expect(stylesAt(document.querySelector('.MuiBackdrop-root'), 1440)['background-color']).toBe('rgba(0, 0, 0, 0.96)');
+  });
+
   it('shows the image edge to edge on a phone and inset from a tablet up', async () => {
     const user = userEvent.setup();
     render(<RichTextContent html={'<img src="/diagram.png" alt="Diagram">'} />);

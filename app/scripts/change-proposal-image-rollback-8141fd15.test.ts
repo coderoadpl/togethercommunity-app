@@ -13,7 +13,7 @@ import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } f
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from '#adapters/db/change-proposals.js';
 import { createTenantSecretRepository } from '#adapters/db/repositories.js';
-import { changeProposals, notifications, products, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
+import { type changeProposals, notifications, products, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import type { Identity, ShopManagementKey } from '#core/domain/index.js';

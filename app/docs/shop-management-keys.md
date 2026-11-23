@@ -734,7 +734,8 @@ metadata as the product file list. Attaching again a staged file this key
 already attached to the same product answers that file the same way when the
 retry asks for what was applied: no `replacesAssetId` for a file added as a new
 file, or a `replacesAssetId` of an older version in the same lineage for a file
-that replaced one, and the same `versionNote`. A retry after a lost answer
+that replaced one (once the version it named was removed, exactly that
+`replacesAssetId`), and the same `versionNote`. A retry after a lost answer
 therefore adds nothing; a retry that asks for anything else answers `409
 conflict` and changes nothing, and any other staged file that is gone answers
 `404`.

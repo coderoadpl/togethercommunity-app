@@ -217,8 +217,8 @@ export interface KeyDownloadAttachRepository {
    * Inserts a ready file whose id is the staged file's id and whose object is the staged object, as a new file or as the
    * next version of `replacesAssetId`, and deletes the staged row; only a staged file of `apiKeyId` is attached. A retry
    * of an attach that already applied finds no staged row and answers the product file it made when it asks for what
-   * was applied (no replacement and a lineage of its own, or a replacement in the same lineage, and the same version
-   * note); any other retry answers `applied_otherwise`.
+   * was applied (no replacement and a lineage of its own, or a replacement in the same lineage, or exactly the stored
+   * target once that version is gone, and the same version note); any other retry answers `applied_otherwise`.
    */
   attach(tenantId: string, input: {
     productId: string;

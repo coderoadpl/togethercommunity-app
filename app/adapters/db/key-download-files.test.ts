@@ -1029,6 +1029,25 @@ describe('an attach retried after a lost answer', () => {
   });
 });
 
+describe('a replacement retried after its target was removed', () => {
+  it('answers the applied replacement to an exact retry, and a conflict to a retry that names another target', async () => {
+    const h = harness();
+    const first = await h.stage();
+    const second = await h.stage(new Uint8Array([...PDF, 1]));
+    const third = await h.stage(new Uint8Array([...PDF, 2]));
+    await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: first.id }, h.deps);
+    await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: third.id }, h.deps);
+    const replaced = await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: first.id }, h.deps);
+    expect(replaced).toMatchObject({ ok: true, value: { lineageId: first.id, versionNumber: 2 } });
+    expect(await removeProductDownloadFile(keyCtx(), { productId: PRODUCT, assetId: first.id }, h.deps)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: first.id }, h.deps)).toEqual(replaced);
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: 'never-there' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: third.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+});
+
 describe('the history of upload and copy records', () => {
   it('leaves neither the state change nor its event when the event of a change cannot be written', async () => {
     const h = harness();

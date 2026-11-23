@@ -687,7 +687,9 @@ export const createKeyDownloadAttachRepository = (executor: Db): KeyDownloadAtta
         .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.replacesAssetId)));
       const sameLineage = input.replacesAssetId === undefined
         ? applied.lineageId === applied.id
-        : replaced !== undefined && replaced.lineageId === applied.lineageId && replaced.versionNumber < applied.versionNumber;
+        : replaced === undefined
+          ? applied.replacesAssetId === input.replacesAssetId
+          : replaced.lineageId === applied.lineageId && replaced.versionNumber < applied.versionNumber;
       return sameLineage && applied.versionNote === input.versionNote ? { kind: 'attached', asset: parseAsset(applied) } : { kind: 'applied_otherwise' };
     }
     const [files] = await tx.select({ files: count() }).from(productDownloadAssets).where(assetsOfProduct(tenantId, input.productId));
@@ -719,7 +721,7 @@ export const createKeyDownloadAttachRepository = (executor: Db): KeyDownloadAtta
       versionNumber,
       versionNote: input.versionNote,
       supersededAt: null,
-      replacesAssetId: null,
+      replacesAssetId: input.replacesAssetId ?? null,
       fileName: staged.fileName,
       contentType: staged.contentType,
       sizeBytes: staged.sizeBytes,

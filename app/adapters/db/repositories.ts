@@ -4096,14 +4096,11 @@ export const createPublicRateLimitRepository = (db: Db): PublicRateLimitReposito
     }).onConflictDoUpdate({
       target: [rateLimitBuckets.scope, rateLimitBuckets.key],
       set: {
-        windowStartedAt: input.windowStartedAt,
-        expiresAt: input.expiresAt,
-        count: sql`case when ${rateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${rateLimitBuckets.count} + 1 else 1 end`,
+        windowStartedAt: sql`greatest(${rateLimitBuckets.windowStartedAt}, ${input.windowStartedAt}::timestamptz)`,
+        expiresAt: sql`case when ${input.windowStartedAt}::timestamptz > ${rateLimitBuckets.windowStartedAt} then ${input.expiresAt}::timestamptz else ${rateLimitBuckets.expiresAt} end`,
+        count: sql`case when ${input.windowStartedAt}::timestamptz > ${rateLimitBuckets.windowStartedAt} then 1 else ${rateLimitBuckets.count} + 1 end`,
       },
-      setWhere: or(
-        ne(rateLimitBuckets.windowStartedAt, input.windowStartedAt),
-        sql`${rateLimitBuckets.count} + 1 <= ${input.limit}`,
-      ) ?? sql`false`,
+      setWhere: sql`${input.windowStartedAt}::timestamptz > ${rateLimitBuckets.windowStartedAt} or ${rateLimitBuckets.count} + 1 <= ${input.limit}`,
     }).returning({ count: rateLimitBuckets.count });
     return row !== undefined;
   },

@@ -1714,6 +1714,31 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
   });
 
+  it('never moves a public rate-limit window back when a claim from the previous window arrives late', async () => {
+    const buckets = createPublicRateLimitRepository(db);
+    const previous = {
+      scope: 'public-write:ip',
+      key: '203.0.113.9',
+      windowStartedAt: '1998-07-14T10:00:00.000Z',
+      expiresAt: '1998-07-14T10:01:00.000Z',
+      limit: 2,
+    };
+    const current = { ...previous, windowStartedAt: '1998-07-14T10:01:00.000Z', expiresAt: '1998-07-14T10:02:00.000Z' };
+
+    expect(await buckets.claim(current)).toBe(true);
+    expect(await buckets.claim(previous)).toBe(true);
+    expect(await buckets.claim(current)).toBe(false);
+    expect(await buckets.claim(previous)).toBe(false);
+    const stored = await db.execute(sql`
+      select window_started_at = ${current.windowStartedAt}::timestamptz as current_window,
+        expires_at = ${current.expiresAt}::timestamptz as current_expiry, count
+      from rate_limit_buckets where scope = ${previous.scope} and key = ${previous.key}`);
+    expect(stored.rows).toEqual([{ current_window: true, current_expiry: true, count: 2 }]);
+
+    expect(await buckets.claim({ ...current, windowStartedAt: '1998-07-14T10:02:00.000Z', expiresAt: '1998-07-14T10:03:00.000Z' })).toBe(true);
+    expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);
+  });
+
   it('appends and tenant-scopes import audit events', async () => {
     const apiKeys = createTenantApiKeyRepository(db);
     await apiKeys.create(ACME, {

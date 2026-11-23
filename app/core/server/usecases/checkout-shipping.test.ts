@@ -201,6 +201,16 @@ describe('checkout delivery selection', () => {
     });
   });
 
+  it('accepts the typed code unverified when the carrier answers with a status it has not documented', async () => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true });
+    expect(h.pickupPoints.lookups).toEqual([TEST_PICKUP_POINTS.unknownStatus]);
+    expect(h.snapshots[0]?.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus, name: null, address: null, verified: false });
+  });
+
   it('marks the locker unverified when no carrier directory is configured', async () => {
     const h = harness();
     delete h.deps.pickupPoints;

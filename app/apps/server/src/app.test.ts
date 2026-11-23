@@ -10,7 +10,7 @@ import { marketingContactDeps } from '#core/server/testing/marketing-contact-fak
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
-import { createPickupPointDirectoryFake } from '#core/server/testing/pickup-point-fake.js';
+import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
@@ -3369,6 +3369,33 @@ describe('public rate limiting', () => {
       body: JSON.stringify({ productId: 'acme-published', couponCode: 'SAVE' }),
     })).status).not.toBe(429);
     expect(scopes).toEqual(['public-write:ip', 'public-write:tenant']);
+  });
+
+  it('answers HEAD on a parcel locker lookup with 404 without claiming a rate limit or asking the directory', async () => {
+    const scopes: string[] = [];
+    const configured = deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    });
+    configured.tenants.findSettings = async () => tenantSettingsSchema.parse({ name: acme.name, billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+      { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+    ] });
+    const directory = createPickupPointDirectoryFake();
+    configured.pickupPoints = directory;
+    const app = buildApp(configured);
+    const path = API_PATHS.publicParcelLocker.replace(':code', TEST_PICKUP_POINTS.operating);
+
+    const response = await app.request(path, { method: 'HEAD', headers: { [TENANT_HEADER]: 'acme' } });
+
+    expect(response.status).toBe(404);
+    expect(scopes).toEqual([]);
+    expect(directory.lookups).toEqual([]);
+
+    expect((await app.request(path, { headers: { [TENANT_HEADER]: 'acme' } })).status).toBe(200);
+    expect(scopes).toContain('parcel-locker:ip');
+    expect(directory.lookups).toEqual([TEST_PICKUP_POINTS.operating]);
   });
 });
 

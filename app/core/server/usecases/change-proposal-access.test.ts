@@ -153,6 +153,19 @@ const accessOf = (h: Harness, id: string) => h.state.products.find((candidate) =
 
 const ADVANCED = [{ level: 'course' as const, courseId: 'course-advanced' }];
 
+const lockMarks = (h: Harness) => ({
+  targetLocks: h.transaction.locks.length,
+  courseLocks: h.transaction.courseLocks.length,
+  repositoryCourseLocks: h.transaction.repositoryCourseLocks.length,
+});
+
+const coursesFirstLockedAfterAProduct = (h: Harness, marks: ReturnType<typeof lockMarks>): string[] => {
+  const records = [...h.transaction.courseLocks.slice(marks.courseLocks), ...h.transaction.repositoryCourseLocks.slice(marks.repositoryCourseLocks)];
+  const courseIds = [...new Set(records.flatMap((record) => record.courseIds))];
+  return courseIds.filter((courseId) =>
+    Math.min(...records.filter((record) => record.courseIds.includes(courseId)).map((record) => record.targetLocksBefore)) > marks.targetLocks);
+};
+
 const setStored = (h: Harness, id: string, accessItems: Product['accessItems']) => {
   const stored = h.state.products.find((candidate) => candidate.id === id);
   if (stored === undefined) throw new Error(`No product ${id}`);
@@ -358,5 +371,24 @@ describe('what a product grants in a group', () => {
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [updated, created, access] }, h.deps))
       .toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(h.transaction.courseLocks[courseLocksBefore]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore });
+  });
+
+  it('locks a course that only a product creation grants before an earlier item locks a product', async () => {
+    const h = harness();
+    const groupId = unwrap(await createChangeProposalGroup(keyCtx(), { title: 'Launch' }, h.deps)).id;
+    const access = unwrap(await submitGroupedChangeProposal(keyCtx(), {
+      groupId, operation: 'product.set-access', input: { id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared'] }] },
+    }, h.deps)).items.at(-1)?.id ?? '';
+    const dryRun = lockMarks(h);
+    const created = unwrap(await submitGroupedChangeProposal(keyCtx(), {
+      groupId, operation: 'product.create', input: { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems: ADVANCED },
+    }, h.deps)).items.at(-1)?.id ?? '';
+    expect(coursesFirstLockedAfterAProduct(h, dryRun)).toEqual([]);
+    const approval = lockMarks(h);
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [access, created] }, h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(coursesFirstLockedAfterAProduct(h, approval)).toEqual([]);
+    expect(h.transaction.courseLocks[approval.courseLocks]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore: approval.targetLocks });
   });
 });

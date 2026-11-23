@@ -410,6 +410,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.create'],
     invalidInputMessage: 'Invalid product payload',
     target: () => ({ kind: 'product', id: null }),
+    lockedCourseIds: (input) => input.accessItems.map((item) => item.courseId),
     snapshot: (repositories, tenantId, _input, resourceId) => productSnapshot(repositories, tenantId, resourceId),
     run: async (ctx, input, scope, deps) => resourceIdOf(await createProduct(ctx, input, catalogDeps(scope, deps))),
   }),

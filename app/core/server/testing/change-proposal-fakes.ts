@@ -221,6 +221,7 @@ const catalogRepositoriesOver = (
   store: FakeTransactionStore,
   locks: ChangeProposalTarget[],
   courseLocks: FakeCourseLock[],
+  repositoryCourseLocks: FakeCourseLock[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
   return {
@@ -234,6 +235,7 @@ const catalogRepositoriesOver = (
       findByIds: async (tenantId, ids) =>
         state.products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)).map((found) => ({ ...found })),
       create: async (tenantId, created) => {
+        repositoryCourseLocks.push({ courseIds: created.accessItems.map((item) => item.courseId), targetLocksBefore: locks.length });
         if (state.products.some((candidate) => candidate.tenantId === tenantId && candidate.slug === created.slug)) return 'slug_taken';
         state.products.push({ ...created });
         return 'created';
@@ -249,6 +251,7 @@ const catalogRepositoriesOver = (
         return { ...saved };
       },
       updateAccessItems: async (tenantId, id, accessItems, version) => {
+        repositoryCourseLocks.push({ courseIds: accessItems.map((item) => item.courseId), targetLocksBefore: locks.length });
         const referenced = new Set(accessItems.map((item) => item.courseId));
         if (state.courses.some((course) => course.tenantId === tenantId && referenced.has(course.id) && course.archivedAt)) return 'course_unavailable';
         const found = product(tenantId, id);
@@ -894,6 +897,7 @@ export interface FakeChangeProposalTransaction extends ChangeProposalTransaction
   dryRunGroups: Array<string | null>;
   locks: ChangeProposalTarget[];
   courseLocks: FakeCourseLock[];
+  repositoryCourseLocks: FakeCourseLock[];
   deferredDropped: number;
 }
 
@@ -908,9 +912,10 @@ export const createChangeProposalTransactionFake = (
   const dryRunGroups: Array<string | null> = [];
   const locks: ChangeProposalTarget[] = [];
   const courseLocks: FakeCourseLock[] = [];
+  const repositoryCourseLocks: FakeCourseLock[] = [];
   const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
-    repositories: catalogRepositoriesOver(target, store, locks, courseLocks),
+    repositories: catalogRepositoriesOver(target, store, locks, courseLocks, repositoryCourseLocks),
     secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
     savepoint: async (operation) => {
@@ -931,6 +936,7 @@ export const createChangeProposalTransactionFake = (
     dryRunGroups,
     locks,
     courseLocks,
+    repositoryCourseLocks,
     deferredDropped: 0,
     run: async (_tenantId, operation) => {
       calls.push('run');

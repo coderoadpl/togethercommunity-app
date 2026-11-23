@@ -1924,9 +1924,12 @@ owner.
 list names first (`FOR UPDATE`, in id order, as the live write of access items
 does), then the product row (`FOR NO KEY UPDATE`) and its stock row, as for a
 product update; the use-case then writes the list and refuses an archived
-course. In a [group](#groups), the dry run and the approval first lock the
-courses that every item names, once and in id order, before any item locks a
-product row. The owner's editor and the content import also lock the courses
+course. A `product.create` likewise locks the courses its list grants before it
+creates the product. In a [group](#groups), the dry run and the approval
+first lock, in one statement and in id order, the courses that the
+`product.set-access` items name and the `product.create` items grant, before
+any item locks a product row; each of those items requests its courses again
+when it runs, which takes nothing new. The owner's editor and the content import also lock the courses
 before they write the product. When Postgres aborts the editor's write as a
 deadlock victim, or a lock or statement wait runs out, the editor answers
 `503 unavailable` ("The product is busy; nothing was changed, retry the

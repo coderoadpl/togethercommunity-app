@@ -300,6 +300,49 @@ describe('progress on a module that two courses share', () => {
     expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
   });
 
+  describe('with the course the member is viewing', () => {
+    const c3 = course('c3', 't1');
+    const inThree: CourseModule = { ...m1, courseIds: ['c1', 'c2', 'c3'] };
+    const threeDeps = (progress: MemberCourseProgressRepository, accessItems: Product['accessItems']) =>
+      deps(progress, [activeGrant], [{ ...pCourse, accessItems }], [c1, c2, c3], [inThree]);
+    const c1WithoutM1 = { level: 'course' as const, courseId: 'c1', excludedModuleIds: ['m1'] };
+
+    it('records and removes completion under the viewed course when it opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c3' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c3')).toMatchObject({ ok: true, value: { courseId: 'c3', completedLessonIds: ['l1'] } });
+      expect(await getProgress(ctx({}), 'c3', { ...d, lessons: { list: async () => [] } })).toMatchObject({ ok: true, value: { completedLessonIds: ['l1'] } });
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', d, 'c3')).toMatchObject({ ok: true, value: { courseId: 'c3', completedLessonIds: [] } });
+    });
+
+    it('falls back to the first course that opens the lesson when the viewed course does not', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c-unknown')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+    });
+
+    it('records under the first course that opens the lesson when no course is sent', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c3' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('records staff completion under the viewed course and under the first course without one', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, []);
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l1', d, 'c2')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l2', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('stays forbidden when the viewed course is named but no course opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c1')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(store.rows).toHaveLength(0);
+    });
+  });
+
   it('forbids completion when the only course item excludes the module', async () => {
     const store = makeProgressStore();
     const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }]);

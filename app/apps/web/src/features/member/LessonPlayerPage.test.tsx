@@ -24,6 +24,7 @@ import type {
   PlayableLessonBlock,
 } from '#core/domain/index.js';
 
+import { lessonCompleteInputSchema } from '#core/contract/index.js';
 import { updateLastViewedInputSchema } from '#core/domain/index.js';
 
 import { DocumentTitleProvider } from '../../components/layout/document-title.js';
@@ -269,7 +270,7 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Earlier chapter content');
     expect(screen.getByTestId('lesson-edition-banner')).toHaveTextContent(en.lesson.editionOlderWarning);
     await userEvent.click(await screen.findByTestId('mark-complete'));
-    await waitFor(() => expect(completions).toEqual([{ lessonId: 'l1' }]));
+    await waitFor(() => expect(completions).toEqual([{ lessonId: 'l1', courseId: 'course-1' }]));
     expect(discussions).toContain('l1');
   });
 
@@ -1385,6 +1386,59 @@ describe('LessonPlayerPage', () => {
     expect(unmarkButton).toBeEnabled();
     expect(completeCalls).toBe(1);
     await waitFor(() => expect(progressReads).toBeGreaterThan(readsBefore));
+  });
+
+  it('completes under the course it shows and reads that course back as completed', async () => {
+    const written = new Map<string, string[]>();
+    const requests: unknown[] = [];
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
+      }),
+      http.post('/api/student/lessons/complete', async ({ request }) => {
+        const body = lessonCompleteInputSchema.parse(await request.json());
+        requests.push(body);
+        const courseId = body.courseId ?? 'course-first';
+        written.set(courseId, [body.lessonId]);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([body.lessonId]), courseId } } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(requests).toEqual([{ lessonId: 'l1', courseId: 'course-1' }]));
+    await waitFor(() => expect(written.get('course-1')).toEqual(['l1']));
+    expect(await screen.findByTestId('unmark-complete')).toBeInTheDocument();
+  });
+
+  it('keeps showing what it wrote when the server recorded the completion under another course', async () => {
+    let completed = false;
+    let readsAfterCompletion = 0;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', () => {
+        if (completed) readsAfterCompletion += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+      http.post('/api/student/lessons/complete', () => {
+        completed = true;
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(readsAfterCompletion).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByTestId('unmark-complete')).toBeEnabled());
+    expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 
   it('un-marks a completed lesson and restores the mark button', async () => {

@@ -3505,7 +3505,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await readJson(c.req.raw);
     const parsed = lessonCompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson completion payload', parsed.error.flatten())));
-    const result = await markLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
+    const result = await markLessonCompleted(ctxOf(c), parsed.data.lessonId, deps, parsed.data.courseId);
     return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
   });
 
@@ -3513,7 +3513,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await readJson(c.req.raw);
     const parsed = lessonUncompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson un-completion payload', parsed.error.flatten())));
-    const result = await unmarkLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
+    const result = await unmarkLessonCompleted(ctxOf(c), parsed.data.lessonId, deps, parsed.data.courseId);
     return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
   });
 

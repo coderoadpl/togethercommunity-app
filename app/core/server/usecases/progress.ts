@@ -26,7 +26,13 @@ import type {
   MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { buildCourseStructure, fullCourseLookup, locateAccessibleLesson, locateLesson } from './access.js';
+import {
+  buildCourseStructure,
+  fullCourseLookup,
+  isLessonAccessibleByLookup,
+  lessonLocations,
+  type LessonLocation,
+} from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 import { resolveCourseResume } from './course-resume.js';
 import { requireLiveMember } from './member-status.js';
@@ -52,25 +58,41 @@ const requireMember = (ctx: Ctx, capability: Capability): Result<MemberScope, Ap
   return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });
 };
 
+const completionLocation = async (
+  ctx: Ctx,
+  scope: MemberScope,
+  lessonId: string,
+  viewedCourseId: string | undefined,
+  deps: ProgressDeps,
+): Promise<Result<LessonLocation, AppError>> => {
+  if (!lessonId) return err(validation('lessonId is required'));
+  const [courses, modules] = await Promise.all([
+    deps.courses.list(scope.tenantId),
+    deps.modules.list(scope.tenantId),
+  ]);
+  const locations = lessonLocations(lessonId, courses, modules);
+  if (locations.length === 0) return err(notFound(`No lesson "${lessonId}" in this tenant`));
+
+  const lookup = await resolveMemberAccessLookup(scope, deps);
+  const opening = ctx.identity.staffRole !== null
+    ? locations
+    : locations.filter((location) =>
+      isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId }));
+  const progressAt = opening.find((location) => location.course.id === viewedCourseId) ?? opening[0];
+  return progressAt === undefined ? err(forbidden('This lesson is not accessible')) : ok(progressAt);
+};
+
 export const markLessonCompleted = async (
   ctx: Ctx,
   lessonId: string,
   deps: ProgressDeps,
+  viewedCourseId?: string,
 ): Promise<Result<MemberCourseProgress, AppError>> => {
   const scope = requireMember(ctx, 'member:progress:self-write');
   if (!scope.ok) return scope;
-  if (!lessonId) return err(validation('lessonId is required'));
-
-  const [courses, modules] = await Promise.all([
-    deps.courses.list(scope.value.tenantId),
-    deps.modules.list(scope.value.tenantId),
-  ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
-
-  const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);
-  if (!progressAt) return err(forbidden('This lesson is not accessible'));
+  const located = await completionLocation(ctx, scope.value, lessonId, viewedCourseId, deps);
+  if (!located.ok) return located;
+  const progressAt = located.value;
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),
@@ -93,21 +115,13 @@ export const unmarkLessonCompleted = async (
   ctx: Ctx,
   lessonId: string,
   deps: ProgressDeps,
+  viewedCourseId?: string,
 ): Promise<Result<MemberCourseProgress, AppError>> => {
   const scope = requireMember(ctx, 'member:progress:self-write');
   if (!scope.ok) return scope;
-  if (!lessonId) return err(validation('lessonId is required'));
-
-  const [courses, modules] = await Promise.all([
-    deps.courses.list(scope.value.tenantId),
-    deps.modules.list(scope.value.tenantId),
-  ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
-
-  const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);
-  if (!progressAt) return err(forbidden('This lesson is not accessible'));
+  const located = await completionLocation(ctx, scope.value, lessonId, viewedCourseId, deps);
+  if (!located.ok) return located;
+  const progressAt = located.value;
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),

@@ -365,12 +365,17 @@ export const LessonPlayerPage = ({
     ? optimisticDone.done
     : completedFromServer;
 
-  const settleCompletion = async () => {
+  const settleCompletion = async (
+    written: { courseId: string; completedLessonIds: string[] } | undefined,
+    settledLessonId: string,
+  ) => {
     await Promise.all([
       queryClient.invalidateQueries(actions.studentCourseInvalidates()),
       queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
     ]);
-    setOptimisticDone(null);
+    setOptimisticDone(written === undefined || written.courseId === courseId
+      ? null
+      : { lessonId: settledLessonId, done: written.completedLessonIds.includes(settledLessonId) });
   };
 
   const complete = useMutation({
@@ -378,7 +383,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: completedLessonId }) =>
       setOptimisticDone({ lessonId: completedLessonId, done: true }),
     onError: () => setOptimisticDone(null),
-    onSettled: settleCompletion,
+    onSettled: (data, _error, input) => settleCompletion(data?.progress, input.lessonId),
   });
 
   const uncomplete = useMutation({
@@ -386,7 +391,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: uncompletedLessonId }) =>
       setOptimisticDone({ lessonId: uncompletedLessonId, done: false }),
     onError: () => setOptimisticDone(null),
-    onSettled: settleCompletion,
+    onSettled: (data, _error, input) => settleCompletion(data?.progress, input.lessonId),
   });
 
   useEffect(() => {
@@ -523,7 +528,7 @@ export const LessonPlayerPage = ({
   const continueToNext = () => {
     setContinuing(true);
     complete.mutate(
-      { lessonId },
+      { lessonId, courseId },
       {
         onSuccess: () => {
           if (nextHref === null) setContinuing(false);
@@ -666,7 +671,7 @@ export const LessonPlayerPage = ({
                 variant="outlined"
                 data-testid="unmark-complete"
                 data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => uncomplete.mutate({ lessonId })}
+                onClick={() => uncomplete.mutate({ lessonId, courseId })}
                 disabled={uncomplete.isPending}
                 startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
                 title={t.lesson.unmarkCompletedHint}
@@ -679,7 +684,7 @@ export const LessonPlayerPage = ({
                 variant={nextHref === null ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
                 data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => complete.mutate({ lessonId })}
+                onClick={() => complete.mutate({ lessonId, courseId })}
                 disabled={complete.isPending}
               >
                 {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}

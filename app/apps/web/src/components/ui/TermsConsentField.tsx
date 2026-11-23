@@ -16,7 +16,6 @@ const DocumentLink = ({ href, label }: { href: string; label: string }) => (
   </Link>
 );
 
-/** Required terms/privacy acceptance for register and checkout. */
 export const TermsConsentField = ({
   legal,
   checked,

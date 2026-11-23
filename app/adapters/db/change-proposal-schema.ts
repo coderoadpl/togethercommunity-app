@@ -125,6 +125,7 @@ export const changeProposalImages = pgTable('change_proposal_images', {
   releasedAt: text('released_at'),
   sweepAttemptedAt: text('sweep_attempted_at'),
   deleteUnresolvedAt: text('delete_unresolved_at'),
+  pendingSince: text('pending_since'),
 }, (table) => [
   primaryKey({ name: 'change_proposal_images_pkey', columns: [table.tenantId, table.apiKeyId, table.kind, table.digest, table.extension] }),
   index('change_proposal_images_created_idx').on(table.createdAt),
@@ -135,6 +136,7 @@ export const changeProposalImages = pgTable('change_proposal_images', {
   check('change_proposal_images_created_at_check', isoMillisecondTimestamp(table.createdAt)),
   check('change_proposal_images_released_at_check', sql`${table.releasedAt} IS NULL OR ${isoMillisecondTimestamp(table.releasedAt)}`),
   check('change_proposal_images_delete_unresolved_at_check', sql`${table.deleteUnresolvedAt} IS NULL OR ${isoMillisecondTimestamp(table.deleteUnresolvedAt)}`),
+  check('change_proposal_images_pending_since_check', sql`${table.pendingSince} IS NULL OR ${isoMillisecondTimestamp(table.pendingSince)}`),
 ]);
 
 export const changeProposalImageUploads = pgTable('change_proposal_image_uploads', {

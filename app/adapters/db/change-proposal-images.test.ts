@@ -14,6 +14,7 @@ import {
   integrationUnavailable,
   ok,
   proposalImageKindSchema,
+  storageDefiniteFailure,
   type AppError,
   type Identity,
   type ProposalImageExtension,
@@ -558,12 +559,10 @@ describe('quarantined rows and objects of one key', () => {
     expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
   });
 
-  it('serialises a release finish behind a completion writing the same image', async () => {
+  it('leaves a row a completion is writing to that completion: a release finish, a second completion and a release keep off it', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     await repository.insert(TENANT, image(1), stored);
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
-    const observer = new pg.Client({ connectionString: database.url });
-    await observer.connect();
     let finishWrite: () => void = () => undefined;
     const writeMayFinish = new Promise<void>((resolve) => { finishWrite = resolve; });
     let writing: () => void = () => undefined;
@@ -576,15 +575,16 @@ describe('quarantined rows and objects of one key', () => {
       });
       await writeStarted;
       const removeObject = vi.fn(async () => 'deleted' as const);
-      const finish = repository.finishRelease(TENANT, image(1), removeObject, NOW);
-      await untilWaiting(observer, 'The release finish');
+      expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW)).toBe('revived');
+      expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'busy' });
+      expect(await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW)).toEqual({ kind: 'written', value: [] });
+      expect(await repository.find(TENANT, KEY_ID, image(1))).toBeNull();
       finishWrite();
       expect(await completion).toMatchObject({ kind: 'stored' });
-      expect(await finish).toBe('revived');
       expect(removeObject).not.toHaveBeenCalled();
+      expect(await repository.find(TENANT, KEY_ID, image(1))).toEqual(image(1));
     } finally {
       finishWrite();
-      await observer.end();
     }
   });
 
@@ -614,9 +614,9 @@ describe('quarantined rows and objects of one key', () => {
     expect(await releasedRows()).toEqual(['1']);
   }, 15_000);
 
-  it('rolls back the row when its object cannot be written, and keeps a released row released', async () => {
+  it('rolls back the row when the storage refused its object, and keeps a released row released', async () => {
     const repository = createQuarantinedImageRepository(database.db);
-    const refused = async () => err(integrationUnavailable('Storage refused the write'));
+    const refused = async () => err(storageDefiniteFailure('S3 refused the published image with status 403'));
     expect(await repository.insert(TENANT, image(1), refused)).toMatchObject({ kind: 'store_failed', error: { code: 'integration_unavailable' } });
     expect(await rows()).toEqual([]);
     await repository.insert(TENANT, image(2), stored);
@@ -674,6 +674,47 @@ describe('quarantined rows and objects of one key', () => {
     expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:15:00.000Z', 10)).toEqual([]);
     expect(await repository.listTenantIdsWithPublicationsBefore('2026-03-01T10:15:00.000Z', 10)).toEqual([]);
     expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:30:01.000Z', 10)).toMatchObject([{ attemptId: 'attempt-unresolved' }]);
+  });
+});
+
+describe('a quarantined write that outlives its completion', () => {
+  const quarantinedKey = `image-asset-quarantine/${TENANT}/${KEY_ID}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
+  const reference: ProposalImageReference = { kind: 'product-cover', digest: createContentHash().sha256(PNG_BYTES), extension: 'png' };
+
+  const sweptAfterTheBound = async (harness: ReturnType<typeof endToEnd>) => {
+    expect(harness.objects.keysUnder('image-asset-quarantine/')).toEqual([quarantinedKey]);
+    expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/${reference.digest.replace(/^0+/u, '')}`]);
+    expect(await createQuarantinedImageRepository(database.db).find(TENANT, KEY_ID, reference)).toBeNull();
+    harness.clock.now = '2026-03-01T10:09:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-asset-quarantine/')).toEqual([quarantinedKey]);
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    await sweepQuarantinedImages(harness.deps);
+    expect(harness.objects.keysUnder('image-asset-quarantine/')).toEqual([]);
+    expect(await database.db.select().from(changeProposalImages)).toEqual([]);
+  };
+
+  it('stays counted when the storage stored the bytes but answered an error, and the sweep removes it after the bound', async () => {
+    const harness = endToEnd();
+    const put = harness.objects.storage.putObject;
+    harness.objects.storage.putObject = async (input) => {
+      const written = await put(input);
+      return written.ok && input.url.includes('/image-asset-quarantine/') ? err(integrationUnavailable('S3 rejected the published image')) : written;
+    };
+    await expect(harness.proposeCover(PNG_BYTES)).rejects.toThrow('S3 rejected the published image');
+    await sweptAfterTheBound(harness);
+  });
+
+  it('stays counted when the process dies after the write, before the row is committed, and the sweep removes it after the bound', async () => {
+    const harness = endToEnd();
+    const put = harness.objects.storage.putObject;
+    harness.objects.storage.putObject = async (input) => {
+      const written = await put(input);
+      if (input.url.includes('/image-asset-quarantine/')) throw new Error('Connection terminated unexpectedly');
+      return written;
+    };
+    await expect(harness.proposeCover(PNG_BYTES)).rejects.toThrow('Connection terminated unexpectedly');
+    await sweptAfterTheBound(harness);
   });
 });
 

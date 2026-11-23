@@ -3,6 +3,7 @@ import { and, asc, count, eq, gt, isNotNull, isNull, lt, not, or, sql, type SQL 
 import {
   CHANGE_PROPOSAL_IMAGE_FIELDS,
   proposalImageExtensionsFor,
+  storageFailureIsDefinite,
   proposalImagePublicationSchema,
   QUARANTINED_IMAGE_LIMITS,
   quarantinedImageAssetSchema,
@@ -74,6 +75,8 @@ const imageOfKey = (tenantId: string, apiKeyId: string, image: ProposalImageRefe
 
 const unreleased = isNull(changeProposalImages.releasedAt);
 
+const written = isNull(changeProposalImages.pendingSince);
+
 const keyLock = (tenantId: string, apiKeyId: string): string => `change-proposal-images:${tenantId}:${apiKeyId}`;
 
 const findUnreleased = async (
@@ -83,7 +86,7 @@ const findUnreleased = async (
   image: ProposalImageReference,
   lock: 'share' | 'key share' | null = null,
 ): Promise<QuarantinedImageAsset | null> => {
-  const query = executor.select().from(changeProposalImages).where(and(imageOfKey(tenantId, apiKeyId, image), unreleased));
+  const query = executor.select().from(changeProposalImages).where(and(imageOfKey(tenantId, apiKeyId, image), unreleased, written));
   const [row] = lock === null ? await query.limit(1) : await query.for(lock);
   return row === undefined ? null : parseImage(row);
 };
@@ -182,9 +185,14 @@ const unresolvedGraceEnd = (now: string): string => new Date(Date.parse(now) - Q
 const deleteSettled = (now: string): SQL | undefined =>
   or(isNull(changeProposalImages.deleteUnresolvedAt), lt(changeProposalImages.deleteUnresolvedAt, unresolvedGraceEnd(now)));
 
+const pendingAbandoned = (now: string): SQL | undefined => lt(changeProposalImages.pendingSince, unresolvedGraceEnd(now));
+
+const releasable = (now: string): SQL | undefined => or(written, pendingAbandoned(now));
+
 const sweepable = (createdBefore: string, now: string): SQL | undefined => or(
   and(isNotNull(changeProposalImages.releasedAt), deleteSettled(now)),
-  and(or(lt(changeProposalImages.createdAt, createdBefore), sql`not ${keyIsActive}`), not(attached(now))),
+  and(unreleased, pendingAbandoned(now)),
+  and(written, or(lt(changeProposalImages.createdAt, createdBefore), sql`not ${keyIsActive}`), not(attached(now))),
 );
 
 const selectionFilter = (tenantId: string, selection: QuarantinedImageRelease, now: string): SQL | undefined => {
@@ -194,11 +202,10 @@ const selectionFilter = (tenantId: string, selection: QuarantinedImageRelease, n
   return and(
     workspace,
     eq(changeProposalImages.apiKeyId, selection.apiKeyId),
+    or(isNotNull(changeProposalImages.releasedAt), releasable(now)),
     ...(images === undefined ? [] : [images.length === 0 ? sql`false` : or(...images.map(sameImage))]),
   );
 };
-
-type Settled<T> = { current: T | null };
 
 const imageWaiting = sql`coalesce(${changeProposalImages.sweepAttemptedAt}, ${changeProposalImages.createdAt})`;
 
@@ -217,38 +224,45 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
     insert: async (tenantId, asset, store) => {
       const parsed = quarantinedImageAssetSchema.parse(asset);
       if (parsed.tenantId !== tenantId) throw new Error('A quarantined image belongs to another tenant');
-      const failed: Settled<QuarantinedImageInsertion> = { current: null };
-      try {
-        return await db.transaction(async (tx): Promise<QuarantinedImageInsertion> => {
-          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${keyLock(tenantId, parsed.apiKeyId)}, 0))`);
-          const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, parsed.apiKeyId, parsed)).for('update');
-          if (row !== undefined && row.releasedAt !== null && row.deleteUnresolvedAt !== null) return { kind: 'busy' };
-          if (row !== undefined && row.releasedAt === null) {
-            const stored = await store();
-            return stored.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: stored.error };
-          }
-          const [usage] = await tx
-            .select({ images: count(), bytes: sql<number>`coalesce(sum(${changeProposalImages.sizeBytes}), 0)::bigint` })
-            .from(changeProposalImages)
-            .where(and(eq(changeProposalImages.tenantId, tenantId), eq(changeProposalImages.apiKeyId, parsed.apiKeyId), unreleased));
-          if ((usage?.images ?? 0) >= QUARANTINED_IMAGE_LIMITS.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
-          if (Number(usage?.bytes ?? 0) + parsed.sizeBytes > QUARANTINED_IMAGE_LIMITS.bytesPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
-          const [saved] = row === undefined
-            ? await tx.insert(changeProposalImages).values(parsed).returning()
-            : await tx.update(changeProposalImages).set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null, sweepAttemptedAt: null })
-              .where(imageOfKey(tenantId, parsed.apiKeyId, parsed)).returning();
-          if (saved === undefined) throw new Error('Quarantined image write returned no row');
+      const pendingSince = parsed.createdAt;
+      const of = imageOfKey(tenantId, parsed.apiKeyId, parsed);
+      const lockKey = (tx: Db) => tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${keyLock(tenantId, parsed.apiKeyId)}, 0))`);
+      const reserved = await db.transaction(async (tx): Promise<QuarantinedImageInsertion | { kind: 'reserved'; releasedAt: string | null; revived: boolean }> => {
+        await lockKey(tx);
+        const [row] = await tx.select().from(changeProposalImages).where(of).for('update');
+        if (row !== undefined && row.pendingSince !== null) return { kind: 'busy' };
+        if (row !== undefined && row.releasedAt !== null && row.deleteUnresolvedAt !== null) return { kind: 'busy' };
+        if (row !== undefined && row.releasedAt === null) {
           const stored = await store();
-          if (!stored.ok) {
-            failed.current = { kind: 'store_failed', error: stored.error };
-            tx.rollback();
-          }
-          return { kind: 'stored', asset: parseImage(saved) };
-        });
-      } catch (cause) {
-        if (failed.current !== null) return failed.current;
-        throw cause;
-      }
+          return stored.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: stored.error };
+        }
+        const [usage] = await tx
+          .select({ images: count(), bytes: sql<number>`coalesce(sum(${changeProposalImages.sizeBytes}), 0)::bigint` })
+          .from(changeProposalImages)
+          .where(and(eq(changeProposalImages.tenantId, tenantId), eq(changeProposalImages.apiKeyId, parsed.apiKeyId), unreleased));
+        if ((usage?.images ?? 0) >= QUARANTINED_IMAGE_LIMITS.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
+        if (Number(usage?.bytes ?? 0) + parsed.sizeBytes > QUARANTINED_IMAGE_LIMITS.bytesPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
+        if (row === undefined) await tx.insert(changeProposalImages).values({ ...parsed, pendingSince });
+        else {
+          await tx.update(changeProposalImages)
+            .set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null, sweepAttemptedAt: null, pendingSince }).where(of);
+        }
+        return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined };
+      });
+      if (reserved.kind !== 'reserved') return reserved;
+      const stored = await store();
+      if (!stored.ok && !storageFailureIsDefinite(stored.error)) return { kind: 'store_failed', error: stored.error };
+      return db.transaction(async (tx): Promise<QuarantinedImageInsertion> => {
+        await lockKey(tx);
+        const ours = and(of, eq(changeProposalImages.pendingSince, pendingSince));
+        if (stored.ok) {
+          const [saved] = await tx.update(changeProposalImages).set({ pendingSince: null }).where(ours).returning();
+          return saved === undefined ? { kind: 'busy' } : { kind: 'stored', asset: parseImage(saved) };
+        }
+        if (reserved.revived) await tx.update(changeProposalImages).set({ releasedAt: reserved.releasedAt, pendingSince: null }).where(ours);
+        else await tx.delete(changeProposalImages).where(ours);
+        return { kind: 'store_failed', error: stored.error };
+      });
     },
     find: (tenantId, apiKeyId, image) => findUnreleased(db, tenantId, apiKeyId, image),
     release: (tenantId, selection, now, wait) => busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>> => {
@@ -260,7 +274,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       const candidates = selection.kind === 'sweep' ? await query.limit(selection.limit).for('update') : await query.for('update');
       const earlier = candidates.filter((row) => row.releasedAt !== null);
       const fresh = candidates.filter((row) => row.releasedAt === null);
-      const marked = fresh.length === 0 ? [] : await tx.update(changeProposalImages).set({ releasedAt: now }).where(and(
+      const marked = fresh.length === 0 ? [] : await tx.update(changeProposalImages).set({ releasedAt: now, pendingSince: null }).where(and(
         eq(changeProposalImages.tenantId, tenantId),
         or(...fresh.map((row) => and(eq(changeProposalImages.apiKeyId, row.apiKeyId), sameImage(row)))),
         unreleased,

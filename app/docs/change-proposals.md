@@ -1091,13 +1091,22 @@ can never replace it, because the digest is the name. Each quarantined image
 is a row of `change_proposal_images` (workspace, key, kind, digest, extension,
 size, creation time, release time), so the limits, the references and the
 cleanup never depend on listing object storage. Under a lock of that key,
-completion counts the key's limits (above) over its unreleased rows, inserts
-the row (or revives a released row of the same image) and writes the
-quarantined object before the lock is released; when the write fails, the row
-is rolled back, the candidate is deleted and the storage error is answered. Two
-concurrent completions therefore cannot both take the last slot, and a
-quarantined object never exists without its counted row except while a
-completion or a release of it is in progress or recorded for the sweep.
+completion counts the key's limits (above) over its unreleased rows, pending
+ones included, and commits the row as pending (`pending_since`), or revives a
+released row of the same image as pending; then it writes the quarantined
+object and, under the lock again, marks the row written. A pending row counts
+toward the limits but is invisible to the submit check, the approval and the
+owner preview, and another completion of the same image answers
+`503 unavailable` meanwhile. When the storage refuses the write (a `4xx`
+answer), the row is rolled back. When the write ends without a definite answer
+(no answer, a connection error, a server error), or the process dies before
+the second commit, the row stays pending, and the minute sweep deletes its
+object and the row once it has been pending for 10 minutes, on the assumption
+that the storage finishes or abandons a write within that time. Either way the
+candidate is deleted and the storage error is answered. Two concurrent
+completions therefore cannot both take the last slot, and every quarantined
+object a completion writes is accounted for by a counted row until the sweep
+or a release has removed it.
 
 **Attaching.** The key then proposes `product.update` with `coverUrl`,
 `product.create` with `coverUrl`, or `settings.update` with `logoUrl`,
@@ -1258,7 +1267,8 @@ follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
 (every image of that key) and a purge. An image held by an approval in progress
 is released only after that approval ends. The sweep
-(`sweepQuarantinedImages`) finishes every released image and releases every
+(`sweepQuarantinedImages`) finishes every released image, releases every row
+left pending for 10 minutes by a completion that did not finish, and releases every
 image older than 7 days that no pending, unexpired proposal of its key
 attaches, and every image of a revoked or deleted key, 50 workspaces and 200
 images per workspace at a time. Images a pending proposal attaches are left
@@ -1302,7 +1312,9 @@ Migration `0170_key_download_files` adds a nullable `sweep_attempted_at`
 column without a default to each of the three tables (constant time; each
 table's `ACCESS EXCLUSIVE` lock is held until the migration commits), and a
 nullable `delete_unresolved_at` column with a timestamp format check to
-`change_proposal_images` and `change_proposal_image_publications`; the check
+`change_proposal_images` and `change_proposal_image_publications` and a
+nullable `pending_since` column with the same check to
+`change_proposal_images`; the check
 reads the table once under that lock, which `0169` created moments before or
 which holds only rows of unreleased proposals. A release before it ignores these
 columns.

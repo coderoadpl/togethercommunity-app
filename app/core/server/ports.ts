@@ -3272,9 +3272,12 @@ export interface QuarantinedImageLiveUse {
 /** The private images a propose-mode key uploaded for proposals; the rows, not a storage listing, are the record of what is quarantined. */
 export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /**
-   * Under a lock of the key, records the image (or revives a released row) after counting the key's unreleased images
-   * and bytes, then runs `store` to write the object before the lock is released; a failed `store` rolls back the row.
-   * The same bytes again answer the unreleased row already there, after `store` rewrote its object. A released row
+   * Under a lock of the key, commits the image as a pending row (or revives a released row as pending) after counting
+   * the key's unreleased images and bytes, pending ones included; then runs `store` to write the object and, under the
+   * lock again, marks the row written, or on a refused write rolls the row back. A write without a definite answer, or
+   * a process that dies before the second commit, leaves the row pending and counted: no lookup sees it, and the sweep
+   * removes its object and the row once `unresolvedDeleteGraceMs` passed. A pending row answers `busy`. The same bytes
+   * again answer the unreleased row already there, after `store` rewrote its object. A released row
    * whose object delete ended without a definite answer answers `busy` and is not revived, so a late delete cannot
    * remove a new object, until the sweep has deleted it again.
    */

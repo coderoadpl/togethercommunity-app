@@ -1,6 +1,6 @@
 {
-  "hash": "526a8843ec6bc62557595755b60b58b194f20d3cce616b5e467a45503b4f7f4c",
-  "shortId": "526a8843ec6b",
+  "hash": "a05d7e108399eb6930787199933f8e8a27ff6ea6e73ac93788db8db49d996623",
+  "shortId": "a05d7e108399",
   "schema": {
     "constraints": [
       {
@@ -162,6 +162,11 @@
         "definition": "CHECK (((not_before IS NULL) OR (not_before ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
         "name": "change_proposal_download_deletions_not_before_check",
         "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((pending_since IS NULL) OR (pending_since ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_pending_since_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK (((reason IS NULL) OR (reason ~ '^[a-z_]{1,64}$'::text)))",
@@ -12176,6 +12181,14 @@
             "identity": "",
             "name": "kind",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "pending_since",
+            "notNull": false,
             "type": "text"
           },
           {

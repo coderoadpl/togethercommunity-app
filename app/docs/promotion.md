@@ -105,8 +105,8 @@ and has two subcommands:
    its output is missing or unreadable, when any job was cancelled, when a
    required job failed, when a job planned to run and required was skipped,
    when a job the plan skipped ran anyway, or when `needs` and the plan do not
-   list the same jobs. An advisory failure leaves it green and is named in the
-   headline.
+   list the same jobs. A failing advisory job never turns the gate red, and
+   its own job page shows its failure.
 
 The first line of the gate's log and of its step summary names what blocked,
 for example
@@ -129,8 +129,8 @@ equal to the script's chain, in order.
   job's outputs, add the job to the gate's `needs`, and add it to the manifest
   `jobs`. The binding test fails until the four agree. No ruleset change.
 - Make a job advisory: set `mode` to `advisory` in the manifest and
-  `continue-on-error: true` on the job. Its failure no longer blocks; its
-  cancellation still does.
+  `continue-on-error: true` on the job; the binding test keeps the two equal.
+  Its failure never turns the gate red, and its own job page shows it.
 - Run a job only for some events or branches: set `runOn` in the manifest.
 - Add an e2e suite: add a matrix entry with its `browser` flag; the job name
   pattern `e2e (${{ matrix.suite }})` keeps the check name stable.

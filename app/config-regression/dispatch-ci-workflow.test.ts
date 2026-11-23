@@ -132,6 +132,16 @@ describe('dispatch-ci workflow binding', () => {
     });
   });
 
+  it('marks a job advisory in the manifest exactly when ci.yml lets it continue on error', () => {
+    const advisory = manifest.jobs.filter((entry) => entry.mode === 'advisory').map((entry) => entry.id);
+    const continueOnError = Object.entries(ci.jobs)
+      .filter(([, entry]) => entry['continue-on-error'] === true)
+      .map(([id]) => id);
+
+    expect(advisory.length).toBeGreaterThan(0);
+    expect(continueOnError.sort()).toEqual(advisory.sort());
+  });
+
   it('starts Chrome in an e2e leg from the matrix browser flag', () => {
     const e2e = job('e2e');
     const chromeSteps = e2e.steps.filter((step) =>

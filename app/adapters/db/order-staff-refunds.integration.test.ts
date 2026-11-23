@@ -664,10 +664,22 @@ describe('staff refunds against a real database', () => {
     await database.db.update(productStock).set({ onHand: 1 }).where(eq(productStock.productId, 'book'));
 
     expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({
-      ok: false, error: { code: 'conflict', message: 'The refund returned units of Book to stock and fewer are on hand now; adjust the stock before shipping the order' },
+      ok: false, error: { code: 'conflict', message: 'The refund returned units of Book to stock and fewer are on hand and not reserved by other checkouts now; adjust the stock before shipping the order' },
     });
     expect(await fulfilmentOf('order-1')).toBeNull();
     expect((await database.db.select().from(productStock).where(eq(productStock.productId, 'book')))[0]?.onHand).toBe(1);
+  });
+
+  it('refuses ship anyway when another checkout reserved the units the refund returned to stock and leaves the stock alone', async () => {
+    const h = harness();
+    await database.db.insert(productStock).values({ tenantId: 'tenant-a', productId: 'book', onHand: 0, reserved: 0, updatedAt: start });
+    await database.db.insert(stockEvents).values({ tenantId: 'tenant-a', productId: 'book', type: 'committed', quantity: -1, reference: { orderId: 'order-1', checkoutSnapshotId: 'snap-1' }, occurredAt: start });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 }));
+    await database.db.update(productStock).set({ reserved: 1 }).where(eq(productStock.productId, 'book'));
+
+    expect(await shipRefundedOrderAnyway(staff('tenant-a'), 'order-1', h.deps)).toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('units of Book') } });
+    expect(await fulfilmentOf('order-1')).toBeNull();
+    expect(await database.db.select({ onHand: productStock.onHand, reserved: productStock.reserved }).from(productStock)).toStrictEqual([{ onHand: 1, reserved: 1 }]);
   });
 
   it('refunds no more than a typed amount equal to the remainder when a dashboard refund fails before it is issued, and offers the full refund choices with it', async () => {

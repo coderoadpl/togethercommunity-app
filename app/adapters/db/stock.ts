@@ -256,9 +256,9 @@ export const takeBackReturnedOrderStock = async (
     const current = await lockStock(tx, tenantId, line.productId);
     if (current !== null) locked.push({ ...line, current });
   }
-  const short = locked.filter((line) => line.current.onHand < line.quantity);
+  const short = locked.filter((line) => line.current.onHand - line.current.reserved < line.quantity);
   if (short.length > 0) {
-    return err(appError('conflict', `The refund returned units of ${short.map((line) => line.title).join(', ')} to stock and fewer are on hand now; adjust the stock before shipping the order`));
+    return err(appError('conflict', `The refund returned units of ${short.map((line) => line.title).join(', ')} to stock and fewer are on hand and not reserved by other checkouts now; adjust the stock before shipping the order`));
   }
   for (const line of locked) {
     const onHand = line.current.onHand - line.quantity;

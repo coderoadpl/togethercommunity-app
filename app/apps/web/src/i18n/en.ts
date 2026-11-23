@@ -1382,7 +1382,7 @@ export const en: Messages = {
       shippedWarningBody: 'Goods do not return to stock on their own, and the label is not cancelled.',
       partialInfoTitle: 'A partial refund changes nothing else',
       partialInfoBody: 'Stock, the packing list and access stay as they are. Change them by hand if needed.',
-      partialFullInfoTitle: 'Refunding everything that is left ends access',
+      partialFullInfoTitle: 'Refunding everything that is left ends access unless another purchase keeps it',
       partialFullInfoBody: 'Stock and the packing list stay as they are, but access ends because the whole remaining amount is refunded, unless another purchase keeps it. Change stock or packing by hand if needed.',
       reasonPlaceholder: 'Optional, for example "The buyer cancelled before shipping"',
       reasonCount: ({ count, max }) => format('{count}/{max}', { count, max }),

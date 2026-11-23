@@ -1420,7 +1420,7 @@ export const pl: Messages = {
       shippedWarningBody: 'Towar nie wraca na stan automatycznie, etykiety nie anulujemy.',
       partialInfoTitle: 'Zwrot częściowy niczego więcej nie zmienia',
       partialInfoBody: 'Stan magazynu, lista do spakowania i dostęp zostają bez zmian. Jeśli coś trzeba zmienić, zrób to ręcznie.',
-      partialFullInfoTitle: 'Zwrot całej pozostałej kwoty kończy dostęp',
+      partialFullInfoTitle: 'Zwrot całej pozostałej kwoty kończy dostęp, chyba że zapewnia go inny zakup',
       partialFullInfoBody: 'Stan magazynu i lista do spakowania zostają bez zmian, ale dostęp wygaśnie, bo zwracasz całą pozostałą kwotę, chyba że zapewnia go inny zakup. Jeśli stan albo pakowanie trzeba zmienić, zrób to ręcznie.',
       reasonPlaceholder: 'Opcjonalnie, np. „Klient zrezygnował przed wysyłką”',
       reasonCount: ({ count, max }) => format('{count}/{max}', { count, max }),

@@ -348,7 +348,7 @@ describe('staff refund dialog', () => {
     expect(within(consequences).queryByText(messages.consequenceAccessStays)).toBeNull();
     expect(within(consequences).getAllByText(messages.consequenceStatusFull)).toHaveLength(2);
     const info = within(dialog).getByTestId('staff-refund-partial-info');
-    expect(info).toHaveTextContent(messages.partialFullInfoTitle);
+    expect(info).toHaveTextContent('Refunding everything that is left ends access unless another purchase keeps it');
     expect(info).toHaveTextContent(messages.partialFullInfoBody);
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
@@ -665,6 +665,13 @@ describe('staff refund history and ship anyway', () => {
     expect(within(payment).getByText(messages.waitingForPermission)).toBeVisible();
     expect(within(blocked).getByText(messages.blockedNoAction)).toBeVisible();
     expect(within(blocked).getByRole('link', { name: messages.paymentSettingsLink })).toHaveAttribute('href', '/panel/integrations#stripe');
+  });
+
+  it.each([
+    [en, 'unless another purchase keeps it'],
+    [pl, 'chyba że zapewnia go inny zakup'],
+  ] as const)('qualifies the heading that says a partial refund of everything left ends access', (t, qualifier) => {
+    expect(t.sales.staffRefund.partialFullInfoTitle).toContain(qualifier);
   });
 
   it.each([{ language: 'en', t: en }, { language: 'pl', t: pl }] as const)('explains each failed or unconfirmed refund from its status and flags in $language only', async ({ language, t }) => {

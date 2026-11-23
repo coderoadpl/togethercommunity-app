@@ -951,7 +951,22 @@ describe('image publication storage operations', () => {
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
 
-  it.each([[400, true], [403, true], [404, false], [500, false], [503, false]] as const)(
+  it('answers a delete of an object the storage reports missing as deleted, and a missing bucket as an unknown outcome', async () => {
+    const answer = { status: 404, body: '<Error><Code>NoSuchKey</Code></Error>' };
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(answer.status, answer.body),
+    });
+    expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
+    answer.body = '';
+    expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
+    answer.body = '<Error><Code>NoSuchBucket</Code></Error>';
+    const missingBucket = await storage.delete(credentials);
+    expect(missingBucket).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!missingBucket.ok && storageFailureIsDefinite(missingBucket.error)).toBe(false);
+  });
+
+  it.each([[400, true], [403, true], [500, false], [503, false]] as const)(
     'answers a delete refused with status %s as definite only for a refusal: %s',
     async (status, definite) => {
       const storage = createS3StorageProvider(resolver, {

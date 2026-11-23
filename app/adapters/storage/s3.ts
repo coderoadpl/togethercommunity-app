@@ -632,7 +632,7 @@ export const createS3StorageProvider = (
   };
   const sendObjectRequest = (
     url: string,
-    method: 'DELETE' | 'HEAD',
+    method: 'HEAD',
     deadlineMs: number | undefined,
     defaultDeadlineMs: number,
   ): Promise<Result<StorageResponse, AppError>> => boundedRequest(url, deadlineMs, defaultDeadlineMs, async (signal, dispatcher) => {
@@ -842,9 +842,17 @@ export const createS3StorageProvider = (
     delete: async (input) => {
       const signed = presign('DELETE', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
-      const response = await sendObjectRequest(signed.value, 'DELETE', input.deadlineMs, DELETE_DEADLINE_MS);
+      const response = await boundedRequest(signed.value, input.deadlineMs, DELETE_DEADLINE_MS, async (signal, dispatcher) => {
+        const sent = await abortable(fetchStorage(signed.value, { method: 'DELETE', dispatcher, redirect: 'error', signal }), signal);
+        if (sent.status !== 404) {
+          await abortable(discardStorageResponseBody(sent), signal);
+          return ok({ status: sent.status, ok: sent.ok, missingObject: false });
+        }
+        const body = await readProbeBody(sent, PROBE_ERROR_BODY_MAX_BYTES, signal);
+        return ok({ status: sent.status, ok: sent.ok, missingObject: body.ok && !/NoSuchBucket/i.test(body.value) });
+      }, 'Could not reach S3.');
       if (!response.ok) return response;
-      if (response.value.ok) return ok({ deleted: true });
+      if (response.value.ok || response.value.missingObject) return ok({ deleted: true });
       const { status } = response.value;
       const message = `S3 rejected the delete request with status ${String(status)}`;
       return err(status >= 400 && status < 500 && status !== 404 ? storageDefiniteFailure(message) : integrationUnavailable(message));

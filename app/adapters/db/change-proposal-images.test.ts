@@ -879,6 +879,34 @@ describe('a delete the storage refuses', () => {
   });
 });
 
+describe('a delete the storage answers with a missing object', () => {
+  it('retires a released row and a publication record whose earlier delete had no definite answer', async () => {
+    const harness = endToEnd();
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(harness.deps.secretResolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        requests.push(init.method);
+        return {
+          ok: false, status: 404, headers: { get: () => null }, body: null, text: async () => '',
+        };
+      },
+    });
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    expect(await repository.finishRelease(TENANT, image(1), async () => 'unresolved' as const, NOW)).toBe('failed');
+    await repository.recordPublications(TENANT, 'attempt-lost-reply', [image(2)], NOW);
+    await createQuarantinedImageLocks(database.db).markDeleteUnresolved(TENANT, 'attempt-lost-reply', image(2), NOW);
+    harness.clock.now = '2026-03-01T10:31:00.000Z';
+    expect(await sweepQuarantinedImages({ ...harness.deps, storage })).toMatchObject({ ok: true, value: { removed: 2 } });
+    expect(requests).toEqual(['DELETE', 'DELETE']);
+    expect(await database.db.select().from(changeProposalImages)).toEqual([]);
+    expect(await database.db.select().from(changeProposalImagePublications)).toEqual([]);
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+  });
+});
+
 describe('a quarantined write that outlives its completion', () => {
   const quarantinedKey = `image-asset-quarantine/${TENANT}/${KEY_ID}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
   const reference: ProposalImageReference = { kind: 'product-cover', digest: createContentHash().sha256(PNG_BYTES), extension: 'png' };

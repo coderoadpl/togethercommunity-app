@@ -111,7 +111,7 @@ const harness = () => {
     product({ id: 'product-mug', slug: 'mug', title: 'Mug', type: 'physical', accessItems: [] }),
     product({ id: 'product-neighbour', tenantId: NEIGHBOUR, slug: 'neighbour', title: 'Neighbour guide' }),
   );
-  state.courses.push(course('course-intro', 'Intro course'), course('course-advanced', 'Advanced course'), course('course-neighbour', 'Neighbour course', NEIGHBOUR));
+  state.courses.push(course('course-intro', 'Intro course'), course('course-advanced', 'Advanced course'), course('course-extra', 'Extra course'), course('course-neighbour', 'Neighbour course', NEIGHBOUR));
   state.modules.push(
     module('module-basics', 'Basics', ['course-intro'], ['lesson-welcome']),
     module('module-deep', 'Deep dive', ['course-advanced'], ['lesson-deep']),
@@ -361,16 +361,20 @@ describe('what a product grants in a group', () => {
     const submit = async (operation: 'product.create' | 'product.update' | 'product.set-access', input: unknown) =>
       unwrap(await submitGroupedChangeProposal(keyCtx(), { groupId, operation, input }, h.deps)).items.at(-1)?.id ?? '';
     const updated = await submit('product.update', { id: 'product-guide', title: 'Pocket guide' });
-    const created = await submit('product.create', { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR' });
+    const created = await submit('product.create', {
+      title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems: [{ level: 'course', courseId: 'course-extra' }],
+    });
     const access = await submit('product.set-access', {
       id: changeProposalReference(created), accessItems: [{ level: 'course', courseId: 'course-intro' }, { level: 'course', courseId: 'course-advanced' }],
     });
-    const targetLocksBefore = h.transaction.locks.length;
-    const courseLocksBefore = h.transaction.courseLocks.length;
+    const approval = lockMarks(h);
 
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [updated, created, access] }, h.deps))
       .toMatchObject({ ok: true, value: { status: 'applied' } });
-    expect(h.transaction.courseLocks[courseLocksBefore]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore });
+    expect(coursesFirstLockedAfterAProduct(h, approval)).toEqual([]);
+    expect([...h.transaction.courseLocks.slice(approval.courseLocks), ...h.transaction.repositoryCourseLocks.slice(approval.repositoryCourseLocks)]
+      .filter((record) => record.targetLocksBefore === approval.targetLocks))
+      .toEqual([{ courseIds: ['course-advanced', 'course-extra', 'course-intro'], targetLocksBefore: approval.targetLocks }]);
   });
 
   it('locks a course that only a product creation grants before an earlier item locks a product', async () => {

@@ -31,7 +31,7 @@ export const AccountAvatar = ({ name, email, avatarUrl, uploadPending, removePen
                 {t.account.avatarUploadHint}
               </Typography>
             </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
+            <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
               <Button component="label" variant="outlined" disabled={uploadPending}>
                 {uploadPending ? t.account.avatarUploading : t.account.avatarUpload}
                 <input

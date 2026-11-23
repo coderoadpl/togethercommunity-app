@@ -379,6 +379,7 @@ export const MemberAccountPage = () => {
                     });
                   }}
             />
+            <Divider data-testid="account-profile-divider" />
             <AccountNameFields savedDisplayName={savedDisplayName} onCancel={() => setDisplayNameDraft(null)} success={updateProfile.isSuccess} error={updateProfile.error} onSubmit={() => updateProfile.mutate({ displayName: displayName.trim() === '' ? null : displayName.trim() })} displayName={displayName} onChange={setDisplayNameDraft} pending={updateProfile.isPending} dirty={displayName.trim() !== savedDisplayName.trim()} />
           </SectionCard>
           </Box>
@@ -412,6 +413,7 @@ export const MemberAccountPage = () => {
             <Box role="group" aria-label={t.security.heading} data-account-wide data-testid="account-security-methods">
               <AuthenticationMethods
                 twoFactorEnabled={me.data.twoFactorEnabled}
+                hasPassword={me.data.hasPassword}
                 onSecurityRefresh={() => {
                   void queryClient.invalidateQueries(actions.meInvalidates());
                 }}

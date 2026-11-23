@@ -7,6 +7,7 @@ import { ToastProvider } from '../../components/ui/Toast.js';
 import { AuthenticationMethods, type AuthenticationMethodsProps } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { AccountNameFields } from './AccountNameFields.js';
+import { ERASURE_REQUEST_RESPONSE_DAYS } from '#core/domain/index.js';
 import { AccountErasureCard } from './AccountErasureCard.js';
 import { AccountSupportForm } from './AccountSupportForm.js';
 
@@ -291,6 +292,18 @@ describe('Account dialogs', () => {
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
   });
 
+  it('labels the saved display name and falls back to a not-set value instead of an empty line', () => {
+    const view = render(<LanguageProvider><AccountNameFields savedDisplayName="Ada" onCancel={vi.fn()} displayName="Ada" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    const value = screen.getByTestId('account-display-name-value');
+    expect(value.tagName).toBe('DD');
+    expect(value).toHaveTextContent('Ada');
+    const label = screen.getByText(en.account.displayNameLabel);
+    expect(label.tagName).toBe('DT');
+    expect(label.parentElement).toBe(value.parentElement);
+    view.rerender(<LanguageProvider><AccountNameFields savedDisplayName="  " onCancel={vi.fn()} displayName="" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    expect(screen.getByTestId('account-display-name-value')).toHaveTextContent(en.account.displayNameNotSet);
+  });
+
   it('opens support and keeps submit errors in the dialog', async () => {
     const onSubmit = vi.fn();
     render(<LanguageProvider><AccountSupportForm supportSubject="Help" supportBody="Details" onSubjectChange={vi.fn()} onBodyChange={vi.fn()} pending={false} error={failure} onSubmit={onSubmit} /></LanguageProvider>);
@@ -314,5 +327,25 @@ describe('Account dialogs', () => {
     await userEvent.click(screen.getByTestId('account-erasure-create'));
     expect(props.onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'demo@example.com' });
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
+  });
+
+  it('states the erasure scope on the card and the review process in the dialog without repeating the intro', async () => {
+    render(<LanguageProvider><AccountErasureCard
+      request={null} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail=""
+      onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>);
+    const effects = within(screen.getByTestId('account-erasure-effects')).getAllByRole('listitem').map((item) => item.textContent);
+    expect(effects).toEqual([
+      en.account.erasureEffects.profile,
+      en.account.erasureEffects.posts,
+      en.account.erasureEffects.access,
+      en.account.erasureEffects.signIn,
+    ]);
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent(en.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS }));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent('within 30 days');
+    expect(dialog.queryByText(en.account.erasureIntro)).not.toBeInTheDocument();
   });
 });

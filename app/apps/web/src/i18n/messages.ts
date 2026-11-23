@@ -1446,6 +1446,7 @@ export interface Messages {
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;
+    twoFactorNeedsPassword: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;
@@ -2638,6 +2639,7 @@ export interface Messages {
     tabsLabel: string;
     tabs: { profile: string; security: string; notifications: string; playback: string };
     displayNameLabel: string;
+    displayNameNotSet: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
@@ -2676,6 +2678,8 @@ export interface Messages {
     dataExportPreparing: string;
     erasureHeading: string;
     erasureIntro: string;
+    erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
+    erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;

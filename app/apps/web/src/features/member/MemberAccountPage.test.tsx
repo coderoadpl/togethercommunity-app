@@ -136,6 +136,32 @@ afterEach(() => {
 });
 
 describe('MemberAccountPage', () => {
+  it('marks every tab svg as the tab icon so the phone rule hides it, narrows the tabs and fades the scroll edge instead of showing chevrons', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount('/account?tab=notifications');
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.id)).toEqual(['account-tab-profile', 'account-tab-security', 'account-tab-notifications', 'account-tab-playback']);
+    for (const tab of tabs) {
+      const icons = tab.querySelectorAll('svg');
+      expect(icons).toHaveLength(1);
+      expect(icons[0]).toHaveClass('MuiTab-icon');
+      expect(getComputedStyle(icons[0] ?? tab).marginRight).toBe('0px');
+    }
+    const rootClass = tabs[0]?.closest('.MuiTabs-root')?.className.split(' ').find((name) => name.startsWith('css-'));
+    expect(rootClass).toBeDefined();
+    const phoneRules = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.media.mediaText.replace(/\s/gu, '').includes('max-width:599.95px'))
+      .flatMap((rule) => Array.from(rule.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText.startsWith(`.${rootClass ?? ''} `));
+    const phoneRule = (suffix: string) => phoneRules.find((rule) => rule.selectorText.endsWith(suffix))?.style;
+    expect(phoneRule('.MuiTab-icon')?.display).toBe('none');
+    expect(phoneRule('.MuiTab-root')?.minWidth).toBe('0px');
+    expect(phoneRule('.MuiTab-root')?.paddingLeft).toBe('10px');
+    expect(phoneRule('.MuiTabScrollButton-root svg')?.display).toBe('none');
+    expect(phoneRule('.MuiTabScrollButton-root:last-of-type')?.background).toContain('linear-gradient');
+  });
+
   it('mounts passkey and two-factor management on the member surface', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount('/account?tab=security');
@@ -350,6 +376,10 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByRole('heading', { level: 2, name: en.account.signedInAs }))
       .not.toBeInTheDocument();
     expect(screen.getAllByText('member@together.dev')).toHaveLength(1);
+    const divider = screen.getByTestId('account-profile-divider');
+    expect(screen.getByRole('button', { name: en.account.avatarUpload }).compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.compareDocumentPosition(screen.getByTestId('account-display-name-value')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('account-display-name-value')).toHaveTextContent('Ada');
   });
 
   it('describes the display-name field with its hint instead of the card', async () => {
@@ -1001,6 +1031,8 @@ describe('MemberAccountPage', () => {
     expect(screen.queryByTestId('change-password-open')).not.toBeInTheDocument();
     const setup = await screen.findByTestId('account-reset-password');
     expect(setup).toHaveTextContent(en.account.setPassword);
+    expect(screen.queryByTestId('enable-2fa-open')).not.toBeInTheDocument();
+    expect(screen.getByText(en.security.twoFactorNeedsPassword)).toBeVisible();
     await userEvent.click(setup);
     expect(body).toMatchObject({ email: 'member@together.dev' });
   });

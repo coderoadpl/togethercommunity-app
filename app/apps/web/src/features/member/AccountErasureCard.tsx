@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { TriangleAlertIcon } from '../../components/ui/account-icons.js';
 import { Alert, Box, Button, FormControl, FormLabel, OutlinedInput, Typography } from '@mui/material';
-import type { MemberErasureRequest } from '#core/domain/index.js';
+import { ERASURE_REQUEST_RESPONSE_DAYS, type MemberErasureRequest } from '#core/domain/index.js';
 import { AccountCard as SectionCard } from './AccountCard.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -26,6 +26,12 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
           title={t.account.erasureHeading}
           description={t.account.erasureIntro}
         >
+          <Box component="ul" data-testid="account-erasure-effects" sx={{ m: 0, pl: '1.25rem', display: 'grid', gap: '0.25rem' }}>
+            <Typography component="li" variant="body2">{t.account.erasureEffects.profile}</Typography>
+            <Typography component="li" variant="body2">{t.account.erasureEffects.posts}</Typography>
+            <Typography component="li" variant="body2">{t.account.erasureEffects.access}</Typography>
+            <Typography component="li" variant="body2">{t.account.erasureEffects.signIn}</Typography>
+          </Box>
           {pending ? (
             <StatusView state={{ kind: 'loading', label: t.common.loading }} />
           ) : error !== null ? (
@@ -36,7 +42,7 @@ export const AccountErasureCard = ({ request, pending, error, createPending, cre
               <ConfirmDialog open={open} title={t.account.erasureHeading} confirmLabel={t.account.erasureRequestButton} cancelLabel={t.common.cancel}
                 pending={createPending} confirmDisabled={erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()} confirmTestId="account-erasure-create"
                 onClose={() => setOpen(false)} onConfirm={() => onCreate({ confirmEmail: erasureConfirmEmail })}
-                body={<><Typography>{t.account.erasureIntro}</Typography><FormControl fullWidth>
+                body={<><Typography data-testid="account-erasure-dialog-body">{t.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS })}</Typography><FormControl fullWidth>
                 <FormLabel htmlFor="erasure-confirm-email">
                   {t.account.erasureConfirmLabel}
                 </FormLabel>

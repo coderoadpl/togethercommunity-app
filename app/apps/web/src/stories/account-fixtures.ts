@@ -31,12 +31,13 @@ export const accountFixture = (scenario: string, avatarUrl?: string) => {
     calls['listMemberBillingOrders:[1,25]'] = ok({ orders: [{ id: 'order-demo', createdAt: '2026-06-20T12:00:00.000Z', billing: { companyName: 'Acme Studio', nip: '1234563218', address: '10 Example Street', postalCode: '00-001', city: 'Warsaw', country: 'PL' }, invoice: { id: 'invoice-demo', provider: 'ksef', status: 'issued' } }], total: 1, page: 1, pageSize: 25 });
   }
   if (scenario === 'ProfileErasureOpen' || scenario === 'ProfileErasureResolved') calls['getMyErasureRequest:[]'] = ok({ request: erasure(scenario === 'ProfileErasureOpen' ? 'open' : 'completed') });
+  if (scenario.startsWith('Security')) calls['me:[]'] = ok({ ...me, hasPassword: true });
   if (scenario === 'SecurityUnverifiedWithoutPassword') calls['me:[]'] = ok({ ...me, emailVerified: false, hasPassword: false });
   if (scenario === 'SecurityPasskeysAndTwoFactorOn' || scenario === 'SecuritySessionsExpanded') {
     calls['listPasskeys:[]'] = ok(accountPasskeys);
     calls['listAccountSessions:[]'] = ok({ sessions: accountSessions });
   }
-  if (scenario === 'SecurityPasskeysAndTwoFactorOn') calls['me:[]'] = ok({ ...me, twoFactorEnabled: true });
+  if (scenario === 'SecurityPasskeysAndTwoFactorOn') calls['me:[]'] = ok({ ...me, hasPassword: true, twoFactorEnabled: true });
   if (scenario === 'NotificationsCustomized') calls['me:[]'] = ok({ ...me, tenant: { ...me.tenant, dmOptOut: true, language: 'en' } });
   if (scenario === 'AccountWithoutMembership' || scenario === 'AccountWithoutMembershipPreferences') {
     calls['publicNavigation:[]'] = ok({ navigation: { courses: [], defaultHomeSpaceId: null, lockedSpaces: [], spaces: [] } });

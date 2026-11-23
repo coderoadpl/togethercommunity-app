@@ -52,6 +52,7 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
   args: {
     Card: AccountCard,
     twoFactorEnabled: ['ReplacementCodes', 'LaterDisable', 'RegenerateDialog', 'DisableDialog'].includes(state),
+    hasPassword: !state.startsWith('Passwordless'),
     passkeys: { data: state === 'PasskeysLoading' || state === 'PasskeysError' ? undefined : state === 'PasskeysEmpty' || state === 'ProofAbsent' ? [] : accountPasskeys, pending: state === 'PasskeysLoading', error: state === 'PasskeysError' ? previewFailure : null, retry: () => undefined },
     registerPasskey: { ...idleOperation, pending: state === 'AddPending', error: state === 'AddError' ? previewFailure : null },
     removePasskey: { ...idleOperation, pending: state === 'RemovalPending' },
@@ -63,9 +64,9 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement.ownerDocument.body);
-    if (['ProofAbsent', 'ProofPresent', 'AddPending', 'AddError'].includes(state) || state.startsWith('PasswordLink') || state === 'AddDialog') {
+    if (['ProofAbsent', 'ProofPresent', 'AddPending', 'AddError', 'PasswordlessAddDialog'].includes(state) || state.startsWith('PasswordLink') || state === 'AddDialog') {
       await userEvent.click(canvas.getByTestId('add-passkey-open'));
-      if (state !== 'ProofAbsent' && state !== 'AddDialog') await userEvent.type(canvas.getByTestId('passkey-proof-password'), 'fresh-proof-password');
+      if (state !== 'ProofAbsent' && state !== 'AddDialog' && state !== 'PasswordlessAddDialog') await userEvent.type(canvas.getByTestId('passkey-proof-password'), 'fresh-proof-password');
       if (state.startsWith('PasswordLink')) await userEvent.click(canvas.getByTestId('passkey-help'));
     }
     if (state === 'RemovalConfirmation' || state === 'RemovalPending') {
@@ -189,3 +190,11 @@ export const DisableDialogLightDesktop1440: Story = stateStory('DisableDialog', 
 export const DisableDialogLightMobile390: Story = stateStory('DisableDialog', 'light', 'mobile');
 export const DisableDialogDarkDesktop1440: Story = stateStory('DisableDialog', 'dark', 'desktop');
 export const DisableDialogDarkMobile390: Story = stateStory('DisableDialog', 'dark', 'mobile');
+export const PasswordlessLightDesktop1440: Story = stateStory('Passwordless', 'light', 'desktop');
+export const PasswordlessLightMobile390: Story = stateStory('Passwordless', 'light', 'mobile');
+export const PasswordlessDarkDesktop1440: Story = stateStory('Passwordless', 'dark', 'desktop');
+export const PasswordlessDarkMobile390: Story = stateStory('Passwordless', 'dark', 'mobile');
+export const PasswordlessAddDialogLightDesktop1440: Story = stateStory('PasswordlessAddDialog', 'light', 'desktop');
+export const PasswordlessAddDialogLightMobile390: Story = stateStory('PasswordlessAddDialog', 'light', 'mobile');
+export const PasswordlessAddDialogDarkDesktop1440: Story = stateStory('PasswordlessAddDialog', 'dark', 'desktop');
+export const PasswordlessAddDialogDarkMobile390: Story = stateStory('PasswordlessAddDialog', 'dark', 'mobile');

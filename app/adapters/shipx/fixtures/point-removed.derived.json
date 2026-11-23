@@ -1,7 +1,7 @@
 {
   "href": "https://api-pl-points.easypack24.net/v1/points/KRA14A",
   "name": "KRA14A",
-  "display_name": "InPost Paczkomat KRA14A",
+  "display_name": "InPost locker KRA14A",
   "type": [],
   "status": "Removed",
   "location": {
@@ -10,25 +10,22 @@
   },
   "location_type": "Outdoor",
   "location_date": null,
-  "location_description": "Przy markecie Kaufland",
-  "location_description_1": null,
-  "location_description_2": "Kaufland",
+  "location_description": "Next to the main entrance",
   "distance": null,
   "opening_hours": "24/7",
   "address": {
-    "line1": "os. Kombatant\u00f3w 16",
-    "line2": "31-630 Krak\u00f3w"
+    "line1": "Main Street 1",
+    "line2": "00-001 Warsaw"
   },
   "address_details": {
-    "city": "Krak\u00f3w",
-    "province": "ma\u0142opolskie",
-    "post_code": "31-630",
-    "street": "os. Kombatant\u00f3w",
-    "building_number": "16",
+    "city": "Warsaw",
+    "province": "Example Province",
+    "post_code": "00-001",
+    "street": "Main Street",
+    "building_number": "1",
     "flat_number": null
   },
   "phone_number": null,
-  "payment_point_descr": "P\u0142atno\u015b\u0107 apk\u0105 InPost oraz PayByLink",
   "functions": [
     "allegro_courier_collect",
     "allegro_courier_reverse_return_send",
@@ -66,7 +63,6 @@
     "customer": null
   },
   "agency": "KRA",
-  "image_url": "https://static.easypack24.net/points/pl/images/KRA14A.jpg",
   "easy_access_zone": true,
   "air_index_level": null,
   "physical_type_mapped": "003",

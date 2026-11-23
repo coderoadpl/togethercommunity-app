@@ -200,7 +200,7 @@ describe('InPost point verdict', () => {
 
   it.each([
     ['an operating locker that holds parcels for collection', point(), null],
-    ['a PaczkoPunkt the map also offers', point({ types: ['parcel_locker', 'parcel_locker_superpop', 'pop'] }), null],
+    ['an InPost partner pickup point the map also offers', point({ types: ['parcel_locker', 'parcel_locker_superpop', 'pop'] }), null],
     ['a removed point', point({ status: 'Removed', types: [] }), 'not_operating'],
     ['a disabled point', point({ status: 'Disabled' }), 'not_operating'],
     ['a status the carrier has not documented', point({ status: 'Created' }), 'not_operating'],

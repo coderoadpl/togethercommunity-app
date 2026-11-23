@@ -28,10 +28,10 @@ describe('InPost points directory', () => {
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
     expect(lookup).toEqual({ kind: 'found', point: {
       name: 'KRA14A', status: 'Operating', types: ['parcel_locker'], functions: expect.arrayContaining(['parcel_collect']),
-      locationDescription: 'Przy markecie Kaufland', address: { line1: 'os. Kombatant\u00f3w 16', line2: '31-630 Krak\u00f3w' },
+      locationDescription: 'Next to the main entrance', address: { line1: 'Main Street 1', line2: '00-001 Warsaw' },
     } });
     expect(parcelLockerLookupView(lookup)).toEqual({
-      status: 'found', code: 'KRA14A', name: 'Przy markecie Kaufland', address: 'os. Kombatant\u00f3w 16, 31-630 Krak\u00f3w', usable: true, reason: null,
+      status: 'found', code: 'KRA14A', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw', usable: true, reason: null,
     });
   });
 
@@ -67,7 +67,7 @@ describe('InPost points directory', () => {
   it('stops reading an oversized body at 64 KiB and cancels the rest of the stream', async () => {
     let pulled = 0;
     let cancelled = false;
-    const chunk = new TextEncoder().encode(`{"name":"${'\u0105'.repeat(8 * 1024)}`);
+    const chunk = new TextEncoder().encode(`{"name":"${'A'.repeat(16 * 1024)}`);
     const endless = new ReadableStream<Uint8Array>({
       pull: (controller) => {
         pulled += 1;

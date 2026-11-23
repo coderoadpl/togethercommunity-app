@@ -305,18 +305,20 @@ parses the answer strictly: an HTTP 200 body
 `{"status":404,"key":"point_not_found"}` and a real HTTP 404 mean not found; any
 other status, a timeout, a network error, a body that does not parse or an
 answer for another point mean the carrier is unavailable. Recorded answers live
-in `adapters/shipx/fixtures/point-*.json`; `point-operating.json` and
-`point-not-found.json` are real bodies (non-ASCII characters JSON-escaped),
-and the `*.derived.json` files change only `status`, `type` or `functions`.
+in `adapters/shipx/fixtures/point-*.json`: `point-operating.json` and
+`point-not-found.json` keep the recorded shape of real answers with every
+human-language value (address, location description, display name) replaced by
+an English placeholder, and the `*.derived.json` files change only `status`,
+`type` or `functions`.
 
 A point is usable only when `status` is exactly `Operating` (`NonOperating`,
 `Disabled`, `Removed` and any other value refuse it), its `type` includes
 `parcel_locker` and its `functions` include `parcel_collect`
 (`inpostPointRejection` in `core/domain/shipping.ts`). This is what the map
-offers with `config="parcelCollect"`, so PaczkoPunkty that hold parcels for
-collection (`partner_id` 33, typed `parcel_locker` as well as `pop`) are
-accepted as on the map; the shipment still requests `inpost_locker_standard`,
-and InPost switches a PaczkoPunkt target to
+offers with `config="parcelCollect"`, so InPost partner pickup points that hold
+parcels for collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
+are accepted as on the map; the shipment still requests `inpost_locker_standard`,
+and InPost switches a partner pickup point target to
 `inpost_locker_customer_service_point` on its side. A usable point replaces what
 the client sent with the carrier's canonical code, the location description as
 the name and `address.line1, address.line2` as the address, built by

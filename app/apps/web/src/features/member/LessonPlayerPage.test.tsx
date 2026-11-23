@@ -36,6 +36,7 @@ import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
+import { readLessonTextAutoExpand } from './lesson-reading-preference.js';
 
 const entry = (
   lessonId: string,
@@ -191,6 +192,60 @@ const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = fa
     return { queryClient, ...render(<QueryClientProvider client={queryClient}>{page}</QueryClientProvider>) };
   }
   return renderWithProviders(page);
+};
+
+const discussionPost = (id: string, body: string): DiscussionPost => ({
+  id,
+  tenantId: 't1',
+  contextKind: 'lesson',
+  contextId: 'l1',
+  parentPostId: null,
+  rootPostId: id,
+  isOwn: false,
+  authorDisplay: 'Olivia Author',
+  authorIsStaff: false,
+  authorAvatarUrl: null,
+  body,
+  bodyFormat: 'plain',
+  bodyHtml: body,
+  bodyPlainText: body,
+  createdAt: '2026-08-15T08:00:00.000Z',
+  editedAt: null,
+  deletedAt: null,
+  pinnedAt: null,
+  replies: [],
+  replyCount: 0,
+});
+
+const renderLessonRoute = async (initialEntry: string) => {
+  const rootRoute = createRootRoute();
+  const LessonRouteComponent = () => {
+    const params = useParams({ strict: false });
+    const { thread } = useSearch({ strict: false });
+    return (
+      <LessonPlayerPage
+        courseId={params.courseId ?? ''}
+        lessonId={params.lessonId ?? ''}
+        threadRootPostId={thread ?? null}
+      />
+    );
+  };
+  const lessonRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/my/courses/$courseId/lessons/$lessonId',
+    validateSearch: (search: Record<string, unknown>): { thread?: string } =>
+      typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
+    component: LessonRouteComponent,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([lessonRoute]),
+    history: createMemoryHistory({
+      initialEntries: [initialEntry],
+    }),
+  });
+  await router.load();
+  renderWithProviders(<RouterProvider router={router} />);
+  return router;
 };
 
 describe('LessonPlayerPage', () => {
@@ -933,6 +988,7 @@ describe('LessonPlayerPage', () => {
       okStructure(),
       okProgress(),
       okLesson([
+        { type: 'embed', embedUrl: 'https://example.com/embed' },
         { type: 'html', html: '<h2>First section</h2><p>First body.</p>' },
         { type: 'html', html: '<h2>Second section</h2><p>Second body.</p>' },
       ]),
@@ -946,6 +1002,27 @@ describe('LessonPlayerPage', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     await waitFor(() => expect(collapsedWhenScrolled).toEqual(['false', 'false']));
     expect(previews[0]).toHaveAttribute('data-collapsed', 'false');
+  });
+
+  it('starts a text-first lesson expanded and keeps later long text collapsed', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200);
+    server.use(
+      okStructure(),
+      okProgress(),
+      okLesson([
+        { type: 'html', html: '<h2>Opening</h2><p>Opening body.</p>' },
+        { type: 'embed', embedUrl: 'https://example.com/embed' },
+        { type: 'html', html: '<h2>Later</h2><p>Later body.</p>' },
+      ]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByRole('heading', { name: 'Later' });
+    const previews = screen.getAllByTestId('lesson-reading-preview');
+    expect(previews[0]).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByRole('button', { name: en.lesson.collapseText })).toHaveAttribute('aria-controls', previews[0]?.id);
+    expect(previews[1]).toHaveAttribute('data-collapsed', 'true');
+    expect(readLessonTextAutoExpand()).toBe(false);
   });
 
   it('scrolls to the hash after authenticated lesson content mounts', async () => {
@@ -1338,25 +1415,70 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['missing_library_id', en.lesson.videoMissingLibrary],
-    ['secret_invalid', en.lesson.videoSecretInvalid],
-  ])('explains unavailable video reason %s and retries playback', async (reason, message) => {
-    let recovered = false;
+  it.each(['missing_library_id', 'secret_invalid'])('shows one member-facing line without a retry for unavailable video reason %s', async (reason) => {
     server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
       http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {
-        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [recovered
-          ? { kind: 'bunny', storageKey: 'k1', videoId: 'vid-1', libraryId: '1', embedUrl: 'https://courses.example.org/video', hlsUrl: null, signed: false }
-          : { kind: 'unavailable', storageKey: 'k1', reason }],
+        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [{ kind: 'unavailable', storageKey: 'k1', reason }],
       } })),
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(await screen.findByText(en.lesson.videoUnavailableNoContact)).toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.videoUnavailable)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-video-contact')).not.toBeInTheDocument();
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['https://support.example.org/help', null, `${en.lesson.contactCreator} ${en.lesson.newTabHint}`],
+    ['mailto:help@example.org', null, `${en.lesson.contactCreator} ${en.lesson.mailHint}`],
+    [null, '/account?tab=profile&support=open', en.lesson.contactCreator],
+    ['javascript:alert(1)', '/account?tab=profile&support=open', en.lesson.contactCreator],
+  ] as const)('links the workspace contact %s from an unavailable video', async (supportUrl, formHref, accessibleName) => {
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
+      http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {
+        lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [{ kind: 'unavailable', storageKey: 'k1', reason: 'secret_invalid' }],
+      } })),
+      http.get('/api/member/settings', () => HttpResponse.json({ ok: true, data: { settings: {
+        billingPortalUrl: null,
+        supportUrl, supportConfigured: true,
+        videoAutoplayDefault: false,
+        memberVideoAutoplayOverride: false,
+      } } })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByText(en.lesson.videoUnavailable)).toBeInTheDocument();
+    const contact = await screen.findByTestId('lesson-video-contact');
+    expect(contact).toHaveTextContent(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    expect(contact).toHaveAccessibleName(accessibleName);
+    expect(contact).toHaveAttribute('href', formHref ?? supportUrl);
+    if (supportUrl?.startsWith('https:') === true) {
+      expect(contact).toHaveAttribute('target', '_blank');
+      expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
+    } else {
+      expect(contact).not.toHaveAttribute('target');
+    }
+    expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
+  });
+
+  it('retries a failed playback request', async () => {
+    let recovered = false;
+    server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
+      http.get('/api/student/lessons/:lessonId/playback', () => recovered
+        ? HttpResponse.json({ ok: true, data: {
+          lessonId: 'l1', expiresAt: '2026-09-08T12:00:00.000Z', videos: [
+            { kind: 'bunny', storageKey: 'k1', videoId: 'vid-1', libraryId: '1', embedUrl: 'https://courses.example.org/video', hlsUrl: null, signed: false },
+          ],
+        } })
+        : HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Internal' } }, { status: 500 })),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByText(en.lesson.videoFailedTitle)).toBeInTheDocument();
     recovered = true;
     await userEvent.setup().click(screen.getByRole('button', { name: en.common.retry }));
     expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', 'https://courses.example.org/video');
-    expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
   it('leaves the breadcrumb trail to the member app bar', async () => {
@@ -1425,6 +1547,144 @@ describe('LessonPlayerPage', () => {
 
     await waitFor(() => expect(screen.getByTestId('mark-complete')).toBeInTheDocument());
     expect(uncompleteCalls).toBe(1);
+  });
+
+  it.each([
+    ['mark-complete', '/api/student/lessons/complete', [], 'unmark-complete'],
+    ['unmark-complete', '/api/student/lessons/uncomplete', ['l2'], 'mark-complete'],
+  ] as const)('shows a failed %s at the footer bar with a retry', async (trigger, endpoint, initiallyDone, settledTestId) => {
+    let calls = 0;
+    let done: readonly string[] = initiallyDone;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', () => HttpResponse.json({ ok: true, data: { progress: progress([...done]) } })),
+      http.post(endpoint, () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+        }
+        done = initiallyDone.length === 0 ? ['l2'] : [];
+        return HttpResponse.json({ ok: true, data: { progress: progress([...done]) } });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    await user.click(await screen.findByTestId(trigger));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveAttribute('data-testid', 'lesson-completion-error');
+    expect(error).toHaveTextContent(en.lesson.completionFailed);
+    expect(error.closest('footer')).not.toBeNull();
+    expect(screen.getByTestId('lesson-block-0').compareDocumentPosition(error)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId(trigger)).toBeInTheDocument();
+
+    const footer = error.closest('footer');
+    await user.click(within(error).getByRole('button', { name: en.common.retry }));
+
+    expect(await screen.findByTestId(settledTestId)).toBeInTheDocument();
+    expect(calls).toBe(2);
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+    expect(footer).toHaveFocus();
+  });
+
+  it('closes a failed completion without changing the completion state and keeps a short alert on phones', async () => {
+    let calls = 0;
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      okProgress(),
+      http.post('/api/student/lessons/complete', () => {
+        calls += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    await user.click(await screen.findByTestId('mark-complete'));
+    const error = await screen.findByTestId('lesson-completion-error');
+    const footer = error.closest('footer');
+
+    const detail = within(error).getByTestId('lesson-completion-detail');
+    expect(detail).toHaveTextContent(en.errors.messageInternal);
+    expect(stylesBelow(detail, 375)).toMatchObject({ position: 'absolute', width: '1px', height: '1px' });
+    expect(stylesAt(detail, 900).position).toBeUndefined();
+    const retry = within(error).getByRole('button', { name: en.common.retry });
+    expect(stylesBelow(retry, 375)).toMatchObject({ 'min-height': '44px' });
+    expect(stylesAt(retry, 900)).toMatchObject({ 'min-height': '0px' });
+    const close = within(error).getByRole('button', { name: en.common.close });
+    expect(stylesBelow(close, 375)).toMatchObject({ width: '44px', height: '44px' });
+
+    await user.click(close);
+
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
+    expect(footer).toHaveFocus();
+    expect(screen.getByTestId('mark-complete')).toBeEnabled();
+    expect(screen.queryByTestId('unmark-complete')).not.toBeInTheDocument();
+    expect(calls).toBe(1);
+  });
+
+  it('retries a failed complete and continue and then moves on', async () => {
+    let completeCalls = 0;
+    let releaseRetry: () => void = () => undefined;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    server.use(
+      okStructure(),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', ({ params }) => {
+        const id = String(params.lessonId);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            lesson: { ...lesson([{ type: 'html', html: `<p>${id} body</p>` }]), id, name: id === 'l2' ? 'Advanced Variables' : 'Intro to Variables' },
+            authenticated: true,
+          },
+        });
+      }),
+      http.post('/api/student/lessons/complete', async () => {
+        completeCalls += 1;
+        if (completeCalls === 1) {
+          return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+        }
+        await retryGate;
+        return HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } });
+      }),
+    );
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: LessonRouteComponent,
+      })]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    const user = userEvent.setup();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByTestId('complete-continue'));
+    const error = await screen.findByTestId('lesson-completion-error');
+    expect(screen.getByTestId('complete-continue')).toHaveTextContent(en.lesson.completeContinue);
+    expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l1');
+
+    const footer = error.closest('footer');
+    await user.click(within(error).getByRole('button', { name: en.common.retry }));
+    expect(footer).toHaveFocus();
+    expect(screen.getByTestId('complete-continue')).toHaveTextContent(en.lesson.completing);
+    releaseRetry();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l2'));
+    expect(completeCalls).toBe(2);
+    await waitFor(() => expect(screen.queryByTestId('lesson-completion-error')).not.toBeInTheDocument());
   });
 
   it('holds a pending state on continue until the next lesson is on screen', async () => {
@@ -1991,6 +2251,45 @@ describe('LessonPlayerPage', () => {
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it('links the previous lesson and the next unlocked lesson from the locked page footer', async () => {
+    stubMobileViewport();
+    const locked = (lessonId: string, name: string): CourseStructureLesson => ({ ...entry(lessonId, name, false), unlockProductId: 'prod-full' });
+    server.use(
+      forbiddenLesson(),
+      okStructureOf(structureOf([
+        entry('l1', 'Intro to Variables'),
+        locked('l2', 'Advanced Variables'),
+        locked('l3', 'Closures'),
+        entry('l4', 'Scopes'),
+      ])),
+      okOffer(),
+      okProgress(),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l2" />);
+
+    const footer = await screen.findByTestId('locked-lesson-footer');
+    expect(footer.tagName).toBe('FOOTER');
+    expect(within(footer).getByTestId('prev-lesson')).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    const next = within(footer).getByRole('link', { name: en.lesson.next({ name: 'Scopes' }) });
+    expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l4');
+    expect(next).toHaveClass('MuiButton-outlined');
+    const bare = within(next).getByText('Scopes');
+    const chevron = within(next).getByTestId('lesson-nav-icon');
+    expect(bare.compareDocumentPosition(chevron)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(stylesAt(chevron, 390)).not.toMatchObject({ display: 'none' });
+    expect(stylesAt(chevron, 900)).toMatchObject({ display: 'none' });
+    expect(stylesBelow(bare.parentElement ?? next, 390)).toMatchObject({ display: '-webkit-box', '-webkit-line-clamp': '2' });
+    expect(screen.getByTestId('locked-lesson-upsell').compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('leaves the footer off a locked first lesson with no unlocked lesson after it', async () => {
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer(), okProgress());
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('unlock-lesson-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lesson-footer')).not.toBeInTheDocument();
+  });
+
   it('offers the in-app support form from the not-for-sale card when the workspace has no support address', async () => {
     server.use(
       forbiddenLesson(),
@@ -2185,6 +2484,18 @@ describe('LessonPlayerPage', () => {
     });
   });
 
+  it('puts the reading eyebrow on the centred reading column and leaves other eyebrows at the card edge', async () => {
+    server.use(okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const readingBlock = (await screen.findByTestId('lesson-html')).closest('[data-block-type="html"]');
+    if (!(readingBlock instanceof HTMLElement)) throw new Error('Expected the reading block card');
+    const readingColumn = { 'max-width': '44rem', 'margin-left': 'auto', 'margin-right': 'auto' };
+    expect(stylesAt(within(readingBlock).getByText(en.lesson.labelReading), 1440)).toMatchObject(readingColumn);
+    expect(stylesAt(within(readingBlock).getByText(en.lesson.labelReading), 375)).toMatchObject(readingColumn);
+    expect(stylesAt(within(screen.getByTestId('lesson-block-0')).getByText(en.lesson.labelVideo), 1440)['max-width']).toBeUndefined();
+  });
+
   it('leaves the program to the shell sidebar from md up', async () => {
     stubDesktopViewport();
     server.use(okStructure(), okProgress(), okLesson(allBlocks));
@@ -2354,28 +2665,6 @@ describe('LessonPlayerPage', () => {
   });
   it('focuses the thread named by the search param and clears it on exit', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const post = (id: string, body: string): DiscussionPost => ({
-      id,
-      tenantId: 't1',
-      contextKind: 'lesson',
-      contextId: 'l1',
-      parentPostId: null,
-      rootPostId: id,
-      isOwn: false,
-      authorDisplay: 'Olivia Author',
-      authorIsStaff: false,
-      authorAvatarUrl: null,
-      body,
-      bodyFormat: 'plain',
-      bodyHtml: body,
-      bodyPlainText: body,
-      createdAt: '2026-08-15T08:00:00.000Z',
-      editedAt: null,
-      deletedAt: null,
-      pinnedAt: null,
-      replies: [],
-      replyCount: 0,
-    });
     server.use(
       okLesson(allBlocks),
       okStructure(),
@@ -2385,7 +2674,7 @@ describe('LessonPlayerPage', () => {
           ok: true,
           data: {
             discussion: {
-              threads: [post('t1', 'Question about hammocks'), post('t2', 'Question about panels')],
+              threads: [discussionPost('t1', 'Question about hammocks'), discussionPost('t2', 'Question about panels')],
               nextCursor: null,
               viewerSubscriptions: {},
             },
@@ -2395,38 +2684,12 @@ describe('LessonPlayerPage', () => {
       http.get('/api/discussion/threads/:postId', ({ params, request }) => {
         expect(new URL(request.url).searchParams.get('contextKind')).toBe('lesson');
         return params.postId === 't1'
-          ? HttpResponse.json({ ok: true, data: { discussion: { threads: [post('t1', 'Question about hammocks')], nextCursor: null, viewerSubscriptions: {} } } })
+          ? HttpResponse.json({ ok: true, data: { discussion: { threads: [discussionPost('t1', 'Question about hammocks')], nextCursor: null, viewerSubscriptions: {} } } })
           : HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Thread not found' } }, { status: 404 });
       }),
     );
 
-    const rootRoute = createRootRoute();
-    const LessonRouteComponent = () => {
-      const params = useParams({ strict: false });
-      const { thread } = useSearch({ strict: false });
-      return (
-        <LessonPlayerPage
-          courseId={params.courseId ?? ''}
-          lessonId={params.lessonId ?? ''}
-          threadRootPostId={thread ?? null}
-        />
-      );
-    };
-    const lessonRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: '/my/courses/$courseId/lessons/$lessonId',
-      validateSearch: (search: Record<string, unknown>): { thread?: string } =>
-        typeof search['thread'] === 'string' ? { thread: search['thread'] } : {},
-      component: LessonRouteComponent,
-    });
-    const router = createRouter({
-      routeTree: rootRoute.addChildren([lessonRoute]),
-      history: createMemoryHistory({
-        initialEntries: ['/my/courses/course-1/lessons/l1?thread=t1'],
-      }),
-    });
-    await router.load();
-    renderWithProviders(<RouterProvider router={router} />);
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
 
     const subthread = await screen.findByTestId('discussion-subthread-t1');
     expect(subthread).toHaveTextContent('Question about hammocks');
@@ -2442,5 +2705,44 @@ describe('LessonPlayerPage', () => {
       'Question about panels',
     );
     await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+  });
+
+  it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
+    const thread = discussionPost('t1', 'Question about hammocks');
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/discussion/threads/:postId', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+      http.get('/api/posts/search', () =>
+        HttpResponse.json({ ok: true, data: { hits: [{ post: thread, lessonId: 'l1', snippet: 'Question about hammocks' }] } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1');
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'hammocks');
+    await user.click(await screen.findByTestId('search-hit-link-t1'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe('?thread=t1'));
+    expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('search-hit-link-t1'));
+    expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
+    router.history.back();
+    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+
+    await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
+    await waitFor(() => expect(screen.getByTestId('discussion-search-input')).toHaveValue(''));
   });
 });

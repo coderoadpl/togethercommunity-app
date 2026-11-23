@@ -3795,7 +3795,7 @@ export const CourseCardRoot = styled(Box)<AsElement & { to?: string; href?: stri
   },
 }));
 
-export const VisuallyHidden = styled('span')({
+const VISUALLY_HIDDEN: CSSObject = {
   position: 'absolute',
   width: 1,
   height: 1,
@@ -3805,7 +3805,9 @@ export const VisuallyHidden = styled('span')({
   clip: 'rect(0 0 0 0)',
   whiteSpace: 'nowrap',
   border: 0,
-});
+};
+
+export const VisuallyHidden = styled('span')(VISUALLY_HIDDEN);
 
 export type CoverFrame = 'card' | 'standalone';
 
@@ -4235,11 +4237,13 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& .MuiAlert-action .MuiButton-root': { minHeight: 0 },
   },
   [theme.breakpoints.down('md')]: {
     marginInline: '-1.25rem',
     padding: '0.5rem 0.75rem',
     '& .MuiButton-root': { width: 'auto', minHeight: 44 },
+    '& .MuiAlert-action .MuiIconButton-root': { width: 44, height: 44 },
     '& [data-slot="compact"]': { flex: '0 0 auto' },
     '& .MuiButton-root[data-slot="compact"], & [data-slot="compact"] > .MuiButton-root': {
       width: 44,
@@ -4258,6 +4262,10 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
     '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
+}));
+
+export const LessonAlertDetail = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: VISUALLY_HIDDEN,
 }));
 
 export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
@@ -4437,24 +4445,43 @@ export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const NotificationDot = styled('span', {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ theme, active }) => ({
-  display: 'inline-block',
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  backgroundColor:
-    active === true ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.25),
-  flexShrink: 0,
-}));
-
 export const PendingPostBox = styled(Box)({ opacity: 0.55 });
 
 export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.85rem',
   color: theme.palette.text.secondary,
   overflowWrap: 'anywhere',
+}));
+
+export const DiscussionHitCard = styled(Link)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  padding: '0.6rem 0.9rem',
+  minHeight: 44,
+  color: theme.palette.text.primary,
+  fontWeight: 400,
+  textDecoration: 'none',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  transition: theme.transitions.create(['background-color', 'border-color'], { duration: theme.transitions.duration.shortest }),
+  '&:hover': { backgroundColor: theme.palette.action.hover, borderColor: theme.palette.text.secondary },
+  '&:focus-visible': { borderColor: theme.palette.primary.main },
+}));
+
+export const DiscussionHitText = styled('span')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  flex: 1,
+  minWidth: 0,
+});
+
+export const DiscussionHitChevron = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.25rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const ThreadHeadline = styled('span')({

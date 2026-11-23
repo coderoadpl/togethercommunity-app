@@ -3,8 +3,8 @@ import {
   Alert,
   Box,
   Button,
-  type ButtonProps,
   Chip,
+  IconButton,
   Link as MuiLink,
   Paper,
   Skeleton,
@@ -13,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createLink, Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import {
@@ -31,7 +31,7 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
-import { LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
+import { LESSON_READING_COLUMN_SX, LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
 import { lessonHeadingDocument } from '../../components/ui/lesson-heading-document.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
@@ -39,6 +39,7 @@ import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js
 import {
   Eyebrow,
   LessonActionLabel,
+  LessonAlertDetail,
   LessonCompletionStatus,
   LessonDestinationLabel,
   LessonFooterBar,
@@ -57,10 +58,12 @@ import {
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
-import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
+import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson, type LessonNeighbours } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
+import { CloseIcon } from './shell/shell-icons.js';
+import { resolveSupportContact, SupportContactButton } from './SupportContactButton.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -94,6 +97,17 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
   }
 };
 
+const UnavailableVideoMessage = () => {
+  const t = useTranslations();
+  const settings = useQuery({ ...actions.memberSettings });
+  const contact = settings.data === undefined
+    ? null
+    : resolveSupportContact(settings.data.settings.supportUrl, settings.data.settings.supportConfigured === true);
+  return contact === null
+    ? <LessonMediaError message={t.lesson.videoUnavailableNoContact} />
+    : <LessonMediaError message={t.lesson.videoUnavailable} action={<SupportContactButton contact={contact} testId="lesson-video-contact" />} />;
+};
+
 const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editionNumber }: { lessonId: string; storageKey: string; autoplay: boolean; authenticated: boolean; editionNumber?: string | undefined }) => {
   const t = useTranslations();
   const playback = useQuery({ ...actions.studentLessonPlayback(lessonId, editionNumber), enabled: authenticated });
@@ -103,12 +117,11 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
     return <LessonMediaEmbed frameSx={LESSON_VIDEO_FRAME_SX} data-testid="lesson-video" src={withVideoAutoplay(video.embedUrl, autoplay)} title={t.lesson.videoTitle} failureMessage={t.lesson.videoFailedTitle} allow={VIDEO_ALLOW} allowFullScreen />;
   }
   if (video?.kind === 'unavailable' || playback.isError) {
-    const message = video?.kind === 'unavailable'
-      ? video.reason === 'missing_library_id' ? t.lesson.videoMissingLibrary : t.lesson.videoSecretInvalid
-      : t.lesson.videoFailedTitle;
     return (
       <LessonMediaFrame sx={{ ...LESSON_VIDEO_FRAME_SX, display: 'grid' }}>
-        <LessonMediaError message={message} onRetry={() => void playback.refetch()} />
+        {video?.kind === 'unavailable'
+          ? <UnavailableVideoMessage />
+          : <LessonMediaError message={t.lesson.videoFailedTitle} onRetry={() => void playback.refetch()} />}
       </LessonMediaFrame>
     );
   }
@@ -116,7 +129,7 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
   return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
 };
 
-const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber, leading }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -177,13 +190,13 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumb
     return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
-  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} />;
+  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} startExpanded={leading} />;
 };
 
-const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber, leading }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />;
+      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={leading} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -199,10 +212,6 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
       return <LessonLinkList links={group.links} />;
   }
 };
-
-const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
-
-const ButtonLink = createLink(({ href = '', ...props }: Omit<ButtonProps<'a'>, 'component'>) => <Button href={href} {...props} />);
 
 const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
 const TEXT_BREAK = '\u2029';
@@ -235,6 +244,60 @@ const LockedLead = ({ children, heading = false }: { children: string; heading?:
   </Stack>
 );
 
+const NextLessonLabel = ({ name }: { name: string }) => {
+  const t = useTranslations();
+  return (
+    <>
+      <LessonDestinationLabel>
+        <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
+        <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
+      </LessonDestinationLabel>
+      <NextLessonIcon />
+    </>
+  );
+};
+
+const PreviousLessonLink = ({ courseId, lessonId }: { courseId: string; lessonId: string }) => {
+  const t = useTranslations();
+  return (
+    <Button
+      component={Link}
+      to={lessonPath(courseId, lessonId)}
+      variant="outlined"
+      data-testid="prev-lesson"
+      data-slot="compact"
+    >
+      <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
+    </Button>
+  );
+};
+
+const LockedFooter = ({ courseId, neighbours }: { courseId: string; neighbours: LessonNeighbours }) => {
+  const t = useTranslations();
+  const { previous, nextUnlocked } = neighbours;
+  if (previous === null && nextUnlocked === null) return null;
+  return (
+    <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }} data-testid="locked-lesson-footer">
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', gap: { xs: '0.5rem', md: '0.75rem' } }}>
+        {previous === null ? null : <PreviousLessonLink courseId={courseId} lessonId={previous.lessonId} />}
+        <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        {nextUnlocked === null ? null : (
+          <Button
+            component={Link}
+            to={lessonPath(courseId, nextUnlocked.lessonId)}
+            variant="outlined"
+            data-testid="next-lesson"
+            data-slot="primary"
+            aria-label={t.lesson.next({ name: nextUnlocked.name })}
+          >
+            <NextLessonLabel name={nextUnlocked.name} />
+          </Button>
+        )}
+      </Stack>
+    </LessonFooterBar>
+  );
+};
+
 const LockedCardSkeleton = () => {
   const t = useTranslations();
   return (
@@ -253,6 +316,7 @@ const LockedView = ({
   pending,
   supportUrl,
   supportConfigured,
+  neighbours,
 }: {
   courseId: string;
   lessonName?: string | undefined;
@@ -260,6 +324,7 @@ const LockedView = ({
   pending: boolean;
   supportUrl: string | null | undefined;
   supportConfigured: boolean;
+  neighbours: LessonNeighbours | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -285,8 +350,7 @@ const LockedView = ({
       yearly: t.common.priceYearly,
     });
   const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
-  const externalSupport = typeof supportUrl === 'string' && !supportUrl.toLowerCase().startsWith('mailto:');
-  const supportForm = supportUrl === null && supportConfigured;
+  const supportContact = resolveSupportContact(supportUrl, supportConfigured);
   const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
@@ -309,35 +373,14 @@ const LockedView = ({
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
               <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
               <Typography variant="body2" color="text.secondary">
-                {typeof supportUrl === 'string' || supportForm ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
+                {supportContact === null ? t.lesson.notForSaleBodyNoContact : t.lesson.notForSaleBody}
               </Typography>
               <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
                 {t.lesson.backToCourse}
               </Button>
-              {typeof supportUrl === 'string' ? (
-                <Button
-                  href={supportUrl}
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  data-testid="locked-contact-creator"
-                  {...(externalSupport ? NEW_TAB : {})}
-                  aria-label={`${t.lesson.contactCreator} ${externalSupport ? t.lesson.newTabHint : t.lesson.mailHint}`}
-                >
-                  {t.lesson.contactCreator}
-                </Button>
-              ) : supportForm ? (
-                <ButtonLink
-                  to="/account"
-                  search={{ tab: 'profile', support: 'open' }}
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  data-testid="locked-contact-creator"
-                >
-                  {t.lesson.contactCreator}
-                </ButtonLink>
-              ) : null}
+              {supportContact === null ? null : (
+                <SupportContactButton contact={supportContact} testId="locked-contact-creator" size="large" fullWidth />
+              )}
             </Stack>
           ) : (
             <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
@@ -368,6 +411,7 @@ const LockedView = ({
         </Paper>
         {!loading && unlockProductId === undefined ? null : <MuiLink component={Link} to={courseHref}>{t.lesson.backToCourse}</MuiLink>}
       </Stack>
+      {neighbours === null ? null : <LockedFooter courseId={courseId} neighbours={neighbours} />}
     </MemberSurface>
   );
 };
@@ -452,10 +496,13 @@ export const LessonPlayerPage = ({
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
+  const discussionScope = editionNumber === undefined ? lessonId : `${lessonId}/${editionNumber}`;
+  const [discussionSearch, setDiscussionSearch] = useState({ scope: discussionScope, term: '' });
+  const discussionSearchTerm = discussionSearch.scope === discussionScope ? discussionSearch.term : '';
+
   const [continuing, setContinuing] = useState(false);
-  useEffect(() => {
-    setContinuing(false);
-  }, [lessonId]);
+  const [completionIntent, setCompletionIntent] = useState<'mark' | 'continue' | 'unmark'>('mark');
+  const footerBarRef = useRef<HTMLElement | null>(null);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -490,6 +537,14 @@ export const LessonPlayerPage = ({
     onError: () => setOptimisticDone(null),
     onSettled: settleCompletion,
   });
+
+  const { reset: resetComplete } = complete;
+  const { reset: resetUncomplete } = uncomplete;
+  useEffect(() => {
+    setContinuing(false);
+    resetComplete();
+    resetUncomplete();
+  }, [lessonId, resetComplete, resetUncomplete]);
 
   useEffect(() => {
     if (unauthorized) void redirectToLogin();
@@ -579,6 +634,7 @@ export const LessonPlayerPage = ({
           pending={structure.isPending}
           supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
           supportConfigured={tenantSettings.data?.settings.supportConfigured === true}
+          neighbours={neighbours}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -609,8 +665,8 @@ export const LessonPlayerPage = ({
         tenantSettings.data.settings,
         me.data?.tenant?.videoAutoplay ?? null,
       );
-  const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
-    .some((query) => query.isError);
+  const hasSideErrors = [tenantSettings, structure, attachments].some((query) => query.isError);
+  const completionError = complete.error ?? uncomplete.error;
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
   const previousLesson = neighbours?.previous ?? null;
   const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
@@ -626,7 +682,21 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const markComplete = () => {
+    setCompletionIntent('mark');
+    uncomplete.reset();
+    complete.mutate({ lessonId });
+  };
+
+  const unmarkComplete = () => {
+    setCompletionIntent('unmark');
+    complete.reset();
+    uncomplete.mutate({ lessonId });
+  };
+
   const continueToNext = () => {
+    setCompletionIntent('continue');
+    uncomplete.reset();
     setContinuing(true);
     complete.mutate(
       { lessonId },
@@ -638,6 +708,19 @@ export const LessonPlayerPage = ({
         onError: () => setContinuing(false),
       },
     );
+  };
+
+  const retryCompletion = () => {
+    footerBarRef.current?.focus();
+    if (completionIntent === 'continue') continueToNext();
+    else if (completionIntent === 'unmark') unmarkComplete();
+    else markComplete();
+  };
+
+  const dismissCompletionError = () => {
+    footerBarRef.current?.focus();
+    resetComplete();
+    resetUncomplete();
   };
 
   return (
@@ -670,8 +753,6 @@ export const LessonPlayerPage = ({
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-            {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
-            {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>
         ) : null}
         <Stack component="section" useFlexGap spacing="1.5rem">
@@ -700,10 +781,14 @@ export const LessonPlayerPage = ({
                 data-testid={`lesson-block-${index}`}
                 data-block-type={group.kind === 'block' ? group.block.type : group.kind}
               >
-                <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+                <Eyebrow
+                  variant="overline"
+                  component="p"
+                  sx={group.kind === 'block' && group.block.type === 'html' ? { mb: '0.75rem', ...LESSON_READING_COLUMN_SX } : { mb: '0.75rem' }}
+                >
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />
+                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={index === 0} />
               </Paper>
               );
             })
@@ -728,7 +813,39 @@ export const LessonPlayerPage = ({
           </SectionCard>
         ) : null}
 
-        {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+        {authenticated && <LessonFooterBar component="footer" ref={footerBarRef} tabIndex={-1} sx={{ mt: '2.5rem' }}>
+          {completionError === null ? null : (
+            <Alert
+              severity="error"
+              role="alert"
+              data-testid="lesson-completion-error"
+              sx={{ mb: '0.5rem' }}
+              action={(
+                <>
+                  <Button
+                    color="inherit"
+                    size="small"
+                    data-testid="lesson-completion-retry"
+                    onClick={retryCompletion}
+                  >
+                    {t.common.retry}
+                  </Button>
+                  <IconButton
+                    color="inherit"
+                    size="small"
+                    aria-label={t.common.close}
+                    data-testid="lesson-completion-close"
+                    onClick={dismissCompletionError}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </>
+              )}
+            >
+              <strong>{t.lesson.completionFailed}</strong>
+              <LessonAlertDetail data-testid="lesson-completion-detail"> {localizeError(completionError, t)}</LessonAlertDetail>
+            </Alert>
+          )}
           {firstSkipped !== null && neighbours !== null ? (
             <MuiLink
               component={Link}
@@ -758,15 +875,7 @@ export const LessonPlayerPage = ({
                   </Box>
                 </Tooltip>
               ) : (
-                <Button
-                  component={Link}
-                  to={lessonPath(courseId, previousLesson.lessonId)}
-                  variant="outlined"
-                  data-testid="prev-lesson"
-                  data-slot="compact"
-                >
-                  <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
-                </Button>
+                <PreviousLessonLink courseId={courseId} lessonId={previousLesson.lessonId} />
               )
             )}
             {!continuing && !completed && nextLesson !== null && (
@@ -791,7 +900,7 @@ export const LessonPlayerPage = ({
                 <Button
                   variant="text"
                   data-testid="unmark-complete"
-                  onClick={() => uncomplete.mutate({ lessonId })}
+                  onClick={unmarkComplete}
                   disabled={uncomplete.isPending}
                   aria-label={t.lesson.unmarkCompleted}
                   data-slot="undo"
@@ -805,7 +914,7 @@ export const LessonPlayerPage = ({
                 variant={completionSlot === 'fill' ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
                 data-slot={completionSlot}
-                onClick={() => complete.mutate({ lessonId })}
+                onClick={markComplete}
                 disabled={complete.isPending}
               >
                 {completionSlot === 'compact' ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
@@ -835,11 +944,7 @@ export const LessonPlayerPage = ({
                 data-slot="primary"
                 aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonDestinationLabel>
-                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name: nextLesson.name })}</Box>
-                  <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{nextLesson.name}</Box>
-                </LessonDestinationLabel>
-                <NextLessonIcon />
+                <NextLessonLabel name={nextLesson.name} />
               </Button>
             )}
             {!continuing && nextLockedLesson !== null && (
@@ -867,7 +972,11 @@ export const LessonPlayerPage = ({
         {authenticated && (
           <DiscussionSection
             key={threadRootPostId ?? 'all-threads'}
+            courseId={courseId}
             lessonId={lessonId}
+            editionNumber={editionNumber}
+            searchTerm={discussionSearchTerm}
+            onSearchTermChange={(term) => setDiscussionSearch({ scope: discussionScope, term })}
             {...(threadRootPostId === null
               ? {}
               : {

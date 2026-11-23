@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -16,7 +16,6 @@ import {
   DeletedPostText,
   DiscussionThread,
   Eyebrow,
-  NotificationDot,
   PendingPostBox,
   PostAuthorName,
   PostMetaText,
@@ -26,6 +25,8 @@ import {
 import { PostContent } from '../../components/ui/PostContent.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../../components/ui/MarkdownEditor.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
+import { FollowThreadIcon } from './community-icons.js';
+import { PostContactMenu } from './PostContactMenu.js';
 import { ReportPostButton } from './ReportPostButton.js';
 import { StartMessageButton } from './messages/StartMessageButton.js';
 import { TombstonePostMenu } from './TombstonePostMenu.js';
@@ -55,11 +56,11 @@ const ThreadSubscriptionToggle = ({
   return (
     <Button
       size="small"
-      variant="text"
+      variant="outlined"
       aria-pressed={state === 'subscribed'}
       data-testid={`follow-toggle-${rootPostId}`}
       onClick={onToggle}
-      startIcon={<NotificationDot active={state === 'subscribed'} aria-hidden />}
+      startIcon={<FollowThreadIcon active={state === 'subscribed'} />}
     >
       {state === 'subscribed'
         ? t.discussion.following
@@ -100,6 +101,7 @@ export const PostComposer = ({
   surface = false,
   busy,
   disabled = false,
+  error = null,
   onSubmit,
   onCancel,
   testId,
@@ -115,6 +117,7 @@ export const PostComposer = ({
   surface?: boolean;
   busy: boolean;
   disabled?: boolean;
+  error?: string | null;
   onSubmit: (body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
@@ -180,6 +183,7 @@ export const PostComposer = ({
           {t.markdownEditor.overLimit}
         </Typography>
       ) : null}
+      {error === null ? null : <Alert severity="error" data-testid={`${testId}-error`}>{error}</Alert>}
       <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', alignItems: 'center' }}>
         <Button
           type="submit"
@@ -218,6 +222,10 @@ interface ThreadActions {
   setReplyingTo: (id: string | null) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
+  replyError: (parentId: string) => string | null;
+  editError: (postId: string) => string | null;
+  cancelReply: () => void;
+  cancelEdit: () => void;
   submitReply: (parent: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   submitEdit: (post: DiscussionPost, body: string, bodyFormat: PostBodyFormat, reset: () => void) => void;
   requestDelete: (post: DiscussionPost) => void;
@@ -274,8 +282,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.editBusy}
             disabled={a.writeDisabled}
+            error={a.editError(post.id)}
             onSubmit={(body, bodyFormat, reset) => a.submitEdit(post, body, bodyFormat, reset)}
-            onCancel={() => a.setEditingId(null)}
+            onCancel={a.cancelEdit}
             testId={`edit-composer-${post.id}`}
           />
         </Box>
@@ -331,8 +340,17 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </PostToolbarButton>
           )}
-          {!own && !deleted ? <StartMessageButton postId={post.id} /> : null}
-          {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
+          {!own && !deleted ? (
+            <>
+              <Box sx={{ display: { xs: 'none', sm: 'contents' } }} data-testid={`post-contact-actions-${post.id}`}>
+                <StartMessageButton postId={post.id} />
+                <ReportPostButton postId={post.id} />
+              </Box>
+              <Box sx={{ display: { xs: 'inline-flex', sm: 'none' }, ml: 'auto' }}>
+                <PostContactMenu postId={post.id} />
+              </Box>
+            </>
+          ) : null}
         </Stack>
       )}
 
@@ -345,8 +363,9 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             focusOnMount
             busy={a.replyBusy}
             disabled={a.writeDisabled}
+            error={a.replyError(post.id)}
             onSubmit={(body, bodyFormat, reset) => a.submitReply(post, body, bodyFormat, reset)}
-            onCancel={() => a.setReplyingTo(null)}
+            onCancel={a.cancelReply}
             testId={`reply-composer-${post.id}`}
           />
         </Box>
@@ -398,6 +417,15 @@ const findPost = (threads: DiscussionPost[], id: string): DiscussionPost | null 
   }
   return null;
 };
+
+const withoutChildlessTombstones = (posts: DiscussionPost[]): DiscussionPost[] =>
+  posts.flatMap((post) => {
+    const replies = withoutChildlessTombstones(post.replies);
+    return post.deletedAt !== null && replies.length === 0 ? [] : [{ ...post, replies }];
+  });
+
+const countPosts = (posts: DiscussionPost[]): number =>
+  posts.reduce((total, post) => total + 1 + countPosts(post.replies), 0);
 
 const threadsContain = (threads: DiscussionPost[], id: string | undefined): boolean =>
   id !== undefined && threads.some((post) => post.id === id || threadsContain(post.replies, id));
@@ -470,7 +498,14 @@ export const ThreadDiscussion = ({
         };
   const banned = me.data?.tenant?.banned === true;
 
-  const threads = discussion.data?.discussion.threads ?? [];
+  const loadedThreads = discussion.data?.discussion.threads;
+  const canModerate = viewer?.canModerate === true;
+  const threads = useMemo(
+    () => (loadedThreads ?? []).map((thread) => (canModerate
+      ? thread
+      : { ...thread, replies: withoutChildlessTombstones(thread.replies) })),
+    [loadedThreads, canModerate],
+  );
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
   const subthreadRoot = subthreadRootId === null ? null : findPost(threads, subthreadRootId);
 
@@ -529,13 +564,57 @@ export const ThreadDiscussion = ({
     }
   };
 
+  const errorMessage = (error: Error | null): string | null =>
+    error === null
+      ? null
+      : error instanceof ApiError && error.appError.code === 'rate_limited'
+        ? t.community.postTooFast
+        : localizeError(error, t);
+  const createErrorFor = (parentId: string | undefined) =>
+    create.isError && create.variables.parentPostId === parentId ? errorMessage(create.error) : null;
+  const editErrorFor = (postId: string) =>
+    update.isError && update.variables.id === postId ? errorMessage(update.error) : null;
+
+  const changeReplyTarget = (id: string | null) => {
+    if (id !== replyingTo && create.isError && create.variables.parentPostId !== undefined) create.reset();
+    setReplyingTo(id);
+  };
+  const changeEditTarget = (id: string | null) => {
+    if (id !== editingId && update.isError) update.reset();
+    setEditingId(id);
+  };
+  const switchView = (subthreadId: string | null) => {
+    changeReplyTarget(null);
+    changeEditTarget(null);
+    setSubthreadRootId(subthreadId);
+  };
+
+  const topComposerOpen = subthreadRoot === null;
+  const createErrorOwned = create.isError && (create.variables.parentPostId === undefined
+    ? topComposerOpen
+    : create.variables.parentPostId === replyingTo);
+  const updateErrorOwned = update.isError && update.variables.id === editingId;
+  const orphanWriteError =
+    (create.isError && !createErrorOwned ? create.error : null) ??
+    (update.isError && !updateErrorOwned ? update.error : null);
+
   const threadActions: ThreadActions = {
     viewer,
     language,
     replyingTo,
-    setReplyingTo,
+    setReplyingTo: changeReplyTarget,
     editingId,
-    setEditingId,
+    setEditingId: changeEditTarget,
+    replyError: createErrorFor,
+    editError: editErrorFor,
+    cancelReply: () => {
+      create.reset();
+      setReplyingTo(null);
+    },
+    cancelEdit: () => {
+      update.reset();
+      setEditingId(null);
+    },
     submitReply: (parent, body, bodyFormat, reset) => {
       create.mutate(
         { contextKind: context.contextKind, contextId: context.contextId, parentPostId: parent.id, body, bodyFormat },
@@ -559,7 +638,7 @@ export const ThreadDiscussion = ({
       );
     },
     requestDelete: setDeleting,
-    openSubthread: setSubthreadRootId,
+    openSubthread: switchView,
     replyBusy: create.isPending,
     editBusy: update.isPending,
     writeDisabled: banned || impersonating,
@@ -567,20 +646,19 @@ export const ThreadDiscussion = ({
   };
 
   const forbidden = isForbidden(discussion.error);
-  const mutationError = [create, update, remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null;
-  const mutationErrorMessage = mutationError instanceof ApiError && mutationError.appError.code === 'rate_limited'
-    ? t.community.postTooFast
-    : mutationError === null
-      ? null
-      : localizeError(mutationError, t);
+  const mutationErrorMessage = errorMessage(
+    orphanWriteError ?? [remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null,
+  );
 
   const goBack = () => {
     if (focus === undefined) {
-      setSubthreadRootId(null);
+      switchView(null);
     } else if (subthreadRootId === focus.rootPostId) {
+      changeReplyTarget(null);
+      changeEditTarget(null);
       focus.onExit();
     } else {
-      setSubthreadRootId(focus.rootPostId);
+      switchView(focus.rootPostId);
     }
   };
   const backLabel =
@@ -662,8 +740,6 @@ export const ThreadDiscussion = ({
         </Stack>
       ) : (
         <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
-          {search}
-
           {viewer !== null && (
             <PostComposer
               label={t.discussion.composerLabel}
@@ -672,6 +748,7 @@ export const ThreadDiscussion = ({
               pendingLabel={t.discussion.posting}
               busy={create.isPending}
               disabled={banned}
+              error={createErrorFor(undefined)}
               surface
               onSubmit={(body, bodyFormat, reset) => {
                 create.mutate(
@@ -682,6 +759,8 @@ export const ThreadDiscussion = ({
               testId="discussion-composer"
             />
           )}
+
+          {search}
 
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
 
@@ -703,7 +782,7 @@ export const ThreadDiscussion = ({
                         sx={{ alignItems: 'center', columnGap: '1rem', flexWrap: 'wrap' }}
                       >
                         <PostMetaText component="span" data-testid={`reply-count-${thread.id}`}>
-                          {t.discussion.replyCount({ count: thread.replyCount })}
+                          {t.discussion.replyCount({ count: countPosts(thread.replies) })}
                         </PostMetaText>
                         {viewer !== null && (
                           <ThreadSubscriptionToggle

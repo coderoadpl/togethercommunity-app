@@ -2411,8 +2411,8 @@ export interface Messages {
     editionBackToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
-    videoMissingLibrary: string;
-    videoSecretInvalid: string;
+    videoUnavailable: string;
+    videoUnavailableNoContact: string;
     mediaOpenExternal: string;
     loading: string;
     unavailable: string;
@@ -2431,6 +2431,7 @@ export interface Messages {
     unmarkCompleted: string;
     completeContinue: string;
     completing: string;
+    completionFailed: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;

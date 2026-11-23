@@ -281,6 +281,33 @@ describe('markLessonCompleted', () => {
   });
 });
 
+describe('progress on a module that two courses share', () => {
+  const c2 = course('c2', 't1');
+  const shared: CourseModule = { ...m1, courseIds: ['c1', 'c2'] };
+  const sharedDeps = (progress: MemberCourseProgressRepository, accessItems: Product['accessItems']) =>
+    deps(progress, [activeGrant], [{ ...pCourse, accessItems }], [c1, c2], [shared]);
+
+  it('records completion under the course that opens the lesson when the item of the other course excludes its module', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }, { level: 'course', courseId: 'c2' }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1'] } });
+    expect(await unmarkLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: [] } });
+  });
+
+  it('keeps recording under the first course when that course opens the lesson', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+  });
+
+  it('forbids completion when the only course item excludes the module', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.rows).toHaveLength(0);
+  });
+});
+
 describe('unmarkLessonCompleted', () => {
   it('removes a completed lesson and keeps the rest', async () => {
     const store = makeProgressStore();

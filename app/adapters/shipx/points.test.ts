@@ -62,6 +62,26 @@ describe('InPost points directory', () => {
     expect(parcelLockerLookupView(lookup)).toMatchObject({ status: 'found', usable: false, reason });
   });
 
+  const withStatus = (status: string): string => fixture('point-operating.json').replace('"status": "Operating"', `"status": "${status}"`);
+  const typedSelection = {
+    rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const,
+    pickupPoint: { provider: 'inpost' as const, code: 'KRA14A', name: null, address: null }, allowedCountries: ['PL'],
+  };
+
+  it('refuses the sale for a point the carrier marks Disabled', async () => {
+    const lookup = await directory(answering(() => json(withStatus('Disabled')))).lookup('KRA14A');
+    expect(parcelLockerLookupView(lookup)).toMatchObject({ status: 'found', usable: false, reason: 'not_operating' });
+    expect(applyPickupPointLookup(typedSelection, lookup)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_operating' } } });
+  });
+
+  it('reads a status the carrier has not documented as unavailable, so the sale goes on unverified', async () => {
+    const lookup = await directory(answering(() => json(withStatus('Overloaded')))).lookup('KRA14A');
+    expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
+    expect(applyPickupPointLookup(typedSelection, lookup)).toEqual({
+      ok: true, value: { ...typedSelection, pickupPoint: { ...typedSelection.pickupPoint, verified: false } },
+    });
+  });
+
   it.each([
     ['a server error', () => json('{"error":"Internal"}', 503)],
     ['a refusal', () => json('{"status":403,"error":"Forbidden"}', 403)],

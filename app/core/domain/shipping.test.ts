@@ -4,6 +4,7 @@ import { allocateOrderLineGross, allocatePaidOrderLineGross, orderLineSchema } f
 import { newProductSchema, productSchema } from './product.js';
 import type { ProductCompliance } from './product-compliance.js';
 import {
+  applyPickupPointLookup,
   deliveryMethodAllowed,
   hasActiveParcelLockerRate,
   inpostPointRejection,
@@ -18,6 +19,7 @@ import {
   SHIPPING_ALLOWED_COUNTRIES,
   shippingRateSchema,
   shippingRatesSchema,
+  type CheckoutShippingSelection,
   type InpostPoint,
   type ShippingRate,
 } from './shipping.js';
@@ -203,7 +205,7 @@ describe('InPost point verdict', () => {
     ['an InPost partner pickup point the map also offers', point({ types: ['parcel_locker', 'parcel_locker_superpop', 'pop'] }), null],
     ['a removed point', point({ status: 'Removed', types: [] }), 'not_operating'],
     ['a disabled point', point({ status: 'Disabled' }), 'not_operating'],
-    ['a status the carrier has not documented', point({ status: 'Created' }), 'not_operating'],
+    ['a non-operating point', point({ status: 'NonOperating' }), 'not_operating'],
     ['a point of another type', point({ types: ['pop'] }), 'not_usable'],
     ['a send-only point', point({ functions: ['parcel_send'] }), 'not_usable'],
   ])('judges %s', (_case, candidate, reason) => {
@@ -224,6 +226,29 @@ describe('InPost point verdict', () => {
     });
     expect(parcelLockerLookupView({ kind: 'not_found' })).toEqual({ status: 'not_found' });
     expect(parcelLockerLookupView({ kind: 'unavailable' })).toEqual({ status: 'unavailable' });
+  });
+
+  const lockerSelection: CheckoutShippingSelection = {
+    rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+    pickupPoint: { provider: 'inpost', code: 'KRA14A', name: 'Typed', address: 'Typed street 1' }, allowedCountries: ['PL'],
+  };
+
+  it.each(['NonOperating', 'Disabled', 'Removed'])('refuses the sale for the known negative status %s', (status) => {
+    expect(applyPickupPointLookup(lockerSelection, { kind: 'found', point: point({ status }) }))
+      .toMatchObject({ ok: false, error: { code: 'validation', details: { pickupPointReason: 'not_operating' } } });
+  });
+
+  it.each(['Overloaded', 'Created', 'operating', ''])('reads the undocumented status %j as an unavailable answer and keeps only the unverified mark', (status) => {
+    const lookup = { kind: 'found', point: point({ status }) } as const;
+    expect(parcelLockerLookupView(lookup)).toEqual({ status: 'unavailable' });
+    const applied = applyPickupPointLookup(lockerSelection, lookup);
+    expect(applied).toEqual({ ok: true, value: { ...lockerSelection, pickupPoint: { ...lockerSelection.pickupPoint, verified: false } } });
+  });
+
+  it('accepts an operating locker with the carrier details and no unverified mark', () => {
+    expect(applyPickupPointLookup(lockerSelection, { kind: 'found', point: point() })).toEqual({ ok: true, value: {
+      ...lockerSelection, pickupPoint: { provider: 'inpost', code: 'KRA14A', name: 'Next to the market', address: 'Market Street 16' },
+    } });
   });
 
   it('knows whether a workspace offers an active parcel locker rate', () => {

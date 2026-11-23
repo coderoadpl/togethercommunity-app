@@ -17,6 +17,28 @@ host as the relying party. Non-local authentication origins are HTTPS-only. HTTP
 for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
 outside local development.
 
+## Session tokens and browsers
+
+Better Auth's bearer plugin copies the session cookie value into a readable
+`set-auth-token` response header (listed in `Access-Control-Expose-Headers`)
+whenever a response sets the session cookie, and its sign-in, sign-up,
+two-factor, session and session-list JSON bodies carry the session `token`.
+A script on the page could read either and replay it as
+`Authorization: Bearer` from anywhere for the rest of the session's lifetime,
+on the platform host and on every workspace where the user has a role, which
+defeats the cookie's `HttpOnly` flag. The auth adapter (`adapters/auth/browser-session-token.ts`,
+applied to every Better Auth response by `createAuth`) therefore strips them
+from responses to browser requests: a request carrying `Sec-Fetch-Site`, which
+browsers always send and page scripts cannot set or remove, gets no
+`set-auth-token` header, no `Access-Control-Expose-Headers` entry for it, no
+top-level `token`, no `session.token` and no `token` on session-list entries.
+Cookies, status codes and every other field stay unchanged, so browser
+sign-in, sign-out, magic-link, passkey, two-factor and impersonation flows run
+on the `HttpOnly` cookie alone; the web app never reads the token. Requests
+without that header, such as the CLI, the auth end-to-end harness and
+server-to-server smoke checks, still receive the token they authenticate with.
+Nothing stored changes; removing the wrapper restores the previous responses.
+
 ## Unsafe request origins
 
 Every `/api/*` request other than `GET`, `HEAD` and `OPTIONS` passes an origin
@@ -92,7 +114,9 @@ continue to accept server-to-server delivery without browser metadata.
 This boundary does not isolate account-level cookies from trusted scripts already
 running on a tenant's own origin. The shared-cookie vendor-script exposure
 accepted in the repository policy remains; solving it requires cookie/account
-isolation rather than a broader claim about CSRF protection.
+isolation rather than a broader claim about CSRF protection. Such a script can
+act with the cookie while the page is open, but it cannot read the session
+token from auth responses (see [Session tokens and browsers](#session-tokens-and-browsers)).
 
 ## Account and delivery boundaries
 

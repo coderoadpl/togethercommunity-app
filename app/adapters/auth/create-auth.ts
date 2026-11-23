@@ -31,6 +31,7 @@ import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/ser
 import type { Db } from '#adapters/db/client.js';
 import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
+import { withoutBrowserSessionToken } from './browser-session-token.js';
 import { twoFactorChallengeUrl } from './two-factor-challenge.js';
 
 export interface AuthSettings {
@@ -1012,7 +1013,9 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   void auth.$context.catch(() => undefined);
   return {
     ...auth,
-    setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
+    handler: async (request: Request): Promise<Response> =>
+      withoutBrowserSessionToken(request, await auth.handler(request)),
+    setMagicLinkDeliveryContext:(email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },
     clearMagicLinkDeliveryContext: (email: string) => {

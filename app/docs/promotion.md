@@ -60,7 +60,8 @@ the head branch is `staging`, the head SHA still matches `origin/staging`, and
 `staging-smoke.yml` runs of the `staging` branch for that exact SHA. Runs
 started by a `pull_request` or `pull_request_target` event never count, so the
 promotion pull request's own CI run is neither waited on nor taken as evidence;
-`push`, `schedule` and `workflow_dispatch` runs count.
+runs of every other event on the `staging` branch at that SHA count, in practice
+`push` and `workflow_dispatch` runs.
 
 When the source, tip and freeze checks pass but a required workflow has no
 successful run for the SHA yet, the guard waits and re-reads the runs every 30

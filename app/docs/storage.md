@@ -137,6 +137,18 @@ abandons a CopyObject it accepted within 30 minutes (the signed copy request
 itself expires 60 seconds after it was signed), and a `PUT` it accepted before
 the upload URL expired within a day.
 
+The bucket must not keep object versions: leave versioning off (never
+enabled), or, where the provider keeps versions, add a lifecycle rule that
+expires noncurrent versions and delete markers. Every delete the server sends
+names an object key without a version, so on a bucket that keeps versions it
+only adds a delete marker and the earlier bytes stay stored as a noncurrent
+version, and each `PUT` through a still valid upload URL keeps one more full
+version. The staging limits, the owed deletions and the minute sweep count and
+delete current objects only, so on such a bucket the stored bytes grow past
+every limit while the database shows them deleted. The storage probe does not
+read the bucket's versioning status; check it with the provider when you
+configure the bucket.
+
 The minute sweep never holds back e-mail and refund dispatch: the cron route
 runs it after them with an end 50 seconds after the tick started, 10 seconds
 before the 60-second function limit, and the Node ticker runs it beside them.

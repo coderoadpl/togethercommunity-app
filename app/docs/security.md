@@ -648,7 +648,9 @@ scopes on every shop key.
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the
-  key's. A completion that takes over an interrupted upload owes the earlier
+  key's. The limits count current objects only, so they hold only on a bucket
+  that keeps no object versions ([Download file prefixes](storage.md#download-file-prefixes)).
+  A completion that takes over an interrupted upload owes the earlier
   destination and writes a new one, so it takes the same two locks and is
   refused with the cap when that extra file or its bytes would pass a limit.
   Owed deletions count against the key whose prefix holds the object;

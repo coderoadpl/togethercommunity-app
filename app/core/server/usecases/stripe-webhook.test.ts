@@ -2697,7 +2697,7 @@ describe('staff refunds on charge.refunded', () => {
     if (order === undefined) throw new Error('Order missing');
     h.waitingStaffRefunds.push(newOrderStaffRefund({
       id: 'refund-1', tenantId: tenantA.id, orderId: order.id, paymentIntentId: 'pi-staff', currency: 'PLN', kind: 'amount', amountCents: 1000,
-      requestKey: 'req-1', requestedByUserId: 'owner', requestedByEmail: 'owner@example.com', note: null, restocked: false, removedFromPackingList: false, now,
+      requestKey: 'req-1', requestedByUserId: 'owner', requestedByEmail: 'owner@example.com', note: null, restocked: false, removedFromPackingList: false, committedSiblingIds: [], now,
     }));
 
     expect(await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: `evt-${status}`, paymentIntentId: 'pi-staff', refund }), h.deps)).toEqual({ ok: true, value: { processed: true } });

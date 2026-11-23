@@ -62,6 +62,11 @@ const committedCents = async (executor: Pick<Executor, 'select'>, tenantId: stri
   return Number(staff?.cents ?? 0) + Number(soldOut?.cents ?? 0);
 };
 
+const committedRefundIds = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<string[]> =>
+  (await executor.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
+    .where(and(ofOrder(tenantId, orderId), inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]))))
+    .map((row) => row.id);
+
 const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<boolean> => {
   const [row] = await executor.select({ id: orderShipments.id }).from(orderShipments)
     .where(and(
@@ -96,6 +101,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
     const decision = input.decide({
       order,
       platformCommittedCents: await committedCents(tx, tenantId, input.orderId),
+      committedRefundIds: await committedRefundIds(tx, tenantId, input.orderId),
       sameRequest: sameRequest === undefined ? null : toStaffRefund(sameRequest),
       waiting: waiting === undefined ? null : toStaffRefund(waiting),
       hasLabel: await labelBought(tx, tenantId, input.orderId),

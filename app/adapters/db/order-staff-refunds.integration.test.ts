@@ -391,6 +391,54 @@ describe('staff refunds against a real database', () => {
     expect(await alertPayloads()).toHaveLength(1);
   });
 
+  it('pays the whole remainder of a full refund requested again after a full staff refund failed', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    await h.dispatch(minutes(1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed' }]);
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2' })).refund).toMatchObject({ kind: 'remainder', amountCents: 4099 });
+    await h.dispatch(minutes(2));
+    expect(h.provider.created.map((created) => [created.amountCents, created.status])).toStrictEqual([[4099, 'failed'], [4099, 'succeeded']]);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed' }, { status: 'succeeded', amountCents: 4099 }]);
+    expect((await buyerEmails()).map((email) => email.payload)).toMatchObject([{ amountCents: 4099 }]);
+  });
+
+  it('pays the whole remainder of a full refund requested after a partial staff refund failed', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2' })).refund).toMatchObject({ kind: 'remainder', amountCents: 4099 });
+    await h.dispatch(minutes(2));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 4099]);
+    expect(h.providerTotal()).toBe(4099);
+    const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    expect(detail.refundTotals).toStrictEqual({ paidCents: 4099, refundedCents: 4099, remainingCents: 0, currency: 'PLN' });
+  });
+
+  it('pays the rest of a full refund requested after a failed partial staff refund was refunded again by hand', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    h.provider.refundByHand(handRefund(1000));
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2' })).refund).toMatchObject({ kind: 'remainder', amountCents: 3099 });
+    await h.dispatch(minutes(2));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 3099]);
+    expect(h.providerTotal()).toBe(3099);
+  });
+
+  it('issues exactly the typed amount after a partial staff refund failed', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 2500 })).refund).toMatchObject({ kind: 'amount', amountCents: 2500 });
+    await h.dispatch(minutes(2));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 2500]);
+  });
+
   it('pays again what a failed dashboard refund left of a full refund', async () => {
     const h = harness();
     h.provider.refundByHand(handRefund(1000));

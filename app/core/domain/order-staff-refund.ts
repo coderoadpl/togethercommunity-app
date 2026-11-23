@@ -45,6 +45,7 @@ export const orderStaffRefundSchema = z.object({
   note: staffRefundNoteSchema.nullable(),
   restocked: z.boolean(),
   removedFromPackingList: z.boolean(),
+  committedSiblingIds: z.array(z.string().min(1)),
   buyerNotifiedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -240,6 +241,7 @@ export const newOrderStaffRefund = (input: {
   note: string | null;
   restocked: boolean;
   removedFromPackingList: boolean;
+  committedSiblingIds: readonly string[];
   now: string;
 }): OrderStaffRefund => orderStaffRefundSchema.parse({
   id: input.id,
@@ -268,6 +270,7 @@ export const newOrderStaffRefund = (input: {
   note: input.note === null || input.note.trim() === '' ? null : input.note.trim(),
   restocked: input.restocked,
   removedFromPackingList: input.removedFromPackingList,
+  committedSiblingIds: input.committedSiblingIds,
   buyerNotifiedAt: null,
   createdAt: input.now,
   updatedAt: input.now,

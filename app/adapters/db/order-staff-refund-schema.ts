@@ -32,6 +32,7 @@ export const orderStaffRefunds = pgTable('order_staff_refunds', {
   note: text('note'),
   restocked: boolean('restocked').notNull().default(false),
   removedFromPackingList: boolean('removed_from_packing_list').notNull().default(false),
+  committedSiblingIds: text('committed_sibling_ids').array().notNull().default(sql`'{}'`),
   buyerNotifiedAt: timestamp('buyer_notified_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),

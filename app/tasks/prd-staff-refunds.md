@@ -144,9 +144,11 @@ workspace's restricted key and what to do about it.
   (`pending`, `running`, `blocked_permission`); a second one is refused with `conflict` until the
   first is accepted or failed.
 - FR-6: A full refund (no amount) is stored as a remainder refund: the dispatcher applies the
-  sold-out coverage rule with the paid amount, less the failed refunds of other staff refunds of
-  the order (each staff refund owns its own failure), as the target (refund what the provider's
-  list still leaves unrefunded). A refund with a typed amount, also one equal to the remainder, is
+  sold-out coverage rule with the paid amount, less the failed refunds of the other staff refunds
+  of the order that were committed when it was requested (each of those owns its own later
+  failure; their ids are frozen on the row at request time), as the target (refund what the
+  provider's list still leaves unrefunded). A staff refund that had already failed when the full
+  refund was requested is inside the remainder, so the full refund pays it. A refund with a typed amount, also one equal to the remainder, is
   stored as an amount refund: the dispatcher issues exactly that amount once; its own refund is
   the listed refund whose metadata `refundJobId` equals the row id or whose id is the stored
   provider refund id. It ends `skipped_refunded` only when succeeded provider refunds cover the
@@ -223,7 +225,8 @@ and its order detail would fail for that order. Staff refunds are therefore stor
 provider refund id and status, submitted at, status checks, key generation, permission blocked
 at, transient failure streak) plus `kind` (`remainder` | `amount`), `request_key` (unique per
 workspace), `requested_by_user_id`, `requested_by_email`, `note`, `restocked`,
-`removed_from_packing_list`, `buyer_notified_at`. It reuses the trigger function
+`removed_from_packing_list`, `committed_sibling_ids` (the other staff refunds of the order that
+were platform-committed when the row was created), `buyer_notified_at`. It reuses the trigger function
 `record_refund_job_order_change()` on insert and status change, so the order feed sees each
 change. Partial unique index `(tenant_id, order_id) WHERE status IN ('pending', 'running',
 'blocked_permission')` enforces FR-5.

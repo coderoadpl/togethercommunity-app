@@ -178,6 +178,7 @@ const decideStaffRefund = (
       note: request.reason ?? null,
       restocked: choices.value.restock,
       removedFromPackingList: choices.value.removeFromPackingList,
+      committedSiblingIds: state.committedRefundIds,
       now: request.now,
     }),
   });

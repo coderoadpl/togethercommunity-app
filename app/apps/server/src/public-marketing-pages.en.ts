@@ -20,7 +20,7 @@ export const publicMarketingMessagesEn = {
   signupUnavailableBody: 'The form has been closed or its address has changed.',
   signupThanks: 'Thank you for signing up',
   signupPendingTitle: 'One more step: confirm your email',
-  signupPending: 'If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.',
+  signupPending: 'If this address is not subscribed yet and can receive our emails, a confirmation link is on its way. Open the link to complete your sign-up.',
   signupPendingValidity: 'The link is valid for 24 hours.',
   signupPendingSpam: 'If you cannot find the email, check your spam or promotions folder.',
   signupAgain: 'Sign up again',

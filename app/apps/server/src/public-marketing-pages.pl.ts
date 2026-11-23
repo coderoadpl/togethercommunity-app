@@ -20,7 +20,7 @@ export const publicMarketingMessagesPl = {
   signupUnavailableBody: 'Formularz został zamknięty albo zmienił adres.',
   signupThanks: 'Dziękujemy za zapis',
   signupPendingTitle: 'Jeszcze jeden krok: potwierdź adres e-mail',
-  signupPending: 'Jeśli ten adres nie jest jeszcze zapisany, wysłaliśmy na niego link potwierdzający. Otwórz go, aby dokończyć zapis.',
+  signupPending: 'Jeśli ten adres nie jest jeszcze zapisany i może otrzymywać od nas e-maile, link potwierdzający jest już w drodze. Otwórz go, aby dokończyć zapis.',
   signupPendingValidity: 'Link jest ważny przez 24 godziny.',
   signupPendingSpam: 'Jeśli nie widzisz wiadomości, sprawdź folder spam lub oferty.',
   signupAgain: 'Zapisz się ponownie',

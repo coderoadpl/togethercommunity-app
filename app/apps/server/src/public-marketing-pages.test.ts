@@ -8,6 +8,7 @@ import { envSchema } from './env.js';
 import { createPendingWork } from './graceful-shutdown.js';
 import { describe, expect, it } from 'vitest';
 
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { contrastRatio, deriveLightAccent, type MarketingSignupForm } from '#core/domain/index.js';
 
@@ -596,7 +597,7 @@ describe('sign-up pages', () => {
     expect(html).toContain('data-testid="marketing-signup-thanks"');
     expect(html).toContain('<h1>One more step: confirm your email</h1>');
     expect(html).toContain('status-cue--info');
-    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the email, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
+    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet and can receive our emails, a confirmation link is on its way. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the email, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
     expect(html).toContain('<a href="/marketing/forms/newsletter/thanks?lang=pl"');
     expect(html).not.toContain('Thank you for signing up');
   });
@@ -764,7 +765,13 @@ describe('public signup persistence and confirmation', () => {
       expect(location).toMatch(/^\/marketing\/forms\/newsletter\/thanks\?lang=/);
       const thanks = await fixture.request(location);
       expect(thanks.status).toBe(200);
-      expect(await thanks.text()).toContain('Thank you');
+      const thanksHtml = await thanks.text();
+      expect(thanksHtml).toContain('Thank you');
+      if (doubleOptIn) {
+        expect(thanksHtml).toContain(`<p class="lede">${publicMarketingMessagesEn.signupPending}</p>`);
+        expect(publicMarketingMessagesEn.signupPending).toMatch(/^If this address is not subscribed yet and can receive our emails, /);
+        expect(thanksHtml).not.toMatch(/we have sent|we sent/i);
+      }
       expect(await fixture.snapshot()).toEqual(before);
       expect(await fixture.deps.marketing?.suppressions.findActive('directory-a', fixture.contact.emailHmac)).toEqual(suppression);
     } finally { await fixture.close(); }

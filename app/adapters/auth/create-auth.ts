@@ -1015,10 +1015,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   });
   // Better Auth starts initialization eagerly; observe rejection before a request awaits it.
   void auth.$context.catch(() => undefined);
+  const sessionCookieName = getCookies(auth.options).sessionToken.name;
   return {
     ...auth,
     handler: async (request: Request): Promise<Response> =>
-      withoutBrowserSessionToken(request, await auth.handler(request)),
+      withoutBrowserSessionToken(request, await auth.handler(request), sessionCookieName),
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },

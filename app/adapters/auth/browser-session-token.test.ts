@@ -351,7 +351,12 @@ describe('provider token routes', () => {
 });
 
 describe('withoutBrowserSessionToken', () => {
+  const sessionCookieName = 'better-auth.session_token';
   const browserRequest = new Request('http://localhost/api/auth/list-sessions', { headers: { 'sec-fetch-site': 'same-origin' } });
+  const tokenResponse = () => new Response(JSON.stringify({ token: 't1' }), {
+    headers: { 'content-type': 'application/json', 'set-auth-token': 't1' },
+  });
+  const cookieRequest = (cookie: string) => new Request('http://localhost/api/auth/get-session', { headers: { cookie } });
 
   it('keeps other exposed headers and every Set-Cookie entry', async () => {
     const headers = new Headers({
@@ -362,7 +367,7 @@ describe('withoutBrowserSessionToken', () => {
     headers.append('set-cookie', 'a=1; Path=/');
     headers.append('set-cookie', 'b=2; Path=/');
 
-    const stripped = await withoutBrowserSessionToken(browserRequest, new Response(JSON.stringify([{ id: 's1', token: 't1' }]), { headers }));
+    const stripped = await withoutBrowserSessionToken(browserRequest, new Response(JSON.stringify([{ id: 's1', token: 't1' }]), { headers }), sessionCookieName);
 
     expect(stripped.headers.get('access-control-expose-headers')).toBe('x-request-id');
     expect(stripped.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
@@ -373,9 +378,43 @@ describe('withoutBrowserSessionToken', () => {
     const stripped = await withoutBrowserSessionToken(
       browserRequest,
       new Response('token=plain', { status: 400, headers: { 'content-type': 'text/plain' } }),
+      sessionCookieName,
     );
 
     expect(stripped.status).toBe(400);
     expect(await stripped.text()).toBe('token=plain');
+  });
+
+  it.each([204, 205, 304])('answers a %i without a body and without the token header', async (status) => {
+    const stripped = await withoutBrowserSessionToken(
+      browserRequest,
+      new Response(null, { status, headers: { 'content-type': 'application/json', 'set-auth-token': 't1' } }),
+      sessionCookieName,
+    );
+
+    expect(stripped.status).toBe(status);
+    expect(stripped.body).toBeNull();
+    expect(stripped.headers.has('set-auth-token')).toBe(false);
+  });
+
+  it.each([
+    'custom.session_token=v1',
+    '__Secure-custom.session_token=v1',
+  ])('treats a request carrying the configured session cookie %s as a browser', async (cookie) => {
+    const stripped = await withoutBrowserSessionToken(cookieRequest(cookie), tokenResponse(), '__Secure-custom.session_token');
+
+    expect(stripped.headers.has('set-auth-token')).toBe(false);
+    expect(await stripped.json()).toEqual({});
+  });
+
+  it('does not treat a cookie under another name as the session cookie', async () => {
+    const stripped = await withoutBrowserSessionToken(
+      cookieRequest('better-auth.session_token=v1'),
+      tokenResponse(),
+      'custom.session_token',
+    );
+
+    expect(stripped.headers.get('set-auth-token')).toBe('t1');
+    expect(await stripped.json()).toEqual({ token: 't1' });
   });
 });

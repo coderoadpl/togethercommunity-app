@@ -77,6 +77,7 @@ describe('i18n dictionaries', () => {
       messages.auth.signInRateLimitedRetryNow,
       messages.auth.signInRateLimitedLeadRetryIn({ delay: '30 s' }),
       messages.auth.signInRateLimitedLeadWait,
+      messages.auth.signInRateLimitedChooseMethod,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,

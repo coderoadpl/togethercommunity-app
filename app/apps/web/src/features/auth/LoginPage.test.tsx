@@ -1066,6 +1066,37 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
   });
 
+  it('lets the visitor leave a lookup rate limit for the method step and sign in with a password', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+    const { router } = await renderLoginPage();
+    rateLimitSignInMethods(583);
+    await continueWithEmail();
+    const limited = await screen.findByTestId('sign-in-rate-limited');
+    expect(within(limited).getByTestId('sign-in-methods-retry')).toBeDisabled();
+    const chooseMethod = within(limited).getByRole('button', { name: en.auth.signInRateLimitedChooseMethod });
+    expect(chooseMethod).toBeEnabled();
+    expect(chooseMethod).not.toHaveClass('MuiButton-contained');
+
+    await userEvent.click(chooseMethod);
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: en.auth.methodTitle })).toHaveFocus());
+    expect(screen.queryByTestId('sign-in-rate-limited')).not.toBeInTheDocument();
+    expect(screen.getByTestId('send-magic-link')).toBeEnabled();
+    expect(screen.getByTestId('signin-passkey')).toBeEnabled();
+    expect(within(screen.getByTestId('sign-in-content')).queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('use-password'));
+    await userEvent.type(await screen.findByLabelText(en.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+  });
+
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();
@@ -1318,6 +1349,48 @@ describe('LoginPage', () => {
       'href',
       'https://studio.test/magic',
     );
+  });
+
+  it('ignores a late sign-in link confirmation for an address the visitor already changed', async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const answered: string[] = [];
+    server.use(
+      http.post('*', async ({ request }) => {
+        if (!new URL(request.url).pathname.endsWith('/sign-in/magic-link')) return undefined;
+        const body: unknown = await request.json();
+        const recipient = typeof body === 'object' && body !== null && 'email' in body && typeof body.email === 'string'
+          ? body.email
+          : '';
+        if (recipient === 'first@example.com') await firstHeld;
+        answered.push(recipient);
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    const { queryClient } = await renderLoginPage(false, '/login', undefined, ['magic-link']);
+    await continueWithEmail('first@example.com');
+    await userEvent.click(await screen.findByTestId('send-magic-link'));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+
+    await userEvent.click(screen.getByTestId('login-change-email'));
+    await userEvent.clear(await screen.findByLabelText(en.auth.emailLabel));
+    await continueWithEmail('second@example.com');
+    await screen.findByTestId('send-magic-link');
+    releaseFirst();
+    await waitFor(() => expect(answered).toEqual(['first@example.com']));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+
+    expect(screen.queryByTestId('magic-link-sent')).not.toBeInTheDocument();
+    expect(screen.getByTestId('login-identity')).toHaveTextContent('second@example.com');
+
+    await userEvent.click(screen.getByTestId('send-magic-link'));
+
+    const sent = await screen.findByTestId('magic-link-sent');
+    expect(answered).toEqual(['first@example.com', 'second@example.com']);
+    expect(within(sent).getByTestId('login-identity')).toHaveTextContent('second@example.com');
+    expect(sent).not.toHaveTextContent('first@example.com');
   });
 
   it('does not request or surface the dev magic link when exposure is disabled', async () => {

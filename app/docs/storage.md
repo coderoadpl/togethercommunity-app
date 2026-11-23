@@ -124,17 +124,24 @@ staged row), a staged file, or an owed deletion (the upload object of a settled
 upload included, until its second delete a day after its upload URL expired). The
 exception is a provider write that lands later than the assumptions at the end
 of this section allow: such an object has no row and only the storage orphan
-report lists it. Every storage delete of such an object (the cleanup after a
-completion or copy, the deletion that follows the key's discard or file
-removal, and the minute sweep) runs while the transaction holds the owning row,
-so an attach that takes the object over in the meantime is never undone. The
+report lists it. Which row a storage delete holds depends on the row. The
+release of an upload or copy record, after a completion or copy and in the
+minute sweep, deletes its objects while its transaction holds the record row.
+A staged file is never deleted under its own row: the key's discard, the
+release after a decision and the minute sweep lock it, remove it and record an
+owed deletion of its object in one committed transaction, and the delete then
+runs while a second transaction holds that owed-deletion row, as the sweep's
+delete of any owed deletion does (the first delete after an owner's removal is
+the exception below). Either way an attach, which needs the staged row,
+can no longer take over an object whose delete is sent. The
 copy and the read of a completion or copy hold no row lock; they are fenced by
 the attempt id and by a destination of their own. A delete that takes effect
 while its transaction rolls back, or whose answer is lost, still leaves the row
 in place, and the sweep deletes the object again. A `404` answer to a delete
-whose body is an S3 error with the code `NoSuchKey` means the object is not
-there and counts as a confirmed delete; any other `404` (an empty or unreadable
-body, a proxy page, a missing bucket `NoSuchBucket`) does not. A read, a digest
+whose body is an S3 error with the code `NoSuchKey` counts as a confirmed
+delete: the code is read from the answer, not checked against the bucket. Any
+other `404` (an empty body, or one that cannot be read within its size limit
+or deadline, a proxy page, a missing bucket `NoSuchBucket`) does not. A read, a digest
 or a copy answered `404` with `NoSuchBucket`, or with a body that cannot be
 read, is a storage error, not a missing object. Removing a file version or deleting a draft product whose file
 object a key staged (`key-files/<key id>/<file>/<name>`; an owner file of a
@@ -173,19 +180,25 @@ every limit while the database shows them deleted. The storage probe does not
 read the bucket's versioning status; check it with the provider when you
 configure the bucket.
 
-The minute sweep never holds back e-mail and refund dispatch: the cron route
-runs it after them with an end 50 seconds after the tick started, 10 seconds
-before the 60-second function limit, and the Node ticker runs it beside them.
-It has a budget of 10 seconds of its own. On the cron route it does not start
-at all when the dispatch before it already reached that end. It starts no
-workspace and no row after the earlier of the two ends, and its lock waits and storage requests end
-by then. Its discovery of workspaces, the listing of a workspace's rows and the
+The minute sweep has a budget of 10 seconds of its own. The cron route runs it
+after e-mail and refund dispatch with an end 50 seconds after the tick
+started, 10 seconds before the 60-second function limit, and does not start it
+at all when the dispatch before it already reached that end. The Node ticker
+starts it before the dispatch and awaits it beside the dispatch, and its tick
+ends when both are done. It starts no
+workspace and no row after the earlier of the two ends, and the deadlines of
+its lock waits and storage requests end by then. These ends are scheduling
+targets, not a guaranteed return time: the wait for a pool connection is not
+counted in them, and statements bounded one by one can together run past
+them. Its discovery of workspaces, the listing of a workspace's rows and the
 recording of their failed attempts run with a statement timeout and a lock
 timeout of what is left, but at least 1 second, and one that runs out lists or
-records nothing, so its rows wait for the next run; the retention purge of a
-workspace sets a statement timeout and a lock timeout of what is left once,
-before its three statements (the records, their purge events and the expired
-events), and deletes nothing when one of them runs out. The timeout bounds each
+records nothing, so its rows wait for the next run. The retention purge of a
+workspace runs in one transaction and sets, once before its statements, a
+statement timeout of what is left and a lock timeout of the lesser of that and
+the configured lock wait cap (5 seconds by default). Its statements delete the
+records, insert their purge events (skipped when no record was purged) and
+delete the expired events, and it deletes nothing when one of them runs out. The timeout bounds each
 statement, not the purge as a whole: three statements that each finish within
 it can together end, and commit, after the run's budget is spent. The listing
 after the purge starts only when what is left still covers a row. The retention purge of a workspace deletes at

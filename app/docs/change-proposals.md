@@ -1980,7 +1980,10 @@ grants does not pass the shop’s check, so approving would change nothing; if i
 passes the check when you approve, it applies as follows." and then gives the
 sentence above: the approval checks the list again, so a course restored or a
 lesson moved back in the meantime lets it apply. A group
-confirmation adds the access sentence for each access item; for a product an
+confirmation adds one access sentence per product, for the list that the
+product's last access item in the group leaves, since every item applies in one
+transaction and no holder ever gets a list an earlier item sets; the cards of
+the group still show each item's lists before and after. For a product an
 earlier item of the group creates it reads "Everyone who later gets access to
 the new product “Starter Pack” will get access to: …" (or "The new product
 “Starter Pack” will not grant any course, module or lesson."), and a list that

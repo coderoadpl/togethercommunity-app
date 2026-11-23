@@ -533,6 +533,26 @@ describe('the approval confirmation of what a product grants', () => {
     expect(dialogText(<GroupAccessSentences items={[samples['product.publish']]} references={groupReferences([])} />)).toBe('');
   });
 
+  it('gives one sentence per product in a group confirmation, with the list its last access item leaves', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[]) => ({ ...accessChange(after, LABELS, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const deep = [{ level: 'course' as const, courseId: 'course-deep' }];
+    const items = [
+      step('item-first', [], intro),
+      { ...samples['product.publish'], id: 'item-publish' },
+      step('item-second', intro, deep),
+    ];
+    const text = dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />);
+    expect(text).toBe(`${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}`);
+    expect(text).not.toContain('Intro course');
+    const other = { ...step('item-other', [], intro), target: { kind: 'product' as const, id: 'product-cup' }, targetLabel: 'Cup' };
+    expect(dialogText(<GroupAccessSentences items={[...items, other]} references={groupReferences([])} />)).toBe(
+      `${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}${t.approveProductSetAccess({ target: 'Cup', access: 'the whole course “Intro course”' })}`,
+    );
+    const emptied = step('item-emptied', deep, []);
+    expect(dialogText(<GroupAccessSentences items={[...items, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessNothing({ target: 'Mug' }));
+  });
+
   it('words the access of a product an earlier item of the group creates without current buyers', () => {
     const created = { ...samples['product.set-access'], id: 'item-access', target: { kind: 'product' as const, id: '$proposal:item-product' }, targetLabel: null };
     const text = dialogText(<GroupAccessSentences items={[created]} references={groupWithNewProduct} />);

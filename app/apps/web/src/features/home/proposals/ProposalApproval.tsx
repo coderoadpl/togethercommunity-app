@@ -305,16 +305,37 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
   );
 };
 
+const accessStepsByProduct = (items: readonly ApprovalFacts[]): ApprovalFacts[][] => {
+  const byProduct = new Map<string, ApprovalFacts[]>();
+  for (const item of items) {
+    if (item.operation !== 'product.set-access') continue;
+    const product = item.target.id ?? item.id;
+    byProduct.set(product, [...(byProduct.get(product) ?? []), item]);
+  }
+  return [...byProduct.values()];
+};
+
 export const GroupAccessSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
   const t = useTranslations().changeProposals;
-  const sentences = items.flatMap((item) => {
-    if (item.operation !== 'product.set-access') return [];
-    const access = changeProposalAccessChange(item);
+  const sentences = accessStepsByProduct(items).flatMap((steps) => {
+    const [first] = steps;
+    const item = steps.at(-1);
+    if (first === undefined || item === undefined) return [];
+    const before = changeProposalAccessChange(first);
+    const after = changeProposalAccessChange(item);
     const shownTarget = proposalTarget(item, references);
     const target = targetName(shownTarget);
-    return [{ item, text: access === null || target === null
+    return [{ item, text: before === null || after === null || target === null
       ? t.approveFallback({ operation: operationTitle(t, item.operation) })
-      : <AccessApprovalText target={target} change={access} labels={item.accessLabels} newProduct={shownTarget.kind === 'reference'} group /> }];
+      : (
+        <AccessApprovalText
+          target={target}
+          change={{ before: before.before, after: after.after }}
+          labels={item.accessLabels}
+          newProduct={shownTarget.kind === 'reference'}
+          group
+        />
+      ) }];
   });
   return (
     <>

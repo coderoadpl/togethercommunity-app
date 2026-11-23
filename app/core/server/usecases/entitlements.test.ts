@@ -921,7 +921,7 @@ describe('reader lesson editions', () => {
     expect(find).not.toHaveBeenCalled();
   });
 
-  it('computes the current edition only within the newest 100 marked editions the repository returns', async () => {
+  it('computes the current edition only within the 100 highest edition numbers the repository returns', async () => {
     const h = harness(deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', null)], [pCourse]));
     const live = buildSnapshot('course_lesson', lesson('l4'));
     if (!live.ok) throw new Error(live.error.message);

@@ -428,11 +428,13 @@ control and makes no claim about newer content.
 The reader editions response lists at most the 100 highest edition numbers of
 a lesson, and `matchesLive` and `currentEdition` are computed only within that
 window: an older edition outside it is never named current, even when its
-content equals the live lesson, and the badge then reads **Current version**.
-An edition outside the window still opens from its explicit
-`/editions/<number>` URL; because the list does not name it, that view shows
-the neutral line "This is edition N." with the control to the current lesson
-instead of the dated warning.
+content equals the live lesson. On the plain lesson URL, when the list is not
+empty and no listed edition matches the live lesson, the badge reads
+**Current version**. On an edition URL the badge names that edition
+(**Edition N**), also for an edition outside the window, which still opens from
+its explicit `/editions/<number>` URL; because the list does not name it, that
+view shows the neutral line "This is edition N." with the control to the
+current lesson instead of the dated warning.
 Discussion, progress, completion, and next-lesson navigation keep the lesson's
 identity. Unmarked snapshots are unavailable through reader APIs.
 

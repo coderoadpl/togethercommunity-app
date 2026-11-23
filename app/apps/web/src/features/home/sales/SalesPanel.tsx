@@ -148,7 +148,7 @@ export const SalesPanel = () => {
   } as const;
 
   return (
-    <PanelPage title={t.sections.sales} action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
+    <PanelPage title={t.sections.sales} width="detail" action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
       {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
       {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
@@ -183,7 +183,7 @@ export const SalesPanel = () => {
             />
           ),
           filters: (
-            <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem">
+            <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem" sx={{ flexWrap: { md: 'wrap' } }}>
               <FormControl size="small">
                 <InputLabel id="sales-mode-label">{t.sales.mode}</InputLabel>
                 <Select labelId="sales-mode-label" label={t.sales.mode} value={mode}
@@ -303,7 +303,7 @@ export const SalesPanel = () => {
             </Stack>
           ),
           actions: (
-            <Stack direction="row" useFlexGap spacing="0.5rem">
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               {canWriteInvoice ? (
                 <Button variant="contained" disabled={sending || selectedHeld.length === 0}
                   onClick={() => void sendSelected(selectedHeld)}>
@@ -311,7 +311,7 @@ export const SalesPanel = () => {
                 </Button>
               ) : null}
               {fulfilment === 'to_pack' ? (
-                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                   <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
                     {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
                   </Button>

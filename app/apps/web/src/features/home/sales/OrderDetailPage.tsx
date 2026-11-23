@@ -216,7 +216,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
           display: { xs: 'flex', lg: 'grid' },
           flexDirection: 'column',
           gap: '1.5rem',
-          alignItems: 'start',
+          alignItems: { lg: 'start' },
           gridTemplateColumns: { lg: 'minmax(0, 1fr) 24rem', xl: 'minmax(0, 3fr) minmax(0, 2fr) 26rem' },
         }}
       >
@@ -395,18 +395,18 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               <SectionCard title={t.shipping.orderDeliveryHeading} headerActions={fulfilmentChip} data-testid="order-delivery">
                 <Stack useFlexGap spacing="0.75rem">
                   {[
-                    [t.shipping.orderRate, order.shipping.label],
-                    [t.shipping.orderPrice, formatPrice(order.shipping.amountCents, order.currency, language)],
-                    ...(order.shipping.pickupPoint === null ? [] : [[t.shipping.orderPickupPoint, [order.shipping.pickupPoint.code, order.shipping.pickupPoint.name, order.shipping.pickupPoint.address].filter((value) => value !== null && value !== '').join(', ')]]),
-                    [t.shipping.orderAddress, [
+                    { label: t.shipping.orderRate, value: order.shipping.label, stacked: false },
+                    { label: t.shipping.orderPrice, value: formatPrice(order.shipping.amountCents, order.currency, language), stacked: false },
+                    ...(order.shipping.pickupPoint === null ? [] : [{ label: t.shipping.orderPickupPoint, value: [order.shipping.pickupPoint.code, order.shipping.pickupPoint.name, order.shipping.pickupPoint.address].filter((value) => value !== null && value !== '').join(', '), stacked: true }]),
+                    { label: t.shipping.orderAddress, value: [
                       order.shipping.address.name,
                       [order.shipping.address.line1, order.shipping.address.line2].filter((value) => value !== null && value !== '').join(', '),
                       `${order.shipping.address.postalCode} ${order.shipping.address.city}`.trim(),
                       order.shipping.address.country,
-                    ].filter((value) => value !== '').join(', ')],
-                    [t.shipping.orderPhone, order.shipping.phone ?? '—'],
-                  ].map(([label, value]) => (
-                    <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem" sx={{ justifyContent: 'space-between' }}>
+                    ].filter((value) => value !== '').join(', '), stacked: true },
+                    { label: t.shipping.orderPhone, value: order.shipping.phone ?? '—', stacked: false },
+                  ].map(({ label, value, stacked }) => (
+                    <Stack key={label} direction={stacked ? 'column' : { xs: 'column', sm: 'row' }} useFlexGap spacing={stacked ? '0.25rem' : '0.5rem'} sx={{ justifyContent: 'space-between' }}>
                       <Typography color="text.secondary">{label}</Typography>
                       <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
                     </Stack>

@@ -252,6 +252,16 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                 htmlInput: { inputMode: 'decimal', autoComplete: 'off', 'data-testid': 'staff-refund-amount' },
               }}
             />
+            <TextField
+              label={messages.reasonLabel}
+              placeholder={messages.reasonPlaceholder}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              multiline
+              minRows={3}
+              helperText={messages.reasonCount({ count: reason.length, max: REASON_MAX_LENGTH })}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { maxLength: REASON_MAX_LENGTH, 'data-testid': 'staff-refund-reason' } }}
+            />
             <Box sx={{ display: 'grid' }}>
               <Stacked active={!partial}>
                 <Stack useFlexGap spacing="0.75rem">
@@ -309,16 +319,6 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                 </Alert>
               </Stacked>
             </Box>
-            <TextField
-              label={messages.reasonLabel}
-              placeholder={messages.reasonPlaceholder}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              multiline
-              minRows={3}
-              helperText={messages.reasonCount({ count: reason.length, max: REASON_MAX_LENGTH })}
-              slotProps={{ htmlInput: { maxLength: REASON_MAX_LENGTH, 'data-testid': 'staff-refund-reason' } }}
-            />
           </Stack>
           <RefundConsequencesPanel>
             <Typography component="h3" variant="overline" color="text.secondary">{messages.consequencesTitle}</Typography>
@@ -329,12 +329,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
               {testMode
                 ? <Consequence icon={<TestModeIcon />} hint={messages.consequenceTestModeHint}>{messages.consequenceTestMode}</Consequence>
                 : <Consequence icon={<MailIcon />}>{messages.consequenceEmail({ buyer })}</Consequence>}
+              {preview.hasInvoice ? <Consequence icon={<InvoiceIcon />}>{messages.consequenceInvoice}</Consequence> : null}
+              {preview.remainderSource === 'platform' ? <Consequence icon={<StatusIcon />}>{messages.consequencePlatformRecords}</Consequence> : null}
               <Box component="li" sx={{ display: 'grid' }}>
                 <Stacked active={!partial}><RefundConsequenceGroup>{fullConsequences}</RefundConsequenceGroup></Stacked>
                 <Stacked active={partial}><RefundConsequenceGroup>{partialConsequences}</RefundConsequenceGroup></Stacked>
               </Box>
-              {preview.hasInvoice ? <Consequence icon={<InvoiceIcon />}>{messages.consequenceInvoice}</Consequence> : null}
-              {preview.remainderSource === 'platform' ? <Consequence icon={<StatusIcon />}>{messages.consequencePlatformRecords}</Consequence> : null}
               <Consequence icon={<LockIcon />} hint={messages.consequenceFinalHint} strong>{messages.consequenceFinal}</Consequence>
             </RefundPlainList>
           </RefundConsequencesPanel>

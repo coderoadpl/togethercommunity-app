@@ -28,16 +28,56 @@ A script on the page could read either and replay it as
 on the platform host and on every workspace where the user has a role, which
 defeats the cookie's `HttpOnly` flag. The auth adapter (`adapters/auth/browser-session-token.ts`,
 applied to every Better Auth response by `createAuth`) therefore strips them
-from responses to browser requests: a request carrying `Sec-Fetch-Site`, which
-browsers always send and page scripts cannot set or remove, gets no
-`set-auth-token` header, no `Access-Control-Expose-Headers` entry for it, no
-top-level `token`, no `session.token` and no `token` on session-list entries.
+from responses to browser requests. A request counts as a browser when it
+carries `Sec-Fetch-Site` or the Better Auth session cookie (with or without
+the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
+`localhost` origins, and page scripts cannot set or remove it; Safari before
+16.4 and plain-HTTP origins do not send it, which is why a cookie-bearing
+request is treated as a browser too. Such a request gets no `set-auth-token`
+header, no `Access-Control-Expose-Headers` entry for it, no top-level `token`,
+no `session.token` and no `token` on session-list entries.
 Cookies, status codes and every other field stay unchanged, so browser
 sign-in, sign-out, magic-link, passkey, two-factor and impersonation flows run
-on the `HttpOnly` cookie alone; the web app never reads the token. Requests
-without that header, such as the CLI, the auth end-to-end harness and
-server-to-server smoke checks, still receive the token they authenticate with.
+on the `HttpOnly` cookie alone; the web app never reads the token. The CLI,
+the auth end-to-end harness and server-to-server smoke checks send neither
+header nor session cookie (they authenticate with `Authorization: Bearer`) and
+still receive the token they authenticate with.
 Nothing stored changes; removing the wrapper restores the previous responses.
+
+Accepted residuals:
+
+- A sign-in response to a browser that sends no `Sec-Fetch-Site` (Safari
+  before 16.4, a plain-HTTP origin) still carries the token, because the
+  request has no session cookie yet. Every later cookie-bearing response is
+  stripped.
+- Google One Tap hands its credential (a Google ID token) to page JavaScript
+  before the page posts it to `/api/auth/one-tap/callback`. A script already
+  running on the page can intercept that credential and exchange it for a
+  session. A server-issued nonce bound to the One Tap prompt would close this
+  and is the follow-up.
+
+Better Auth's provider-token routes `/get-access-token`, `/refresh-token` and
+`/account-info` are disabled (`disabledPaths`, answering 404): the app never
+calls them, and they would hand a page script the stored Google ID token,
+which could then be exchanged for a fresh session. For the same reason the
+Google provider sets `disableIdTokenSignIn`, so `/sign-in/social` accepts only
+the redirect flow the web app uses; One Tap keeps its own callback route.
+
+Follow-up (defence in depth, not needed to close the browser leak):
+`bearer({ requireSignature: true })` would stop a raw `session.token` read
+from the session table (a backup, a replica, read-only SQL access) from
+working as a bearer credential without the auth secret. Before it can be
+enabled, the clients and harnesses that send the unsigned body `token` as
+`Authorization: Bearer` must switch to the signed `set-auth-token` header:
+`apps/server/src/request-origin.auth.test.ts`,
+`shop-management-switch.test.ts`, `shop-integration-routes.test.ts`,
+`shop-settings-routes.test.ts`, `shop-proposal-groups.test.ts`,
+`shop-propose-mode.test.ts`, `change-proposal-panel.test.ts`,
+`shop-assets-routes.test.ts`, `shop-catalog-routes.test.ts`,
+`shop-order-routes.test.ts` and `shop-management-keys-legacy-isolation.test.ts`
+under `apps/server/src/`, plus `scripts/stripe-webhook-old-api-redelivery.test.ts`,
+`scripts/change-proposal-replay.test.ts` and `scripts/shop-machine-replay.test.ts`.
+Outside integrators that copied the body token would need the header too.
 
 ## Unsafe request origins
 
@@ -115,8 +155,9 @@ This boundary does not isolate account-level cookies from trusted scripts alread
 running on a tenant's own origin. The shared-cookie vendor-script exposure
 accepted in the repository policy remains; solving it requires cookie/account
 isolation rather than a broader claim about CSRF protection. Such a script can
-act with the cookie while the page is open, but it cannot read the session
-token from auth responses (see [Session tokens and browsers](#session-tokens-and-browsers)).
+act with the cookie while the page is open, but apart from the residuals listed
+there it cannot read the session token from auth responses or take a stored
+Google ID token to mint a new session (see [Session tokens and browsers](#session-tokens-and-browsers)).
 
 ## Account and delivery boundaries
 

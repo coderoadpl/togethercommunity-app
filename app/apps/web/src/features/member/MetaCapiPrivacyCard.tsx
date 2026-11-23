@@ -5,6 +5,7 @@ import type { MetaCapiMemberConsent } from '#core/domain/index.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { formatDate } from '../../lib/format.js';
 import { AccountCard } from './AccountCard.js';
 
 const emptyNotice = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' } as const;
@@ -21,7 +22,7 @@ const ConsentRow = ({ consent, onWithdrawn }: { consent: MetaCapiMemberConsent; 
     focusStatus.current = false;
     statusText.current?.focus();
   }, [withdrawn]);
-  const day = (value: string) => new Date(value).toLocaleDateString(language);
+  const day = (value: string) => formatDate(value, language);
   const title = consent.productName === null ? t.metaCapi.order({ id: consent.orderId })
     : consent.purchasedAt === null ? consent.productName
       : t.metaCapi.purchase({ product: consent.productName, date: day(consent.purchasedAt) });

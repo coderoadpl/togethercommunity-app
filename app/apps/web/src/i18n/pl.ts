@@ -2792,7 +2792,7 @@ export const pl: Messages = {
     editionsTitle: 'Wydania lekcji',
     editionCurrentVersion: 'Aktualna wersja',
     editionCurrentMark: 'Aktualne',
-    editionOlderNotice: ({ number, date }) => format('To jest wydanie {number} z {date}. Lekcja ma nowszą treść.', { number, date }),
+    editionOlderNotice: ({ number, date }) => format('To jest wydanie {number} z {date}. Różni się od aktualnej lekcji.', { number, date }),
     editionNotice: ({ number }) => format('To jest wydanie {number}.', { number }),
     editionGoToCurrent: 'Przejdź do aktualnej lekcji',
     mediaFailedTitle: 'Nie udało się załadować materiału',

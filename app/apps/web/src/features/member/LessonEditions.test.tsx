@@ -153,7 +153,7 @@ describe('lesson editions', () => {
   it('names the older edition and its date and leads to the current lesson', async () => {
     const onCurrent = vi.fn();
     renderWithProviders(<LessonEditionBanner number="2.1" markedAt="2026-09-01T12:00:00.000Z" onCurrent={onCurrent} />);
-    expect(screen.getByRole('alert')).toHaveTextContent('This is edition 2.1 from Sep 1, 2026. The lesson has newer content.');
+    expect(screen.getByRole('alert')).toHaveTextContent('This is edition 2.1 from September 1, 2026. It differs from the current lesson.');
     expect(screen.getByRole('alert')).toHaveClass('MuiAlert-standard', 'MuiAlert-colorWarning');
     expect(screen.getByRole('alert').querySelector('.MuiAlert-action')).toContainElement(screen.getByRole('button', { name: en.lesson.editionGoToCurrent }));
     await userEvent.click(screen.getByRole('button', { name: en.lesson.editionGoToCurrent }));
@@ -182,14 +182,14 @@ describe('lesson editions', () => {
 
   it('words the banner in Polish without a reading or watching verb', () => {
     inPolish(<LessonEditionBanner number="2.1" markedAt="2026-09-01T12:00:00.000Z" onCurrent={vi.fn()} />);
-    expect(screen.getByRole('alert')).toHaveTextContent(pl.lesson.editionOlderNotice({ number: '2.1', date: new Intl.DateTimeFormat('pl', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date('2026-09-01T12:00:00.000Z')) }));
+    expect(screen.getByRole('alert')).toHaveTextContent(pl.lesson.editionOlderNotice({ number: '2.1', date: new Intl.DateTimeFormat('pl', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date('2026-09-01T12:00:00.000Z')) }));
     expect(screen.getByRole('button', { name: pl.lesson.editionGoToCurrent })).toBeInTheDocument();
   });
 
   it.each([
-    { matching: ['10'], viewing: '2.1', banner: 'This is edition 2.1 from Sep 1, 2026. The lesson has newer content.' },
+    { matching: ['10'], viewing: '2.1', banner: 'This is edition 2.1 from September 1, 2026. It differs from the current lesson.' },
     { matching: ['2.1'], viewing: '2.1', banner: null },
-    { matching: [], viewing: '10', banner: 'This is edition 10 from Oct 1, 2026. The lesson has newer content.' },
+    { matching: [], viewing: '10', banner: 'This is edition 10 from October 1, 2026. It differs from the current lesson.' },
     { matching: ['10', '2.1'], viewing: '10', banner: null },
     { matching: ['10', '2.1'], viewing: '2.1', banner: null },
   ])('shows the banner on edition $viewing only when it differs from the live lesson (matching $matching)', async ({ matching, viewing, banner }) => {

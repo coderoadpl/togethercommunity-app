@@ -19,9 +19,9 @@ interface ReaderEditions {
   currentEdition: string | null;
 }
 
-const useEditionDate = () => {
+const useEditionDate = (dateStyle: 'medium' | 'long' = 'medium') => {
   const { language } = useLanguage();
-  return (markedAt: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(markedAt));
+  return (markedAt: string) => new Intl.DateTimeFormat(language, { dateStyle, timeZone: 'UTC' }).format(new Date(markedAt));
 };
 
 const useLessonEditions = (lessonId: string, enabled: boolean) =>
@@ -142,7 +142,7 @@ export const LessonEditionPicker = ({ editions, currentEdition, viewing, onSelec
 
 export const LessonEditionBanner = ({ number, markedAt, onCurrent }: { number: string; markedAt?: string | undefined; onCurrent: () => void }) => {
   const t = useTranslations();
-  const formatDate = useEditionDate();
+  const formatDate = useEditionDate('long');
   return (
     <LessonEditionWarning
       severity={markedAt === undefined ? 'info' : 'warning'}

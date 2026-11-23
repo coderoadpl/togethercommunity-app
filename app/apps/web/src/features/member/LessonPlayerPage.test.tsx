@@ -390,7 +390,7 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" editionNumber="2.1" />);
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Earlier chapter content');
-    expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent('This is edition 2.1 from Oct 1, 2026. The lesson has newer content.');
+    expect(await screen.findByTestId('lesson-edition-banner')).toHaveTextContent('This is edition 2.1 from October 1, 2026. It differs from the current lesson.');
     await userEvent.click(await screen.findByTestId('mark-complete'));
     await waitFor(() => expect(completions).toEqual([{ lessonId: 'l1' }]));
     expect(discussions).toContain('l1');

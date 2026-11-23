@@ -27,6 +27,7 @@ import {
   orderChanges,
   orderRefundJobs,
   orders,
+  orderShipments,
   orderStaffRefunds,
   products,
   productStock,
@@ -151,6 +152,7 @@ beforeEach(async () => {
   await database.db.delete(stockEvents);
   await database.db.delete(productStock);
   await database.db.delete(orderChanges);
+  await database.db.delete(orderShipments);
   await database.db.delete(orders);
   await insertOrder('order-1', { shipping, fulfilmentStatus: 'to_pack' });
 });
@@ -684,6 +686,20 @@ describe('staff refunds against a real database', () => {
     const h = harness();
     expect(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, reason: 'damaged\u0000cover' })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await refundRows('order-1')).toStrictEqual([]);
+  });
+
+  it('treats a carrier shipment whose create call started without a provider id yet as a possibly bought label', async () => {
+    const h = harness();
+    await database.db.insert(orderShipments).values({
+      id: 'shipment-1', tenantId: 'tenant-a', orderId: 'order-1', provider: 'inpost_shipx', environment: 'sandbox', organizationId: 'org-1',
+      providerShipmentId: null, status: 'unknown', createAttemptedAt: start, createdAt: start, updatedAt: start,
+    });
+
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
+      hasShipment: true, fullRefundOptions: { restockDefault: false, removeFromPackingListDefault: false },
+    });
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 })).refund).toMatchObject({ restocked: false, removedFromPackingList: false });
+    expect(await fulfilmentOf('order-1')).toBe('to_pack');
   });
 
   it('keeps stock and the packing list for a partial refund and refuses to restock with one', async () => {

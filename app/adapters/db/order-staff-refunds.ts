@@ -68,7 +68,7 @@ const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string,
     .where(and(
       eq(orderShipments.tenantId, tenantId),
       eq(orderShipments.orderId, orderId),
-      or(isNotNull(orderShipments.providerShipmentId), isNotNull(orderShipments.boughtAt)),
+      or(isNotNull(orderShipments.providerShipmentId), isNotNull(orderShipments.boughtAt), isNotNull(orderShipments.createAttemptedAt)),
     ))
     .limit(1);
   return row !== undefined;

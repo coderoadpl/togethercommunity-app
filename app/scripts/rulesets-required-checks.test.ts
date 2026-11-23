@@ -4,11 +4,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { expectedRequiredChecks, loadManifest, parseManifest } from './dispatch-ci.js';
 import {
   compareRulesetBranches,
-  deriveRequiredChecksFromWorkflowSources,
-  deriveRequiredChecksFromWorkflows,
+  deriveCheckProducersFromWorkflowSources,
+  deriveProducedChecksFromWorkflows,
+  deriveProducedChecksFromWorkflowSources,
   IGNORED_WORKFLOW_FILES,
+  readWorkflowSources,
+  RULESET_BRANCHES,
 } from './rulesets-required-checks.js';
 
 const snapshotSchema = z.object({
@@ -17,7 +21,7 @@ const snapshotSchema = z.object({
 });
 
 const workflow = (text: string, file = 'ci.yml') =>
-  deriveRequiredChecksFromWorkflowSources([{ file, text }]);
+  deriveProducedChecksFromWorkflowSources([{ file, text }]);
 
 const pullRequestHeader = `
 name: ci
@@ -25,6 +29,72 @@ on:
   pull_request:
     branches: [main, staging]
 jobs:
+`;
+
+const repoRoot = join(import.meta.dirname, '..', '..');
+
+const legacyPerJobChecks = [
+  'check',
+  'visual',
+  'smoke',
+  'e2e (auth)',
+  'e2e (team-admins)',
+  'e2e (poc)',
+  'e2e (subs)',
+  'e2e (marketing)',
+  'e2e (coupon)',
+  'e2e (public-authz)',
+  'e2e (member-activity)',
+  'e2e (member-shell)',
+  'e2e (impersonation)',
+  'e2e (two-factor)',
+  'e2e (image-assets)',
+  'e2e (custom-domain)',
+  'e2e (meta-capi)',
+];
+
+const planDrivenManifest = parseManifest({
+  gate: 'dispatch-ci',
+  workflow: 'ci.yml',
+  planJob: 'plan',
+  jobs: [
+    { id: 'check', mode: 'required', runOn: { branches: ['main'] } },
+    { id: 'e2e', mode: 'required', matrix: [{ suite: 'auth', browser: true }, { suite: 'poc', browser: false }] },
+  ],
+  afterGate: [],
+  separateRequiredChecks: { staging: [], main: [] },
+  postDeploy: { staging: [], production: [] },
+  deletionProtectedBranches: [],
+});
+
+const planDrivenWorkflow = `${pullRequestHeader}
+  plan:
+    runs-on: ubuntu-24.04
+    steps: []
+  check:
+    needs: [plan]
+    if: needs.plan.outputs.run-check == 'true'
+    runs-on: ubuntu-24.04
+    steps: []
+  e2e:
+    name: e2e (\${{ matrix.suite }})
+    needs: [plan]
+    if: needs.plan.outputs.run-e2e == 'true' && needs.plan.outputs.matrix-e2e != '[]'
+    strategy:
+      matrix:
+        include: \${{ fromJSON(needs.plan.outputs.matrix-e2e) }}
+    runs-on: ubuntu-24.04
+    steps: []
+  dispatch-ci:
+    if: always()
+    needs: [plan, check, e2e]
+    runs-on: ubuntu-24.04
+    steps: []
+  release-tag:
+    if: github.event_name == 'push'
+    needs: [dispatch-ci]
+    runs-on: ubuntu-24.04
+    steps: []
 `;
 
 describe('ruleset required checks', () => {
@@ -227,33 +297,78 @@ jobs:
 `, 'chromatic.yml').main).toEqual([]);
   });
 
-  it('matches the committed required-check snapshot', () => {
-    const repoRoot = join(import.meta.dirname, '..', '..');
+  it('resolves the plan-driven jobs and matrix through the manifest for each branch', () => {
+    expect(deriveProducedChecksFromWorkflowSources(
+      [{ file: 'ci.yml', text: planDrivenWorkflow }],
+      planDrivenManifest,
+    )).toEqual({
+      staging: ['plan', 'e2e (auth)', 'e2e (poc)', 'dispatch-ci'],
+      main: ['plan', 'check', 'e2e (auth)', 'e2e (poc)', 'dispatch-ci'],
+    });
+  });
+
+  it('applies the plan only to the workflow the manifest names', () => {
+    expect(() => deriveProducedChecksFromWorkflowSources(
+      [{ file: 'other.yml', text: planDrivenWorkflow }],
+      planDrivenManifest,
+    )).toThrow('matrix include is not a list of scalar objects');
+  });
+
+  it('matches the committed expected required-check snapshot', () => {
     const expected = snapshotSchema.parse(JSON.parse(readFileSync(
       join(import.meta.dirname, '..', 'config-regression', 'rulesets-required-checks.snapshot.json'),
       'utf8',
     )));
 
-    expect(deriveRequiredChecksFromWorkflows(repoRoot)).toEqual(expected);
+    expect(expectedRequiredChecks(loadManifest())).toEqual(expected);
   });
 
-  it('reports missing and unknown checks independently by branch', () => {
+  it('has every expected required check produced by exactly one job for its branch', () => {
+    const manifest = loadManifest();
+    const producers = deriveCheckProducersFromWorkflowSources(readWorkflowSources(repoRoot), manifest);
+    const expected = expectedRequiredChecks(manifest);
+
+    for (const branch of RULESET_BRANCHES) {
+      for (const name of expected[branch]) {
+        const jobs = producers[branch]
+          .filter((producer) => producer.name === name)
+          .map((producer) => `${producer.file}:${producer.job}`);
+        expect(jobs, `${branch}: ${name}`).toHaveLength(1);
+      }
+    }
+  });
+
+  it('still produces every legacy per-job check under its exact name', () => {
+    const produced = deriveProducedChecksFromWorkflows(repoRoot, loadManifest());
+
+    for (const branch of RULESET_BRANCHES) {
+      expect(produced[branch]).toEqual(expect.arrayContaining(legacyPerJobChecks));
+    }
+  });
+
+  it('splits required checks that are not expected into legacy and unknown', () => {
     expect(compareRulesetBranches(
       {
-        staging: ['check', 'smoke'],
-        main: ['check', 'promotion-guard'],
+        staging: ['dispatch-ci', 'staging-freeze'],
+        main: ['dispatch-ci', 'promotion-guard'],
       },
       {
-        staging: ['check', 'legacy'],
-        main: ['check', 'promotion-guard', 'obsolete'],
+        staging: ['check', 'staging-freeze', 'vanished'],
+        main: ['dispatch-ci', 'promotion-guard', 'obsolete'],
+      },
+      {
+        staging: ['dispatch-ci', 'staging-freeze', 'check'],
+        main: ['dispatch-ci', 'promotion-guard', 'check'],
       },
     )).toEqual({
       staging: {
-        expectedMissing: ['smoke'],
-        requiredUnknown: ['legacy'],
+        expectedMissing: ['dispatch-ci'],
+        requiredLegacy: ['check'],
+        requiredUnknown: ['vanished'],
       },
       main: {
         expectedMissing: [],
+        requiredLegacy: [],
         requiredUnknown: ['obsolete'],
       },
     });

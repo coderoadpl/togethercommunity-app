@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import { planDispatch, planOutputs, type DispatchManifest } from './dispatch-ci.js';
+
 export const RULESET_BRANCHES = ['staging', 'main'] as const;
 export type RulesetBranch = typeof RULESET_BRANCHES[number];
 export type RequiredChecksByBranch = Record<RulesetBranch, string[]>;
@@ -13,8 +15,17 @@ export interface WorkflowSource {
   text: string;
 }
 
+export interface ProducedCheck {
+  name: string;
+  file: string;
+  job: string;
+}
+
+export type CheckProducersByBranch = Record<RulesetBranch, ProducedCheck[]>;
+
 export interface RulesetComparison {
   expectedMissing: string[];
+  requiredLegacy: string[];
   requiredUnknown: string[];
 }
 
@@ -97,7 +108,7 @@ const tokenize = (source: string): Token[] => {
       index += number[0].length;
       continue;
     }
-    const word = /^[A-Za-z_][A-Za-z0-9_.]*/.exec(source.slice(index));
+    const word = /^[A-Za-z_][A-Za-z0-9_.-]*/.exec(source.slice(index));
     if (word === null) throw new Error(`unsupported character "${char}" in expression: ${source}`);
     const keyword = keywords[word[0]];
     tokens.push(keyword === undefined
@@ -243,15 +254,26 @@ type MatrixValues = Record<string, string | number | boolean>;
 
 const matrixEntrySchema = z.record(scalarSchema);
 
+const fromJsonPattern = /^\$\{\{\s*fromJSON\(\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\)\s*\}\}$/;
+
+const resolveMatrixValue = (value: unknown, context: ReadonlyMap<string, Scalar>): unknown => {
+  if (typeof value !== 'string') return value;
+  const path = fromJsonPattern.exec(value.trim())?.[1];
+  const source = path === undefined ? undefined : context.get(path);
+  if (typeof source !== 'string') return value;
+  return JSON.parse(source);
+};
+
 const matrixCombinations = (
   matrix: Record<string, unknown> | undefined,
   describe: string,
+  context: ReadonlyMap<string, Scalar>,
 ): MatrixValues[] => {
   if (matrix === undefined) return [{}];
   const axes: [string, (string | number | boolean)[]][] = [];
   for (const [key, value] of Object.entries(matrix)) {
     if (key === 'include' || key === 'exclude') continue;
-    const parsed = z.array(scalarSchema).nonempty().safeParse(value);
+    const parsed = z.array(scalarSchema).nonempty().safeParse(resolveMatrixValue(value, context));
     if (!parsed.success) {
       throw new Error(
         `${describe}: matrix axis "${key}" is not a non-empty list of scalars, so its check names cannot be derived`,
@@ -260,7 +282,7 @@ const matrixCombinations = (
     axes.push([key, [...parsed.data]]);
   }
   const listEntries = (key: 'include' | 'exclude'): MatrixValues[] => {
-    const raw = matrix[key];
+    const raw = resolveMatrixValue(matrix[key], context);
     if (raw === undefined) return [];
     const parsed = z.array(matrixEntrySchema).safeParse(raw);
     if (!parsed.success) {
@@ -302,15 +324,35 @@ const matrixCombinations = (
   return combinations;
 };
 
-const pullRequestContext = (combination: MatrixValues): ReadonlyMap<string, Scalar> => {
-  const context = new Map<string, Scalar>([
-    ['github.event_name', 'pull_request'],
-    ['github.ref', 'refs/pull/1/merge'],
-    ['github.ref_name', '1/merge'],
-    ['github.ref_type', 'branch'],
-  ]);
-  for (const [key, value] of Object.entries(combination)) context.set(`matrix.${key}`, value);
-  return context;
+const pullRequestContext = (
+  branch: RulesetBranch,
+  plan: ReadonlyMap<string, Scalar>,
+): ReadonlyMap<string, Scalar> => new Map<string, Scalar>([
+  ['github.event_name', 'pull_request'],
+  ['github.ref', 'refs/pull/1/merge'],
+  ['github.ref_name', '1/merge'],
+  ['github.ref_type', 'branch'],
+  ['github.base_ref', branch],
+  ...plan,
+]);
+
+const withMatrix = (
+  context: ReadonlyMap<string, Scalar>,
+  combination: MatrixValues,
+): ReadonlyMap<string, Scalar> => new Map<string, Scalar>([
+  ...context,
+  ...Object.entries(combination).map(([key, value]): [string, Scalar] => [`matrix.${key}`, value]),
+]);
+
+const planContext = (
+  manifest: DispatchManifest | undefined,
+  file: string,
+  branch: RulesetBranch,
+): ReadonlyMap<string, Scalar> => {
+  if (manifest === undefined || manifest.workflow !== file) return new Map();
+  const outputs = planOutputs(planDispatch(manifest, { event: 'pull_request', branch }));
+  return new Map(Object.entries(outputs).map(([key, value]): [string, Scalar] =>
+    [`needs.${manifest.planJob}.outputs.${key}`, value]));
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -341,11 +383,17 @@ const pullRequestBranches = (value: unknown): RulesetBranch[] => {
 const combinationLabel = (combination: MatrixValues): string =>
   Object.values(combination).map((value) => String(value)).join(', ');
 
-const jobCheckNames = (jobId: string, job: WorkflowJob, describe: string): string[] => {
+const jobCheckNames = (
+  jobId: string,
+  job: WorkflowJob,
+  describe: string,
+  baseContext: ReadonlyMap<string, Scalar>,
+): string[] => {
   if (job['continue-on-error'] === true) return [];
+  if (job.if !== undefined && evaluateCondition(job.if, baseContext) === false) return [];
   const names: string[] = [];
-  for (const combination of matrixCombinations(job.strategy?.matrix, describe)) {
-    const context = pullRequestContext(combination);
+  for (const combination of matrixCombinations(job.strategy?.matrix, describe, baseContext)) {
+    const context = withMatrix(baseContext, combination);
     if (job.if !== undefined && evaluateCondition(job.if, context) === false) continue;
     const label = combinationLabel(combination);
     names.push(job.name === undefined
@@ -355,63 +403,82 @@ const jobCheckNames = (jobId: string, job: WorkflowJob, describe: string): strin
   return names;
 };
 
-const addUnique = (target: string[], names: readonly string[]): void => {
-  for (const name of names) {
-    if (!target.includes(name)) target.push(name);
-  }
-};
-
-export const deriveRequiredChecksFromWorkflowSources = (
+export const deriveCheckProducersFromWorkflowSources = (
   sources: readonly WorkflowSource[],
-): RequiredChecksByBranch => {
-  const checks: RequiredChecksByBranch = { staging: [], main: [] };
+  manifest?: DispatchManifest,
+): CheckProducersByBranch => {
+  const producers: CheckProducersByBranch = { staging: [], main: [] };
   for (const source of sources) {
     if (Object.hasOwn(IGNORED_WORKFLOW_FILES, source.file)) continue;
     const workflow = workflowSchema.parse(parse(source.text));
-    const branches = pullRequestBranches(workflow.on);
-    if (branches.length === 0) continue;
-    for (const [jobId, job] of Object.entries(workflow.jobs)) {
-      const names = jobCheckNames(jobId, job, `${source.file} job "${jobId}"`);
-      for (const branch of branches) addUnique(checks[branch], names);
+    for (const branch of pullRequestBranches(workflow.on)) {
+      const context = pullRequestContext(branch, planContext(manifest, source.file, branch));
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
+        for (const name of jobCheckNames(jobId, job, `${source.file} job "${jobId}"`, context)) {
+          producers[branch].push({ name, file: source.file, job: jobId });
+        }
+      }
     }
   }
-  return checks;
+  return producers;
 };
 
-export const deriveRequiredChecksFromWorkflows = (repoRoot: string): RequiredChecksByBranch => {
+const uniqueNames = (producers: readonly ProducedCheck[]): string[] =>
+  [...new Set(producers.map((producer) => producer.name))];
+
+export const deriveProducedChecksFromWorkflowSources = (
+  sources: readonly WorkflowSource[],
+  manifest?: DispatchManifest,
+): RequiredChecksByBranch => {
+  const producers = deriveCheckProducersFromWorkflowSources(sources, manifest);
+  return { staging: uniqueNames(producers.staging), main: uniqueNames(producers.main) };
+};
+
+export const readWorkflowSources = (repoRoot: string): WorkflowSource[] => {
   const workflowDir = join(repoRoot, '.github', 'workflows');
-  const sources = readdirSync(workflowDir)
+  return readdirSync(workflowDir)
     .filter((file) => /\.ya?ml$/.test(file))
     .sort()
     .map((file) => ({ file, text: readFileSync(join(workflowDir, file), 'utf8') }));
-  return deriveRequiredChecksFromWorkflowSources(sources);
 };
+
+export const deriveProducedChecksFromWorkflows = (
+  repoRoot: string,
+  manifest: DispatchManifest,
+): RequiredChecksByBranch => deriveProducedChecksFromWorkflowSources(readWorkflowSources(repoRoot), manifest);
 
 const ordered = (names: Iterable<string>): string[] => [...new Set(names)].sort();
 
 export const compareRulesetChecks = (
   expected: readonly string[],
   required: readonly string[],
+  produced: readonly string[],
 ): RulesetComparison => {
   const expectedSet = new Set(expected);
   const requiredSet = new Set(required);
+  const producedSet = new Set(produced);
+  const notExpected = required.filter((name) => !expectedSet.has(name));
   return {
     expectedMissing: ordered(expected.filter((name) => !requiredSet.has(name))),
-    requiredUnknown: ordered(required.filter((name) => !expectedSet.has(name))),
+    requiredLegacy: ordered(notExpected.filter((name) => producedSet.has(name))),
+    requiredUnknown: ordered(notExpected.filter((name) => !producedSet.has(name))),
   };
 };
 
 export const compareRulesetBranches = (
   expected: RequiredChecksByBranch,
   required: RequiredChecksByBranch,
+  produced: RequiredChecksByBranch,
 ): RulesetComparisonByBranch => ({
-  staging: compareRulesetChecks(expected.staging, required.staging),
-  main: compareRulesetChecks(expected.main, required.main),
+  staging: compareRulesetChecks(expected.staging, required.staging, produced.staging),
+  main: compareRulesetChecks(expected.main, required.main, produced.main),
 });
-
-export const hasMissingRequiredChecks = (comparison: RulesetComparisonByBranch): boolean =>
-  RULESET_BRANCHES.some((branch) => comparison[branch].expectedMissing.length > 0);
 
 export const hasRulesetDrift = (comparison: RulesetComparisonByBranch): boolean =>
   RULESET_BRANCHES.some((branch) =>
-    comparison[branch].expectedMissing.length > 0 || comparison[branch].requiredUnknown.length > 0);
+    comparison[branch].expectedMissing.length > 0
+    || comparison[branch].requiredLegacy.length > 0
+    || comparison[branch].requiredUnknown.length > 0);
+
+export const hasUnknownRequiredChecks = (comparison: RulesetComparisonByBranch): boolean =>
+  RULESET_BRANCHES.some((branch) => comparison[branch].requiredUnknown.length > 0);

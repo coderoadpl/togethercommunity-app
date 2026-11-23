@@ -14,7 +14,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      run-check: ${{ steps.plan.outputs.run-check }}
+      run-dependency-audit: ${{ steps.plan.outputs.run-dependency-audit }}
+      run-telemetry-mongodb: ${{ steps.plan.outputs.run-telemetry-mongodb }}
+      run-visual: ${{ steps.plan.outputs.run-visual }}
+      run-smoke: ${{ steps.plan.outputs.run-smoke }}
+      run-e2e: ${{ steps.plan.outputs.run-e2e }}
+      matrix-e2e: ${{ steps.plan.outputs.matrix-e2e }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - id: plan
+        run: node scripts/dispatch-ci.ts plan
+
   check:
+    needs: [plan]
+    if: needs.plan.outputs.run-check == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -70,7 +99,32 @@ jobs:
             echo "No workflow changes; ruleset drift check skipped"
           fi
       - run: pnpm run db:migrate
-      - run: pnpm run check
+      - name: pnpm run typecheck
+        run: pnpm run typecheck
+      - name: pnpm run typecheck:islands
+        run: pnpm run typecheck:islands
+      - name: pnpm run lint
+        run: pnpm run lint
+      - name: pnpm run lock-lint
+        run: pnpm run lock-lint
+      - name: pnpm run license-lint
+        run: pnpm run license-lint
+      - name: pnpm run migration-lint
+        run: pnpm run migration-lint
+      - name: pnpm run tenant-scope-check
+        run: pnpm run tenant-scope-check
+      - name: pnpm run tenant-neutral-lint
+        run: pnpm run tenant-neutral-lint
+      - name: pnpm run depcruise
+        run: pnpm run depcruise
+      - name: pnpm run knip
+        run: pnpm run knip
+      - name: pnpm run doc-lint
+        run: pnpm run doc-lint
+      - name: pnpm run language-lint
+        run: pnpm run language-lint
+      - name: pnpm run test
+        run: pnpm run test
       - name: Determine whether the dependency audit is required
         id: audit-policy
         env:
@@ -105,6 +159,8 @@ jobs:
           done
 
   dependency-audit:
+    needs: [plan]
+    if: needs.plan.outputs.run-dependency-audit == 'true'
     continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -151,6 +207,8 @@ jobs:
           fi
 
   telemetry-mongodb:
+    needs: [plan]
+    if: needs.plan.outputs.run-telemetry-mongodb == 'true'
     continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -188,6 +246,8 @@ jobs:
         run: pnpm exec vitest run adapters/telemetry/mongodb/store.test.ts --maxWorkers=1
 
   visual:
+    needs: [plan]
+    if: needs.plan.outputs.run-visual == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     defaults:
@@ -228,6 +288,8 @@ jobs:
           path: app/out/visual
 
   smoke:
+    needs: [plan]
+    if: needs.plan.outputs.run-smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -275,12 +337,15 @@ jobs:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
 
   e2e:
+    name: e2e (${{ matrix.suite }})
+    needs: [plan]
+    if: needs.plan.outputs.run-e2e == 'true' && needs.plan.outputs.matrix-e2e != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        suite: [auth, team-admins, poc, subs, marketing, coupon, public-authz, member-activity, member-shell, impersonation, two-factor, image-assets, custom-domain, meta-capi]
+        include: ${{ fromJSON(needs.plan.outputs.matrix-e2e) }}
     defaults:
       run:
         working-directory: app
@@ -313,12 +378,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - if: matrix.suite == 'auth' || matrix.suite == 'team-admins' || matrix.suite == 'marketing' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain' || matrix.suite == 'meta-capi'
+      - if: matrix.browser
         id: setup-chrome
         uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
-      - if: matrix.suite == 'auth' || matrix.suite == 'team-admins' || matrix.suite == 'marketing' || matrix.suite == 'coupon' || matrix.suite == 'public-authz' || matrix.suite == 'member-activity' || matrix.suite == 'member-shell' || matrix.suite == 'impersonation' || matrix.suite == 'two-factor' || matrix.suite == 'image-assets' || matrix.suite == 'custom-domain' || matrix.suite == 'meta-capi'
+      - if: matrix.browser
         run: '"$CHROME_PATH" --version'
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
@@ -356,9 +421,40 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  dispatch-ci:
+    name: dispatch-ci
+    if: always()
+    needs: [plan, check, dependency-audit, telemetry-mongodb, visual, smoke, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            app/package.json
+            app/scripts/dispatch-ci.ts
+            app/ci/dispatch-ci.manifest.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Match job results against the plan
+        env:
+          DISPATCH_CI_NEEDS: ${{ toJSON(needs) }}
+          DISPATCH_CI_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/dispatch-ci.ts gate
+
   release-tag:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [check, visual, smoke, e2e]
+    needs: [dispatch-ci]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

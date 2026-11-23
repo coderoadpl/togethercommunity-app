@@ -5,11 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
+import { expectedRequiredChecks, loadManifest, MANIFEST_PATH_FROM_REPO_ROOT } from './dispatch-ci.js';
 import {
   compareRulesetBranches,
-  deriveRequiredChecksFromWorkflows,
-  hasMissingRequiredChecks,
+  deriveProducedChecksFromWorkflows,
   hasRulesetDrift,
+  hasUnknownRequiredChecks,
   RULESET_BRANCHES,
   type RequiredChecksByBranch,
   type RulesetBranch,
@@ -24,6 +25,7 @@ const rulesetDriftModes = ['pull-request', 'scheduled'] as const;
 
 const branchRulesSchema = z.array(z.object({
   type: z.string(),
+  ruleset_id: z.number().int().optional(),
   parameters: z.object({
     required_status_checks: z.array(z.object({
       context: z.string(),
@@ -67,10 +69,18 @@ export interface GitHubIssueClient {
   ): Promise<void>;
 }
 
+export interface DeletionProtection {
+  branch: RulesetBranch;
+  protected: boolean;
+  detail: string;
+}
+
 export interface RulesetDriftReport {
   expected: RequiredChecksByBranch;
   required: RequiredChecksByBranch;
+  produced: RequiredChecksByBranch;
   comparison: RulesetComparisonByBranch;
+  deletionProtection: DeletionProtection[];
 }
 
 export interface IssueSyncResult {
@@ -194,18 +204,47 @@ export const extractRequiredStatusChecks = (payload: unknown): string[] => {
   return [...new Set(contexts)].sort();
 };
 
-export const collectRequiredRulesetChecks = async (
+export const collectLiveBranchRules = async (
   client: GitHubRulesClient,
   repo: RepoSlug,
-): Promise<RequiredChecksByBranch> => {
+  branches: readonly RulesetBranch[],
+): Promise<Map<RulesetBranch, unknown>> => {
+  const rules = new Map<RulesetBranch, unknown>();
   try {
-    return {
-      staging: extractRequiredStatusChecks(await client.getBranchRules(repo, 'staging')),
-      main: extractRequiredStatusChecks(await client.getBranchRules(repo, 'main')),
-    };
+    for (const branch of branches) rules.set(branch, await client.getBranchRules(repo, branch));
   } catch (cause) {
     throw new RulesetReadError(cause);
   }
+  return rules;
+};
+
+const rulesetIds = (ids: readonly number[]): string =>
+  ids.map((id) => String(id)).join(', ');
+
+export const evaluateDeletionProtection = (
+  branch: RulesetBranch,
+  payload: unknown,
+): DeletionProtection => {
+  const rules = branchRulesSchema.parse(payload);
+  const gateRulesets = new Set(rules
+    .filter((rule) => rule.type === 'required_status_checks')
+    .flatMap((rule) => rule.ruleset_id === undefined ? [] : [rule.ruleset_id]));
+  const deletionRulesets = rules
+    .filter((rule) => rule.type === 'deletion')
+    .map((rule) => rule.ruleset_id);
+  const separate = [...new Set(deletionRulesets.filter((id): id is number =>
+    id !== undefined && !gateRulesets.has(id)))];
+  if (separate.length > 0) {
+    return { branch, protected: true, detail: `deletion is restricted by ruleset ${rulesetIds(separate)}` };
+  }
+  if (deletionRulesets.length === 0) {
+    return { branch, protected: false, detail: 'no ruleset restricts deletion' };
+  }
+  return {
+    branch,
+    protected: false,
+    detail: 'the only deletion restriction comes from the ruleset that also requires status checks, so disabling that ruleset would make the branch deletable',
+  };
 };
 
 export const createRulesetDriftReport = async (
@@ -213,12 +252,21 @@ export const createRulesetDriftReport = async (
   repo: RepoSlug,
   repoRoot: string,
 ): Promise<RulesetDriftReport> => {
-  const expected = deriveRequiredChecksFromWorkflows(repoRoot);
-  const required = await collectRequiredRulesetChecks(client, repo);
+  const manifest = loadManifest(join(repoRoot, MANIFEST_PATH_FROM_REPO_ROOT));
+  const expected = expectedRequiredChecks(manifest);
+  const produced = deriveProducedChecksFromWorkflows(repoRoot, manifest);
+  const live = await collectLiveBranchRules(client, repo, RULESET_BRANCHES);
+  const required = {
+    staging: extractRequiredStatusChecks(live.get('staging')),
+    main: extractRequiredStatusChecks(live.get('main')),
+  };
   return {
     expected,
     required,
-    comparison: compareRulesetBranches(expected, required),
+    produced,
+    comparison: compareRulesetBranches(expected, required, produced),
+    deletionProtection: manifest.deletionProtectedBranches.map((branch) =>
+      evaluateDeletionProtection(branch, live.get(branch))),
   };
 };
 
@@ -226,20 +274,39 @@ const list = (names: readonly string[]): string => names.length === 0
   ? 'none'
   : names.map((name) => `\`${name}\``).join(', ');
 
-const branchSection = (branch: RulesetBranch, report: RulesetDriftReport): string => [
-  `## ${branch}`,
+const unprotectedBranches = (report: RulesetDriftReport): DeletionProtection[] =>
+  report.deletionProtection.filter((entry) => !entry.protected);
+
+export const hasReportDrift = (report: RulesetDriftReport): boolean =>
+  hasRulesetDrift(report.comparison) || unprotectedBranches(report).length > 0;
+
+const branchSection = (branch: RulesetBranch, report: RulesetDriftReport): string => {
+  const comparison = report.comparison[branch];
+  return [
+    `## ${branch}`,
+    '',
+    `Add to the \`${branch}\` ruleset's required status checks (expected, not required yet): ${list(comparison.expectedMissing)}`,
+    '',
+    `Remove from the \`${branch}\` ruleset's required status checks (legacy: still reported, now covered by the gate): ${list(comparison.requiredLegacy)}`,
+    '',
+    `Remove from the \`${branch}\` ruleset's required status checks now (no workflow reports them, so every pull request waits forever): ${list(comparison.requiredUnknown)}`,
+  ].join('\n');
+};
+
+const deletionSection = (report: RulesetDriftReport): string => [
+  '## Branch deletion protection',
   '',
-  `Missing required checks: ${list(report.comparison[branch].expectedMissing)}`,
-  '',
-  `Unknown required checks: ${list(report.comparison[branch].requiredUnknown)}`,
+  ...report.deletionProtection.map((entry) => entry.protected
+    ? `- \`${entry.branch}\`: protected (${entry.detail}).`
+    : `- \`${entry.branch}\`: add a separate ruleset that targets \`${entry.branch}\` with "Restrict deletions" turned on; ${entry.detail}.`),
 ].join('\n');
 
 const headline = (report: RulesetDriftReport): string => {
-  if (hasMissingRequiredChecks(report.comparison)) {
-    return 'Ruleset drift is blocking CI protection parity.';
+  if (hasUnknownRequiredChecks(report.comparison)) {
+    return 'Ruleset drift: a required status check that no workflow reports blocks every pull request.';
   }
-  return hasRulesetDrift(report.comparison)
-    ? 'No required check is missing; the unknown required checks below still need a decision.'
+  return hasReportDrift(report)
+    ? 'Ruleset drift: the live rulesets differ from the manifest; follow the add and remove lists below.'
     : 'Ruleset drift is clean.';
 };
 
@@ -248,42 +315,44 @@ export const formatIssueBody = (report: RulesetDriftReport): string => [
   '',
   headline(report),
   '',
-  'Expected checks are derived from workflow files and pinned in `app/config-regression/rulesets-required-checks.snapshot.json`.',
+  `Expected required checks come from \`${MANIFEST_PATH_FROM_REPO_ROOT}\` (the gate plus the separate checks of each branch) and are pinned in \`app/config-regression/rulesets-required-checks.snapshot.json\`.`,
   '',
-  ...RULESET_BRANCHES.map((branch) => branchSection(branch, report)),
+  ...RULESET_BRANCHES.flatMap((branch) => [branchSection(branch, report), '']),
+  deletionSection(report),
   '',
 ].join('\n');
 
-const hasUnknownRequiredChecks = (comparison: RulesetComparisonByBranch): boolean =>
-  RULESET_BRANCHES.some((branch) => comparison[branch].requiredUnknown.length > 0);
-
 export const hasBlockingRulesetDrift = (
-  comparison: RulesetComparisonByBranch,
+  report: RulesetDriftReport,
   mode: RulesetDriftMode,
 ): boolean => mode === 'scheduled'
-  ? hasRulesetDrift(comparison)
-  : hasUnknownRequiredChecks(comparison);
+  ? hasReportDrift(report)
+  : hasUnknownRequiredChecks(report.comparison);
 
 export const formatCliReport = (
   report: RulesetDriftReport,
   mode: RulesetDriftMode = 'scheduled',
 ): string => {
   const lines = [
-    `rulesets-drift: compared live branch rulesets with workflow-derived required checks in ${mode} mode`,
+    `rulesets-drift: compared live branch rulesets with the dispatch-ci manifest in ${mode} mode`,
   ];
   for (const branch of RULESET_BRANCHES) {
     const comparison = report.comparison[branch];
     if (comparison.expectedMissing.length > 0) {
-      lines.push(mode === 'pull-request'
-        ? `${branch}: workflow-produced status checks not required yet: ${comparison.expectedMissing.join(', ')}`
-        : `${branch}: add missing required status checks: ${comparison.expectedMissing.join(', ')}`);
+      lines.push(`${branch}: add to the ruleset (expected, not required yet): ${comparison.expectedMissing.join(', ')}`);
+    }
+    if (comparison.requiredLegacy.length > 0) {
+      lines.push(`${branch}: remove from the ruleset (legacy, now covered by the gate): ${comparison.requiredLegacy.join(', ')}`);
     }
     if (comparison.requiredUnknown.length > 0) {
-      lines.push(`${branch}: ruleset requires status checks no pull-request workflow produces: ${comparison.requiredUnknown.join(', ')}`);
+      lines.push(`${branch}: ruleset requires status checks no workflow produces; remove them now: ${comparison.requiredUnknown.join(', ')}`);
     }
   }
-  if (!hasRulesetDrift(report.comparison)) lines.push('rulesets-drift: clean');
-  else if (!hasBlockingRulesetDrift(report.comparison, mode)) {
+  for (const entry of unprotectedBranches(report)) {
+    lines.push(`${entry.branch}: branch deletion protection missing; add a separate ruleset with "Restrict deletions" (${entry.detail})`);
+  }
+  if (!hasReportDrift(report)) lines.push('rulesets-drift: clean');
+  else if (!hasBlockingRulesetDrift(report, mode)) {
     lines.push('rulesets-drift: drift found, but pull-request mode reports it as warnings');
   } else if (mode === 'scheduled') {
     lines.push('rulesets-drift: drift found; scheduled mode fails until the live rulesets match');
@@ -307,7 +376,7 @@ export const syncRulesetDriftIssue = async (
   }
   const duplicatesClosed = duplicates.map((duplicate) => duplicate.number);
   const body = formatIssueBody(report);
-  if (hasRulesetDrift(report.comparison)) {
+  if (hasReportDrift(report)) {
     if (current === undefined) {
       const created = await client.createIssue(repo, {
         title: issueTitle,
@@ -336,29 +405,30 @@ const emitAnnotation = (level: 'error' | 'warning', title: string, message: stri
   process.stderr.write(`::${level} title=${annotationValue(title)}::${annotationValue(message)}\n`);
 };
 
-const emitDriftAnnotations = (
-  comparison: RulesetComparisonByBranch,
-  mode: RulesetDriftMode,
-): void => {
+const emitDriftAnnotations = (report: RulesetDriftReport, mode: RulesetDriftMode): void => {
+  const advisoryLevel = mode === 'pull-request' ? 'warning' : 'error';
   for (const branch of RULESET_BRANCHES) {
-    const missing = comparison[branch].expectedMissing;
-    if (missing.length > 0) {
+    const { expectedMissing, requiredLegacy, requiredUnknown } = report.comparison[branch];
+    if (expectedMissing.length > 0) {
+      emitAnnotation(advisoryLevel, `Ruleset drift ${branch}`, `Add to the ruleset: ${expectedMissing.join(', ')}`);
+    }
+    if (requiredLegacy.length > 0) {
       emitAnnotation(
-        mode === 'pull-request' ? 'warning' : 'error',
+        advisoryLevel,
         `Ruleset drift ${branch}`,
-        mode === 'pull-request'
-          ? `Workflow-produced status checks are not required yet: ${missing.join(', ')}`
-          : `Missing required status checks: ${missing.join(', ')}`,
+        `Remove from the ruleset (legacy, now covered by the gate): ${requiredLegacy.join(', ')}`,
       );
     }
-    const unknown = comparison[branch].requiredUnknown;
-    if (unknown.length > 0) {
+    if (requiredUnknown.length > 0) {
       emitAnnotation(
         'error',
         `Ruleset drift ${branch}`,
-        `Ruleset requires status checks no pull-request workflow produces: ${unknown.join(', ')}`,
+        `Ruleset requires status checks no workflow produces: ${requiredUnknown.join(', ')}`,
       );
     }
+  }
+  for (const entry of unprotectedBranches(report)) {
+    emitAnnotation(advisoryLevel, 'Branch deletion protection', `${entry.branch}: ${entry.detail}`);
   }
 };
 
@@ -402,7 +472,7 @@ const run = async (env: NodeJS.ProcessEnv, argv: readonly string[]): Promise<voi
   }
   const output = formatCliReport(report, mode);
   process.stdout.write(output);
-  emitDriftAnnotations(report.comparison, mode);
+  emitDriftAnnotations(report, mode);
 
   const summaryPath = env['GITHUB_STEP_SUMMARY'];
   if (summaryPath !== undefined && summaryPath !== '') {
@@ -417,7 +487,7 @@ const run = async (env: NodeJS.ProcessEnv, argv: readonly string[]): Promise<voi
     }
   }
 
-  if (hasBlockingRulesetDrift(report.comparison, mode)) process.exitCode = 1;
+  if (hasBlockingRulesetDrift(report, mode)) process.exitCode = 1;
 };
 
 const invokedDirectly =

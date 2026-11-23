@@ -13,6 +13,21 @@ const workflowSchema = z.object({
 
 const cases = [
   {
+    file: 'ci.yml',
+    defaults: { contents: 'read' },
+    jobs: {
+      plan: { contents: 'read' },
+      check: { contents: 'read' },
+      'dependency-audit': { contents: 'read' },
+      'telemetry-mongodb': { contents: 'read' },
+      visual: { contents: 'read' },
+      smoke: { contents: 'read' },
+      e2e: { contents: 'read' },
+      'dispatch-ci': { contents: 'read', actions: 'read' },
+      'release-tag': { contents: 'write' },
+    },
+  },
+  {
     file: 'cla.yml',
     defaults: {},
     jobs: {

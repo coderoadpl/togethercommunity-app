@@ -1763,13 +1763,18 @@ admin with a verified e-mail outside impersonation, for an order the preview
 can refund; while another refund of the order waits for Stripe it stays
 disabled with the reason. The dialog refunds the whole remainder by default;
 **Partial amount** takes a decimal amount in the order's currency and names the
-remainder when the amount is refused. The stock option is hidden when nothing
+remainder when the amount is refused; it always asks to keep stock and the
+packing list as they are, so a remainder that shrank after the dialog opened
+never turns it into a full refund's choices. Every field is locked while the
+request is in flight, and a refusal stays pinned above the buttons. The stock option is hidden when nothing
 can return to stock (a test-mode order). One request key is generated per
 opening of the dialog and reused on a retry, so a double click or a repeated
 request returns the same refund. On a phone the dialog opens as a bottom sheet
-with the actions pinned below the scrolling content. The orders list shows the
+with the actions pinned below the scrolling content, the primary button first
+in both reading and focus order. The orders list shows the
 amount and state of the latest unsettled staff refund next to the order status;
-on a phone it shows one card per order instead of the table.
+on a phone it shows one card per order instead of the table, and a tap anywhere
+on a card opens the order while the buyer name still opens the member.
 
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview <orderId>

@@ -1,6 +1,7 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
+import { ChevronIcon } from './refund-icons.js';
 import { useState, type ReactNode } from 'react';
 import {
   Alert,
@@ -14,7 +15,6 @@ import {
   MenuItem,
   Select,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -35,7 +35,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { SalesCardAmount, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList } from '../../../theme.js';
+import { SalesCardAmount, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -435,11 +435,16 @@ export const SalesPanel = () => {
               {orders.data.orders.map((order) => (
                 <SalesOrderCard key={order.id} data-testid="sales-row">
                   <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{memberLink(order)}</Box>
+                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                      <SalesCardMemberLink component={Link} to={`/panel/members/${order.memberId}`} underline="always">{order.memberName ?? order.memberEmail}</SalesCardMemberLink>
+                    </Box>
                     <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
                   </Stack>
                   <Typography variant="body2" component="div">{productCell(order)}</Typography>
-                  <Typography variant="body2" component="div">{orderLink(order)}</Typography>
+                  <SalesCardOrderLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} variant="body2" underline="none" data-testid="sales-card-order-link">
+                    {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
+                    <ChevronIcon />
+                  </SalesCardOrderLink>
                   <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.15rem' }}>
                     {statusChips(order)}
                     {fulfilmentChip(order)}
@@ -455,7 +460,7 @@ export const SalesPanel = () => {
             </SalesOrderCardList>
           ) : (
             <ResponsiveTable>
-              <Table>
+              <SalesTable>
                 <TableHead>
                   <TableRow>
                     {canWriteInvoice ? <TableCell padding="checkbox" aria-label={t.sales.sendSelectedToKsef} /> : null}
@@ -468,7 +473,7 @@ export const SalesPanel = () => {
                     {narrow ? null : <TableCell>{t.sales.source}</TableCell>}
                     <TableCell>{t.sales.status}</TableCell>
                     <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
-                    <TableCell>{t.sales.invoiceStatus}</TableCell>
+                    <SalesNoWrapCell>{t.sales.invoiceStatus}</SalesNoWrapCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -476,7 +481,7 @@ export const SalesPanel = () => {
                     <TableRow key={order.id} data-testid="sales-row">
                       {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
                       <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
-                      <TableCell>{memberLink(order)}</TableCell>
+                      <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
                       <TableCell sx={{ minWidth: '14rem' }}>{productCell(order)}</TableCell>
                       {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
                       <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
@@ -490,7 +495,7 @@ export const SalesPanel = () => {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+              </SalesTable>
             </ResponsiveTable>
           )
         )}

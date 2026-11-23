@@ -171,7 +171,7 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
           <Stack useFlexGap spacing="0.5rem">
             <Typography variant="body2">{messages.blockedBody}</Typography>
             <Typography variant="body2">{messages.blockedNoAction}</Typography>
-            <MuiLink component={Link} to="/panel/integrations" hash="stripe" variant="body2" sx={{ alignSelf: 'flex-start' }}>
+            <MuiLink component={Link} to="/panel/integrations" hash="stripe" variant="body2" underline="always" sx={{ alignSelf: 'flex-start' }}>
               {messages.paymentSettingsLink}
             </MuiLink>
             <Typography variant="body2">{messages.blockedBuyerEmail}</Typography>

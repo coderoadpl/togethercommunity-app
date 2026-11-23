@@ -8,6 +8,12 @@ const StrokeIcon = ({ children }: { children: ReactNode }) => (
   </RefundStrokeIcon>
 );
 
+export const ChevronIcon = () => (
+  <StrokeIcon>
+    <path d="m9 18 6-6-6-6" />
+  </StrokeIcon>
+);
+
 export const RefundIcon = () => (
   <StrokeIcon>
     <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />

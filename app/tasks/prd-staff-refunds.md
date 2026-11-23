@@ -177,7 +177,10 @@ workspace's restricted key and what to do about it.
   now (as it does for the sold-out job), so Studio shows the outcome within a minute.
 - FR-13: Studio order detail: "Refund" action, dialog (full / partial), refund history (amount,
   staff member, time, reason, state badge reusing `OrderRefundJob`), totals Paid / Refunded /
-  Remaining, "Ship anyway" when the order was taken off the packing list. The Studio orders list
+  Remaining, "Ship anyway" when the order was taken off the packing list. A partial request from
+  the dialog always sends `restock: false` and `removeFromPackingList: false`, so a remainder that
+  shrank after the preview loaded never turns it into the full refund's choices; every field is
+  locked while the request is in flight, and a refusal stays pinned above the buttons. The Studio orders list
   carries a separate optional `staffRefundStatus` and `staffRefundAmountCents` (the latest staff
   refund while unsettled) for its badge; `refundJobStatus` keeps meaning only the sold-out refund job, and the shop key list and
   the order feed stay unchanged.

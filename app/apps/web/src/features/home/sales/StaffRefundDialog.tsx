@@ -114,6 +114,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const { language } = useLanguage();
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down('md'));
+  const phone = useMediaQuery(theme.breakpoints.down('sm'));
   const titleId = useId();
   const queryClient = useQueryClient();
   const { currency, remainderCents, fullRefundOptions: options } = preview;
@@ -143,6 +144,11 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
     },
   });
 
+  const pending = refund.isPending;
+  const clearSubmitError = () => {
+    if (!pending) refund.reset();
+  };
+
   const check: AmountCheck = partial ? checkAmount(amountText, currency, remainderCents) : { ok: true, amountCents: remainderCents };
   const amountError = partial && amountTouched ? amountMessage(check, t, currency, remainder) : null;
   const effectiveCents = check.amountCents;
@@ -161,7 +167,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
       ...(partial ? { amountCents: check.amountCents } : {}),
       ...(note === '' ? {} : { reason: note }),
       ...(partial
-        ? (fullAmount ? { restock: false, removeFromPackingList: false } : {})
+        ? { restock: false, removeFromPackingList: false }
         : {
           ...(options.restockOffered ? { restock: restockVisible && restock } : {}),
           ...(options.removeFromPackingListOffered ? { removeFromPackingList } : {}),
@@ -170,7 +176,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   };
 
   const close = () => {
-    if (!refund.isPending) onClose();
+    if (!pending) onClose();
   };
 
   const submitError = (() => {
@@ -228,6 +234,29 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
     ? messages.consequenceProvider({ amount: money(check.amountCents) })
     : messages.consequenceProviderCap({ remainder });
 
+  const finalNote = (
+    <RefundFinalNote key="note" direction="row" useFlexGap spacing="0.4rem">
+      <LockIcon />
+      <Typography variant="body2">{messages.footerFinal}</Typography>
+    </RefundFinalNote>
+  );
+  const cancelButton = <Button key="cancel" variant="outlined" onClick={close} disabled={pending}>{t.common.cancel}</Button>;
+  const submitButton = (
+    <Button
+      key="submit"
+      variant="contained"
+      color="primary"
+      startIcon={<RefundIcon />}
+      disabled={pending || (partial && !check.ok)}
+      onClick={submit}
+      data-testid="staff-refund-submit"
+    >
+      {pending
+        ? messages.submitting
+        : effectiveCents === null ? messages.submitWithoutAmount : messages.submit({ amount: money(effectiveCents) })}
+    </Button>
+  );
+
   return (
     <RefundSheetDialog
       open={open}
@@ -253,7 +282,8 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
             <Box>
               <FormControlLabel
                 sx={{ alignItems: 'flex-start', m: 0, gap: '0.5rem' }}
-                control={<Switch checked={partial} onChange={(_, checked) => { setPartial(checked); setAmountTouched(false); refund.reset(); }} data-testid="staff-refund-partial" />}
+                disabled={pending}
+                control={<Switch checked={partial} onChange={(_, checked) => { setPartial(checked); setAmountTouched(false); clearSubmitError(); }} data-testid="staff-refund-partial" />}
                 label={(
                   <Box sx={{ pt: '0.4rem' }}>
                     <Typography>{messages.partialSwitch}</Typography>
@@ -271,7 +301,8 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
               locked={!partial}
               label={messages.amountLabel}
               value={partial ? amountText : formatMinorUnitsDecimal(remainderCents, currency, language)}
-              onChange={(event) => { setAmountText(event.target.value); setAmountTouched(true); refund.reset(); }}
+              disabled={pending}
+              onChange={(event) => { setAmountText(event.target.value); setAmountTouched(true); clearSubmitError(); }}
               onBlur={() => setAmountTouched(true)}
               error={amountError !== null}
               helperText={amountError ?? (partial ? messages.amountPartialHelp({ remainder, paid: money(preview.paidCents) }) : messages.amountFullHelp)}
@@ -300,7 +331,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                         {restockVisible ? (
                           <FormControlLabel
                             sx={{ alignItems: 'flex-start', m: 0 }}
-                            control={<Checkbox checked={restock} disabled={partial} onChange={(_, checked) => setRestock(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-restock" />}
+                            control={<Checkbox checked={restock} disabled={partial || pending} onChange={(_, checked) => setRestock(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-restock" />}
                             label={(
                               <Box>
                                 <Typography>{messages.restock}</Typography>
@@ -315,7 +346,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                         {options.removeFromPackingListOffered || preview.onPackingList ? (
                           <FormControlLabel
                             sx={{ alignItems: 'flex-start', m: 0 }}
-                            disabled={partial || !options.removeFromPackingListOffered}
+                            disabled={partial || pending || !options.removeFromPackingListOffered}
                             control={<Checkbox checked={options.removeFromPackingListOffered && removeFromPackingList} onChange={(_, checked) => setRemoveFromPackingList(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-remove-from-packing-list" />}
                             label={(
                               <Box>
@@ -343,6 +374,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
               label={messages.reasonLabel}
               placeholder={messages.reasonPlaceholder}
               value={reason}
+              disabled={pending}
               onChange={(event) => setReason(event.target.value)}
               multiline
               minRows={3}
@@ -371,26 +403,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
             </RefundPlainList>
           </RefundConsequencesPanel>
         </Box>
-        {submitError === null ? null : <Alert severity="error" sx={{ mx: { xs: '1rem', sm: '1.5rem' }, mb: '1rem' }} data-testid="staff-refund-error">{submitError}</Alert>}
       </DialogContent>
+      {submitError === null ? null : (
+        <Alert severity="error" sx={{ flexShrink: 0, mx: { xs: '1rem', sm: '1.5rem' }, my: '0.75rem' }} data-testid="staff-refund-error">{submitError}</Alert>
+      )}
       <RefundDialogActions disableSpacing>
-        <RefundFinalNote direction="row" useFlexGap spacing="0.4rem">
-          <LockIcon />
-          <Typography variant="body2">{messages.footerFinal}</Typography>
-        </RefundFinalNote>
-        <Button variant="outlined" onClick={close} disabled={refund.isPending}>{t.common.cancel}</Button>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<RefundIcon />}
-          disabled={refund.isPending || (partial && !check.ok)}
-          onClick={submit}
-          data-testid="staff-refund-submit"
-        >
-          {refund.isPending
-            ? messages.submitting
-            : effectiveCents === null ? messages.submitWithoutAmount : messages.submit({ amount: money(effectiveCents) })}
-        </Button>
+        {phone ? [submitButton, cancelButton, finalNote] : [finalNote, cancelButton, submitButton]}
       </RefundDialogActions>
     </RefundSheetDialog>
   );

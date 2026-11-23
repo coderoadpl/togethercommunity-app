@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4538,15 +4538,32 @@ export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: 12,
 }));
+export const SalesTable = styled(Table)(({ theme }) => ({
+  [theme.breakpoints.down('xl')]: {
+    '& .MuiTableCell-root:not(.MuiTableCell-paddingCheckbox)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+  },
+}));
 export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
+export const SalesMemberCell = styled(TableCell)({ whiteSpace: 'nowrap', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis' });
 export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
 export const SalesOrderCard = styled('li')(({ theme }) => ({
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.35rem',
   padding: '0.875rem 1rem',
   minWidth: 0,
   '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
+  '& .MuiCheckbox-root, & .MuiButton-root': { position: 'relative', zIndex: 1 },
+}));
+export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
+export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+  color: theme.palette.text.secondary,
+  '&::after': { content: '""', position: 'absolute', inset: 0 },
 }));
 export const RefundStrokeIcon = styled(SvgIcon)({ fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' });
 export const RefundAmountLabel = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ theme, total }) => ({
@@ -4633,7 +4650,7 @@ export const RefundDialogActions = styled(DialogActions)(({ theme }) => ({
   padding: '1rem 1.5rem',
   borderTop: `1px solid ${theme.palette.divider}`,
   [theme.breakpoints.down('sm')]: {
-    flexDirection: 'column-reverse',
+    flexDirection: 'column',
     flexWrap: 'nowrap',
     alignItems: 'stretch',
     padding: '0.75rem 1rem',

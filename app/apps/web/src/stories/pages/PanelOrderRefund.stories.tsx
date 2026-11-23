@@ -50,6 +50,7 @@ type RefundState = {
   staffRefunds: Record<string, unknown>[];
   refunded: number;
   preview: Record<string, unknown>;
+  calls?: Record<string, unknown>;
 };
 
 const meta = { title: 'Pages/PanelOrderRefund', id: 'panel-order-refund', render: () => <></>, decorators: [withPage], parameters: { fixture, locale: 'pl', layout: 'fullscreen' } } satisfies Meta;
@@ -70,12 +71,23 @@ const refundStory = (state: RefundState): Story => ({
           refundTotals: { paidCents: 24900, refundedCents: state.refunded, remainingCents: 24900 - state.refunded, currency: 'PLN' },
         } },
         [`orderRefundPreview:[{"orderId":"${ORDER_ID}"}]`]: { ok: true, value: { ...preview, ...state.preview } },
+        ...state.calls,
       },
     },
   },
 });
 
-export const Paid: Story = refundStory({ order: {}, staffRefunds: [], refunded: 0, preview: {} });
+// A capture that pins crypto.randomUUID to this key gets the refusal a reused request key answers.
+const REFUSED_REQUEST_KEY = 'story-refused-request';
+
+export const Paid: Story = refundStory({
+  order: {}, staffRefunds: [], refunded: 0, preview: {},
+  calls: {
+    [`createOrderRefund:[{"orderId":"${ORDER_ID}","removeFromPackingList":true,"requestKey":"${REFUSED_REQUEST_KEY}","restock":true}]`]: {
+      ok: false, error: { code: 'conflict', message: 'This refund request key was already used' },
+    },
+  },
+});
 
 export const PartiallyRefunded: Story = refundStory({
   order: { status: 'partially_refunded' },

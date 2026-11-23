@@ -1,9 +1,10 @@
+import { ThemeProvider } from '@mui/material/styles';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import type { ReactElement } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
@@ -11,6 +12,7 @@ import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderStaffRefundView, ty
 import { en } from '../../../i18n/en.js';
 import { formatDateTime, formatMinorUnitsPrice } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
+import { createThemeForMode } from '../../../theme.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
@@ -103,6 +105,9 @@ const renderAt = async (path: string, component: () => ReactElement, context: Pa
 };
 
 const renderDetail = (context: PanelContextValue = owner) => renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />, context);
+
+const studioTheme = createThemeForMode('shadcn');
+const inStudioTheme = (page: ReactElement) => () => <ThemeProvider theme={studioTheme}>{page}</ThemeProvider>;
 
 const openDialog = async () => {
   await userEvent.click(await screen.findByRole('button', { name: messages.action }));
@@ -202,7 +207,7 @@ describe('staff refund dialog', () => {
     expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), restock: false, removeFromPackingList: false });
   });
 
-  it('requests a partial refund of the typed amount without stock or packing choices', async () => {
+  it('requests a partial refund of the typed amount that keeps stock and packing as they are even if the remainder shrank meanwhile', async () => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls);
     await renderDetail();
@@ -217,7 +222,7 @@ describe('staff refund dialog', () => {
     expect(within(dialog).getByText(messages.consequenceAccessStays)).toBeVisible();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(5050) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
-    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050 });
+    expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), amountCents: 5050, restock: false, removeFromPackingList: false });
   });
 
   it.each([
@@ -294,6 +299,12 @@ describe('staff refund dialog', () => {
     const dialog = await openDialog();
     await userEvent.dblClick(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     expect(await within(dialog).findByRole('button', { name: named(messages.submitting) })).toBeDisabled();
+    expect(within(dialog).getByRole('switch', { name: new RegExp(messages.partialSwitch) })).toBeDisabled();
+    expect(within(dialog).getByLabelText(messages.amountLabel)).toBeDisabled();
+    expect(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) })).toBeDisabled();
+    expect(within(dialog).getByRole('checkbox', { name: new RegExp(messages.removeFromPackingList) })).toBeDisabled();
+    expect(within(dialog).getByLabelText(messages.reasonLabel)).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: named(messages.submitting) })).toBeDisabled();
     release();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(calls.refunds).toHaveLength(1);
@@ -311,6 +322,51 @@ describe('staff refund dialog', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     expect(await within(dialog).findByTestId('staff-refund-error')).toHaveTextContent(shown);
     expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('keeps the refusal outside the scrolling content, right above the buttons', async () => {
+    const calls = serve({ order: paidOrder });
+    acceptRefunds(calls, () => HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'Refused' } }, { status: 409 }));
+    await renderDetail();
+    const dialog = await openDialog();
+    const submit = within(dialog).getByTestId('staff-refund-submit');
+    await userEvent.click(submit);
+    const error = await within(dialog).findByTestId('staff-refund-error');
+    expect(error.closest('.MuiDialogContent-root')).toBeNull();
+    expect(error.nextElementSibling).toContainElement(submit);
+  });
+
+  describe('footer order', () => {
+    const stubViewport = (phone: boolean) => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: phone && query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }));
+    };
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it.each([
+      { width: 'a phone', phone: true, order: ['submit', 'cancel', 'note'] },
+      { width: 'a wider screen', phone: false, order: ['note', 'cancel', 'submit'] },
+    ])('puts the footer in reading and focus order on $width', async ({ phone, order }) => {
+      stubViewport(phone);
+      serve({ order: paidOrder });
+      await renderDetail();
+      const dialog = await openDialog();
+      const submit = within(dialog).getByTestId('staff-refund-submit');
+      const footer = Array.from(submit.parentElement?.children ?? []).map((child) => {
+        if (child === submit) return 'submit';
+        if (child.textContent === en.common.cancel) return 'cancel';
+        return child.textContent === messages.footerFinal ? 'note' : 'other';
+      });
+      expect(footer).toStrictEqual(order);
+    });
   });
 
   it('hides the stock option of a test-mode order that has no stock to return and says no e-mail is sent', async () => {
@@ -389,6 +445,12 @@ describe('staff refund history and ship anyway', () => {
     expect(within(blocked).getByRole('link', { name: messages.paymentSettingsLink })).toHaveAttribute('href', '/panel/integrations#stripe');
   });
 
+  it('underlines the payment settings link of a refund blocked by the missing permission even where links underline only on hover', async () => {
+    serve({ order: { ...paidOrder, status: 'paid' }, staffRefunds: [staffRefund({ id: 'r-blocked', status: 'blocked_permission', permissionBlockedAt: '2026-11-22T07:05:00.000Z' })] });
+    await renderAt('/panel/sales/$orderId', inStudioTheme(<OrderDetailPage orderId="o1" />));
+    expect(await screen.findByRole('link', { name: messages.paymentSettingsLink })).toHaveClass('MuiLink-underlineAlways');
+  });
+
   it('puts an order taken off the packing list back with ship anyway', async () => {
     const refunded: OrderListItem = { ...paidOrder, status: 'refunded', fulfilmentStatus: null };
     const calls = serve({
@@ -422,11 +484,9 @@ describe('staff refund history and ship anyway', () => {
     expect(screen.queryByRole('button', { name: messages.shipAnyway })).toBeNull();
   });
 
-  it('shows the state of an unsettled staff refund in the orders list from its own field', async () => {
+  const serveOrders = (orders: OrderListItem[]) => {
     server.use(
-      http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
-        orders: [{ ...paidOrder, staffRefundStatus: 'running', staffRefundAmountCents: 4900 }, { ...paidOrder, id: 'o2', refundJobStatus: 'failed' }, { ...paidOrder, id: 'o3' }], total: 3, page: 1, pageSize: 25, sources: [],
-      } })),
+      http.get('/api/orders', () => HttpResponse.json({ ok: true, data: { orders, total: orders.length, page: 1, pageSize: 25, sources: [] } })),
       http.get('/api/orders/consumer-sales-summary', ({ request }) => {
         const params = new URL(request.url).searchParams;
         return HttpResponse.json({ ok: true, data: { from: params.get('from'), to: params.get('to'), timezone: 'Europe/Warsaw', currency: 'PLN', rates: [], totals: { orderCount: 0, lineCount: 0, netCents: 0, vatCents: 0, grossCents: 0 }, orderIds: [], orders: [] } });
@@ -435,8 +495,47 @@ describe('staff refund history and ship anyway', () => {
       http.get('/api/coupons/options', () => HttpResponse.json({ ok: true, data: { coupons: [] } })),
       http.get('/api/orders/reconciliation', () => HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-07-28T10:00:00.000Z' } })),
     );
+  };
+
+  it('shows the state of an unsettled staff refund in the orders list from its own field', async () => {
+    serveOrders([{ ...paidOrder, staffRefundStatus: 'running', staffRefundAmountCents: 4900 }, { ...paidOrder, id: 'o2', refundJobStatus: 'failed' }, { ...paidOrder, id: 'o3' }]);
     await renderAt('/panel/sales', SalesPanel);
     expect(await screen.findByTestId('sales-staff-refund-chip')).toHaveTextContent(messages.listChip({ amount: pln(4900), state: messages.states.running }));
     expect(screen.getAllByTestId('sales-staff-refund-chip')).toHaveLength(1);
+  });
+
+  it('keeps a long buyer name on one line in the orders table with the full name in its title', async () => {
+    const memberName = 'Alexandra Konstantinopolitanczykiewicz-Smith';
+    serveOrders([{ ...paidOrder, memberName }]);
+    await renderAt('/panel/sales', SalesPanel);
+    const member = await screen.findByRole('link', { name: memberName });
+    expect(member.closest('td')).toHaveAttribute('title', memberName);
+  });
+
+  describe('on a phone', () => {
+    beforeEach(() => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }));
+    });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('opens the order from the whole card and keeps the buyer name a link to the member', async () => {
+      serveOrders([paidOrder]);
+      await renderAt('/panel/sales', inStudioTheme(<SalesPanel />));
+      const card = await screen.findByTestId('sales-row');
+      expect(within(card).getByTestId('sales-card-order-link')).toHaveAttribute('href', '/panel/sales/o1');
+      expect(within(card).getByTestId('sales-card-order-link').querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+      const member = within(card).getByRole('link', { name: 'Alex Smith' });
+      expect(member).toHaveAttribute('href', '/panel/members/member-1');
+      expect(member).toHaveClass('MuiLink-underlineAlways');
+    });
   });
 });

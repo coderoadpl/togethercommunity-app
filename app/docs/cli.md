@@ -91,9 +91,12 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
 
 ## Staff refunds
 
-`order refund-preview <orderId>` prints the paid, refunded and remaining amounts,
-whether the remainder was read from Stripe, the stock a full refund can return
-and the packing, shipment, invoice and subscription consequences. `order refund <orderId>`
+`order refund-preview <orderId>` prints the paid amount, the amount actually
+refunded and the remainder that can still be refunded, whether they were read
+from Stripe, the stock a full refund can return and the packing, shipment,
+invoice and subscription consequences; for an order marked refunded whose
+refunds do not cover the payment (for example after a dispute) it says that
+nothing more can be refunded there. `order refund <orderId>`
 refunds the whole remainder; `--amount <decimal>` refunds part of it in the
 order's currency (whole numbers for zero-decimal currencies). A full refund
 needs `--remainder <decimal>`, the remainder you confirm: without it the

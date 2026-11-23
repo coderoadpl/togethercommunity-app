@@ -4918,7 +4918,7 @@ describe('purchased product download route', () => {
   });
 
   it('keeps the JSON envelope for clients that ask for JSON', async () => {
-    for (const accept of ['application/json', 'application/json, text/html', undefined]) {
+    for (const accept of ['application/json', 'application/json, text/html', '*/*', undefined]) {
       const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
         headers: { host: 'acme.localhost:48730', ...(accept === undefined ? {} : { accept }) },
       });
@@ -4926,6 +4926,23 @@ describe('purchased product download route', () => {
       expect(response.headers.get('content-type')).toBe('application/json');
       expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     }
+  });
+
+  it('keeps the JSON envelope when text/html is refused with q=0 or only named inside another media type', async () => {
+    for (const accept of ['text/html;q=0, */*', 'text/html; q=0.0, application/xml', 'application/vnd.example+text/html', 'text/html-fragment']) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('prefers a browser redirect when text/html outranks application/json', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json;q=0.5, text/html' },
+    });
+    expect(response.status).toBe(303);
   });
 
   it('sends a signed-out browser download to sign-in with a return to My products', async () => {

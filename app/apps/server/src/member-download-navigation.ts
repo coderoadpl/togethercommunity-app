@@ -5,9 +5,21 @@ import type { ErrorCode, MemberDownloadFailureCode } from '#core/domain/index.js
 
 import type { AppVars } from './app-vars.js';
 
+const qualityOf = (accept: string, mediaType: string): number => {
+  let quality = 0;
+  for (const range of accept.split(',')) {
+    const [type = '', ...params] = range.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== mediaType) continue;
+    const q = params.find((param) => param.startsWith('q='));
+    const value = q === undefined ? 1 : Number(q.slice(2));
+    if (Number.isFinite(value)) quality = Math.max(quality, value);
+  }
+  return quality;
+};
+
 const isDocumentNavigation = (accept: string | undefined): boolean => {
-  const value = (accept ?? '').toLowerCase();
-  return value.includes('text/html') && !value.includes('application/json');
+  const html = qualityOf(accept ?? '', 'text/html');
+  return html > 0 && html > qualityOf(accept ?? '', 'application/json');
 };
 
 const failureCodeFor = (code: ErrorCode): MemberDownloadFailureCode => {

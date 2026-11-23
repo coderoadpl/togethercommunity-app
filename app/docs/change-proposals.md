@@ -1951,8 +1951,11 @@ whole course “Intro course”", "the course “Intro course” without its mod
 “Extras”", "the module “Basics” in every course that uses it (chosen from
 “Intro course”)", "the lessons “Welcome”, “Goodbye”, each in every course that
 uses it (chosen from “Intro course”)". An id that no longer exists reads
-"something that no longer exists" with the id, an archived course is followed
-by "(archived)", and an empty list reads "no course, module or lesson". In Polish the confirmation leads in with "after approval the product
+"something that no longer exists" with the id, a course, module or lesson
+title that another one of the same kind in either list also bears is followed
+by its id ("“Introduction”
+(lesson-2)"), so replacing one with another of the same title still reads as a
+change, an archived course is followed by "(archived)", and an empty list reads "no course, module or lesson". In Polish the confirmation leads in with "after approval the product
 will give access to the following content:", so the phrases that follow are in
 the nominative, and an empty list reads "no courses, modules or lessons".
 Course, module and lesson titles each sit in their own `<bdi>` element, and the

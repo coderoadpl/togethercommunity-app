@@ -848,6 +848,8 @@ export const pl: Messages = {
     accessName: ({ name }) => format('„{name}”', { name }),
     accessGone: ({ id }) => format('coś, czego już nie ma ({id})', { id }),
     accessArchived: ({ name }) => format('„{name}” (zarchiwizowany)', { name }),
+    accessNameWithId: ({ name, id }) => format('„{name}” ({id})', { name, id }),
+    accessArchivedWithId: ({ name, id }) => format('„{name}” ({id}) (zarchiwizowany)', { name, id }),
     accessListRefused:
       'Lista po zatwierdzeniu nie przechodzi już kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego nie zmieni.',
     approveProductSetAccess: ({ target, access }) => format(

@@ -9,6 +9,7 @@ import { pl } from '../../../i18n/pl.js';
 import { formatPrice } from '../../../lib/format.js';
 import { groupReferences } from './proposal-display.js';
 import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences, type ApprovalFacts } from './ProposalApproval.js';
+import { AccessChangeRow } from './ProposedAccess.js';
 
 const t = en.changeProposals;
 
@@ -456,6 +457,25 @@ describe('the approval confirmation of what a product grants', () => {
       `${t.approveProductSetAccessNothing({ target: 'Mug' })} ${t.approveNothingElse}`,
     );
     expect(t.approveProductSetAccessNothing({ target: 'Mug' })).toContain('current buyers included, loses what it granted at once');
+  });
+
+  it('adds the id to a title that another course, module or lesson of the proposal shares, in both lists and the confirmation', () => {
+    const labels = {
+      courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Intro course' }],
+      modules: [],
+      lessons: [{ id: 'lesson-first', title: 'Introduction' }, { id: 'lesson-second', title: 'Introduction' }, { id: 'lesson-welcome', title: 'Welcome' }],
+      archivedCourses: ['course-deep'],
+    };
+    const before = [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: ['lesson-first', 'lesson-welcome'] }];
+    const after = [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: ['lesson-second', 'lesson-welcome'] }];
+    const rows = dialogText(<AccessChangeRow change={{ before, after }} labels={labels} label="Included access" labelComponent="h3" pending={false} />);
+    expect(rows).toContain('the lessons “Introduction” (lesson-first), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(rows).toContain('the lessons “Introduction” (lesson-second), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(summaryOf(accessChange(after, labels, before)))
+      .toContain('the lessons “Introduction” (lesson-second), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(dialogText(<AccessChangeRow change={{ before: [], after: [{ level: 'course', courseId: 'course-deep' }] }} labels={labels} label="Included access" labelComponent="h3" pending={false} />))
+      .toContain('the whole course “Intro course” (course-deep) (archived)');
+    expect(pl.changeProposals.accessNameWithId({ name: 'Wstęp', id: 'lesson-first' })).toBe('„Wstęp” (lesson-first)');
   });
 
   it('isolates every course, module and lesson title in the sentence', () => {

@@ -732,6 +732,8 @@ export interface Messages {
     accessName: (params: { name: string }) => string;
     accessGone: (params: { id: string }) => string;
     accessArchived: (params: { name: string }) => string;
+    accessNameWithId: (params: { name: string; id: string }) => string;
+    accessArchivedWithId: (params: { name: string; id: string }) => string;
     accessListRefused: string;
     approveProductSetAccess: (params: { target: string; access: string }) => string;
     approveProductSetAccessNothing: (params: { target: string }) => string;

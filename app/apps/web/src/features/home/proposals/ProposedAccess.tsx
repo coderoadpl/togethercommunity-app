@@ -27,6 +27,9 @@ const namesGoneOrArchived = (items: readonly AccessItem[], labels: Labels): bool
   }
 });
 
+const titleShared = (labels: Labels, kind: NamedKind, id: string, title: string): boolean =>
+  labels !== undefined && labels[kind].some((entry) => entry.id !== id && entry.title === title);
+
 export const accessFacts = (change: ChangeProposalAccessChange, labels: Labels): { refused: boolean } => ({
   refused: namesGoneOrArchived(change.after, labels),
 });
@@ -37,7 +40,12 @@ const AccessName = ({ kind, id, labels }: { kind: NamedKind; id: string; labels:
     return <span data-testid="access-gone"><Isolated sentence={(slot) => t.accessGone({ id: slot })} value={id} /></span>;
   }
   const title = labels?.[kind].find((candidate) => candidate.id === id)?.title ?? id;
-  const name = kind === 'courses' && labels?.archivedCourses?.includes(id) === true ? t.accessArchived : t.accessName;
+  const archived = kind === 'courses' && labels?.archivedCourses?.includes(id) === true;
+  if (titleShared(labels, kind, id, title)) {
+    const named = archived ? t.accessArchivedWithId : t.accessNameWithId;
+    return <Sentence text={(name, idSlot) => named({ name, id: idSlot })} parts={[<bdi key="name">{title}</bdi>, <bdi key="id">{id}</bdi>]} />;
+  }
+  const name = archived ? t.accessArchived : t.accessName;
   return <Isolated sentence={(slot) => name({ name: slot })} value={title} />;
 };
 

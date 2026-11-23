@@ -805,6 +805,8 @@ export const en: Messages = {
     accessName: ({ name }) => format('“{name}”', { name }),
     accessGone: ({ id }) => format('something that no longer exists ({id})', { id }),
     accessArchived: ({ name }) => format('“{name}” (archived)', { name }),
+    accessNameWithId: ({ name, id }) => format('“{name}” ({id})', { name, id }),
+    accessArchivedWithId: ({ name, id }) => format('“{name}” ({id}) (archived)', { name, id }),
     accessListRefused:
       'The list after approval no longer passes the shop’s check: something on it no longer exists or a course on it is archived. Approving changes nothing.',
     approveProductSetAccess: ({ target, access }) => format(

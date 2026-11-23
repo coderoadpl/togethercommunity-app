@@ -1253,8 +1253,19 @@ describe('the live image upload use-cases', () => {
     if (!started.ok) throw new Error(started.error.message);
     h.objects.objects.set(started.value.key, { bytes: SVG, contentType: 'image/svg+xml' });
     expect(await completeBrandingAssetUpload(ownerSession, { key: started.value.key }, h.deps)).toMatchObject({ ok: true });
-    expect(h.objects.objects.get(`image-assets/${TENANT}/favicon/${started.value.key.split('/').at(-1) ?? ''}`))
+    const liveFile = started.value.key.split('/').at(-1) ?? '';
+    expect(h.objects.objects.get(`image-assets/${TENANT}/favicon/${liveFile}`))
       .toMatchObject({ contentType: 'image/svg+xml', contentDisposition: 'attachment' });
+
+    const delivered = async (kind: string, file: string) => {
+      const signed = await getPublicImageAssetUrl(TENANT, { kind, file }, h.deps);
+      if (!signed.ok) throw new Error(signed.error.message);
+      return h.objects.deliver(signed.value);
+    };
+    const attachment = { status: 200, contentType: 'image/svg+xml', contentDisposition: 'attachment' };
+    expect(await delivered('logo', `${sha256HexOfBytes(SVG)}.svg`)).toEqual(attachment);
+    expect(await delivered('favicon', liveFile)).toEqual(attachment);
+    expect(await delivered('logo-dark', `${sha256HexOfBytes(PNG(1))}.png`)).toEqual({ status: 200, contentType: 'image/png', contentDisposition: null });
   });
 
   it('serves a published content-addressed image from the public route, an SVG only as an attachment', async () => {

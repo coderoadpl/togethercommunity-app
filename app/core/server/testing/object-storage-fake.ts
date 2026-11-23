@@ -29,6 +29,8 @@ export interface FakeObjectStorage {
   /** Runs before a copy writes its destination, so a test can interleave work with a copy in flight. */
   beforeCopy: (key: string) => Promise<void>;
   keysUnder(prefix: string): string[];
+  /** Answers a signed read the way a provider that ignores response overrides does: with the headers stored with the object. */
+  deliver(signedUrl: string): { status: 404 } | { status: 200; contentType: string; contentDisposition: string | null };
 }
 
 const placeholderDigest = (bytes: Uint8Array): string => {
@@ -56,6 +58,10 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
     failCopies: () => false,
     beforeCopy: async () => undefined,
     keysUnder: (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)).sort(),
+    deliver: (signedUrl) => {
+      const found = objects.get(keyOf(signedUrl));
+      return found === undefined ? { status: 404 } : { status: 200, contentType: found.contentType, contentDisposition: found.contentDisposition ?? null };
+    },
     storage: {
       objectUrl: (_configuration, key) => new URL(`${FAKE_STORAGE_ORIGIN}/${key}`),
       head: async (input) => {

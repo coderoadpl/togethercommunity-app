@@ -40,7 +40,7 @@ const preview = {
 
 const refund = (overrides: Record<string, unknown>) => ({
   id: 'refund-demo-1', kind: 'amount', status: 'succeeded', amountCents: 5000, currency: 'PLN', attempts: 1, nextAttemptAt: null, lastError: null,
-  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', requestedByUserId: 'fixture-user-f9e5468247b51d08', requestedByEmail: 'creator@together.dev',
+  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, requestedByUserId: 'fixture-user-f9e5468247b51d08', requestedByEmail: 'creator@together.dev',
   note: null, restocked: false, removedFromPackingList: false, createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
   ...overrides,
 });
@@ -96,7 +96,7 @@ export const RefundedOffPackingList: Story = refundStory({
 
 export const BlockedPermission: Story = refundStory({
   order: { fulfilmentStatus: null },
-  staffRefunds: [refund({ kind: 'remainder', status: 'blocked_permission', amountCents: 24900, providerRefundStatus: null, submittedAt: null, restocked: true, removedFromPackingList: true, note: 'The buyer cancelled before shipping', nextAttemptAt: '2026-11-22T10:05:00.000Z', createdAt: '2026-11-22T09:05:00.000Z', updatedAt: '2026-11-22T09:05:00.000Z' })],
+  staffRefunds: [refund({ kind: 'remainder', status: 'blocked_permission', amountCents: 24900, providerRefundStatus: null, submittedAt: null, restocked: true, removedFromPackingList: true, note: 'The buyer cancelled before shipping', nextAttemptAt: '2026-11-22T10:05:00.000Z', permissionBlockedAt: '2026-11-22T09:05:00.000Z', createdAt: '2026-11-22T09:05:00.000Z', updatedAt: '2026-11-22T09:05:00.000Z' })],
   refunded: 24900,
   preview: { refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', refundedCents: 24900, remainderCents: 0, onPackingList: false, waitingRefundId: 'refund-demo-1' },
 });

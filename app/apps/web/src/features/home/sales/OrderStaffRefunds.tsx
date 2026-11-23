@@ -1,6 +1,6 @@
 import { Alert, AlertTitle, Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
-import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
+import { orderRefundPermissionDeadline, SALES_LINK_TIME_ZONE, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { SectionCard } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -110,6 +110,7 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
   const facts = [
     refund.status === 'succeeded' ? messages.completedAt({ time: time(refund.updatedAt) }) : null,
     blocked ? [messages.attempts({ count: refund.attempts }), refund.nextAttemptAt === null ? null : messages.nextAttempt({ time: time(refund.nextAttemptAt) })].filter((part) => part !== null).join(' · ') : null,
+    blocked && refund.permissionBlockedAt !== null ? messages.lastAttempt({ time: time(orderRefundPermissionDeadline(refund.permissionBlockedAt)) }) : null,
     refund.restocked ? messages.restocked : null,
     refund.removedFromPackingList ? messages.removedFromPackingList : null,
   ].filter((fact) => fact !== null);

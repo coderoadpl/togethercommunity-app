@@ -1317,6 +1317,7 @@ export const en: Messages = {
       completedAt: ({ time }) => format('Completed {time}', { time }),
       attempts: ({ count }) => format('Attempts: {count}', { count }),
       nextAttempt: ({ time }) => format('next {time}', { time }),
+      lastAttempt: ({ time }) => format('Last possible attempt: {time}', { time }),
       restocked: 'Returned to stock',
       removedFromPackingList: 'Taken off the packing list',
       failedHelp: 'Stripe did not pay this refund out. Refund the payment by hand in the Stripe Dashboard.',

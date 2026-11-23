@@ -1355,6 +1355,7 @@ export const pl: Messages = {
       completedAt: ({ time }) => format('Zakończony {time}', { time }),
       attempts: ({ count }) => format('Próby: {count}', { count }),
       nextAttempt: ({ time }) => format('następna {time}', { time }),
+      lastAttempt: ({ time }) => format('Ostatnia możliwa próba: {time}', { time }),
       restocked: 'Przywrócono na stan',
       removedFromPackingList: 'Usunięto z listy do spakowania',
       failedHelp: 'Stripe nie wypłacił tego zwrotu. Zwróć płatność ręcznie w panelu Stripe.',

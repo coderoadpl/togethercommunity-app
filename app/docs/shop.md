@@ -1751,7 +1751,9 @@ correcting invoice; the preview says the order has one.
 In Studio the order detail shows a **Payment** card with the paid, refunded and
 remaining amounts (refunds not yet confirmed by Stripe are counted and named),
 a **Refund history** with each refund's amount, requester, time, staff-only
-reason and state, and **Ship anyway** in the delivery card of an order a refund
+reason and state (a refund waiting for the refund permission also names its
+attempts, the next attempt and the last possible one, 72 hours after the first
+refusal, from the view's `permissionBlockedAt`), and **Ship anyway** in the delivery card of an order a refund
 took off the packing list. The **Refund** action appears only to an owner or
 admin with a verified e-mail outside impersonation, for an order the preview
 can refund; while another refund of the order waits for Stripe it stays

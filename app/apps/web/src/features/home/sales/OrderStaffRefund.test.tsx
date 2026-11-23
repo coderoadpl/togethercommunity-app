@@ -6,10 +6,10 @@ import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import type { OrderListItem, OrderStaffRefundView, StaffRefundPreview } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
-import { formatMinorUnitsPrice } from '../../../lib/format.js';
+import { formatDateTime, formatMinorUnitsPrice } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
@@ -48,7 +48,7 @@ const preview: StaffRefundPreview = {
 
 const staffRefund = (overrides: Partial<OrderStaffRefundView>): OrderStaffRefundView => ({
   id: 'refund-1', kind: 'amount', status: 'succeeded', amountCents: 5000, currency: 'PLN', attempts: 1, nextAttemptAt: null, lastError: null,
-  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com',
+  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com',
   note: null, restocked: false, removedFromPackingList: false, createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
   ...overrides,
 });
@@ -321,7 +321,7 @@ describe('staff refund history and ship anyway', () => {
     serve({
       order: { ...paidOrder, status: 'partially_refunded' },
       staffRefunds: [
-        staffRefund({ id: 'r-blocked', status: 'blocked_permission', amountCents: 1000, attempts: 2, nextAttemptAt: '2026-11-22T09:05:00.000Z' }),
+        staffRefund({ id: 'r-blocked', status: 'blocked_permission', amountCents: 1000, attempts: 2, nextAttemptAt: '2026-11-22T09:05:00.000Z', permissionBlockedAt: '2026-11-22T07:05:00.000Z' }),
         staffRefund({ id: 'r-running', status: 'running', amountCents: 4900, note: 'Late delivery discount' }),
         staffRefund({ id: 'r-failed', status: 'failed', amountCents: 700 }),
         staffRefund({ id: 'r-done', status: 'succeeded', amountCents: 5000, restocked: true }),
@@ -343,6 +343,7 @@ describe('staff refund history and ship anyway', () => {
     expect(within(blocked).getByTestId('order-staff-refund-state')).toHaveTextContent(messages.states.blocked_permission);
     expect(within(blocked).getByText(messages.blockedTitle)).toBeVisible();
     expect(within(blocked).getByText(/Attempts: 2/)).toBeVisible();
+    expect(within(blocked).getByText(messages.lastAttempt({ time: formatDateTime('2026-11-25T07:05:00.000Z', 'en', SALES_LINK_TIME_ZONE) }))).toBeVisible();
 
     expect(within(within(history).getByTestId('order-staff-refund-r-failed')).getByText(messages.failedHelp)).toBeVisible();
     const done = within(history).getByTestId('order-staff-refund-r-done');

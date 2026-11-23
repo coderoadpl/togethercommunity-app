@@ -394,6 +394,8 @@ describe('staff refunds against a real database', () => {
 
     expect(await refundRows('order-1')).toMatchObject([{ status: 'blocked_permission', nextAttemptAt: minutes(61) }]);
     expect(await alertPayloads()).toMatchObject([{ alert: 'blocked_permission', orderId: 'order-1', amountCents: 1000 }]);
+    const blockedDetail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    expect(blockedDetail.staffRefunds).toMatchObject([{ status: 'blocked_permission', permissionBlockedAt: minutes(1) }]);
     expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await buyerEmails()).toStrictEqual([]);
 

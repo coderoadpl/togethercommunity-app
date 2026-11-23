@@ -284,6 +284,7 @@ export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   lastError: true,
   providerRefundStatus: true,
   submittedAt: true,
+  permissionBlockedAt: true,
   requestedByUserId: true,
   requestedByEmail: true,
   note: true,

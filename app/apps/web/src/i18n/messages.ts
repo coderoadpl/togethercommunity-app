@@ -1195,6 +1195,7 @@ export interface Messages {
       completedAt: (params: { time: string }) => string;
       attempts: (params: { count: number }) => string;
       nextAttempt: (params: { time: string }) => string;
+      lastAttempt: (params: { time: string }) => string;
       restocked: string;
       removedFromPackingList: string;
       failedHelp: string;

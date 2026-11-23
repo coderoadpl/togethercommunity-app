@@ -7,6 +7,7 @@ import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
 import type { OrderRefundAlert } from './order-refund-job.js';
+import { currencyFractionDigits } from './order-staff-refund.js';
 import { currencySchema, productTypeSchema } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
@@ -767,6 +768,9 @@ export const orderSoldOutRefundEmail = (
   }));
 };
 
+const minorUnitsAmount = (language: string, amountCents: number, currency: string): string =>
+  new Intl.NumberFormat(language === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency }).format(amountCents / 10 ** currencyFractionDigits(currency));
+
 export const orderRefundIssuedEmail = (
   language: string,
   input: {
@@ -780,8 +784,7 @@ export const orderRefundIssuedEmail = (
 ): EmailMessage => {
   const resolvedLanguage = languageOrDefault(language);
   const messages = transactionalMessages[resolvedLanguage];
-  const amount = new Intl.NumberFormat(resolvedLanguage === 'pl' ? 'pl-PL' : 'en-GB', { style: 'currency', currency: input.currency })
-    .format(input.amountCents / 100);
+  const amount = minorUnitsAmount(resolvedLanguage, input.amountCents, input.currency);
   const orderReference = shortOrderReference(input.orderId);
   return emailMessageSchema.parse(messages.orderRefundIssuedEmail.render({
     header: brandHeader(input.branding),
@@ -795,6 +798,35 @@ export const orderRefundIssuedEmail = (
     shopUrl: input.shopUrl,
     shopLink: link(input.shopUrl, messages.orderRefundIssuedEmail.shopLabel),
   }));
+};
+
+export const staffRefundAlertEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    alert: OrderRefundAlert;
+    orderId: string;
+    amountCents: number;
+    currency: string;
+    mayHaveRefunded: boolean;
+    restocked: boolean;
+    removedFromPackingList: boolean;
+    diagnostic: string;
+    orderUrl: string;
+  },
+): EmailMessage => {
+  const resolvedLanguage = languageOrDefault(language);
+  const messages = transactionalMessages[resolvedLanguage].staffRefundAlertEmail;
+  const amount = minorUnitsAmount(resolvedLanguage, input.amountCents, input.currency);
+  const paragraphs = (escape: (value: string) => string): string[] => [
+    ...messages.paragraphs({ ...input, amount: escape(amount), orderId: escape(input.orderId) }),
+    ...(input.diagnostic === '' ? [] : [`${messages.lastErrorLabel}: ${escape(input.diagnostic)}`]),
+  ];
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] ${messages.subjects[input.alert]}: ${input.orderId}`,
+    html: `${paragraphs(escapeHtml).map((paragraph) => `<p>${paragraph}</p>`).join('')}<p>${link(input.orderUrl, messages.openOrder)}</p>`,
+    text: `${paragraphs((value) => value).join('\n')}\n${input.orderUrl}`,
+  });
 };
 
 export const orderRefundAlertEmail = (

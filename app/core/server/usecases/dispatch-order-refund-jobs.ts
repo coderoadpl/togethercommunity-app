@@ -13,6 +13,7 @@ import {
   refundFailureOf,
   refundJobOfClaim,
   resolveEmailLanguage,
+  staffRefundAlertEmail,
   type AppError,
   type ClaimedRefundJob,
   type OrderListItem,
@@ -364,20 +365,6 @@ const STAFF_REFUND_EMAIL_SOURCE = 'staff-refunds';
 // A refund still awaited at the last check ends unconfirmed for staff, yet the buyer is told once the provider holds it.
 const BUYER_NOTICE_STATUSES: ReadonlySet<string> = new Set(['submitted', 'succeeded', 'unconfirmed']);
 
-const STOCK_KEPT_ALERTS: ReadonlySet<OrderRefundAlert> = new Set(['failed', 'failed_after_submission', 'blocked_permission_failed', 'unconfirmed']);
-
-const staffRefundAlertError = (job: Extract<RefundJob, { source: 'staff' }>, alert: OrderRefundAlert): string => {
-  const kept = [
-    ...(job.restocked ? ['the goods returned to stock'] : []),
-    ...(job.removedFromPackingList ? ['the order taken off the packing list'] : []),
-  ];
-  const keptNote = kept.length > 0 && STOCK_KEPT_ALERTS.has(alert) ? ` This refund was requested by staff; ${kept.join(' and ')} stay as chosen.` : ' This refund was requested by staff.';
-  const accessNote = alert === 'failed_after_submission'
-    ? ' If the payment provider had already reported the refund, the order shows as refunded and the access it gave was ended; that access is not given back automatically, so grant it again on the member page, and refund the order again from its page if needed.'
-    : '';
-  return `${job.lastError ?? ''}${keptNote}${accessNote}`.trim();
-};
-
 const buyerNotice = async (
   job: RefundJob,
   order: OrderListItem | null,
@@ -422,14 +409,29 @@ const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: D
   const recipients = await tenantStaffRecipients(job.tenantId, deps);
   const orderUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/sales/${encodeURIComponent(job.orderId)}`;
   const now = deps.clock.nowIso();
-  const error = job.source === 'staff' ? staffRefundAlertError(job, alert) : job.lastError ?? '';
+  const alertId = (index: number) => `order-refund-alert:${job.id}:${alert}:${String(job.attempts)}:${String(index)}`;
+  if (job.source === 'staff') {
+    return recipients.map((recipient, index) => ({
+      id: alertId(index),
+      tenantId: job.tenantId,
+      to: recipient.email,
+      payload: prerenderedTransactionalPayload(staffRefundAlertEmail(recipient.language, {
+        tenantName: tenant.name, alert, orderId: job.orderId, amountCents: job.amountCents, currency: job.currency,
+        mayHaveRefunded: job.createOutcomeUnknown, restocked: job.restocked, removedFromPackingList: job.removedFromPackingList,
+        diagnostic: job.lastError ?? '', orderUrl,
+      })),
+      sourceApp: STAFF_REFUND_EMAIL_SOURCE,
+      tenantTransportRequired: false,
+      now,
+    }));
+  }
   return recipients.map((recipient, index) => ({
-    id: `order-refund-alert:${job.id}:${alert}:${String(job.attempts)}:${String(index)}`,
+    id: alertId(index),
     tenantId: job.tenantId,
     to: recipient.email,
     payload: {
       kind: 'order-refund-alert', language: recipient.language, tenantName: tenant.name, alert, orderId: job.orderId,
-      amountCents: job.amountCents, currency: job.currency, error, orderUrl,
+      amountCents: job.amountCents, currency: job.currency, error: job.lastError ?? '', orderUrl,
     },
     now,
   }));

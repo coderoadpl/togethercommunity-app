@@ -240,6 +240,40 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       };
     },
   },
+  staffRefundAlertEmail: {
+    subjects: {
+      retrying: 'Staff refund not issued yet, retrying',
+      blocked_permission: 'Staff refund blocked by a missing Stripe permission',
+      blocked_permission_failed: 'Staff refund still blocked after 72 hours, not issued',
+      failed: 'Staff refund failed, nothing refunded',
+      failed_after_submission: 'Staff refund failed after it was issued',
+      unconfirmed: 'Staff refund not confirmed by Stripe, check it',
+    },
+    lastErrorLabel: 'Last error',
+    openOrder: 'Open the order',
+    paragraphs: ({ alert, amount, orderId, mayHaveRefunded, restocked, removedFromPackingList }) => {
+      const states = {
+        retrying: `The refund has not reached Stripe yet. It is retried automatically for 7 days; you get another message if it still fails. ${mayHaveRefunded
+          ? 'Stripe may already have received the request; the retries repeat that same request, so the order is never refunded twice.'
+          : 'Nothing has been refunded yet.'}`,
+        blocked_permission: 'Stripe refused it because the workspace\'s restricted Stripe key lacks the Charges and Refunds (write) permission, so nothing has been refunded yet. Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt. Attempts continue every hour for 72 hours.',
+        blocked_permission_failed: 'The refund was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Nothing was refunded. Once the permission is added, refund the order again from its page, or refund it by hand in the Stripe Dashboard.',
+        failed: 'The refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.',
+        failed_after_submission: 'Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund the order again from its page, or return the money another way.',
+        unconfirmed: 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it may or may not have been paid. Check the payment in the Stripe Dashboard before you refund the order again; if the refund failed or was never made, refund the order again from its page.',
+      } as const;
+      const settled = alert !== 'retrying' && alert !== 'blocked_permission';
+      const backToPacking = 'To send the order after all, put it back on the packing list from its page.';
+      const kept = !settled ? null
+        : restocked && removedFromPackingList ? `The goods returned to stock and the order taken off the packing list with this refund stay that way. ${backToPacking}`
+          : restocked ? 'The goods returned to stock with this refund stay in stock.'
+            : removedFromPackingList ? `The order taken off the packing list with this refund stays off it. ${backToPacking}` : null;
+      const access = alert === 'failed_after_submission'
+        ? 'If Stripe had already reported the refund, the order shows as refunded and the access it gave was ended; that access is not given back automatically: grant it again on the member page.'
+        : null;
+      return [`A staff member asked to refund ${amount} of order ${orderId}.`, states[alert], ...(kept === null ? [] : [kept]), ...(access === null ? [] : [access])];
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

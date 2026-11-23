@@ -182,12 +182,15 @@ describe('rows written by staff refunds, read by the previous release', () => {
     expect(rows).toContainEqual({ type: 'returned', reference: { orderId: 'order-full', reason: 'staff_refund' } });
   });
 
-  it('queues staff alerts and buyer notices the previous release parses and renders', async () => {
+  it('queues staff alerts and buyer notices pre-rendered, in the shape the previous release parses and renders', async () => {
     const rows = await database.db.select({ id: emailOutbox.id, kind: emailOutbox.kind, payload: emailOutbox.payload }).from(emailOutbox);
     expect(rows.filter((row) => !listed(previousEmailPayloadKinds, row.kind))).toStrictEqual([]);
-    const alerts = rows.filter((row) => row.kind === 'order-refund-alert');
-    expect(alerts).toHaveLength(1);
-    for (const alert of alerts) expect(previousRefundAlertParses(alert.payload)).toBe(true);
+    expect(rows.filter((row) => row.kind === 'order-refund-alert' && !previousRefundAlertParses(row.payload))).toStrictEqual([]);
+    const alerts = rows.filter((row) => row.id.startsWith('order-refund-alert:'));
+    expect(alerts.map((row) => row.kind)).toStrictEqual(['m2m-transactional']);
+    for (const alert of alerts) {
+      expect(previousRenderM2m(alert.payload)).toStrictEqual({ subject: expect.stringContaining('Staff refund failed'), html: expect.any(String), text: expect.any(String) });
+    }
     const notices = rows.filter((row) => row.id.startsWith('order-refund-issued:'));
     expect(notices.map((row) => row.kind)).toStrictEqual(['m2m-transactional', 'm2m-transactional']);
     for (const notice of notices) {

@@ -298,6 +298,19 @@ export interface TransactionalEmailMessages {
       shopLink: string;
     }) => TransactionalEmailMessageContent;
   };
+  staffRefundAlertEmail: {
+    subjects: Record<OrderRefundAlert, string>;
+    lastErrorLabel: string;
+    openOrder: string;
+    paragraphs: (input: {
+      alert: OrderRefundAlert;
+      amount: string;
+      orderId: string;
+      mayHaveRefunded: boolean;
+      restocked: boolean;
+      removedFromPackingList: boolean;
+    }) => string[];
+  };
   orderRefundAlertEmail: {
     render: (input: {
       tenantName: string;

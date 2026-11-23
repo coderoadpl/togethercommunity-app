@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { prerenderedTransactionalPayload } from './email-outbox.js';
-import { orderRefundIssuedEmail } from './transactional-email.js';
+import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
+import { orderRefundIssuedEmail, staffRefundAlertEmail } from './transactional-email.js';
 
 // Literal copies from the release on production (8141fd15); they must not follow this release's schemas.
 const m2mTransactionalMessageFields = {
@@ -59,10 +60,24 @@ describe('the buyer refund notice as the previous release reads it', () => {
     ['en', 'Acme <Shop>', 4099, 'PLN'],
     ['pl', 'Acme <Shop>', 1500, 'PLN'],
     ['pl', longestTenantName, 99_999_999, 'EUR'],
+    ['en', 'Acme <Shop>', 1200, 'JPY'],
   ] as const)('parses and renders the %s notice of %s unchanged', (language, tenantName, amountCents, currency) => {
     const message = orderRefundIssuedEmail(language, {
       tenantName, orderId: 'order-1', amountCents, currency, shopUrl: 'https://acme.example.com/',
       branding: { logoUrl: 'https://acme.example.com/logo.png', accentColor: '#123456', socialLinks: [] },
+    });
+    expect(previousRender(prerenderedTransactionalPayload(message))).toStrictEqual({ success: true, data: message });
+  });
+});
+
+describe('the staff refund alerts as the previous release reads them', () => {
+  it.each(ORDER_REFUND_ALERTS.flatMap((alert) => [
+    ['en', alert, 'Acme <Shop>', 4099, 'PLN', true],
+    ['pl', alert, longestTenantName, 99_999_999, 'JPY', false],
+  ] as const))('parses and renders the %s %s alert of %s unchanged', (language, alert, tenantName, amountCents, currency, kept) => {
+    const message = staffRefundAlertEmail(language, {
+      tenantName, alert, orderId: 'order-1', amountCents, currency, mayHaveRefunded: !kept, restocked: kept, removedFromPackingList: kept,
+      diagnostic: `The payment provider refused the refund, so nothing was refunded: ${'x'.repeat(2_000)}`, orderUrl: 'https://acme.example.com/panel/sales/order-1',
     });
     expect(previousRender(prerenderedTransactionalPayload(message))).toStrictEqual({ success: true, data: message });
   });

@@ -118,7 +118,7 @@ export const shipAnywayBlocker = (order: Pick<Order, 'status' | 'shipping' | 'fu
 
 const fractionDigitsCache = new Map<string, number>();
 
-const currencyFractionDigits = (currency: string): number => {
+export const currencyFractionDigits = (currency: string): number => {
   const cached = fractionDigitsCache.get(currency);
   if (cached !== undefined) return cached;
   let digits = 2;

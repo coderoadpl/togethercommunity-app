@@ -858,6 +858,7 @@ export const en: Messages = {
     outcomeGroupRejected: 'Group rejected. Nothing was changed.',
     outcomeStale: 'The shop changed since this was proposed, so nothing was applied. The proposer can send it again.',
     outcomeImageUnavailable: 'The proposed image is no longer available, so nothing was changed. It has to be uploaded and proposed again.',
+    outcomeStaleUnconfirmed: 'Nothing was applied: the shop changed since this was proposed, or a proposed image or file is no longer available. Its history shows which.',
     outcomeFileUnavailable: 'The proposed file is no longer available, so nothing was changed. It has to be staged and proposed again.',
     outcomeFailed: ({ reason }) => format('The shop refused this change, so nothing was applied: {reason}', { reason }),
     outcomeFailedUnknown: 'The shop refused this change, so nothing was applied.',

@@ -760,6 +760,7 @@ export interface Messages {
     outcomeGroupRejected: string;
     outcomeStale: string;
     outcomeImageUnavailable: string;
+    outcomeStaleUnconfirmed: string;
     outcomeFileUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
     outcomeFailedUnknown: string;

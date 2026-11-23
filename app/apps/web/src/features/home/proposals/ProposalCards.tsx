@@ -40,12 +40,14 @@ export type SettledStatus = 'stale' | 'failed' | 'expired';
 
 export type MissingAsset = 'image' | 'file';
 
+export type StaleCause = MissingAsset | 'unconfirmed';
+
 export interface SettledOutcome {
   key: string;
   title: string;
   status: SettledStatus;
   reason: string | null;
-  missing: MissingAsset | null;
+  missing: StaleCause | null;
 }
 
 export interface DecisionCallbacks {
@@ -60,12 +62,13 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-const staleExplanation = (t: Translations, missing: MissingAsset | null): string => {
+const staleExplanation = (t: Translations, missing: StaleCause | null): string => {
   if (missing === 'image') return t.outcomeImageUnavailable;
-  return missing === 'file' ? t.outcomeFileUnavailable : t.outcomeStale;
+  if (missing === 'file') return t.outcomeFileUnavailable;
+  return missing === 'unconfirmed' ? t.outcomeStaleUnconfirmed : t.outcomeStale;
 };
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null, missing: MissingAsset | null = null): string | null => {
+export const outcomeExplanation = (t: Translations, status: string, reason: string | null, missing: StaleCause | null = null): string | null => {
   if (status === 'stale') return staleExplanation(t, missing);
   if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
   if (status === 'expired') return t.outcomeExpired;
@@ -328,12 +331,13 @@ const useDecisionFeedback = () => {
     }
     toast.error(localizePanelError(error, t));
   };
-  const missingAsset = async (decided: readonly ChangeProposalOwnerView[]): Promise<MissingAsset | null> => {
+  const missingAsset = async (decided: ChangeProposalOwnerView): Promise<StaleCause | null> => {
+    if (!mayBeStaleForMissingAsset(decided)) return null;
     try {
-      const details = await Promise.all(decided.filter(mayBeStaleForMissingAsset).map((item) => queryClient.fetchQuery(actions.changeProposal(item.id))));
-      return details.map((detail) => staleForMissingAsset(detail.proposal.events)).find((missing) => missing !== null) ?? null;
+      const detail = await queryClient.fetchQuery(actions.changeProposal(decided.id));
+      return staleForMissingAsset(detail.proposal.events);
     } catch {
-      return null;
+      return 'unconfirmed';
     }
   };
   return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset };
@@ -391,7 +395,7 @@ export const SingleProposalCard = ({
         return;
       }
       if (isSettledStatus(decided.status)) {
-        const missing = await missingAsset([decided]);
+        const missing = await missingAsset(decided);
         const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missing);
         if (explanation !== null) toast.info(explanation);
         onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, missing });
@@ -481,7 +485,7 @@ export const GroupProposalCard = ({
   onSettled,
   onDecided,
 }: { groupId: string; itemCount: number } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const [changed, setChanged] = useState<GroupChange | null>(null);
@@ -533,7 +537,7 @@ export const GroupProposalCard = ({
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
       const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
-      const missing = status === 'stale' ? await missingAsset(decided.items) : null;
+      const missing = status === 'stale' ? staleForMissingAsset(decided.items.flatMap((item) => item.events)) : null;
       const explanation = outcomeExplanation(t.changeProposals, status, reason, missing);
       if (explanation !== null) toast.info(explanation);
       onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, missing });

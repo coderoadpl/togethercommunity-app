@@ -1091,6 +1091,60 @@ describe('ProposalsPanel', () => {
     expect(t.outcomeFileUnavailable).toContain('staged and proposed again');
   });
 
+  it('explains a stale group approval from the events in its response, even when no proposal can be read afterwards', async () => {
+    usePending(pendingFileChangeProposals.filter((proposal) => proposal.groupId !== null), fileChangeProposalGroup);
+    let detailReads = 0;
+    server.use(
+      http.post('/api/change-proposals/groups/:id/approve', () => HttpResponse.json({
+        ok: true,
+        data: {
+          group: {
+            ...fileChangeProposalGroup,
+            status: 'stale',
+            items: fileChangeProposalGroup.items.map((item) => ({
+              ...item,
+              status: 'stale',
+              events: item.id === 'proposal-field-guide-digital-file'
+                ? [...item.events, { sequence: 2, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note: changeProposalFileMissingNote('staged-file-field-guide'), at: '2026-11-21T12:00:00.000Z' }]
+                : [...item.events, { sequence: 2, kind: 'stale', actorUserId: 'owner', apiKeyId: null, note: 'Not applied because item 2 of the group did not apply', at: '2026-11-21T12:00:00.000Z' }],
+            })),
+          },
+        },
+      })),
+      http.get('/api/change-proposals/:id', () => {
+        detailReads += 1;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 });
+      }),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: t.approveGroup({ count: 4 }) }));
+    await userEvent.click(await screen.findByTestId('proposal-approve-confirm'));
+
+    const outcome = await screen.findByTestId(`proposal-outcome-${FILE_GROUP_ID}`);
+    expect(outcome).toHaveTextContent(t.outcomeFileUnavailable);
+    expect(outcome).not.toHaveTextContent(t.outcomeStale);
+    expect(detailReads).toBe(0);
+  });
+
+  it('gives a neutral explanation of a stale single approval whose proposal cannot be read afterwards', async () => {
+    usePending([fileAddProposal]);
+    server.use(
+      http.post('/api/change-proposals/:id/approve', () => HttpResponse.json({ ok: true, data: { proposal: settledView(fileAddProposal, { status: 'stale' }) } })),
+      http.get('/api/change-proposals/:id', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('proposal-approve'));
+    await userEvent.click(await screen.findByTestId('proposal-approve-confirm'));
+
+    const outcome = await screen.findByTestId(`proposal-outcome-${fileAddProposal.id}`);
+    expect(outcome).toHaveTextContent(t.outcomeStaleUnconfirmed);
+    expect(outcome).not.toHaveTextContent(t.outcomeStale);
+  });
+
   it('labels a stale proposal of a missing file in history and its timeline, and keeps the generic label on a group sibling', async () => {
     expect(fileHistoryDetail(fileUnavailableHistoryProposal).events.map((event) => event.note))
       .toContain(changeProposalFileMissingNote('staged-file-bonus-chapter'));

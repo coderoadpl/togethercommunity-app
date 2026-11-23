@@ -904,6 +904,7 @@ export const pl: Messages = {
     outcomeGroupRejected: 'Grupa odrzucona. W sklepie nic się nie zmieniło.',
     outcomeStale: 'Od czasu tej propozycji sklep się zmienił, więc nic nie zostało wprowadzone. Nadawca może wysłać ją ponownie.',
     outcomeImageUnavailable: 'Proponowanego obrazka już nie ma, więc nic nie zostało zmienione. Trzeba go przesłać i zaproponować ponownie.',
+    outcomeStaleUnconfirmed: 'Nic nie zostało wprowadzone: sklep zmienił się od czasu tej propozycji albo proponowany obrazek lub plik nie jest już dostępny. Historia propozycji pokazuje, co się stało.',
     outcomeFileUnavailable: 'Proponowanego pliku już nie ma, więc nic nie zostało zmienione. Trzeba go ponownie przesłać lub skopiować i zaproponować.',
     outcomeFailed: ({ reason }) => format('Sklep nie przyjął tej zmiany, więc nic nie zostało wprowadzone: {reason}', { reason }),
     outcomeFailedUnknown: 'Sklep nie przyjął tej zmiany, więc nic nie zostało wprowadzone.',

@@ -540,11 +540,15 @@ approval stays on the page as an explained notice until it is dismissed, and
 the proposal moves to **History**. A `stale` approval is explained as "the
 shop changed; the proposer can send it again", except when an item that
 attaches an image ended stale because the image is no longer available: the
-panel then reads that item's events and, finding the note code
-`image_unavailable`, says that the proposed image is no longer available,
-nothing was changed, and it has to be uploaded and proposed again. An item that
-attaches a file is read the same way for the note code `file_unavailable`
-([Download files](#download-files)). "Show more proposals" appends the next page
+panel then reads that item's events (a single proposal reads them again from
+the server; a group takes them from the items of its approval answer) and,
+finding the note code `image_unavailable`, says that the proposed image is no
+longer available, nothing was changed, and it has to be uploaded and proposed
+again. An item that attaches a file is read the same way for the note code
+`file_unavailable` ([Download files](#download-files)). When a single
+proposal's events cannot be read, the notice says neutrally that nothing was
+applied because the shop changed or a proposed image or file is no longer
+available, and that its history shows which. "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
 first new card. The full-page error appears only when nothing has loaded yet: a
 next page that fails keeps the list and shows an inline error with a Retry of

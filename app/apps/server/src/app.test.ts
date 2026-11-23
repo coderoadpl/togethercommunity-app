@@ -3461,10 +3461,30 @@ describe('public rate limiting', () => {
       vi.spyOn(configured.tenants, 'findSettings'),
     ];
     const lookupCount = () => lookups.reduce((total, lookup) => total + lookup.mock.calls.length, 0);
+    const forms = new InMemoryMarketingSignupFormRepository();
+    forms.forms.push({
+      id: 'form-1', tenantId: acme.id, slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'newsletter',
+      consentVersion: { id: 'newsletter-v1', tenantId: acme.id, definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.example.org/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
+      listId: null, tags: [], collectName: false, successText: { en: 'Thank you', pl: 'Thank you' },
+      redirectUrl: null, allowedOrigins: ['https://studio.example.org'], token: 'form_token_1234567890123456', status: 'active', revision: 1,
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    });
+    const formLookup = vi.spyOn(forms, 'findBySlug');
+    configured.marketingSignup = {
+      dispatchEmail: () => undefined,
+      forms,
+      transaction: { run: async () => { throw new Error('An over-limit submission must not open a transaction'); } },
+      clock: { nowIso: () => '2026-07-01T00:00:00.000Z' },
+      ids: { nextId: () => 'id-1' },
+      tokens: { nextToken: () => 'token-1' },
+      hmac: { compute: () => 'hash' },
+    };
     let lookupsBeforeLimiter: number | null = null;
+    let formLookupsBeforeLimiter: number | null = null;
     configured.rateLimitBuckets = {
       claim: async (input) => {
         lookupsBeforeLimiter ??= lookupCount();
+        formLookupsBeforeLimiter ??= formLookup.mock.calls.length;
         return input.scope !== 'signup:ip';
       },
       purgeExpired: async () => 0,
@@ -3477,9 +3497,13 @@ describe('public rate limiting', () => {
     });
     expect(response.status).toBe(429);
     expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://studio.example.org');
     expect(await response.text()).toContain(`<p role="alert">${publicMarketingMessagesEn.signupRateLimited}</p>`);
     expect(lookupsBeforeLimiter).toBeGreaterThan(0);
     expect(lookupCount()).toBe(lookupsBeforeLimiter);
+    expect(formLookupsBeforeLimiter).toBe(1);
+    expect(formLookup).toHaveBeenCalledOnce();
+    expect(formLookup).toHaveBeenCalledWith(acme.id, 'newsletter');
   });
 
   it('answers a throttled checkout with 429 and Retry-After', async () => {

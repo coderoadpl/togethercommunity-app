@@ -53,7 +53,7 @@ export const ChangePasswordForm = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [revokeOtherSessions, setRevokeOtherSessions] = useState(revokeOtherSessionsByDefault);
-  const [localError, setLocalError] = useState<{ field: 'new' | 'confirm'; message: string } | null>(null);
+  const [localError, setLocalError] = useState<'tooShort' | 'mismatch' | null>(null);
   useEffect(() => {
     if (success) {
       setOpen(false);
@@ -62,6 +62,12 @@ export const ChangePasswordForm = ({
       setConfirmPassword('');
     }
   }, [success]);
+
+  const openDialog = () => {
+    setRevokeOtherSessions(revokeOtherSessionsByDefault);
+    setLocalError(null);
+    setOpen(true);
+  };
 
   const close = () => {
     setOpen(false);
@@ -75,19 +81,19 @@ export const ChangePasswordForm = ({
     event.preventDefault();
     setLocalError(null);
     if (!passwordMeetsMinimumLength(newPassword)) {
-      setLocalError({ field: 'new', message: t.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }) });
+      setLocalError('tooShort');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setLocalError({ field: 'confirm', message: t.changePassword.mismatch });
+      setLocalError('mismatch');
       return;
     }
     onSubmit({ currentPassword, newPassword, revokeOtherSessions });
   };
 
   const remoteError = error === null ? null : localizeChangePasswordError(error, t);
-  const newPasswordError = localError?.field === 'new' ? localError.message : null;
-  const confirmPasswordError = localError?.field === 'confirm' ? localError.message : null;
+  const newPasswordError = localError === 'tooShort' ? t.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }) : null;
+  const confirmPasswordError = localError === 'mismatch' ? t.changePassword.mismatch : null;
 
   const form = (
     <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -133,7 +139,7 @@ export const ChangePasswordForm = ({
           value={confirmPassword}
           onChange={(event) => {
             setConfirmPassword(event.target.value);
-            if (localError?.field === 'confirm') setLocalError(null);
+            if (localError === 'mismatch') setLocalError(null);
           }}
           autoComplete="new-password"
           inputProps={{ 'data-testid': 'change-confirm-password', 'aria-describedby': confirmPasswordError === null ? undefined : 'change-confirm-password-error' }}
@@ -169,7 +175,7 @@ export const ChangePasswordForm = ({
     </Box>
   );
   return dialog ? <>
-    <Box><Button variant="contained" data-testid="change-password-open" onClick={() => setOpen(true)}>{t.changePassword.submitIdle}</Button></Box>
+    <Box><Button variant="contained" data-testid="change-password-open" onClick={openDialog}>{t.changePassword.submitIdle}</Button></Box>
     <AccountDialog open={open} title={t.changePassword.heading} pending={pending} onClose={close}>{form}</AccountDialog>
   </> : form;
 };

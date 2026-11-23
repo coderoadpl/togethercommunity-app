@@ -26,6 +26,7 @@ const orderIdSchema = z.string().min(1);
 
 const refundOptionsSchema = z.object({
   amount: z.string().min(1).optional(),
+  remainder: z.string().min(1).optional(),
   reason: z.string().optional(),
   restock: z.boolean().default(true),
   keepOnPackingList: z.boolean().optional(),
@@ -69,6 +70,7 @@ const withRequestKey = (error: AppError, requestKey: string): AppError => {
 type RefundRequest = {
   requestKey: string;
   amountCents?: number;
+  expectedAmountCents?: number;
   reason?: string;
   restock?: boolean;
   removeFromPackingList?: boolean;
@@ -79,11 +81,14 @@ const refundRequest = (
   preview: StaffRefundPreview,
   newRequestKey: () => string,
 ): Result<RefundRequest, AppError> => {
+  if (options.amount !== undefined && options.remainder !== undefined) return err(validation('Use --remainder only for a full refund, without --amount'));
   const amount = options.amount === undefined ? null : minorUnitsFromDecimal(options.amount, preview.currency);
   if (amount !== null && !amount.ok) return amount;
+  const remainder = options.remainder === undefined ? ok(preview.remainderCents) : minorUnitsFromDecimal(options.remainder, preview.currency);
+  if (!remainder.ok) return remainder;
   return ok({
     requestKey: options.requestKey ?? newRequestKey(),
-    ...(amount === null ? {} : { amountCents: amount.value }),
+    ...(amount === null ? { expectedAmountCents: remainder.value } : { amountCents: amount.value }),
     ...(options.reason === undefined ? {} : { reason: options.reason }),
     ...(options.restock ? {} : { restock: false }),
     ...(options.keepOnPackingList === true ? { removeFromPackingList: false } : {}),
@@ -104,7 +109,8 @@ export const runOrderRefund = async (
   if (!request.ok) { emit(request, ctx.json, () => ''); return; }
   if (options.data.yes !== true) {
     const amount = formatMinorUnits(request.value.amountCents ?? preview.value.remainderCents, preview.value.currency);
-    emit(err(validation(`Refunding ${amount} of order ${orderId} cannot be undone; repeat the command with --yes to confirm`, { preview: preview.value })), ctx.json, () => '');
+    const confirm = request.value.amountCents === undefined ? `--yes --remainder ${amount.replace(/ \S+$/, '')}` : '--yes';
+    emit(err(validation(`Refunding ${amount} of order ${orderId} cannot be undone; repeat the command with ${confirm} to confirm`, { preview: preview.value })), ctx.json, () => '');
     if (!ctx.json) console.error(refundPreviewLines(preview.value));
     return;
   }
@@ -144,6 +150,7 @@ export const registerOrderRefundCommands = (
     .command('refund <orderId>')
     .description('Refund a paid order through the payment provider: the whole remainder, or part of it with --amount')
     .option('--amount <decimal>', 'refund only this amount in the order currency, e.g. 12.50; omit to refund the whole remainder')
+    .option('--remainder <decimal>', 'with --yes, the remainder a full refund was confirmed for; the refund is refused when the remainder changed since')
     .option('--reason <text>', 'staff-only note kept with the refund, at most 500 characters; never sent to the buyer or the provider')
     .option('--no-restock', 'do not return the goods to stock with a full refund')
     .option('--keep-on-packing-list', 'keep the order on the packing list after a full refund')

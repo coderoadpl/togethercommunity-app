@@ -37,6 +37,8 @@ detail page so that I do not need the payment provider's dashboard.
   (FR-3); other viewers never see it.
 - [ ] The dialog pre-fills the whole refundable remainder, shows the order's mode, the stock and
   packing consequences, the access consequence and an optional staff-only reason.
+- [ ] When the remainder changed after the dialog loaded it, confirming refunds nothing and the
+  dialog names the new remainder for staff to confirm again.
 - [ ] Confirming queues one refund and shows it in the order's refund history at once.
 - [ ] The project's own checks pass.
 - [ ] Verified in the running app.
@@ -77,7 +79,8 @@ Studio.
 
 **Acceptance criteria:**
 
-- [ ] `order refund <orderId>` refunds the remainder; `--amount <decimal>` refunds part;
+- [ ] `order refund <orderId>` refunds the remainder it printed (`--yes --remainder <decimal>`)
+  and is refused when the remainder changed since; `--amount <decimal>` refunds part;
   `--reason <text>`, `--no-restock`, `--keep-on-packing-list` and `--request-key <key>` mirror
   the dialog; `--yes` is required to confirm (as other irreversible commands).
 - [ ] `order refund-preview <orderId>` prints what is refundable and the consequences.
@@ -138,23 +141,26 @@ workspace's restricted key and what to do about it.
   records decide and the response says so; the provider refuses anything above the charge.
 - FR-5: Creating a refund happens in one database transaction that locks the order row
   (`SELECT … FOR UPDATE`), re-reads the platform's committed sum, checks the amount, inserts the
-  staff refund row and applies the stock and packing choices. A repeated `requestKey` for the
+  staff refund row and applies the stock and packing choices. A full refund names the remainder
+  staff confirmed in `expectedAmountCents` (required without `amountCents`); when it differs from
+  the remainder computed under the lock the request is refused with `conflict`, a message naming
+  the current remainder and `details.remainderCents`. A partial refund may leave
+  `expectedAmountCents` out or must set it to `amountCents`. A repeated `requestKey` for the
   same order returns the existing refund when the amount, restock and packing choices match and
   `conflict` otherwise. At most one staff refund per order may be waiting to reach the provider
   (`pending`, `running`, `blocked_permission`); a second one is refused with `conflict` until the
   first is accepted or failed.
-- FR-6: A full refund (no amount) is stored as a remainder refund: the dispatcher applies the
-  sold-out coverage rule with the paid amount, less the failed refunds of the other staff refunds
-  of the order that had not already failed when it was requested (each of those, whether still
-  committed then or requested later, owns its own later failure), as the target (refund what the
-  provider's list still leaves unrefunded). A staff refund that had already failed when the full
-  refund was requested is inside the remainder, so the full refund pays it; the ids of those
-  failed refunds are frozen on the row at request time. A refund with a typed amount, also one
-  equal to the remainder, is
-  stored as an amount refund: the dispatcher issues exactly that amount once; its own refund is
-  the listed refund whose metadata `refundJobId` equals the row id or whose id is the stored
-  provider refund id. It ends `skipped_refunded` only when succeeded provider refunds cover the
-  paid amount; while a pending one covers it, it keeps watching. A typed amount that covers the
+- FR-6: Every staff refund issues exactly its stored `amountCents`, once (D2'). A full refund (no
+  amount) stores the remainder computed at request time as a remainder refund; a refund with a
+  typed amount, also one equal to the remainder, is stored as an amount refund. The dispatcher
+  matches a staff refund's own provider refund by metadata `refundJobId` or the stored provider
+  refund id; it never derives the amount from other refunds, never pays another refund's
+  shortfall and never reopens because another refund failed. A dashboard refund that leaves less
+  on the charge than the stored amount makes the provider refuse the refund, which ends `failed`
+  with the staff alert and no buyer e-mail. When the provider answers that the charge is already
+  refunded, the staff refund keeps watching: it ends `skipped_refunded` only when succeeded
+  provider refunds cover the paid amount, keeps watching while a pending one covers it, and issues
+  its own amount when that one fails. A typed amount that covers the
   whole remainder at request time gets the full refund's stock and packing choices (FR-9). Both use the existing idempotency-key
   generations (`staff-refund-<id>`, `staff-refund-<id>-<n>`), lease, retry delays,
   `blocked_permission`, status checks, `unconfirmed` and staff alerts.
@@ -230,8 +236,7 @@ and its order detail would fail for that order. Staff refunds are therefore stor
 provider refund id and status, submitted at, status checks, key generation, permission blocked
 at, transient failure streak) plus `kind` (`remainder` | `amount`), `request_key` (unique per
 workspace), `requested_by_user_id`, `requested_by_email`, `note`, `restocked`,
-`removed_from_packing_list`, `failed_sibling_ids` (the other staff refunds of the order that
-had already failed, not platform-committed, when the row was created), `buyer_notified_at`. It reuses the trigger function
+`removed_from_packing_list`, `buyer_notified_at`. It reuses the trigger function
 `record_refund_job_order_change()` on insert and status change, so the order feed sees each
 change. Partial unique index `(tenant_id, order_id) WHERE status IN ('pending', 'running',
 'blocked_permission')` enforces FR-5.
@@ -299,9 +304,13 @@ guard against refunding more than the charge.
   A a new reason in `order_refund_jobs`, B a two-release rollout). Why: the production release
   would throw on a foreign reason and stop all sold-out refunds after a rollback. Revert: "undo
   D1 → single table".
-- D2. Full refund = remainder (sold-out coverage rule); partial = exact amount issued once
-  (alternative: cumulative targets). Why: a dashboard refund cannot make a partial refund pay
-  twice or pay too little. Revert: "undo D2 → cumulative targets".
+- D2'. Every staff refund issues exactly its stored amount once; a full refund is an amount
+  refund of the remainder computed at request time and confirmed by `expectedAmountCents`
+  (replaces D2, under which a full refund re-derived its amount from the provider's refund list
+  and interacted with the failures of other refunds of the order). Why: four review rounds found
+  money defects in the re-derivation; with exact amounts a refund never pays another refund's
+  shortfall or anything twice, and a changed remainder is refused instead of paid. The sold-out
+  job keeps its own remainder rule. Revert: "undo D2' → remainder coverage".
 - D3. One staff refund per order waiting to reach the provider; a repeated request key returns the
   same refund. Revert: "undo D3 → parallel refunds".
 - D4. Stock and packing changes apply when the refund is requested, not when it succeeds. Why: the

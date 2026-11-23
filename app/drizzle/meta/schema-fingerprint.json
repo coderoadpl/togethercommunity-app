@@ -1,6 +1,6 @@
 {
-  "hash": "d526e1264de84a62786ceab80157ed51513cc42e18298d26ff0cd71921b19e0a",
-  "shortId": "d526e1264de8",
+  "hash": "55d72e19d7e0b0ae3a14252c91fa4b02032599fe39e515fa53f80f6e98122ab6",
+  "shortId": "55d72e19d7e0",
   "schema": {
     "constraints": [
       {
@@ -6576,14 +6576,6 @@
             "name": "status",
             "notNull": true,
             "type": "text"
-          },
-          {
-            "default": "'{}'::text[]",
-            "generated": "",
-            "identity": "",
-            "name": "failed_sibling_ids",
-            "notNull": true,
-            "type": "text[]"
           },
           {
             "default": "0",

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import {
   appError,
@@ -11,6 +11,7 @@ import {
   PLATFORM_COMMITTED_REFUND_STATUSES,
   shipAnywayBlocker,
   STAFF_REFUND_WAITING_STATUSES,
+  staffRefundWaitingConflict,
   type Order,
   type OrderStaffRefund,
 } from '#core/domain/index.js';
@@ -62,11 +63,6 @@ const committedCents = async (executor: Pick<Executor, 'select'>, tenantId: stri
   return Number(staff?.cents ?? 0) + Number(soldOut?.cents ?? 0);
 };
 
-const failedRefundIds = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<string[]> =>
-  (await executor.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
-    .where(and(ofOrder(tenantId, orderId), notInArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]))))
-    .map((row) => row.id);
-
 const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<boolean> => {
   const [row] = await executor.select({ id: orderShipments.id }).from(orderShipments)
     .where(and(
@@ -78,12 +74,10 @@ const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string,
   return row !== undefined;
 };
 
-const WAITING_REFUND_CONFLICT = 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed';
-
 const insertConflict = async (executor: Pick<Executor, 'select'>, tenantId: string, requestKey: string) => {
   const [sameKey] = await executor.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
     .where(and(eq(orderStaffRefunds.tenantId, tenantId), eq(orderStaffRefunds.requestKey, requestKey)));
-  return appError('conflict', sameKey === undefined ? WAITING_REFUND_CONFLICT : 'This refund request key was already used');
+  return sameKey === undefined ? staffRefundWaitingConflict() : appError('conflict', 'This refund request key was already used');
 };
 
 export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundRepository => ({
@@ -101,7 +95,6 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
     const decision = input.decide({
       order,
       platformCommittedCents: await committedCents(tx, tenantId, input.orderId),
-      failedRefundIds: await failedRefundIds(tx, tenantId, input.orderId),
       sameRequest: sameRequest === undefined ? null : toStaffRefund(sameRequest),
       waiting: waiting === undefined ? null : toStaffRefund(waiting),
       hasLabel: await labelBought(tx, tenantId, input.orderId),

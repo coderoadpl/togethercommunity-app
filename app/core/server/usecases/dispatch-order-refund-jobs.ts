@@ -61,7 +61,6 @@ interface Settlement {
   outcome: DispatchOutcome;
   alert: OrderRefundAlert | null;
   ownRefund?: ProviderRefund;
-  alertAmountCents?: number;
 }
 
 export interface DispatchOrderRefundJobsOptions {
@@ -119,7 +118,7 @@ const settleRefundFailure = (job: RefundJob, error: AppError, now: string): Sett
   if (kind === 'already_refunded') return watchRefunds(error.message, now);
   if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
   if (kind === 'idempotency_mismatch') return { update: { status: 'pending', nextAttemptAt: now, lastError: error.message }, outcome: 'retrying', alert: null };
-  if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(error.message);
+  if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(job.source === 'staff' ? `The payment provider refused the refund, so nothing was refunded: ${error.message}` : error.message);
   const transientFailureStreak = job.transientFailureStreak + 1;
   const retryAt = orderRefundRetryAt(transientFailureStreak, now, job.createdAt);
   if (retryAt === null) return finalFailure(error.message);
@@ -153,29 +152,23 @@ const committedCoverage = (refunds: readonly ProviderRefund[], targetCents: numb
   return { kind: 'covered', awaiting: settled ? undefined : committed.find((refund) => refund.status !== 'succeeded') };
 };
 
-const coverageOf = (job: RefundJob, refunds: readonly ProviderRefund[], targetCents: number): Coverage => {
-  const ownFailed = ownRefundsOf(job, refunds).find((refund) => !isCommitted(refund));
-  if (ownFailed !== undefined) return { kind: 'own_failed', refund: ownFailed };
-  if (job.source === 'staff' && job.kind === 'amount') {
-    const own = ownRefundsOf(job, refunds).filter(isCommitted);
-    if (own.length === 0) return { kind: 'short', remainingCents: job.amountCents };
-    return { kind: 'covered', awaiting: own.find((refund) => refund.status !== 'succeeded') };
-  }
-  return committedCoverage(refunds, targetCents);
+const ownCoverage = (job: RefundJob, refunds: readonly ProviderRefund[]): Coverage => {
+  const own = ownRefundsOf(job, refunds).filter(isCommitted);
+  if (own.length === 0) return { kind: 'short', remainingCents: job.amountCents };
+  return { kind: 'covered', awaiting: own.find((refund) => refund.status !== 'succeeded') };
 };
 
-const failedForSiblingNotTakenOver = (job: Extract<RefundJob, { source: 'staff' }>, refund: ProviderRefund): boolean =>
-  !isCommitted(refund) && refund.refundJobId !== undefined && refund.refundJobId !== job.id && !job.failedSiblingIds.includes(refund.refundJobId);
+const coverageOf = (job: RefundJob, refunds: readonly ProviderRefund[]): Coverage => {
+  const ownFailed = ownRefundsOf(job, refunds).find((refund) => !isCommitted(refund));
+  if (ownFailed !== undefined) return { kind: 'own_failed', refund: ownFailed };
+  return job.source === 'staff' ? ownCoverage(job, refunds) : committedCoverage(refunds, job.amountCents);
+};
 
-// A sibling still committed when this refund was requested, or requested after it, alerts staff about its own later
-// failure, so this refund must not pay that shortfall a second time; a sibling that had already failed is inside its amount.
-const coverageTarget = (job: RefundJob, order: OrderListItem | null, refunds: readonly ProviderRefund[]): number =>
-  job.source === 'staff' && job.kind === 'remainder'
-    ? (order?.amountCents ?? job.amountCents) - sumCents(refunds.filter((refund) => failedForSiblingNotTakenOver(job, refund)))
-    : job.amountCents;
-
-const amountCoverageAtCheck = (job: RefundJob, coverage: Coverage, refunds: readonly ProviderRefund[], order: OrderListItem | null): Coverage => {
-  if (coverage.kind !== 'short' || job.source !== 'staff' || job.kind !== 'amount' || order === null) return coverage;
+// A staff refund the provider refused as already refunded has no refund of its own; it ends only once refunds made
+// outside the platform cover the whole charge, and is issued after all when one of them fails.
+const coverageAtCheck = (job: RefundJob, refunds: readonly ProviderRefund[], order: OrderListItem | null): Coverage => {
+  const coverage = coverageOf(job, refunds);
+  if (coverage.kind !== 'short' || job.source !== 'staff' || order === null) return coverage;
   const chargeCoverage = committedCoverage(refunds, order.amountCents);
   return chargeCoverage.kind === 'covered' ? chargeCoverage : coverage;
 };
@@ -187,7 +180,6 @@ const ownRefundFailed = (refund: ProviderRefund, update: OrderRefundJobUpdate = 
   },
   outcome: 'failed',
   alert: 'failed_after_submission',
-  alertAmountCents: refund.amountCents,
 });
 
 const awaitingError = (refund: ProviderRefund): string => `Refund still ${refund.status ?? 'pending'} at the last scheduled status check`;
@@ -204,7 +196,7 @@ const settleCoverageAfterRefund = (own: ProviderRefund | undefined, awaiting: Pr
 };
 
 const settleCoverageAtCheck = (job: RefundJob, submittedAt: string, refunds: readonly ProviderRefund[], order: OrderListItem | null, now: string): Settlement => {
-  const coverage = amountCoverageAtCheck(job, coverageOf(job, refunds, coverageTarget(job, order, refunds)), refunds, order);
+  const coverage = coverageAtCheck(job, refunds, order);
   const statusChecks = job.statusChecks + 1;
   if (coverage.kind === 'own_failed') return ownRefundFailed(coverage.refund, { statusChecks });
   if (coverage.kind === 'short') {
@@ -241,11 +233,9 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
   }
-  const targetCents = coverageTarget(job, order, refunds);
-  const coverage = coverageOf(job, refunds, targetCents);
+  const coverage = coverageOf(job, refunds);
   if (coverage.kind === 'own_failed') return ownRefundFailed(coverage.refund, { submittedAt: now });
   if (coverage.kind === 'covered') return settleCoverageAfterRefund(ownRefundsOf(job, refunds)[0], coverage.awaiting, now);
-  const alertAmountCents = coverage.remainingCents;
   // An own refund the job never recorded came from a call whose result was not saved, so it spent the
   // current key; a recorded one moved the generation on when the job reopened.
   const keySpent = ownRefundsOf(job, refunds).some((refund) => refund.refundId !== job.providerRefundId);
@@ -262,11 +252,11 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
     const withCreated = [created.value, ...refunds.filter((refund) => refund.refundId !== created.value.refundId)];
     // The created refund is this staff refund's own even when the provider echoes no metadata.
     const owner: RefundJob = job.source === 'staff' ? { ...job, providerRefundId: created.value.refundId } : job;
-    const after = coverageOf(owner, withCreated, targetCents);
+    const after = coverageOf(owner, withCreated);
     if (after.kind === 'own_failed') return ownRefundFailed(after.refund, { submittedAt: now, keyGeneration });
     if (after.kind === 'short') {
       const settlement = settleRefundFailure(job, refundFailure('transient', `Refund ${created.value.refundId} does not cover the rest of the payment`), now);
-      return { ...settlement, alertAmountCents, update: { ...settlement.update, keyGeneration: keyGeneration + 1 } };
+      return { ...settlement, update: { ...settlement.update, keyGeneration: keyGeneration + 1 } };
     }
     const settlement = settleCoverageAfterRefund(created.value, after.awaiting, now);
     return { ...settlement, update: { ...settlement.update, keyGeneration } };
@@ -274,8 +264,8 @@ const attemptRefund = async (job: RefundJob, order: OrderListItem, paymentIntent
   const failure = settleRefundFailure(job, created.error, now);
   const settlement = refunds.some((refund) => !isCommitted(refund)) ? failure : handRefundUnconfirmed(order, failure);
   return refundFailureOf(created.error)?.outcomeUnknown === true
-    ? { ...settlement, alertAmountCents, update: { ...settlement.update, keyGeneration } }
-    : { ...settlement, alertAmountCents, update: { ...settlement.update, keyGeneration: keyGeneration + 1 } };
+    ? { ...settlement, update: { ...settlement.update, keyGeneration } }
+    : { ...settlement, update: { ...settlement.update, keyGeneration: keyGeneration + 1 } };
 };
 
 const settleAttempt = (settlement: Settlement): Settlement => {
@@ -378,8 +368,7 @@ const buyerNotice = async (
   };
 };
 
-const staffAlertEmails = async (job: RefundJob, settlement: Settlement & { alert: OrderRefundAlert }, deps: DispatchOrderRefundJobsDeps): Promise<EmailOutboxEnqueueInput[]> => {
-  const { alert } = settlement;
+const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: DispatchOrderRefundJobsDeps): Promise<EmailOutboxEnqueueInput[]> => {
   const tenant = await deps.tenants.findById(job.tenantId);
   if (tenant === null) return [];
   const recipients = await tenantStaffRecipients(job.tenantId, deps);
@@ -392,7 +381,7 @@ const staffAlertEmails = async (job: RefundJob, settlement: Settlement & { alert
     to: recipient.email,
     payload: {
       kind: 'order-refund-alert', language: recipient.language, tenantName: tenant.name, alert, orderId: job.orderId,
-      amountCents: job.source === 'staff' ? settlement.alertAmountCents ?? job.amountCents : job.amountCents, currency: job.currency, error, orderUrl,
+      amountCents: job.amountCents, currency: job.currency, error, orderUrl,
     },
     now,
   }));
@@ -425,7 +414,7 @@ const processClaim = async (claim: ClaimedRefundJob, deps: DispatchOrderRefundJo
   let notice: EmailOutboxEnqueueInput | undefined;
   let released: Awaited<ReturnType<DispatchOrderRefundJobsDeps['refundJobs']['release']>>;
   try {
-    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, { ...settlement, alert: settlement.alert }, deps);
+    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, settlement.alert, deps);
     notice = await buyerNotice(job, order, settlement, deps);
     released = notice === undefined
       ? await deps.refundJobs.release(job.tenantId, job.id, claim.lease, { ...settlement.update, now: deps.clock.nowIso() }, staffAlerts)

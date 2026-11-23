@@ -333,8 +333,9 @@ and answer `404 not_found` for an order of another workspace. They are
 rate-limited per staff member and per workspace with the shared rate buckets.
 
 Money guards: the request locks the order row, re-reads the committed refunds,
-refuses an amount above the remainder and allows one refund waiting to reach
-Stripe per order; the request key and the Stripe idempotency key generations
+refuses an amount above the remainder or a full refund confirmed for a
+remainder that changed, and allows one refund waiting to reach Stripe per
+order; each refund issues exactly its stored amount once; the request key and the Stripe idempotency key generations
 make retries and lost responses safe, and Stripe refuses an amount above the
 charge. Each refund row keeps the requesting user's id and e-mail address
 after the account is removed, as audit evidence of who moved money.

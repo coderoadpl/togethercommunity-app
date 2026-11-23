@@ -45,7 +45,6 @@ export const orderStaffRefundSchema = z.object({
   note: staffRefundNoteSchema.nullable(),
   restocked: z.boolean(),
   removedFromPackingList: z.boolean(),
-  failedSiblingIds: z.array(z.string().min(1)),
   buyerNotifiedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -76,6 +75,9 @@ export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefu
 
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
+
+export const staffRefundWaitingConflict = (): AppError =>
+  appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', { waitingRefund: true });
 
 const STAFF_REFUNDABLE_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded'];
 
@@ -139,12 +141,26 @@ export const minorUnitsFromDecimal = (value: string, currency: string): Result<n
   return ok(amount);
 };
 
-export const resolveStaffRefundAmount = (input: { amountCents?: number | undefined; remainderCents: number; currency: string }): Result<{ kind: StaffRefundKind; amountCents: number }, AppError> => {
+export const resolveStaffRefundAmount = (input: {
+  amountCents?: number | undefined;
+  expectedAmountCents?: number | undefined;
+  remainderCents: number;
+  currency: string;
+}): Result<{ kind: StaffRefundKind; amountCents: number }, AppError> => {
   if (input.remainderCents <= 0) return err(appError('conflict', 'Nothing is left to refund on this order'));
-  if (input.amountCents === undefined) return ok({ kind: 'remainder', amountCents: input.remainderCents });
   const remainder = formatMinorUnits(input.remainderCents, input.currency);
+  if (input.amountCents === undefined) {
+    if (input.expectedAmountCents === undefined) return err(validation('A full refund must name the remainder it was confirmed for in expectedAmountCents'));
+    if (input.expectedAmountCents !== input.remainderCents) {
+      return err(appError('conflict', `The refundable remainder is now ${remainder}; check the refund again before confirming it`, { remainderCents: input.remainderCents }));
+    }
+    return ok({ kind: 'remainder', amountCents: input.remainderCents });
+  }
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
     return err(validation(`Refund amount must be a positive whole number of minor units, at most ${remainder}`, { remainderCents: input.remainderCents }));
+  }
+  if (input.expectedAmountCents !== undefined && input.expectedAmountCents !== input.amountCents) {
+    return err(validation('expectedAmountCents must equal amountCents for a partial refund'));
   }
   if (input.amountCents > input.remainderCents) {
     return err(validation(`Refund amount is above the refundable remainder of ${remainder}`, { remainderCents: input.remainderCents }));
@@ -199,6 +215,7 @@ export const staffRefundFulfilmentOptions = (
 export const createStaffRefundInputSchema = z.object({
   requestKey: staffRefundRequestKeySchema,
   amountCents: z.number().int().positive().optional(),
+  expectedAmountCents: z.number().int().positive().optional(),
   reason: staffRefundNoteSchema.optional(),
   restock: z.boolean().optional(),
   removeFromPackingList: z.boolean().optional(),
@@ -220,10 +237,17 @@ export const resolveStaffRefundChoices = (
 
 export const staffRefundMatchesRequest = (
   refund: Pick<OrderStaffRefund, 'orderId' | 'kind' | 'amountCents' | 'restocked' | 'removedFromPackingList'>,
-  request: { orderId: string; amountCents?: number | undefined; restock?: boolean | undefined; removeFromPackingList?: boolean | undefined },
+  request: {
+    orderId: string;
+    amountCents?: number | undefined;
+    expectedAmountCents?: number | undefined;
+    restock?: boolean | undefined;
+    removeFromPackingList?: boolean | undefined;
+  },
 ): boolean =>
   refund.orderId === request.orderId
   && (request.amountCents === undefined ? refund.kind === 'remainder' : refund.amountCents === request.amountCents)
+  && (request.expectedAmountCents === undefined || refund.amountCents === request.expectedAmountCents)
   && (request.restock === undefined || request.restock === refund.restocked)
   && (request.removeFromPackingList === undefined || request.removeFromPackingList === refund.removedFromPackingList);
 
@@ -241,7 +265,6 @@ export const newOrderStaffRefund = (input: {
   note: string | null;
   restocked: boolean;
   removedFromPackingList: boolean;
-  failedSiblingIds: readonly string[];
   now: string;
 }): OrderStaffRefund => orderStaffRefundSchema.parse({
   id: input.id,
@@ -270,7 +293,6 @@ export const newOrderStaffRefund = (input: {
   note: input.note === null || input.note.trim() === '' ? null : input.note.trim(),
   restocked: input.restocked,
   removedFromPackingList: input.removedFromPackingList,
-  failedSiblingIds: input.failedSiblingIds,
   buyerNotifiedAt: null,
   createdAt: input.now,
   updatedAt: input.now,

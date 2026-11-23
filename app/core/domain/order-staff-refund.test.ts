@@ -21,7 +21,7 @@ const now = '2026-11-22T10:00:00.000Z';
 const refund = (overrides: Partial<Parameters<typeof newOrderStaffRefund>[0]> = {}) => newOrderStaffRefund({
   id: 'refund-1', tenantId: 'tenant-a', orderId: 'order-1', paymentIntentId: 'pi_1', currency: 'PLN', kind: 'amount', amountCents: 1500,
   requestKey: 'req-1', requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com', note: '  damaged cover  ', restocked: false,
-  removedFromPackingList: false, failedSiblingIds: [], now, ...overrides,
+  removedFromPackingList: false, now, ...overrides,
 });
 
 const paidOrder = {
@@ -55,13 +55,23 @@ describe('staff refund rules', () => {
   });
 
   it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {
-    expect(resolveStaffRefundAmount({ remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 3000 } });
+    expect(resolveStaffRefundAmount({ expectedAmountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'remainder', amountCents: 3000 } });
     expect(resolveStaffRefundAmount({ amountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 3000 } });
     expect(resolveStaffRefundAmount({ amountCents: 1200, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1200 } });
     expect(resolveStaffRefundAmount({ amountCents: 3001, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refund amount is above the refundable remainder of 30.00 PLN' } });
     expect(resolveStaffRefundAmount({ amountCents: 0, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(resolveStaffRefundAmount({ amountCents: 1.5, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(resolveStaffRefundAmount({ remainderCents: 0, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
+  it('refunds the whole remainder only when the request names the remainder it was confirmed for', () => {
+    expect(resolveStaffRefundAmount({ remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundAmount({ expectedAmountCents: 4099, remainderCents: 3000, currency: 'PLN' })).toMatchObject({
+      ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 30.00 PLN; check the refund again before confirming it', details: { remainderCents: 3000 } },
+    });
+    expect(resolveStaffRefundAmount({ expectedAmountCents: 2000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 1000, remainderCents: 3000, currency: 'PLN' })).toStrictEqual({ ok: true, value: { kind: 'amount', amountCents: 1000 } });
+    expect(resolveStaffRefundAmount({ amountCents: 1000, expectedAmountCents: 3000, remainderCents: 3000, currency: 'PLN' })).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('converts decimals to minor units with the decimals the currency allows', () => {
@@ -102,6 +112,8 @@ describe('staff refund rules', () => {
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-1', restock: true, removeFromPackingList: true })).toBe(true);
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-1', restock: false })).toBe(false);
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-1', amountCents: 100 })).toBe(false);
+    expect(staffRefundMatchesRequest(stored, { orderId: 'order-1', expectedAmountCents: 4099 })).toBe(true);
+    expect(staffRefundMatchesRequest(stored, { orderId: 'order-1', expectedAmountCents: 3000 })).toBe(false);
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-2' })).toBe(false);
   });
 

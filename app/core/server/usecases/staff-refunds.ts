@@ -16,6 +16,7 @@ import {
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
+  staffRefundWaitingConflict,
   validation,
   type AppError,
   type Order,
@@ -132,6 +133,7 @@ const decideStaffRefund = (
     refundId: string;
     requestKey: string;
     amountCents?: number | undefined;
+    expectedAmountCents?: number | undefined;
     reason?: string | undefined;
     restock?: boolean | undefined;
     removeFromPackingList?: boolean | undefined;
@@ -147,13 +149,13 @@ const decideStaffRefund = (
   }
   const blocker = staffRefundOrderBlocker(state.order);
   if (blocker !== null) return err(blocker);
-  if (state.waiting !== null) return err(appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed'));
+  if (state.waiting !== null) return err(staffRefundWaitingConflict());
   const remainderCents = refundableRemainderCents({
     paidCents: state.order.amountCents,
     providerCommittedCents: request.providerCommittedCents,
     platformCommittedCents: state.platformCommittedCents,
   });
-  const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, remainderCents, currency: state.order.currency });
+  const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, expectedAmountCents: request.expectedAmountCents, remainderCents, currency: state.order.currency });
   if (!amount.ok) return amount;
   const choices = resolveStaffRefundChoices(
     staffRefundFulfilmentOptions(state.order, { coversRemainder: amount.value.amountCents === remainderCents, hasLabel: state.hasLabel }),
@@ -178,7 +180,6 @@ const decideStaffRefund = (
       note: request.reason ?? null,
       restocked: choices.value.restock,
       removedFromPackingList: choices.value.removeFromPackingList,
-      failedSiblingIds: state.failedRefundIds,
       now: request.now,
     }),
   });

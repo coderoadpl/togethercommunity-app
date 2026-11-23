@@ -59,7 +59,6 @@ const staffRefundsFake = (order: OrderListItem) => {
       const decision = input.decide({
         order,
         platformCommittedCents: committed(),
-        failedRefundIds: refunds.filter((refund) => !isIn(PLATFORM_COMMITTED_REFUND_STATUSES, refund.status)).map((refund) => refund.id),
         sameRequest: refunds.find((refund) => refund.requestKey === input.requestKey) ?? null,
         waiting: refunds.find((refund) => isIn(STAFF_REFUND_WAITING_STATUSES, refund.status)) ?? null,
         hasLabel: false,
@@ -169,7 +168,7 @@ describe('staff refund HTTP routes', () => {
     });
     expect(h.listRefunds).toHaveBeenCalledWith({ mode: 'live', tenantId: 'acme', paymentIntentId: 'pi_1' });
 
-    const created = await h.refund({ requestKey: 'studio-click-1', reason: 'Damaged in transit' });
+    const created = await h.refund({ requestKey: 'studio-click-1', expectedAmountCents: 4099, reason: 'Damaged in transit' });
     expect(created.status).toBe(200);
     const first = envelope(staffRefundContracts.orderRefundCreate.output).parse(await created.json()).data;
     expect(first).toMatchObject({ created: true, refund: { kind: 'remainder', amountCents: 4099, status: 'pending', restocked: true, removedFromPackingList: true, note: 'Damaged in transit', requestedByUserId: 'owner-1' } });
@@ -207,9 +206,22 @@ describe('staff refund HTTP routes', () => {
     expect(h.dispatchOrderRefunds).not.toHaveBeenCalled();
   });
 
+  it('refuses a full refund that names no remainder or a remainder that changed, and a partial refund that expects another amount, without writing', async () => {
+    const h = harness();
+    expect((await h.refund({ requestKey: 'unnamed-1' })).status).toBe(400);
+    const changed = await h.refund({ requestKey: 'stale-1', expectedAmountCents: 3000 });
+    expect(changed.status).toBe(409);
+    expect(await changed.json()).toMatchObject({
+      ok: false, error: { code: 'conflict', message: 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', details: { remainderCents: 4099 } },
+    });
+    expect((await h.refund({ requestKey: 'partial-1', amountCents: 1000, expectedAmountCents: 2000 })).status).toBe(400);
+    expect(h.refunds).toEqual([]);
+    expect(h.dispatchOrderRefunds).not.toHaveBeenCalled();
+  });
+
   it('puts an order a full refund took off the packing list back with ship anyway', async () => {
     const h = harness();
-    expect((await h.refund({ requestKey: 'full-1' })).status).toBe(200);
+    expect((await h.refund({ requestKey: 'full-1', expectedAmountCents: 4099 })).status).toBe(200);
     expect(h.order.fulfilmentStatus).toBeNull();
     const shipped = await h.shipAnyway();
     expect(shipped.status).toBe(200);
@@ -263,7 +275,7 @@ describe('staff refund HTTP routes', () => {
       }
     }
     expect(h.refunds).toEqual([]);
-    const sameOrigin = await h.refund({ requestKey: 'csrf-1' }, { cookie: 'session=valid', origin: 'https://acme.together.test', 'sec-fetch-site': 'same-origin' });
+    const sameOrigin = await h.refund({ requestKey: 'csrf-1', expectedAmountCents: 4099 }, { cookie: 'session=valid', origin: 'https://acme.together.test', 'sec-fetch-site': 'same-origin' });
     expect(sameOrigin.status).toBe(200);
   });
 
@@ -273,7 +285,7 @@ describe('staff refund HTTP routes', () => {
       write: { perActor: { limit: 2, windowMs: 60_000 }, perWorkspace: { limit: 3, windowMs: 60_000 } },
     };
     const h = harness({ limits });
-    expect((await h.refund({ requestKey: 'rate-1' })).status).toBe(200);
+    expect((await h.refund({ requestKey: 'rate-1', expectedAmountCents: 4099 })).status).toBe(200);
     expect((await h.refund({ requestKey: 'rate-1' })).status).toBe(200);
     const limited = await h.refund({ requestKey: 'rate-1' });
     expect(limited.status).toBe(429);

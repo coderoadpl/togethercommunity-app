@@ -1470,7 +1470,6 @@ export interface RefundJobQueue {
 export interface StaffRefundCreationState {
   order: Order;
   platformCommittedCents: number;
-  failedRefundIds: string[];
   sameRequest: OrderStaffRefund | null;
   waiting: OrderStaffRefund | null;
   hasLabel: boolean;

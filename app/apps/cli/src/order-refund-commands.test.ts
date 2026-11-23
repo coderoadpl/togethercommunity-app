@@ -53,7 +53,7 @@ describe('order refund command', () => {
   it('refunds the whole remainder with --yes, leaving restock and packing to the server defaults', async () => {
     const h = harness();
     await h.refund({ yes: true, requestKey: 'retry-7' });
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'retry-7', expectedAmountCents: 3099 });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('refund refund-1: 30.99 PLN (full), pending, stock returned, off the packing list\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
     expect(process.exitCode).toBeUndefined();
   });
@@ -100,6 +100,24 @@ describe('order refund command', () => {
     expect(h.createOrderRefund).not.toHaveBeenCalled();
     expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 5.00 PLN of order order-1 cannot be undone; repeat the command with --yes to confirm');
     expect(String(errorSpy.mock.calls[1]?.[0])).toContain('paid 40.99 PLN, refunded 10.00 PLN, remaining 30.99 PLN');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+  });
+
+  it('names the remainder to confirm a full refund with, sends the confirmed remainder and shows the refusal when it changed since', async () => {
+    const h = harness();
+    await h.refund({});
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Refunding 30.99 PLN of order order-1 cannot be undone; repeat the command with --yes --remainder 30.99 to confirm');
+    h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'The refundable remainder is now 40.99 PLN; check the refund again before confirming it', { remainderCents: 4099 })));
+    await h.refund({ yes: true, remainder: '30.99', requestKey: 'full-1' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'full-1', expectedAmountCents: 3099 });
+    expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.99 PLN; check the refund again before confirming it');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('refuses --remainder together with --amount before any request', async () => {
+    const h = harness();
+    await h.refund({ amount: '5', remainder: '30.99', yes: true });
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
   });
 

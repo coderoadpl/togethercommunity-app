@@ -2381,12 +2381,12 @@ describe('staff refund CLI', () => {
   it('leaves the full-refund defaults to the server and refuses without --yes', async () => {
     await run('--json', 'orders', 'refund', 'order-number');
     expect(h.createOrderRefund).not.toHaveBeenCalled();
-    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; repeat the command with --yes to confirm' } });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; repeat the command with --yes --remainder 40.99 to confirm' } });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
     process.exitCode = 0;
     logSpy.mockClear();
-    await run('order', 'refund', 'order-number', '--yes');
-    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/) });
+    await run('order', 'refund', 'order-number', '--yes', '--remainder', '40.99');
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099 });
   });
 
   it('prints the refund preview and puts an order back on the packing list', async () => {

@@ -89,6 +89,8 @@ export const createRefundProviderFake = (input: {
     const refund = refunds[index];
     if (refund === undefined) throw new Error(`No refund ${refundId}`);
     refunds[index] = { ...refund, status, failureReason };
+    const createdIndex = created.findIndex((entry) => entry.refundId === refundId);
+    if (createdIndex >= 0) created[createdIndex] = { ...refund, status, failureReason };
   };
 
   const failRefund = (refundId: string, failureReason: string) => { setRefundStatus(refundId, 'failed', failureReason); };

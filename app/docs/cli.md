@@ -95,7 +95,13 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
 whether the remainder was read from Stripe, the stock a full refund can return
 and the packing, shipment and invoice consequences. `order refund <orderId>`
 refunds the whole remainder; `--amount <decimal>` refunds part of it in the
-order's currency (whole numbers for zero-decimal currencies). `--reason <text>`
+order's currency (whole numbers for zero-decimal currencies). Without `--yes`
+the command prints what it would refund and, for a full refund, the
+`--yes --remainder <decimal>` to repeat it with: the request carries that
+remainder, and when it changed in the meantime the server refuses with
+`conflict` naming the current remainder, so re-run the command without `--yes`
+to see it. `--yes` without `--remainder` confirms the remainder the command
+reads in the same run. `--reason <text>`
 keeps a staff-only note, `--no-restock` and `--keep-on-packing-list` turn off
 the full-refund defaults, and `--request-key <key>` makes a retry safe: the same
 key never refunds twice. Without one the CLI generates a key and prints it on

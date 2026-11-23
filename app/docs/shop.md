@@ -1553,7 +1553,12 @@ that run first use part of it; a run started any other way (the kick after a
 webhook, the Node ticker) gets 30 seconds from its own start.
 
 The worst case of a job: a job makes at most two Stripe calls (the refund list
-and the create call, or one refund list for a status read). Every refund call has a 5-second
+and the create call, or one refund list for a status read) while the payment
+has at most 100 refunds. A longer refund list is read page by page (100
+refunds a page, at most 10 pages), one more call per page; such a job can
+outlast the worst case below, and a run the function limit cuts off leaves the
+job to its lease. A list longer than 1,000 refunds counts as a list that could
+not be read (a temporary failure), never as Stripe refusing the refund. Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
@@ -1786,15 +1791,19 @@ no second refund path. Staff refunds are stored in their own table,
 cannot stop the sold-out refunds; staff refunds waiting to reach Stripe then
 wait until the release is back.
 
-An order can be refunded by staff when it is `paid` or `partially_refunded`,
-was paid through Stripe with a payment intent, was paid more than zero, was not
-cancelled because its goods sold out (its own job refunds it) and something is
-left to refund. Anything else is refused with `conflict` or `validation` and a
-sentence naming the reason. The refundable remainder is the paid amount minus
-the larger of the refunds Stripe lists for the payment (not `failed` or
-`canceled`) and the staff refunds the platform recorded that may still move
-money; when Stripe's list cannot be read, the platform's records decide and the
-preview says so, and Stripe still refuses anything above the charge.
+An order can be refunded by staff when it is `paid`, `partially_refunded` or
+`refunded`, was paid through Stripe with a payment intent, was paid more than
+zero, was not cancelled because its goods sold out (its own job refunds it) and
+something is left to refund. Anything else is refused with `conflict` or
+`validation` and a sentence naming the reason. The refundable remainder is the
+paid amount minus the larger of the refunds Stripe lists for the payment (not
+`failed` or `canceled`) and the staff refunds the platform recorded that may
+still move money; when Stripe's list cannot be read, the platform's records
+decide and the preview says so, and Stripe still refuses anything above the
+charge. An order `charge.refunded` marked `refunded` keeps a remainder only
+when Stripe's list, read at request time, shows money left (a full refund that
+failed after Stripe reported it); when the list cannot be read such an order
+has nothing left to refund.
 
 - **Every staff refund issues exactly its stored amount, once.** Its own
   Stripe refund is the one whose metadata `refundJobId` names the staff refund,
@@ -1824,6 +1833,16 @@ preview says so, and Stripe still refuses anything above the charge.
   pending it keeps watching, and it issues its own amount if that refund fails,
   waiting an hour at a time while another staff refund of the order is waiting
   to reach Stripe.
+- **Unknown outcomes**: a staff refund whose create call got no answer, a
+  `409 idempotency_key_in_use` or a Stripe server error (`5xx`) keeps its key
+  generation, so the next attempt either replays the refund Stripe made or
+  makes it once; that attempt lists the payment's refunds first and takes over
+  its own by `refundJobId`. The refund records the unknown outcome
+  (`create_outcome_unknown`) until its own Stripe refund is seen; one that ends
+  its retries while its refunds cannot be read ends `unconfirmed` with the
+  `unconfirmed` alert, never `failed`, and still counts against the remainder
+  and in the refunded totals. Sold-out jobs move to the next key generation
+  after a server error, as before.
 - **One at a time**: at most one staff refund of an order may wait to reach
   Stripe (`pending`, `running`, `blocked_permission`); a second one is refused
   with `conflict` until the first is accepted or failed. Every request carries
@@ -1833,9 +1852,13 @@ preview says so, and Stripe still refuses anything above the charge.
 - **Stock and packing**: a full refund of an order that is `to_pack` without a
   shipment or label returns its committed stock (a `returned` stock event per
   product with `reference = { orderId, reason: "staff_refund" }`) and takes the
-  order off the packing list by default; staff may untick either. With a
+  order off the packing list by default; staff may untick either. Goods
+  returned to stock cannot stay on the packing list: returning stock while
+  keeping a `to_pack` order on the list is refused with `validation` (put the
+  order back later with Ship anyway, which takes the stock back). With a
   shipment or bought label, stock return defaults to off and the label is not
-  cancelled; a `shipped` order is never moved. A typed amount that covers the
+  cancelled; a carrier shipment whose create call started but has no carrier id
+  yet counts as a bought label. A `shipped` order is never moved. A typed amount that covers the
   whole remainder when it is requested gets the same stock and packing choices
   and defaults; any smaller amount changes no stock, packing or access, and
   asking for either change with it is refused. Both
@@ -1845,26 +1868,41 @@ preview says so, and Stripe still refuses anything above the charge.
   without fulfilment status back to `to_pack` and, in the same transaction,
   takes back out of stock the units a staff refund returned (an `adjusted`
   stock event with `reference = { orderId, reason: "staff_refund_ship_anyway" }`),
-  once. When fewer units are on hand than it must take back, it is refused with
-  `conflict` naming the products, and staff adjust the stock first.
+  once. It takes back only units on hand that no other checkout has reserved
+  (`on_hand - reserved`); when fewer are free than it must take back, it is
+  refused with `conflict` naming the products, and staff adjust the stock
+  first.
 - **Access**: the existing `charge.refunded` handler marks a fully refunded
   order `refunded` and revokes the grants of its products unless another
   purchase keeps them; a partial refund changes no grant. The handler also
   makes the order's waiting staff refunds due at once, so Studio shows the
-  outcome within a minute.
-- **Buyer e-mail**: one `order-refund-issued` e-mail per staff refund (outbox id
+  outcome within a minute. Access revoked that way is not given back when the
+  refund fails later: the `failed_after_submission` alert of a staff refund
+  tells staff to grant it again on the member page, and the order can be
+  refunded again once Stripe's list shows the money left.
+- **Buyer e-mail**: one refund notice per staff refund (outbox id
   `order-refund-issued:<refundId>`), queued in the transaction that records
-  Stripe's acceptance, in the language and branding of the sold-out e-mail. It
-  names the amount of the platform's own Stripe refund, the short order
-  reference and the usual arrival time; never a provider id or the staff note.
-  A refund that never reached Stripe or failed sends none, and neither does a
-  test-mode order, whose checkout sent no buyer e-mail either. A test-mode
-  order never took stock, so restocking it returns nothing.
+  that Stripe holds the platform's own refund as `pending` or `succeeded`; a
+  refund that `requires_action` sends it at the status read that first sees it
+  `pending` or `succeeded`. It is rendered when it is queued from the
+  `order-refund-issued` template, in the language and branding of the sold-out
+  e-mail, and stored pre-rendered as an `m2m-transactional` message (subject,
+  HTML and text) with source `staff-refunds` and no tenant transport
+  requirement, the shape the previous release renders and lists, so a rollback
+  neither drops it nor cuts the paging of older e-mails in Sent e-mails
+  (decision D10'). It names the amount of the platform's own Stripe refund, the
+  short order reference and the usual arrival time; never a provider id or the
+  staff note. A refund that never reached Stripe or failed sends none, and
+  neither does a test-mode order, whose checkout sent no buyer e-mail either. A
+  test-mode order never took stock, so restocking it returns nothing.
 - **Audit**: each row keeps who requested it (`requested_by_user_id`,
   `requested_by_email`), the amount, the staff-only note (at most 500
-  characters) and the time. The server logs one line per new request with the
+  characters; control characters other than line breaks and tabs are refused
+  with `validation`) and the time. The server logs one line per new request with the
   workspace, order, refund id, actor id and amount, without e-mail addresses or
-  Stripe ids. Stripe metadata carries `tenantId`, `orderId`, `reason: staff` and
+  Stripe ids. The dispatcher's log lines replace Stripe object ids and keys in
+  Stripe's messages with `[provider id]`; the refund keeps the full message for
+  Studio and the staff alert. Stripe metadata carries `tenantId`, `orderId`, `reason: staff` and
   `refundJobId` only.
 
 Routes (session only, `order:refund`, see [the route table](route-table.md)):
@@ -1886,7 +1924,8 @@ the state and amount of the order's latest staff refund while it is unsettled; `
 sold-out refund job, and the shop key order list and the order feed carry no
 staff refund state. The orders export gains a
 trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
-the platform-recorded refunds, or the paid amount for a `refunded` order. The
+the platform-recorded staff and sold-out refunds, or the paid amount for a
+`refunded` order. The
 shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
@@ -1908,6 +1947,8 @@ new remainder and lets staff confirm it. Another refund still waiting for
 Stripe disables the refund button and offers Close; any other `conflict`
 (nothing left, an order that can no longer be refunded, a request key used for
 other values) shows the server's message the same way;
+Ticking the stock option ticks and locks the packing-list option with a hint
+that returned goods cannot stay on the list.
 **Partial amount** takes a decimal amount in the order's currency and names the
 remainder when the amount is refused; it always asks to keep stock and the
 packing list as they are, so a remainder that shrank after the dialog opened

@@ -414,8 +414,15 @@ refuses an amount above the remainder or a full refund confirmed for a
 remainder that changed, and allows one refund waiting to reach Stripe per
 order; each refund issues exactly its stored amount once; the request key and the Stripe idempotency key generations
 make retries and lost responses safe, and Stripe refuses an amount above the
-charge. Each refund row keeps the requesting user's id and e-mail address
-after the account is removed, as audit evidence of who moved money.
+charge. A create call whose outcome is unknown (no answer, a request still
+executing or a Stripe server error) keeps its key, and a refund that never saw
+its own Stripe refund ends `unconfirmed` rather than `failed`. The CLI refuses
+a full refund without the confirmed `--remainder` and, with `--json`, any
+refund without `--request-key`. Each refund row keeps the requesting user's id and e-mail address
+after the account is removed, as audit evidence of who moved money. The staff
+note refuses control characters other than line breaks and tabs, and the
+dispatcher's log lines replace Stripe object ids and keys in provider messages
+with `[provider id]`.
 
 ## Accepted dependency advisories
 

@@ -95,29 +95,32 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
 whether the remainder was read from Stripe, the stock a full refund can return
 and the packing, shipment and invoice consequences. `order refund <orderId>`
 refunds the whole remainder; `--amount <decimal>` refunds part of it in the
-order's currency (whole numbers for zero-decimal currencies). Without `--yes`
-the command prints what it would refund and, for a full refund, the
-`--yes --remainder <decimal>` to repeat it with: the request carries that
+order's currency (whole numbers for zero-decimal currencies). A full refund
+needs `--remainder <decimal>`, the remainder you confirm: without it the
+command refuses, prints the preview and names the `--remainder <decimal>` to
+add, and never confirms a remainder it just read. The request carries that
 remainder, and when it changed in the meantime the server refuses with
-`conflict` naming the current remainder, so re-run the command without `--yes`
-to see it. `--yes` without `--remainder` confirms the remainder the command
-reads in the same run. `--reason <text>`
-keeps a staff-only note, `--no-restock` and `--keep-on-packing-list` turn off
-the full-refund defaults, and `--request-key <key>` makes a retry safe: the same
-key never refunds twice. Without one the CLI generates a key and prints it on
-stderr before it sends the request (with `--json`, a failed request names it in
-the error envelope's `details.requestKey`); after a network error or a lost
-answer, re-run the command with `--request-key <key>` and it returns the refund
-the first run created instead of a second one. The
-refund cannot be undone, so the command refuses without `--yes` and prints what
-it would refund. `order ship-anyway <orderId>` puts a refunded order that was
-taken off the packing list back on it. Each command prints one envelope with
-`--json`; exit codes follow `EXIT_CODE_BY_ERROR_CODE`. The rules are in
-[the shop guide](shop.md#staff-refunds).
+`conflict` naming the current remainder. Without `--yes` the command prints
+what it would refund and the flags to repeat it with. `--reason <text>`
+keeps a staff-only note, `--no-restock` turns off the stock return of a full
+refund, and `--keep-on-packing-list` keeps the order on the packing list; it
+needs `--no-restock`, because returned goods cannot stay on the list.
+`--request-key <key>` makes a retry safe: the same key never refunds twice.
+With `--json` the command requires `--request-key` and refuses before any
+request without it, so automation keeps the key before it sends a refund.
+Without `--json` and without a key the CLI generates one and prints it on
+stderr before it sends the request; after a network error or a lost answer,
+re-run the command with `--request-key <key>` and it returns the refund the
+first run created instead of a second one. The refund cannot be undone, so the
+command refuses without `--yes`. `order ship-anyway <orderId>` puts a refunded
+order that was taken off the packing list back on it. Each command prints one
+envelope with `--json`; exit codes follow `EXIT_CODE_BY_ERROR_CODE`. The rules
+are in [the shop guide](shop.md#staff-refunds).
 
 ```bash
 pnpm --silent run cli --tenant acme order refund-preview order-id
 pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme --json order refund order-id --remainder 40.99 --request-key refund-2026-11-23-1 --yes
 ```
 
 ## CLI parity inventory

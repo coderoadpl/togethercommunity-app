@@ -80,9 +80,11 @@ Studio.
 **Acceptance criteria:**
 
 - [ ] `order refund <orderId>` refunds the remainder it printed (`--yes --remainder <decimal>`)
-  and is refused when the remainder changed since; `--amount <decimal>` refunds part;
-  `--reason <text>`, `--no-restock`, `--keep-on-packing-list` and `--request-key <key>` mirror
-  the dialog; `--yes` is required to confirm (as other irreversible commands).
+  and is refused when the remainder changed since; a full refund without `--remainder` is
+  refused with the preview and the flag to add, never confirmed from a fresh preview;
+  `--amount <decimal>` refunds part; `--reason <text>`, `--no-restock`, `--keep-on-packing-list`
+  (only with `--no-restock`) and `--request-key <key>` mirror the dialog; `--json` requires
+  `--request-key`; `--yes` is required to confirm (as other irreversible commands).
 - [ ] `order refund-preview <orderId>` prints what is refundable and the consequences.
 - [ ] `--json` prints one envelope; exit codes follow `EXIT_CODE_BY_ERROR_CODE`.
 - [ ] The project's own checks pass.
@@ -93,8 +95,9 @@ Studio.
 
 **Acceptance criteria:**
 
-- [ ] One `order-refund-issued` e-mail per staff refund, queued in the same transaction that
-  records the provider's acceptance; none for a refund that never reached the provider or failed.
+- [ ] One refund notice per staff refund, queued in the same transaction that records that the
+  provider holds the refund as `pending` or `succeeded` (a refund that `requires_action` waits
+  for a later status read); none for a refund that never reached the provider or failed.
 - [ ] It names the amount, the order's short reference and the arrival time as the provider words
   it, phrased as "usually", never as a promised date; no provider id and no staff reason.
 - [ ] The project's own checks pass.
@@ -131,9 +134,14 @@ workspace's restricted key and what to do about it.
     `reference = { orderId, reason: "staff_refund_ship_anyway" }`); `conflict` naming the products
     when fewer units are on hand.
   - The order detail response carries the order's staff refunds (newest first) and the totals.
-- FR-3: An order is refundable by staff when: `status` is `paid` or `partially_refunded`;
-  `provider` is `stripe`; it has a payment intent id; `amountCents > 0`; `cancelReason` is null
-  (a sold-out order is refunded by its own job); and the refundable remainder is above zero.
+- FR-3: An order is refundable by staff when: `status` is `paid`, `partially_refunded` or
+  `refunded`; `provider` is `stripe`; it has a payment intent id; `amountCents > 0`;
+  `cancelReason` is null (a sold-out order is refunded by its own job); and the refundable
+  remainder is above zero. A `refunded` order has a remainder only when the provider's refund
+  list, read at request time, shows money left (a full refund that failed after
+  `charge.refunded`); when the list cannot be read its remainder is zero. Access the webhook
+  revoked is not restored automatically; the staff alert of a refund that failed after
+  submission says to grant it again on the member page.
   Anything else is refused with `conflict` or `validation` and a sentence naming the reason.
 - FR-4: Refundable remainder = paid amount − max(committed refunds listed by the provider at
   request time, committed refunds the platform recorded). Committed = not `failed` and not
@@ -196,9 +204,11 @@ workspace's restricted key and what to do about it.
   `refundedCents` field (platform-recorded committed refunds, or the paid amount when the order
   is `refunded`). The packing list excludes orders without fulfilment status (unchanged query).
   The shop integration order feed is unchanged in this PR (it already carries the status).
-- FR-15: Buyer e-mail `order-refund-issued` (see US-005), outbox id
-  `order-refund-issued:<refundId>`, language as the sold-out refund e-mail, branding as other
-  buyer e-mails, queued only for staff refunds.
+- FR-15: Buyer refund notice (see US-005), outbox id `order-refund-issued:<refundId>`, rendered
+  at enqueue time from the `order-refund-issued` template (language as the sold-out refund
+  e-mail, branding as other buyer e-mails, amount and short reference) and stored pre-rendered
+  as an `m2m-transactional` payload (`subject`, `html`, `text`) with `sourceApp: 'staff-refunds'`
+  and `tenantTransportRequired: false` (D10'); queued only for staff refunds, once.
 - FR-16: Audit: each staff refund row keeps immutable `requested_by_user_id`,
   `requested_by_email`, `amount_cents`, `note` and `created_at`; the server logs one line per
   request with tenant, order, refund id, actor id and amount (no provider id, no e-mail address).
@@ -236,7 +246,10 @@ and its order detail would fail for that order. Staff refunds are therefore stor
 provider refund id and status, submitted at, status checks, key generation, permission blocked
 at, transient failure streak) plus `kind` (`remainder` | `amount`), `request_key` (unique per
 workspace), `requested_by_user_id`, `requested_by_email`, `note`, `restocked`,
-`removed_from_packing_list`, `buyer_notified_at`. It reuses the trigger function
+`removed_from_packing_list`, `buyer_notified_at` and `create_outcome_unknown` (a create call
+whose outcome is unknown was made and its own provider refund has not been seen since; such a
+refund keeps its key generation and ends `unconfirmed`, never `failed`, when its refunds cannot be
+read until its retries end). It reuses the trigger function
 `record_refund_job_order_change()` on insert and status change, so the order feed sees each
 change. Partial unique index `(tenant_id, order_id) WHERE status IN ('pending', 'running',
 'blocked_permission')` enforces FR-5.
@@ -256,16 +269,22 @@ What the previous release does with rows written by this one:
 - `stock_events` types `returned` and `adjusted` (ship anyway): existing types; the `reference`
   JSON is not parsed strictly.
 - `order_changes`: same columns, written by the same trigger function.
-- `email_outbox` kind `order-refund-issued`: the previous release's `renderEmailOutboxPayload`
-  safe-parses the payload and fails only that row ("Invalid email outbox payload"), retries it up
-  to the attempts cap and then leaves it `failed`; other e-mails are unaffected. A buyer e-mail
-  queued during a rollback window may therefore not be sent.
+- `email_outbox` buyer notices: stored as `m2m-transactional` rows with a pre-rendered subject,
+  HTML and text (D10'), the strict shape the previous release already parses, renders, sends
+  and lists in Sent e-mails. A kind of its own would fail to render there and, because the
+  previous Sent e-mails reader drops unrenderable rows after fetching a page of `limit + 1`,
+  would cut the paging of older e-mails after a rollback.
+- `order_staff_refunds.create_outcome_unknown`: a column of the new table, never read by the
+  previous release.
 - Provider refunds with metadata `reason: staff`: the previous release's sold-out jobs count them
   as committed money (correct) and never take them over (metadata reason differs).
 
 A test holds a literal copy of the previous release's schemas (`orderRefundJobSchema` reason and
-status lists, `orderSchema` status/cancel reason/fulfilment status, the e-mail payload kinds) and
-proves each stored shape above either is never read by it or parses. The same test deletes the
+status lists, `orderSchema` status/cancel reason/fulfilment status, the e-mail payload kinds, the
+refund alert payload and the `m2m-transactional` payload with its render branch) and proves each
+stored shape above either is never read by it or parses; a literal copy of the previous Sent
+e-mails paging pages past the stored notices to every older e-mail, and the refund path writes
+no `tenant_audit_events` and no `notifications` rows. The same test deletes the
 workspace's orders in the previous release's wipe order and proves their staff refunds go with
 them.
 
@@ -327,9 +346,12 @@ guard against refunding more than the charge.
 - D9. Audit = the immutable columns of the staff refund row plus a log line; no new
   `tenant_audit_events` kind (closed enum in the previous release). Revert: "undo D9 → audit log
   entry".
-- D10. Buyer e-mail as a new outbox kind, accepting that a rollback window may drop it (the
-  alternative, a pre-rendered generic kind, mislabels deliverability data). Revert: "undo D10 →
-  no e-mail".
+- D10'. Buyer e-mail stored pre-rendered as an `m2m-transactional` outbox payload with source
+  `staff-refunds`, rendered at enqueue time from the `order-refund-issued` template, same outbox id
+  and once-only rule (replaces D10, a dedicated outbox kind). Why: the previous release's Sent
+  e-mails reader drops rows it cannot render after fetching `limit + 1`, so one stored row of a
+  new kind would cut the paging of older e-mails after a rollback; the owner prefers shapes the
+  previous release tolerates. Revert: "undo D10' → dedicated kind".
 - D11. Exports gain `refunded_amount`; the shop integration feed stays unchanged. Revert: "undo
   D11 → amount in the feed".
 - D12. Orders without a payment intent, simulated orders and sold-out orders are not refundable

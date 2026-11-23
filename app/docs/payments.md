@@ -640,7 +640,10 @@ refund metadata carries `tenantId`, `orderId`, `reason: staff` and
 `refundJobId`; never personal data or the staff note. A refund made in the
 Stripe Dashboard still reaches the platform through `charge.refunded`, counts
 against the refundable remainder and makes waiting staff refunds of that order
-due at once.
+due at once. The buyer's refund notice is stored pre-rendered as an
+`m2m-transactional` message with source `staff-refunds` (see
+[the shop guide](shop.md#staff-refunds)). The refund list is read page by page
+(`starting_after`, 100 refunds a page, at most 10 pages).
 
 ## Order and subscription e-mail subjects
 

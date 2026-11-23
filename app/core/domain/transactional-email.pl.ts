@@ -253,7 +253,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     lastErrorLabel: 'Ostatni błąd',
     openOrder: 'Otwórz zamówienie',
     paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
-      const checkInDashboard = 'Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić; jeśli go nie ma, zwróć płatność tam, a zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.';
+      const checkInDashboard = 'Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.';
       const unconfirmedBecause = reason === 'create_outcome_unknown'
         ? 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'
         : reason === 'awaiting_provider'
@@ -268,7 +268,9 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
         blocked_permission: 'Stripe go odrzucił, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis), więc na razie nic nie zostało zwrócone. Dodaj to uprawnienie do klucza w panelu Stripe; zwrot zostanie wtedy wypłacony przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.',
         blocked_permission_failed: 'Zwrot był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Nic nie zostało zwrócone. Po dodaniu uprawnienia zleć zwrot ponownie na stronie zamówienia albo zwróć płatność ręcznie w panelu Stripe.',
         failed: 'Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. Zleć zwrot ponownie na stronie zamówienia albo zwróć płatność ręcznie w panelu Stripe.',
-        failed_after_submission: 'Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć zwrot ponownie na stronie zamówienia albo zwróć pieniądze w inny sposób.',
+        failed_after_submission: reason === 'failed_after_order_refunded'
+          ? `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie. ${checkInDashboard}`
+          : 'Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć zwrot ponownie na stronie zamówienia albo zwróć pieniądze w inny sposób.',
         unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';

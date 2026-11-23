@@ -45,7 +45,7 @@ export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
   refundJobs: Pick<RefundJobQueue, 'claimDue' | 'release' | 'countDue'> & Partial<Pick<RefundJobQueue, 'staffRefundWaiting' | 'markCreateAttempt'>>;
   orderDetails: OrderDetailRepository;
   members?: Pick<MemberRepository, 'findById'>;
-  payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds' | 'listNewestRefunds'>;
+  payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds'>;
   tenants: Pick<TenantRepository, 'findById' | 'findSettings'>;
   tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   tenantDomains: Pick<TenantDomainRepository, 'listByTenant'>;
@@ -100,6 +100,9 @@ const createMayHaveRefunded = (job: RefundJob): boolean => job.source === 'staff
 // reader's language from its status and flags.
 const staffDiagnostic = (job: RefundJob, soldOut: string, staff: string): string => (job.source === 'staff' ? staff : soldOut);
 
+const errorDiagnostic = (job: RefundJob, error: AppError): string =>
+  staffDiagnostic(job, error.message, refundFailureOf(error)?.diagnostic ?? 'transient');
+
 const unconfirmedCreate = (lastError: string): Settlement => unconfirmed({ lastError });
 
 const settlePermissionMissing = (job: RefundJob, lastError: string, now: string): Settlement => {
@@ -137,17 +140,17 @@ const watchRefunds = (lastError: string, now: string): Settlement => ({
   alert: null,
 });
 
-const settleRefundFailure = (job: RefundJob, error: AppError, now: string): Settlement => {
-  const kind = refundFailureOf(error)?.kind ?? 'transient';
-  if (kind === 'already_refunded') return watchRefunds(error.message, now);
-  if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
-  if (kind === 'idempotency_mismatch') return { update: { status: 'pending', nextAttemptAt: now, lastError: error.message }, outcome: 'retrying', alert: null };
-  if (kind === 'not_found' || kind === 'refund_failed') return nothingRefunded(job, error.message);
+const settleRefundFailure = (job: RefundJob, error: AppError, now: string, kind = refundFailureOf(error)?.kind ?? 'transient'): Settlement => {
+  const lastError = errorDiagnostic(job, error);
+  if (kind === 'already_refunded') return watchRefunds(lastError, now);
+  if (kind === 'permission_missing') return settlePermissionMissing(job, lastError, now);
+  if (kind === 'idempotency_mismatch') return { update: { status: 'pending', nextAttemptAt: now, lastError }, outcome: 'retrying', alert: null };
+  if (kind === 'not_found' || kind === 'refund_failed') return nothingRefunded(job, lastError);
   const transientFailureStreak = job.transientFailureStreak + 1;
   const retryAt = orderRefundRetryAt(transientFailureStreak, now, job.createdAt);
-  if (retryAt === null) return createMayHaveRefunded(job) ? unconfirmedCreate(error.message) : nothingRefunded(job, error.message);
+  if (retryAt === null) return createMayHaveRefunded(job) ? unconfirmedCreate(lastError) : nothingRefunded(job, lastError);
   return {
-    update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message, transientFailureStreak },
+    update: { status: 'pending', nextAttemptAt: retryAt, lastError, transientFailureStreak },
     outcome: 'retrying',
     alert: job.lastError === null ? 'retrying' : null,
   };
@@ -252,8 +255,8 @@ const settleCoverageAtCheck = (job: RefundJob, submittedAt: string, refunds: rea
   return { update: { status: 'submitted', providerRefundStatus, statusChecks, nextAttemptAt, lastError: null }, outcome: 'checked', alert: null, ...ownRefund };
 };
 
-const ownRefundNotListed = (job: RefundJob, refundId: string): AppError =>
-  refundFailure('transient', staffDiagnostic(job, `The refund list does not show refund ${refundId} yet`, `refund_not_listed ${refundId}`));
+const ownRefundNotListed = (refundId: string): AppError =>
+  refundFailure('transient', `The refund list does not show refund ${refundId} yet`, null, false, false, { token: `refund_not_listed ${refundId}` });
 
 const ownRefundSeen = (job: RefundJob): RefundJobUpdate => (job.source === 'staff' ? { createOutcomeUnknown: false } : {});
 
@@ -263,7 +266,7 @@ const leaseLost: Settlement = { update: {}, outcome: 'lease_lost', alert: null }
 // answer can prove that nothing was refunded, so it is retried until it can be read or the retries end.
 const settleListFailure = (job: RefundJob, order: OrderListItem, error: AppError, now: string): Settlement =>
   createMayHaveRefunded(job)
-    ? settleRefundFailure(job, refundFailure('transient', error.message), now)
+    ? settleRefundFailure(job, error, now, 'transient')
     : handRefundUnconfirmed(job, order, settleRefundFailure(job, error, now));
 
 // A worker can be lost after the provider accepted a staff refund but before its result is saved, so the attempt
@@ -273,36 +276,14 @@ const markCreateAttempt = async (claim: ClaimedRefundJob, keyGeneration: number,
   return deps.refundJobs.markCreateAttempt(claim.job.tenantId, claim.job.id, claim.lease, { keyGeneration, now: deps.clock.nowIso() });
 };
 
-interface RefundList {
-  refunds: ProviderRefund[];
-  complete: boolean;
-}
-
-// A staff refund's own refund is always made by this job and the provider lists newest first, so the pages a run
-// can read in time are enough for it; a create it cannot see stays capped by the provider at the charge. A sold-out
-// job decides from the whole charge and keeps needing the whole list.
-const listRefundsFor = async (
-  job: RefundJob,
-  input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt: number },
-  deps: DispatchOrderRefundJobsDeps,
-): Promise<Result<RefundList, AppError>> => {
-  const { listNewestRefunds, listRefunds } = deps.payment;
-  if (job.source === 'staff' && listNewestRefunds !== undefined) return listNewestRefunds(input);
-  if (listRefunds === undefined) return err(providerUnavailable);
-  const listed = await listRefunds(input);
-  return listed.ok ? ok({ refunds: listed.value, complete: true }) : listed;
-};
-
 const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
-  const { createRefund } = deps.payment;
-  if (createRefund === undefined || (deps.payment.listRefunds === undefined && deps.payment.listNewestRefunds === undefined)) {
-    return settleRefundFailure(job, providerUnavailable, now);
-  }
-  const listed = await listRefundsFor(job, { mode: order.mode, tenantId: job.tenantId, paymentIntentId, deadlineAt: deadlineAt - REFUND_REQUEST_WORST_CASE_MS }, deps);
+  const { createRefund, listRefunds } = deps.payment;
+  if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
+  const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId, deadlineAt: deadlineAt - REFUND_REQUEST_WORST_CASE_MS });
   if (!listed.ok) return settleListFailure(job, order, listed.error, now);
-  const { refunds } = listed.value;
+  const refunds = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
-    return settleRefundFailure(job, ownRefundNotListed(job, job.providerRefundId), now);
+    return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
   }
   const coverage = coverageOf(job, refunds);
   if (coverage.kind === 'own_failed') return ownRefundFailed(job, coverage.refund, { submittedAt: now, ...ownRefundSeen(job) });
@@ -386,13 +367,15 @@ const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, no
   if (job.submittedAt === null || job.paymentIntentId === null) {
     return { update: { nextAttemptAt: null }, outcome: 'checked', alert: null };
   }
-  const listed = await listRefundsFor(job, { mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId, deadlineAt }, deps);
-  if (!listed.ok) return settleReadFailure(job.submittedAt, listed.error.message, now);
-  const { refunds, complete } = listed.value;
+  const listed = deps.payment.listRefunds === undefined
+    ? err(providerUnavailable)
+    : await deps.payment.listRefunds({ mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId, deadlineAt });
+  if (!listed.ok) return settleReadFailure(job.submittedAt, errorDiagnostic(job, listed.error), now);
+  const refunds = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
-    return settleReadFailure(job.submittedAt, ownRefundNotListed(job, job.providerRefundId).message, now);
+    return settleReadFailure(job.submittedAt, errorDiagnostic(job, ownRefundNotListed(job.providerRefundId)), now);
   }
-  const settlement = settleCoverageAtCheck(job, job.submittedAt, refunds, complete ? order : null, now);
+  const settlement = settleCoverageAtCheck(job, job.submittedAt, refunds, order, now);
   if (settlement.outcome !== 'reopened' || job.source !== 'staff') return settlement;
   const anotherWaiting = await deps.refundJobs.staffRefundWaiting?.(job.tenantId, job.orderId, { except: job.id }) ?? false;
   return anotherWaiting ? waitForOtherStaffRefund(now) : settlement;
@@ -441,7 +424,7 @@ const buyerNotice = async (
   };
 };
 
-const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: DispatchOrderRefundJobsDeps): Promise<EmailOutboxEnqueueInput[]> => {
+const staffAlertEmails = async (job: RefundJob, order: OrderListItem | null, alert: OrderRefundAlert, deps: DispatchOrderRefundJobsDeps): Promise<EmailOutboxEnqueueInput[]> => {
   const tenant = await deps.tenants.findById(job.tenantId);
   if (tenant === null) return [];
   const recipients = await tenantStaffRecipients(job.tenantId, deps);
@@ -455,7 +438,7 @@ const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: D
       to: recipient.email,
       payload: prerenderedTransactionalPayload(staffRefundAlertEmail(recipient.language, {
         tenantName: tenant.name, alert, orderId: job.orderId, amountCents: job.amountCents, currency: job.currency,
-        mayHaveRefunded: job.createOutcomeUnknown, reason: staffRefundReason(job), restocked: job.restocked, removedFromPackingList: job.removedFromPackingList,
+        mayHaveRefunded: job.createOutcomeUnknown, reason: staffRefundReason(job, order), restocked: job.restocked, removedFromPackingList: job.removedFromPackingList,
         diagnostic: job.lastError ?? '', orderUrl,
       })),
       sourceApp: STAFF_REFUND_EMAIL_SOURCE,
@@ -506,7 +489,7 @@ const processClaim = async (claim: ClaimedRefundJob, deadlineAt: number, deps: D
   let notice: EmailOutboxEnqueueInput | undefined;
   let released: Awaited<ReturnType<DispatchOrderRefundJobsDeps['refundJobs']['release']>>;
   try {
-    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, settlement.alert, deps);
+    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, order, settlement.alert, deps);
     notice = await buyerNotice(job, order, settlement, deps);
     released = notice === undefined
       ? await deps.refundJobs.release(job.tenantId, job.id, claim.lease, { ...settlement.update, now: deps.clock.nowIso() }, staffAlerts)

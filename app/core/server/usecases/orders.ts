@@ -109,7 +109,7 @@ export const getOrder = async (
     ? null
     : await deps.invoices.findCurrentByOrder(tenant.value, order.id);
   const refundJob = await deps.refundJobs?.findByOrderId(tenant.value, order.id) ?? null;
-  const staff = deps.staffRefunds === undefined ? {} : await orderStaffRefundSummary(tenant.value, order, deps.staffRefunds);
+  const staff = deps.staffRefunds === undefined ? {} : await orderStaffRefundSummary(tenant.value, order, refundJob, deps.staffRefunds);
   return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob), ...staff });
 };
 
@@ -156,10 +156,10 @@ const SHIPPING_COLUMN_NAMES = [
   'fulfilment_status',
 ];
 
-const refundedCentsOf = (order: OrderListItem, committedCents: ReadonlyMap<string, number>): number =>
-  order.status === 'refunded' ? order.amountCents : Math.min(committedCents.get(order.id) ?? 0, order.amountCents);
+const refundedCentsOf = (order: OrderListItem, refundedCents: ReadonlyMap<string, number>): number =>
+  Math.min(refundedCents.get(order.id) ?? 0, order.amountCents);
 
-const ordersToCsv = (orders: OrderListItem[], committedCents: ReadonlyMap<string, number>): string =>
+const ordersToCsv = (orders: OrderListItem[], refundedCents: ReadonlyMap<string, number>): string =>
   [
     [
       'date',
@@ -214,7 +214,7 @@ const ordersToCsv = (orders: OrderListItem[], committedCents: ReadonlyMap<string
         order.clientReference ?? '',
         orderPersonalizationSummary(order.lines ?? []),
         order.cancelReason ?? '',
-        String(refundedCentsOf(order, committedCents)),
+        String(refundedCentsOf(order, refundedCents)),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -224,7 +224,7 @@ const ordersToCsv = (orders: OrderListItem[], committedCents: ReadonlyMap<string
 export const exportOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'committedCentsByOrder'> },
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'refundedCentsByOrder'> },
 ): Promise<Result<OrderExportFile, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:export');
   if (!tenant.ok) return tenant;
@@ -265,15 +265,15 @@ export const exportOrders = async (
     ),
   );
   const orders = [...first.orders, ...remaining.flatMap((page) => page.orders)];
-  const committedCents = deps.staffRefunds === undefined
+  const refundedCents = deps.staffRefunds === undefined
     ? new Map<string, number>()
-    : await deps.staffRefunds.committedCentsByOrder(tenant.value, orders.map((order) => order.id));
+    : await deps.staffRefunds.refundedCentsByOrder(tenant.value, orders.map((order) => order.id));
   const filename = `sales-${ctx.identity.tenantSlug ?? tenant.value}.${parsed.data.format}`;
 
   return ok(
     parsed.data.format === 'csv'
-      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders, committedCents) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []), refundedCents: refundedCentsOf(order, committedCents) }))) },
+      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders, refundedCents) }
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []), refundedCents: refundedCentsOf(order, refundedCents) }))) },
   );
 };
 

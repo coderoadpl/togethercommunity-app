@@ -68,7 +68,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
     refunds.set(refund.refundId, { tenantId, refund });
     return ok(refund);
   };
-  const refundMethods: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds' | 'listNewestRefunds'> = {
+  const refundMethods: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'> = {
     createRefund: async (input) => {
       const key = await resolveKey(input.tenantId, input.mode);
       if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
@@ -97,11 +97,6 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
       const key = await resolveKey(input.tenantId, input.mode);
       if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
       return ok(refundsFor(refunds, input.tenantId, input.paymentIntentId).toReversed());
-    },
-    listNewestRefunds: async (input) => {
-      const key = await resolveKey(input.tenantId, input.mode);
-      if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
-      return ok({ refunds: refundsFor(refunds, input.tenantId, input.paymentIntentId).toReversed(), complete: true });
     },
   };
   const noteCharge = (tenantId: string, paymentIntentId: string, amountCents: number) => {

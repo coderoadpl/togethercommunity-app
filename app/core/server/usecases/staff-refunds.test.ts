@@ -29,8 +29,9 @@ const subscription = (overrides: Partial<MemberSubscription> = {}): MemberSubscr
   couponDiscountCents: 0, couponRecurringDuration: null, createdAt, updatedAt: createdAt, ...overrides,
 });
 
-const staffRefunds: Pick<OrderStaffRefundRepository, 'platformCommittedCents' | 'hasLabel' | 'returnableStock' | 'listByOrder'> = {
+const staffRefunds: Pick<OrderStaffRefundRepository, 'platformCommittedCents' | 'platformRefundedCents' | 'hasLabel' | 'returnableStock' | 'listByOrder'> = {
   platformCommittedCents: async () => 0,
+  platformRefundedCents: async () => 0,
   hasLabel: async () => false,
   returnableStock: async () => [],
   listByOrder: async () => [],
@@ -39,7 +40,7 @@ const staffRefunds: Pick<OrderStaffRefundRepository, 'platformCommittedCents' | 
 const preview = async (order: OrderListItem, input: { latest?: Order | null; current?: MemberSubscription | null } = {}) => {
   const result = await previewStaffRefund(owner, order.id, {
     orderDetails: { findById: async (tenantId, orderId) => (tenantId === order.tenantId && orderId === order.id ? order : null) },
-    staffRefunds: { ...staffRefunds, create: async () => { throw new Error('Not used'); }, committedCentsByOrder: async () => new Map(), activeRefundByOrder: async () => new Map(), noteChargeRefunded: async () => [], shipAnyway: async () => { throw new Error('Not used'); } },
+    staffRefunds: { ...staffRefunds, create: async () => { throw new Error('Not used'); }, refundedCentsByOrder: async () => new Map(), activeRefundByOrder: async () => new Map(), noteChargeRefunded: async () => [], shipAnyway: async () => { throw new Error('Not used'); } },
     payment: { listRefunds: async () => ok([]) },
     subscriptionOrders: { findLatestSubscriptionOrder: async () => (input.latest === undefined ? order : input.latest) },
     subscriptions: { findByProviderSubscriptionId: async () => (input.current === undefined ? subscription() : input.current) },

@@ -59,7 +59,13 @@ const refundFailureDetailsSchema = z.object({
   providerCode: z.string().nullable(),
   outcomeUnknown: z.boolean().default(false),
   providerServerError: z.boolean().default(false),
+  providerMessage: z.string().nullable().default(null),
+  diagnosticToken: z.string().nullable().default(null),
 });
+
+// The provider's own words, or a neutral token where the adapter wrote the message: a staff refund stores only this,
+// because Studio and the staff alerts word the explanation in the reader's language.
+type RefundFailureDiagnostic = { providerMessage: string } | { token: string };
 
 // A refund failure's message is stored on the refund, shown in Studio and copied into staff e-mails, so a key the
 // provider echoes back never gets that far; the provider's object ids stay, because staff look them up.
@@ -73,19 +79,28 @@ export const refundFailure = (
   providerCode: string | null = null,
   outcomeUnknown = false,
   providerServerError = false,
+  diagnostic: RefundFailureDiagnostic | null = null,
 ): AppError =>
-  appError(REFUND_FAILURE_ERROR_CODE[kind], redactProviderCredentials(message), { refundFailure: kind, providerCode, outcomeUnknown, providerServerError });
+  appError(REFUND_FAILURE_ERROR_CODE[kind], redactProviderCredentials(message), {
+    refundFailure: kind,
+    providerCode,
+    outcomeUnknown,
+    providerServerError,
+    providerMessage: diagnostic !== null && 'providerMessage' in diagnostic ? redactProviderCredentials(diagnostic.providerMessage) : null,
+    diagnosticToken: diagnostic !== null && 'token' in diagnostic ? diagnostic.token : null,
+  });
 
 export const refundFailureOf = (error: AppError): {
   kind: RefundFailureKind;
   providerCode: string | null;
   outcomeUnknown: boolean;
   providerServerError: boolean;
+  diagnostic: string;
 } | null => {
   const parsed = refundFailureDetailsSchema.safeParse(error.details);
-  return parsed.success
-    ? { kind: parsed.data.refundFailure, providerCode: parsed.data.providerCode, outcomeUnknown: parsed.data.outcomeUnknown, providerServerError: parsed.data.providerServerError }
-    : null;
+  if (!parsed.success) return null;
+  const { refundFailure: kind, providerCode, outcomeUnknown, providerServerError, providerMessage, diagnosticToken } = parsed.data;
+  return { kind, providerCode, outcomeUnknown, providerServerError, diagnostic: providerMessage ?? diagnosticToken ?? kind };
 };
 
 const stripeApiFailureSchema = z.object({
@@ -123,5 +138,5 @@ export const stripeRefundFailure = (prefix: string, cause: unknown): AppError =>
   const failure = parsed.success ? parsed.data : {};
   const reason = failure.message ?? (cause instanceof Error ? cause.message : String(cause));
   const serverError = failure.statusCode !== undefined && failure.statusCode >= 500;
-  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null, stripeOutcomeUnknown(failure), serverError);
+  return refundFailure(stripeRefundFailureKind(failure), `${prefix}: ${reason}`, failure.code ?? null, stripeOutcomeUnknown(failure), serverError, { providerMessage: reason });
 };

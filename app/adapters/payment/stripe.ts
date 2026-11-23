@@ -440,14 +440,9 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
   }
 };
 
-interface RefundPages {
-  refunds: ProviderRefund[];
-  complete: boolean;
-  stoppedBy: 'deadline' | 'page_cap' | null;
-}
-
 const REFUND_LIST_LIMIT = 100;
 const REFUND_LIST_MAX_PAGES = 10;
+const REFUND_LIST_INCOMPLETE = 'refund_list_incomplete';
 const REFUND_REQUEST_OPTIONS = { timeout: REFUND_REQUEST_TIMEOUT_MS, maxNetworkRetries: REFUND_REQUEST_MAX_NETWORK_RETRIES } as const;
 
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
@@ -499,14 +494,14 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
     return ok(createClient(key.value));
   };
 
-  const listRefundPages = async (input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt?: number }): Promise<Result<RefundPages, AppError>> => {
+  const listRefundPages = async (input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt?: number }): Promise<Result<ProviderRefund[], AppError>> => {
     const client = await clientFor(input.tenantId, input.mode);
     if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
     const refunds: ProviderRefund[] = [];
     let startingAfter: string | undefined;
     for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
       if (pageCount > 0 && input.deadlineAt !== undefined && Date.now() + REFUND_REQUEST_WORST_CASE_MS > input.deadlineAt) {
-        return ok({ refunds, complete: false, stoppedBy: 'deadline' });
+        return err(refundFailure('transient', 'The refund list of the payment could not be read in full before the run deadline', null, false, false, { token: REFUND_LIST_INCOMPLETE }));
       }
       let page: { data: unknown[]; has_more: boolean };
       try {
@@ -524,9 +519,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         refunds.push(refund.value);
       }
       startingAfter = refunds.at(-1)?.refundId;
-      if (!page.has_more || startingAfter === undefined) return ok({ refunds, complete: true, stoppedBy: null });
+      if (!page.has_more || startingAfter === undefined) return ok(refunds);
     }
-    return ok({ refunds, complete: false, stoppedBy: 'page_cap' });
+    return err(refundFailure('transient', `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`, null, false, false, { token: REFUND_LIST_INCOMPLETE }));
   };
 
   return {
@@ -824,18 +819,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
       return providerRefund(raw);
     },
-    listRefunds: async (input) => {
-      const listed = await listRefundPages(input);
-      if (!listed.ok) return listed;
-      if (listed.value.complete) return ok(listed.value.refunds);
-      return err(refundFailure('transient', listed.value.stoppedBy === 'deadline'
-        ? 'The refund list of the payment could not be read in full before the run deadline'
-        : `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`));
-    },
-    listNewestRefunds: async (input) => {
-      const listed = await listRefundPages(input);
-      return listed.ok ? ok({ refunds: listed.value.refunds, complete: listed.value.complete }) : listed;
-    },
+    listRefunds: listRefundPages,
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a
       // throwaway key is enough to build the instance for signature checking.

@@ -253,7 +253,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     lastErrorLabel: 'Last error',
     openOrder: 'Open the order',
     paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
-      const checkInDashboard = 'Check the payment in the Stripe Dashboard: if this refund is listed there, nothing more is needed; if it is not, refund it there, and the order is updated once Stripe reports the refund.';
+      const checkInDashboard = 'Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.';
       const unconfirmedBecause = reason === 'create_outcome_unknown'
         ? 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'
         : reason === 'awaiting_provider'
@@ -268,7 +268,9 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
         blocked_permission: 'Stripe refused it because the workspace\'s restricted Stripe key lacks the Charges and Refunds (write) permission, so nothing has been refunded yet. Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt. Attempts continue every hour for 72 hours.',
         blocked_permission_failed: 'The refund was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Nothing was refunded. Once the permission is added, refund the order again from its page, or refund it by hand in the Stripe Dashboard.',
         failed: 'The refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.',
-        failed_after_submission: 'Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund the order again from its page, or return the money another way.',
+        failed_after_submission: reason === 'failed_after_order_refunded'
+          ? `Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. The order is already marked refunded, so it cannot be refunded again from its page. ${checkInDashboard}`
+          : 'Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund the order again from its page, or return the money another way.',
         unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';

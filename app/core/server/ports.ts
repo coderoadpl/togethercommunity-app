@@ -1300,13 +1300,6 @@ export interface PaymentProvider {
     paymentIntentId: string;
     deadlineAt?: number;
   }): Promise<Result<ProviderRefund[], AppError>>;
-  /** Newest first; a page that could not finish before `deadlineAt`, or past the page cap, is left unread and `complete` is false. */
-  listNewestRefunds?(input: {
-    mode: 'live' | 'test';
-    tenantId: string;
-    paymentIntentId: string;
-    deadlineAt?: number;
-  }): Promise<Result<{ refunds: ProviderRefund[]; complete: boolean }, AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';
@@ -1483,7 +1476,6 @@ export interface StaffRefundCreationState {
   platformCommittedCents: number;
   sameRequest: OrderStaffRefund | null;
   waiting: OrderStaffRefund | null;
-  latest: OrderStaffRefund | null;
   hasLabel: boolean;
 }
 
@@ -1511,9 +1503,10 @@ export interface OrderStaffRefundRepository {
   ): Promise<Result<StaffRefundCreated, AppError>>;
   listByOrder(tenantId: string, orderId: string): Promise<OrderStaffRefund[]>;
   platformCommittedCents(tenantId: string, orderId: string): Promise<number>;
+  platformRefundedCents(tenantId: string, orderId: string): Promise<number>;
   hasLabel(tenantId: string, orderId: string): Promise<boolean>;
   returnableStock(tenantId: string, orderId: string): Promise<Array<{ productId: string; quantity: number }>>;
-  committedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
+  refundedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
   activeRefundByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, Pick<OrderStaffRefund, 'status' | 'amountCents'>>>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
   shipAnyway(tenantId: string, orderId: string, input: { actorUserId: string; now: string }): Promise<Result<Order, AppError>>;

@@ -64,13 +64,13 @@ export const STAFF_REFUND_WAITING_STATUSES = ['pending', 'running', 'blocked_per
 // Every status in which money left or may still leave the platform; failed and skipped refunds moved none.
 export const PLATFORM_COMMITTED_REFUND_STATUSES = ['pending', 'running', 'submitted', 'succeeded', 'blocked_permission', 'unconfirmed'] as const;
 
+export const PLATFORM_REFUNDED_STATUSES = ['submitted', 'succeeded', 'unconfirmed'] as const;
+
 const SETTLED_STAFF_REFUND_STATUSES = ['succeeded', 'skipped_refunded', 'resolved_externally'] as const;
 
 export const isActiveStaffRefundStatus = (status: OrderStaffRefund['status']): boolean =>
   !SETTLED_STAFF_REFUND_STATUSES.some((settled) => settled === status);
 
-const isPlatformCommittedRefundStatus = (status: OrderStaffRefund['status']): boolean =>
-  PLATFORM_COMMITTED_REFUND_STATUSES.some((committed) => committed === status);
 
 const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): boolean =>
   refund.status !== 'failed' && refund.status !== 'canceled';
@@ -78,41 +78,27 @@ const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): bool
 export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
   refunds.filter(isCommittedProviderRefund).reduce((sum, refund) => sum + refund.amountCents, 0);
 
-export const uncommittedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
-  refunds.filter((refund) => !isCommittedProviderRefund(refund)).reduce((sum, refund) => sum + refund.amountCents, 0);
-
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
 
-type LatestStaffRefund = Pick<OrderStaffRefund, 'kind' | 'status' | 'providerRefundStatus' | 'amountCents'>;
-
-const failedAfterSubmission = (refund: LatestStaffRefund): boolean =>
-  refund.kind === 'remainder' && refund.status === 'failed' && (refund.providerRefundStatus === 'failed' || refund.providerRefundStatus === 'canceled');
-
-// An order marked refunded is refunded again only when the platform itself saw why the money is still there: its latest
-// staff refund was a full refund the provider failed or canceled after charge.refunded. A failed or canceled refund in
-// the provider's list alone may predate what marked the order refunded, such as a dispute, so it only caps the amount.
-export const staffRefundRemainderCents = (
-  order: Pick<Order, 'status' | 'amountCents'>,
-  input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; platformCommittedCents: number; latestStaffRefund: LatestStaffRefund | null },
-): number => {
-  const remainder = refundableRemainderCents({ paidCents: order.amountCents, ...input });
-  if (order.status !== 'refunded') return remainder;
-  if (input.latestStaffRefund === null || !failedAfterSubmission(input.latestStaffRefund)) return 0;
-  const offered = Math.min(remainder, input.latestStaffRefund.amountCents);
-  return input.providerUncommittedCents === null ? offered : Math.min(offered, input.providerUncommittedCents);
-};
+// An order marked refunded may have been refunded outside the platform or disputed, so refunds the platform cannot
+// see never count as an amount refunded.
+export const refundedAmountUnknown = (order: Pick<Order, 'status' | 'amountCents'>, refundedCents: number): boolean =>
+  order.status === 'refunded' && refundedCents < order.amountCents;
 
 export const staffRefundWaitingConflict = (): AppError =>
   appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', { waitingRefund: true });
 
-const STAFF_REFUNDABLE_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded', 'refunded'];
+const STAFF_REFUNDABLE_STATUSES: readonly OrderStatus[] = ['paid', 'partially_refunded'];
 
 type RefundableOrder = Pick<Order, 'status' | 'provider' | 'providerObjectIds' | 'amountCents' | 'cancelReason'>;
 
 export const staffRefundOrderBlocker = (order: RefundableOrder): AppError | null => {
   if (order.cancelReason != null) return appError('conflict', 'The order was cancelled because its goods sold out and is refunded by its own refund job');
-  if (!STAFF_REFUNDABLE_STATUSES.includes(order.status)) return appError('conflict', `The order is ${order.status}; only paid or refunded orders can be refunded`);
+  if (order.status === 'refunded') {
+    return appError('conflict', 'The order is marked refunded: refunded in full, refunded outside the platform or disputed; nothing more can be refunded here; check the payment in the payment provider\'s dashboard');
+  }
+  if (!STAFF_REFUNDABLE_STATUSES.includes(order.status)) return appError('conflict', `The order is ${order.status}; only paid or partially refunded orders can be refunded`);
   if (order.provider !== 'stripe') return validation('The order was not paid through the payment provider and cannot be refunded here');
   if ((order.providerObjectIds['paymentIntent'] ?? '') === '') return validation('The order has no payment to refund');
   if (order.amountCents <= 0) return validation('The order was free; there is nothing to refund');
@@ -219,7 +205,8 @@ export const staffRefundPreviewSchema = z.object({
   currency: currencySchema,
   mode: stripeModeSchema,
   remainderSource: z.enum(['provider', 'platform']),
-  remainderWithheld: z.boolean(),
+  refundedAmountUnknown: z.boolean(),
+  grantsAccess: z.boolean(),
   returnableStock: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().nonnegative() })),
   onPackingList: z.boolean(),
   hasShipment: z.boolean(),
@@ -353,6 +340,7 @@ export type StaffRefundReason =
   | 'not_refunded'
   | 'permission_expired'
   | 'failed_after_submission'
+  | 'failed_after_order_refunded'
   | 'create_outcome_unknown'
   | 'awaiting_provider'
   | 'refunded_outside'
@@ -360,9 +348,12 @@ export type StaffRefundReason =
 
 export const staffRefundReason = (
   refund: Pick<OrderStaffRefund, 'status' | 'createOutcomeUnknown' | 'providerRefundStatus' | 'permissionBlockedAt'>,
+  order: Pick<Order, 'status'> | null,
 ): StaffRefundReason | null => {
   if (refund.status === 'failed') {
-    if (refund.providerRefundStatus === 'failed' || refund.providerRefundStatus === 'canceled') return 'failed_after_submission';
+    if (refund.providerRefundStatus === 'failed' || refund.providerRefundStatus === 'canceled') {
+      return order?.status === 'refunded' ? 'failed_after_order_refunded' : 'failed_after_submission';
+    }
     return refund.permissionBlockedAt === null ? 'not_refunded' : 'permission_expired';
   }
   if (refund.status !== 'unconfirmed') return null;
@@ -406,21 +397,21 @@ export const orderRefundTotalsSchema = z.object({
 
 export type OrderRefundTotals = z.output<typeof orderRefundTotalsSchema>;
 
-const platformRefundedCents = (
-  order: Pick<Order, 'status' | 'amountCents'>,
-  refunds: readonly Pick<OrderStaffRefund, 'status' | 'amountCents'>[],
-): number => {
-  if (order.status === 'refunded') return order.amountCents;
-  const committed = refunds.filter((refund) => isPlatformCommittedRefundStatus(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
-  return Math.min(committed, order.amountCents);
-};
+const sumOf = (refunds: readonly { status: string; amountCents: number }[], statuses: readonly string[]): number =>
+  refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
 
 export const orderRefundTotals = (
   order: Pick<Order, 'status' | 'amountCents' | 'currency'>,
-  refunds: readonly Pick<OrderStaffRefund, 'status' | 'amountCents'>[],
+  refunds: readonly { status: string; amountCents: number }[],
 ): OrderRefundTotals => {
-  const refundedCents = platformRefundedCents(order, refunds);
-  return orderRefundTotalsSchema.parse({ paidCents: order.amountCents, refundedCents, remainingCents: order.amountCents - refundedCents, currency: order.currency });
+  const refundedCents = Math.min(order.amountCents, sumOf(refunds, PLATFORM_REFUNDED_STATUSES));
+  const committedCents = Math.min(order.amountCents, sumOf(refunds, PLATFORM_COMMITTED_REFUND_STATUSES));
+  return orderRefundTotalsSchema.parse({
+    paidCents: order.amountCents,
+    refundedCents,
+    remainingCents: order.status === 'refunded' ? 0 : order.amountCents - committedCents,
+    currency: order.currency,
+  });
 };
 
 export type RefundJob =

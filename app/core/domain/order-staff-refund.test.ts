@@ -8,6 +8,7 @@ import {
   orderRefundIdempotencyKey,
   orderRefundTotals,
   refundableRemainderCents,
+  refundedAmountUnknown,
   resolveStaffRefundAmount,
   resolveStaffRefundChoices,
   shopManagementCapabilities,
@@ -15,8 +16,7 @@ import {
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
-  staffRefundRemainderCents,
-  uncommittedProviderRefundCents,
+  staffRefundReason,
 } from './index.js';
 
 const now = '2026-11-22T10:00:00.000Z';
@@ -63,27 +63,18 @@ describe('staff refund rules', () => {
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: 5000, platformCommittedCents: 0 })).toBe(0);
   });
 
-  it('leaves an order marked refunded refundable only after its latest staff refund, a full one, failed after it was issued', () => {
-    const refunded = { status: 'refunded' as const, amountCents: 4099 };
-    const failed = { status: 'failed' as const, amountCents: 4099 };
-    const canceled = { status: 'canceled' as const, amountCents: 1000 };
-    const succeeded = { status: 'succeeded' as const, amountCents: 1000 };
-    const failedFull = { kind: 'remainder' as const, status: 'failed' as const, providerRefundStatus: 'failed', amountCents: 4099 };
-    const failedPartial = { kind: 'amount' as const, status: 'failed' as const, providerRefundStatus: 'failed', amountCents: 1000 };
-    const refusedFull = { kind: 'remainder' as const, status: 'failed' as const, providerRefundStatus: null, amountCents: 4099 };
-    const remainder = (input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; latestStaffRefund: typeof failedFull | typeof failedPartial | typeof refusedFull | null }) =>
-      staffRefundRemainderCents(refunded, { ...input, platformCommittedCents: 0 });
-    expect(uncommittedProviderRefundCents([failed, canceled, succeeded])).toBe(5099);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: failedFull })).toBe(4099);
-    expect(remainder({ providerCommittedCents: null, providerUncommittedCents: null, latestStaffRefund: failedFull })).toBe(4099);
-    expect(remainder({ providerCommittedCents: 1000, providerUncommittedCents: 1000, latestStaffRefund: { ...failedFull, amountCents: 3099 } })).toBe(1000);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: { ...failedFull, amountCents: 3099 } })).toBe(3099);
-    expect(remainder({ providerCommittedCents: 4099, providerUncommittedCents: 4099, latestStaffRefund: failedFull })).toBe(0);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 1000, latestStaffRefund: failedPartial })).toBe(0);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: refusedFull })).toBe(0);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 4099, latestStaffRefund: null })).toBe(0);
-    expect(remainder({ providerCommittedCents: 0, providerUncommittedCents: 0, latestStaffRefund: null })).toBe(0);
-    expect(staffRefundRemainderCents({ status: 'paid', amountCents: 4099 }, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0, latestStaffRefund: null })).toBe(4099);
+  it('never refunds an order marked refunded, whether it was refunded in full, outside the platform or disputed', () => {
+    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'refunded' })).toMatchObject({
+      code: 'conflict',
+      message: 'The order is marked refunded: refunded in full, refunded outside the platform or disputed; nothing more can be refunded here; check the payment in the payment provider\'s dashboard',
+    });
+  });
+
+  it('words a refund that failed after it was issued by whether the order is already marked refunded', () => {
+    const failed = { status: 'failed' as const, createOutcomeUnknown: false, providerRefundStatus: 'failed', permissionBlockedAt: null };
+    expect(staffRefundReason(failed, { status: 'paid' })).toBe('failed_after_submission');
+    expect(staffRefundReason(failed, { status: 'refunded' })).toBe('failed_after_order_refunded');
+    expect(staffRefundReason({ ...failed, providerRefundStatus: null }, { status: 'refunded' })).toBe('not_refunded');
   });
 
   it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {
@@ -129,7 +120,7 @@ describe('staff refund rules', () => {
   it('names why an order cannot be refunded', () => {
     expect(staffRefundOrderBlocker(paidOrder)).toBeNull();
     expect(staffRefundOrderBlocker({ ...paidOrder, status: 'partially_refunded' })).toBeNull();
-    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'refunded' })).toBeNull();
+    expect(staffRefundOrderBlocker({ ...paidOrder, status: 'refunded' })).toMatchObject({ code: 'conflict' });
     expect(staffRefundOrderBlocker({ ...paidOrder, status: 'pending' })).toMatchObject({ code: 'conflict' });
     expect(staffRefundOrderBlocker({ ...paidOrder, cancelReason: 'out_of_stock' })).toMatchObject({ code: 'conflict' });
     expect(staffRefundOrderBlocker({ ...paidOrder, provider: 'simulated' })).toMatchObject({ code: 'validation' });
@@ -171,9 +162,19 @@ describe('staff refund rules', () => {
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-2' })).toBe(false);
   });
 
-  it('sums committed refunds into the order totals and reads a refunded order as fully refunded', () => {
-    const refunds = [{ status: 'succeeded' as const, amountCents: 1000 }, { status: 'failed' as const, amountCents: 500 }, { status: 'pending' as const, amountCents: 200 }];
-    expect(orderRefundTotals({ status: 'partially_refunded', amountCents: 4099, currency: 'PLN' }, refunds)).toStrictEqual({ paidCents: 4099, refundedCents: 1200, remainingCents: 2899, currency: 'PLN' });
-    expect(orderRefundTotals({ status: 'refunded', amountCents: 4099, currency: 'PLN' }, refunds)).toStrictEqual({ paidCents: 4099, refundedCents: 4099, remainingCents: 0, currency: 'PLN' });
+  it('counts only refunds that reached the provider as refunded, never infers them from the order status, and leaves a refunded order nothing to refund', () => {
+    const refunds = [
+      { status: 'succeeded' as const, amountCents: 1000 }, { status: 'failed' as const, amountCents: 500 }, { status: 'pending' as const, amountCents: 200 },
+      { status: 'blocked_permission' as const, amountCents: 300 }, { status: 'unconfirmed' as const, amountCents: 100 },
+    ];
+    expect(orderRefundTotals({ status: 'partially_refunded', amountCents: 4099, currency: 'PLN' }, refunds)).toStrictEqual({ paidCents: 4099, refundedCents: 1100, remainingCents: 2499, currency: 'PLN' });
+    expect(orderRefundTotals({ status: 'refunded', amountCents: 4099, currency: 'PLN' }, [])).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 0, currency: 'PLN' });
+    expect(orderRefundTotals({ status: 'paid', amountCents: 4099, currency: 'PLN' }, [{ status: 'blocked_permission', amountCents: 4099 }])).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 0, currency: 'PLN' });
+  });
+
+  it('calls the refunded amount of an order marked refunded unknown while the refunds seen do not cover the payment', () => {
+    expect(refundedAmountUnknown({ status: 'refunded', amountCents: 4099 }, 0)).toBe(true);
+    expect(refundedAmountUnknown({ status: 'refunded', amountCents: 4099 }, 4099)).toBe(false);
+    expect(refundedAmountUnknown({ status: 'partially_refunded', amountCents: 4099 }, 1000)).toBe(false);
   });
 });

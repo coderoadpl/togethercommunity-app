@@ -61,7 +61,6 @@ const staffRefundsFake = (order: OrderListItem) => {
         platformCommittedCents: committed(),
         sameRequest: refunds.find((refund) => refund.requestKey === input.requestKey) ?? null,
         waiting: refunds.find((refund) => isIn(STAFF_REFUND_WAITING_STATUSES, refund.status)) ?? null,
-        latest: refunds.at(-1) ?? null,
         hasLabel: false,
       });
       if (!decision.ok) return decision;
@@ -72,9 +71,10 @@ const staffRefundsFake = (order: OrderListItem) => {
     },
     listByOrder: async (tenantId, orderId) => (owns(tenantId, orderId) ? refunds.toReversed() : []),
     platformCommittedCents: async (tenantId, orderId) => (owns(tenantId, orderId) ? committed() : 0),
+    platformRefundedCents: async () => 0,
     hasLabel: async () => false,
     returnableStock: async (tenantId, orderId) => (owns(tenantId, orderId) ? [{ productId: 'book', quantity: 1 }] : []),
-    committedCentsByOrder: async () => new Map(),
+    refundedCentsByOrder: async () => new Map(),
     activeRefundByOrder: async () => new Map(),
     noteChargeRefunded: async () => [],
     shipAnyway: async () => {
@@ -164,7 +164,7 @@ describe('staff refund HTTP routes', () => {
     expect(previewed.status).toBe(200);
     expect(envelope(staffRefundContracts.orderRefundPreview.output).parse(await previewed.json()).data).toMatchObject({
       orderId: 'order-1', refundable: true, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN', mode: 'live',
-      remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
+      remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
       fullRefundOptions: { restockDefault: true, removeFromPackingListDefault: true }, waitingRefundId: null,
     });
     expect(h.listRefunds).toHaveBeenCalledWith({ mode: 'live', tenantId: 'acme', paymentIntentId: 'pi_1' });

@@ -150,7 +150,15 @@ export const expectedStaffRefundAlertPl = {
   retrying: 'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
   retryingOutcomeUnknownSubject: 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
   retryingOutcomeUnknown: 'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
-  checkInDashboard: 'Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić; jeśli go nie ma, zwróć płatność tam, a zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
+  checkInDashboard: 'Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
+  dashboardSteps: [
+    'Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić.',
+    'Jeśli ma status Requires action, dokończ go tam.',
+    'Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę',
+  ],
+  listedMeansDone: 'jest tam widoczny, nic więcej',
+  refundAgainFromPage: 'Zleć zwrot ponownie na stronie zamówienia',
+  failedAfterOrderRefunded: 'Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie.',
   unconfirmedBecause: {
     create_outcome_unknown: 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.',
     awaiting_provider: 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.',

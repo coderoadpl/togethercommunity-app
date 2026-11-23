@@ -245,17 +245,17 @@ describe('exportOrders — CSV', () => {
     expect(kept?.split(',').at(-2)).toBe('""');
   });
 
-  it('exports the refunded amount the platform recorded, or the whole amount of a refunded order, as the last column and a JSON field', async () => {
+  it('exports only the refunded amount the platform saw reach the provider, never the whole amount of an order marked refunded, as the last column and a JSON field', async () => {
     const h = harness([orderItem('partly'), orderItem('refunded', { status: 'refunded' }), orderItem('untouched')]);
-    const staffRefunds = { committedCentsByOrder: async () => new Map([['partly', 1200], ['refunded', 300]]) };
+    const staffRefunds = { refundedCentsByOrder: async () => new Map([['partly', 1200], ['refunded', 300]]) };
     const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, { ...h.deps, staffRefunds });
     if (!csv.ok) throw new Error(csv.error.message);
     const rows = csv.value.content.split('\n');
     expect(rows[0]?.split(',').at(-1)).toBe('refunded_amount');
-    expect(rows.slice(1).map((row) => row.split(',').at(-1))).toStrictEqual(['"1200"', `"${String(orderItem('refunded').amountCents)}"`, '"0"']);
+    expect(rows.slice(1).map((row) => row.split(',').at(-1))).toStrictEqual(['"1200"', '"300"', '"0"']);
     const json = await exportOrders({ identity: identity('owner') }, { format: 'json' }, { ...h.deps, staffRefunds });
     if (!json.ok) throw new Error(json.error.message);
-    expect(JSON.parse(json.value.content)).toMatchObject([{ refundedCents: 1200 }, { refundedCents: orderItem('refunded').amountCents }, { refundedCents: 0 }]);
+    expect(JSON.parse(json.value.content)).toMatchObject([{ refundedCents: 1200 }, { refundedCents: 300 }, { refundedCents: 0 }]);
   });
 
   it('exports the immutable billing snapshot in CSV and JSON', async () => {

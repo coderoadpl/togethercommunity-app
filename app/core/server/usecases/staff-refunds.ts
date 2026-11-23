@@ -2,7 +2,6 @@ import {
   appError,
   committedProviderRefundCents,
   createStaffRefundInputSchema,
-  uncommittedProviderRefundCents,
   err,
   forbidden,
   newOrderStaffRefund,
@@ -10,13 +9,15 @@ import {
   ok,
   orderRefundTotals,
   orderStaffRefundView,
+  productLines,
+  refundableRemainderCents,
+  refundedAmountUnknown,
   resolveStaffRefundAmount,
   resolveStaffRefundChoices,
   shipAnywayBlocker,
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
-  staffRefundRemainderCents,
   staffRefundShipmentConflict,
   staffRefundShipmentState,
   staffRefundWaitingConflict,
@@ -24,6 +25,7 @@ import {
   type AppError,
   type MemberSubscription,
   type Order,
+  type OrderRefundJob,
   type OrderRefundTotals,
   type OrderListItem,
   type OrderStaffRefundView,
@@ -51,10 +53,10 @@ const machineKeyRefusal = (ctx: Ctx): Result<never, AppError> | null =>
   ctx.machineActor === undefined ? null : err(forbidden('order:refund is not permitted for a machine key'));
 
 type ProviderCommitted =
-  | { cents: number; uncommittedCents: number; source: 'provider' }
-  | { cents: null; uncommittedCents: null; source: 'platform' };
+  | { cents: number; source: 'provider' }
+  | { cents: null; source: 'platform' };
 
-const platformOnly: ProviderCommitted = { cents: null, uncommittedCents: null, source: 'platform' };
+const platformOnly: ProviderCommitted = { cents: null, source: 'platform' };
 
 const providerCommittedCents = async (
   order: Pick<Order, 'tenantId' | 'mode' | 'provider' | 'providerObjectIds'>,
@@ -63,9 +65,7 @@ const providerCommittedCents = async (
   const paymentIntentId = order.providerObjectIds['paymentIntent'];
   if (order.provider !== 'stripe' || paymentIntentId === undefined || payment.listRefunds === undefined) return platformOnly;
   const listed = await payment.listRefunds({ mode: order.mode, tenantId: order.tenantId, paymentIntentId });
-  return listed.ok
-    ? { cents: committedProviderRefundCents(listed.value), uncommittedCents: uncommittedProviderRefundCents(listed.value), source: 'provider' }
-    : platformOnly;
+  return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider' } : platformOnly;
 };
 
 export interface StaffRefundDeps {
@@ -125,9 +125,10 @@ export const previewStaffRefund = async (
   if (!tenant.ok) return tenant;
   const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
-  const [provider, platformCommittedCents, hasLabel, returnableStock, invoice, refunds, cancelsSubscription] = await Promise.all([
+  const [provider, platformCommittedCents, platformRefundedCents, hasLabel, returnableStock, invoice, refunds, cancelsSubscription] = await Promise.all([
     providerCommittedCents(order, deps.payment),
     deps.staffRefunds.platformCommittedCents(tenant.value, order.id),
+    deps.staffRefunds.platformRefundedCents(tenant.value, order.id),
     deps.staffRefunds.hasLabel(tenant.value, order.id),
     deps.staffRefunds.returnableStock(tenant.value, order.id),
     deps.invoices?.findCurrentByOrder(tenant.value, order.id) ?? null,
@@ -135,18 +136,15 @@ export const previewStaffRefund = async (
     fullRefundCancelsSubscription(tenant.value, order, deps),
   ]);
   const shipmentState = staffRefundShipmentState(order, hasLabel);
-  const remainderCents = staffRefundRemainderCents(order, {
-    providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents, latestStaffRefund: refunds[0] ?? null,
-  });
+  const orderBlocker = staffRefundOrderBlocker(order);
+  const remainderCents = orderBlocker === null
+    ? refundableRemainderCents({ paidCents: order.amountCents, providerCommittedCents: provider.cents, platformCommittedCents })
+    : 0;
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
-  const refundedCents = Math.min(order.amountCents, provider.cents ?? platformCommittedCents);
-  const coveredCents = Math.min(order.amountCents, Math.max(provider.cents ?? 0, platformCommittedCents));
-  const remainderWithheld = order.status === 'refunded' && remainderCents < order.amountCents - coveredCents;
-  const blocker = staffRefundOrderBlocker(order)
+  const refundedCents = Math.min(order.amountCents, provider.cents ?? platformRefundedCents);
+  const blocker = orderBlocker
     ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
-    ?? (remainderCents > 0 ? null : remainderWithheld
-      ? appError('conflict', 'The order is marked refunded although its refunds do not cover the payment, for example after a dispute; nothing more can be refunded here')
-      : appError('conflict', 'Nothing is left to refund on this order'));
+    ?? (remainderCents > 0 ? null : appError('conflict', 'Nothing is left to refund on this order'));
   return ok({
     orderId: order.id,
     refundable: blocker === null,
@@ -157,7 +155,8 @@ export const previewStaffRefund = async (
     currency: order.currency,
     mode: order.mode,
     remainderSource: provider.source,
-    remainderWithheld,
+    refundedAmountUnknown: refundedAmountUnknown(order, refundedCents),
+    grantsAccess: order.lines === undefined || productLines(order.lines).some((line) => line.productType !== 'physical'),
     returnableStock,
     onPackingList: shipmentState.onPackingList,
     hasShipment: shipmentState.hasShipmentOrLabel,
@@ -196,11 +195,8 @@ const decideStaffRefund = (
   if (state.waiting !== null) return err(staffRefundWaitingConflict());
   const shipmentConflict = staffRefundShipmentConflict(request.expectedShipmentState, staffRefundShipmentState(state.order, state.hasLabel));
   if (shipmentConflict !== null) return err(shipmentConflict);
-  const remainderCents = staffRefundRemainderCents(state.order, {
-    providerCommittedCents: request.provider.cents,
-    providerUncommittedCents: request.provider.uncommittedCents,
-    platformCommittedCents: state.platformCommittedCents,
-    latestStaffRefund: state.latest,
+  const remainderCents = refundableRemainderCents({
+    paidCents: state.order.amountCents, providerCommittedCents: request.provider.cents, platformCommittedCents: state.platformCommittedCents,
   });
   const amount = resolveStaffRefundAmount({
     amountCents: request.amountCents,
@@ -297,8 +293,12 @@ export const shipRefundedOrderAnyway = async (
 export const orderStaffRefundSummary = async (
   tenantId: string,
   order: Pick<Order, 'id' | 'status' | 'amountCents' | 'currency'>,
+  soldOutRefund: Pick<OrderRefundJob, 'status' | 'amountCents'> | null,
   staffRefunds: Pick<OrderStaffRefundRepository, 'listByOrder'>,
 ): Promise<{ staffRefunds: OrderStaffRefundView[]; refundTotals: OrderRefundTotals }> => {
   const refunds = await staffRefunds.listByOrder(tenantId, order.id);
-  return { staffRefunds: refunds.map(orderStaffRefundView), refundTotals: orderRefundTotals(order, refunds) };
+  return {
+    staffRefunds: refunds.map(orderStaffRefundView),
+    refundTotals: orderRefundTotals(order, soldOutRefund === null ? refunds : [...refunds, soldOutRefund]),
+  };
 };

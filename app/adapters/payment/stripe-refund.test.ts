@@ -35,11 +35,11 @@ const providerOverFetch = (respond: (request: Request) => Response) => {
       }),
     }),
   });
-  const { createRefund, getRefund, listRefunds, listNewestRefunds, probeStripePermissions } = provider;
-  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || listNewestRefunds === undefined || probeStripePermissions === undefined) {
+  const { createRefund, getRefund, listRefunds, probeStripePermissions } = provider;
+  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) {
     throw new Error('Refund methods missing');
   }
-  return { createRefund, getRefund, listRefunds, listNewestRefunds, probeStripePermissions, requests, keys };
+  return { createRefund, getRefund, listRefunds, probeStripePermissions, requests, keys };
 };
 
 const refundInput = {
@@ -100,7 +100,7 @@ describe('Stripe createRefund', () => {
     const result = await h.createRefund({ ...refundInput, amountCents });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false, providerServerError: false });
+    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false, providerServerError: false, diagnostic: 'refund_failed' });
     expect(h.requests).toHaveLength(0);
   });
 
@@ -141,6 +141,14 @@ describe('Stripe createRefund', () => {
     expect(result.error.code).toBe(code);
     expect(refundFailureOf(result.error)?.kind).toBe(kind);
     expect(result.error.message).toContain(error.message);
+  });
+
+  it('keeps Stripe\'s own reason apart from the operation the adapter names, so only Stripe\'s words reach staff', async () => {
+    const h = providerOverFetch(() => stripeError(400, { code: 'charge_disputed', message: 'Charge ch_1 has been charged back; key rk_live_51SYNTHETICmarker44' }));
+    const result = await h.createRefund(refundInput);
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(result.error.message).toBe('Stripe rejected the refund: Charge ch_1 has been charged back; key [credential]');
+    expect(refundFailureOf(result.error)?.diagnostic).toBe('Charge ch_1 has been charged back; key [credential]');
   });
 
   it('maps a network failure to transient with an unknown outcome', async () => {
@@ -265,7 +273,6 @@ describe('provider failure reasons', () => {
     const reasons = [
       await h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' }),
       await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' }),
-      await h.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' }),
     ].map((result) => JSON.stringify(result));
     for (const reason of reasons) {
       expect(reason).toContain('declined, key [credential] for ch_3Visible03');
@@ -314,6 +321,7 @@ describe('Stripe listRefunds', () => {
     if (result.ok) throw new Error('Expected a read failure');
     expect(refundFailureOf(result.error)?.kind).toBe('transient');
     expect(result.error.message).toBe('The refund list of the payment is longer than 1000 refunds and could not be read in full');
+    expect(refundFailureOf(result.error)?.diagnostic).toBe('refund_list_incomplete');
     expect(h.requests).toHaveLength(10);
   });
 
@@ -331,42 +339,12 @@ describe('Stripe listRefunds', () => {
       if (result.ok) throw new Error('Expected a read failure');
       expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: false });
       expect(result.error.message).toBe('The refund list of the payment could not be read in full before the run deadline');
+      expect(refundFailureOf(result.error)?.diagnostic).toBe('refund_list_incomplete');
       expect(h.requests).toHaveLength(5);
       expect(Date.now() - startedAt).toBeLessThanOrEqual(30_000);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('returns the newest pages a deadline left time for, marked incomplete, when asked for the newest refunds', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    try {
-      const startedAt = Date.now();
-      let page = 0;
-      const h = providerOverFetch(() => {
-        page += 1;
-        vi.setSystemTime(Date.now() + 200);
-        return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
-      });
-      const result = await h.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: startedAt + 10_500 });
-      expect(result).toStrictEqual({ ok: true, value: { refunds: [expect.objectContaining({ refundId: 're_1' })], complete: false } });
-      expect(h.requests).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('marks the newest refunds complete when the list ends, and incomplete past ten pages', async () => {
-    const short = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [refundObject()] }));
-    expect(await short.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toMatchObject({ ok: true, value: { complete: true, refunds: [{ refundId: 're_123' }] } });
-    let page = 0;
-    const long = providerOverFetch(() => {
-      page += 1;
-      return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
-    });
-    const result = await long.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
-    expect(result.ok && result.value.complete).toBe(false);
-    expect(result.ok ? result.value.refunds : []).toHaveLength(10);
   });
 
   it('reads the first page even when the deadline it is given leaves no time for a worst-case request', async () => {

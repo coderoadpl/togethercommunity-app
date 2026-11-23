@@ -11,12 +11,11 @@ import {
   RadioGroup,
   Stack,
   Typography,
-  createSvgIcon,
 } from '@mui/material';
 
 import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
 
-import { CheckIcon, ChevronDownIcon, MapPinIcon } from '../../components/ui/account-icons.js';
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutLockerRejection, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
@@ -37,11 +36,6 @@ import {
   type GeowidgetAccess,
   type PickedPickupPoint,
 } from './index.web.js';
-
-const RejectionIcon = createSvgIcon(
-  <path d="M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />,
-  'LockerRejection',
-);
 
 export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, language, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
@@ -130,7 +124,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   }[entry.reason];
   const checkLine = codeInvalid || check === null || check.status === 'unavailable' ? null
     : check.status === 'checking' ? <Typography variant="body2" color="text.secondary">{t.shipping.lockerChecking}</Typography>
-      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2" role={check === openedBy ? 'alert' : undefined}><RejectionIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
+      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2" role={check === openedBy ? 'alert' : undefined}><CircleAlertIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
         : (
           <>
             <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerCheckFound}</CheckoutLockerChosenCaption>
@@ -171,7 +165,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
         {pickedRejection === null ? null : (
-          <CheckoutLockerRejection variant="body2" role="alert" data-testid="checkout-pickup-point-selected-rejected"><RejectionIcon />{t.shipping.lockerRejected[pickedRejection.reason]}</CheckoutLockerRejection>
+          <CheckoutLockerRejection variant="body2" role="alert" data-testid="checkout-pickup-point-selected-rejected"><CircleAlertIcon />{t.shipping.lockerRejected[pickedRejection.reason]}</CheckoutLockerRejection>
         )}
       </Box>
       <Button

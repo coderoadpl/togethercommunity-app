@@ -35,7 +35,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
+import { SalesCardAmount, SalesCardControl, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -192,10 +192,12 @@ export const SalesPanel = () => {
       label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
   );
   const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
-    <Checkbox checked={selected.includes(order.id)} disabled={sending}
-      slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
-      onChange={(event) => setSelected((current) => event.target.checked
-        ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+    <SalesCardControl data-testid="sales-ksef-control">
+      <Checkbox checked={selected.includes(order.id)} disabled={sending}
+        slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
+        onChange={(event) => setSelected((current) => event.target.checked
+          ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+    </SalesCardControl>
   ) : null;
   const invoiceCell = (order: OrderListItem): ReactNode => order.invoice == null ? null : (
     <Stack useFlexGap spacing="0.5rem">
@@ -204,9 +206,11 @@ export const SalesPanel = () => {
         : t.sales.ksefStates[order.invoice.ksef.state]}</Typography>
       {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
       {canWriteInvoice && order.invoice.ksef?.state === 'held' ? (
-        <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
-          {t.sales.sendToKsef}
-        </Button>
+        <SalesCardControl data-testid="sales-ksef-control">
+          <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
+            {t.sales.sendToKsef}
+          </Button>
+        </SalesCardControl>
       ) : null}
     </Stack>
   );

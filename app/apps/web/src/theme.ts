@@ -4554,8 +4554,8 @@ export const SalesOrderCard = styled('li')(({ theme }) => ({
   padding: '0.875rem 1rem',
   minWidth: 0,
   '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
-  '& .MuiCheckbox-root, & .MuiButton-root': { position: 'relative', zIndex: 1 },
 }));
+export const SalesCardControl = styled('span')({ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' });
 export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
 export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'flex',

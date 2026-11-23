@@ -416,7 +416,11 @@ export interface Messages {
   auth: {
     signInNoticeLabel: string;
     invalidCredentials: string;
-    signInRateLimited: string;
+    signInRateLimitedRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedTitle: string;
+    signInRateLimitedRetryNow: string;
+    signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedLeadWait: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -434,12 +438,8 @@ export interface Messages {
     identifierContinue: string;
     identifierPending: string;
     signingInAs: (params: { email: string }) => string;
-    changeIdentifier: string;
+    changeIdentifierSuffix: string;
     changeIdentifierShort: string;
-    signInMethodsUnavailable: string;
-    signInMethodsChoosePrompt: string;
-    signInMethodsChooseMagicLink: string;
-    signInMethodsChoosePassword: string;
     methodTitle: string;
     methodLead: string;
     methodMagicLinkTitle: string;
@@ -450,6 +450,7 @@ export interface Messages {
     methodPasskeyBody: string;
     passkeyLink: string;
     passkeyPending: string;
+    passkeyCancelled: string;
     twoFactorTitle: string;
     twoFactorIntro: string;
     twoFactorCodeLabel: string;
@@ -471,7 +472,7 @@ export interface Messages {
     magicLinkRequestedBody: (params: { email: string }) => string;
     magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
-    magicLinkResendCooldown: (params: { seconds: number }) => string;
+    magicLinkResendCooldown: (params: { delay: string }) => string;
     magicLinkResent: string;
     magicLinkFetching: string;
     openMagicLink: string;

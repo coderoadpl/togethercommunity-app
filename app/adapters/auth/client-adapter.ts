@@ -108,12 +108,26 @@ const authErrorSchema = z.object({
   message: z.string().optional(),
 });
 
+const rateLimitEnvelopeSchema = z.object({
+  error: z.object({ details: z.object({ retryAfterSeconds: z.number().int().positive() }) }),
+});
+
+const retryAfterSecondsOf = (error: object): number | null => {
+  const parsed = rateLimitEnvelopeSchema.safeParse(error);
+  return parsed.success ? parsed.data.error.details.retryAfterSeconds : null;
+};
+
 const toResult = <T>(
   value: T,
   error: { code?: string | undefined; message?: string | undefined; status: number } | null,
   unauthorizedCode: 'unauthorized' | 'invalid_credentials' = 'unauthorized',
 ): Result<T, AppError> => {
   if (!error) return ok(value);
+  const retryAfterSeconds = error.status === 429 ? retryAfterSecondsOf(error) : null;
+  const details = {
+    ...(error.code === undefined ? {} : { providerCode: error.code }),
+    ...(retryAfterSeconds === null ? {} : { retryAfterSeconds }),
+  };
   const code =
     error.status === 401
       ? unauthorizedCode
@@ -127,7 +141,7 @@ const toResult = <T>(
   return err(appError(
     code,
     error.message ?? 'Authentication failed',
-    error.code === undefined ? undefined : { providerCode: error.code },
+    Object.keys(details).length === 0 ? undefined : details,
   ));
 };
 

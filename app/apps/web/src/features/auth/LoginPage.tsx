@@ -6,10 +6,8 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
   SvgIcon,
-  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
@@ -20,12 +18,21 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
-import { errorCodeOf, localizeError, providerCodeOf, useLanguage, useTranslations } from '../../i18n/index.js';
+import {
+  errorCodeOf,
+  formatRetryDelay,
+  localizeError,
+  providerCodeOf,
+  retryAfterSecondsOf,
+  useLanguage,
+  useTranslations,
+} from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
 import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
+  AuthAccentLink,
   AuthNotice,
   AuthDivider,
   AuthHelp,
@@ -53,16 +60,19 @@ import { AuthShell } from './AuthShell.js';
 const IDENTITY_ID = 'login-identity';
 const EMAIL_ERROR_ID = 'login-email-error';
 const EMAIL_HELPER_ID = 'login-email-helper';
+const PASSWORD_ERROR_ID = 'login-password-error';
 const TWO_FACTOR_ERROR_ID = 'two-factor-error';
 const INVALID_TWO_FACTOR_CODES: readonly string[] = ['INVALID_CODE', 'INVALID_BACKUP_CODE'];
+const PASSKEY_CANCELLED_CODES: readonly string[] = [
+  'AUTH_CANCELLED',
+  'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
+  'ERROR_CEREMONY_ABORTED',
+];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const RESEND_COOLDOWN_SECONDS = 30;
 const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
 
 type TwoFactorMode = 'app' | 'backup';
-
-const invalidTokenFromLocation = (): boolean =>
-  new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
 
 const MailIcon = () => (
   <SvgIcon aria-hidden>
@@ -91,6 +101,52 @@ const ChevronIcon = () => (
 const isInvalidTwoFactorCode = (error: unknown): boolean => {
   const providerCode = providerCodeOf(error);
   return providerCode !== null && INVALID_TWO_FACTOR_CODES.includes(providerCode);
+};
+
+// Hidden tabs throttle timers, so the remaining time is read from the clock, never counted down.
+const useRetryCountdown = (error: unknown): number => {
+  const [countdown, setCountdown] = useState<{ error: unknown; seconds: number }>({ error: null, seconds: 0 });
+  if (countdown.error !== error) setCountdown({ error, seconds: retryAfterSecondsOf(error) ?? 0 });
+  useEffect(() => {
+    const initial = retryAfterSecondsOf(error) ?? 0;
+    if (initial === 0) return undefined;
+    const endsAt = Date.now() + initial * 1000;
+    let timer: number | undefined;
+    const tick = () => {
+      window.clearTimeout(timer);
+      const left = Math.max(0, endsAt - Date.now());
+      const seconds = Math.ceil(left / 1000);
+      setCountdown({ error, seconds });
+      if (seconds > 0) timer = window.setTimeout(tick, left % 1000 || 1000);
+    };
+    timer = window.setTimeout(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [error]);
+  return countdown.error === error ? countdown.seconds : retryAfterSecondsOf(error) ?? 0;
+};
+
+// Assistive technology hears the delay once; only the visible copy ticks.
+const RateLimitMessage = ({ error, remaining, lead = false }: { error: unknown; remaining: number; lead?: boolean }) => {
+  const t = useTranslations();
+  const initial = retryAfterSecondsOf(error);
+  if (initial === null) return <>{lead ? t.auth.signInRateLimitedLeadWait : t.errors.messageRateLimited}</>;
+  if (remaining === 0) return <>{t.auth.signInRateLimitedRetryNow}</>;
+  const retryIn = lead ? t.auth.signInRateLimitedLeadRetryIn : t.auth.signInRateLimitedRetryIn;
+  return (
+    <>
+      <span aria-hidden data-testid="rate-limit-countdown">{retryIn({ delay: formatRetryDelay(remaining) })}</span>
+      <VisuallyHidden>{retryIn({ delay: formatRetryDelay(initial) })}</VisuallyHidden>
+    </>
+  );
+};
+
+const isPasskeyCancelled = (error: unknown): boolean => {
+  const providerCode = providerCodeOf(error);
+  return providerCode !== null && PASSKEY_CANCELLED_CODES.includes(providerCode);
 };
 
 const initialsOf = (email: string): string =>
@@ -162,7 +218,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
   const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
   const me = useRedirectSignedInWithTenant(postLoginTarget);
-  const magicLinkExpired = invalidTokenFromLocation();
+  const magicLinkExpired = search.error === 'INVALID_TOKEN';
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
   const [method, setMethod] = useState<SignInMethod | null>(null);
@@ -177,12 +233,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   );
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('app');
+  const passwordRef = useRef<HTMLInputElement>(null);
   const twoFactorCodeRef = useRef<HTMLInputElement>(null);
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
+  const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
+  const methodTitleRef = useRef<HTMLHeadingElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const authConfig = useQuery(actions.authConfig);
+  const resolveRetryIn = useRetryCountdown(resolveFailure);
   const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
   const publicOffer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
   const platformSurface = usesPlatformAuthSurface(hostname);
@@ -192,6 +252,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   useEffect(() => {
     if (requestedMagicEmail !== '') magicLinkSentTitleRef.current?.focus();
   }, [requestedMagicEmail]);
+
+  useEffect(() => {
+    if (resolveFailure !== null) rateLimitedTitleRef.current?.focus();
+  }, [resolveFailure]);
+
+  const methodChosen = method !== null;
+  useEffect(() => {
+    if (methodChosen) methodTitleRef.current?.focus();
+  }, [methodChosen]);
 
   useEffect(() => {
     if (resendCooldown === 0) return undefined;
@@ -207,7 +276,8 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       setMethod('magic-link');
     },
     onError: (error, variables) => {
-      if (passwordKnownFor === variables.email && !magicLinkExpired) {
+      if (errorCodeOf(error) !== 'rate_limited' || (passwordKnownFor === variables.email && !magicLinkExpired)) {
+        setResolveFailure(null);
         setMethod('magic-link');
         return;
       }
@@ -224,6 +294,10 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       }
       await queryClient.invalidateQueries();
       await navigate({ href: postLoginTarget });
+    },
+    onError: () => {
+      passwordRef.current?.focus();
+      passwordRef.current?.select();
     },
   });
 
@@ -283,8 +357,26 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     ...actions.requestMagicLink,
     onSuccess: (_data, variables) => {
       setRequestedMagicEmail(variables.email);
+      if (magicLinkExpired) {
+        void navigate({
+          to: '.',
+          search: (previous) => {
+            const next = { ...previous };
+            delete next.error;
+            return next;
+          },
+          replace: true,
+        });
+      }
     },
   });
+
+  const signInRetryIn = useRetryCountdown(signIn.error);
+  const magicLinkRetryIn = useRetryCountdown(requestMagicLink.error);
+  const magicLinkErrorMessage = errorCodeOf(requestMagicLink.error) === 'rate_limited'
+    ? <RateLimitMessage error={requestMagicLink.error} remaining={magicLinkRetryIn} />
+    : localizeError(requestMagicLink.error, t);
+  const resendWait = Math.max(resendCooldown, magicLinkRetryIn);
 
   const devMagicLink = useQuery({
     ...actions.devMagicLink(requestedMagicEmail),
@@ -319,7 +411,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   const switchMethod = (next: SignInMethod) => {
     signIn.reset();
-    requestMagicLink.reset();
+    if (errorCodeOf(requestMagicLink.error) !== 'rate_limited') requestMagicLink.reset();
     setResolveFailure(null);
     setPassword('');
     setMethod(next);
@@ -384,24 +476,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   };
 
   const changeIdentifierLink = (label: string) => (
-    <MuiLink
+    <AuthAccentLink
+      standalone
       component="button"
       type="button"
-      underline="always"
       data-testid="login-change-email"
-      aria-label={t.auth.changeIdentifier}
       onClick={editIdentifier}
-      sx={{
-        textUnderlineOffset: '0.15em',
-        minHeight: 44,
-        minWidth: 44,
-        flexShrink: 0,
-        display: 'inline-flex',
-        alignItems: 'center',
-      }}
+      sx={{ flexShrink: 0 }}
     >
-      {label}
-    </MuiLink>
+      {label}{' '}
+      <VisuallyHidden>{t.auth.changeIdentifierSuffix}</VisuallyHidden>
+    </AuthAccentLink>
   );
 
   const identityChip = (
@@ -416,15 +501,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthIdentityChip>
   );
 
-  const resolveFailureMessage = errorCodeOf(resolveFailure) === 'rate_limited'
-    ? t.auth.signInRateLimited
-    : t.auth.signInMethodsUnavailable;
   const signInErrorCode = errorCodeOf(signIn.error);
+  const credentialsRejected = signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials';
   const signInErrorMessage = signInErrorCode === 'rate_limited'
-    ? t.auth.signInRateLimited
-    : signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials'
+    ? <RateLimitMessage error={signIn.error} remaining={signInRetryIn} />
+    : credentialsRejected
       ? t.auth.invalidCredentials
       : localizeError(signIn.error, t);
+
+  const passkeyErrorMessage = isPasskeyCancelled(signInWithPasskey.error)
+    ? t.auth.passkeyCancelled
+    : localizeError(signInWithPasskey.error, t);
 
   const showDemoAccount =
     authConfig.data?.exposeMagicLinks === true &&
@@ -434,9 +521,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     requestedMagicEmail === '';
 
   const accessPrompt = platformSurface ? (
-    <FinePrint key="access" variant="caption" component="p" data-testid="login-register-prompt">
-      {t.auth.registerPrompt} <MuiLink component={Link} to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registerLink}</MuiLink>
-    </FinePrint>
+    <AuthHelp key="access" component="p" data-testid="login-register-prompt">
+      {t.auth.registerPrompt}{' '}
+      <AuthAccentLink
+        standalone
+        component={Link}
+        to={returnTo === null ? '/register' : `/register?returnTo=${encodeURIComponent(returnTo)}`}
+        data-testid="register-link"
+      >
+        {t.auth.registerLink}
+      </AuthAccentLink>
+    </AuthHelp>
   ) : null;
 
   const notices =
@@ -455,11 +550,6 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
       </FinePrint>
     ) : null,
     accessPrompt,
-    platformSurface ? (
-      <Box key="build" sx={{ display: 'flex', justifyContent: 'flex-start' }}>
-        <BuildStamp />
-      </Box>
-    ) : null,
   ].filter((item) => item !== null);
 
   const footer =
@@ -470,7 +560,16 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     );
 
   const shell = (children: ReactNode, pageFooter: ReactNode = footer) => (
-    <AuthShell title={t.auth.signInTitle} hostname={hostname} footer={pageFooter}>
+    <AuthShell
+      title={t.auth.signInTitle}
+      hostname={hostname}
+      footer={pageFooter}
+      colophon={platformSurface && pageFooter !== null ? (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <BuildStamp />
+        </Box>
+      ) : null}
+    >
       {notices}
       <Box data-testid="sign-in-notice-slot">
         {publicOffer.data?.tenant.signInNotice?.enabled && publicOffer.data.tenant.signInNotice.text.trim() ? (
@@ -508,15 +607,15 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           variant="outlined"
           fullWidth
           data-testid="resend-magic-link"
-          disabled={resendCooldown > 0 || requestMagicLink.isPending}
+          disabled={resendWait > 0 || requestMagicLink.isPending}
           onClick={resendMagicLink}
         >
-          {resendCooldown > 0
-            ? t.auth.magicLinkResendCooldown({ seconds: resendCooldown })
+          {resendWait > 0
+            ? t.auth.magicLinkResendCooldown({ delay: formatRetryDelay(resendWait) })
             : t.auth.magicLinkResend}
         </Button>
         {requestMagicLink.isError ? (
-          <Alert severity="error">{errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}</Alert>
+          <Alert severity="error" data-testid="magic-link-error">{magicLinkErrorMessage}</Alert>
         ) : null}
         {devMagicLink.isLoading ? (
           <FinePrint variant="caption" component="p">
@@ -600,16 +699,17 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         >
           {backupMode ? t.auth.twoFactorUseAppCode : t.auth.twoFactorUseBackupCode}
         </Button>
-        <FinePrint variant="caption" component="p">
-          <MuiLink
+        <AuthHelp component="p">
+          <AuthAccentLink
+            standalone
             component="button"
             type="button"
             data-testid="two-factor-cancel"
             onClick={cancelTwoFactor}
           >
             {t.auth.twoFactorBackToLogin}
-          </MuiLink>
-        </FinePrint>
+          </AuthAccentLink>
+        </AuthHelp>
       </Stack>,
       null,
     );
@@ -617,49 +717,26 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
 
   if (method === null && resolveFailure !== null) {
     return shell(
-      <>
+      <Box data-testid="sign-in-rate-limited">
         {identityChip}
-        <Alert
-          severity="error"
-          role="alert"
-          sx={{ mb: '1rem' }}
-          data-testid="sign-in-methods-unavailable"
+        <Box sx={{ mb: '1.5rem' }}>
+          <AuthTitle variant="h1" ref={rateLimitedTitleRef} tabIndex={-1}>
+            {t.auth.signInRateLimitedTitle}
+          </AuthTitle>
+          <AuthLead component="p" data-testid="sign-in-rate-limited-message">
+            <RateLimitMessage error={resolveFailure} remaining={resolveRetryIn} lead />
+          </AuthLead>
+        </Box>
+        <Button
+          variant="contained"
+          fullWidth
+          data-testid="sign-in-methods-retry"
+          disabled={resolveSignInMethods.isPending || resolveRetryIn > 0}
+          onClick={() => resolveSignInMethods.mutate({ email })}
         >
-          <Stack useFlexGap spacing="0.75rem" sx={{ width: '100%' }}>
-            <Typography variant="body2">{resolveFailureMessage}</Typography>
-            <Button
-              variant="outlined"
-              color="inherit"
-              fullWidth
-              data-testid="sign-in-methods-retry"
-              disabled={resolveSignInMethods.isPending}
-              onClick={() => resolveSignInMethods.mutate({ email })}
-              sx={{ minHeight: '44px' }}
-            >
-              {t.common.retry}
-            </Button>
-          </Stack>
-        </Alert>
-        <Stack useFlexGap spacing="0.75rem">
-          <Typography variant="body1">{t.auth.signInMethodsChoosePrompt}</Typography>
-          <Button
-            variant="outlined"
-            fullWidth
-            data-testid="choose-magic-link"
-            onClick={() => switchMethod('magic-link')}
-          >
-            {t.auth.signInMethodsChooseMagicLink}
-          </Button>
-          <Button
-            variant="outlined"
-            fullWidth
-            data-testid="choose-password"
-            onClick={() => switchMethod('password')}
-          >
-            {t.auth.signInMethodsChoosePassword}
-          </Button>
-        </Stack>
-      </>,
+          {t.common.retry}
+        </Button>
+      </Box>,
       null,
     );
   }
@@ -754,7 +831,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           </AuthPasskeyLink>
           {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
           {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
-            <Alert severity="error">{localizeError(signInWithPasskey.error, t)}</Alert>
+            <Alert severity="error" data-testid="passkey-error">{passkeyErrorMessage}</Alert>
           ) : null}
         </Stack>
       </>,
@@ -765,7 +842,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     <>
       {identityChip}
       <Box sx={{ mb: '1.5rem' }}>
-        <AuthTitle variant="h1">{t.auth.methodTitle}</AuthTitle>
+        <AuthTitle variant="h1" ref={methodTitleRef} tabIndex={-1}>
+          {t.auth.methodTitle}
+        </AuthTitle>
         <AuthLead component="p">{t.auth.methodLead}</AuthLead>
       </Box>
       {magicLinkExpired ? (
@@ -773,14 +852,9 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           {t.auth.magicLinkExpiredOnStep}
         </Alert>
       ) : null}
-      {signIn.isError ? (
-        <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="signin-error">
-          {signInErrorMessage}
-        </Alert>
-      ) : null}
       {requestMagicLink.isError ? (
-        <Alert severity="error" role="alert" sx={{ mb: '1rem' }}>
-          {errorCodeOf(requestMagicLink.error) === 'rate_limited' ? t.auth.signInRateLimited : localizeError(requestMagicLink.error, t)}
+        <Alert severity="error" role="alert" sx={{ mb: '1rem' }} data-testid="magic-link-error">
+          {magicLinkErrorMessage}
         </Alert>
       ) : null}
       <AuthMethodList>
@@ -790,7 +864,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           title={t.auth.methodMagicLinkTitle}
           body={requestMagicLink.isPending ? t.auth.magicLinkPending : t.auth.methodMagicLinkBody}
           testId="send-magic-link"
-          disabled={requestMagicLink.isPending}
+          disabled={requestMagicLink.isPending || magicLinkRetryIn > 0}
           onClick={sendMagicLink}
         />
         <MethodCard
@@ -817,7 +891,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                           data-testid="login-identity-email"
                         />
                       </VisuallyHidden>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth error={credentialsRejected}>
                         <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
                         <AuthInput
                           id="login-password"
@@ -826,25 +900,37 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
                           onChange={(event) => setPassword(event.target.value)}
                           autoComplete="current-password"
                           autoFocus
+                          inputRef={passwordRef}
+                          {...(signIn.isError ? { 'aria-describedby': PASSWORD_ERROR_ID } : {})}
                           inputProps={{ 'data-testid': 'login-password' }}
                           required
                         />
                       </FormControl>
+                      {signIn.isError ? (
+                        <Alert severity="error" role="alert" id={PASSWORD_ERROR_ID} data-testid="signin-error">
+                          {signInErrorMessage}
+                        </Alert>
+                      ) : null}
                       <Button
                         type="submit"
                         variant="contained"
                         fullWidth
-                        disabled={signIn.isPending}
+                        disabled={signIn.isPending || signInRetryIn > 0}
                         data-testid="signin-submit"
                       >
                         {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
                       </Button>
                     </Stack>
-                    <FinePrint variant="caption" component="p" sx={{ mt: '0.75rem' }}>
-                      <MuiLink component={Link} to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`} data-testid="forgot-password">
+                    <AuthHelp component="p" sx={{ mt: '0.5rem' }}>
+                      <AuthAccentLink
+                        standalone
+                        component={Link}
+                        to={`/forgot-password?email=${encodeURIComponent(email)}${returnTo === null ? '' : `&returnTo=${encodeURIComponent(returnTo)}`}`}
+                        data-testid="forgot-password"
+                      >
                         {t.auth.forgotPassword}
-                      </MuiLink>
-                    </FinePrint>
+                      </AuthAccentLink>
+                    </AuthHelp>
                   </>
                 ),
               }
@@ -874,7 +960,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
         ) : null}
       </AuthMethodList>
       {signInWithPasskey.isError && !signInWithPasskey.variables?.autoFill ? (
-        <Alert severity="error" sx={{ mt: '1rem' }}>{localizeError(signInWithPasskey.error, t)}</Alert>
+        <Alert severity="error" sx={{ mt: '1rem' }} data-testid="passkey-error">{passkeyErrorMessage}</Alert>
       ) : null}
       {signInWithGoogle.isError ? (
         <Alert severity="error" sx={{ mt: '1rem' }}>{localizeError(signInWithGoogle.error, t)}</Alert>

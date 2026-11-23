@@ -101,6 +101,40 @@ describe('browser password change', () => {
   });
 });
 
+describe('browser rate limit', () => {
+  it('carries the server retry delay of a rate-limited sign-in', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        ok: false,
+        error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 42 } },
+      }), {
+        status: 429,
+        headers: { 'content-type': 'application/json', 'retry-after': '42' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    const result = await auth.signIn({ email: 'member@example.com', password: 'secret-password' });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited', details: { retryAfterSeconds: 42 } } });
+  });
+
+  it('omits the retry delay when the limiter sends none', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: 'Too many requests. Please try again later.' }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.requestMagicLink({ email: 'member@example.com', callbackURL: 'https://studio.example/login' })).toEqual({
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests. Please try again later.' },
+    });
+  });
+});
+
 describe('browser password reset request', () => {
   it('sends the absolute provider callback and language header', async () => {
     const fetch = vi.fn().mockResolvedValue(

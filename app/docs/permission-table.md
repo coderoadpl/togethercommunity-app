@@ -1045,9 +1045,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/community-access.ts:83` | `ctx.identity.tenantId && ctx.identity.memberId` |
 | member-scope | `core/server/usecases/community-access.ts:84` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
 | staff-role | `core/server/usecases/community-access.ts:101` | `if (ctx.identity.staffRole) return ok(undefined);` |
-| staff-role | `core/server/usecases/community-access.ts:135` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:267` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| staff-role | `core/server/usecases/community-access.ts:129` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
+| staff-role | `core/server/usecases/community-access.ts:235` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:251` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:181` | `if (tenantId !== null && identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:195` | `if (ctx.identity.staffRole !== null) return false;` |
 | staff-role | `core/server/usecases/community.ts:445` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
@@ -1056,10 +1056,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
 | member-scope | `core/server/usecases/entitlements.ts:68` | `ctx.identity.memberId === null && ctx.identity.staffRole === null;` |
 | member-scope | `core/server/usecases/entitlements.ts:132` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:181` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:198` | `} else if (ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
-| member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:178` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:195` | `} else if (ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:229` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
+| member-scope | `core/server/usecases/entitlements.ts:255` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/image-assets.ts:311` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:322` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/image-assets.ts:406` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
@@ -1084,8 +1084,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/product-downloads.ts:203` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:51` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:52` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/progress.ts:72` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
-| staff-role | `core/server/usecases/progress.ts:113` | `const accessible = ctx.identity.staffRole !== null \|\| isLessonAccessibleByLookup(lookup, {` |
+| staff-role | `core/server/usecases/progress.ts:72` | `const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);` |
+| staff-role | `core/server/usecases/progress.ts:109` | `const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);` |
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/shop-machine-auth.ts:121` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |

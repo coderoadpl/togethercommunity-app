@@ -16,8 +16,7 @@ import {
  */
 
 export interface AccessLookup {
-  courseLevel: Set<string>;
-  excludedModuleIds: Set<string>;
+  excludedModulesByWholeCourse: Map<string, Set<string>>;
   moduleIds: Set<string>;
   lessonIds: Set<string>;
 }
@@ -32,14 +31,12 @@ const intersect = (a: Set<string>, b: Set<string>): Set<string> => {
 };
 
 export const buildAccessLookup = (items: AccessItem[]): AccessLookup => {
-  const courseLevel = new Set<string>();
   const moduleIds = new Set<string>();
   const lessonIds = new Set<string>();
   const perCourseExclusions = new Map<string, Set<string>>();
 
   for (const item of items) {
     if (item.level === 'course') {
-      courseLevel.add(item.courseId);
       const excluded = new Set(item.excludedModuleIds ?? []);
       const current = perCourseExclusions.get(item.courseId);
       perCourseExclusions.set(item.courseId, current ? intersect(current, excluded) : excluded);
@@ -50,24 +47,25 @@ export const buildAccessLookup = (items: AccessItem[]): AccessLookup => {
     }
   }
 
-  const excludedModuleIds = new Set<string>();
-  for (const excluded of perCourseExclusions.values()) {
-    for (const moduleId of excluded) if (!moduleIds.has(moduleId)) excludedModuleIds.add(moduleId);
+  const excludedModulesByWholeCourse = new Map<string, Set<string>>();
+  for (const [courseId, excluded] of perCourseExclusions) {
+    excludedModulesByWholeCourse.set(courseId, new Set([...excluded].filter((moduleId) => !moduleIds.has(moduleId))));
   }
 
-  return { courseLevel, excludedModuleIds, moduleIds, lessonIds };
+  return { excludedModulesByWholeCourse, moduleIds, lessonIds };
 };
 
 /** A lookup that grants everything within a single course (staff / owner view). */
 export const fullCourseLookup = (courseId: string): AccessLookup => ({
-  courseLevel: new Set([courseId]),
-  excludedModuleIds: new Set(),
+  excludedModulesByWholeCourse: new Map([[courseId, new Set<string>()]]),
   moduleIds: new Set(),
   lessonIds: new Set(),
 });
 
-const courseGrantsModule = (lookup: AccessLookup, courseId: string, moduleId: string): boolean =>
-  lookup.courseLevel.has(courseId) && !lookup.excludedModuleIds.has(moduleId);
+const courseGrantsModule = (lookup: AccessLookup, courseId: string, moduleId: string): boolean => {
+  const excluded = lookup.excludedModulesByWholeCourse.get(courseId);
+  return excluded !== undefined && !excluded.has(moduleId);
+};
 
 export const isLessonAccessibleByLookup = (
   lookup: AccessLookup,
@@ -143,24 +141,37 @@ export interface LessonLocation {
   chapterId: string;
 }
 
+export const lessonLocations = (
+  lessonId: string,
+  courses: Course[],
+  modules: CourseModule[],
+): LessonLocation[] =>
+  [...modules].sort(byModuleOrder).flatMap((module) => {
+    const chapter = module.chapters.find((candidate) =>
+      candidate.contents.some((content) => content.lessonId === lessonId),
+    );
+    if (!chapter) return [];
+    return module.courseIds
+      .map((courseId) => courses.find((candidate) => candidate.id === courseId))
+      .filter((candidate): candidate is Course => candidate !== undefined)
+      .map((course) => ({ course, moduleId: module.id, chapterId: chapter.id }));
+  });
+
 export const locateLesson = (
   lessonId: string,
   courses: Course[],
   modules: CourseModule[],
-): LessonLocation | null => {
-  const orderedModules = [...modules].sort(byModuleOrder);
-  for (const module of orderedModules) {
-    for (const chapter of module.chapters) {
-      const hit = chapter.contents.find((content) => content.lessonId === lessonId);
-      if (!hit) continue;
-      const course = module.courseIds
-        .map((courseId) => courses.find((candidate) => candidate.id === courseId))
-        .find((candidate): candidate is Course => candidate !== undefined);
-      if (course) return { course, moduleId: module.id, chapterId: chapter.id };
-    }
-  }
-  return null;
-};
+): LessonLocation | null => lessonLocations(lessonId, courses, modules)[0] ?? null;
+
+export const locateAccessibleLesson = (
+  lessonId: string,
+  courses: Course[],
+  modules: CourseModule[],
+  lookup: AccessLookup,
+): LessonLocation | null =>
+  lessonLocations(lessonId, courses, modules).find((location) =>
+    isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId }),
+  ) ?? null;
 
 /** Every course whose modules reference the lesson, not just the first match `locateLesson` picks. */
 export const coursesContainingLesson = (

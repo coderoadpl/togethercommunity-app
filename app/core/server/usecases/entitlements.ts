@@ -31,8 +31,8 @@ import {
   buildCourseStructure,
   coursesContainingLesson,
   fullCourseLookup,
-  isLessonAccessibleByLookup,
   linearizeCourse,
+  locateAccessibleLesson,
   locateLesson,
   type AccessLookup,
 } from './access.js';
@@ -142,12 +142,9 @@ export const isLessonAccessible = async (
     { tenantId: tenant.value, memberId: ctx.identity.memberId },
     deps,
   );
-  const accessible = isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId,
-  });
-  return accessible ? ok(undefined) : err(forbidden('This lesson is not accessible'));
+  return locateAccessibleLesson(lessonId, courses, modules, lookup) === null
+    ? err(forbidden('This lesson is not accessible'))
+    : ok(undefined);
 };
 
 export const getAccessibleLesson = async (

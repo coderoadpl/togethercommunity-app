@@ -21,5 +21,6 @@ export const fanoutCanAccessSpace = (access: NotificationFanoutAccess, space: Sp
 
 export const fanoutCanAccessThread = (access: NotificationFanoutAccess, context: ThreadContextInfo): boolean => {
   if (context.space !== null) return fanoutCanAccessSpace(access, context.space);
-  return context.lessonLocation !== null && isLessonAccessibleByLookup(buildAccessLookup(access.accessItems), context.lessonLocation);
+  const lookup = buildAccessLookup(access.accessItems);
+  return context.lessonLocations.some((location) => isLessonAccessibleByLookup(lookup, location));
 };

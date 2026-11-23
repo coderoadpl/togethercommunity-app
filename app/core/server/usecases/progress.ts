@@ -26,7 +26,7 @@ import type {
   MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { buildCourseStructure, fullCourseLookup, isLessonAccessibleByLookup, locateLesson } from './access.js';
+import { buildCourseStructure, fullCourseLookup, locateAccessibleLesson, locateLesson } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 import { resolveCourseResume } from './course-resume.js';
 import { requireLiveMember } from './member-status.js';
@@ -69,17 +69,13 @@ export const markLessonCompleted = async (
   if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const accessible = ctx.identity.staffRole !== null || isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId,
-  });
-  if (!accessible) return err(forbidden('This lesson is not accessible'));
+  const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);
+  if (!progressAt) return err(forbidden('This lesson is not accessible'));
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),
     memberId: scope.value.memberId,
-    courseId: location.course.id,
+    courseId: progressAt.course.id,
     now: deps.clock.nowIso(),
   });
   if (current.completedLessonIds.includes(lessonId)) return ok(current);
@@ -110,17 +106,13 @@ export const unmarkLessonCompleted = async (
   if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(scope.value, deps);
-  const accessible = ctx.identity.staffRole !== null || isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId,
-  });
-  if (!accessible) return err(forbidden('This lesson is not accessible'));
+  const progressAt = ctx.identity.staffRole !== null ? location : locateAccessibleLesson(lessonId, courses, modules, lookup);
+  if (!progressAt) return err(forbidden('This lesson is not accessible'));
 
   const current = await deps.progress.findOrCreate(scope.value.tenantId, {
     id: deps.ids.nextId(),
     memberId: scope.value.memberId,
-    courseId: location.course.id,
+    courseId: progressAt.course.id,
     now: deps.clock.nowIso(),
   });
   if (!current.completedLessonIds.includes(lessonId)) return ok(current);

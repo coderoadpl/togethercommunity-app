@@ -83,8 +83,9 @@ is asked, then shows **Parcel locker found** with the code, the locker name and
 its address, or one error, behind an exclamation-circle glyph, for a code the
 carrier does not know, a point where parcels cannot be collected, or a locker
 that is not operating. While that line is shown it is the first line under the
-field and the example hint is hidden; the hint is shown only for an empty
-field or when the carrier cannot be asked, and becomes the format error for a
+field and the example hint is hidden; the hint is shown for an empty field,
+before the code is checked, or when the carrier cannot be asked, and becomes
+the format error for a
 malformed code. The field's `aria-describedby` names only the line that is
 shown. On an error the field and its label turn red and the field is marked
 `aria-invalid`, the pay button stays disabled and the line under it reads
@@ -327,8 +328,8 @@ the name and `address.line1, address.line2` as the address, built by
 When the carrier cannot be asked, the sale is not blocked: the code is kept as
 the buyer typed it and the stored pickup point gains `verified: false`, which
 Studio shows as **Locker not verified**. There is no staff e-mail for new
-orders, so the note appears only in Studio. Revert phrase for this decision:
-"block payment when the locker cannot be verified".
+orders, so the note appears only in Studio. Alternative considered: block
+payment when the locker cannot be verified.
 
 The page uses `GET /api/public/parcel-lockers/<code>`: it resolves the workspace
 like the other public checkout routes, refuses a code that does not match the

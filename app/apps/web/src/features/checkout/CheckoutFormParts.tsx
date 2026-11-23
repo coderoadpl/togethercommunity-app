@@ -69,8 +69,13 @@ export const checkoutRefusal = (message: string, t: Translations): string | null
 export const lockerRefusalError = (error: unknown): boolean =>
   error instanceof ApiError && pickupPointRejectionReason(error.appError.details) !== null;
 
+const lockerRefusalText = (error: ApiError, t: Translations): string | null => {
+  const reason = pickupPointRejectionReason(error.appError.details);
+  return reason === null ? null : t.shipping.lockerRejected[reason];
+};
+
 export const checkoutSessionError = (error: unknown, t: Translations): string =>
-  (error instanceof ApiError ? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);
+  (error instanceof ApiError ? lockerRefusalText(error, t) ?? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);
 
 export const useInvoiceFields = () => {
   const t = useTranslations();

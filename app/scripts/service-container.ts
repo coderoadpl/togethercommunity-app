@@ -95,8 +95,14 @@ export const runArguments = (spec: ServiceSpec): string[] => [
   spec.image,
 ];
 
-export const lastMessage = (output: string): string =>
-  output.split('\n').map((line) => line.trim()).filter((line) => line !== '').at(-1) ?? '(no output)';
+export const lastMessage = (output: string): string => {
+  const lines = output.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  return lines.filter((line) => !line.includes('--help')).at(-1) ?? lines.at(-1) ?? '(no output)';
+};
+
+const logFailedCommand = (deps: ServiceDeps, args: string[], result: CommandResult): void => {
+  deps.log(`docker ${args[0] ?? ''} exited with ${String(result.code)}:\n${result.output}`);
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -128,10 +134,12 @@ export const parseContainerState = (output: string): ContainerState | null => {
 
 const pullImage = async (spec: ServiceSpec, deps: ServiceDeps): Promise<StartResult> => {
   for (let attempt = 1; ; attempt += 1) {
-    const result = await deps.docker(['pull', spec.image]);
+    const args = ['pull', spec.image];
+    const result = await deps.docker(args);
     if (result.code === 0) return { ok: true, pullAttempts: attempt };
     const transient = isTransientPullFailure(result.output);
     if (!transient || attempt === MAX_PULL_ATTEMPTS) {
+      logFailedCommand(deps, args, result);
       return {
         ok: false,
         problem: `could not pull ${spec.image} after ${String(attempt)} attempt(s)${transient ? ' (registry throttling or a network error)' : ''}`,
@@ -168,8 +176,10 @@ const waitHealthy = async (spec: ServiceSpec, deps: ServiceDeps): Promise<StartR
 export const startServiceContainer = async (spec: ServiceSpec, deps: ServiceDeps): Promise<StartResult> => {
   const pulled = await pullImage(spec, deps);
   if (!pulled.ok) return pulled;
-  const started = await deps.docker(runArguments(spec));
+  const args = runArguments(spec);
+  const started = await deps.docker(args);
   if (started.code !== 0) {
+    logFailedCommand(deps, args, started);
     return { ok: false, problem: `could not start container ${spec.name}`, lastMessage: lastMessage(started.output) };
   }
   return await waitHealthy(spec, deps) ?? pulled;

@@ -143,6 +143,33 @@ describe('startServiceContainer', () => {
     expect(commands()).toEqual(['pull', 'run']);
   });
 
+  it('logs the full output of a failed docker run and reports the daemon error, not the help hint', async () => {
+    const output = [
+      'docker: Error response from daemon: Conflict. The container name "/postgres" is already in use.',
+      '',
+      "Run 'docker run --help' for more information",
+      '',
+    ].join('\n');
+    const { deps } = harness({ run: [{ code: 125, output }] });
+
+    expect(await startServiceContainer(spec, deps)).toEqual({
+      ok: false,
+      problem: 'could not start container postgres',
+      lastMessage: 'docker: Error response from daemon: Conflict. The container name "/postgres" is already in use.',
+    });
+    expect(vi.mocked(deps.log).mock.calls.flat().join('\n')).toContain(output);
+  });
+
+  it('logs the full output of a failed pull', async () => {
+    const output = 'Error response from daemon: manifest for postgres:16 not found\nSee \'docker pull --help\'.\n';
+    const { deps } = harness({ pull: [failed(output)] });
+
+    const result = await startServiceContainer(spec, deps);
+
+    expect(result).toMatchObject({ ok: false, lastMessage: 'Error response from daemon: manifest for postgres:16 not found' });
+    expect(vi.mocked(deps.log).mock.calls.flat().join('\n')).toContain(output);
+  });
+
   it('gives up at once on an unhealthy container and prints its logs', async () => {
     const unhealthy = JSON.stringify({
       Status: 'running',
@@ -225,7 +252,7 @@ describe('service container entry point', () => {
     'echo "$*" >> "$STUB_LOG"',
     'case "$1" in',
     '  pull) if [ -n "$STUB_PULL_ERROR" ]; then echo "$STUB_PULL_ERROR" >&2; exit 1; fi; echo pulled ;;',
-    '  run) echo container-id ;;',
+    '  run) if [ -n "$STUB_RUN_ERROR" ]; then echo "$STUB_RUN_ERROR" >&2; echo >&2; echo "See \'docker run --help\'." >&2; exit 125; fi; echo container-id ;;',
     `  inspect) echo '${healthy}' ;;`,
     'esac',
     '',
@@ -267,5 +294,19 @@ describe('service container entry point', () => {
       '::error title=CI infrastructure::CI infrastructure failure (image pull or container start), not a test failure:',
     );
     expect(result.stdout).toContain('Last message: manifest unknown');
+  });
+
+  it('prints the whole docker run output before the annotation and names the daemon error in it', () => {
+    const conflict = 'docker: Error response from daemon: Conflict. The container name "/postgres" is already in use.';
+    const { result, calls } = runEntry({ STUB_RUN_ERROR: conflict });
+    const annotationAt = result.stdout.indexOf('::error ');
+
+    expect(result.status).toBe(1);
+    expect(calls.map((line) => line.split(' ')[0])).toEqual(['pull', 'run']);
+    expect(result.stdout.indexOf(conflict)).toBeGreaterThanOrEqual(0);
+    expect(result.stdout.indexOf(conflict)).toBeLessThan(annotationAt);
+    expect(result.stdout.indexOf("See 'docker run --help'.")).toBeLessThan(annotationAt);
+    expect(result.stdout.slice(annotationAt)).toContain(`Last message: ${conflict}`);
+    expect(result.stdout.slice(annotationAt)).not.toContain('--help');
   });
 });

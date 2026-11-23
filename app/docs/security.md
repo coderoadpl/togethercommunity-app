@@ -60,7 +60,9 @@ virtual passkey, by identifier and as a discoverable credential, and asserts
 that each `/passkey/verify-authentication` response (whose unstripped body
 carries `session.token`) has no `set-auth-token` header, no
 `Access-Control-Expose-Headers` entry for it, no `token` and no
-`session.token`.
+`session.token`. It also signs in without `Sec-Fetch-Site` while sending an
+empty secure-prefixed session cookie next to a valid plain one, and asserts the
+same for that response.
 Nothing stored changes; removing the wrapper restores the previous responses.
 
 Remaining gaps (not closed by this change):

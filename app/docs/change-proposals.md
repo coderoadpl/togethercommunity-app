@@ -1161,8 +1161,11 @@ uploads into the quarantine and proposes the `product.update`;
 `shop settings set` command that proposes it, or proposes it itself with
 `--attach`. Both accept `--group <id>` ([CLI](cli.md)).
 
-**Publication on approval.** Approval, single or of a group, takes each
-attached image's unreleased row with a share lock inside the approval
+**Publication on approval.** Approval, single or of a group, publishes only the
+images the stored effect sets, the effect the owner reviewed: an image field
+left unchanged is not in the effect, so an address the input repeats unchanged
+is never read, recorded or written, even when the key holds a quarantined copy
+of it. It takes each such image's unreleased row with a share lock inside the approval
 transaction, reads its quarantined bytes and checks that they still hash to the
 digest in the address. A missing row, an object the storage reports missing or
 bytes that no longer match make the proposal (or the whole group) `stale` with

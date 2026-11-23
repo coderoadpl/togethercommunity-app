@@ -315,6 +315,19 @@ export interface ChangeProposalImagePrepareDeps {
   contentHash: ContentHash;
 }
 
+/** The images the stored effect sets, the effect the owner reviewed; an unchanged address the input repeats is not one of them. */
+const changedImagesOf = (proposals: readonly ChangeProposal[]): Array<{ proposal: ChangeProposal; image: ProposalImageReference }> => {
+  const changed: Array<{ proposal: ChangeProposal; image: ProposalImageReference }> = [];
+  for (const proposal of proposals) {
+    for (const change of changeProposalImageChanges(proposal.operation, proposal.effect)) {
+      const image = parseProposalImagePath(change.value);
+      if (image === null || image.kind !== change.kind || changed.some((known) => sameProposalImage(known.image, image))) continue;
+      changed.push({ proposal, image });
+    }
+  }
+  return changed;
+};
+
 /** An address that is no longer quarantined is fine only when a live field already shows it, so it is public already. */
 export const prepareApprovalImages = async (
   tenantId: string,
@@ -323,31 +336,26 @@ export const prepareApprovalImages = async (
   deps: ChangeProposalImagePrepareDeps,
 ): Promise<ApprovalImages> => {
   const images: PreparedImage[] = [];
-  const settled: ProposalImageReference[] = [];
   let configuration: StorageConfiguration | null = null;
-  for (const proposal of proposals) {
-    for (const image of changeProposalImageReferences(proposal.operation, proposal.input)) {
-      if (settled.some((known) => sameProposalImage(known, image))) continue;
-      settled.push(image);
-      const quarantined = await scope.repositories.quarantinedImages.lockForPublication(tenantId, proposal.proposedByKeyId, image);
-      if (quarantined === null) {
-        if (await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) continue;
-        return { kind: 'missing', proposal, image };
-      }
-      if (configuration === null) {
-        const resolved = await resolveStorageConfiguration(tenantId, scope.secretResolver);
-        if (!resolved.ok) return { kind: 'failed', error: resolved.error };
-        configuration = resolved.value;
-      }
-      const read = await deps.storage.getObject({
-        url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
-        ...credentialsOf(configuration),
-        deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
-      }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
-      if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
-      if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
-      images.push({ image, bytes: read.value });
+  for (const { proposal, image } of changedImagesOf(proposals)) {
+    const quarantined = await scope.repositories.quarantinedImages.lockForPublication(tenantId, proposal.proposedByKeyId, image);
+    if (quarantined === null) {
+      if (await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) continue;
+      return { kind: 'missing', proposal, image };
     }
+    if (configuration === null) {
+      const resolved = await resolveStorageConfiguration(tenantId, scope.secretResolver);
+      if (!resolved.ok) return { kind: 'failed', error: resolved.error };
+      configuration = resolved.value;
+    }
+    const read = await deps.storage.getObject({
+      url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
+      ...credentialsOf(configuration),
+      deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
+    }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+    if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
+    if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
+    images.push({ image, bytes: read.value });
   }
   return { kind: 'ready', images, configuration };
 };
@@ -364,16 +372,6 @@ export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepa
   clock: Clock;
 }
 
-const distinctImagesOf = (proposals: readonly ChangeProposal[]): ProposalImageReference[] => {
-  const images: ProposalImageReference[] = [];
-  for (const proposal of proposals) {
-    for (const image of changeProposalImageReferences(proposal.operation, proposal.input)) {
-      if (!images.some((known) => sameProposalImage(known, image))) images.push(image);
-    }
-  }
-  return images;
-};
-
 /**
  * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
  * holds one. It records, in a commit of its own, the attempt's intent to write each attached image whose public object
@@ -385,7 +383,7 @@ export const recordApprovalPublications = async (
   proposals: readonly ChangeProposal[],
   deps: ChangeProposalImagePublishDeps,
 ): Promise<Result<ApprovalPublication, AppError>> => {
-  const images = distinctImagesOf(proposals);
+  const images = changedImagesOf(proposals).map(({ image }) => image);
   if (images.length === 0) return ok({ attemptId: '', images: [] });
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;

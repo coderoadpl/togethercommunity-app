@@ -663,6 +663,22 @@ describe('approving a proposal with an image', () => {
     expect(liveCover(h, 'product-live')).toBe(cover);
   });
 
+  it('publishes only the images the effect changes, never an unchanged address the input repeats', async () => {
+    const h = harness();
+    const bytes = PNG(5);
+    const live = h.state.products.find((candidate) => candidate.id === 'product-live');
+    if (live === undefined) throw new Error('missing product');
+    live.coverUrl = pathOf(bytes);
+    expect(await h.upload(bytes)).toBe(pathOf(bytes));
+    const id = await h.proposed('product.update', { id: 'product-live', coverUrl: pathOf(bytes), title: 'Renamed mug' });
+    expect(h.proposal(id)?.effect).toEqual({ title: { before: 'Live mug', after: 'Renamed mug' } });
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(h.publicKeys()).toEqual([]);
+    expect(h.objects.calls.filter(({ method, key }) => method === 'putObject' && key.startsWith('image-assets/'))).toEqual([]);
+    expect(h.store.imagePublications).toEqual([]);
+  });
+
   it('publishes branding images of a settings change', async () => {
     const h = harness();
     const logo = await h.upload(PNG(1), { kind: 'logo', fileName: 'logo.png' });

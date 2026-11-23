@@ -44,12 +44,11 @@ revocation and reauthentication. `logout` revokes and drops the stored session.
 
 The CLI supplies `Authorization: Bearer <session-token>` and `x-tenant: acme` on
 management calls. An independent backend HTTP client must supply its own bearer
-header from a protected secret store. Sign in from a client that keeps no
-cookies: an auth request that carries the session cookie counts as a browser,
-so a client with a cookie jar that still holds the session cookie from an
-earlier sign-in gets no `set-auth-token` header and no body `token` on the next
-sign-in. Such a client either keeps using the session cookie it holds or signs
-in from a client without a cookie jar. Use the actual workspace origin, such as
+header from a protected secret store. An auth request that carries the session
+cookie counts as a browser, so a client with a cookie jar that still holds the
+session cookie gets no token (no `set-auth-token` header, no body `token`) on a
+later sign-in; it keeps using that cookie, or signs in from a client without a
+cookie jar to receive a token. Use the actual workspace origin, such as
 `https://acme.togethercommunity.app`, throughout this guide. The tenantless
 platform host intentionally ignores the tenant selector; a tenant header is not
 a substitute for selecting the correct workspace host.

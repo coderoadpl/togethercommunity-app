@@ -8,10 +8,12 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { ToastProvider } from '../../components/ui/Toast.js';
 import { en } from '../../i18n/en.js';
+import { LanguageProvider, useLanguage } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { readLessonTextAutoExpand } from './lesson-reading-preference.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
-import { ThemeModeProvider } from '../../theme-mode.js';
+import { languagePreference, ThemeModeProvider } from '../../theme-mode.js';
 import { MemberAccountPage } from './MemberAccountPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
@@ -68,7 +70,12 @@ const stubErasureRequest = () =>
     HttpResponse.json({ ok: true, data: { request: null } }),
   );
 
-const renderAccount = async (initialEntry = '/account', passkeys: unknown[] = []) => {
+const SwitchToPolish = () => {
+  const { setLanguage } = useLanguage();
+  return <button type="button" data-testid="switch-language" onClick={() => setLanguage('pl')}>switch</button>;
+};
+
+const renderAccount = async (initialEntry = '/account', passkeys: unknown[] = [], switchable = false) => {
   server.use(
     stubErasureRequest(),
     http.get('*', ({ request }) =>
@@ -82,14 +89,18 @@ const renderAccount = async (initialEntry = '/account', passkeys: unknown[] = []
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  return renderWithProviders(
+  const page = (
     <ThemeModeProvider>
       <ToastProvider>
+        {switchable ? <SwitchToPolish /> : null}
         <RouterProvider router={router} />
       </ToastProvider>
-    </ThemeModeProvider>,
+    </ThemeModeProvider>
   );
+  return renderWithProviders(switchable ? <LanguageProvider>{page}</LanguageProvider> : page);
 };
+
+const renderSwitchableAccount = () => renderAccount('/account', [], true);
 
 const findToast = async (kind: 'success' | 'error') =>
   screen.findByTestId(new RegExp(`^toast-${kind}-`));
@@ -131,6 +142,7 @@ const stubWebAuthnRegistration = () => {
 };
 
 afterEach(() => {
+  languagePreference.save('en');
   Reflect.deleteProperty(window, 'PublicKeyCredential');
   Reflect.deleteProperty(navigator, 'credentials');
 });
@@ -534,6 +546,50 @@ describe('MemberAccountPage', () => {
 
     expect(await screen.findByText(en.account.avatarUnsupportedType)).toBeInTheDocument();
     expect(requests).toBe(0);
+  });
+
+  it('shows a visible avatar file error in the newly chosen language', async () => {
+    server.use(stubMe(true, { displayName: 'Ada' }), stubSettings(null), stubBillingOrders());
+    await renderSwitchableAccount();
+
+    await userEvent.upload(
+      await screen.findByLabelText(en.account.avatarUpload),
+      new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.jpg', { type: 'image/jpeg' }),
+    );
+    expect(await screen.findByText(en.account.avatarTooLarge)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('switch-language'));
+
+    expect(await screen.findByText(pl.account.avatarTooLarge)).toBeInTheDocument();
+    expect(screen.queryByText(en.account.avatarTooLarge)).not.toBeInTheDocument();
+
+    await userEvent.setup({ applyAccept: false }).upload(
+      await screen.findByLabelText(pl.account.avatarUpload),
+      new File(['gif'], 'avatar.gif', { type: 'image/gif' }),
+    );
+    expect(await screen.findByText(pl.account.avatarUnsupportedType)).toBeInTheDocument();
+  });
+
+  it('shows a visible avatar upload failure in the newly chosen language', async () => {
+    server.use(
+      stubMe(true, { displayName: 'Ada' }),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/avatar/upload', () =>
+        HttpResponse.json({ ok: false, error: { code: 'validation', message: 'unexpected' } })),
+    );
+    await renderSwitchableAccount();
+
+    await userEvent.upload(
+      await screen.findByLabelText(en.account.avatarUpload),
+      new File(['avatar'], 'avatar.png', { type: 'image/png' }),
+    );
+    expect(await screen.findByText(en.errors.messageValidation)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('switch-language'));
+
+    expect(await screen.findByText(pl.errors.messageValidation)).toBeInTheDocument();
+    expect(screen.queryByText(en.errors.messageValidation)).not.toBeInTheDocument();
   });
 
   it('removes a stored avatar and returns to initials', async () => {

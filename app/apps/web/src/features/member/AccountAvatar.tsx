@@ -4,6 +4,8 @@ import { AccountHelp } from '../../components/ui/AccountHelp.js';
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 
+export type AvatarFileError = 'tooLarge' | 'unsupportedType';
+
 interface AccountAvatarProps {
   name: string;
   email: string;
@@ -12,7 +14,7 @@ interface AccountAvatarProps {
   removePending: boolean;
   uploadError: Error | null;
   removeError: Error | null;
-  avatarError: string | null;
+  avatarError: AvatarFileError | null;
   onUpload(event: ChangeEvent<HTMLInputElement>): void;
   onRemove(): void;
 }
@@ -56,7 +58,7 @@ export const AccountAvatar = ({ name, email, avatarUrl, uploadPending, removePen
             {uploadError !== null ? (
               <Alert severity="error">{localizeError(uploadError, t)}</Alert>
             ) : null}
-            {avatarError === null ? null : <Alert severity="error">{avatarError}</Alert>}
+            {avatarError === null ? null : <Alert severity="error">{avatarError === 'tooLarge' ? t.account.avatarTooLarge : t.account.avatarUnsupportedType}</Alert>}
             {removeError !== null ? (
               <Alert severity="error">{localizeError(removeError, t)}</Alert>
             ) : null}

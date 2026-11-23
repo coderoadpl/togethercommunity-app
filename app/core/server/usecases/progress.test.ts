@@ -427,6 +427,31 @@ describe('progress on a module that two courses share', () => {
     });
   });
 
+  describe('with an archived course that holds the module', () => {
+    const archived = { ...course('c2', 't1'), archivedAt: '2026-05-01T00:00:00.000Z' };
+    const moduleItem: Product['accessItems'] = [{ level: 'modules', courseId: 'c1', moduleIds: ['m1'] }];
+
+    it('records under the active course when the viewed course is archived', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: moduleItem }], [c1, archived], [{ ...m1, courseIds: ['c1', 'c2'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c2')).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: ['l1'] } });
+      expect(store.rows.map((row) => row.courseId)).toEqual(['c1']);
+    });
+
+    it('records under the active course when the archived course comes first', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: moduleItem }], [c1, archived], [{ ...m1, courseIds: ['c2', 'c1'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l2', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('records under the archived course when no active course opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: [{ level: 'course', courseId: 'c2' }] }], [c1, archived], [{ ...m1, courseIds: ['c1', 'c2'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+    });
+  });
+
   it('forbids completion when the only course item excludes the module', async () => {
     const store = makeProgressStore();
     const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }]);

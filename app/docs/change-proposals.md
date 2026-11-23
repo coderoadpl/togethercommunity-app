@@ -1811,9 +1811,13 @@ progress is recorded follows a course that opens the lesson for them:
   recorded under it when it opens the lesson for the member (for staff, when
   it holds the lesson), otherwise under the first course that opens it; a
   request without `courseId`, as from the CLI or an older player, is recorded
-  under the first course that opens it. Un-completion also removes the lesson
-  from the member's own progress of the named course when that course holds
-  the lesson but no longer opens it for them, so a completion recorded there
+  under the first course that opens it. Archived courses count only when no
+  active course opens the lesson: an archived viewed course, or an archived
+  first course, is passed over for the first active course that opens it,
+  because progress summaries and the navigation skip archived courses.
+  Un-completion also removes the lesson from the member's own progress of the
+  named course when that course holds the lesson but is not the course the
+  request is recorded under, so a completion recorded there
   while it was open does not come back; both rows change in one database
   transaction, so a failed request leaves both as they were and a retry
   finishes the job. A named course that does not hold the

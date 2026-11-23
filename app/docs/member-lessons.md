@@ -3,13 +3,17 @@
 Open a lesson from the course curriculum to read its content and use the lesson
 actions to mark it complete or continue to the next lesson.
 
-Long text starts in a centred, clipped reading preview with a bottom fade.
+A text block that opens the lesson always starts expanded. A long text block
+further down starts in a centred, clipped reading preview with a bottom fade.
 Visible text remains selectable, links follow their destinations, and images
 remain interactive. Tab focus inside the text expands its block automatically.
 Use **Show all** to read the full block and **Collapse text** to return to the
 preview. Heading deep links expand their block before scrolling. Enable
-**Expand lesson text automatically** in **Account → Playback** to start expanded;
-the preference is remembered in this browser. See [Reading lesson text](lessons.md).
+**Expand lesson text automatically** in **Account → Playback** to start every
+long block expanded. **Show all** turns that preference on and **Collapse text**
+turns it off; Tab focus and heading deep links expand a block without changing
+it. The preference is remembered in this browser. See
+[Reading lesson text](lessons.md).
 
 Images in lesson content open in a lightbox. Click or tap an image, or focus it
 with Tab and press Enter or Space, to enlarge it. Screen readers announce an

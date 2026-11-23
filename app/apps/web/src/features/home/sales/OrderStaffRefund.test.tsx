@@ -667,10 +667,9 @@ describe('staff refund history and ship anyway', () => {
     expect(within(blocked).getByRole('link', { name: messages.paymentSettingsLink })).toHaveAttribute('href', '/panel/integrations#stripe');
   });
 
-  it.each([
-    [en, 'unless another purchase keeps it'],
-    [pl, 'chyba że zapewnia go inny zakup'],
-  ] as const)('qualifies the heading that says a partial refund of everything left ends access', (t, qualifier) => {
+  it.each([en, pl])('qualifies the heading that says a partial refund of everything left ends access with the qualifier the access consequence carries', (t) => {
+    const qualifier = t.sales.staffRefund.consequenceAccessEnds.split(', ').at(-1)?.replace(/\.$/u, '') ?? '';
+    expect(qualifier.length).toBeGreaterThan(10);
     expect(t.sales.staffRefund.partialFullInfoTitle).toContain(qualifier);
   });
 

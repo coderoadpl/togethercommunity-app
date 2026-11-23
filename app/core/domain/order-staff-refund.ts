@@ -349,17 +349,14 @@ export const newOrderStaffRefund = (input: {
   updatedAt: input.now,
 });
 
-export const STAFF_REFUND_REASONS = [
-  'not_refunded',
-  'permission_expired',
-  'failed_after_submission',
-  'create_outcome_unknown',
-  'awaiting_provider',
-  'refunded_outside',
-  'not_confirmed',
-] as const;
-
-export type StaffRefundReason = (typeof STAFF_REFUND_REASONS)[number];
+export type StaffRefundReason =
+  | 'not_refunded'
+  | 'permission_expired'
+  | 'failed_after_submission'
+  | 'create_outcome_unknown'
+  | 'awaiting_provider'
+  | 'refunded_outside'
+  | 'not_confirmed';
 
 export const staffRefundReason = (
   refund: Pick<OrderStaffRefund, 'status' | 'createOutcomeUnknown' | 'providerRefundStatus' | 'permissionBlockedAt'>,

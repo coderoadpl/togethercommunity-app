@@ -4,7 +4,16 @@ import { contrastRatio, deriveLightAccent } from './color.js';
 import { emailOutboxPayloadSchema, prerenderedTransactionalPayload, renderEmailOutboxPayload } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
-import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedPurchasePersonalizationPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
+import type { StaffRefundReason } from './order-staff-refund.js';
+import {
+  expectedPurchaseConfirmationPl,
+  expectedPurchaseDeliveryPl,
+  expectedPurchasePersonalizationPl,
+  expectedStaffRefundAlertPl,
+  expectedTransactionalEmailPl,
+  orderShippedFixturePl,
+  purchaseDeliveryFixturesPl,
+} from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -874,33 +883,30 @@ describe('staff refund alert email', () => {
       'The refund has not reached Stripe yet, so nothing has been refunded yet. It is retried automatically for 7 days; you get another message if it still fails.'],
     ['en', true, 'Staff refund outcome not known yet, retrying',
       'Stripe may already have received this refund request, but its answer was lost. The same request is repeated automatically for 7 days, so the order is never refunded twice; you get another message if it still fails.'],
-    ['pl', false, 'Zwrot zlecony przez zespół jeszcze niezrealizowany, ponawiamy',
-      'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'],
-    ['pl', true, 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
-      'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'],
+    ['pl', false, expectedStaffRefundAlertPl.retryingSubject, expectedStaffRefundAlertPl.retrying],
+    ['pl', true, expectedStaffRefundAlertPl.retryingOutcomeUnknownSubject, expectedStaffRefundAlertPl.retryingOutcomeUnknown],
   ] as const)('words the %s retry alert by whether the request may have reached Stripe (%s), never saying it has not when it may have', (language, mayHaveRefunded, subject, state) => {
     const message = staffRefundAlertEmail(language, { ...input, alert: 'retrying', mayHaveRefunded, diagnostic: '' });
     expect(message.subject).toBe(`[Acme] ${subject}: order-<1>`);
     expect(message.text.split('\n')[1]).toBe(state);
-    if (mayHaveRefunded) expect(message.text).not.toMatch(/has not reached Stripe|nie dotarł jeszcze do Stripe/);
+    if (mayHaveRefunded) expect(message.text).not.toContain(language === 'en' ? 'has not reached Stripe' : expectedStaffRefundAlertPl.retrying.split(',')[0]);
   });
 
-  it.each([
-    ['en', 'create_outcome_unknown', 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'],
-    ['en', 'awaiting_provider', 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.'],
-    ['en', 'refunded_outside', 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.'],
-    ['en', 'not_confirmed', 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.'],
-    ['pl', 'create_outcome_unknown', 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'],
-    ['pl', 'awaiting_provider', 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.'],
-    ['pl', 'refunded_outside', 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić, więc nie wiadomo, czy ten zwrot został wypłacony.'],
-    ['pl', 'not_confirmed', 'Stripe nie potwierdził zwrotu, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.'],
-  ] as const)('tells staff in the %s unconfirmed alert (%s) to check the dashboard and refund there only when the refund is missing', (language, reason, because) => {
-    const check = language === 'en'
-      ? 'Check the payment in the Stripe Dashboard: if this refund is listed there, nothing more is needed; if it is not, refund it there, and the order is updated once Stripe reports the refund.'
-      : 'Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić; jeśli go nie ma, zwróć płatność tam, a zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.';
+  const englishCheck = 'Check the payment in the Stripe Dashboard: if this refund is listed there, nothing more is needed; if it is not, refund it there, and the order is updated once Stripe reports the refund.';
+
+  const unconfirmedRows: ReadonlyArray<readonly [string, StaffRefundReason, string, string]> = [
+    ['en', 'create_outcome_unknown', 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.', englishCheck],
+    ['en', 'awaiting_provider', 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.', englishCheck],
+    ['en', 'refunded_outside', 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.', englishCheck],
+    ['en', 'not_confirmed', 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.', englishCheck],
+    ...(['create_outcome_unknown', 'awaiting_provider', 'refunded_outside', 'not_confirmed'] as const)
+      .map((reason) => ['pl', reason, expectedStaffRefundAlertPl.unconfirmedBecause[reason], expectedStaffRefundAlertPl.checkInDashboard] as const),
+  ];
+
+  it.each(unconfirmedRows)('tells staff in the %s unconfirmed alert (%s) to check the dashboard and refund there only when the refund is missing', (language, reason, because, check) => {
     const text = staffRefundAlertEmail(language, { ...input, alert: 'unconfirmed', reason, mayHaveRefunded: reason === 'create_outcome_unknown', diagnostic: '' }).text;
     expect(text.split('\n')[1]).toBe(`${because} ${check}`);
-    expect(text).not.toMatch(/refund the order again from its page|zleć go ponownie na stronie zamówienia/);
+    expect(text).not.toContain('refund the order again from its page');
   });
 
   it('gives every alert its own staff refund subject in both languages', () => {

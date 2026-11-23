@@ -144,3 +144,19 @@ export const expectedPurchasePersonalizationPl = {
   conditionText: '\n\nPersonalizacja: Printed <book>\nFor "Alex" & Sam\nZaakceptowany warunek: I understand a personalised item is made to my order.',
   plainText: '\n\nPersonalizacja: Card\nHi',
 };
+
+export const expectedStaffRefundAlertPl = {
+  retryingSubject: 'Zwrot zlecony przez zespół jeszcze niezrealizowany, ponawiamy',
+  retrying: 'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
+  retryingOutcomeUnknownSubject: 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
+  retryingOutcomeUnknown: 'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
+  checkInDashboard: 'Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić; jeśli go nie ma, zwróć płatność tam, a zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
+  unconfirmedBecause: {
+    create_outcome_unknown: 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.',
+    awaiting_provider: 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.',
+    refunded_outside: 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić, więc nie wiadomo, czy ten zwrot został wypłacony.',
+    not_confirmed: 'Stripe nie potwierdził zwrotu, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.',
+  },
+  refusalState: 'Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło.',
+  lastErrorLabel: 'Ostatni błąd',
+};

@@ -40,6 +40,8 @@ import {
   tenants,
   user,
 } from './schema.js';
+import { expectedStaffRefundAlertPl } from '#core/domain/transactional-email.expected.pl.js';
+
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -382,11 +384,11 @@ describe('staff refunds against a real database', () => {
 
     expect(await refundRows('order-1')).toMatchObject([{ status: 'unconfirmed', lastError: 'Stripe could not list the refunds: Request aborted due to timeout' }]);
     const [retrying, unconfirmedAlert] = await alertPayloads();
-    expect(retrying?.text).toContain('Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła.');
-    expect(unconfirmedAlert?.text).toContain('Zlecenie tego zwrotu mogło dotrzeć do Stripe');
-    expect(unconfirmedAlert?.text).toContain('Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić');
+    expect(retrying?.text).toContain(expectedStaffRefundAlertPl.retryingOutcomeUnknown);
+    expect(unconfirmedAlert?.text).toContain(expectedStaffRefundAlertPl.unconfirmedBecause.create_outcome_unknown);
+    expect(unconfirmedAlert?.text).toContain(expectedStaffRefundAlertPl.checkInDashboard);
     for (const alert of [retrying, unconfirmedAlert]) {
-      expect(alert?.text.replace(/Ostatni błąd: .*/u, '')).not.toMatch(/\b(the|refund|request|check|dashboard|nothing|may)\b/iu);
+      expect(alert?.text.split('\n').filter((line) => !line.startsWith(`${expectedStaffRefundAlertPl.lastErrorLabel}:`)).join('\n')).not.toMatch(/\b(the|refund|request|check|dashboard|nothing|may)\b/iu);
     }
   });
 
@@ -397,9 +399,9 @@ describe('staff refunds against a real database', () => {
 
     expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', lastError: 'Refund declined', permissionBlockedAt: null }]);
     const [refused] = await alertPayloads();
-    expect(refused?.text).toContain('Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło.');
-    expect(refused?.text).toContain('Ostatni błąd: Refund declined');
-    expect(refused?.text.replace('Ostatni błąd: Refund declined', '')).not.toMatch(/\b(the|refund|provider|nothing|refused)\b/iu);
+    expect(refused?.text).toContain(expectedStaffRefundAlertPl.refusalState);
+    expect(refused?.text).toContain(`${expectedStaffRefundAlertPl.lastErrorLabel}: Refund declined`);
+    expect(refused?.text.replace(`${expectedStaffRefundAlertPl.lastErrorLabel}: Refund declined`, '')).not.toMatch(/\b(the|refund|provider|nothing|refused)\b/iu);
   });
 
   it('keeps an API key in the failure reason of a refund that failed after it was issued out of the stored refund, the Studio view and the staff alert', async () => {

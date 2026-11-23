@@ -17,17 +17,11 @@ interface SavedResponse {
 
 const noResponse = refundFailure('transient', 'Request aborted due to timeout being reached (80000ms)', null, true);
 
-interface RefundListPaging {
-  pageSize: number;
-  nowMs: () => number;
-  readPage: () => void;
-}
-
 export const createRefundProviderFake = (input: {
   chargeAmountCents: number;
   steps?: RefundProviderStep[];
   refundedByHand?: ProviderRefund[];
-  paging?: RefundListPaging;
+  paging?: { pageSize: number; nowMs: () => number; readPage: () => void };
 }) => {
   const steps = [...(input.steps ?? [])];
   const listFailures: AppError[] = [];

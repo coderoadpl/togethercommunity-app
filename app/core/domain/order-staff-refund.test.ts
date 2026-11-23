@@ -15,6 +15,8 @@ import {
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
+  staffRefundRemainderCents,
+  uncommittedProviderRefundCents,
 } from './index.js';
 
 const now = '2026-11-22T10:00:00.000Z';
@@ -59,6 +61,20 @@ describe('staff refund rules', () => {
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: 1000, platformCommittedCents: 500 })).toBe(3099);
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: null, platformCommittedCents: 500 })).toBe(3599);
     expect(refundableRemainderCents({ paidCents: 4099, providerCommittedCents: 5000, platformCommittedCents: 0 })).toBe(0);
+  });
+
+  it('leaves an order marked refunded refundable only for the provider refunds that failed or were canceled', () => {
+    const refunded = { status: 'refunded' as const, amountCents: 4099 };
+    const failed = { status: 'failed' as const, amountCents: 4099 };
+    const canceled = { status: 'canceled' as const, amountCents: 1000 };
+    const succeeded = { status: 'succeeded' as const, amountCents: 1000 };
+    expect(uncommittedProviderRefundCents([failed, canceled, succeeded])).toBe(5099);
+    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0 })).toBe(0);
+    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: null, providerUncommittedCents: null, platformCommittedCents: 0 })).toBe(0);
+    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 0, providerUncommittedCents: 4099, platformCommittedCents: 0 })).toBe(4099);
+    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 1000, providerUncommittedCents: 1000, platformCommittedCents: 0 })).toBe(1000);
+    expect(staffRefundRemainderCents(refunded, { providerCommittedCents: 4099, providerUncommittedCents: 4099, platformCommittedCents: 0 })).toBe(0);
+    expect(staffRefundRemainderCents({ status: 'paid', amountCents: 4099 }, { providerCommittedCents: 0, providerUncommittedCents: 0, platformCommittedCents: 0 })).toBe(4099);
   });
 
   it('stores a missing amount as a remainder refund, keeps a typed amount, even the whole remainder, and refuses zero, fractions and amounts above the remainder', () => {

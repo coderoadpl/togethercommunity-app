@@ -468,6 +468,15 @@ describe('staff refunds against a real database', () => {
     expect(h.provider.created.map((created) => [created.amountCents, created.status])).toStrictEqual([[4099, 'failed'], [4099, 'succeeded']]);
   });
 
+  it('keeps an order marked refunded without any failed provider refund, such as one a dispute marked, unrefundable', async () => {
+    await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
+    const h = harness();
+
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'provider' });
+    expect(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await refundRows('order-1')).toStrictEqual([]);
+  });
+
   it('refunds a test-mode order in test mode without a buyer e-mail', async () => {
     await database.db.update(orders).set({ mode: 'test' }).where(eq(orders.id, 'order-1'));
     const h = harness();

@@ -2,6 +2,7 @@ import {
   appError,
   committedProviderRefundCents,
   createStaffRefundInputSchema,
+  uncommittedProviderRefundCents,
   err,
   forbidden,
   newOrderStaffRefund,
@@ -44,16 +45,22 @@ import type {
 const machineKeyRefusal = (ctx: Ctx): Result<never, AppError> | null =>
   ctx.machineActor === undefined ? null : err(forbidden('order:refund is not permitted for a machine key'));
 
-type ProviderCommitted = { cents: number; source: 'provider' } | { cents: null; source: 'platform' };
+type ProviderCommitted =
+  | { cents: number; uncommittedCents: number; source: 'provider' }
+  | { cents: null; uncommittedCents: null; source: 'platform' };
+
+const platformOnly: ProviderCommitted = { cents: null, uncommittedCents: null, source: 'platform' };
 
 const providerCommittedCents = async (
   order: Pick<Order, 'tenantId' | 'mode' | 'provider' | 'providerObjectIds'>,
   payment: Pick<PaymentProvider, 'listRefunds'>,
 ): Promise<ProviderCommitted> => {
   const paymentIntentId = order.providerObjectIds['paymentIntent'];
-  if (order.provider !== 'stripe' || paymentIntentId === undefined || payment.listRefunds === undefined) return { cents: null, source: 'platform' };
+  if (order.provider !== 'stripe' || paymentIntentId === undefined || payment.listRefunds === undefined) return platformOnly;
   const listed = await payment.listRefunds({ mode: order.mode, tenantId: order.tenantId, paymentIntentId });
-  return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider' } : { cents: null, source: 'platform' };
+  return listed.ok
+    ? { cents: committedProviderRefundCents(listed.value), uncommittedCents: uncommittedProviderRefundCents(listed.value), source: 'provider' }
+    : platformOnly;
 };
 
 export interface StaffRefundDeps {
@@ -100,7 +107,7 @@ export const previewStaffRefund = async (
     deps.invoices?.findCurrentByOrder(tenant.value, order.id) ?? null,
     deps.staffRefunds.listByOrder(tenant.value, order.id),
   ]);
-  const remainderCents = staffRefundRemainderCents(order, { providerCommittedCents: provider.cents, platformCommittedCents });
+  const remainderCents = staffRefundRemainderCents(order, { providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents });
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
   const blocker = staffRefundOrderBlocker(order)
     ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
@@ -135,7 +142,7 @@ const decideStaffRefund = (
     reason?: string | undefined;
     restock?: boolean | undefined;
     removeFromPackingList?: boolean | undefined;
-    providerCommittedCents: number | null;
+    provider: ProviderCommitted;
     actor: { userId: string; email: string };
     now: string;
   },
@@ -149,7 +156,8 @@ const decideStaffRefund = (
   if (blocker !== null) return err(blocker);
   if (state.waiting !== null) return err(staffRefundWaitingConflict());
   const remainderCents = staffRefundRemainderCents(state.order, {
-    providerCommittedCents: request.providerCommittedCents,
+    providerCommittedCents: request.provider.cents,
+    providerUncommittedCents: request.provider.uncommittedCents,
     platformCommittedCents: state.platformCommittedCents,
   });
   const amount = resolveStaffRefundAmount({ amountCents: request.amountCents, expectedAmountCents: request.expectedAmountCents, remainderCents, currency: state.order.currency });
@@ -207,7 +215,7 @@ export const createStaffRefund = async (
       ...parsed.data,
       tenantId: tenant.value,
       refundId: deps.ids.nextId(),
-      providerCommittedCents: provider.cents,
+      provider,
       actor: { userId: ctx.identity.userId, email: ctx.identity.email },
       now,
     }),

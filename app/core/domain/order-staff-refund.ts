@@ -78,17 +78,23 @@ const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): bool
 export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
   refunds.filter(isCommittedProviderRefund).reduce((sum, refund) => sum + refund.amountCents, 0);
 
+export const uncommittedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
+  refunds.filter((refund) => !isCommittedProviderRefund(refund)).reduce((sum, refund) => sum + refund.amountCents, 0);
+
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
 
-// A refund that fails after charge.refunded leaves the order marked refunded; only the provider's own list can show the money is still there.
+// A refund that fails after charge.refunded leaves the order marked refunded; only the provider's own list can show the
+// money is still there, through the refunds that failed or were canceled. An order marked refunded without one, such as
+// after a dispute, has nothing left to refund.
 export const staffRefundRemainderCents = (
   order: Pick<Order, 'status' | 'amountCents'>,
-  input: { providerCommittedCents: number | null; platformCommittedCents: number },
-): number =>
-  order.status === 'refunded' && input.providerCommittedCents === null
-    ? 0
-    : refundableRemainderCents({ paidCents: order.amountCents, ...input });
+  input: { providerCommittedCents: number | null; providerUncommittedCents: number | null; platformCommittedCents: number },
+): number => {
+  const remainder = refundableRemainderCents({ paidCents: order.amountCents, ...input });
+  if (order.status !== 'refunded') return remainder;
+  return input.providerCommittedCents === null || input.providerUncommittedCents === null ? 0 : Math.min(remainder, input.providerUncommittedCents);
+};
 
 export const staffRefundWaitingConflict = (): AppError =>
   appError('conflict', 'Another refund of this order is still waiting to reach the payment provider; try again once it is accepted or failed', { waitingRefund: true });

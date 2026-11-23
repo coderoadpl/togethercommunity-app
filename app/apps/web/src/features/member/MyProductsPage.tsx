@@ -13,13 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import {
-  MEMBER_DOWNLOAD_FAILURE_PARAMS,
-  MY_PRODUCTS_PATH,
-  orderLineLabel,
-  parseMemberDownloadFailure,
-  SALES_LINK_TIME_ZONE,
-} from '#core/domain/index.js';
+import { MEMBER_DOWNLOAD_FAILURE_PARAMS, parseMemberDownloadFailure } from '#core/contract/index.js';
+import { MY_PRODUCTS_PATH, orderLineLabel, SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import type {
   GrantWindowStatus,
   MemberFulfilment,

@@ -973,7 +973,6 @@ export const LessonPlayerPage = ({
 
         {authenticated && (
           <DiscussionSection
-            key={threadRootPostId ?? 'all-threads'}
             courseId={courseId}
             lessonId={lessonId}
             editionNumber={editionNumber}

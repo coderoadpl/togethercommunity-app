@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -588,6 +588,13 @@ export const ThreadDiscussion = ({
     changeEditTarget(null);
     setSubthreadRootId(subthreadId);
   };
+  const followFocus = useEffectEvent((rootPostId: string | null) => switchView(rootPostId));
+  const shownFocusRootPostId = useRef(focusRootPostId);
+  useLayoutEffect(() => {
+    if (shownFocusRootPostId.current === focusRootPostId) return;
+    shownFocusRootPostId.current = focusRootPostId;
+    followFocus(focusRootPostId);
+  }, [focusRootPostId]);
 
   const topComposerOpen = subthreadRoot === null;
   const createErrorOwned = create.isError && (create.variables.parentPostId === undefined

@@ -2753,6 +2753,86 @@ describe('LessonPlayerPage', () => {
     await waitFor(() => expect(router.state.location.searchStr).toBe(''));
   });
 
+  const focusedThreadHandlers = (thread: DiscussionPost) => [
+    http.get('/api/discussion', () =>
+      HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+    ),
+    http.get('/api/discussion/threads/:postId', () =>
+      HttpResponse.json({ ok: true, data: { discussion: { threads: [thread], nextCursor: null, viewerSubscriptions: {} } } }),
+    ),
+  ];
+
+  it('shows a reply that fails after the member left a thread opened from the link in the all-threads alert', async () => {
+    let releasePost: (value: undefined) => void = () => undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(discussionPost('t1', 'Question about hammocks')),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
+
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-t1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    expect(await screen.findByTestId('discussion-composer')).toBeInTheDocument();
+    releasePost(undefined);
+
+    const discussion = screen.getByTestId('discussion-section');
+    const error = await within(discussion).findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('shows an edit that fails after the member went back from a thread opened from the link in the all-threads alert', async () => {
+    let releaseUpdate: (value: undefined) => void = () => undefined;
+    const updateResponse = new Promise<undefined>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers({ ...discussionPost('t1', 'Question about hammocks'), isOwn: true }),
+      http.post('/api/posts/update', async () => {
+        await updateResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1');
+    await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l1' }, search: { thread: 't1' } });
+
+    await user.click(await screen.findByTestId('edit-button-t1'));
+    await user.type(screen.getByTestId('edit-composer-t1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-t1-submit'));
+    await waitFor(() => expect(screen.getByTestId('edit-composer-t1-submit')).toHaveTextContent(en.discussion.saving));
+
+    router.history.back();
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    expect(await screen.findByTestId('discussion-composer')).toBeInTheDocument();
+    releaseUpdate(undefined);
+
+    const discussion = screen.getByTestId('discussion-section');
+    const error = await within(discussion).findByRole('alert');
+    expect(error).toHaveTextContent(en.errors.messageInternal);
+    expect(screen.getByTestId('discussion-composer')).not.toContainElement(error);
+    expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
     const thread = discussionPost('t1', 'Question about hammocks');
     server.use(

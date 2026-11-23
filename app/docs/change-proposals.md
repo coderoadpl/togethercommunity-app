@@ -1303,9 +1303,12 @@ the delete. While the mark exists, the sweep and another release leave the row
 alone and a completion of the same image by that key answers `503 unavailable`
 instead of reviving the row, so a delete in flight, or one that outlives the
 process that sent it, never removes a new quarantined copy. A delete the
-storage refuses (a `4xx` answer other than `404`) clears the mark and leaves
-the row released and invisible, and the sweep retries it; a busy step leaves it
-the same way. A delete that ended without a definite answer, or whose process
+storage refuses (a `4xx` answer other than `404`, such as `AccessDenied`)
+clears the mark and leaves the row released and invisible, and the sweep
+retries it; a busy step leaves it the same way. A bucket policy that refuses
+deletes therefore leaves such rows counted toward the key's limits, and the
+refusal logged on every sweep run, until the storage permits the delete; it
+never blocks a completion of the same image. A delete that ended without a definite answer, or whose process
 died, keeps the mark: for 10 minutes after it the sweep leaves the row alone,
 then deletes the object again and removes the row, and the image can be
 uploaded again.

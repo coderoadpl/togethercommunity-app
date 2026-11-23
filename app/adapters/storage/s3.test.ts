@@ -943,6 +943,29 @@ describe('image publication storage operations', () => {
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
 
+  it.each([[400, true], [403, true], [404, false], [500, false], [503, false]] as const)(
+    'answers a delete refused with status %s as definite only for a refusal: %s',
+    async (status, definite) => {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => storageResponse(status, '<Error><Code>AccessDenied</Code></Error>'),
+      });
+      const deleted = await storage.delete(credentials);
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(definite);
+    },
+  );
+
+  it('answers a delete whose connection failed as an unknown outcome', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => { throw new Error('socket hang up'); },
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
   it('stores the disposition it is given with the object', async () => {
     const sent: Array<Record<string, string> | undefined> = [];
     const storage = createS3StorageProvider(resolver, {

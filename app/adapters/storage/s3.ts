@@ -844,9 +844,10 @@ export const createS3StorageProvider = (
       if (!signed.ok) return signed;
       const response = await sendObjectRequest(signed.value, 'DELETE', input.deadlineMs, DELETE_DEADLINE_MS);
       if (!response.ok) return response;
-      return response.value.ok
-        ? ok({ deleted: true })
-        : err(integrationUnavailable(`S3 rejected the delete request with status ${String(response.value.status)}`));
+      if (response.value.ok) return ok({ deleted: true });
+      const { status } = response.value;
+      const message = `S3 rejected the delete request with status ${String(status)}`;
+      return err(status >= 400 && status < 500 && status !== 404 ? storageDefiniteFailure(message) : integrationUnavailable(message));
     },
     head: async (input) => {
       const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);

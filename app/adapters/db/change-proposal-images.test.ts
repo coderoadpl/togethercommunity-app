@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import {
   CHANGE_PROPOSAL_IMAGE_FIELDS,
   changeProposalImageReferences,
@@ -793,6 +794,31 @@ describe('quarantined rows and objects of one key', () => {
     expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:15:00.000Z', 10)).toEqual([]);
     expect(await repository.listTenantIdsWithPublicationsBefore('2026-03-01T10:15:00.000Z', 10)).toEqual([]);
     expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:30:01.000Z', 10)).toMatchObject([{ attemptId: 'attempt-unresolved' }]);
+  });
+});
+
+describe('a delete the storage refuses', () => {
+  it('leaves no unresolved mark on a released row or a publication record when the S3 storage answers AccessDenied', async () => {
+    const harness = endToEnd();
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(harness.deps.secretResolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        requests.push(init.method);
+        return { ok: false, status: 403, headers: { get: () => null }, text: async () => '<Error><Code>AccessDenied</Code></Error>' };
+      },
+    });
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    await repository.recordPublications(TENANT, 'attempt-crashed', [image(2)], NOW);
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
+    expect(await sweepQuarantinedImages({ ...harness.deps, storage })).toMatchObject({ ok: true, value: { removed: 0 } });
+    expect(requests).toEqual(['DELETE', 'DELETE']);
+    expect(await database.db.select({ unresolvedAt: changeProposalImages.deleteUnresolvedAt }).from(changeProposalImages)).toEqual([{ unresolvedAt: null }]);
+    expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
+      .toEqual([{ unresolvedAt: null }]);
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
   });
 });
 

@@ -185,6 +185,9 @@ const xmlRootName = (xml: string): string | null => {
   return root?.[1] ?? null;
 };
 
+const s3ErrorCode = (xml: string): string | null =>
+  xmlRootName(xml) === 'Error' ? /<Code>([^<]*)<\/Code>/u.exec(xml)?.[1] ?? null : null;
+
 const copySource = (bucket: string, key: string): string =>
   `/${rfc3986(bucket)}/${key.split('/').map(rfc3986).join('/')}`;
 
@@ -225,6 +228,14 @@ const readProbeBody = async (
   } finally {
     reader.releaseLock();
   }
+};
+
+const missingObjectOrBucket = async <T>(response: StorageResponse, signal: AbortSignal): Promise<Result<T, AppError>> => {
+  const body = await readProbeBody(response, PROBE_ERROR_BODY_MAX_BYTES, signal);
+  if (!body.ok) return err(integrationUnavailable('S3 answered 404 with a body that could not be read'));
+  return s3ErrorCode(body.value) === 'NoSuchBucket'
+    ? err(integrationUnavailable('S3 reports that the configured bucket does not exist'))
+    : err(notFound('No storage object at this key'));
 };
 
 const sendProbeRequest = async (
@@ -657,7 +668,7 @@ export const createS3StorageProvider = (
       try {
         const response = await abortable(fetchStorage(signed, { method: 'PUT', dispatcher, redirect: 'error', signal, headers }), signal);
         const body = await readProbeBody(response, PROBE_ERROR_BODY_MAX_BYTES, signal);
-        if (response.status === 404) return err(notFound('No storage object at the copy source'));
+        if (response.status === 404 && !(body.ok && s3ErrorCode(body.value) === 'NoSuchBucket')) return err(notFound('No storage object at the copy source'));
         if (response.status >= 400 && response.status < 500) {
           return err(storageDefiniteFailure(`S3 refused the copy request with status ${String(response.status)}`));
         }
@@ -685,10 +696,7 @@ export const createS3StorageProvider = (
         const response = await abortable(fetchStorage(signed.value, {
           method: 'GET', dispatcher, redirect: 'error', signal, headers: { 'Accept-Encoding': 'identity' },
         }), signal);
-        if (response.status === 404) {
-          await abortable(discardStorageResponseBody(response), signal);
-          return err(notFound('No storage object at this key'));
-        }
+        if (response.status === 404) return missingObjectOrBucket(response, signal);
         const length = response.headers.get('content-length');
         const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
         if (response.ok && Number.isSafeInteger(size) && (size < 1 || size > maxBytes)) {
@@ -743,10 +751,7 @@ export const createS3StorageProvider = (
         method: 'GET', dispatcher, redirect: 'error', signal,
         headers: { 'Accept-Encoding': 'identity', ...(range ? { Range: `bytes=0-${String(maxBytes)}` } : {}) },
       }), signal);
-      if (response.status === 404) {
-        await abortable(discardStorageResponseBody(response), signal);
-        return err(notFound('No storage object at this key'));
-      }
+      if (response.status === 404) return missingObjectOrBucket(response, signal);
       const length = response.headers.get('content-length');
       const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
       const contentRange = response.headers.get('content-range');
@@ -905,7 +910,7 @@ export const createS3StorageProvider = (
           return ok({ status: sent.status, ok: sent.ok, missingObject: false });
         }
         const body = await readProbeBody(sent, PROBE_ERROR_BODY_MAX_BYTES, signal);
-        return ok({ status: sent.status, ok: sent.ok, missingObject: body.ok && !/NoSuchBucket/i.test(body.value) });
+        return ok({ status: sent.status, ok: sent.ok, missingObject: body.ok && s3ErrorCode(body.value) === 'NoSuchKey' });
       }, 'Could not reach S3.');
       if (!response.ok) return response;
       if (response.value.ok || response.value.missingObject) return ok({ deleted: true });

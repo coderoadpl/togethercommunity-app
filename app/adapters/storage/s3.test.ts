@@ -966,19 +966,77 @@ describe('image publication storage operations', () => {
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
 
-  it('answers a delete of an object the storage reports missing as deleted, and a missing bucket as an unknown outcome', async () => {
-    const answer = { status: 404, body: '<Error><Code>NoSuchKey</Code></Error>' };
+  it('answers a delete of an object the storage reports missing with the NoSuchKey error code as deleted', async () => {
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],
-      fetchStorage: async () => storageResponse(answer.status, answer.body),
+      fetchStorage: async () => storageResponse(404, '<?xml version="1.0" encoding="UTF-8"?>\n<Error><Code>NoSuchKey</Code><Key>candidate</Key></Error>'),
     });
     expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
+  });
+
+  it.each([
+    ['an empty body', ''],
+    ['a proxy page', '<html><body><h1>404 Not Found</h1><p>NoSuchKey</p></body></html>'],
+    ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
+    ['another error code', '<Error><Code>NoSuchUpload</Code></Error>'],
+    ['a code that only starts like the missing key', '<Error><Code>NoSuchKeyPolicy</Code></Error>'],
+  ])('answers a delete refused with 404 and %s as an unknown outcome', async (_label, body) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, body),
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
+  it.each([
+    ['larger than the error body bound', 16],
+    ['that stalls after its first chunk', 'endless'],
+  ] as const)('answers a delete refused with 404 and a body %s as an unknown outcome and cancels the body', async (_label, chunks) => {
+    const streamed = streamedResponse(404, chunks);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamed.response,
+    });
+    const deleted = await storage.delete({ ...credentials, deadlineMs: 50 });
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+    if (chunks !== 'endless') expect(streamed.cancel).toHaveBeenCalled();
+    expect(streamed.pulled()).toBeLessThanOrEqual(9 * 1024);
+  });
+
+  it('reports a read, a versioned read, a digest and a copy answered 404 with NoSuchBucket as a storage error, not as a missing object', async () => {
+    const answer = { body: '<Error><Code>NoSuchBucket</Code></Error>' };
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, answer.body),
+    });
+    const reads = async () => [
+      await storage.getObject(credentials, { maxBytes: 10 }),
+      await storage.getObjectVersion?.(credentials, { maxBytes: 10 }),
+      await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }),
+    ];
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 1_000,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(true);
+    answer.body = '<Error><Code>NoSuchKey</Code></Error>';
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'not_found' } });
     answer.body = '';
-    expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
-    answer.body = '<Error><Code>NoSuchBucket</Code></Error>';
-    const missingBucket = await storage.delete(credentials);
-    expect(missingBucket).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-    expect(!missingBucket.ok && storageFailureIsDefinite(missingBucket.error)).toBe(false);
+    expect(await storage.head(credentials)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await storage.getObject(credentials, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it.each([16, 'endless'] as const)('reports a read answered 404 with an unreadable body (%s) as a storage error', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    expect(await storage.getObject({ ...credentials, deadlineMs: 50 }, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
   });
 
   it.each([[400, true], [403, true], [500, false], [503, false]] as const)(

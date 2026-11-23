@@ -1323,9 +1323,11 @@ of the storage, so a process that dies during a write, whose record no
 withdrawal restarts, still leaves the storage the full 10 minutes after the
 latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
 `4xx` answer other than `404`) cannot land later, so the mark is cleared and the
-record stays for the sweep. A `404` answer means the object is not there and
-counts as a confirmed delete, so the record is removed; a `404` that names a
-missing bucket (`NoSuchBucket`) counts as a delete without a definite answer. When the delete ends without a definite answer (no
+record stays for the sweep. A `404` answer whose body is an S3 error with the
+code `NoSuchKey` means the object is not there and counts as a confirmed
+delete, so the record is removed; any other `404` (an empty or unreadable body,
+a proxy page, a missing bucket `NoSuchBucket`, another code) counts as a delete
+without a definite answer. When the delete ends without a definite answer (no
 answer, a connection error, a server error), or the process dies after sending
 it, the storage may still carry it out later, so the record keeps its mark; the
 minute sweep deletes the object again 15 minutes after the mark, under the same
@@ -1370,10 +1372,10 @@ clears the mark and leaves the row released and invisible, and the sweep
 retries it; a busy step leaves it the same way. A bucket policy that refuses
 deletes therefore leaves such rows counted toward the key's limits, and the
 refusal logged on every sweep run, until the storage permits the delete; it
-never blocks a completion of the same image. A `404` answer means the object is
-not there and counts as a confirmed delete, so the row is removed; a `404` that
-names a missing bucket (`NoSuchBucket`) counts as a delete without a definite
-answer. A delete that ended without a definite answer, or whose process
+never blocks a completion of the same image. A `404` answer with the S3 error
+code `NoSuchKey` means the object is not there and counts as a confirmed
+delete, so the row is removed; any other `404` counts as a delete without a
+definite answer. A delete that ended without a definite answer, or whose process
 died, keeps the mark: for 10 minutes the sweep leaves the row alone, then
 deletes the object again and removes the row once that delete is confirmed,
 and the image can be uploaded again. The 10 minutes count from the time the

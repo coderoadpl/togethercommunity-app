@@ -130,8 +130,11 @@ copy and the read of a completion or copy hold no row lock; they are fenced by
 the attempt id and by a destination of their own. A delete that takes effect
 while its transaction rolls back, or whose answer is lost, still leaves the row
 in place, and the sweep deletes the object again. A `404` answer to a delete
-means the object is not there and counts as a confirmed delete; a `404` that
-names a missing bucket (`NoSuchBucket`) does not. Removing a file version or deleting a draft product whose file
+whose body is an S3 error with the code `NoSuchKey` means the object is not
+there and counts as a confirmed delete; any other `404` (an empty or unreadable
+body, a proxy page, a missing bucket `NoSuchBucket`) does not. A read, a digest
+or a copy answered `404` with `NoSuchBucket`, or with a body that cannot be
+read, is a storage error, not a missing object. Removing a file version or deleting a draft product whose file
 object is under `key-files/`, discarding a staged file, and the minute sweep of
 a staged file record the object's deletion in
 `change_proposal_download_deletions` in the transaction that deletes the file's

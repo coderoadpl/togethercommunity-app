@@ -1025,19 +1025,36 @@ describe('a delete the storage refuses', () => {
   });
 });
 
-describe('a delete the storage answers with a missing object', () => {
-  it('retires a released row and a publication record whose earlier delete had no definite answer', async () => {
-    const harness = endToEnd();
+describe('a delete the storage answers with 404', () => {
+  const answering404 = (body: string) => {
     const requests: string[] = [];
-    const storage = createS3StorageProvider(harness.deps.secretResolver, {
-      lookupAddresses: async () => ['93.184.216.34'],
-      fetchStorage: async (_url, init) => {
-        requests.push(init.method);
-        return {
-          ok: false, status: 404, headers: { get: () => null }, body: null, text: async () => '',
-        };
-      },
-    });
+    const bytes = new TextEncoder().encode(body);
+    const fetchStorage = async (_url: string, init: { method: string }) => {
+      requests.push(init.method);
+      let delivered = false;
+      return {
+        ok: false, status: 404, headers: { get: () => null }, text: async () => body,
+        body: {
+          cancel: async () => undefined,
+          getReader: () => ({
+            read: async () => {
+              if (delivered || bytes.byteLength === 0) return { done: true };
+              delivered = true;
+              return { done: false, value: bytes };
+            },
+            cancel: async () => undefined,
+            releaseLock: () => undefined,
+          }),
+        },
+      };
+    };
+    return { requests, fetchStorage };
+  };
+
+  const owedDeletes = async (body: string) => {
+    const harness = endToEnd();
+    const answer = answering404(body);
+    const storage = createS3StorageProvider(harness.deps.secretResolver, { lookupAddresses: async () => ['93.184.216.34'], fetchStorage: answer.fetchStorage });
     const repository = createQuarantinedImageRepository(database.db);
     await repository.insert(TENANT, image(1), stored);
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
@@ -1045,11 +1062,31 @@ describe('a delete the storage answers with a missing object', () => {
     await repository.recordPublications(TENANT, 'attempt-lost-reply', [image(2)], NOW);
     await createQuarantinedImageLocks(database.db).markDeleteUnresolved(TENANT, 'attempt-lost-reply', image(2), NOW);
     harness.clock.now = '2026-03-01T10:31:00.000Z';
-    expect(await sweepQuarantinedImages({ ...harness.deps, storage })).toMatchObject({ ok: true, value: { removed: 2 } });
-    expect(requests).toEqual(['DELETE', 'DELETE']);
+    const swept = await sweepQuarantinedImages({ ...harness.deps, storage });
+    expect(answer.requests).toEqual(['DELETE', 'DELETE']);
+    return { swept, repository };
+  };
+
+  it('retires a released row and a publication record whose earlier delete had no definite answer once the storage names the key missing', async () => {
+    const { swept, repository } = await owedDeletes('<Error><Code>NoSuchKey</Code></Error>');
+    expect(swept).toMatchObject({ ok: true, value: { removed: 2 } });
     expect(await database.db.select().from(changeProposalImages)).toEqual([]);
     expect(await database.db.select().from(changeProposalImagePublications)).toEqual([]);
     expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+  });
+
+  it.each([
+    ['an empty body', ''],
+    ['a proxy page', '<html><body>Not Found</body></html>'],
+    ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
+  ])('keeps a released row and a publication record counted and marked when the 404 carries %s', async (_label, body) => {
+    const { swept, repository } = await owedDeletes(body);
+    expect(swept).toMatchObject({ ok: true, value: { removed: 0 } });
+    expect(await database.db.select({ releasedAt: changeProposalImages.releasedAt, unresolvedAt: changeProposalImages.deleteUnresolvedAt }).from(changeProposalImages))
+      .toEqual([{ releasedAt: expect.any(String), unresolvedAt: '2026-03-01T10:31:00.000Z' }]);
+    expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
+      .toEqual([{ unresolvedAt: '2026-03-01T10:31:00.000Z' }]);
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'busy' });
   });
 });
 

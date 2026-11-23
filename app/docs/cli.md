@@ -98,7 +98,11 @@ refunds the whole remainder; `--amount <decimal>` refunds part of it in the
 order's currency (whole numbers for zero-decimal currencies). `--reason <text>`
 keeps a staff-only note, `--no-restock` and `--keep-on-packing-list` turn off
 the full-refund defaults, and `--request-key <key>` makes a retry safe: the same
-key never refunds twice. Without one the CLI generates a key and prints it. The
+key never refunds twice. Without one the CLI generates a key and prints it on
+stderr before it sends the request (with `--json`, a failed request names it in
+the error envelope's `details.requestKey`); after a network error or a lost
+answer, re-run the command with `--request-key <key>` and it returns the refund
+the first run created instead of a second one. The
 refund cannot be undone, so the command refuses without `--yes` and prints what
 it would refund. `order ship-anyway <orderId>` puts a refunded order that was
 taken off the packing list back on it. Each command prints one envelope with

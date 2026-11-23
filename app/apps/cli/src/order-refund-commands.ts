@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import type { ApiClient } from '#core/client/index.js';
 import {
+  appError,
   err,
   formatMinorUnits,
   minorUnitsFromDecimal,
@@ -55,6 +56,16 @@ export const refundPreviewLines = (preview: StaffRefundPreview): string => {
 const refundLine = (refund: OrderStaffRefundView): string =>
   `refund ${refund.id}: ${formatMinorUnits(refund.amountCents, refund.currency)} (${refund.kind === 'remainder' ? 'full' : 'partial'}), ${refund.status}${refund.restocked ? ', stock returned' : ''}${refund.removedFromPackingList ? ', off the packing list' : ''}`;
 
+const retryHint = (requestKey: string): string =>
+  `request key: ${requestKey} (after a network error repeat with --request-key ${requestKey}; the same key never refunds twice)`;
+
+const detailsSchema = z.record(z.string(), z.unknown());
+
+const withRequestKey = (error: AppError, requestKey: string): AppError => {
+  const details = detailsSchema.safeParse(error.details);
+  return appError(error.code, error.message, { ...(details.success ? details.data : {}), requestKey });
+};
+
 type RefundRequest = {
   requestKey: string;
   amountCents?: number;
@@ -97,9 +108,11 @@ export const runOrderRefund = async (
     if (!ctx.json) console.error(refundPreviewLines(preview.value));
     return;
   }
+  const { requestKey } = request.value;
+  if (options.data.requestKey === undefined && !ctx.json) console.error(retryHint(requestKey));
   const created = await ctx.api.createOrderRefund({ orderId, ...request.value });
   emit(
-    created.ok ? ok({ ...created.value, requestKey: request.value.requestKey }) : created,
+    created.ok ? ok({ ...created.value, requestKey }) : err(withRequestKey(created.error, requestKey)),
     ctx.json,
     (data) => [
       data.created ? refundLine(data.refund) : `${refundLine(data.refund)} (already requested with this request key)`,

@@ -74,6 +74,26 @@ describe('order refund command', () => {
     expect(h.createOrderRefund.mock.calls[1]?.[0].requestKey).toBe('fixed-key');
   });
 
+  it('prints a generated request key before sending, so a request whose answer was lost can be repeated with it', async () => {
+    const h = harness();
+    h.createOrderRefund.mockImplementationOnce(async () => {
+      expect(errorSpy).toHaveBeenCalledExactlyOnceWith('request key: lost-1 (after a network error repeat with --request-key lost-1; the same key never refunds twice)');
+      return err(appError('network', 'fetch failed'));
+    });
+    await h.refund({ yes: true }, () => 'lost-1');
+    expect(h.createOrderRefund).toHaveBeenCalledOnce();
+    expect(errorSpy.mock.calls[1]?.[0]).toBe('error(network): fetch failed');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.network);
+  });
+
+  it('names the request key in the error envelope with --json and prints nothing before it', async () => {
+    const h = harness(true);
+    h.createOrderRefund.mockResolvedValueOnce(err(appError('network', 'fetch failed')));
+    await h.refund({ yes: true }, () => 'lost-2');
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(printed()).toEqual({ ok: false, error: { code: 'network', message: 'fetch failed', details: { requestKey: 'lost-2' } } });
+  });
+
   it('refuses without --yes, names the amount and shows the preview, and sends nothing', async () => {
     const h = harness();
     await h.refund({ amount: '5' });
@@ -97,7 +117,9 @@ describe('order refund command', () => {
     logSpy.mockClear();
     h.createOrderRefund.mockResolvedValueOnce(err(appError('conflict', 'Another refund of this order is still waiting to reach the payment provider')));
     await h.refund({ yes: true });
-    expect(printed()).toEqual({ ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider' } });
+    expect(printed()).toEqual({
+      ok: false, error: { code: 'conflict', message: 'Another refund of this order is still waiting to reach the payment provider', details: { requestKey: expect.stringMatching(/^cli-/) } },
+    });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 

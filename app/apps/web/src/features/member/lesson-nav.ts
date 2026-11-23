@@ -52,13 +52,18 @@ export const locateLesson = (
   structure: CourseStructureWithAccess,
   lessonId: string,
 ): LessonLocation => {
+  let firstLocked: LessonLocation | null = null;
   for (const module of structure.modules) {
     for (const chapter of module.chapters) {
-      const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
-      if (row !== undefined) return { courseName: structure.name, module, chapter, row };
+      for (const row of chapter.lessons) {
+        if (row.lessonId !== lessonId) continue;
+        const location = { courseName: structure.name, module, chapter, row };
+        if (row.accessStatus === 'fully-accessible') return location;
+        firstLocked ??= location;
+      }
     }
   }
-  return { courseName: structure.name, module: null, chapter: null, row: null };
+  return firstLocked ?? { courseName: structure.name, module: null, chapter: null, row: null };
 };
 
 export const lessonPath = (courseId: string, lessonId: string): string =>

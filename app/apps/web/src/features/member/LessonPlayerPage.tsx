@@ -333,21 +333,20 @@ export const LessonPlayerPage = ({
   });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
+    const sent = `${courseId}/${lessonId}`;
     if (
       !authenticated ||
       !ownProgress ||
-      lastViewedRef.current === lessonId ||
+      lastViewedRef.current === sent ||
       !lesson.isSuccess ||
       lesson.isPlaceholderData ||
-      structure.isPending
-    ) return;
-    lastViewedRef.current = lessonId;
-    if (
+      structure.isPending ||
       location === null ||
       location.module === null ||
       location.chapter === null ||
       location.row?.accessStatus !== 'fully-accessible'
     ) return;
+    lastViewedRef.current = sent;
     lastViewed.mutate({
       courseId,
       lessonId,

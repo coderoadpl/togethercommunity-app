@@ -1896,7 +1896,11 @@ progress is recorded follows a course that opens the lesson for them:
   course opens the lesson for them, in the named module when one is sent;
   otherwise it is refused as `forbidden` and nothing is written. Staff, and a
   request without a lesson, are not checked. The lesson player sends it only
-  when the lesson is an open row of the course tree it shows;
+  when the lesson is an open row of the course tree it shows, naming the module
+  and chapter of the first open row of the lesson when an earlier row of it is
+  locked (the breadcrumbs show that row too). It sends it once per course and
+  lesson it shows, and only once the tree has an open row of the lesson, so a
+  tree that reads after a failed read still records the position;
 - a lesson hit on the search page links only into a course of the member's
   navigation whose tree opens the lesson. While course trees are still
   loading, a hit that no loaded tree opens is held back; once loading ends, a

@@ -2130,6 +2130,69 @@ describe('LessonPlayerPage', () => {
     expect(lastViewedCalls).toBe(0);
   });
 
+  it('records the last-viewed position at the open occurrence when an earlier occurrence of the lesson is locked', async () => {
+    const lockedFirst = structureOf([entry('l1', 'Intro to Variables', false)]);
+    const tree: CourseStructureWithAccess = {
+      ...lockedFirst,
+      modules: [
+        ...lockedFirst.modules,
+        {
+          id: 'm2',
+          name: '02 - Practice',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'not-completed',
+          chapters: [{
+            id: 'c2',
+            name: 'Exercises',
+            accessStatus: 'fully-accessible',
+            completionStatus: 'not-completed',
+            lessons: [entry('l1', 'Intro to Variables')],
+          }],
+        },
+      ],
+    };
+    const bodies: unknown[] = [];
+    server.use(
+      okLesson(allBlocks),
+      okStructureOf(tree),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await waitFor(() => expect(bodies).toEqual([{ courseId: 'course-1', lessonId: 'l1', moduleId: 'm2', chapterId: 'c2' }]));
+  });
+
+  it('records the last-viewed position once the course tree reads after a failed read', async () => {
+    let structureReads = 0;
+    const bodies: unknown[] = [];
+    server.use(
+      okLesson(allBlocks),
+      http.get('/api/student/courses/:courseId/structure', () => {
+        structureReads += 1;
+        return structureReads === 1
+          ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Structure unavailable' } }, { status: 500 })
+          : HttpResponse.json({ ok: true, data: { structure } });
+      }),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    const view = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await waitFor(() => expect(view.queryClient.getQueryState(actions.courseStructure('course-1').queryKey)?.status).toBe('error'));
+    expect(bodies).toEqual([]);
+    await view.queryClient.refetchQueries({ queryKey: actions.courseStructure('course-1').queryKey });
+    await waitFor(() => expect(bodies).toEqual([{ courseId: 'course-1', lessonId: 'l1', moduleId: 'm1', chapterId: 'c1' }]));
+  });
+
   it.each([403, 500])('keeps background %s failures off the lesson page', async (status) => {
     let lastViewedCalls = 0;
     server.use(

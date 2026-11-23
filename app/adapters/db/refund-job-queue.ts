@@ -1,6 +1,6 @@
-import { and, asc, count, eq, inArray, isNull, lt, lte } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, lt, lte, ne } from 'drizzle-orm';
 
-import type { ClaimedRefundJob } from '#core/domain/index.js';
+import { STAFF_REFUND_WAITING_STATUSES, type ClaimedRefundJob } from '#core/domain/index.js';
 import type { RefundJobQueue } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -61,6 +61,17 @@ export const createRefundJobQueue = (db: Db): RefundJobQueue => ({
     const [soldOut] = await db.select({ due: count() }).from(orderRefundJobs).where(soldOutDue(now));
     const [staff] = await db.select({ due: count() }).from(orderStaffRefunds).where(staffDue(now));
     return (soldOut?.due ?? 0) + (staff?.due ?? 0);
+  },
+  staffRefundWaiting: async (tenantId, orderId, { except }) => {
+    const [row] = await db.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
+      .where(and(
+        eq(orderStaffRefunds.tenantId, tenantId),
+        eq(orderStaffRefunds.orderId, orderId),
+        ne(orderStaffRefunds.id, except),
+        inArray(orderStaffRefunds.status, [...STAFF_REFUND_WAITING_STATUSES]),
+      ))
+      .limit(1);
+    return row !== undefined;
   },
   release: async (tenantId, jobId, lease, update, staffAlerts = [], buyerNotice) => {
     if (!('source' in lease)) {

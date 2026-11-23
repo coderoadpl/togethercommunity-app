@@ -277,6 +277,81 @@ describe('staff refunds against a real database', () => {
     expect(await buyerEmails()).toStrictEqual([]);
   });
 
+  it('keeps watching a partial refund while a pending dashboard refund covers the charge and issues it once that refund fails', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    h.provider.refundByHand({ ...handRefund(4099), status: 'pending' });
+    await h.dispatch(minutes(1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: null }]);
+
+    await h.dispatch(minutes(60 * 24 + 1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', nextAttemptAt: minutes(60 * 24 * 7 + 1) }]);
+
+    h.provider.failRefund('re_hand', 'expired_or_canceled_card');
+    await h.dispatch(minutes(60 * 24 * 7 + 1));
+    await h.dispatch(minutes(60 * 24 * 7 + 2));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000]);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', amountCents: 1000 }]);
+  });
+
+  it('leaves the shortfall of a failed partial staff refund to that refund instead of paying it again with the full refund', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }, { outcome: 'refund' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    unwrap(await h.refund('order-1', { requestKey: 'req-2' }));
+    await h.dispatch(minutes(2));
+    h.provider.failRefund('re_1', 'expired_or_canceled_card');
+
+    await h.dispatch(minutes(60 * 24 + 3));
+    await h.dispatch(minutes(60 * 24 + 4));
+    await h.dispatch(minutes(60 * 24 * 7 + 3));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 3099]);
+    expect(await refundRows('order-1')).toMatchObject([{ kind: 'amount', status: 'failed' }, { kind: 'remainder', status: 'succeeded' }]);
+    expect(await alertPayloads()).toMatchObject([{ alert: 'failed_after_submission', amountCents: 1000 }]);
+    expect(await alertPayloads()).toHaveLength(1);
+  });
+
+  it('pays again what a failed dashboard refund left of a full refund', async () => {
+    const h = harness();
+    h.provider.refundByHand(handRefund(1000));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_hand', 'expired_or_canceled_card');
+
+    await h.dispatch(minutes(60 * 24 + 1));
+    await h.dispatch(minutes(60 * 24 + 2));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([3099, 1000]);
+  });
+
+  it('keeps a full refund that must pay more as it is while another refund of the order waits, and checks again an hour later', async () => {
+    const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
+    const h = harness({ steps: [{ outcome: 'refund' }, ...Array.from({ length: 30 }, () => ({ outcome: 'error' as const, error: permissionMissing }))] });
+    h.provider.refundByHand(handRefund(1000));
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_hand', 'expired_or_canceled_card');
+    unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 500 }));
+    await h.dispatch(minutes(2));
+
+    await h.dispatch(minutes(60 * 24 + 1));
+    const [full, partial] = await refundRows('order-1');
+    expect(partial).toMatchObject({ status: 'blocked_permission' });
+    expect(full).toMatchObject({ status: 'succeeded', nextAttemptAt: minutes(60 * 25 + 1) });
+    expect(full?.lastError).toContain('another refund of this order is still waiting');
+    expect(h.logs.filter((line) => line.includes('settlement not saved'))).toStrictEqual([]);
+  });
+
+  it('names in the staff alert the amount a full refund was refunding when the provider refused it', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Refund declined') }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
+    h.provider.refundByHand(handRefund(1000));
+    await h.dispatch(minutes(1));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', amountCents: 4099 }]);
+
+    expect(await alertPayloads()).toMatchObject([{ alert: 'failed', amountCents: 3099, error: 'Refund declined This refund was requested by staff; the goods returned to stock and the order taken off the packing list stay as chosen.' }]);
+  });
+
   it('waits on a missing refund permission, refuses a second refund meanwhile and succeeds once the permission is granted', async () => {
     const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
     const h = harness({ steps: [{ outcome: 'error', error: permissionMissing }] });

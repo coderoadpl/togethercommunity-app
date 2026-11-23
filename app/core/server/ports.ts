@@ -1456,6 +1456,7 @@ export interface OrderRefundJobRepository {
 export interface RefundJobQueue {
   claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedRefundJob | null>;
   countDue(input: { now: string }): Promise<number>;
+  staffRefundWaiting(tenantId: string, orderId: string, input: { except: string }): Promise<boolean>;
   release(
     tenantId: string,
     jobId: string,

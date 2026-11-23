@@ -1295,7 +1295,11 @@ as a description, does not count); a record whose object the attempt never tried
 the delete is sent, a first transaction marks the record with the time of the
 coming delete (`delete_unresolved_at`) and commits; the delete is sent after that
 commit, outside the lock, and a second transaction under the lock clears the mark
-and removes the record once the storage confirmed the delete. While the mark
+and removes the record once the storage confirmed the delete, but only while the
+record still carries the mark this withdrawal or sweep wrote: one whose mark a
+later sweep replaced meanwhile changes nothing, so it never clears the mark of a
+delete still in flight. A withdrawal that finds a record already marked leaves
+it, and its object, to the sweep that marked it. While the mark
 exists, every approval whose effect sets the address answers `503 unavailable`
 and changes nothing, so a delete still in flight, or one that outlives a process
 or a database connection that died after sending it, never removes an image a
@@ -1354,7 +1358,9 @@ that completion takes marks the row with the time of the coming delete in
 that revived it meanwhile keeps the row and its object. The object delete is
 sent after that commit, outside any transaction, and a second short
 transaction under the key's lock removes the row once the storage confirmed
-the delete. While the mark exists, the sweep and another release leave the row
+the delete, or records the failed attempt, only while the row still carries the
+mark this step wrote; a step whose mark a later step replaced after the grace
+below changes nothing. While the mark exists, the sweep and another release leave the row
 alone and a completion of the same image by that key answers `503 unavailable`
 instead of reviving the row, so a delete in flight, or one that outlives the
 process that sent it, never removes a new quarantined copy. A delete the

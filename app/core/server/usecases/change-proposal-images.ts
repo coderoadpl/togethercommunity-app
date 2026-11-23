@@ -594,7 +594,10 @@ type PublicationRemoval = 'removed' | 'kept' | 'stale';
  * again after the record's age bound counted from the mark. When `keepRecord`, the record stays after the delete, so
  * the sweep deletes the object once more after the record's age bound: a write whose outcome was unknown may still land
  * after this delete. With `dueBefore`, a record that is no longer due under the lock, because another sweep marked its
- * delete after this one listed it, is `stale`: nothing is sent and nothing is written.
+ * delete after this one listed it, is `stale`: nothing is sent and nothing is written. Without it, a record that carries
+ * a mark is left as it is, since the delete of that mark may still be in flight. After its delete, a removal whose
+ * mark another removal has replaced meanwhile is `stale` too and changes nothing, so it never clears the fence of a
+ * delete still in flight.
  */
 const removePublication = async (
   tenantId: string,
@@ -617,26 +620,30 @@ const removePublication = async (
     ? images.restartPublication(tenantId, attemptId, image, deps.clock.nowIso()).then(() => 'kept')
     : images.deletePublication(tenantId, attemptId, image).then(() => 'removed');
   try {
-    const claimed = await underLock(async (images, scope): Promise<Result<PublicationRemoval | StorageConfiguration, AppError>> => {
-      if (!await images.claimPublications(tenantId, attemptId, [image], written.dueBefore)) return ok('stale');
+    const claimed = await underLock(async (images, scope): Promise<Result<PublicationRemoval | { configuration: StorageConfiguration; mark: string }, AppError>> => {
+      const record = await images.lockPublication(tenantId, attemptId, image, written.dueBefore);
+      if (record === null) return ok('stale');
+      if (written.dueBefore === undefined && record.deleteUnresolvedAt !== null) return ok('kept');
       const path = proposalImagePublicPath(image);
       if (!written.written || await images.inLiveUse(tenantId, path) || await images.inAppliedProposal(tenantId, path)) return ok(await settle(images));
       const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
       if (!configuration.ok) return configuration;
-      await images.markDeleteUnresolved(tenantId, attemptId, image, deps.clock.nowIso());
-      return configuration;
+      const mark = deps.clock.nowIso();
+      await images.markDeleteUnresolved(tenantId, attemptId, image, mark);
+      return ok({ configuration: configuration.value, mark });
     });
     if (!claimed.ok) return 'kept';
     if (typeof claimed.value === 'string') return claimed.value;
+    const { configuration, mark } = claimed.value;
     const deleted = await deps.storage.delete({
-      url: deps.storage.objectUrl(claimed.value, proposalImagePublishedKey(tenantId, image)).toString(),
-      ...credentialsOf(claimed.value),
+      url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString(),
+      ...credentialsOf(configuration),
       deadlineMs: deleteDeadline(budget),
     });
     if (!deleted.ok) logImageFailure(deps, tenantId, failure, deleted.error.message);
     if (!deleted.ok && !storageFailureIsDefinite(deleted.error)) return 'kept';
     const settled = await underLock(async (images): Promise<Result<PublicationRemoval, AppError>> => {
-      if (!await images.claimPublications(tenantId, attemptId, [image])) return ok('kept');
+      if ((await images.lockPublication(tenantId, attemptId, image))?.deleteUnresolvedAt !== mark) return ok('stale');
       await images.markDeleteUnresolved(tenantId, attemptId, image, null);
       return ok(deleted.ok ? await settle(images) : 'kept');
     });

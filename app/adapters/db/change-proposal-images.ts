@@ -170,14 +170,16 @@ export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks
       or(...fields.map(({ operation, field }) => and(eq(changeProposals.operation, operation), sql`${changeProposals.input} ->> ${field}::text = ${path}`))),
     )).limit(1)).length > 0;
   },
-  claimPublications: async (tenantId, attemptId, images, dueBefore) => {
+  claimPublications: async (tenantId, attemptId, images) => {
     if (images.length === 0) return true;
     const claimed = await executor.select({ kind: changeProposalImagePublications.kind }).from(changeProposalImagePublications)
-      .where(and(
-        or(...images.map((image) => publicationOf(tenantId, attemptId, image))),
-        dueBefore === undefined ? undefined : publicationDueBefore(dueBefore),
-      )).for('update');
+      .where(or(...images.map((image) => publicationOf(tenantId, attemptId, image)))).for('update');
     return claimed.length === images.length;
+  },
+  lockPublication: async (tenantId, attemptId, image, dueBefore) => {
+    const [row] = await executor.select({ deleteUnresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications)
+      .where(and(publicationOf(tenantId, attemptId, image), dueBefore === undefined ? undefined : publicationDueBefore(dueBefore))).for('update');
+    return row ?? null;
   },
   settlePublications: async (tenantId, attemptId) => {
     await executor.delete(changeProposalImagePublications).where(and(
@@ -344,13 +346,15 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       });
       if (claimed !== 'claimed') return claimed;
       const removal = await removeObject();
+      const ours = and(of, eq(changeProposalImages.deleteUnresolvedAt, now));
       return underKeyLock(async (tx): Promise<QuarantinedImageReleaseEnd> => {
         if (removal === 'deleted') {
-          await tx.delete(changeProposalImages).where(and(of, isNotNull(changeProposalImages.releasedAt)));
-          return 'removed';
+          const removed = await tx.delete(changeProposalImages).where(and(ours, isNotNull(changeProposalImages.releasedAt))).returning({ kind: changeProposalImages.kind });
+          return removed.length > 0 ? 'removed' : 'busy';
         }
-        await tx.update(changeProposalImages).set({ sweepAttemptedAt: now, deleteUnresolvedAt: removal === 'unresolved' ? now : null }).where(of);
-        return 'failed';
+        const marked = await tx.update(changeProposalImages)
+          .set({ sweepAttemptedAt: now, deleteUnresolvedAt: removal === 'unresolved' ? now : null }).where(ours).returning({ kind: changeProposalImages.kind });
+        return marked.length > 0 ? 'failed' : 'busy';
       });
     },
     listTenantIdsToSweep: (createdBefore, now, limit, boundMs) => within(boundMs, async (executor) =>

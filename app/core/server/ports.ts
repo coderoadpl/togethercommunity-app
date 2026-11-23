@@ -3329,7 +3329,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * may still land (`delete_unresolved_at` at `now`), so neither a completion nor another release finish takes the row
    * until the delete is settled; then runs `removeObject` outside any transaction and, under the lock again, deletes the
    * row once it answers `deleted`, or records the failed attempt at `now`, keeping the mark for an `unresolved` delete
-   * and clearing it for a `failed` one. A row a completion revived meanwhile is left as it is, and a row whose last
+   * and clearing it for a `failed` one; both need the mark this call wrote, so a call whose mark a later finish replaced
+   * meanwhile changes nothing and answers `busy`. A row a completion revived meanwhile is left as it is, and a row whose last
    * delete was unresolved less than `unresolvedDeleteGraceMs` ago answers `busy` without a delete. `lockWaitMs`
    * shortens every lock wait below the repository's own bound.
    */
@@ -3387,11 +3388,18 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   lockForPublication(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
   /** Whether an applied proposal of the workspace carries this address in its input. */
   inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
+  /** Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone. */
+  claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[]): Promise<boolean>;
   /**
-   * Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone,
-   * or, with `dueBefore`, when one is no longer due: its last unresolved delete, or else its start, is not before it.
+   * Locks one publication record until the transaction ends and answers its delete mark; null when it is gone or, with
+   * `dueBefore`, no longer due: its mark, or else its start, is not before it.
    */
-  claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], dueBefore?: string): Promise<boolean>;
+  lockPublication(
+    tenantId: string,
+    attemptId: string,
+    image: ProposalImageReference,
+    dueBefore?: string,
+  ): Promise<{ deleteUnresolvedAt: string | null } | null>;
   /** Deletes every publication record of the attempt, so they disappear exactly when the transaction commits. */
   settlePublications(tenantId: string, attemptId: string): Promise<void>;
   deletePublication(tenantId: string, attemptId: string, image: ProposalImageReference): Promise<void>;

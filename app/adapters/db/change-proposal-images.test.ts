@@ -32,6 +32,7 @@ import {
   shopManagementKeyCapabilities,
   submitChangeProposal,
   sweepQuarantinedImages,
+  withdrawPublishedImages,
   type ChangeProposalTransaction,
   type ChangeProposalTransactionScope,
   type Ctx,
@@ -575,6 +576,65 @@ describe('public copies of an approval that did not end applied', () => {
       .toEqual([{ unresolvedAt: expect.any(String) }]);
   });
 
+  it('lets a sweep whose delete outlived the record bound change nothing once a later sweep took the record over', async () => {
+    const harness = endToEnd();
+    const publicKey = `image-assets/${TENANT}/product-cover/${digestOf(1)}.png`;
+    harness.objects.objects.set(publicKey, { bytes: PNG_BYTES, contentType: 'image/png' });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [image(1)], NOW);
+    const deleteObject = harness.objects.storage.delete;
+    const gates: Array<{ open: () => void; started: Promise<void> }> = [];
+    const opened: Array<Promise<void>> = [];
+    const starters: Array<() => void> = [];
+    for (let index = 0; index < 2; index += 1) {
+      let open: () => void = () => undefined;
+      opened.push(new Promise<void>((resolve) => { open = resolve; }));
+      let start: () => void = () => undefined;
+      gates.push({ open, started: new Promise<void>((resolve) => { start = resolve; }) });
+      starters.push(start);
+    }
+    let sent = 0;
+    const storage = {
+      ...harness.objects.storage,
+      delete: async (input: Parameters<typeof deleteObject>[0]) => {
+        const index = sent;
+        sent += 1;
+        starters[index]?.();
+        await opened[index];
+        return deleteObject(input);
+      },
+    };
+    const at = (now: string) => ({ ...harness.deps, storage, clock: { nowIso: () => now } });
+    const marks = async () => database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt, attemptedAt: changeProposalImagePublications.sweepAttemptedAt })
+      .from(changeProposalImagePublications);
+    try {
+      const earlier = sweepQuarantinedImages(at('2026-03-01T10:16:00.000Z'));
+      await gates[0]?.started;
+      const later = sweepQuarantinedImages(at('2026-03-01T10:32:00.000Z'));
+      await gates[1]?.started;
+      gates[0]?.open();
+      expect(await earlier).toMatchObject({ ok: true, value: { removed: 0 } });
+      expect(await marks()).toEqual([{ unresolvedAt: '2026-03-01T10:32:00.000Z', attemptedAt: null }]);
+      gates[1]?.open();
+      expect(await later).toMatchObject({ ok: true, value: { removed: 1 } });
+      expect(await marks()).toEqual([]);
+    } finally {
+      for (const gate of gates) gate.open();
+    }
+  });
+
+  it('leaves the mark of a sweep delete in flight to that sweep when a withdrawal of the same record runs', async () => {
+    const harness = endToEnd();
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-slow', [image(1)], NOW);
+    const sweepMark = '2026-03-01T10:16:00.000Z';
+    await createQuarantinedImageLocks(database.db).markDeleteUnresolved(TENANT, 'attempt-slow', image(1), sweepMark);
+    const publication = { attemptId: 'attempt-slow', images: [image(1)], startedAt: NOW, reused: [] };
+    for (const written of [false, true]) {
+      await withdrawPublishedImages(TENANT, publication, { written: written ? [image(1)] : [], unconfirmed: [] }, harness.deps);
+      expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
+        .toEqual([{ unresolvedAt: sweepMark }]);
+    }
+  });
+
   it('commits the delete mark before the withdrawal sends its delete, so a delete that outlives its process keeps the address from reuse', async () => {
     const harness = endToEnd();
     const { id } = await harness.proposeCover(PNG_BYTES);
@@ -841,6 +901,38 @@ describe('quarantined rows and objects of one key', () => {
     expect(await releasedRows()).toEqual(['1']);
     expect(await repository.finishRelease(TENANT, image(1), async () => 'deleted' as const, late)).toBe('removed');
     expect(await database.db.select().from(changeProposalImages)).toEqual([]);
+  });
+
+  it.each(['deleted', 'failed', 'unresolved'] as const)('lets a release finish whose delete outlived the grace and ended %s change nothing once a later finish took the row over', async (outcome) => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    const gate = () => {
+      let open: () => void = () => undefined;
+      const opened = new Promise<void>((resolve) => { open = resolve; });
+      let started: () => void = () => undefined;
+      const running = new Promise<void>((resolve) => { started = resolve; });
+      return { open, opened, started, running };
+    };
+    const first = gate();
+    const second = gate();
+    const late = '2026-03-01T10:11:00.000Z';
+    try {
+      const earlier = repository.finishRelease(TENANT, image(1), async () => { first.started(); await first.opened; return outcome; }, NOW);
+      await first.running;
+      const later = repository.finishRelease(TENANT, image(1), async () => { second.started(); await second.opened; return 'deleted' as const; }, late);
+      await second.running;
+      first.open();
+      expect(await earlier).toBe('busy');
+      expect(await database.db.select({ unresolvedAt: changeProposalImages.deleteUnresolvedAt, attemptedAt: changeProposalImages.sweepAttemptedAt })
+        .from(changeProposalImages)).toEqual([{ unresolvedAt: late, attemptedAt: null }]);
+      second.open();
+      expect(await later).toBe('removed');
+      expect(await database.db.select().from(changeProposalImages)).toEqual([]);
+    } finally {
+      first.open();
+      second.open();
+    }
   });
 
   it('marks a publication record whose delete had no definite answer, blocks its address and lists it by that time', async () => {

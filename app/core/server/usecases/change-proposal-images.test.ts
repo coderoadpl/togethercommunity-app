@@ -739,15 +739,18 @@ describe('approving a proposal with an image', () => {
     expect(h.store.imageRows).toEqual([]);
   });
 
-  it('publishes again for a second approval of the same image, which stays quarantined until no pending proposal uses it', async () => {
+  it('reuses the public copy for a second approval of the same image without writing it again, and keeps it quarantined until no pending proposal uses it', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));
     const first = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
     const second = await h.proposed('product.update', { id: 'product-live', coverUrl: cover });
+    const publicWrites = () => h.objects.calls.filter(({ method, key }) => method === 'putObject' && key.startsWith('image-assets/'));
 
     expect(await approveChangeProposal(ownerSession, { id: first }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(h.store.imageRows).toHaveLength(1);
+    expect(publicWrites()).toHaveLength(1);
     expect(await approveChangeProposal(ownerSession, { id: second }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(publicWrites()).toHaveLength(1);
     expect(liveCover(h, 'product-live')).toBe(cover);
     expect(h.publicKeys()).toHaveLength(1);
     expect(h.store.imageRows).toEqual([]);

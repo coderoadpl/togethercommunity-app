@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,11 +16,11 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
+import { useToast } from '../../components/ui/Toast.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { loginCallbackUrl, returnToFromSearch } from '../../lib/auth-return.js';
 import { appBaseDomain, isConfiguredBaseDomainHost, isTenantHost } from '../../lib/tenant.js';
-import { FinePrint } from '../../theme.js';
-import { AuthInput, AuthLead, AuthTitle } from './auth-chrome.js';
+import { AuthAccentLink, AuthHelp, AuthInput, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy, EMAIL_PATTERN } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { useRedirectSignedInWithTenant } from './auth-redirect.js';
@@ -44,9 +43,10 @@ const baseDomainUrl = (): string => {
 export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { explicitLanguage } = useLanguage();
-  useRedirectSignedInWithTenant();
   const search = useRouterState({ select: (state) => state.location.searchStr });
   const returnTo = returnToFromSearch(search);
+  const landing = returnTo ?? '/';
+  useRedirectSignedInWithTenant(landing);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,7 +62,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
     terms: termsRef,
   };
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [registeredOnTenant, setRegisteredOnTenant] = useState(false);
+  const [registeredOnTenantAs, setRegisteredOnTenantAs] = useState<string | null>(null);
+  const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -74,13 +75,14 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   const signUp = useMutation({
     ...actions.signUp,
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       await queryClient.invalidateQueries();
       if (onOtherTenantHost) {
-        setRegisteredOnTenant(true);
+        setRegisteredOnTenantAs(variables.email);
         return;
       }
-      await navigate({ to: '/' });
+      toast.info(t.auth.signUpConfirmationSent({ email: variables.email }));
+      await navigate({ href: landing });
     },
   });
 
@@ -117,24 +119,35 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
     });
   };
 
-  if (registeredOnTenant) {
+  if (registeredOnTenantAs !== null) {
     return (
       <AuthShell title={t.auth.registeredTitle} hostname={hostname}>
         <Box sx={{ mb: '1.5rem' }}>
           <AuthTitle variant="h1">{t.auth.registeredTitle}</AuthTitle>
-          <AuthLead component="p">{t.auth.registeredOnTenantBody({ host: hostname })}</AuthLead>
+          <AuthLead component="p">
+            {t.auth.registeredOnTenantBody({ workspace: offer.data?.tenant.name ?? hostname })}
+          </AuthLead>
+          <AuthLead component="p" data-testid="register-confirmation-sent">
+            {t.auth.signUpConfirmationSent({ email: registeredOnTenantAs })}
+          </AuthLead>
         </Box>
         <Stack useFlexGap spacing="0.9rem">
-          <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
-            {t.auth.registeredCreateOwnCta}
+          <AuthHelp component="p">{t.auth.registeredBoughtHint}</AuthHelp>
+          <Button
+            variant="contained"
+            fullWidth
+            component={Link}
+            to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}
+            data-testid="register-use-sign-in-link"
+          >
+            {t.auth.registeredUseMagicLinkCta}
           </Button>
-          <Box>
-            <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
-              {t.auth.registeredBoughtHint}
-            </FinePrint>
-            <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.registeredUseMagicLinkCta}</MuiLink>
-          </Box>
         </Stack>
+        <AuthSecondaryAction component="p">
+          <AuthAccentLink standalone href={baseDomainUrl()} data-testid="register-create-own-workspace">
+            {t.auth.registeredCreateOwnCta}
+          </AuthAccentLink>
+        </AuthSecondaryAction>
       </AuthShell>
     );
   }
@@ -144,9 +157,12 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       title={t.auth.createAccount}
       hostname={hostname}
       footer={
-        <FinePrint variant="caption" component="p" sx={{ mt: '1.75rem' }}>
-          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>{t.auth.signInLink}</MuiLink>
-        </FinePrint>
+        <AuthSecondaryAction component="p">
+          {t.auth.alreadyHaveAccount}{' '}
+          <AuthAccentLink standalone component={Link} to={returnTo === null ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`}>
+            {t.auth.signInLink}
+          </AuthAccentLink>
+        </AuthSecondaryAction>
       }
     >
       {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}

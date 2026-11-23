@@ -6,6 +6,7 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
+  Link as MuiLink,
   Stack,
   SvgIcon,
 } from '@mui/material';
@@ -17,7 +18,11 @@ import { MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, type SignInMethod } from '#core/do
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
-import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
+import {
+  EmailVerificationResult,
+  emailVerificationOutcome,
+  isFailedEmailVerification,
+} from '../../components/ui/EmailVerificationStatus.js';
 import {
   errorCodeOf,
   formatRetryDelay,
@@ -28,7 +33,7 @@ import {
   useTranslations,
 } from '../../i18n/index.js';
 import { rememberedLoginIdentifier, rememberLoginIdentifier } from '../../lib/login-identifier.js';
-import { loginCallbackUrl, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
+import { loginCallbackUrl, loginPathWithReturnTo, safeReturnTo, START_PATH } from '../../lib/auth-return.js';
 import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { DemoValue, FinePrint, VisuallyHidden } from '../../theme.js';
 import {
@@ -70,6 +75,7 @@ const PASSKEY_CANCELLED_CODES: readonly string[] = [
   'ERROR_CEREMONY_ABORTED',
 ];
 const RESEND_COOLDOWN_SECONDS = 30;
+const SECURITY_TAB_PATH = '/account?tab=security';
 const MAGIC_LINK_VALID_MINUTES = Math.round(MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS / 60);
 
 type TwoFactorMode = 'app' | 'backup';
@@ -217,8 +223,12 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const postLoginTarget =
     returnTo ?? (postVerification && !isConfiguredBaseDomainHost(hostname) ? START_PATH : '/');
   const postLoginUrl = new URL(postLoginTarget, window.location.origin).toString();
-  const me = useRedirectSignedInWithTenant(postLoginTarget);
-  const magicLinkExpired = search.error === 'INVALID_TOKEN';
+  const verificationOutcome = emailVerificationOutcome({
+    error: typeof search.error === 'string' ? search.error : null,
+    verification: postVerification ? 'verified' : null,
+  });
+  const me = useRedirectSignedInWithTenant(postLoginTarget, !isFailedEmailVerification(verificationOutcome));
+  const magicLinkExpired = search.error === 'INVALID_TOKEN' && !postVerification;
   const [email, setEmail] = useState(rememberedLoginIdentifier);
   const [identifierInvalid, setIdentifierInvalid] = useState(false);
   const [method, setMethod] = useState<SignInMethod | null>(null);
@@ -749,7 +759,20 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
             {t.auth.magicLinkExpired}
           </Alert>
         ) : (
-          <EmailVerificationResult />
+          <EmailVerificationResult
+            outcome={verificationOutcome}
+            resendAction={(
+              <MuiLink
+                component={Link}
+                to={me.data === undefined ? loginPathWithReturnTo(SECURITY_TAB_PATH) : SECURITY_TAB_PATH}
+                color="inherit"
+                underline="always"
+                data-testid="email-verification-resend-link"
+              >
+                {me.data === undefined ? t.emailVerification.resendSignedOut : t.emailVerification.resendSignedIn}
+              </MuiLink>
+            )}
+          />
         )}
         <Box sx={{ mb: '1.5rem' }}>
           {tenantNamePending ? (

@@ -399,6 +399,7 @@ export const MemberAccountPage = () => {
               <EmailVerificationStatus
                 email={email}
                 emailVerified={me.data.emailVerified}
+                audience="member"
                 resendPending={resendVerification.isPending}
                 onResend={() => resendVerification.mutate({
                   email,

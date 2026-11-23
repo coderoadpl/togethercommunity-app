@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
@@ -6,7 +6,6 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  Link as MuiLink,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
@@ -15,10 +14,9 @@ import { Link } from '@tanstack/react-router';
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
-import { FinePrint } from '../../theme.js';
-import { AuthLead, AuthTitle } from './auth-chrome.js';
+import { loginPathWithReturnTo, returnToFromSearch } from '../../lib/auth-return.js';
+import { AuthAccentLink, AuthLead, AuthSecondaryAction, AuthTitle } from './auth-chrome.js';
 import { describedBy } from './auth-fields.js';
 import { AuthPasswordInput } from './auth-password-input.js';
 import { AuthShell } from './AuthShell.js';
@@ -41,8 +39,15 @@ export const ResetPasswordPage = () => {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const invalidTitleRef = useRef<HTMLHeadingElement>(null);
+  const successTitleRef = useRef<HTMLHeadingElement>(null);
   const token = tokenFromLocation();
   const invalidToken = invalidTokenFromLocation();
+  const returnTo = returnToFromSearch(window.location.search);
+  const loginPath = returnTo === null ? '/login' : loginPathWithReturnTo(returnTo);
+  const forgotPasswordPath = returnTo === null
+    ? '/forgot-password'
+    : `/forgot-password?${new URLSearchParams({ returnTo }).toString()}`;
 
   const resetPassword = useMutation(actions.resetPassword);
   const providerRejectedToken = providerCodeOf(resetPassword.error) === 'INVALID_TOKEN';
@@ -70,29 +75,41 @@ export const ResetPasswordPage = () => {
     resetPassword.mutate({ token, newPassword: password });
   };
 
+  const linkUnusable = !token || invalidToken || providerRejectedToken;
+  const passwordSet = resetPassword.isSuccess && !linkUnusable;
+
+  useEffect(() => {
+    if (linkUnusable) invalidTitleRef.current?.focus();
+    else if (passwordSet) successTitleRef.current?.focus();
+  }, [linkUnusable, passwordSet]);
+
+  const footer = passwordSet ? null : (
+    <AuthSecondaryAction component="p">
+      <AuthAccentLink standalone component={Link} to={loginPath}>
+        {linkUnusable ? t.resetPassword.backToLogin : t.resetPassword.goToLogin}
+      </AuthAccentLink>
+    </AuthSecondaryAction>
+  );
+
   return (
-    <AuthShell title={t.resetPassword.title}>
-        {!token || invalidToken || providerRejectedToken ? (
-          <StatusView
-            state={{
-              kind: 'not-found',
-              title: t.resetPassword.missingTokenTitle,
-              body: t.resetPassword.missingToken,
-              action: (
-                <Button component={Link} to="/forgot-password" variant="contained">
-                  {t.resetPassword.requestNewLink}
-                </Button>
-              ),
-            }}
-            data-testid="reset-invalid-token"
-          />
+    <AuthShell title={t.resetPassword.title} footer={footer}>
+        {linkUnusable ? (
+          <Stack useFlexGap spacing="1rem" data-testid="reset-invalid-token">
+            <Box>
+              <AuthTitle variant="h1" ref={invalidTitleRef} tabIndex={-1}>{t.resetPassword.missingTokenTitle}</AuthTitle>
+              <AuthLead component="p">{t.resetPassword.missingToken}</AuthLead>
+            </Box>
+            <Button component={Link} to={forgotPasswordPath} variant="contained" fullWidth>
+              {t.resetPassword.requestNewLink}
+            </Button>
+          </Stack>
         ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="1rem" data-testid="reset-success">
             <Box>
-              <AuthTitle variant="h1">{t.resetPassword.successTitle}</AuthTitle>
+              <AuthTitle variant="h1" ref={successTitleRef} tabIndex={-1}>{t.resetPassword.successTitle}</AuthTitle>
               <AuthLead component="p">{t.resetPassword.successBody}</AuthLead>
             </Box>
-            <Button component={Link} to="/login" variant="contained" fullWidth>
+            <Button component={Link} to={loginPath} variant="contained" fullWidth>
               {t.resetPassword.goToLogin}
             </Button>
           </Stack>
@@ -157,9 +174,6 @@ export const ResetPasswordPage = () => {
                 {localizeError(resetPassword.error, t)}
               </Alert>
             ) : null}
-            <FinePrint variant="caption" component="p" sx={{ mt: '1rem' }}>
-              <MuiLink component={Link} to="/login">{t.resetPassword.goToLogin}</MuiLink>
-            </FinePrint>
           </>
         )}
     </AuthShell>

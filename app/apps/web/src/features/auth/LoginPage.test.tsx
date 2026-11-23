@@ -15,7 +15,7 @@ import { LanguageProvider } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
 import { validateLoginSearch } from '../../lib/auth-return.js';
 import { renderWithProviders } from '../../test/render.js';
-import { anonymousMe, server, staffMe, tenantlessMe } from '../../test/server.js';
+import { anonymousMe, memberMe, server, staffMe, tenantlessMe } from '../../test/server.js';
 import { denySiteData } from '../../test/site-data.js';
 import { languagePreference, ThemeModeProvider } from '../../theme-mode.js';
 import { ForgotPasswordPage } from './ForgotPasswordPage.js';
@@ -1169,6 +1169,16 @@ describe('LoginPage', () => {
       'expired',
       en.emailVerification.expired,
     ],
+    [
+      '/login?verification=verified&error=TOKEN_EXPIRED',
+      'expired',
+      en.emailVerification.expired,
+    ],
+    [
+      '/login?verification=verified&error=INVALID_TOKEN',
+      'invalid',
+      en.emailVerification.invalid,
+    ],
     ['/login?error=USER_NOT_FOUND', 'providerError', en.emailVerification.providerError],
     ['/login?error=INVALID_USER', 'providerError', en.emailVerification.providerError],
   ] as const)('renders the %s verification outcome', async (entry, outcome, message) => {
@@ -1183,6 +1193,56 @@ describe('LoginPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(en.auth.magicLinkExpired);
     expect(screen.getByLabelText(en.auth.emailLabel)).toHaveFocus();
     expect(screen.queryByTestId('email-verification-invalid')).not.toBeInTheDocument();
+  });
+
+  it('presents a broken verification link as a verification failure, not an expired sign-in link', async () => {
+    await renderLoginPage(false, '/login?verification=verified&error=INVALID_TOKEN');
+
+    expect(await screen.findByTestId('email-verification-invalid')).toHaveTextContent(en.emailVerification.invalid);
+    expect(screen.queryByText(en.auth.magicLinkExpired)).not.toBeInTheDocument();
+    await continueWithEmail();
+
+    expect(await screen.findByTestId('use-password')).toBeInTheDocument();
+    expect(screen.queryByTestId('magic-link-expired-step')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['/login?verification=verified&error=TOKEN_EXPIRED', 'expired'],
+    ['/login?verification=verified&error=INVALID_TOKEN', 'invalid'],
+  ] as const)('links a signed-out visitor from %s to sign in and land on the Security tab', async (entry, outcome) => {
+    await renderLoginPage(false, entry);
+
+    const alert = await screen.findByTestId(`email-verification-${outcome}`);
+    expect(within(alert).getByRole('link', { name: en.emailVerification.resendSignedOut })).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Faccount%3Ftab%3Dsecurity',
+    );
+  });
+
+  it('keeps a signed-in member on a failed verification outcome and links to the Security tab', async () => {
+    const { router } = await renderLoginPage(
+      false,
+      '/login?verification=verified&error=TOKEN_EXPIRED',
+      undefined,
+      ['password'],
+      [],
+      memberMe(),
+    );
+
+    const alert = await screen.findByTestId('email-verification-expired');
+    expect(await within(alert).findByRole('link', { name: en.emailVerification.resendSignedIn })).toHaveAttribute(
+      'href',
+      '/account?tab=security',
+    );
+    await delay(50);
+    expect(router.state.location.pathname).toBe('/login');
+  });
+
+  it('shows no resend link on a successful or provider-failed verification', async () => {
+    await renderLoginPage(false, '/login?error=USER_NOT_FOUND');
+
+    const alert = await screen.findByTestId('email-verification-providerError');
+    expect(within(alert).queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('does not present an unrelated login error as an email-verification failure', async () => {

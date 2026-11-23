@@ -33,7 +33,27 @@ afterEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
+const LESSON_RETURN_TO = '/my/courses/course-1/lessons/lesson-1?thread=t1';
+const ENCODED_LESSON_RETURN_TO = 'returnTo=%2Fmy%2Fcourses%2Fcourse-1%2Flessons%2Flesson-1%3Fthread%3Dt1';
+const UNSAFE_RETURN_TO = ['https://evil.example/x', '//evil.example/x', '/\\evil.example/x', '\\\\evil.example/x'];
+
+const expectSecondaryLink = (link: HTMLElement) => {
+  const style = window.getComputedStyle(link);
+  expect([style.fontSize, style.textDecorationLine, style.minHeight, style.minWidth]).toEqual([
+    '0.875rem', 'underline', '44px', '44px',
+  ]);
+  const row = link.closest('p');
+  if (row === null) throw new Error('expected the link to sit in a paragraph');
+  expect(window.getComputedStyle(row).marginTop).toBe('1.5rem');
+};
+
 describe('ResetPasswordPage', () => {
+  it('sizes the go-to-sign-in link as a 14px underlined 44px target after the form', async () => {
+    await renderResetPage('?token=valid-token');
+
+    expectSecondaryLink(screen.getByRole('link', { name: en.resetPassword.goToLogin }));
+  });
+
   it('sits on the auth shell, signed once with the Together wordmark', async () => {
     await renderResetPage('?token=valid-token');
 
@@ -96,6 +116,9 @@ describe('ResetPasswordPage', () => {
 
     expect(await screen.findByTestId('reset-success')).toBeInTheDocument();
     expect(body).toEqual({ token: 'valid-token', newPassword: VALID_PASSWORD });
+    const heading = screen.getByRole('heading', { level: 1, name: en.resetPassword.successTitle });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
   });
 
   it('blocks submission when the two passwords do not match', async () => {
@@ -151,6 +174,48 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByTestId('reset-password-error')).not.toHaveTextContent('short');
   });
 
+  it('carries a safe returnTo to both sign-in links', async () => {
+    server.use(http.post('*', () => HttpResponse.json({ status: true })));
+    await renderResetPage(`?token=valid-token&${new URLSearchParams({ returnTo: LESSON_RETURN_TO }).toString()}`);
+
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
+    await userEvent.click(screen.getByTestId('reset-submit'));
+
+    expect(await screen.findByTestId('reset-success')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+  });
+
+  it('carries a safe returnTo from the invalid-link state to sign-in and a new reset request', async () => {
+    await renderResetPage(`?error=INVALID_TOKEN&${new URLSearchParams({ returnTo: LESSON_RETURN_TO }).toString()}`);
+
+    expect(await screen.findByRole('link', { name: en.resetPassword.backToLogin })).toHaveAttribute(
+      'href',
+      `/login?${ENCODED_LESSON_RETURN_TO}`,
+    );
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute(
+      'href',
+      `/forgot-password?${ENCODED_LESSON_RETURN_TO}`,
+    );
+  });
+
+  it.each(UNSAFE_RETURN_TO)('drops the unsafe returnTo %s from every link', async (returnTo) => {
+    const formView = await renderResetPage(`?token=valid-token&${new URLSearchParams({ returnTo }).toString()}`);
+    expect(screen.getByRole('link', { name: en.resetPassword.goToLogin })).toHaveAttribute('href', '/login');
+    formView.unmount();
+
+    await renderResetPage(`?error=INVALID_TOKEN&${new URLSearchParams({ returnTo }).toString()}`);
+    expect(await screen.findByRole('link', { name: en.resetPassword.backToLogin })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveAttribute('href', '/forgot-password');
+  });
+
   it('guards a missing token before showing the password form', async () => {
     await renderResetPage('');
 
@@ -174,6 +239,20 @@ describe('ResetPasswordPage', () => {
       'href',
       '/forgot-password',
     );
+  });
+
+  it('builds the invalid-link state like the other recovery states, with a way back to sign in', async () => {
+    await renderResetPage('?error=INVALID_TOKEN');
+
+    const heading = await screen.findByRole('heading', { level: 1, name: en.resetPassword.missingTokenTitle });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
+    expect(screen.getByTestId('reset-invalid-token')).not.toHaveAttribute('data-state');
+    expect(screen.getByTestId('reset-invalid-token').closest('.MuiPaper-root')).toBeNull();
+    const back = screen.getByRole('link', { name: en.resetPassword.backToLogin });
+    expect(back).toHaveAttribute('href', '/login');
+    expectSecondaryLink(back);
+    expect(screen.getByRole('link', { name: en.resetPassword.requestNewLink })).toHaveClass('MuiButton-fullWidth');
   });
 
   it('handles a consumed token returned by the provider', async () => {

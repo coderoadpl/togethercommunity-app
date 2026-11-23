@@ -477,8 +477,9 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount('/account?tab=security');
 
-    expect(await screen.findByText(en.emailVerification.pending({ email: 'member@together.dev' })))
+    expect(await screen.findByText(en.emailVerification.pendingMember({ email: 'member@together.dev' })))
       .toBeInTheDocument();
+    expect(screen.queryByText(en.emailVerification.pending({ email: 'member@together.dev' }))).not.toBeInTheDocument();
     expect(screen.queryByTestId('account-data-export')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('resend-verification-email'));
     expect(await findToast('success')).toHaveTextContent(en.emailVerification.sent);

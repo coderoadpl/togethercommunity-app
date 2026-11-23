@@ -498,7 +498,8 @@ export interface Messages {
     alreadyHaveAccount: string;
     signInLink: string;
     registeredTitle: string;
-    registeredOnTenantBody: (params: { host: string }) => string;
+    signUpConfirmationSent: (params: { email: string }) => string;
+    registeredOnTenantBody: (params: { workspace: string }) => string;
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;
@@ -1408,6 +1409,7 @@ export interface Messages {
     heading: string;
     verifiedStatus: string;
     pending: (params: { email: string }) => string;
+    pendingMember: (params: { email: string }) => string;
     resend: string;
     sending: string;
     sent: string;
@@ -1415,6 +1417,8 @@ export interface Messages {
     expired: string;
     invalid: string;
     providerError: string;
+    resendSignedIn: string;
+    resendSignedOut: string;
   };
   security: {
     passkeyProofShort: string;
@@ -2705,7 +2709,8 @@ export interface Messages {
     submitIdle: string;
     submitPending: string;
     successTitle: string;
-    successBody: string;
+    successBody: (params: { email: string }) => string;
+    useDifferentAddress: string;
     backToLogin: string;
   };
   resetPassword: {
@@ -2725,6 +2730,7 @@ export interface Messages {
     successBody: string;
     goToLogin: string;
     requestNewLink: string;
+    backToLogin: string;
   };
   support: {
     heading: string;

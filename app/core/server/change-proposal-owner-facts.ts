@@ -1,8 +1,11 @@
 import {
+  accessItemIds,
+  changeProposalAccessChange,
   changeProposalKeyState,
   changeProposalStagedFileId,
   isChangeProposalReference,
   type ChangeProposal,
+  type ChangeProposalAccessLabels,
   type ChangeProposalOwnerFacts,
   type ChangeProposalProposedFile,
   type ChangeProposalTargetPrice,
@@ -34,7 +37,7 @@ export interface ChangeProposalPersonFacts {
 
 type FactsSubject = Pick<
   ChangeProposal,
-  'id' | 'operation' | 'input' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
+  'id' | 'operation' | 'input' | 'effect' | 'target' | 'status' | 'appliedResourceId' | 'groupId' | 'proposedByKeyId' | 'proposedByIssuerUserId' | 'decidedByUserId'
 >;
 
 const labelRequest = (proposal: FactsSubject): ChangeProposalTargetLabelRequest | null => {
@@ -80,6 +83,38 @@ const labelKey = ({ kind, id }: ChangeProposalTargetLabelRequest): string => `${
 const distinct = (values: ReadonlyArray<string | null>): string[] =>
   [...new Set(values.filter((value): value is string => value !== null))];
 
+type AccessSubject = Pick<ChangeProposal, 'operation' | 'effect'>;
+
+const accessIdsOf = (proposal: AccessSubject) => {
+  const change = changeProposalAccessChange(proposal);
+  return change === null ? null : accessItemIds([...change.before, ...change.after]);
+};
+
+/** Read at view time for display only; the titles never take part in a decision. */
+const readAccessLabels = async (
+  tenantId: string,
+  proposals: readonly AccessSubject[],
+  deps: Pick<ChangeProposalOwnerViewDeps, 'changeProposalTargetLabels'>,
+): Promise<(proposal: AccessSubject) => ChangeProposalAccessLabels | null> => {
+  const wanted = proposals.map(accessIdsOf).filter((ids) => ids !== null);
+  const titles = wanted.length === 0 ? null : await deps.changeProposalTargetLabels.accessTitles(tenantId, {
+    courseIds: distinct(wanted.flatMap((ids) => ids.courseIds)),
+    moduleIds: distinct(wanted.flatMap((ids) => ids.moduleIds)),
+    lessonIds: distinct(wanted.flatMap((ids) => ids.lessonIds)),
+  });
+  const labelled = (ids: readonly string[], found: ReadonlyArray<{ id: string; title: string }>) =>
+    ids.map((id) => ({ id, title: found.find((entry) => entry.id === id)?.title ?? null }));
+  return (proposal) => {
+    const ids = accessIdsOf(proposal);
+    if (ids === null || titles === null) return null;
+    return {
+      courses: labelled(ids.courseIds, titles.courses),
+      modules: labelled(ids.moduleIds, titles.modules),
+      lessons: labelled(ids.lessonIds, titles.lessons),
+    };
+  };
+};
+
 const FORMER_OR_UNKNOWN: ChangeProposalPersonFacts = { email: null, verifiedOwner: false, formerTeamMember: true };
 
 const readChangeProposalPeople = async (
@@ -117,6 +152,7 @@ export const changeProposalOwnerFacts = async (
       .map((entry) => [labelKey(entry), { label: entry.label, price: entry.price }]),
   );
   const proposedFilesOf = await readProposedFiles(tenantId, proposals, deps);
+  const accessLabelsOf = await readAccessLabels(tenantId, proposals, deps);
   const person = await readChangeProposalPeople(
     tenantId,
     [...proposals.flatMap((proposal) => [proposal.proposedByIssuerUserId, proposal.decidedByUserId]), ...otherPeople],
@@ -135,6 +171,7 @@ export const changeProposalOwnerFacts = async (
       targetLabel: label?.label ?? null,
       targetPrice: label?.price ?? null,
       proposedFiles: proposedFilesOf(proposal),
+      accessLabels: accessLabelsOf(proposal),
     };
   };
   return { factsOf, person };

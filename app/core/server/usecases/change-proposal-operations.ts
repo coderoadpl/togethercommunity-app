@@ -31,6 +31,7 @@ import type {
   IdGenerator,
   StorageProvider,
 } from '../ports.js';
+import { updateProductAccessItems } from './course-management.js';
 import { attachStagedProductDownload, removeProductDownloadFile } from './product-download-files.js';
 import { createProductPrice, deactivateProductPrice } from './product-prices.js';
 import { deleteProductDraft } from './product-drafts.js';
@@ -58,6 +59,7 @@ export interface PreparedChangeProposalOperation {
   input: ChangeProposalInput;
   target: ChangeProposalTarget;
   lockPurpose: ChangeProposalTargetLockPurpose;
+  lockedCourseIds: readonly string[];
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   /** Orders the snapshot's unordered collections by the id each entry finally carries, so it must run after any id replacement. */
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
@@ -83,6 +85,7 @@ interface ChangeProposalOperationDefinition<I> {
   invalidInputMessage: string;
   target(input: I): ChangeProposalTarget;
   lockPurpose?: ChangeProposalTargetLockPurpose;
+  lockedCourseIds?(input: I): string[];
   snapshot(repositories: ChangeProposalRepositories, tenantId: string, input: I, resourceId: string | null): Promise<ChangeProposalSnapshot>;
   unorderedById?: readonly string[];
   refusesEmptyEffect?: true;
@@ -277,6 +280,15 @@ const settingsSnapshot = async (repositories: ChangeProposalRepositories, tenant
   return toSnapshot(Object.fromEntries(SHOP_SETTINGS_FIELDS.map((field) => [field, settings[field] ?? null])));
 };
 
+const productAccessSnapshot = async (
+  repositories: ChangeProposalRepositories,
+  tenantId: string,
+  productId: string,
+): Promise<ChangeProposalSnapshot> => {
+  const product = await repositories.products.findById(tenantId, productId);
+  return product === null ? { exists: false } : toSnapshot({ exists: true, accessItems: product.accessItems });
+};
+
 const productFilesSnapshot = async (
   repositories: ChangeProposalRepositories,
   tenantId: string,
@@ -320,6 +332,7 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
     input: stored.data,
     target: definition.target(input),
     lockPurpose: definition.lockPurpose ?? 'change',
+    lockedCourseIds: definition.lockedCourseIds?.(input) ?? [],
     snapshot: (repositories, tenantId, resourceId) => definition.snapshot(repositories, tenantId, input, resourceId),
     canonical: (snapshot) => sortedById(snapshot, definition.unorderedById ?? []),
     effect: definition.effect ?? changeProposalFieldDiff,
@@ -476,6 +489,22 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     target: () => ({ kind: 'settings', id: null }),
     snapshot: (repositories, tenantId) => settingsSnapshot(repositories, tenantId),
     run: async (ctx, input, scope) => withoutResourceId(await updateShopSettings(ctx, input, settingsDeps(scope))),
+  }),
+  'product.set-access': entry('product.set-access', {
+    schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.set-access'],
+    invalidInputMessage: 'Invalid product access payload',
+    target: (input) => ({ kind: 'product', id: input.id }),
+    lockedCourseIds: (input) => input.accessItems.map((item) => item.courseId),
+    snapshot: (repositories, tenantId, input) => productAccessSnapshot(repositories, tenantId, input.id),
+    refusesEmptyEffect: true,
+    run: async (ctx, input, scope, deps) => idOnSuccess(input.id, await updateProductAccessItems(ctx, { id: input.id, accessItems: input.accessItems }, {
+      products: scope.repositories.products,
+      courses: scope.repositories.courses,
+      modules: scope.repositories.modules,
+      lessons: scope.repositories.lessons,
+      ids: deps.ids,
+      clock: deps.clock,
+    })),
   }),
   'download.add': entry('download.add', {
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.add'],

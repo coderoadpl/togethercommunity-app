@@ -196,3 +196,5 @@ export const updateProductAccessItemsInputSchema = z.object({
 });
 
 export type UpdateProductAccessItemsInput = z.input<typeof updateProductAccessItemsInputSchema>;
+
+export const setProductAccessInputSchema = updateProductAccessItemsInputSchema.pick({ id: true, accessItems: true });

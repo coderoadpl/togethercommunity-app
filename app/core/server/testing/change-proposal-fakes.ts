@@ -210,10 +210,16 @@ const removeWhere = <T>(rows: T[], matches: (row: T) => boolean): void => {
 
 type FakeTransactionStore = Pick<FakeChangeProposalStore, 'repository' | 'events' | 'groups' | 'imageRows' | 'proposals' | 'imagePublications'>;
 
+interface FakeCourseLock {
+  courseIds: string[];
+  targetLocksBefore: number;
+}
+
 const catalogRepositoriesOver = (
   state: FakeCatalogState,
   store: FakeTransactionStore,
   locks: ChangeProposalTarget[],
+  courseLocks: FakeCourseLock[],
 ): ChangeProposalRepositories => {
   const product = (tenantId: string, id: string) => state.products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null;
   return {
@@ -330,6 +336,9 @@ const catalogRepositoriesOver = (
         if (target.kind === 'price') return state.prices.some((price) => price.tenantId === tenantId && price.id === target.id);
         if (target.kind === 'sales-link') return state.salesLinks.some((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted);
         return product(tenantId, target.id) !== null;
+      },
+      lockCourses: async (_tenantId, courseIds) => {
+        courseLocks.push({ courseIds: [...courseIds], targetLocksBefore: locks.length });
       },
     },
     keyDownloadAttach: { attach: unavailable('keyDownloadAttach.attach'), remove: unavailable('keyDownloadAttach.remove') },
@@ -784,6 +793,11 @@ export const changeProposalOwnerViewFakes = (
         : state.salesLinks.find((link) => link.tenantId === tenantId && link.id === target.id && !link.deleted)?.title;
       return label === undefined ? [] : [{ ...target, label, price: null }];
     }),
+    accessTitles: async (tenantId, ids) => ({
+      courses: state.courses.filter((row) => row.tenantId === tenantId && ids.courseIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
+      modules: state.modules.filter((row) => row.tenantId === tenantId && ids.moduleIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
+      lessons: state.lessons.filter((row) => row.tenantId === tenantId && ids.lessonIds.includes(row.id)).map((row) => ({ id: row.id, title: row.name })),
+    }),
   },
   changeProposalPeople: createChangeProposalPeopleFake(accounts),
 });
@@ -843,6 +857,7 @@ export interface FakeChangeProposalTransaction extends ChangeProposalTransaction
   calls: Array<'run' | 'dryRun'>;
   dryRunGroups: Array<string | null>;
   locks: ChangeProposalTarget[];
+  courseLocks: FakeCourseLock[];
   deferredDropped: number;
 }
 
@@ -856,9 +871,10 @@ export const createChangeProposalTransactionFake = (
   const calls: Array<'run' | 'dryRun'> = [];
   const dryRunGroups: Array<string | null> = [];
   const locks: ChangeProposalTarget[] = [];
+  const courseLocks: FakeCourseLock[] = [];
   const dropped = (count: number) => { fake.deferredDropped += count; };
   const scopeOver = (target: FakeCatalogState, effects: Array<() => Promise<void>>): ChangeProposalTransactionScope => ({
-    repositories: catalogRepositoriesOver(target, store, locks),
+    repositories: catalogRepositoriesOver(target, store, locks, courseLocks),
     secretResolver,
     afterCommit: { defer: (effect) => { effects.push(effect); } },
     savepoint: async (operation) => {
@@ -878,6 +894,7 @@ export const createChangeProposalTransactionFake = (
     calls,
     dryRunGroups,
     locks,
+    courseLocks,
     deferredDropped: 0,
     run: async (_tenantId, operation) => {
       calls.push('run');

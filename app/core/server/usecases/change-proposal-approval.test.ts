@@ -251,6 +251,7 @@ const advancingDuringTargetLock = (h: Harness, to: string): ChangeProposalTransa
     repositories: {
       ...scope.repositories,
       targets: {
+        ...scope.repositories.targets,
         lock: async (lockTenantId, target, purpose) => {
           const locked = await scope.repositories.targets.lock(lockTenantId, target, purpose);
           h.clock.now = to;

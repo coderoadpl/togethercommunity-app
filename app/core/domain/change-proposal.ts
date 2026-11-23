@@ -32,6 +32,7 @@ const CHANGE_PROPOSAL_OPERATION_DEFINITIONS = [
   { operation: 'sales-link.update', family: 'catalog', targetKind: 'sales-link' },
   { operation: 'sales-link.delete', family: 'catalog', targetKind: 'sales-link' },
   { operation: 'settings.update', family: 'settings', targetKind: 'settings' },
+  { operation: 'product.set-access', family: 'catalog', targetKind: 'product' },
 ] as const satisfies readonly ChangeProposalOperationDefinition[];
 
 const CHANGE_PROPOSAL_FILE_OPERATION_DEFINITIONS = [
@@ -353,6 +354,17 @@ const changeProposalProposedFileSchema = z.object({
 
 export type ChangeProposalProposedFile = z.output<typeof changeProposalProposedFileSchema>;
 
+/** A null title marks an id that no longer names a course, module or lesson of the workspace. */
+const changeProposalAccessLabelSchema = z.object({ id: z.string(), title: z.string().nullable() }).strict();
+
+const changeProposalAccessLabelsSchema = z.object({
+  courses: z.array(changeProposalAccessLabelSchema),
+  modules: z.array(changeProposalAccessLabelSchema),
+  lessons: z.array(changeProposalAccessLabelSchema),
+}).strict();
+
+export type ChangeProposalAccessLabels = z.output<typeof changeProposalAccessLabelsSchema>;
+
 export const changeProposalOwnerViewSchema = z.object({
   id: z.string(),
   groupId: z.string().nullable(),
@@ -381,6 +393,7 @@ export const changeProposalOwnerViewSchema = z.object({
   failureCode: z.string().nullable(),
   failureMessage: z.string().nullable(),
   proposedFiles: z.array(changeProposalProposedFileSchema).optional(),
+  accessLabels: changeProposalAccessLabelsSchema.optional(),
 }).strict();
 
 export type ChangeProposalOwnerView = z.output<typeof changeProposalOwnerViewSchema>;
@@ -480,6 +493,7 @@ export interface ChangeProposalOwnerFacts {
   targetLabel: string | null;
   targetPrice: ChangeProposalTargetPrice | null;
   proposedFiles: ChangeProposalProposedFile[];
+  accessLabels: ChangeProposalAccessLabels | null;
 }
 
 export const toChangeProposalOwnerView = (
@@ -516,6 +530,7 @@ export const toChangeProposalOwnerView = (
   failureCode: proposal.failureCode,
   failureMessage: proposal.failureMessage,
   ...(facts.proposedFiles.length === 0 ? {} : { proposedFiles: facts.proposedFiles }),
+  ...(facts.accessLabels === null ? {} : { accessLabels: facts.accessLabels }),
 });
 
 export const toChangeProposalOwnerDetail = (

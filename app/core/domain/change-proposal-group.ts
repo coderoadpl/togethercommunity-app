@@ -156,6 +156,7 @@ const REFERENCE_POSITIONS: Readonly<Record<RegisteredChangeProposalOperation, re
   'sales-link.update': [{ field: 'id', list: false, kind: 'sales-link' }, { field: 'productIds', list: true, kind: 'product' }],
   'sales-link.delete': [{ field: 'id', list: false, kind: 'sales-link' }],
   'settings.update': [],
+  'product.set-access': [productId('id')],
   'download.add': [productId('productId')],
   'download.replace': [productId('productId')],
   'download.remove': [productId('productId')],

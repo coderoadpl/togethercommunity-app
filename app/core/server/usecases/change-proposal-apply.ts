@@ -65,6 +65,11 @@ const recordCreated = (group: GroupItemContext | null, resourceId: string | null
   group.references.record(group.proposalId, resourceId);
 };
 
+const lockTarget = async (operation: PreparedChangeProposalOperation, tenantId: string, scope: ChangeProposalTransactionScope): Promise<void> => {
+  if (operation.lockedCourseIds.length > 0) await scope.repositories.targets.lockCourses(tenantId, operation.lockedCourseIds);
+  await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
+};
+
 export const previewChangeProposal = async (
   operation: PreparedChangeProposalOperation,
   tenantId: string,
@@ -74,7 +79,7 @@ export const previewChangeProposal = async (
   group: GroupItemContext | null,
   proposer: ChangeProposalProposer,
 ): Promise<Result<ChangeProposalEffect, AppError>> => {
-  await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
+  await lockTarget(operation, tenantId, scope);
   const before = storedForm(operation, group, await operation.snapshot(scope.repositories, tenantId, operation.target.id));
   const ran = await operation.run(ctx, scope, deps, proposer);
   if (!ran.ok) return ran;
@@ -122,7 +127,7 @@ export const applyLockedProposal = async (
   if (operation === null) return { status: 'stale', note: null, at: afterProposalLock };
   const itemContext = group === null ? null : { proposalId: proposal.id, operation: known, references: group.references };
   const { tenantId } = proposal;
-  await scope.repositories.targets.lock(tenantId, operation.target, operation.lockPurpose);
+  await lockTarget(operation, tenantId, scope);
   const at = deps.clock.nowIso();
   if (changeProposalExpired(proposal, at)) return { status: 'expired', at };
   const before = storedForm(operation, itemContext, await operation.snapshot(scope.repositories, tenantId, operation.target.id));

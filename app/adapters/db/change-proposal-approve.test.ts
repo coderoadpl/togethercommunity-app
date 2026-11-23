@@ -44,6 +44,9 @@ import {
   changeProposalEvents,
   changeProposalGroups,
   changeProposals,
+  courseLessons,
+  courseModules,
+  courses,
   entityVersions,
   productDownloadAssets,
   productPrices,
@@ -188,6 +191,15 @@ beforeAll(async () => {
       provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'downloads', accessKeyId: 'a', secretAccessKey: 's',
     })),
   });
+  await database.db.insert(courses).values([
+    { id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', createdAt: NOW },
+    { id: 'course-advanced', tenantId: TENANT, name: 'Advanced course', description: '', createdAt: NOW },
+  ]);
+  await database.db.insert(courseModules).values({
+    id: 'module-basics', tenantId: TENANT, courseIds: ['course-intro'], title: 'Basics', createdAt: NOW,
+    chapters: [{ id: 'chapter-basics', name: 'Basics', contents: [{ id: 'content-welcome', lessonId: 'lesson-welcome', name: 'Welcome' }] }],
+  });
+  await database.db.insert(courseLessons).values({ id: 'lesson-welcome', tenantId: TENANT, name: 'Welcome', createdAt: NOW });
 });
 
 afterAll(async () => { await database?.close(); });
@@ -403,6 +415,33 @@ describe('approving a change proposal over the database', () => {
 
     expect((await database.db.select({ name: tenants.name, vatMode: tenants.invoiceVatMode, vatRate: tenants.invoiceVatRatePercent }).from(tenants)
       .where(eq(tenants.id, TENANT)))).toEqual([{ name: 'Acme shop', vatMode: 'rate', vatRate: 8 }]);
+  });
+});
+
+describe('approving what a product grants over the database', () => {
+  const accessOf = async (id: string) => (await productRow(id))?.accessItems;
+
+  it('applies the stored list as the approving owner after locking the courses, and is stale once the list moved', async () => {
+    const lessonItem = [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome'] }];
+    await insertProduct('workbook', { type: 'digital_download' });
+    const id = await submit('product.set-access', { id: 'draft', accessItems: lessonItem });
+    const moved = await submit('product.set-access', { id: 'workbook', accessItems: [{ level: 'course', courseId: 'course-advanced' }] });
+    expect(await accessOf('draft')).toEqual([]);
+    await database.db.update(products).set({ accessItems: [{ level: 'course', courseId: 'course-intro' }] }).where(eq(products.id, 'workbook'));
+
+    expect(await approve(id)).toMatchObject({ ok: true, value: { status: 'applied', appliedResourceId: 'draft' } });
+    expect(await accessOf('draft')).toEqual(lessonItem);
+    expect(await productVersionAuthors('draft')).toEqual([OWNER]);
+    expect(await approve(moved)).toMatchObject({ ok: true, value: { status: 'stale', appliedResourceId: null } });
+    expect(await accessOf('workbook')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
+  });
+
+  it('refuses at submission a lesson that sits in no module of the named course and stores nothing', async () => {
+    const result = await submitChangeProposal(keyCtx, {
+      operation: 'product.set-access', input: { id: 'draft', accessItems: [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-welcome'] }] },
+    }, deps());
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } });
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
   });
 });
 

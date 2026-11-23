@@ -5,6 +5,7 @@ import type {
   TenantTeamMember,
   TenantTeamOrganization,
   LessonEdition, LessonEditionInput,
+  AccessItemIds,
   ActivitySummary,
   ActivitySummaryQuery,
   AppError,
@@ -3181,6 +3182,14 @@ export interface ChangeProposalTargetLabelReader {
    * target has no entry.
    */
   labels(tenantId: string, targets: readonly ChangeProposalTargetLabelRequest[]): Promise<ChangeProposalTargetLabel[]>;
+  /** The live title of each course, module and lesson of the workspace among the ids; an id that names none has no entry. */
+  accessTitles(tenantId: string, ids: AccessItemIds): Promise<ChangeProposalAccessTitles>;
+}
+
+export interface ChangeProposalAccessTitles {
+  courses: ReadonlyArray<{ id: string; title: string }>;
+  modules: ReadonlyArray<{ id: string; title: string }>;
+  lessons: ReadonlyArray<{ id: string; title: string }>;
 }
 
 interface ChangeProposalPerson {
@@ -3223,6 +3232,8 @@ export interface ChangeProposalTargetLocks {
    * `files` takes a product the way live file writes do (key-share compatibly, its stock row, then exclusively), so they serialise with it.
    */
   lock(tenantId: string, target: ChangeProposalTarget, purpose?: ChangeProposalTargetLockPurpose): Promise<boolean>;
+  /** Locks the workspace's courses among `courseIds` the way the live write of a product's access items does, before any product row. */
+  lockCourses(tenantId: string, courseIds: readonly string[]): Promise<void>;
 }
 
 export interface SalesLinkRepository {

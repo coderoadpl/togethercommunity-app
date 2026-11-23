@@ -9,6 +9,7 @@ import {
   changeProposalEventSchema,
   changeProposalSchema,
   changeProposalTargetPriceSchema,
+  computeCourseModuleName,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
@@ -40,10 +41,14 @@ import {
 } from './change-proposal-bounds.js';
 import { quarantinedImagesPresent } from './change-proposal-images.js';
 import type { Db } from './client.js';
+import { lockActiveCourses } from './course-reference-lock.js';
 import { holdProposedFiles, linkProposedFiles, lockProductFiles } from './key-download-files.js';
 import {
   changeProposalEvents,
   changeProposals,
+  courseLessons,
+  courseModules,
+  courses,
   productDownloadAssets,
   productPrices,
   products,
@@ -467,6 +472,16 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
       ...salesLinkRows.map((row) => ({ kind: 'sales-link' as const, ...row, price: null })),
     ];
   },
+  accessTitles: async (tenantId, ids) => ({
+    courses: ids.courseIds.length === 0 ? [] : await db.select({ id: courses.id, title: courses.name }).from(courses)
+      .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, ids.courseIds))),
+    modules: ids.moduleIds.length === 0 ? [] : (await db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
+      .from(courseModules)
+      .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, ids.moduleIds))))
+      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title) })),
+    lessons: ids.lessonIds.length === 0 ? [] : await db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
+      .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids.lessonIds))),
+  }),
 });
 
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;
@@ -516,5 +531,8 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
           .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id), isNull(salesLinks.deletedAt))).for('no key update'));
     }
+  },
+  lockCourses: async (tenantId, courseIds) => {
+    await lockActiveCourses(db, tenantId, [...courseIds]);
   },
 });

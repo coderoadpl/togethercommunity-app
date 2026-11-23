@@ -20,6 +20,7 @@ const APPLIED_RESOURCE_LABEL: Record<RegisteredChangeProposalOperation, string |
   'sales-link.update': 'sales link',
   'sales-link.delete': 'sales link',
   'settings.update': null,
+  'product.set-access': 'product',
   'download.add': 'file',
   'download.replace': 'file',
   'download.remove': 'product',

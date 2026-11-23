@@ -29,6 +29,7 @@ interface RawManifest {
   ungatedChecks: Record<string, Record<string, unknown>[]>;
   postDeploy: Record<string, string[]>;
   deletionProtectedBranches: string[];
+  serviceContainerStepPrefix: string;
 }
 
 const validManifest = (): RawManifest => ({
@@ -56,6 +57,7 @@ const validManifest = (): RawManifest => ({
   },
   postDeploy: { staging: [], production: [] },
   deletionProtectedBranches: ['staging', 'main'],
+  serviceContainerStepPrefix: 'Start service container',
 });
 
 const manifest: DispatchManifest = parseManifest(validManifest());
@@ -78,6 +80,7 @@ describe('dispatch-ci manifest', () => {
     expect(committed.ungatedChecks).toEqual({ staging: [], main: [] });
     expect(committed.postDeploy).toEqual({ staging: [], production: [] });
     expect(committed.deletionProtectedBranches).toEqual(['staging', 'main']);
+    expect(committed.serviceContainerStepPrefix).toBe('Start service container');
     expect(expectedRequiredChecks(committed)).toEqual({
       staging: ['dispatch-ci', 'ai-review', 'staging-freeze'],
       main: ['dispatch-ci', 'ai-review', 'promotion-guard'],
@@ -150,6 +153,14 @@ describe('dispatch-ci manifest', () => {
     })],
     ['deletionProtectedBranches[0] must be one of "staging", "main"', () => withField((raw) => {
       raw.deletionProtectedBranches = ['production'];
+    })],
+    ['serviceContainerStepPrefix is missing', () =>
+      Object.fromEntries(Object.entries(validManifest()).filter(([key]) => key !== 'serviceContainerStepPrefix'))],
+    ['serviceContainerStepPrefix must be a non-empty string', () => withField((raw) => {
+      raw.serviceContainerStepPrefix = ' ';
+    })],
+    ['serviceContainerStepPrefix must match', () => withField((raw) => {
+      raw.serviceContainerStepPrefix = 'Start service container:';
     })],
   ])('rejects a manifest where %s', (message, build) => {
     expect(() => parseManifest(build())).toThrow(`dispatch-ci manifest: ${message}`);
@@ -340,6 +351,61 @@ describe('dispatch-ci gate', () => {
       'dispatch-ci: RED — failed: check (step "pnpm run depcruise"), e2e (coupon) (step "Run E2E suite"); cancelled: none; skipped but required: none',
     );
     expect(verdict.notes).toEqual([]);
+  });
+
+  it('marks a failing service container step as infrastructure without changing the verdict', () => {
+    const details: RunDetails = {
+      available: true,
+      jobs: [
+        { name: 'check', conclusion: 'failure', failedStep: 'Start service container: postgres' },
+        { name: 'audit', conclusion: 'failure', failedStep: 'Start service container: mongodb' },
+        { name: 'e2e (auth)', conclusion: 'failure', failedStep: 'Start service container: postgres' },
+        { name: 'e2e (coupon)', conclusion: 'failure', failedStep: 'Run E2E suite' },
+      ],
+    };
+    const verdict = decideGate({
+      planJob: 'plan',
+      needsRaw: needs({ check: 'failure', audit: 'failure', e2e: 'failure' }),
+      planRaw: JSON.stringify(plan),
+      details,
+      infrastructureStepPrefix: 'Start service container',
+    });
+
+    expect(verdict.green).toBe(false);
+    expect(verdict.headline).toBe(
+      'dispatch-ci: RED — failed: check (infrastructure: step "Start service container: postgres"), e2e (auth) (infrastructure: step "Start service container: postgres"), e2e (coupon) (step "Run E2E suite"); cancelled: none; skipped but required: none',
+    );
+    expect(verdict.jobs.find((job) => job.id === 'audit')?.detail)
+      .toBe('audit (infrastructure: step "Start service container: mongodb")');
+  });
+
+  it('labels a service container step as an ordinary step without a prefix', () => {
+    const details: RunDetails = {
+      available: true,
+      jobs: [{ name: 'check', conclusion: 'failure', failedStep: 'Start service container: postgres' }],
+    };
+
+    expect(gate(needs({ check: 'failure' }), details).headline).toBe(
+      'dispatch-ci: RED — failed: check (step "Start service container: postgres"); cancelled: none; skipped but required: none',
+    );
+  });
+
+  it('keeps the green verdict when an advisory job failed on infrastructure', () => {
+    const verdict = decideGate({
+      planJob: 'plan',
+      needsRaw: needs({ audit: 'failure' }),
+      planRaw: JSON.stringify(plan),
+      details: {
+        available: true,
+        jobs: [{ name: 'audit', conclusion: 'failure', failedStep: 'Start service container: mongodb' }],
+      },
+      infrastructureStepPrefix: 'Start service container',
+    });
+
+    expect(verdict.green).toBe(true);
+    expect(verdict.headline).toBe(
+      'dispatch-ci: GREEN — 3 planned job(s) matched the plan for pull_request on staging; advisory failures (not blocking): audit (infrastructure: step "Start service container: mongodb")',
+    );
   });
 
   it('keeps the verdict when the jobs API read fails and says the step names are unavailable', () => {

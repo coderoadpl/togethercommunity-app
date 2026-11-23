@@ -60,5 +60,6 @@
     "staging": [],
     "production": []
   },
-  "deletionProtectedBranches": ["staging", "main"]
+  "deletionProtectedBranches": ["staging", "main"],
+  "serviceContainerStepPrefix": "Start service container"
 }

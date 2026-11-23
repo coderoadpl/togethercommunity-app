@@ -42,6 +42,7 @@ export interface DispatchManifest {
   ungatedChecks: Record<DispatchBranch, ManifestCheck[]>;
   postDeploy: Record<PostDeployEnvironment, string[]>;
   deletionProtectedBranches: DispatchBranch[];
+  serviceContainerStepPrefix: string;
 }
 
 export interface EventContext {
@@ -69,6 +70,7 @@ export const MANIFEST_PATH_FROM_REPO_ROOT = 'app/ci/dispatch-ci.manifest.json';
 
 const jobIdPattern = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const suitePattern = /^[a-z0-9][a-z0-9-]*$/;
+const stepPrefixPattern = /^[A-Za-z][A-Za-z0-9 -]*[A-Za-z0-9]$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -228,6 +230,7 @@ export const parseManifest = (value: unknown): DispatchManifest => {
     'ungatedChecks',
     'postDeploy',
     'deletionProtectedBranches',
+    'serviceContainerStepPrefix',
   ]);
   const gate = expectString(record['gate'], 'gate', jobIdPattern);
   const planJob = expectString(record['planJob'], 'planJob', jobIdPattern);
@@ -261,6 +264,11 @@ export const parseManifest = (value: unknown): DispatchManifest => {
     ungatedChecks,
     postDeploy: parsePostDeploy(record['postDeploy']),
     deletionProtectedBranches,
+    serviceContainerStepPrefix: expectString(
+      record['serviceContainerStepPrefix'],
+      'serviceContainerStepPrefix',
+      stepPrefixPattern,
+    ),
   };
 };
 
@@ -437,6 +445,7 @@ export interface GateInput {
   needsRaw: string | undefined;
   planRaw: string | undefined;
   details: RunDetails | null;
+  infrastructureStepPrefix?: string;
 }
 
 const blockingOutcomes: readonly Outcome[] = ['failed', 'cancelled', 'skipped but required', 'plan mismatch'];
@@ -450,13 +459,18 @@ const legName = (jobId: string, suite: string): string => `${jobId} (${suite})`;
 const runNames = (job: PlannedJob): string[] =>
   job.matrix === null ? [job.id] : job.matrix.map((entry) => legName(job.id, entry.suite));
 
-const describeFailure = (job: PlannedJob, details: RunDetails | null): string[] => {
+const describeStep = (step: string, infrastructurePrefix: string | undefined): string =>
+  infrastructurePrefix !== undefined && step.startsWith(infrastructurePrefix)
+    ? `infrastructure: step "${step}"`
+    : `step "${step}"`;
+
+const describeFailure = (job: PlannedJob, details: RunDetails | null, infrastructurePrefix: string | undefined): string[] => {
   if (details === null || !details.available) return [job.id];
   const names = new Set(runNames(job));
   const failing = details.jobs.filter((detail) => names.has(detail.name) && detail.conclusion === 'failure');
   if (failing.length === 0) return [job.id];
   return failing.map((detail) =>
-    detail.failedStep === null ? detail.name : `${detail.name} (step "${detail.failedStep}")`);
+    detail.failedStep === null ? detail.name : `${detail.name} (${describeStep(detail.failedStep, infrastructurePrefix)})`);
 };
 
 const describeCancellation = (job: PlannedJob, details: RunDetails | null): string[] => {
@@ -535,7 +549,7 @@ export const decideGate = (input: GateInput): GateVerdict => {
     const { reason, ...verdict } = judgeJob(job, needs[job.id]);
     let detail = reason;
     if (verdict.outcome === 'failed') {
-      const described = describeFailure(job, input.details);
+      const described = describeFailure(job, input.details, input.infrastructureStepPrefix);
       failed.push(...described.map((name) => reason === '' ? name : `${name} (${reason})`));
       detail = [described.join('; '), reason].filter((part) => part !== '').join(' — ');
     } else if (verdict.outcome === 'cancelled') {
@@ -545,7 +559,7 @@ export const decideGate = (input: GateInput): GateVerdict => {
     } else if (verdict.outcome === 'plan mismatch') {
       mismatches.push(`${job.id} (${reason})`);
     } else if (verdict.outcome === 'advisory failure') {
-      const described = describeFailure(job, input.details);
+      const described = describeFailure(job, input.details, input.infrastructureStepPrefix);
       advisoryFailures.push(...described);
       detail = described.join('; ');
     }
@@ -700,6 +714,7 @@ const runGate = async (env: Env, manifestPath: string): Promise<boolean> => {
     needsRaw: env['DISPATCH_CI_NEEDS'],
     planRaw: env['DISPATCH_CI_PLAN'],
     details: null,
+    infrastructureStepPrefix: manifest.serviceContainerStepPrefix,
   };
   let verdict = decideGate(input);
   if (verdict.wantsRunDetails) {

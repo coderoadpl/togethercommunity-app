@@ -67,6 +67,7 @@ const planDrivenRaw = (overrides: Record<string, unknown> = {}) => ({
   ungatedChecks: { staging: [], main: [] },
   postDeploy: { staging: [], production: [] },
   deletionProtectedBranches: [],
+  serviceContainerStepPrefix: 'Start service container',
   ...overrides,
 });
 

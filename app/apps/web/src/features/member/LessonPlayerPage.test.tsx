@@ -1422,27 +1422,30 @@ describe('LessonPlayerPage', () => {
   });
 
   it('keeps showing what it wrote when the server recorded the completion under another course', async () => {
-    let completed = false;
+    const written = new Map<string, string[]>();
     let readsAfterCompletion = 0;
     server.use(
       okStructure(),
       okLesson(allBlocks),
-      http.get('/api/student/progress', () => {
-        if (completed) readsAfterCompletion += 1;
-        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        if (written.size > 0) readsAfterCompletion += 1;
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
       }),
       http.post('/api/student/lessons/complete', () => {
-        completed = true;
+        written.set('course-other', ['l1']);
         return HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } });
       }),
     );
 
     const user = userEvent.setup();
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    const { queryClient } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     await user.click(await screen.findByTestId('mark-complete'));
 
     await waitFor(() => expect(readsAfterCompletion).toBeGreaterThan(0));
-    await waitFor(() => expect(screen.getByTestId('unmark-complete')).toBeEnabled());
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(written.get('course-1')).toBeUndefined();
+    expect(screen.getByTestId('unmark-complete')).toBeEnabled();
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 

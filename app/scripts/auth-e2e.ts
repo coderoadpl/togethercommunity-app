@@ -5,7 +5,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type Response } from 'playwright-core';
+import { chromium, type Browser, type Page, type Response } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
@@ -44,20 +44,24 @@ class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
 }
-const assertNoBrowserSessionToken = async (response: Response): Promise<void> => {
-  assert(response.status() === 200, `browser password sign-in answered ${response.status()}`);
+const assertNoBrowserSessionToken = async (response: Response, label: string): Promise<void> => {
+  assert(response.status() === 200, `${label} answered ${response.status()}`);
   const headers = await response.allHeaders();
-  assert(!('set-auth-token' in headers), 'browser sign-in response carried a set-auth-token header');
+  assert(!('set-auth-token' in headers), `${label} response carried a set-auth-token header`);
   assert(
     !(headers['access-control-expose-headers'] ?? '').toLowerCase().includes('set-auth-token'),
-    'browser sign-in response exposed set-auth-token',
+    `${label} response exposed set-auth-token`,
   );
   const body = z.object({
     token: z.unknown().optional(),
     session: z.object({ token: z.unknown().optional() }).optional(),
   }).parse(await response.json());
-  assert(body.token === undefined && body.session?.token === undefined, 'browser sign-in response body carried the session token');
+  assert(body.token === undefined && body.session?.token === undefined, `${label} response body carried the session token`);
 };
+const authResponse = (page: Page, path: string): Promise<Response> => page.waitForResponse(
+  (response) => new URL(response.url()).pathname.endsWith(path) && response.request().method() === 'POST',
+  { timeout: 15000 },
+);
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
   try {
@@ -332,12 +336,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
-    const signInResponse = page.waitForResponse(
-      (response) => new URL(response.url()).pathname.endsWith('/sign-in/email') && response.request().method() === 'POST',
-      { timeout: 15000 },
-    );
+    const signInResponse = authResponse(page, '/sign-in/email');
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
-    await assertNoBrowserSessionToken(await signInResponse);
+    await assertNoBrowserSessionToken(await signInResponse, 'browser password sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
@@ -363,7 +364,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('sign-out').click();
     await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
     await page.getByTestId('login-password').waitFor({ state: 'visible', timeout: 15000 });
+    const passkeyResponse = authResponse(page, '/passkey/verify-authentication');
     await page.getByTestId('signin-passkey').click();
+    await assertNoBrowserSessionToken(await passkeyResponse, 'browser passkey sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
@@ -373,7 +376,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     );
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
+    const discoverablePasskeyResponse = authResponse(page, '/passkey/verify-authentication');
     await page.getByTestId('signin-passkey').click();
+    await assertNoBrowserSessionToken(await discoverablePasskeyResponse, 'browser discoverable passkey sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     console.log('auth-e2e: identifier and discoverable passkey paths OK');
   } finally {

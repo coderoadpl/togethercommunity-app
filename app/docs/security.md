@@ -51,6 +51,12 @@ as a browser once its jar holds the session cookie: a later sign-in that still
 sends that cookie gets the new session cookie but no `set-auth-token` header and
 no body `token`. Such a client keeps using the session cookie it holds, or signs
 in from a client without a cookie jar.
+The auth end-to-end run (`scripts/auth-e2e.ts`) signs a browser in with a
+virtual passkey, by identifier and as a discoverable credential, and asserts
+that each `/passkey/verify-authentication` response (whose unstripped body
+carries `session.token`) has no `set-auth-token` header, no
+`Access-Control-Expose-Headers` entry for it, no `token` and no
+`session.token`.
 Nothing stored changes; removing the wrapper restores the previous responses.
 
 Remaining gaps (not closed by this change):
@@ -67,9 +73,6 @@ Remaining gaps (not closed by this change):
   running on the page can intercept that credential and exchange it for a
   session. A server-issued nonce bound to the One Tap prompt would close this
   and is the follow-up.
-- No test drives a passkey sign-in (`verify-authentication`, whose response
-  carries `session.token`) end to end; the `session.token` strip covers that
-  shape, and adding that coverage is a follow-up.
 
 Better Auth's provider-token routes `/get-access-token`, `/refresh-token` and
 `/account-info` are disabled (`disabledPaths`, answering 404): the app never

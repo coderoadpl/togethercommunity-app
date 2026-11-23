@@ -1489,11 +1489,15 @@ product editor completed, live or by another approval) makes the approval
 `stale`.
 
 Before the dry run, the submission checks read-only that the staged file is
-one this key staged and that no pending, unexpired proposal holds it; the
+one this key staged and that no proposal holds it other than one that ended
+`stale` or `failed`: a pending proposal holds it, and so does a rejected,
+withdrawn or expired one until the release after that decision (or the minute
+sweep) has discarded it, so that release always finds the file; the
 transaction that stores the proposal locks the staged row and checks again,
 then links the row to the new proposal. A file is therefore held by at most one
 pending proposal, and a group cannot attach it twice. A file of another key, a
-discarded, unknown or held file answers `400 validation` with the field error
+discarded, unknown or held file, also one an ended proposal has not released
+yet, answers `400 validation` with the field error
 `stagedFileId: Must be a file this key staged that no other pending proposal
 attaches`, and nothing is stored. The key may still discard a file a pending
 proposal holds; an approval of that proposal then ends `stale` (below).

@@ -343,7 +343,7 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
       if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
-      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, now)) return { kind: 'file_unavailable' };
+      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files)) return { kind: 'file_unavailable' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
       const created = await insertProposal(tx, tenantId, parsed, event);

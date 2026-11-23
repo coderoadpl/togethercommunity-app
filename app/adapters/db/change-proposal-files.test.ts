@@ -503,6 +503,27 @@ describe('releasing proposed files on decisions', () => {
     expect(h.objects.objects.has(stagedKeyOf(file.id))).toBe(false);
   });
 
+  it('refuses to propose again a file whose rejected or expired proposal has not released it yet, and the sweep discards it', async () => {
+    const h = harness();
+    const rejected = await h.stage();
+    const expiring = await h.stage();
+    const first = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: rejected.id });
+    const second = await h.propose('download.add', { productId: GUIDE, stagedFileId: expiring.id });
+    await database.db.update(changeProposals).set({ status: 'rejected', decidedAt: NOW, decidedByUserId: 'user-owner' }).where(eq(changeProposals.id, first.id));
+    h.clock.now = second.expiresAt;
+
+    for (const file of [rejected, expiring]) {
+      expect(await submitChangeProposal(keyCtx(), { operation: 'download.add', input: { productId: WORKBOOK, stagedFileId: file.id } }, h.deps))
+        .toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { stagedFileId: [expect.any(String)] } } } });
+    }
+    expect((await stagedRow(rejected.id))?.proposalId).toBe(first.id);
+    expect((await stagedRow(expiring.id))?.proposalId).toBe(second.id);
+
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await stagedRow(rejected.id)).toBeNull();
+    expect(await stagedRow(expiring.id)).toBeNull();
+  });
+
   it('releases the file of a withdrawn proposal at once', async () => {
     const h = harness();
     const file = await h.stage();

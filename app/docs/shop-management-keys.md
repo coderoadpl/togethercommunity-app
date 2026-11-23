@@ -762,7 +762,9 @@ delete, and blocks that key's new uploads and copies while it lasts.
 **Staged files.** A staged file that is not attached becomes due for the minute
 sweep 7 days after it was staged, and once its key is revoked, expires or is
 purged, unless a pending, unexpired proposal holds it; a rejection, a
-withdrawal or a recorded expiry of that proposal discards it at once
+withdrawal or a recorded expiry of that proposal discards it right after the
+decision commits, or leaves it to the minute sweep when that release cannot
+run; until then the key cannot propose it again
 ([Release on decisions](change-proposals.md#download-files)). The sweep
 first moves such a file to the owed deletions and only then deletes its
 object, so from then on the file can no longer be attached or proposed, also

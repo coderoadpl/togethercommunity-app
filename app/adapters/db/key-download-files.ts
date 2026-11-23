@@ -259,6 +259,11 @@ const heldByEndedProposal = (now: string): SQL => sql`exists (select 1 from ${ch
   and ${changeProposals.id} = ${stagedFiles.proposalId}
   and (${changeProposals.status} in ('rejected', 'withdrawn') or (${changeProposals.status} = 'pending' and ${changeProposals.expiresAt} <= ${now})))`;
 
+// A rejected, withdrawn or expired holder still owes its release, which runs after its decision commits; until then the
+// row is not the key's to propose again, or that release would find nothing to discard.
+const claimedByAnyProposal = sql`exists (select 1 from ${changeProposals} where ${changeProposals.tenantId} = ${stagedFiles.tenantId}
+  and ${changeProposals.id} = ${stagedFiles.proposalId} and ${changeProposals.status} not in ('stale', 'failed'))`;
+
 const stagedSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => and(
   or(lt(stagedFiles.createdAt, cutoffs.stagedCreatedBefore), sql`not ${keyActive(cutoffs.now)}`, heldByEndedProposal(cutoffs.now)),
   sql`not ${attachedToPendingProposal(cutoffs.now)}`,
@@ -277,14 +282,16 @@ const unheldAmong = async (tx: Db, tenantId: string, ids: readonly string[], now
   return new Set(free.map((row) => row.id));
 };
 
-export const holdProposedFiles = async (tx: Db, tenantId: string, apiKeyId: string, ids: readonly string[], now: string): Promise<boolean> => {
+export const holdProposedFiles = async (tx: Db, tenantId: string, apiKeyId: string, ids: readonly string[]): Promise<boolean> => {
   const wanted = distinctIds(ids);
   if (wanted.length === 0) return true;
   const locked = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
     .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, apiKeyId), inArray(stagedFiles.id, wanted)))
     .orderBy(asc(stagedFiles.id)).for('update');
   if (locked.length !== wanted.length) return false;
-  return (await unheldAmong(tx, tenantId, wanted, now)).size === wanted.length;
+  const free = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
+    .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, wanted), sql`not ${claimedByAnyProposal}`));
+  return free.length === wanted.length;
 };
 
 export const linkProposedFiles = async (tx: Db, tenantId: string, apiKeyId: string, ids: readonly string[], proposalId: string): Promise<void> => {
@@ -596,14 +603,14 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         await db.update(deletions).set({ sweepAttemptedAt: now }).where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, objectKeys)));
       }
     },
-    proposable: async (tenantId, apiKeyId, ids, now) => {
+    proposable: async (tenantId, apiKeyId, ids) => {
       const wanted = distinctIds(ids);
       if (wanted.length === 0) return true;
       const rows = await db.select({ id: stagedFiles.id }).from(stagedFiles).where(and(
         eq(stagedFiles.tenantId, tenantId),
         eq(stagedFiles.apiKeyId, apiKeyId),
         inArray(stagedFiles.id, wanted),
-        sql`not ${attachedToPendingProposal(now)}`,
+        sql`not ${claimedByAnyProposal}`,
       ));
       return rows.length === wanted.length;
     },

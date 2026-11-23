@@ -1404,6 +1404,7 @@ export const pl: Messages = {
       removeFromPackingList: 'Usuń z listy do spakowania',
       removeFromPackingListHint: 'Zamówienie zniknie z filtra „Do spakowania” i z pliku CSV.',
       removeFromPackingListUnavailable: 'Niedostępne — zamówienie nie czeka już na spakowanie.',
+      removeFromPackingListWithRestock: 'Towar zwrócony na stan nie może zostać na liście do spakowania. Jeśli zamówienie ma jednak wyjść, przywróć je później przyciskiem „Wyślij mimo to” — towar zejdzie wtedy ze stanu.',
       shippedWarningTitle: 'Paczka została już nadana albo etykieta kupiona',
       shippedWarningBody: 'Towar nie wraca na stan automatycznie, etykiety nie anulujemy.',
       partialInfoTitle: 'Zwrot częściowy niczego więcej nie zmienia',

@@ -82,6 +82,9 @@ const refundRequest = (
   newRequestKey: () => string,
 ): Result<RefundRequest, AppError> => {
   if (options.amount !== undefined && options.remainder !== undefined) return err(validation('Use --remainder only for a full refund, without --amount'));
+  if (options.keepOnPackingList === true && options.restock) {
+    return err(validation('Use --keep-on-packing-list together with --no-restock: goods returned to stock cannot stay on the packing list'));
+  }
   const amount = options.amount === undefined ? null : minorUnitsFromDecimal(options.amount, preview.currency);
   if (amount !== null && !amount.ok) return amount;
   const remainder = options.remainder === undefined ? ok(preview.remainderCents) : minorUnitsFromDecimal(options.remainder, preview.currency);
@@ -153,7 +156,7 @@ export const registerOrderRefundCommands = (
     .option('--remainder <decimal>', 'with --yes, the remainder a full refund was confirmed for; the refund is refused when the remainder changed since')
     .option('--reason <text>', 'staff-only note kept with the refund, at most 500 characters; never sent to the buyer or the provider')
     .option('--no-restock', 'do not return the goods to stock with a full refund')
-    .option('--keep-on-packing-list', 'keep the order on the packing list after a full refund')
+    .option('--keep-on-packing-list', 'keep the order on the packing list after a full refund; needs --no-restock')
     .option('--request-key <key>', 'repeat a refund request safely: the same key never refunds twice')
     .option('--yes', 'confirm the refund; it cannot be undone')
     .action(withContext((ctx, orderId, raw) => runOrderRefund(ctx, orderId, raw)));

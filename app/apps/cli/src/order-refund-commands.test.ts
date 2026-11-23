@@ -124,6 +124,14 @@ describe('order refund command', () => {
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 
+  it('refuses --keep-on-packing-list without --no-restock before any request', async () => {
+    const h = harness();
+    await h.refund({ remainder: '30.99', keepOnPackingList: true, yes: true, requestKey: 'keep-1' });
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): Use --keep-on-packing-list together with --no-restock: goods returned to stock cannot stay on the packing list');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+  });
+
   it('refuses --remainder together with --amount before any request', async () => {
     const h = harness();
     await h.refund({ amount: '5', remainder: '30.99', yes: true });

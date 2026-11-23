@@ -159,6 +159,8 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const effectiveCents = check.amountCents;
   const fullAmount = check.ok && check.amountCents === remainderCents;
   const endsAccess = partial && fullAmount && accessNames.length > 0;
+  const restocking = restockVisible && restock;
+  const removingFromPackingList = removeFromPackingList || restocking;
 
   const submit = () => {
     if (!check.ok) {
@@ -175,7 +177,7 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
         ? { restock: false, removeFromPackingList: false }
         : {
           ...(options.restockOffered ? { restock: restockVisible && restock } : {}),
-          ...(options.removeFromPackingListOffered ? { removeFromPackingList } : {}),
+          ...(options.removeFromPackingListOffered ? { removeFromPackingList: removingFromPackingList } : {}),
         }),
     });
   };
@@ -205,17 +207,16 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const paidDate = formatDate(order.paidAt ?? order.createdAt, language, SALES_LINK_TIME_ZONE);
   const laterCents = check.ok ? remainderCents - check.amountCents : null;
 
-  const restocking = restockVisible && restock;
   const units = returnableUnits.join(', ');
   const fullConsequences = (
     <>
-      {restocking && options.removeFromPackingListOffered && removeFromPackingList
+      {restocking && options.removeFromPackingListOffered && removingFromPackingList
         ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestockAndRemove({ units })}</Consequence>
         : (
           <>
             {restocking ? <Consequence icon={<PackageIcon />}>{messages.consequenceRestock({ units })}</Consequence> : null}
             {options.removeFromPackingListOffered
-              ? <Consequence icon={<PackageIcon />}>{removeFromPackingList ? messages.consequenceRemoveFromPackingList : messages.consequenceStaysOnPackingList}</Consequence>
+              ? <Consequence icon={<PackageIcon />}>{removingFromPackingList ? messages.consequenceRemoveFromPackingList : messages.consequenceStaysOnPackingList}</Consequence>
               : null}
           </>
         )}
@@ -355,13 +356,15 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                         {options.removeFromPackingListOffered || preview.onPackingList ? (
                           <FormControlLabel
                             sx={{ alignItems: 'flex-start', m: 0 }}
-                            disabled={partial || pending || !options.removeFromPackingListOffered}
-                            control={<Checkbox checked={options.removeFromPackingListOffered && removeFromPackingList} onChange={(_, checked) => setRemoveFromPackingList(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-remove-from-packing-list" />}
+                            disabled={partial || pending || !options.removeFromPackingListOffered || restocking}
+                            control={<Checkbox checked={options.removeFromPackingListOffered && removingFromPackingList} onChange={(_, checked) => setRemoveFromPackingList(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-remove-from-packing-list" />}
                             label={(
                               <Box>
                                 <Typography>{messages.removeFromPackingList}</Typography>
                                 <Typography variant="body2" color="textSecondary">
-                                  {options.removeFromPackingListOffered ? messages.removeFromPackingListHint : messages.removeFromPackingListUnavailable}
+                                  {!options.removeFromPackingListOffered
+                                    ? messages.removeFromPackingListUnavailable
+                                    : restocking ? messages.removeFromPackingListWithRestock : messages.removeFromPackingListHint}
                                 </Typography>
                               </Box>
                             )}

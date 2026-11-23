@@ -1366,6 +1366,7 @@ export const en: Messages = {
       removeFromPackingList: 'Take off the packing list',
       removeFromPackingListHint: 'The order leaves the "To pack" filter and the packing list CSV.',
       removeFromPackingListUnavailable: 'Not available: the order is no longer waiting to be packed.',
+      removeFromPackingListWithRestock: 'Goods returned to stock cannot stay on the packing list. To ship the order after all, put it back later with Ship anyway, which takes the goods out of stock again.',
       shippedWarningTitle: 'The parcel was sent or its label bought',
       shippedWarningBody: 'Goods do not return to stock on their own, and the label is not cancelled.',
       partialInfoTitle: 'A partial refund changes nothing else',

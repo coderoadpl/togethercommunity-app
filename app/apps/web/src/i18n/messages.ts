@@ -1240,6 +1240,7 @@ export interface Messages {
       removeFromPackingList: string;
       removeFromPackingListHint: string;
       removeFromPackingListUnavailable: string;
+      removeFromPackingListWithRestock: string;
       shippedWarningTitle: string;
       shippedWarningBody: string;
       partialInfoTitle: string;

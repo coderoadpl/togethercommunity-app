@@ -192,17 +192,25 @@ describe('staff refund dialog', () => {
     await waitFor(() => expect(calls.detail).toBeGreaterThan(1));
   });
 
-  it('sends the unticked choices of a full refund', async () => {
+  it('keeps the order off the packing list while goods return to stock and sends the unticked choices of a full refund', async () => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls);
     await renderDetail();
     const dialog = await openDialog();
+    const removeBox = () => within(dialog).getByRole('checkbox', { name: new RegExp(messages.removeFromPackingList) });
+    expect(removeBox()).toBeDisabled();
+    expect(within(dialog).getByText(messages.removeFromPackingListWithRestock)).toBeVisible();
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.removeFromPackingList) }));
+    expect(removeBox()).toBeEnabled();
+    expect(within(dialog).getByText(messages.removeFromPackingListHint)).toBeVisible();
+    await userEvent.click(removeBox());
     expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceStaysOnPackingList)).toBeVisible();
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
-    expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceRestock({ units: 'Ceramic mug × 1' }))).toBeVisible();
+    expect(removeBox()).toBeChecked();
+    expect(removeBox()).toBeDisabled();
+    expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceRestockAndRemove({ units: 'Ceramic mug × 1' }))).toBeVisible();
     await userEvent.click(within(dialog).getByRole('checkbox', { name: new RegExp(messages.restock) }));
+    expect(removeBox()).not.toBeChecked();
     await userEvent.click(within(dialog).getByRole('button', { name: named(messages.submit({ amount: pln(24900) })) }));
     await waitFor(() => expect(calls.refunds).toHaveLength(1));
     expect(calls.refunds[0]).toEqual({ requestKey: expect.any(String), expectedAmountCents: 24900, restock: false, removeFromPackingList: false });

@@ -234,10 +234,12 @@ export const resolveStaffRefundChoices = (
   if (input.removeFromPackingList === true && !options.removeFromPackingListOffered) {
     return err(validation('Only a full refund of an order waiting to be packed can take it off the packing list'));
   }
-  return ok({
-    restock: input.restock ?? options.restockDefault,
-    removeFromPackingList: input.removeFromPackingList ?? options.removeFromPackingListDefault,
-  });
+  const restock = input.restock ?? options.restockDefault;
+  const removeFromPackingList = input.removeFromPackingList ?? options.removeFromPackingListDefault;
+  if (restock && options.removeFromPackingListOffered && !removeFromPackingList) {
+    return err(validation('Goods returned to stock cannot stay on the packing list: take the order off the packing list too, or keep the goods out of stock'));
+  }
+  return ok({ restock, removeFromPackingList });
 };
 
 export const staffRefundMatchesRequest = (

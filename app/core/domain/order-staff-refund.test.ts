@@ -113,6 +113,16 @@ describe('staff refund rules', () => {
     expect(resolveStaffRefundChoices(untouched, { restock: false })).toStrictEqual({ ok: true, value: { restock: false, removeFromPackingList: true } });
   });
 
+  it('refuses to return goods to stock while the order stays on the packing list', () => {
+    const labelled = staffRefundFulfilmentOptions({ fulfilmentStatus: 'to_pack', shipment: null }, { coversRemainder: true, hasLabel: true });
+    const shipped = staffRefundFulfilmentOptions({ fulfilmentStatus: 'shipped', shipment: null }, { coversRemainder: true, hasLabel: false });
+    expect(resolveStaffRefundChoices(labelled, { restock: true, removeFromPackingList: false })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundChoices(labelled, { restock: true })).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(resolveStaffRefundChoices(labelled, { restock: true, removeFromPackingList: true })).toStrictEqual({ ok: true, value: { restock: true, removeFromPackingList: true } });
+    expect(resolveStaffRefundChoices(labelled, { restock: false, removeFromPackingList: false })).toStrictEqual({ ok: true, value: { restock: false, removeFromPackingList: false } });
+    expect(resolveStaffRefundChoices(shipped, { restock: true })).toStrictEqual({ ok: true, value: { restock: true, removeFromPackingList: false } });
+  });
+
   it('matches a repeated request only with the same amount and choices', () => {
     const stored = refund({ kind: 'remainder', amountCents: 4099, restocked: true, removedFromPackingList: true });
     expect(staffRefundMatchesRequest(stored, { orderId: 'order-1' })).toBe(true);

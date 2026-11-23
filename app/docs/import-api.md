@@ -410,9 +410,12 @@ The reader editions response flags every edition whose content (name, blocks
 and duration) equals the live lesson (`matchesLive`) and names the newest of them
 as `currentEdition`. Readers see an edition badge beside the lesson title: that
 edition's number, or **Current version** when no edition matches. When there is anything to switch to, the badge is a button that opens
-**Lesson editions**: the live lesson first, marked **Current** and leading to the
-plain lesson URL, then the other editions with their numbers, marking dates and
-notes, ordered numerically from newest edition number to oldest. The row on
+**Lesson editions**. Its first row is the live lesson and leads to the plain
+lesson URL: it shows the number, marking date and note of `currentEdition` with a
+**Current** mark, or reads **Current version** when no edition matches. The
+other editions follow with their numbers, marking dates and notes, ordered
+numerically from newest edition number to oldest; the matching edition is not
+listed again. The row on
 screen is marked. Selecting an edition opens
 `/my/courses/<courseId>/lessons/<lessonId>/editions/<number>`, for example
 `/my/courses/course-1/lessons/lesson-1/editions/2.10`. Share this URL to link

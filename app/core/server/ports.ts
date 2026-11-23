@@ -1749,9 +1749,10 @@ export interface StorageProvider {
    * A server-side copy of `sourceKey` to `key` in the configured bucket; no byte passes through the server. The copy's
    * metadata is replaced with the server's own (octet-stream, attachment, no-store), so nothing a writer of the source
    * set survives. `not_found` only when the source does not exist, and a definite failure (`storageFailureIsDefinite`)
-   * when the provider refused the copy; after any other failure the destination may still appear later.
+   * when the provider refused the copy, a source that no longer has `sourceEtag` included; after any other failure the
+   * destination may still appear later.
    */
-  copyObject(input: { configuration: StorageConfiguration; sourceKey: string; key: string; deadlineMs: number }): Promise<Result<void, AppError>>;
+  copyObject(input: { configuration: StorageConfiguration; sourceKey: string; sourceEtag?: string; key: string; deadlineMs: number }): Promise<Result<void, AppError>>;
   /**
    * Streams the object through SHA-256 without buffering it, refusing one larger than `maxBytes`, and answers its
    * digest, its size and its first `headBytes` bytes. An object that cannot be the one asked for (empty, larger than

@@ -242,7 +242,7 @@ describe('staging a download file through an upload', () => {
     const late = await h.begin(PDF);
     h.clock.now = at(16);
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: late.id }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
-    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toHaveLength(1);
+    expect(h.objects.calls.filter((call) => call.method === 'head' || call.method === 'copyObject').map((call) => call.method)).toEqual(['head']);
     expect(await stagedRows()).toEqual([]);
   });
 
@@ -926,8 +926,8 @@ describe('copies whose outcome the storage leaves unknown', () => {
   it('answers one key-safe refusal whatever the stored bytes of a source with the same metadata are, and logs one cause line per source', async () => {
     const h = harness();
     const sources = {
-      missing: { bytes: null, cause: 'copy of record' },
-      larger: { bytes: new Uint8Array([...PDF, 1, 2]), cause: 'digest of record' },
+      missing: { bytes: null, cause: 'head of record' },
+      larger: { bytes: new Uint8Array([...PDF, 1, 2]), cause: 'size_mismatch' },
       smaller: { bytes: PDF.slice(0, 6), cause: 'size_mismatch' },
       mismatched: { bytes: PNG.slice(0, PDF.byteLength), cause: 'type_mismatch' },
     };
@@ -942,6 +942,35 @@ describe('copies whose outcome the storage leaves unknown', () => {
     }
     for (const answer of answers) expect(answer).toStrictEqual({ ok: false, error: keyDownloadCopyRefused() });
     expect(keyDownloadCopyRefused()).toStrictEqual({ code: 'validation', message: 'This file cannot be copied by a key; nothing was staged' });
+    expect(await stagedRows()).toEqual([]);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+  });
+
+  it('refuses a source whose size differs from its product file row before any copy is sent', async () => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/grown/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: new Uint8Array([...PDF, ...new Uint8Array(4 * MIB)]), contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('grown', PDF.byteLength, objectKey));
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'grown' }, h.deps)).toStrictEqual({ ok: false, error: keyDownloadCopyRefused() });
+    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toEqual([]);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+    expect(await recordStates()).toEqual(['failed']);
+  });
+
+  it('copies only the source version whose size it checked, so a source replaced after the check is never staged', async () => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/replaced/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('replaced', PDF.byteLength, objectKey));
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      head: async (input) => {
+        const answered = await h.objects.storage.head(input);
+        h.objects.objects.set(objectKey, { bytes: new Uint8Array([...PDF.slice(0, -1), 7]), contentType: 'application/pdf' });
+        return answered;
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'replaced' }, { ...h.deps, storage })).toStrictEqual({ ok: false, error: keyDownloadCopyRefused() });
     expect(await stagedRows()).toEqual([]);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
   });
@@ -983,7 +1012,7 @@ describe('a completion that cannot finish', () => {
   it('leaves an upload whose digest the storage did not answer completable by a new completion once the attempt\'s lease ended', async () => {
     const h = harness();
     const { id, candidate } = await h.begin(PDF);
-    h.objects.failReads = (target) => target.includes('/key-files/');
+    h.objects.failReads = (target) => target.includes('/product-downloads/key-files/');
     const first = await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps);
     expect(first).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining(`after ${at(10)}`), details: { retryAfterSeconds: 600 } } });
     expect(await recordStates()).toEqual(['interrupted']);
@@ -1004,7 +1033,7 @@ describe('a completion that cannot finish', () => {
     const h = harness();
     const { id } = await h.begin(PDF);
     h.clock.now = at(6);
-    h.objects.failReads = (target) => target.includes('/key-files/');
+    h.objects.failReads = (target) => target.includes('/product-downloads/key-files/');
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('Start a new upload') } });
     h.objects.failReads = () => false;

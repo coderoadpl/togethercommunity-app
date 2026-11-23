@@ -651,13 +651,14 @@ export const createS3StorageProvider = (
     await abortable(discardStorageResponseBody(response), signal);
     return ok(response);
   }, 'Could not reach S3.');
-  const copyObject: StorageProvider['copyObject'] = async ({ configuration, sourceKey, key, deadlineMs }) => {
+  const copyObject: StorageProvider['copyObject'] = async ({ configuration, sourceKey, sourceEtag, key, deadlineMs }) => {
     const target = objectUrl(configuration, key);
     const headers = {
       'cache-control': 'no-store',
       'content-disposition': 'attachment',
       'content-type': 'application/octet-stream',
       'x-amz-copy-source': copySource(configuration.bucket, sourceKey),
+      ...(sourceEtag === undefined ? {} : { 'x-amz-copy-source-if-match': sourceEtag }),
       'x-amz-metadata-directive': 'REPLACE',
     };
     const signed = signObjectUrl('PUT', target, { ...configuration, expiresInSeconds: COPY_SIGNATURE_SECONDS }, now, headers);

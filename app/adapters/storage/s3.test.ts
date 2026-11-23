@@ -1125,6 +1125,23 @@ describe('download file storage operations', () => {
     expect(request.url).toBe(`https://examplebucket.s3.us-east-1.amazonaws.com${path}?${query}&X-Amz-Signature=${signature}`);
   });
 
+  it('binds a copy to the entity tag of the checked source in a signed header, and answers a source changed since as a definite failure', async () => {
+    const sent: Array<{ url: string; headers: Record<string, string> | undefined }> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        sent.push({ url, headers: init.headers });
+        return storageResponse(412, '<Error><Code>PreconditionFailed</Code></Error>');
+      },
+    });
+    const copied = await storage.copyObject({ configuration: AWS, sourceKey: 'a', sourceEtag: '"3858f62230ac3c915f300c664312c11f"', key: 'b', deadlineMs: 1_000 });
+    if (copied.ok) throw new Error('the copy was accepted');
+    expect(storageFailureIsDefinite(copied.error)).toBe(true);
+    const [request] = sent;
+    expect(request?.headers?.['x-amz-copy-source-if-match']).toBe('"3858f62230ac3c915f300c664312c11f"');
+    expect(new URL(request?.url ?? 'https://missing.test').searchParams.get('X-Amz-SignedHeaders')?.split(';')).toContain('x-amz-copy-source-if-match');
+  });
+
   it.each([
     [404, '', 'not_found', true],
     [403, '<Error><Code>AccessDenied</Code></Error>', 'integration_unavailable', true],

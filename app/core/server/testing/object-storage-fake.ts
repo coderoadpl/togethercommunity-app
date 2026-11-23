@@ -113,11 +113,12 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         objects.delete(key);
         return ok({ deleted: true });
       },
-      copyObject: async ({ sourceKey, key }) => {
+      copyObject: async ({ sourceKey, sourceEtag, key }) => {
         calls.push({ method: 'copyObject', key });
         if (fake.failCopies(key)) return unreachable(key);
         const found = objects.get(sourceKey);
         if (found === undefined) return missing(sourceKey);
+        if (sourceEtag !== undefined && sourceEtag !== entityTagOf(found.bytes)) return err(storageDefiniteFailure(`The copy source ${sourceKey} changed`));
         await fake.beforeCopy(key);
         objects.set(key, { bytes: found.bytes.slice(), contentType: 'application/octet-stream' });
         return ok(undefined);

@@ -224,20 +224,32 @@ const stageAttempt = async (
     logFailure(deps, tenantId, `${what} of record ${record.id} failed`, error.message);
     return storageFailureIsDefinite(error) ? fail(definite) : interrupt(`${what.replace(/ /gu, '_')}_unconfirmed`);
   };
-  const copied = await deps.storage.copyObject({
-    configuration, sourceKey: attempt.sourceKey, key: destination, deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.copyMs,
+  const refusedOrMissing = (error: AppError): AttemptFailure => error.code === 'not_found'
+    ? uploadRefusal(record, validation('No file was uploaded for this upload; start a new upload'), 'source_missing')
+    : uploadRefusal(record, integrationUnavailable('The storage refused to copy the uploaded file; start a new upload'), 'copy_refused');
+  const sizeMismatch = uploadRefusal(record, validation(`The uploaded file does not have the declared ${String(record.declaredBytes)} bytes; start a new upload`), 'size_mismatch');
+  const checkedAt = Date.parse(deps.clock.nowIso());
+  const source = await deps.storage.head({
+    url: deps.storage.objectUrl(configuration, attempt.sourceKey).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.headMs,
   });
-  if (!copied.ok) {
-    return storageFailure('copy', copied.error, copied.error.code === 'not_found'
-      ? uploadRefusal(record, validation('No file was uploaded for this upload; start a new upload'), 'source_missing')
-      : uploadRefusal(record, integrationUnavailable('The storage refused to copy the uploaded file; start a new upload'), 'copy_refused'));
+  if (!source.ok) return storageFailure('head', source.error, refusedOrMissing(source.error));
+  if (source.value.sizeBytes !== record.declaredBytes) {
+    logFailure(deps, tenantId, `source of record ${record.id} refused`, `size_mismatch: ${String(source.value.sizeBytes)} bytes at the source, ${String(record.declaredBytes)} declared`);
+    return fail(sizeMismatch);
   }
+  const sourceEtag = source.value.etag === undefined || source.value.etag.startsWith('W/') ? {} : { sourceEtag: source.value.etag };
+  const copied = await deps.storage.copyObject({
+    configuration, sourceKey: attempt.sourceKey, ...sourceEtag, key: destination,
+    deadlineMs: Math.max(1, KEY_DOWNLOAD_STORAGE_DEADLINES.copyMs - (Date.parse(deps.clock.nowIso()) - checkedAt)),
+  });
+  if (!copied.ok) return storageFailure('copy', copied.error, refusedOrMissing(copied.error));
   const digest = await deps.storage.digestObject({
     url: deps.storage.objectUrl(configuration, destination).toString(),
     ...credentialsOf(configuration),
     deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.digestMs,
   }, { maxBytes: record.declaredBytes, headBytes: KEY_DOWNLOAD_FILE_LIMITS.headBytes });
-  const sizeMismatch = uploadRefusal(record, validation(`The uploaded file does not have the declared ${String(record.declaredBytes)} bytes; start a new upload`), 'size_mismatch');
   if (!digest.ok) return storageFailure('digest', digest.error, sizeMismatch);
   if (digest.value.sizeBytes !== record.declaredBytes) {
     logFailure(deps, tenantId, `stored bytes of record ${record.id} refused`, `size_mismatch: ${String(digest.value.sizeBytes)} bytes stored, ${String(record.declaredBytes)} declared`);

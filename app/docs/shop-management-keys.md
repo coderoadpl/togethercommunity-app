@@ -717,7 +717,13 @@ within a single request.
 **Copy.** `downloads/copy` stages a copy of a ready file of a product of the
 same workspace, made by the storage; the server then streams the copy through
 SHA-256 to check its size and first bytes, and the bytes never pass through
-the key. A file of another product or workspace, or one that is not ready,
+the key. Before the copy is sent, the server asks the storage for the source's
+size and entity tag: a source whose size is not the one its file row records
+is refused without a copy, and the copy is sent on the condition that the
+source still has that entity tag, so a source written again after the check
+is never copied; a storage that answers no entity tag gets the size check
+before the copy and the one after it. A completion checks its upload object
+the same way against the declared size. A file of another product or workspace, or one that is not ready,
 answers `404`; a source above 256 MiB, or with a type or name a key could not
 upload (a name whose extension is not of its type included), answers `400`; nothing is staged then. The copy counts against the
 same limits as an upload. Before the copy is reserved, a limit answers `409

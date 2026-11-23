@@ -669,7 +669,8 @@ scopes on every shop key.
   delete, a day after their upload started, is due and not yet confirmed (an
   upload object written again after the first delete is not counted before
   then); a new upload or copy is refused only while its own share does not fit
-  beside that debt. A completion's or a copy's `CopyObject` and digest run
+  beside that debt. A completion's or a copy's source check (its size and
+  entity tag; the `CopyObject` is conditioned on that tag), `CopyObject` and digest run
   after the transaction that claimed the record or reserved the copy has
   committed; no row lock is held across them: the attempt id of the claim and
   the destination only that attempt's record owns fence them, and a later

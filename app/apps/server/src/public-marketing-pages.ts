@@ -359,6 +359,8 @@ const statusCueIcons: Record<StatusCue, string> = {
 const renderStatusCue = (cue: StatusCue): string =>
   `<span class="status-cue status-cue--${cue}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">${statusCueIcons[cue]}</svg></span>`;
 
+const DEFAULT_ACCENT = '#7c3aed';
+
 const renderPage = (input: {
   nonce: string;
   brand: PublicBrand;
@@ -374,7 +376,7 @@ const renderPage = (input: {
 }): string => {
   const t = messages[input.language];
   const settings = input.brand.settings;
-  const accentSource = settings?.accentColor ?? '#7c3aed';
+  const accentSource = settings?.accentColor ?? DEFAULT_ACCENT;
   const accentLight = settings?.accentLight ?? deriveLightAccent(accentSource);
   const accentDark = deriveDarkAccent(accentSource);
   const logoLight = settings == null ? null : resolveTenantLogo(settings, 'light');
@@ -675,9 +677,13 @@ export const renderSignupUnavailablePage = (input: {
   });
 };
 
-export const renderSignupRateLimitedPage = (language: Language): string => {
-  const t = messages[language];
-  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escapeHtml(`${t.errorTitlePrefix}${t.signupRateLimitedTitle}`)}</title><style>body{max-width:40rem;margin:0 auto;padding:2.5rem 1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6}h1{font-size:1.75rem;line-height:1.2}</style></head><body><main data-testid="marketing-signup-rate-limited"><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><p role="alert">${escapeHtml(t.signupRateLimited)}</p></main></body></html>`;
+export const renderSignupRateLimitedPage = (input: { language: Language; formPath: string | null }): string => {
+  const t = messages[input.language];
+  const action = input.formPath === null
+    ? ''
+    : `<div class="actions"><a class="button-link" href="${escapeHtml(`${input.formPath}?lang=${input.language}`)}">${escapeHtml(t.signupBackToForm)}</a></div>`;
+  const body = `<section class="page">${renderStatusCue('error')}<p class="eyebrow">${escapeHtml(t.signupEyebrow)}</p><h1>${escapeHtml(t.signupRateLimitedTitle)}</h1><div class="status"><p class="lede" role="alert">${escapeHtml(t.signupRateLimited)}</p>${action}</div></section>`;
+  return `<!doctype html><html lang="${input.language}" style="--accent-light:${escapeHtml(deriveLightAccent(DEFAULT_ACCENT))};--accent-dark:${escapeHtml(deriveDarkAccent(DEFAULT_ACCENT))}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F4EF"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1012"><title>${escapeHtml(`${t.errorTitlePrefix}${t.signupRateLimitedTitle}`)}</title><style>${publicStyles}</style></head><body><main class="shell" data-testid="marketing-signup-rate-limited">${body}</main></body></html>`;
 };
 
 export const renderSignupFormPage = (input: {

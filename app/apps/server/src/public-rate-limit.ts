@@ -10,7 +10,7 @@ import {
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
-import { err, isProductionEnvironment, type AppError } from '#core/domain/index.js';
+import { err, isProductionEnvironment, marketingSignupFormSlugSchema, type AppError } from '#core/domain/index.js';
 import {
   claimRateLimitWindow,
   resolveTenant,
@@ -240,9 +240,25 @@ const claimSignupRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareD
   return claimed.ok ? null : { bucket: 'address', error: claimed.error };
 };
 
+const decodedPathSegment = (segment: string): string | null => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+};
+
+const signupFormPathFromSubmission = (path: string): string | null => {
+  if (!isMarketingSignupSubmissionPath(path)) return null;
+  const slug = decodedPathSegment(path.split('/').at(-2) ?? '');
+  const parsed = marketingSignupFormSlugSchema.safeParse(slug);
+  return parsed.success && parsed.data === slug ? `/marketing/forms/${encodeURIComponent(parsed.data)}` : null;
+};
+
 const signupRateLimitedPage = (c: Context, error: AppError): Response => {
   const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
-  return new Response(renderSignupRateLimitedPage(languageFromRequest(c.req.raw)), {
+  const page = renderSignupRateLimitedPage({ language: languageFromRequest(c.req.raw), formPath: signupFormPathFromSubmission(c.req.path) });
+  return new Response(page, {
     status: HTTP_STATUS_BY_ERROR_CODE.rate_limited,
     headers: {
       'content-type': 'text/html; charset=UTF-8',

@@ -21,6 +21,7 @@ import {
   renderPreferenceResultPage,
   renderPreferencesPage,
   renderSignupFormPage,
+  renderSignupRateLimitedPage,
   renderSignupUnavailablePage,
   renderStatusPage,
   type PublicBrand,
@@ -620,6 +621,24 @@ describe('sign-up pages', () => {
     expect(html).toContain('You can unsubscribe at any time.</p>');
     expect(html).not.toContain('More information:');
     expect(html).not.toContain('privacy and consent details');
+  });
+
+  it('renders the per-IP rate-limited page with the shared static styles, the default accent and one link back to the form', () => {
+    const html = renderSignupRateLimitedPage({ language: 'en', formPath: '/marketing/forms/newsletter' });
+    expect(html).toContain(`<html lang="en" style="--accent-light:${deriveLightAccent('#7c3aed')};`);
+    expect(html).toContain('.shell{width:min(calc(100% - 2rem),40rem)');
+    expect(html).toContain('<title>Error: Try again later</title>');
+    expect(html).toContain('<main class="shell" data-testid="marketing-signup-rate-limited"><section class="page"><span class="status-cue status-cue--error" aria-hidden="true">');
+    expect(html).toContain('<p class="eyebrow">Stay in touch</p><h1>Try again later</h1><div class="status"><p class="lede" role="alert">Too many sign-up attempts. Wait a few minutes and try again.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Back to the sign-up form</a></div></div></section></main>');
+    expect(html).not.toContain('Studio Demo');
+    expect(html).not.toContain('class="brand"');
+    expect(html).not.toContain('<script');
+  });
+
+  it('renders the per-IP rate-limited page without a link when the form path is unknown', () => {
+    const html = renderSignupRateLimitedPage({ language: 'pl', formPath: null });
+    expect(html).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p></div>`);
+    expect(html).not.toContain('button-link"');
   });
 
   it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {

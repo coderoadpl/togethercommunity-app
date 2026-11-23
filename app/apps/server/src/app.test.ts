@@ -3437,7 +3437,7 @@ describe('public rate limiting', () => {
     purgeExpired: async () => 0,
   };
 
-  it('answers a per-IP over-limit sign-up form post with a minimal page that needs no workspace lookup', async () => {
+  it('answers a per-IP over-limit sign-up form post with a static page that links back to the form and needs no workspace lookup', async () => {
     const configured = deps({
       rateLimitBuckets: { claim: async (input) => input.scope !== 'signup:ip', purgeExpired: async () => 0 },
     });
@@ -3449,19 +3449,27 @@ describe('public rate limiting', () => {
       vi.spyOn(configured.tenants, 'findSettings'),
     ];
     const app = buildApp(configured);
-    const submit = (contentType: string, body: string) => app.request('/api/public/marketing/forms/newsletter/submit?lang=pl', {
+    const submit = (contentType: string, body: string, slug = 'newsletter') => app.request(`/api/public/marketing/forms/${slug}/submit?lang=pl`, {
       method: 'POST', headers: { host: 'acme.localhost:48730', 'content-type': contentType }, body,
     });
-    const formPost = await submit('application/x-www-form-urlencoded', new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString());
+    const formBody = new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString();
+    const formPost = await submit('application/x-www-form-urlencoded', formBody);
     expect(formPost.status).toBe(429);
     expect(Number(formPost.headers.get('retry-after'))).toBeGreaterThan(0);
     expect(formPost.headers.get('content-type')).toBe('text/html; charset=UTF-8');
     expect(formPost.headers.get('cache-control')).toBe('no-store');
     const html = await formPost.text();
-    expect(html).toContain('<html lang="pl">');
-    expect(html).toContain(`<p role="alert">${publicMarketingMessagesPl.signupRateLimited}</p>`);
+    expect(html).toContain('<html lang="pl" style=');
+    expect(html).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupBackToForm}</a></div>`);
     expect(html).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupRateLimitedTitle}</title>`);
+    expect(html).toContain('status-cue--error');
     expect(html).not.toContain('reader@example.org');
+    expect(html).not.toContain('class="brand"');
+    for (const slug of ['News%20Letter', '%E0%A4%A', 'news%2F..%2Fother']) {
+      const unknownForm = await (await submit('application/x-www-form-urlencoded', formBody, slug)).text();
+      expect(unknownForm).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p></div>`);
+      expect(unknownForm).not.toContain('class="button-link');
+    }
     for (const lookup of lookups) expect(lookup).not.toHaveBeenCalled();
     for (const [contentType, body] of [['application/json', JSON.stringify({ email: 'reader@example.org' })], ['text/plain', '{}']] as const) {
       const rejected = await submit(contentType, body);
@@ -3518,7 +3526,7 @@ describe('public rate limiting', () => {
     expect(response.status).toBe(429);
     expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
     expect(response.headers.get('access-control-allow-origin')).toBe('https://studio.example.org');
-    expect(await response.text()).toContain(`<p role="alert">${publicMarketingMessagesEn.signupRateLimited}</p>`);
+    expect(await response.text()).toContain(`<p class="lede" role="alert">${publicMarketingMessagesEn.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">${publicMarketingMessagesEn.signupBackToForm}</a></div>`);
     expect(lookupsBeforeLimiter).toBeGreaterThan(0);
     expect(lookupCount()).toBe(lookupsBeforeLimiter);
     expect(formLookupsBeforeLimiter).toBe(1);

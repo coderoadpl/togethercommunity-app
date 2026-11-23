@@ -170,11 +170,10 @@ describe('the file checks before an approval', () => {
     afterEach(() => { vi.useRealTimers(); });
 
     const settlesBy = async <T>(work: Promise<T>, ms: number): Promise<T | 'pending'> => {
-      const watched = work.then((value): { value: T } => ({ value }));
-      let outcome: { value: T } | 'pending' = 'pending';
-      void watched.then((settled) => { outcome = settled; });
+      const seen: { outcome: { value: T } | null } = { outcome: null };
+      void work.then((value) => { seen.outcome = { value }; });
       await vi.advanceTimersByTimeAsync(ms);
-      return outcome === 'pending' ? 'pending' : outcome.value;
+      return seen.outcome === null ? 'pending' : seen.outcome.value;
     };
 
     const stalled = <T>(): Promise<T> => new Promise<T>(() => undefined);

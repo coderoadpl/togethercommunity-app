@@ -158,6 +158,33 @@ it('refetches the consent copy on retry after the text changed and sends the cur
   expect(requestBody).toHaveBeenCalledTimes(2);
 });
 
+it('keeps the rejected copy closed when the refetch after a text change fails, and opens the new copy once it loads', async () => {
+  const updated = { ...metaCapiConfig, heading: 'Updated heading for this purchase?', textVersion: 'c'.repeat(64) };
+  const statusQuery = vi.fn();
+  let statusAvailable = false;
+  server.use(
+    http.post('/api/public/meta-capi/consent', () => HttpResponse.json({ ok: false, error: { code: 'validation', message: 'The consent text changed; reload before deciding', details: { fieldErrors: { textVersion: ['The consent text changed'] } } } }, { status: 400 })),
+    http.get('/api/public/checkout/session-status', () => {
+      statusQuery();
+      return statusAvailable ? HttpResponse.json({ ok: true, data: { status: 'paid', metaCapi: updated } }) : HttpResponse.error();
+    }),
+  );
+  renderConsent();
+  fireEvent.click(screen.getByRole('button', { name: metaCapiConfig.acceptLabel }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.metaCapi.textChanged);
+  fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
+  await waitFor(() => expect(statusQuery).toHaveBeenCalledOnce());
+  await waitFor(() => expect(screen.getByRole('button', { name: en.common.retry })).toBeEnabled());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent(en.metaCapi.textChanged);
+  statusAvailable = true;
+  fireEvent.click(screen.getByRole('button', { name: en.common.retry }));
+  expect(await screen.findByRole('dialog', { name: updated.heading })).toBeVisible();
+  expect(screen.queryByRole('dialog', { name: metaCapiConfig.heading })).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(statusQuery).toHaveBeenCalledTimes(2);
+});
+
 it('reopens a dismissed dialog from the no-decision row and records nothing until a choice', async () => {
   const decide = vi.fn(() => HttpResponse.json({ ok: true, data: { consent: 'denied', withdrawnAt: null } }));
   server.use(http.post('/api/public/meta-capi/consent', decide));

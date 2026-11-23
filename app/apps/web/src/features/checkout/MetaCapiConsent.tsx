@@ -74,7 +74,8 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
       .then((status) => status.metaCapi, () => undefined);
     if (current) setRefreshedConfig(current);
     setRefreshing(false);
-    reopen(current ?? config);
+    if (current) reopen(current);
+    else if (!staleText(choice.error)) reopen(config);
   };
   const undecided = state.consent === 'undecided' && !withdrawn;
   const status = choice.isPending ? { text: t.metaCapi.saving }

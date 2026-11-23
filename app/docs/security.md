@@ -31,10 +31,11 @@ applied to every Better Auth response by `createAuth`) therefore strips them
 from responses to browser requests. A request counts as a browser when it
 carries `Sec-Fetch-Site` or the Better Auth session cookie (with or without
 the `__Secure-` prefix). Current browsers send `Sec-Fetch-Site` on HTTPS and
-`localhost` origins, and page scripts cannot set or remove it; Safari before
-16.4, and plain-HTTP local development hosts a browser does not treat as
-potentially trustworthy, do not send it, which is why a cookie-bearing request
-is treated as a browser too. Such a request gets no `set-auth-token`
+`localhost` origins, and page scripts cannot set or remove it; Chrome before
+76, Firefox before 90 and Safari before 16.4 (on macOS and iOS), browsers and
+in-app webviews built on those engine versions, and plain-HTTP local
+development hosts a browser does not treat as potentially trustworthy do not
+send it, which is why a cookie-bearing request is treated as a browser too. Such a request gets no `set-auth-token`
 header, no `Access-Control-Expose-Headers` entry for it, no top-level `token`,
 no `session.token` and no `token` on session-list entries.
 Cookies, status codes and every other field stay unchanged, so browser
@@ -42,16 +43,22 @@ sign-in, sign-out, magic-link, passkey, two-factor and impersonation flows run
 on the `HttpOnly` cookie alone; the web app never reads the token. The CLI,
 the auth end-to-end harness and server-to-server smoke checks send neither
 header nor session cookie (they authenticate with `Authorization: Bearer`) and
-still receive the token they authenticate with.
+still receive the token they authenticate with. A non-browser client that keeps
+a cookie jar (a cookie-keeping HTTP session object, `curl -b`/`-c`) is treated
+as a browser once its jar holds the session cookie: a later sign-in that still
+sends that cookie gets the new session cookie but no `set-auth-token` header and
+no body `token`. Such a client keeps using the session cookie it holds, or signs
+in from a client without a cookie jar.
 Nothing stored changes; removing the wrapper restores the previous responses.
 
 Remaining gaps (not closed by this change):
 
 - A response that creates a session (sign-up, sign-in, two-factor, magic-link,
-  passkey or One Tap) to a browser that sends no `Sec-Fetch-Site` (Safari before
-  16.4, or a plain-HTTP local development host the browser does not treat as
-  potentially trustworthy) still carries the token, because that request has
-  no session cookie yet. Every later cookie-bearing response is stripped.
+  passkey or One Tap) to a browser that sends no `Sec-Fetch-Site` (Chrome
+  before 76, Firefox before 90, Safari before 16.4, browsers and in-app
+  webviews built on those engine versions, or a plain-HTTP local development
+  host the browser does not treat as potentially trustworthy) still carries the
+  token, because that request has no session cookie yet. Every later cookie-bearing response is stripped.
 - Google One Tap hands its credential (a Google ID token) to page JavaScript
   before the page posts it to `/api/auth/one-tap/callback`. A script already
   running on the page can intercept that credential and exchange it for a

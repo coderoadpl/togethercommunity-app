@@ -54,12 +54,7 @@ import type {
 } from '../ports.js';
 import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
-import {
-  checkProductAccessItems,
-  checkProposedAccessExclusions,
-  PRODUCT_ACCESS_COURSE_MESSAGE,
-  type ProductAccessCatalog,
-} from './product-access-items.js';
+import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog } from './product-access-items.js';
 
 export interface CourseManagementDeps {
   logger: { error(message: string): void };
@@ -653,7 +648,6 @@ export const updateProductAccessItems = async (
   ctx: Ctx,
   input: UpdateProductAccessItemsInput,
   deps: ProductAccessItemsDeps,
-  options: { proposed?: boolean } = {},
 ): Promise<Result<Product, AppError>> => {
   const tenant = requireStaffTenant(ctx, 'product:access:write');
   if (!tenant.ok) return tenant;
@@ -670,10 +664,6 @@ export const updateProductAccessItems = async (
   if (!sameAccessItems(parsed.data.accessItems, product.accessItems)) {
     const checked = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
     if (!checked.ok) return checked;
-  }
-  if (options.proposed === true) {
-    const exclusions = await checkProposedAccessExclusions(tenant.value, parsed.data.accessItems, deps);
-    if (!exclusions.ok) return exclusions;
   }
 
   const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);

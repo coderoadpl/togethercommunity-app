@@ -848,21 +848,8 @@ export const pl: Messages = {
     accessName: ({ name }) => format('„{name}”', { name }),
     accessGone: ({ id }) => format('coś, czego już nie ma ({id})', { id }),
     accessArchived: ({ name }) => format('„{name}” (zarchiwizowany)', { name }),
-    accessUsedElsewhere: ({ name }) => format('„{name}” (występuje też w innych kursach)', { name }),
     accessListRefused:
-      'Lista po zatwierdzeniu nie przechodzi już kontroli sklepu: czegoś z niej już nie ma, któryś z jej kursów jest zarchiwizowany albo wyklucza ona moduł, który występuje też w innych kursach. Zatwierdzenie niczego nie zmieni.',
-    accessSharedExclusionNow: ({ modules, count }) => format(plural(
-      count,
-      'Teraz ten produkt wyklucza moduł {modules}, który występuje też w innych kursach. Dlatego każdy, kto ma ten produkt, ma ten moduł zamknięty także w tych innych kursach, nawet jeśli inny jego produkt daje mu cały taki kurs. Otwiera go tylko produkt, który daje sam moduł albo ten sam kurs bez jego wykluczenia, a produkt dający jedną z jego lekcji otwiera tylko tę lekcję.',
-      'Teraz ten produkt wyklucza moduły {modules}, które występują też w innych kursach. Dlatego każdy, kto ma ten produkt, ma te moduły zamknięte także w tych innych kursach, nawet jeśli inny jego produkt daje mu cały taki kurs. Moduł otwiera tylko produkt, który daje sam ten moduł albo ten sam kurs bez jego wykluczenia, a produkt dający jedną z lekcji modułu otwiera tylko tę lekcję.',
-      'Teraz ten produkt wyklucza moduły {modules}, które występują też w innych kursach. Dlatego każdy, kto ma ten produkt, ma te moduły zamknięte także w tych innych kursach, nawet jeśli inny jego produkt daje mu cały taki kurs. Moduł otwiera tylko produkt, który daje sam ten moduł albo ten sam kurs bez jego wykluczenia, a produkt dający jedną z lekcji modułu otwiera tylko tę lekcję.',
-    ), { modules }),
-    accessSharedExclusionLifted: ({ modules, count }) => format(plural(
-      count,
-      'Po zatwierdzeniu ten produkt przestanie wykluczać moduł {modules}, który występuje też w innych kursach, więc każdemu, kto ma ten produkt, może się on znów otworzyć w każdym kursie, który go zawiera.',
-      'Po zatwierdzeniu ten produkt przestanie wykluczać moduły {modules}, które występują też w innych kursach, więc każdemu, kto ma ten produkt, mogą się one znów otworzyć w każdym kursie, który je zawiera.',
-      'Po zatwierdzeniu ten produkt przestanie wykluczać moduły {modules}, które występują też w innych kursach, więc każdemu, kto ma ten produkt, mogą się one znów otworzyć w każdym kursie, który je zawiera.',
-    ), { modules }),
+      'Lista po zatwierdzeniu nie przechodzi już kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego nie zmieni.',
     approveProductSetAccess: ({ target, access }) => format(
       'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu zyska dostęp do tego, co jest na liście, i straci dostęp do tego, czego na niej nie ma, chyba że nadal daje mu go inny jego produkt.',
       { target, access },

@@ -527,7 +527,7 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
       lessons: scope.repositories.lessons,
       ids: deps.ids,
       clock: deps.clock,
-    }, { proposed: true })),
+    })),
   }),
   'download.add': entry('download.add', {
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['download.add'],

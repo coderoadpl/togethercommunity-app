@@ -476,12 +476,10 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
     courses: ids.courseIds.length === 0 ? [] : (await db.select({ id: courses.id, title: courses.name, archivedAt: courses.archivedAt }).from(courses)
       .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, ids.courseIds))))
       .map((row) => ({ id: row.id, title: row.title, archived: row.archivedAt !== null })),
-    modules: ids.moduleIds.length === 0 ? [] : (await db.select({
-      id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title, courseIds: courseModules.courseIds,
-    })
+    modules: ids.moduleIds.length === 0 ? [] : (await db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
       .from(courseModules)
       .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, ids.moduleIds))))
-      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title), courseIds: row.courseIds })),
+      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title) })),
     lessons: ids.lessonIds.length === 0 ? [] : await db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
       .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids.lessonIds))),
   }),

@@ -416,7 +416,6 @@ const LABELS = {
   courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Deep course' }],
   modules: [{ id: 'module-basics', title: 'Basics' }, { id: 'module-extra', title: 'Extras' }],
   lessons: [{ id: 'lesson-welcome', title: 'Welcome' }, { id: 'lesson-goodbye', title: 'Goodbye' }, { id: 'lesson-retired', title: null }],
-  excludedModulesInOtherCourses: [],
 };
 
 const EVERY_KIND: StoredAccessItem[] = [
@@ -475,40 +474,30 @@ describe('the approval confirmation of what a product grants', () => {
     expect(textOutsideBdi(summary)).not.toContain(OVERRIDE);
   });
 
-  it('says that approving changes nothing when the new list names something gone, an archived course or a shared exclusion', () => {
+  it('says that approving changes nothing when the new list names something gone or an archived course', () => {
     const refused = `${t.approveProductSetAccessRefused({ target: 'Mug' })}`;
     expect(summaryOf(accessChange([{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] }], LABELS))).toBe(refused);
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS))).toBe(refused);
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-deep' }], { ...LABELS, archivedCourses: ['course-deep'] }))).toBe(refused);
-    expect(summaryOf(accessChange(
-      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
-      { ...LABELS, excludedModulesInOtherCourses: ['module-extra'] },
-    ))).toBe(refused);
     expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe('The new list of what “Mug” grants no longer passes the shop’s check, so approving changes nothing.');
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
       .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
   });
 
-  it('says that a lifted exclusion of a module other courses use can open it there again, and still that nothing else changes', () => {
-    const labels = { ...LABELS, excludedModulesInOtherCourses: ['module-extra'] };
-    const summary = summaryOf(accessChange(
+  it('words an added or lifted exclusion as what the list grants in that course, with nothing about other courses', () => {
+    const plain = (access: string) =>
+      `Buyers of “Mug” will get access to: ${access}. Everyone who already has access to this product, current buyers included, `
+      + 'gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them. Nothing else changes.';
+    expect(summaryOf(accessChange(
       [{ level: 'course', courseId: 'course-intro' }],
-      labels,
+      LABELS,
       [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
-    ));
-    expect(summary).toBe(
-      'Buyers of “Mug” will get access to: the whole course “Intro course”. Everyone who already has access to this product, current buyers included, '
-      + 'gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them. '
-      + 'After approval this product no longer excludes the module “Extras”, which other courses also use, so for everyone who has this product '
-      + 'it can open again in every course that contains it. Nothing else changes.',
-    );
-    const ambiguous = summaryOf(accessChange(
+    ))).toBe(plain('the whole course “Intro course”'));
+    expect(summaryOf(accessChange(
       [{ level: 'course', courseId: 'course-deep', excludedModuleIds: ['module-extra'] }],
-      labels,
+      LABELS,
       [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
-    ));
-    expect(ambiguous).not.toContain(t.approveProductSetAccessRefused({ target: 'Mug' }));
-    expect(ambiguous).not.toContain('can open again');
+    ))).toBe(plain('the course “Deep course” without its module “Extras”'));
   });
 
   it('adds the access sentence of every access item to a group confirmation and nothing for other items', () => {
@@ -557,8 +546,6 @@ describe('the approval confirmation of what a product grants', () => {
       polish.accessModules({ course: 'C', modules: 'M', count: 2 }),
       polish.accessLessons({ course: 'C', lessons: 'L', count: 1 }),
       polish.accessCourseWithout({ course: 'C', modules: 'M', count: 1 }),
-      polish.accessSharedExclusionNow({ modules: 'M', count: 1 }),
-      polish.accessSharedExclusionLifted({ modules: 'M', count: 2 }),
       polish.accessListRefused,
       polish.approveProductSetAccess({ target: 'T', access: 'A' }),
       polish.approveProductSetAccessNothing({ target: 'T' }),

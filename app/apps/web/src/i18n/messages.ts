@@ -732,10 +732,7 @@ export interface Messages {
     accessName: (params: { name: string }) => string;
     accessGone: (params: { id: string }) => string;
     accessArchived: (params: { name: string }) => string;
-    accessUsedElsewhere: (params: { name: string }) => string;
     accessListRefused: string;
-    accessSharedExclusionNow: (params: { modules: string; count: number }) => string;
-    accessSharedExclusionLifted: (params: { modules: string; count: number }) => string;
     approveProductSetAccess: (params: { target: string; access: string }) => string;
     approveProductSetAccessNothing: (params: { target: string }) => string;
     approveProductSetAccessNewProduct: (params: { target: string; access: string }) => string;

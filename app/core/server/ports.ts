@@ -3188,7 +3188,7 @@ export interface ChangeProposalTargetLabelReader {
 
 interface ChangeProposalAccessTitles {
   courses: ReadonlyArray<{ id: string; title: string; archived: boolean }>;
-  modules: ReadonlyArray<{ id: string; title: string; courseIds: readonly string[] }>;
+  modules: ReadonlyArray<{ id: string; title: string }>;
   lessons: ReadonlyArray<{ id: string; title: string }>;
 }
 

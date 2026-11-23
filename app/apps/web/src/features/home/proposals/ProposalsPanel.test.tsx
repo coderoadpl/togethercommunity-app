@@ -27,8 +27,8 @@ import {
   accessChangeProposal,
   accessChangeProposalGroup,
   accessClearProposal,
+  accessExclusionLiftedProposal,
   accessGoneProposal,
-  accessSharedExclusionProposal,
   CHANGE_PROPOSAL_GROUP_ID,
   changeProposalGroup,
   FILE_GROUP_ID,
@@ -910,7 +910,6 @@ describe('ProposalsPanel', () => {
     expect(row).toHaveTextContent('the lessons “Mixing palettes”, “Light and shade”, each in every course that uses it (chosen from “Colour basics”)');
     expect(within(row).queryByTestId('access-gone')).toBeNull();
     expect(within(card).queryByTestId('proposal-access-refused')).toBeNull();
-    expect(within(card).queryByTestId('proposal-access-shared')).toBeNull();
     expect(within(card).queryByTestId('proposal-field-accessItems')).toBeNull();
 
     await userEvent.click(within(card).getByTestId('proposal-approve'));
@@ -945,23 +944,21 @@ describe('ProposalsPanel', () => {
       .toBe(t.approveProductSetAccessRefused({ target: 'Field Guide (digital)' }));
   });
 
-  it('explains an exclusion of a module other courses use that the list now holds, and that approving lifts it', async () => {
-    usePending([accessSharedExclusionProposal]);
+  it('shows a lifted exclusion as the two lists alone, with no note, and confirms only what the new list grants', async () => {
+    usePending([accessExclusionLiftedProposal]);
 
     renderPanel();
 
-    const card = await screen.findByTestId(`proposal-card-${accessSharedExclusionProposal.id}`);
-    expect(within(card).getByTestId('proposal-access-changes')).toHaveTextContent('the course “Sketching from life” without its module “Warm-up drills” (also in other courses)');
-    const shared = within(card).getByTestId('proposal-access-shared');
-    expect(normalized(shared.textContent ?? '')).toBe(
-      `${t.accessSharedExclusionNow({ modules: '“Warm-up drills”', count: 1 })} ${t.accessSharedExclusionLifted({ modules: '“Warm-up drills”', count: 1 })}`,
-    );
-    expect(shared).toHaveTextContent('closed in those other courses too, even when another of their products grants such a course whole');
-    expect(within(card).queryByTestId('proposal-access-refused')).toBeNull();
+    const card = await screen.findByTestId(`proposal-card-${accessExclusionLiftedProposal.id}`);
+    const row = within(card).getByTestId('proposal-access-changes');
+    expect(row).toHaveTextContent('the course “Sketching from life” without its module “Warm-up drills”');
+    expect(row).not.toHaveTextContent('other courses');
+    expect(within(card).queryByRole('alert')).toBeNull();
 
     await userEvent.click(within(card).getByTestId('proposal-approve'));
-    const summary = normalized(within(await screen.findByTestId('proposal-approve-dialog')).getByTestId('proposal-approve-summary').textContent ?? '');
-    expect(summary).toContain(`${t.accessSharedExclusionLifted({ modules: '“Warm-up drills”', count: 1 })} ${t.approveNothingElse}`);
+    expect(normalized(within(await screen.findByTestId('proposal-approve-dialog')).getByTestId('proposal-approve-summary').textContent ?? '')).toBe(
+      `${t.approveProductSetAccess({ target: 'Field Guide (digital)', access: 'the whole course “Sketching from life”' })} ${t.approveNothingElse}`,
+    );
   });
 
   it('shows the access items of a group, words the one for a product an earlier item creates without current buyers, and approves the group', async () => {

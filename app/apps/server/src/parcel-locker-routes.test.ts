@@ -8,7 +8,8 @@ import { verifyCheckoutPickupPoint, withPickupPointLookupBudget, type PublicRate
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import type { AppVars } from './app-vars.js';
-import { lookupBudgetSpentOnError, registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
+import { lookupBudgetSpentOnError } from './parcel-locker-budget.js';
+import { registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
 import { publicRateLimitMiddleware, selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { publicRouteManifestEntry } from './public-route-manifest.js';
 import { requestOriginPolicy } from './request-origin-policy.js';

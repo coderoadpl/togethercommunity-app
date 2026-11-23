@@ -981,7 +981,7 @@ server call a third party on an anonymous request. Its limits:
   60,000 public), and none of them reaches the carrier.
 - A claim on either budget that throws (a lock or statement timeout on the
   shared row) counts as a spent budget (`lookupBudgetSpentOnError` in
-  `apps/server/src/parcel-locker-routes.ts`): the carrier is not asked, the
+  `apps/server/src/parcel-locker-budget.ts`): the carrier is not asked, the
   error goes to the request span and the server log, and the lookup answers
   `unavailable`, so checkout stores the code as unverified instead of answering
   500. The claim itself has no time bound of its own; it waits as long as any

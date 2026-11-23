@@ -202,24 +202,25 @@ same pass if they were ever copied into development.
 
 **STATUS:** done
 
-Every send mints an opaque token from 24 random bytes
-(`apps/server/src/composition.ts:471`). Tokens are stored per send with a unique
-index in `unsubscribe_tokens` (`adapters/db/app-schema.ts:1328-1342`) and issued
-for broadcasts and test sends (`core/server/usecases/marketing-email.ts:997-1003`,
-`core/server/usecases/marketing-email.ts:1373-1385`). Links use
-`${APP_BASE_URL}/u/<token>` (`apps/server/src/composition.ts:521`), and messages
-carry both one-click unsubscribe headers
-(`core/domain/marketing-email.ts:335-338`). Consumption marks `used_at`
-(`core/server/ports.ts:1122-1131`,
-`core/server/usecases/marketing-email.ts:467-522`). No address appears in the
-URL.
+Every send mints an opaque token from 24 random bytes (`tokens.nextToken` in
+`apps/server/src/composition.ts`). Tokens are stored per send with a unique
+index in `unsubscribe_tokens` (`unsubscribeTokens` in `adapters/db/app-schema.ts`)
+and issued for broadcasts and test sends (`enqueueMarketingMessagesExecution`
+and `testSendCampaignToSelf` in `core/server/usecases/marketing-email.ts`).
+Links use `${APP_BASE_URL}/u/<token>` (`unsubscribeBaseUrl` in
+`apps/server/src/composition.ts`), and messages carry both one-click unsubscribe
+headers (`canonicalMarketingHeaders` in `core/domain/marketing-email.ts`).
+Consumption marks `used_at` (`UnsubscribeTokenRepository.consume` in
+`core/server/ports.ts`, `unsubscribeOneClick` in
+`core/server/usecases/marketing-email.ts`). No address appears in the URL.
 
 Verify once in production by sending a campaign to a controlled Gmail address.
-Gmail's native one-click control and the preference page's plain Confirm button
-withdraw only the consent named by the production token's `consent:<id>` scope
-(`core/server/usecases/marketing-email.ts:467-522`,
-`core/server/usecases/marketing-email.ts:997-1003`). For each action, verify
-that the latest consent projection is withdrawn:
+Gmail's native one-click control (`POST /u/:token`) and the preference page's
+Unsubscribe button (`POST /u/:token/confirm`) withdraw only the consent named by
+the production token's `consent:<id>` scope (`unsubscribeOneClick` in
+`core/server/usecases/marketing-email.ts`, routes in
+`apps/server/src/marketing-routes.ts`). For each action, verify that the latest
+consent projection is withdrawn:
 
 ```sql
 select definition_id, status, occurred_at
@@ -234,11 +235,12 @@ For a campaign send, the `email_events` lifecycle also records
 `mail_kind = 'marketing'` and `type = 'unsubscribed'`. Neither action writes a
 suppression row for a production consent-scoped token.
 
-Then open the preference page and use Unsubscribe from everything. That button
-is the separate `/u/:token/all` path and writes `unsubscribe_global`
-unconditionally (`apps/server/src/marketing-routes.ts:591-602`,
-`core/server/usecases/marketing-email.ts:525-583`,
-`apps/server/src/public-marketing-pages.ts:306`). Verify it with:
+Then open the preference page and use Unsubscribe from all marketing emails.
+That button is the separate `/u/:token/all` path and writes
+`unsubscribe_global` unconditionally (`POST /u/:token/all` in
+`apps/server/src/marketing-routes.ts`, `unsubscribeAllMarketing` in
+`core/server/usecases/marketing-email.ts`, the form in
+`apps/server/src/public-marketing-pages.ts`). Verify it with:
 
 ```sql
 select email, reason
@@ -249,8 +251,8 @@ where email = '<controlled-address>'
 
 This query must return the controlled address. Its plaintext `email` predicate
 is valid only for unsubscribe suppressions. Erasure suppressions store
-`email = null` and only `email_hmac`
-(`adapters/db/repositories.ts:1347-1351`).
+`email = null` and only `email_hmac` (`createMemberErasureRepository` in
+`adapters/db/repositories.ts`).
 
 ### 10. Rate limiting
 

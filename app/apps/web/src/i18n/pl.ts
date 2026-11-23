@@ -3001,7 +3001,7 @@ export const pl: Messages = {
     erasureEffects: {
       profile: 'Wyświetlana nazwa, e-mail i zdjęcie zostaną usunięte z profilu; z wcześniejszych zamówień zostaną usunięte imię i nazwisko, ulica i numer telefonu.',
       posts: 'Wpisy pozostaną, podpisane jako „Konto usunięte”.',
-      access: 'Dostęp do kupionych treści wygaśnie, a zespół anuluje subskrypcje u dostawcy płatności.',
+      access: 'Dostęp do kupionych treści wygaśnie, a zespół poprosi dostawcę płatności o anulowanie subskrypcji. Jeśli później pojawi się kolejne obciążenie, skontaktuj się z twórcą.',
       signIn: 'Konto logowania również zostanie usunięte, chyba że nadal jest powiązane z inną społecznością lub rolą w zespole.',
     },
     erasureDialogBody: ({ days }) =>

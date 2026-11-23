@@ -2947,7 +2947,7 @@ export const en: Messages = {
     erasureEffects: {
       profile: 'Your name, email and picture are removed from your profile; your name, street and phone are erased from past orders.',
       posts: 'Your posts stay, signed as “Deleted account”.',
-      access: 'Your access to purchased content ends, and the team cancels your subscriptions with the payment provider.',
+      access: 'Your access to purchased content ends, and the team asks the payment provider to cancel your subscriptions. If you are charged again after that, contact the creator.',
       signIn: 'Your sign-in account is deleted too, unless it is still linked to another workspace or a team role.',
     },
     erasureDialogBody: ({ days }) =>

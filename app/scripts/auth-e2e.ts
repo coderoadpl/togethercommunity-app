@@ -5,11 +5,16 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type Response } from 'playwright-core';
+import { chromium, type Browser, type Page, type Response } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
-import { createAuthE2eClient, type AuthE2eTransport } from '#adapters/auth/e2e-http.js';
+import {
+  createAuthE2eClient,
+  emptySecureSessionCookieHeader,
+  sessionCookieOf,
+  type AuthE2eTransport,
+} from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
@@ -44,20 +49,33 @@ class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
 }
-const assertNoBrowserSessionToken = async (response: Response): Promise<void> => {
-  assert(response.status() === 200, `browser password sign-in answered ${response.status()}`);
-  const headers = await response.allHeaders();
-  assert(!('set-auth-token' in headers), 'browser sign-in response carried a set-auth-token header');
+const assertNoSessionToken = (
+  response: { status: number; header: (name: string) => string | undefined; json: unknown },
+  label: string,
+): void => {
+  assert(response.status === 200, `${label} answered ${response.status}`);
+  assert(response.header('set-auth-token') === undefined, `${label} response carried a set-auth-token header`);
   assert(
-    !(headers['access-control-expose-headers'] ?? '').toLowerCase().includes('set-auth-token'),
-    'browser sign-in response exposed set-auth-token',
+    !(response.header('access-control-expose-headers') ?? '').toLowerCase().includes('set-auth-token'),
+    `${label} response exposed set-auth-token`,
   );
   const body = z.object({
     token: z.unknown().optional(),
     session: z.object({ token: z.unknown().optional() }).optional(),
-  }).parse(await response.json());
-  assert(body.token === undefined && body.session?.token === undefined, 'browser sign-in response body carried the session token');
+  }).parse(response.json);
+  assert(body.token === undefined && body.session?.token === undefined, `${label} response body carried the session token`);
 };
+const assertNoBrowserSessionToken = async (response: Response, label: string): Promise<void> => {
+  const headers = await response.allHeaders();
+  assertNoSessionToken(
+    { status: response.status(), header: (name) => headers[name], json: await response.json() },
+    label,
+  );
+};
+const authResponse = (page: Page, path: string): Promise<Response> => page.waitForResponse(
+  (response) => new URL(response.url()).pathname.endsWith(path) && response.request().method() === 'POST',
+  { timeout: 15000 },
+);
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
   try {
@@ -223,6 +241,28 @@ const runTotpPath = async (transport: AuthE2eTransport): Promise<void> => {
   console.log('auth-e2e: TOTP path OK');
 };
 
+const runEmptySecureSessionCookiePath = async (transport: AuthE2eTransport): Promise<void> => {
+  const credentials = { email: SMOKE_TENANT_CREATOR_EMAIL, password: 'demo-password-15' };
+  const first = await createAuthE2eClient(transport).signInEmailResponse(credentials);
+  assert(first.status === 200, `non-browser sign-in answered ${first.status}`);
+  const sessionCookie = sessionCookieOf(first);
+  assert(sessionCookie !== null, 'non-browser sign-in did not set a session cookie matching its set-auth-token');
+  const masked = await createAuthE2eClient({
+    ...transport,
+    headers: { ...transport.headers, cookie: emptySecureSessionCookieHeader(sessionCookie) },
+  }).signInEmailResponse(credentials);
+  const label = 'sign-in with an empty secure-prefixed session cookie before the valid one';
+  assertNoSessionToken(
+    { status: masked.status, header: (name) => masked.headers.get(name) ?? undefined, json: masked.json },
+    label,
+  );
+  assert(
+    masked.headers.getSetCookie().some((entry) => entry.startsWith(`${sessionCookie.name}=`) && !/Max-Age=0/iu.test(entry)),
+    `${label} did not set the session cookie`,
+  );
+  console.log('auth-e2e: empty secure-prefixed session cookie path OK');
+};
+
 const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -332,12 +372,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
-    const signInResponse = page.waitForResponse(
-      (response) => new URL(response.url()).pathname.endsWith('/sign-in/email') && response.request().method() === 'POST',
-      { timeout: 15000 },
-    );
+    const signInResponse = authResponse(page, '/sign-in/email');
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
-    await assertNoBrowserSessionToken(await signInResponse);
+    await assertNoBrowserSessionToken(await signInResponse, 'browser password sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
@@ -363,7 +400,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('sign-out').click();
     await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
     await page.getByTestId('login-password').waitFor({ state: 'visible', timeout: 15000 });
+    const passkeyResponse = authResponse(page, '/passkey/verify-authentication');
     await page.getByTestId('signin-passkey').click();
+    await assertNoBrowserSessionToken(await passkeyResponse, 'browser passkey sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
@@ -373,7 +412,9 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     );
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
+    const discoverablePasskeyResponse = authResponse(page, '/passkey/verify-authentication');
     await page.getByTestId('signin-passkey').click();
+    await assertNoBrowserSessionToken(await discoverablePasskeyResponse, 'browser discoverable passkey sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     console.log('auth-e2e: identifier and discoverable passkey paths OK');
   } finally {
@@ -411,6 +452,7 @@ try {
   });
   await runPasswordResetPath(createAuthE2eTransport(connectUrl, webBaseUrl), webBaseUrl);
   await runTotpPath(createAuthE2eTransport(connectUrl, webBaseUrl));
+  await runEmptySecureSessionCookiePath(createAuthE2eTransport(connectUrl, webBaseUrl));
   await runIdentifierFirstPath(webBaseUrl);
   await runMagicLinkReturnToPath(webBaseUrl);
   const studioBaseUrl = `http://studio.localhost:${port}`;

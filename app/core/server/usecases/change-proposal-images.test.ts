@@ -211,6 +211,21 @@ describe('uploading an image for a proposal', () => {
     expect(h.store.imageUploads).toHaveLength(1);
   });
 
+  it('presigns a proposed image of at most 4 MiB, the largest owner preview the hosted response carries, and keeps 5 MiB for live uploads', async () => {
+    const h = harness();
+    const begin = (sizeBytes: number, ctx = keyCtx()) =>
+      beginProposedBrandingAssetUpload(ctx, { kind: 'logo', fileName: 'a.png', contentType: 'image/png', sizeBytes }, h.deps);
+    expect(await begin(4 * 1024 * 1024)).toMatchObject({ ok: true });
+    expect(await begin(4 * 1024 * 1024 + 1)).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { sizeBytes: [expect.any(String)] } } } });
+    expect(await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 4 * 1024 * 1024 + 1 }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.store.imageUploads).toHaveLength(1);
+    for (const ctx of [ownerSession, keyCtx(KEY_ID, TENANT, 'direct')]) {
+      expect(await beginBrandingAssetUpload(ctx, { kind: 'logo', fileName: 'a.png', contentType: 'image/png', sizeBytes: 5 * 1024 * 1024 }, h.deps))
+        .toMatchObject({ ok: true });
+    }
+  });
+
   it('refuses a key more uploads within the upload lifetime than the limit, with the cap named, and allows them again later', async () => {
     const h = harness({ assetsPerKey: 100, bytesPerKey: 50 * 1024 * 1024, uploadsPerKey: 2 });
     const begin = (ctx = keyCtx()) =>

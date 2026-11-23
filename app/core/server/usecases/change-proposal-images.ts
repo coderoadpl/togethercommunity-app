@@ -182,6 +182,7 @@ const beginProposedImageUpload = async (
   const { keyId } = key.value;
   return beginCandidateUpload(key.value.tenantId, KINDS_BY_FAMILY[family], input, deps, {
     signContentLength: true,
+    maxBytes: QUARANTINED_IMAGE_LIMITS.imageMaxBytes,
     reserve: async (tenantId, objectKey) => {
       const createdAt = deps.clock.nowIso();
       const countedAfter = new Date(Date.parse(createdAt) - IMAGE_ASSET_UPLOAD_TTL_SECONDS * 1000).toISOString();

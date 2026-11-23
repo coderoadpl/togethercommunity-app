@@ -23,6 +23,8 @@ const PUBLICATION_WRITE_WINDOW_MS = 5 * 60 * 1000;
 const UNRESOLVED_DELETE_GRACE_MS = 10 * 60 * 1000;
 
 export const QUARANTINED_IMAGE_LIMITS = {
+  /** The owner preview answers the whole image in one response, which must stay below the hosted 4.5 MB response limit. */
+  imageMaxBytes: 4 * 1024 * 1024,
   assetsPerKey: 100,
   bytesPerKey: 50 * 1024 * 1024,
   unattachedMaxAgeMs: 7 * 24 * 60 * 60 * 1000,

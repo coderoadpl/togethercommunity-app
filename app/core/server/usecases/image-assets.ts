@@ -121,6 +121,7 @@ export interface ImageAssetUploadStart {
 
 interface CandidateUploadOptions {
   signContentLength?: boolean;
+  maxBytes?: number;
   reserve?: (tenantId: string, key: string) => Promise<Result<void, AppError>>;
 }
 
@@ -135,6 +136,9 @@ export const beginCandidateUpload = async (
   if (!parsed.success) return err(validation('Invalid image asset', parsed.error.flatten()));
   if (!allowedKinds.includes(parsed.data.kind)) {
     return err(validation(`Image asset kind ${parsed.data.kind} is not accepted here`));
+  }
+  if (options.maxBytes !== undefined && parsed.data.sizeBytes > options.maxBytes) {
+    return err(validation('Invalid image asset', { formErrors: [], fieldErrors: { sizeBytes: [`Must be at most ${String(options.maxBytes)} bytes`] } }));
   }
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;

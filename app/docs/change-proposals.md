@@ -1073,7 +1073,10 @@ submission capability of the family: `proposal:submit:catalog` for a product
 cover, `proposal:submit:settings` for a branding image. They presign a `PUT` to
 the private candidate prefix `image-asset-candidates/` like the live upload,
 but the signature also covers `content-length` with the declared `sizeBytes`
-(1 to 5 MiB), so the storage refuses a body of any other size, and answer
+(1 byte to 4 MiB, below the 5 MiB of a live upload, so the owner preview,
+which answers the whole image in one response, stays below the hosted
+response limit of 4.5 MB; a larger declared size answers `400` naming
+`sizeBytes`), so the storage refuses a body of any other size, and answer
 `servePath: null` with `quarantined: true`, because the address depends on the
 bytes. Before it answers, each such upload start is recorded in
 `change_proposal_image_uploads` (workspace, key, candidate key, creation

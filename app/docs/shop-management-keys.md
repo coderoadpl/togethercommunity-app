@@ -1407,7 +1407,8 @@ is its base price; buyers pay the active price created next.
 ```
 
 File upload (product cover; branding images work the same through the
-settings routes). Accepted types are PNG, JPEG, WebP and SVG, at most 5 MiB;
+settings routes). Accepted types are PNG, JPEG, WebP and SVG, at most 5 MiB
+(4 MiB for a propose-mode key, whose image the owner previews in one response);
 the bytes must match the declared type.
 
 ```bash

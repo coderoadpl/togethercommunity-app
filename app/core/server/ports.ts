@@ -3269,7 +3269,7 @@ export type QuarantinedImageInsertion =
   | { kind: 'store_failed'; error: AppError }
   | { kind: 'busy' };
 
-export interface QuarantinedImageWrite {
+interface QuarantinedImageWrite {
   /** Whether the storage still holds the object of the key's unreleased row of the same image with the recorded size. */
   present(existing: QuarantinedImageAsset): Promise<Result<boolean, AppError>>;
   store(): Promise<Result<void, AppError>>;

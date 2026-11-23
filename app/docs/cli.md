@@ -93,14 +93,16 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
 
 `order refund-preview <orderId>` prints the paid, refunded and remaining amounts,
 whether the remainder was read from Stripe, the stock a full refund can return
-and the packing, shipment and invoice consequences. `order refund <orderId>`
+and the packing, shipment, invoice and subscription consequences. `order refund <orderId>`
 refunds the whole remainder; `--amount <decimal>` refunds part of it in the
 order's currency (whole numbers for zero-decimal currencies). A full refund
 needs `--remainder <decimal>`, the remainder you confirm: without it the
 command refuses, prints the preview and names the `--remainder <decimal>` to
 add, and never confirms a remainder it just read. The request carries that
 remainder, and when it changed in the meantime the server refuses with
-`conflict` naming the current remainder. Without `--yes` the command prints
+`conflict` naming the current remainder. It also carries the packing-list and
+label state of the preview the command read, and the server refuses with
+`conflict` when a label was bought or the order was packed since. Without `--yes` the command prints
 what it would refund and the flags to repeat it with. `--reason <text>`
 keeps a staff-only note, `--no-restock` turns off the stock return of a full
 refund, and `--keep-on-packing-list` keeps the order on the packing list; it

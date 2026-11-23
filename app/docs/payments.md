@@ -634,15 +634,17 @@ Owners and admins refund a paid order from Studio or `order refund` with the
 workspace's restricted key of the order's mode; see
 [the shop guide](shop.md#staff-refunds). The key needs Charges and Refunds
 (write), which the permission check above confirms. Without it a staff refund
-waits as `blocked_permission`, staff get the existing alert e-mail and the
-dispatcher retries hourly for 72 hours, as for the sold-out refund. Stripe
+waits as `blocked_permission`, staff get an alert e-mail and the dispatcher
+retries hourly for 72 hours, as for the sold-out refund; staff refund alerts
+have wording of their own and are stored pre-rendered like the buyer notice. Stripe
 refund metadata carries `tenantId`, `orderId`, `reason: staff` and
 `refundJobId`; never personal data or the staff note. A refund made in the
 Stripe Dashboard still reaches the platform through `charge.refunded`, counts
 against the refundable remainder and makes waiting staff refunds of that order
-due at once. The buyer's refund notice is stored pre-rendered as an
-`m2m-transactional` message with source `staff-refunds` (see
-[the shop guide](shop.md#staff-refunds)). The refund list is read page by page
+due at once. The buyer's refund notice and the staff refund alerts are stored
+pre-rendered as `m2m-transactional` messages with source `staff-refunds` (see
+[the shop guide](shop.md#staff-refunds)). Refund failure messages lose Stripe
+API keys and webhook secrets before they are stored or e-mailed. The refund list is read page by page
 (`starting_after`, 100 refunds a page, at most 10 pages); the refund dispatcher
 gives the read a deadline, and a page that could not end before it is not
 started (see [the shop guide](shop.md#staff-refunds)).

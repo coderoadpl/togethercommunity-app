@@ -124,10 +124,15 @@ workspace's restricted key and what to do about it.
   - `GET /api/orders/:orderId/refund-preview` → paid amount, refunded so far, refundable
     remainder, currency, mode, whether stock can be returned (units per product), whether the
     order is on the packing list, whether it has a shipment or label, whether it has an invoice,
-    and whether the remainder was read from the provider or from the platform's records only.
-  - `POST /api/orders/:orderId/refunds` with `{ requestKey, amountCents?, reason?, restock?,
-    removeFromPackingList? }` → the created (or, for a repeated `requestKey`, the existing)
-    refund.
+    whether a full refund also cancels a subscription (the order is the latest invoice of a
+    running subscription, which the `charge.refunded` handler cancels), and whether the remainder
+    was read from the provider or from the platform's records only.
+  - `POST /api/orders/:orderId/refunds` with `{ requestKey, amountCents?, expectedAmountCents?,
+    reason?, restock?, removeFromPackingList?, expectedShipmentState? }` → the created (or, for a
+    repeated `requestKey`, the existing) refund. `expectedShipmentState`
+    (`{ onPackingList, hasShipmentOrLabel }`) is the state the preview showed; when the state
+    read under the order lock differs, the request is refused with `conflict` and
+    `details.shipmentState` (D15).
   - `POST /api/orders/:orderId/packing-list` → puts a refunded order without fulfilment status
     back to `to_pack` ("Ship anyway") and takes back out of stock, once and in the same
     transaction, the units a staff refund returned (`adjusted` stock event with
@@ -138,8 +143,9 @@ workspace's restricted key and what to do about it.
   `refunded`; `provider` is `stripe`; it has a payment intent id; `amountCents > 0`;
   `cancelReason` is null (a sold-out order is refunded by its own job); and the refundable
   remainder is above zero. A `refunded` order has a remainder only when the provider's refund
-  list, read at request time, shows money left (a full refund that failed after
-  `charge.refunded`); when the list cannot be read its remainder is zero. Access the webhook
+  list, read at request time, shows refunds that failed or were canceled (a full refund that
+  failed after `charge.refunded`), and at most their sum; one marked refunded without such a
+  refund (for example after a dispute) and one whose list cannot be read have none. Access the webhook
   revoked is not restored automatically; the staff alert of a refund that failed after
   submission says to grant it again on the member page.
   Anything else is refused with `conflict` or `validation` and a sentence naming the reason.
@@ -171,10 +177,18 @@ workspace's restricted key and what to do about it.
   its own amount when that one fails. A typed amount that covers the
   whole remainder at request time gets the full refund's stock and packing choices (FR-9). Both use the existing idempotency-key
   generations (`staff-refund-<id>`, `staff-refund-<id>-<n>`), lease, retry delays,
-  `blocked_permission`, status checks, `unconfirmed` and staff alerts.
+  `blocked_permission`, status checks, `unconfirmed` and staff alert rules. Before every create
+  call the dispatcher saves `create_outcome_unknown` and the key generation it uses with a
+  lease-checked update, and sends no request when the lease is gone; the record is cleared only
+  when its own provider refund is seen or a list showing none was followed by a create call the
+  provider refused. While it is set, no failed refund list counts as a refusal: the read is
+  retried and the refund ends `unconfirmed`, never `failed`, when the retries end (D16).
 - FR-7: The dispatcher claims due jobs from both tables in one run under the existing cap and
   deadline (sold-out jobs first when both are due at the same instant); the kick after a webhook
-  and the minute tick are shared.
+  and the minute tick are shared. A job's deadline is the run's deadline and, on the cron tick,
+  at most 21 seconds after its claim; the refund list reads its first page at once and starts no
+  further page that could not end by that deadline less one create call, and a list cut short
+  counts as unread (a temporary failure).
 - FR-8: Provider refund metadata: `tenantId`, `orderId`, `reason: staff`, `refundJobId`. No
   personal data and no staff reason.
 - FR-9: Full refund before shipping (`fulfilmentStatus = to_pack`, no shipment): `restock`
@@ -193,7 +207,11 @@ workspace's restricted key and what to do about it.
   now (as it does for the sold-out job), so Studio shows the outcome within a minute.
 - FR-13: Studio order detail: "Refund" action, dialog (full / partial), refund history (amount,
   staff member, time, reason, state badge reusing `OrderRefundJob`), totals Paid / Refunded /
-  Remaining, "Ship anyway" when the order was taken off the packing list. A partial request from
+  Remaining (from the preview when it read the provider's list, otherwise the platform's records
+  with a note saying so), "Ship anyway" when the order was taken off the packing list. The dialog
+  says access ends unless another purchase keeps it and names a subscription a full refund
+  cancels; after a packing or label conflict it reloads the preview and resets the stock and
+  packing choices to the new defaults. A partial request from
   the dialog always sends `restock: false` and `removeFromPackingList: false`, so a remainder that
   shrank after the preview loaded never turns it into the full refund's choices; every field is
   locked while the request is in flight, and a refusal stays pinned above the buttons. The Studio orders list
@@ -206,9 +224,17 @@ workspace's restricted key and what to do about it.
   The shop integration order feed is unchanged in this PR (it already carries the status).
 - FR-15: Buyer refund notice (see US-005), outbox id `order-refund-issued:<refundId>`, rendered
   at enqueue time from the `order-refund-issued` template (language as the sold-out refund
-  e-mail, branding as other buyer e-mails, amount and short reference) and stored pre-rendered
-  as an `m2m-transactional` payload (`subject`, `html`, `text`) with `sourceApp: 'staff-refunds'`
-  and `tenantTransportRequired: false` (D10'); queued only for staff refunds, once.
+  e-mail, branding as other buyer e-mails, amount in the currency's own minor units and short
+  reference) and stored pre-rendered as an `m2m-transactional` payload (`subject`, `html`,
+  `text`) with `sourceApp: 'staff-refunds'` and `tenantTransportRequired: false` (D10'); queued
+  only for staff refunds, once, also at the last scheduled status check that first sees the own
+  refund `pending` or `succeeded` while the refund ends `unconfirmed` for staff.
+- FR-15a: Staff refund alerts keep the sold-out alert values, outbox id scheme and attempt rules
+  but are rendered per recipient language from staff refund alert templates (what staff asked
+  for, the state, whether anything was refunded, the stock and packing changes that stay, the
+  access guidance after a failure that followed the refund, the last error) and stored
+  pre-rendered like the buyer notice (D17). Refund failure messages lose provider API keys and
+  webhook secrets before they are stored, shown or e-mailed; provider object ids stay.
 - FR-16: Audit: each staff refund row keeps immutable `requested_by_user_id`,
   `requested_by_email`, `amount_cents`, `note` and `created_at`; the server logs one line per
   request with tenant, order, refund id, actor id and amount (no provider id, no e-mail address).
@@ -269,8 +295,8 @@ What the previous release does with rows written by this one:
 - `stock_events` types `returned` and `adjusted` (ship anyway): existing types; the `reference`
   JSON is not parsed strictly.
 - `order_changes`: same columns, written by the same trigger function.
-- `email_outbox` buyer notices: stored as `m2m-transactional` rows with a pre-rendered subject,
-  HTML and text (D10'), the strict shape the previous release already parses, renders, sends
+- `email_outbox` buyer notices and staff refund alerts: stored as `m2m-transactional` rows with a
+  pre-rendered subject, HTML and text (D10', D17), the strict shape the previous release already parses, renders, sends
   and lists in Sent e-mails. A kind of its own would fail to render there and, because the
   previous Sent e-mails reader drops unrenderable rows after fetching a page of `limit + 1`,
   would cut the paging of older e-mails after a rollback.
@@ -290,8 +316,7 @@ them.
 
 ### Migration
 
-One migration, placeholder number `0168` (`0168_order_staff_refunds.sql`), to be renumbered by the
-deployments thread at merge time. It creates the new table, its indexes and two triggers. Locks:
+One migration, placeholder number `0168` (`0168_order_staff_refunds.sql`), renumbered at merge. It creates the new table, its indexes and two triggers. Locks:
 `CREATE TABLE` with foreign keys takes `SHARE ROW EXCLUSIVE` on `tenants` and `orders` for the
 duration of the statement (milliseconds; the new table is empty), the indexes and triggers lock
 only the new table. No backfill, no rewrite of an existing table.
@@ -358,4 +383,16 @@ guard against refunding more than the charge.
   from Studio. Revert: "undo D12 → refund by charge".
 - D14. A test-mode order is refunded in test mode without a buyer e-mail; restock returns
   nothing because a test checkout never commits stock. Revert: "undo D14 → e-mail in test mode".
-- D13. Migration placeholder `0168`; the deployments thread assigns the final number.
+- D13. Migration placeholder `0168`, renumbered at merge.
+- D15. A refund request carries the packing-list and label state its preview showed and is
+  refused when it changed under the order lock; a request without it (an older CLI) is not
+  checked. Why: goods must not return to stock behind a label bought after the preview. Revert:
+  "undo D15 → server defaults only".
+- D16. A staff refund records a create attempt and its key generation before every create call
+  and never ends `failed` after a failed refund list while that record is set. Why: a worker lost
+  after the provider accepted, or a list answer such as not found, must not invite staff to
+  refund the money again. Revert: "undo D16 → record unknown outcomes after the call".
+- D17. Staff refund alerts have their own templates and are stored pre-rendered per recipient
+  language as `m2m-transactional` rows with source `staff-refunds`; sold-out alerts are
+  unchanged. Why: the sold-out wording says the order was cancelled and was English-only for the
+  staff-specific notes. Revert: "undo D17 → sold-out alert payload".

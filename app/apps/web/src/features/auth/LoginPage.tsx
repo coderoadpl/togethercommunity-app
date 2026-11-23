@@ -238,6 +238,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const magicLinkSentTitleRef = useRef<HTMLHeadingElement>(null);
   const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
   const methodTitleRef = useRef<HTMLHeadingElement>(null);
+  const magicLinkRequestGeneration = useRef(0);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -353,23 +354,22 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     onError: selectTwoFactorCode,
   });
 
-  const requestMagicLink = useMutation({
-    ...actions.requestMagicLink,
-    onSuccess: (_data, variables) => {
-      setRequestedMagicEmail(variables.email);
-      if (magicLinkExpired) {
-        void navigate({
-          to: '.',
-          search: (previous) => {
-            const next = { ...previous };
-            delete next.error;
-            return next;
-          },
-          replace: true,
-        });
-      }
-    },
-  });
+  const requestMagicLink = useMutation(actions.requestMagicLink);
+
+  const confirmMagicLinkSent = (recipient: string) => {
+    setRequestedMagicEmail(recipient);
+    if (magicLinkExpired) {
+      void navigate({
+        to: '.',
+        search: (previous) => {
+          const next = { ...previous };
+          delete next.error;
+          return next;
+        },
+        replace: true,
+      });
+    }
+  };
 
   const signInRetryIn = useRetryCountdown(signIn.error);
   const magicLinkRetryIn = useRetryCountdown(requestMagicLink.error);
@@ -398,6 +398,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   };
 
   const editIdentifier = () => {
+    magicLinkRequestGeneration.current += 1;
     setMethod(null);
     setResolveFailure(null);
     setPassword('');
@@ -422,27 +423,33 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     signIn.mutate({ email, password });
   };
 
+  const mutateMagicLink = (recipient: string, onSent: (confirmed: string) => void) => {
+    magicLinkRequestGeneration.current += 1;
+    const generation = magicLinkRequestGeneration.current;
+    requestMagicLink.mutate(
+      {
+        email: recipient,
+        callbackURL: loginCallbackUrl(returnTo),
+        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
+      },
+      {
+        onSuccess: (_data, variables) => {
+          if (generation === magicLinkRequestGeneration.current) onSent(variables.email);
+        },
+      },
+    );
+  };
+
   const sendMagicLink = () => {
     setRequestedMagicEmail('');
     setMagicLinkResent(false);
-    requestMagicLink.mutate({
-      email,
-      callbackURL: loginCallbackUrl(returnTo),
-      ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
-    });
+    mutateMagicLink(email, confirmMagicLinkSent);
   };
 
   const resendMagicLink = () => {
     setMagicLinkResent(false);
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
-    requestMagicLink.mutate(
-      {
-        email: requestedMagicEmail,
-        callbackURL: loginCallbackUrl(returnTo),
-        ...(explicitLanguage === undefined ? {} : { language: explicitLanguage }),
-      },
-      { onSuccess: () => setMagicLinkResent(true) },
-    );
+    mutateMagicLink(requestedMagicEmail, () => setMagicLinkResent(true));
   };
 
   const submitTwoFactor = (event: FormEvent) => {
@@ -489,17 +496,18 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     </AuthAccentLink>
   );
 
-  const identityChip = (
+  const identityChipFor = (identity: string) => (
     <AuthIdentityChip
       data-testid={IDENTITY_ID}
       role="group"
-      aria-label={t.auth.signingInAs({ email })}
+      aria-label={t.auth.signingInAs({ email: identity })}
     >
-      <AuthIdentityAvatar aria-hidden>{initialsOf(email)}</AuthIdentityAvatar>
-      <AuthIdentityEmail>{email}</AuthIdentityEmail>
+      <AuthIdentityAvatar aria-hidden>{initialsOf(identity)}</AuthIdentityAvatar>
+      <AuthIdentityEmail>{identity}</AuthIdentityEmail>
       {changeIdentifierLink(t.auth.changeIdentifierShort)}
     </AuthIdentityChip>
   );
+  const identityChip = identityChipFor(email);
 
   const signInErrorCode = errorCodeOf(signIn.error);
   const credentialsRejected = signInErrorCode === 'unauthorized' || signInErrorCode === 'invalid_credentials';
@@ -586,7 +594,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return shell(
       <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
         <Box>
-          {identityChip}
+          {identityChipFor(requestedMagicEmail)}
           <AuthTitle variant="h1" ref={magicLinkSentTitleRef} tabIndex={-1}>
             {t.auth.checkInboxTitle}
           </AuthTitle>

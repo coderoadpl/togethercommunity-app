@@ -261,8 +261,14 @@ export const getNextLesson = async (
     deps.modules.list(tenant.value),
     deps.lessons.list(tenant.value),
   ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
+  const first = locateLesson(lessonId, courses, modules);
+  if (!first) return err(notFound(`No lesson "${lessonId}" in this tenant`));
+  const location = isStaff(ctx) || !ctx.identity.memberId
+    ? first
+    : locateAccessibleLesson(
+      lessonId, courses, modules,
+      await resolveMemberAccessLookup({ tenantId: tenant.value, memberId: ctx.identity.memberId }, deps),
+    ) ?? first;
 
   const linear = linearizeCourse(location.course, modules, lessonMap(lessons));
   const index = linear.findIndex((content) => content.lessonId === lessonId);

@@ -855,6 +855,38 @@ describe('getNextLesson', () => {
     expect(await getNextLesson(ctx({}), 'l6', d)).toEqual({ ok: true, value: null });
   });
 
+  describe('for a lesson whose module two courses share', () => {
+    const m3 = module('m3', '1998-03-01T00:00:00.000Z', [
+      { id: 'ch5', name: 'Chapter 5', contents: [{ id: 'c-l7', name: 'C L7', lessonId: 'l7' }] },
+    ], ['c2']);
+    const shared = { ...m2, courseIds: ['c1', 'c2'] };
+    const withGrants = (accessItems: Product['accessItems']) => deps(
+      [grant('g1', 'p-shared', '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z')],
+      [product('p-shared', accessItems)],
+      [c1, course('c2', ['m2', 'm3'])],
+      [m1, shared, m3],
+      [],
+      [...lessons, lesson('l7')],
+    );
+
+    it('walks the course that opens the lesson for a member who holds only the second course', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([{ level: 'course', courseId: 'c2' }]))).toEqual({ ok: true, value: { id: 'l7', name: 'Lesson l7' } });
+    });
+
+    it('walks the course that opens it when the item of the first course excludes the module', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([
+        { level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] },
+        { level: 'course', courseId: 'c2' },
+      ]))).toEqual({ ok: true, value: { id: 'l7', name: 'Lesson l7' } });
+    });
+
+    it('keeps walking the first course for a member it opens the lesson for, and for staff', async () => {
+      const both = withGrants([{ level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c1' }]);
+      expect(await getNextLesson(ctx({}), 'l6', both)).toEqual({ ok: true, value: null });
+      expect(await getNextLesson(ctx({ staffRole: 'owner', memberId: null }), 'l6', withGrants([]))).toEqual({ ok: true, value: null });
+    });
+  });
+
   it('unknown lesson is not found', async () => {
     expect(await getNextLesson(ctx({}), 'nope', d)).toMatchObject({
       ok: false,

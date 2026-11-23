@@ -1148,8 +1148,12 @@ live field of the workspace shows its address (an earlier approval published
 it, and approval accepts it once its bytes still hash to the digest), the route serves the published copy
 under `image-assets/` with the same checks instead. The server reads the bytes, checks their hash again
 and answers them with the image's content type, `x-content-type-options: nosniff` and `cache-control: private,
-no-store`; the disposition is `inline` for a raster image and always
-`attachment` for SVG, as the public asset route does. A key, an admin, an
+no-store`. The disposition is `inline` for a raster image and always
+`attachment` for SVG. The public asset route only asks the storage for
+`attachment` on an SVG through a signed response override, which a provider
+that ignores overrides does not apply; for that case every SVG under
+`image-assets/` is also stored with `content-disposition: attachment`
+([Storage](storage.md#image-prefixes)). A key, an admin, an
 unverified or impersonating owner, another workspace, a decided or expired
 proposal, an image the proposal does not attach, an image neither quarantined
 nor shown by a live field and one whose object the storage reports missing or whose bytes no
@@ -1252,8 +1256,8 @@ minutes before the sweep deletes the object. When the delete itself ends without
 answer, the storage may still carry it out later, after a new approval has
 committed the address, so the withdrawal keeps the record and marks it with the
 time of that delete (`delete_unresolved_at`). While such a mark exists, every
-approval that would write the address or keep its quarantined image for it
-answers `503 unavailable` and changes nothing; the minute sweep deletes the
+approval whose effect sets the address answers `503 unavailable` and changes
+nothing; the minute sweep deletes the
 object again 10 minutes after the marked delete, under the same assumption, and
 only then removes the record, so a retry after that publishes the image
 again. Once the withdrawal of an attempt without such a
@@ -1266,10 +1270,13 @@ under the same lock, always deleting its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
 remove for the next run, with the time of that attempt, so it moves behind the
-other records. Every public object written by an approval that did
-not end applied is therefore removed without anyone's help once the storage
-answers, unless a live field shows its address or an applied proposal carries
-it.
+other records. A public object written by an approval that did not end
+applied is therefore removed once the sweep reaches its record and that
+workspace's storage answers, unless a live field shows its address or an
+applied proposal sets it in an image field. A record names no bucket: when the
+workspace's storage connection changed in between, the delete goes to the
+current bucket, the record is removed and the copy in the earlier bucket
+stays until someone deletes it there.
 
 **Cleanup.** After a decision commits, the quarantined images of the decided
 proposals are released: under the workspace's proposal lock, their rows are

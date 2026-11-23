@@ -239,6 +239,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
   const rateLimitedTitleRef = useRef<HTMLHeadingElement>(null);
   const methodTitleRef = useRef<HTMLHeadingElement>(null);
   const magicLinkRequestGeneration = useRef(0);
+  const lookupGeneration = useRef(0);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -269,22 +270,32 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     return () => window.clearTimeout(timer);
   }, [resendCooldown]);
 
-  const resolveSignInMethods = useMutation({
-    ...actions.resolveSignInMethods,
-    onSuccess: (_, variables) => {
-      setPasswordKnownFor(variables.email);
-      setResolveFailure(null);
-      setMethod('magic-link');
-    },
-    onError: (error, variables) => {
-      if (errorCodeOf(error) !== 'rate_limited' || (passwordKnownFor === variables.email && !magicLinkExpired)) {
-        setResolveFailure(null);
-        setMethod('magic-link');
-        return;
-      }
-      setResolveFailure(error);
-    },
-  });
+  const resolveSignInMethods = useMutation(actions.resolveSignInMethods);
+
+  const lookUpSignInMethods = (identifier: string) => {
+    lookupGeneration.current += 1;
+    const generation = lookupGeneration.current;
+    resolveSignInMethods.mutate(
+      { email: identifier },
+      {
+        onSuccess: (_, variables) => {
+          if (generation !== lookupGeneration.current) return;
+          setPasswordKnownFor(variables.email);
+          setResolveFailure(null);
+          setMethod('magic-link');
+        },
+        onError: (error, variables) => {
+          if (generation !== lookupGeneration.current) return;
+          if (errorCodeOf(error) !== 'rate_limited' || (passwordKnownFor === variables.email && !magicLinkExpired)) {
+            setResolveFailure(null);
+            setMethod('magic-link');
+            return;
+          }
+          setResolveFailure(error);
+        },
+      },
+    );
+  };
 
   const signIn = useMutation({
     ...actions.signIn,
@@ -394,11 +405,12 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     setIdentifierInvalid(false);
     setEmail(identifier);
     rememberLoginIdentifier(identifier);
-    resolveSignInMethods.mutate({ email: identifier });
+    lookUpSignInMethods(identifier);
   };
 
   const editIdentifier = () => {
     magicLinkRequestGeneration.current += 1;
+    lookupGeneration.current += 1;
     setMethod(null);
     setResolveFailure(null);
     setPassword('');
@@ -416,6 +428,11 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
     setResolveFailure(null);
     setPassword('');
     setMethod(next);
+  };
+
+  const leaveRateLimit = () => {
+    lookupGeneration.current += 1;
+    switchMethod('magic-link');
   };
 
   const submitPassword = (event: FormEvent) => {
@@ -740,7 +757,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           fullWidth
           data-testid="sign-in-methods-retry"
           disabled={resolveSignInMethods.isPending || resolveRetryIn > 0}
-          onClick={() => resolveSignInMethods.mutate({ email })}
+          onClick={() => lookUpSignInMethods(email)}
         >
           {t.common.retry}
         </Button>
@@ -750,7 +767,7 @@ export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: 
           size="small"
           sx={{ px: 0, mt: '0.5rem', minHeight: 44 }}
           data-testid="sign-in-rate-limited-choose-method"
-          onClick={() => switchMethod('magic-link')}
+          onClick={leaveRateLimit}
         >
           {t.auth.signInRateLimitedChooseMethod}
         </Button>

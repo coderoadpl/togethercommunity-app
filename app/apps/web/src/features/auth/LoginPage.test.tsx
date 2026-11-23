@@ -1097,6 +1097,46 @@ describe('LoginPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
+  it('keeps the chosen password panel open when a retried lookup answers after the visitor left the rate limit', async () => {
+    server.use(
+      http.post('*', ({ request }) =>
+        new URL(request.url).pathname.endsWith('/sign-in/email')
+          ? HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } })
+          : undefined,
+      ),
+    );
+    const { router, queryClient } = await renderLoginPage();
+    rateLimitSignInMethods();
+    await continueWithEmail();
+    const limited = await screen.findByTestId('sign-in-rate-limited');
+    let releaseLookup: () => void = () => undefined;
+    const lookupHeld = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    let lookupsAnswered = 0;
+    server.use(
+      http.post('*/api/public/auth-resolve', async () => {
+        await lookupHeld;
+        lookupsAnswered += 1;
+        return HttpResponse.json({ ok: true, data: { methods: ['password', 'magic-link'] } });
+      }),
+    );
+
+    await userEvent.click(within(limited).getByTestId('sign-in-methods-retry'));
+    await userEvent.click(within(limited).getByTestId('sign-in-rate-limited-choose-method'));
+    await userEvent.click(await screen.findByTestId('use-password'));
+    const passwordInput = await screen.findByLabelText(en.auth.passwordLabel);
+    releaseLookup();
+    await waitFor(() => expect(lookupsAnswered).toBe(1));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+
+    expect(screen.getByLabelText(en.auth.passwordLabel)).toBe(passwordInput);
+    await userEvent.type(passwordInput, 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: en.auth.signInIdle }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+  });
+
   it('reuses the known password method when a later lookup for the same address fails', async () => {
     await renderLoginPage();
     await continueWithEmail();

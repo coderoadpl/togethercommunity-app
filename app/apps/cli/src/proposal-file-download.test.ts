@@ -23,7 +23,7 @@ const brokenBody = (part: string): typeof fetch => vi.fn<typeof fetch>(async () 
   },
 })));
 
-const nodeFiles = (writesAtMost: (call: number) => number): ProposedFileSystem => ({
+const nodeFiles = (writesAtMost: (call: number) => number, written: { bytes: number } = { bytes: 0 }): ProposedFileSystem => ({
   exists: async (path) => readFile(path).then(() => true, () => false),
   openExclusive: async (path) => {
     const handle = await open(path, 'wx');
@@ -31,7 +31,9 @@ const nodeFiles = (writesAtMost: (call: number) => number): ProposedFileSystem =
     return {
       write: async (buffer, offset, length) => {
         calls += 1;
-        return handle.write(buffer, offset, Math.min(length, writesAtMost(calls)));
+        const result = await handle.write(buffer, offset, Math.min(length, writesAtMost(calls)));
+        written.bytes += result.bytesWritten;
+        return result;
       },
       close: () => handle.close(),
     };
@@ -138,21 +140,26 @@ describe('saving a proposed file', () => {
     expect(await modeOf(ownerOnly)).toBe(0o600);
   });
 
-  it('stops reading and writes nothing more once the storage sends more bytes than announced', async () => {
+  it.each([
+    ['a chunk that crosses the size', '%PDF', 4],
+    ['a first chunk larger than the size', '%PDF-1.7', 0],
+  ])('stops reading and writes nothing more once the storage sends more bytes than announced, with %s', async (_label, chunk, bytesOnDisk) => {
     let pulls = 0;
     let cancelled = false;
     const endless: typeof fetch = async () => new Response(new ReadableStream({
       pull: (controller) => {
         pulls += 1;
         if (pulls > 1_000) throw new Error('The download kept reading past the announced size');
-        controller.enqueue(new TextEncoder().encode('%PDF'));
+        controller.enqueue(new TextEncoder().encode(chunk));
       },
       cancel: () => { cancelled = true; },
     }));
+    const written = { bytes: 0 };
     await writeFile(out, 'reviewed earlier');
-    expect(await saveProposedFile(link, out, true, endless)).toMatchObject({
+    expect(await saveProposedFile(link, out, true, endless, nodeFiles(() => Number.POSITIVE_INFINITY, written))).toMatchObject({
       ok: false, error: { code: 'unavailable', message: `The storage sent more than 6 bytes; ${out} was not changed` },
     });
+    expect(written.bytes).toBe(bytesOnDisk);
     expect(cancelled).toBe(true);
     expect(pulls).toBeLessThan(5);
     expect(await readFile(out, 'utf8')).toBe('reviewed earlier');

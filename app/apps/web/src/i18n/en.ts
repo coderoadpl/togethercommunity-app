@@ -2245,7 +2245,7 @@ export const en: Messages = {
     noBlocks: 'No blocks yet.',
     blockTypeLabel: 'Block type',
     durationLabel: 'Duration (minutes)',
-    durationHelper: 'Shown in the course curriculum, e.g. "12 min".',
+    durationHelper: 'Shown in the course program, e.g. "12 min".',
     previewLabel: 'Free preview lesson',
     previewHelper: 'Anyone can open this lesson without purchasing the course or signing in.',
     previewNeedsPublicCourseHint:

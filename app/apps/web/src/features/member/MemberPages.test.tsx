@@ -158,11 +158,12 @@ describe('member pages', () => {
       en.student.subscriptionAccessUntil({ date: '' }),
     );
     const portalLinks = screen.getAllByRole('link', {
-      name: (name) => name.startsWith(en.student.manageSubscription) && name.endsWith(en.student.opensInNewTab),
+      name: (name) => name.startsWith(en.student.manageSubscription) && name.endsWith(en.lesson.newTabHint),
     });
     expect(portalLinks).toHaveLength(3);
     expect(portalLinks[0]).toHaveAttribute('target', '_blank');
-    expect(within(screen.getByTestId('subscription-portal-active')).getByText(en.student.opensInNewTab)).toBeInTheDocument();
+    expect(portalLinks[0]).toHaveTextContent(en.account.managePayments);
+    expect(within(screen.getByTestId('subscription-portal-active')).getByText(en.lesson.newTabHint)).toBeInTheDocument();
   });
 
   it('renders latest and collapsed previous versions with their own links', async () => {

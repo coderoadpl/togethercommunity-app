@@ -2698,7 +2698,7 @@ export const pl: Messages = {
     subscriptionCanceledLabel: ({ date }) => `Anulowana — dostęp do ${date}`,
     subscriptionRenewalDate: ({ date }) => `Odnowienie: ${date}`,
     subscriptionAccessUntil: ({ date }) => `Dostęp do: ${date}`,
-    manageSubscription: 'Zarządzaj subskrypcją',
+    manageSubscription: 'Zarządzaj płatnościami',
     coursesEmptyRenewHint:
       'Masz już produkt? Sprawdź status dostępu w sekcji „Moje produkty” — jeśli wygasł, możesz go tam odnowić.',
     downloadProductBody: 'Ten produkt zawiera pliki do pobrania. Gdy pojawi się nowa wersja, znajdziesz ją poniżej.',
@@ -2707,7 +2707,6 @@ export const pl: Messages = {
     downloadFileVersion: ({ name, number }) => format('Pobierz {name}, wersja {number}', { name, number }),
     downloadsGroupLabel: ({ title }) => `Pliki do pobrania: ${title}`,
     downloadVersionShort: ({ number }) => `v${number}`,
-    opensInNewTab: '(otwiera się w nowej karcie)',
     openCourse: 'Przejdź do kursu',
     viewCourses: 'Zobacz kursy',
     productsOtherEmailHint: 'Zakup jest przypisany do innego adresu e-mail? Zaloguj się tym adresem.',

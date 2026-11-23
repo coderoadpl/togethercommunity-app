@@ -240,7 +240,7 @@ const ProductRow = ({
               data-testid={`subscription-portal-${product.id}`}
             >
               {t.student.manageSubscription}
-              <VisuallyHidden> {t.student.opensInNewTab}</VisuallyHidden>
+              <VisuallyHidden> {t.lesson.newTabHint}</VisuallyHidden>
             </Button>
           )}
         </Stack>

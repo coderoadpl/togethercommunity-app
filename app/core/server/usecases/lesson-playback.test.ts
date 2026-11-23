@@ -177,6 +177,7 @@ const progress: MemberCourseProgressRepository = {
     updatedAt: input.now,
   }),
   update: async (_tenantId, value) => value,
+  removeCompletedLesson: async () => [],
   countReferencingLesson: async () => 0,
 };
 

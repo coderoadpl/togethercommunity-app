@@ -247,6 +247,7 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     updatedAt: input.now,
   }),
   update: async (_t, progress) => progress,
+  removeCompletedLesson: async () => [],
   countReferencingLesson: async (tenantId, lessonId) =>
     rows.filter(
       (r) =>

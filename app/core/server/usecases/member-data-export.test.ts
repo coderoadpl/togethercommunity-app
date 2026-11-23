@@ -138,6 +138,7 @@ const deps = (
       throw new Error('not used');
     },
     update: async () => null,
+    removeCompletedLesson: async () => [],
     countReferencingLesson: async () => 0,
   },
   posts: {

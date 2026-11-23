@@ -277,6 +277,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
+      removeCompletedLesson: async () => [],
       countReferencingLesson: async () => 0,
     },
     attachments: {

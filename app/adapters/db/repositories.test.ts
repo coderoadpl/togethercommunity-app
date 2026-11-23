@@ -646,6 +646,64 @@ describe('member event repository', () => {
   });
 });
 
+describe('member course progress repository', () => {
+  const courseRow = (id: string): Course => ({
+    id, tenantId: ACME, name: id, description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: NOW,
+  });
+  const seed = async () => {
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-a'));
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-b'));
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-c'));
+    await db.insert(memberCourseProgress).values([
+      { id: 'progress-a', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-a', completedLessonIds: ['lesson-shared', 'lesson-kept'], updatedAt: PAST },
+      { id: 'progress-b', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-b', completedLessonIds: ['lesson-shared'], updatedAt: PAST },
+      { id: 'progress-c', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-c', completedLessonIds: ['lesson-shared'], updatedAt: PAST },
+    ]);
+  };
+  const completions = async () => Object.fromEntries((await db
+    .select({ id: memberCourseProgress.id, completedLessonIds: memberCourseProgress.completedLessonIds })
+    .from(memberCourseProgress)
+    .where(inArray(memberCourseProgress.id, ['progress-a', 'progress-b', 'progress-c'])))
+    .map((row) => [row.id, row.completedLessonIds]));
+
+  afterEach(async () => {
+    await db.execute(sql`drop trigger if exists fail_progress_b on member_course_progress`);
+    await db.execute(sql`drop function if exists fail_progress_b()`);
+    await db.delete(memberCourseProgress).where(inArray(memberCourseProgress.id, ['progress-a', 'progress-b', 'progress-c']));
+    await db.delete(courses).where(inArray(courses.id, ['course-progress-a', 'course-progress-b', 'course-progress-c']));
+  });
+
+  it('removes a completed lesson from every named course row of the member and leaves the others', async () => {
+    await seed();
+    const saved = await createMemberCourseProgressRepository(db).removeCompletedLesson(ACME, {
+      memberId: 'mem-acme', courseIds: ['course-progress-b', 'course-progress-a', 'course-missing'], lessonId: 'lesson-shared', now: NOW,
+    });
+    expect(saved.map((row) => [row.courseId, row.completedLessonIds, row.updatedAt])).toEqual([
+      ['course-progress-a', ['lesson-kept'], NOW],
+      ['course-progress-b', [], NOW],
+    ]);
+    expect(await createMemberCourseProgressRepository(db).removeCompletedLesson(GLOBEX, {
+      memberId: 'mem-acme', courseIds: ['course-progress-c'], lessonId: 'lesson-shared', now: NOW,
+    })).toEqual([]);
+    expect(await completions()).toEqual({ 'progress-a': ['lesson-kept'], 'progress-b': [], 'progress-c': ['lesson-shared'] });
+  });
+
+  it('keeps every row completed when one of the removals fails', async () => {
+    await seed();
+    await db.execute(sql`create function fail_progress_b() returns trigger language plpgsql as $body$
+      begin raise exception 'progress write refused'; end $body$`);
+    await db.execute(sql`create trigger fail_progress_b before update on member_course_progress
+      for each row when (new.id = 'progress-b') execute function fail_progress_b()`);
+
+    await expect(createMemberCourseProgressRepository(db).removeCompletedLesson(ACME, {
+      memberId: 'mem-acme', courseIds: ['course-progress-a', 'course-progress-b'], lessonId: 'lesson-shared', now: NOW,
+    })).rejects.toThrow();
+    expect(await completions()).toEqual({
+      'progress-a': ['lesson-shared', 'lesson-kept'], 'progress-b': ['lesson-shared'], 'progress-c': ['lesson-shared'],
+    });
+  });
+});
+
 describe('purchase repository', () => {
   it('records the access change created by a simulated purchase', async () => {
     await db.insert(user).values({

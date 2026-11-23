@@ -1249,6 +1249,41 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       lastViewedChapterId: row.lastViewedChapterId ?? undefined,
     });
   }),
+  removeCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    if (input.courseIds.length === 0) return [];
+    const locked = await tx
+      .select()
+      .from(memberCourseProgress)
+      .where(and(
+        eq(memberCourseProgress.tenantId, tenantId),
+        eq(memberCourseProgress.memberId, input.memberId),
+        inArray(memberCourseProgress.courseId, input.courseIds),
+      ))
+      .orderBy(asc(memberCourseProgress.courseId))
+      .for('update');
+    const saved = [];
+    for (const row of locked) {
+      if (!row.completedLessonIds.includes(input.lessonId)) {
+        saved.push(row);
+        continue;
+      }
+      const [updated] = await tx
+        .update(memberCourseProgress)
+        .set({
+          completedLessonIds: row.completedLessonIds.filter((id) => id !== input.lessonId),
+          updatedAt: input.now,
+        })
+        .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, row.id)))
+        .returning();
+      if (updated !== undefined) saved.push(updated);
+    }
+    return saved.map((row) => parseProgress({
+      ...row,
+      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+    }));
+  }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })

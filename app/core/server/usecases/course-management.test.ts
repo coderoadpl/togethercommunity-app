@@ -250,6 +250,7 @@ const progressRepo = (store: MemberCourseProgress[] = []): MemberCourseProgressR
     updatedAt: createdAt,
   }),
   update: async (_tenantId, progress) => progress,
+  removeCompletedLesson: async () => [],
   countReferencingLesson: async (tenantId, lessonId) =>
     store.filter(
       (progress) =>

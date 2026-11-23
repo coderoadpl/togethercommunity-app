@@ -1811,7 +1811,9 @@ progress is recorded follows a course that opens the lesson for them:
   under the first course that opens it. Un-completion also removes the lesson
   from the member's own progress of the named course when that course holds
   the lesson but no longer opens it for them, so a completion recorded there
-  while it was open does not come back; a named course that does not hold the
+  while it was open does not come back; both rows change in one database
+  transaction, so a failed request leaves both as they were and a retry
+  finishes the job. A named course that does not hold the
   lesson, or that belongs to another workspace, is never written. Once the
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is

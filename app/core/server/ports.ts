@@ -775,6 +775,10 @@ export interface MemberCourseProgressRepository {
     input: { id: string; memberId: string; courseId: string; now: string },
   ): Promise<MemberCourseProgress>;
   update(tenantId: string, progress: MemberCourseProgress): Promise<MemberCourseProgress | null>;
+  removeCompletedLesson(
+    tenantId: string,
+    input: { memberId: string; courseIds: string[]; lessonId: string; now: string },
+  ): Promise<MemberCourseProgress[]>;
   countReferencingLesson(tenantId: string, lessonId: string): Promise<number>;
 }
 

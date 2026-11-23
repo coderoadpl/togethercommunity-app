@@ -134,6 +134,7 @@ import {
   productPriceHistory,
   productPrices,
   products,
+  rateLimitBuckets,
   tenants,
   suppressions,
   twoFactor,
@@ -1729,11 +1730,12 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await buckets.claim(previous)).toBe(true);
     expect(await buckets.claim(current)).toBe(false);
     expect(await buckets.claim(previous)).toBe(false);
-    const stored = await db.execute(sql`
-      select window_started_at = ${current.windowStartedAt}::timestamptz as current_window,
-        expires_at = ${current.expiresAt}::timestamptz as current_expiry, count
-      from rate_limit_buckets where scope = ${previous.scope} and key = ${previous.key}`);
-    expect(stored.rows).toEqual([{ current_window: true, current_expiry: true, count: 2 }]);
+    expect(await db.select({
+      currentWindow: sql<boolean>`${rateLimitBuckets.windowStartedAt} = ${current.windowStartedAt}::timestamptz`,
+      currentExpiry: sql<boolean>`${rateLimitBuckets.expiresAt} = ${current.expiresAt}::timestamptz`,
+      count: rateLimitBuckets.count,
+    }).from(rateLimitBuckets).where(and(eq(rateLimitBuckets.scope, previous.scope), eq(rateLimitBuckets.key, previous.key))))
+      .toEqual([{ currentWindow: true, currentExpiry: true, count: 2 }]);
 
     expect(await buckets.claim({ ...current, windowStartedAt: '1998-07-14T10:02:00.000Z', expiresAt: '1998-07-14T10:03:00.000Z' })).toBe(true);
     expect(await buckets.purgeExpired('1998-07-14T11:00:00.000Z')).toBe(1);

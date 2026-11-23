@@ -3053,7 +3053,7 @@ export const pl: Messages = {
     passwordStatusUnset: 'Brak hasła',
     passwordHeading: 'Hasło',
     passwordIntro:
-      'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem. Logowanie magicznym linkiem nadal będzie działać.',
+      'Aby zmienić hasło, podaj obecne. Jeśli nie masz jeszcze hasła, ustaw je linkiem wysłanym e-mailem. Linki do logowania nadal będą działać.',
     forgotPasswordPrompt: 'Nie pamiętasz obecnego hasła?',
     forgotPasswordEmailLink: 'Wyślij mi link do zmiany hasła',
     resetSending: 'Wysyłanie…',

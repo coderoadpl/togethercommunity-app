@@ -35,7 +35,6 @@ export type KeyDownloadCompletion =
 
 export type KeyDownloadInterruption = { kind: 'interrupted'; until: string } | { kind: 'kept' } | { kind: 'busy' };
 
-/** What a locked removal step found: the objects it may delete, or why it deletes nothing. */
 export type KeyDownloadObjectRemoval = 'removed' | 'failed' | 'gone' | 'kept' | 'busy';
 
 export type KeyDownloadStagedSweep = { kind: 'owed'; deletion: KeyDownloadPendingDeletion } | { kind: 'gone' | 'kept' | 'busy' };
@@ -111,7 +110,6 @@ export interface KeyDownloadFileRepository {
    * upload object and its destination at their declared size, so neither is deleted while a storage write may land.
    */
   interruptAttempt(tenantId: string, uploadId: string, attemptId: string, reason: string, now: string): Promise<KeyDownloadInterruption>;
-  /** The state changes of one record, oldest first, kept 30 days after each. */
   listRecordEvents(tenantId: string, recordId: string): Promise<KeyDownloadRecordEvent[]>;
   findStaged(tenantId: string, apiKeyId: string, id: string): Promise<KeyDownloadStagedFile | null>;
   listStaged(tenantId: string, apiKeyId: string): Promise<KeyDownloadStagedFile[]>;
@@ -151,8 +149,10 @@ export interface KeyDownloadFileRepository {
    */
   purgeSettled(tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, lockWaitMs?: number): Promise<number>;
   /**
-   * Read-only: whether every one of `ids` is a staged file of `apiKeyId` that no pending proposal unexpired at `now`
-   * attaches. One answer for an unknown, another key's, discarded or attached file, so a key learns nothing more.
+   * Read-only: whether every one of `ids` is a staged file of `apiKeyId` that no proposal holds, except a holder that
+   * ended stale or failed. A rejected, withdrawn or expired holder keeps the file until its release, which runs after
+   * its decision commits and would otherwise find nothing to discard. One answer for an unknown, another key's,
+   * discarded, attached or held file, so a key learns nothing more.
    */
   proposable(tenantId: string, apiKeyId: string, ids: readonly string[], now: string): Promise<boolean>;
   /**
@@ -162,7 +162,6 @@ export interface KeyDownloadFileRepository {
    * `now`. A file a pending proposal unexpired at `now` holds is never released.
    */
   release(tenantId: string, selection: KeyDownloadFileRelease, now: string): Promise<KeyDownloadRelease>;
-  /** The staged rows among `ids`, whoever holds them, for the owner view. */
   listProposed(tenantId: string, ids: readonly string[]): Promise<KeyDownloadProposedFile[]>;
 }
 

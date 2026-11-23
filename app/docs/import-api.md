@@ -414,7 +414,7 @@ edition's number, or **Current version** when no edition matches. When there is 
 lesson URL: it shows the number, marking date and note of `currentEdition` with a
 **Current** mark, or reads **Current version** when no edition matches. The
 other editions follow with their numbers, marking dates and notes, ordered
-numerically from newest edition number to oldest; the matching edition is not
+numerically from newest edition number to oldest; `currentEdition` is not
 listed again. The row on
 screen is marked. Selecting an edition opens
 `/my/courses/<courseId>/lessons/<lessonId>/editions/<number>`, for example

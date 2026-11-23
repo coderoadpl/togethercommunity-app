@@ -1475,6 +1475,8 @@ export interface Messages {
     twoFactorOff: string;
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
+    regeneratedBackupCodesTitle: string;
+    regeneratedBackupCodesDone: string;
     backupCodesRegenerated: string;
     sessionsHeading: string;
     sessionsIntro: string;

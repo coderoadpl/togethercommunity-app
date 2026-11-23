@@ -1616,6 +1616,8 @@ export const en: Messages = {
     twoFactorOff: 'Two-factor authentication is off.',
     regenerateBackupCodes: 'Generate new backup codes',
     regeneratingBackupCodes: 'Generating…',
+    regeneratedBackupCodesTitle: 'New backup codes',
+    regeneratedBackupCodesDone: 'Done',
     backupCodesRegenerated: 'New backup codes generated. Previous codes no longer work.',
     sessionsHeading: 'Active sessions',
     sessionsIntro: 'Devices and browsers signed in to your account. Sign out any you do not recognise.',

@@ -1655,6 +1655,8 @@ export const pl: Messages = {
     twoFactorOff: 'Weryfikacja dwuetapowa jest wyłączona.',
     regenerateBackupCodes: 'Wygeneruj nowe kody zapasowe',
     regeneratingBackupCodes: 'Generowanie…',
+    regeneratedBackupCodesTitle: 'Nowe kody zapasowe',
+    regeneratedBackupCodesDone: 'Gotowe',
     backupCodesRegenerated: 'Wygenerowano nowe kody zapasowe. Poprzednie kody już nie działają.',
     sessionsHeading: 'Aktywne sesje',
     sessionsIntro: 'Urządzenia i przeglądarki zalogowane na Twoje konto. Jeśli którejś nie rozpoznajesz, wyloguj ją.',

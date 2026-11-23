@@ -384,8 +384,8 @@ export const TwoFactorCard = ({
         onConfirm={submitManagement}
         onClose={close}
       />
-      <AccountDialog open={mode === 'regenerated'} title={t.security.regenerateBackupCodes} onClose={closeRegenerated}>
-        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.common.close} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
+      <AccountDialog open={mode === 'regenerated'} title={t.security.regeneratedBackupCodesTitle} onClose={closeRegenerated}>
+        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.security.regeneratedBackupCodesDone} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
       </AccountDialog>
       <ConfirmDialog
         open={mode === 'disable'}

@@ -381,6 +381,11 @@ describe('Account dialogs', () => {
 
     view.rerender(tree({ ...props, regenerateBackupCodes: { ...props.regenerateBackupCodes, success: true, submittedAt: 2, data: ['replacement'] } }));
     expect(await screen.findByTestId('backup-codes')).toHaveTextContent('replacement');
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(en.security.regeneratedBackupCodesTitle);
+    expect(within(dialog).getAllByRole('button', { name: en.common.close })).toHaveLength(1);
+    expect(within(dialog).getByTestId('two-factor-finish')).toHaveTextContent(en.security.regeneratedBackupCodesDone);
+    expect(within(dialog).getByTestId('two-factor-finish')).toBeDisabled();
   });
   it.each([
     ['regenerate-backup-codes', 'regenerateBackupCodes'],

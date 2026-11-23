@@ -1178,6 +1178,21 @@ describe('the sweep selection', () => {
     expect(await repository.listTenantIdsToSweep(createdBefore, NOW, 1)).toEqual([NEIGHBOUR]);
   });
 
+  it('leaves out an old or revoked-key released row whose delete is still in its grace, so the eligible row behind it fills the batch', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    const inGrace = { releasedAt: '2026-03-01T09:58:00.000Z', deleteUnresolvedAt: '2026-03-01T09:58:00.000Z' };
+    await database.db.insert(changeProposalImages).values([
+      { ...image(1, { createdAt: '2026-01-01T10:00:00.000Z' }), ...inGrace },
+      { ...image(2, { apiKeyId: OTHER_KEY_ID, createdAt: '2026-03-01T09:00:00.000Z' }), ...inGrace },
+      { ...image(3, { tenantId: NEIGHBOUR, apiKeyId: 'key-neighbour', createdAt: '2025-12-01T10:00:00.000Z' }), ...inGrace },
+    ]);
+    await database.db.update(shopManagementKeys).set({ revokedAt: NOW }).where(eq(shopManagementKeys.id, OTHER_KEY_ID));
+    await repository.insert(TENANT, image(4, { createdAt: OLD }), stored);
+    expect(await repository.listTenantIdsToSweep(createdBefore, NOW, 1)).toEqual([TENANT]);
+    expect(await repository.release(TENANT, { kind: 'sweep', createdBefore, limit: 1 }, NOW))
+      .toEqual({ kind: 'written', value: [image(4, { createdAt: OLD })] });
+  });
+
   it('agrees with the image references of every image field of every operation', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     const extensions: ProposalImageExtension[] = ['png', 'jpg', 'webp', 'svg', 'ico'];

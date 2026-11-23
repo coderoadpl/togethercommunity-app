@@ -220,7 +220,7 @@ const releasable = (now: string): SQL | undefined => or(written, pendingAbandone
 const sweepable = (createdBefore: string, now: string): SQL | undefined => or(
   and(isNotNull(changeProposalImages.releasedAt), deleteSettled(now)),
   and(unreleased, pendingAbandoned(now)),
-  and(written, or(lt(changeProposalImages.createdAt, createdBefore), sql`not ${keyIsActive}`), not(attached(now))),
+  and(unreleased, written, or(lt(changeProposalImages.createdAt, createdBefore), sql`not ${keyIsActive}`), not(attached(now))),
 );
 
 const selectionFilter = (tenantId: string, selection: QuarantinedImageRelease, now: string): SQL | undefined => {

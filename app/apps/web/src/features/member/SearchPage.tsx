@@ -22,6 +22,7 @@ const MIN_SEARCH_LENGTH = 2;
 interface LessonPlacement {
   courseId: string;
   lessonName: string;
+  opens: boolean;
 }
 
 interface LessonIndex {
@@ -41,7 +42,9 @@ const withCourseLessons = (
   for (const module of structure.modules) {
     for (const chapter of module.chapters) {
       for (const lesson of chapter.lessons) {
-        placements.set(lesson.lessonId, { courseId, lessonName: lesson.name });
+        const opens = lesson.accessStatus === 'fully-accessible';
+        if (!opens && placements.get(lesson.lessonId)?.opens === true) continue;
+        placements.set(lesson.lessonId, { courseId, lessonName: lesson.name, opens });
       }
     }
   }

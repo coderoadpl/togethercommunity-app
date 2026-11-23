@@ -21,9 +21,15 @@ export interface ThreadContextDeps {
   links: DiscussionLinkPort;
 }
 
+interface ThreadLessonLocation {
+  courseId: string;
+  moduleId: string;
+  lessonId: string;
+}
+
 export interface ThreadContextInfo {
   space: Space | null;
-  lessonLocations: Array<{ courseId: string; moduleId: string; lessonId: string }>;
+  lessonLocations: ThreadLessonLocation[];
   courseId: string | null;
   contextName: string;
   contextUrl: string;

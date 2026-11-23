@@ -43,7 +43,7 @@ export const CourseDiscussionSearch = ({
 
   const lessonEntries = structure.modules.flatMap((module) =>
     module.chapters.flatMap((chapter) => chapter.lessons),
-  );
+  ).filter((entry) => entry.accessStatus === 'fully-accessible');
   const lessonIds = [...new Set(lessonEntries.map((entry) => entry.lessonId))];
   const nameByLesson = new Map(lessonEntries.map((entry) => [entry.lessonId, entry.name]));
 
@@ -77,7 +77,7 @@ export const CourseDiscussionSearch = ({
           {t.discussion.searchHint}
         </Typography>
         {enabled &&
-          (search.isPending ? (
+          (lessonIds.length > 0 && search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
           ) : search.isError ? (
             <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />

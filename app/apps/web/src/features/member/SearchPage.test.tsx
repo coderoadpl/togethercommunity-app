@@ -48,7 +48,15 @@ const hit = (input: {
   snippet: 'Silnik i zabudowa',
 });
 
-const okNavigation = () =>
+const navigationCourse = (courseId: string) => ({
+  courseId,
+  courseName: 'Camper basics',
+  completedLessonCount: 0,
+  accessibleLessonCount: 2,
+  lastActivityAt: null,
+});
+
+const okNavigation = (courseIds: readonly string[] = ['c1']) =>
   http.get('/api/member/navigation', () =>
     HttpResponse.json({
       ok: true,
@@ -57,22 +65,14 @@ const okNavigation = () =>
           spaces: [
             { id: 's1', slug: 'general', name: 'General', visibility: 'members', position: 0, isFollowing: true },
           ],
-          courses: [
-            {
-              courseId: 'c1',
-              courseName: 'Camper basics',
-              completedLessonCount: 0,
-              accessibleLessonCount: 2,
-              lastActivityAt: null,
-            },
-          ],
+          courses: courseIds.map(navigationCourse),
           lockedSpaces: [],
         },
       },
     }),
   );
 
-const okStructure = () =>
+const okStructure = (lockedIn: readonly string[] = []) =>
   http.get('/api/student/courses/:courseId/structure', ({ params }) =>
     HttpResponse.json({
       ok: true,
@@ -99,7 +99,7 @@ const okStructure = () =>
                       contentId: 'ct1',
                       lessonId: 'l1',
                       name: 'Engine selection',
-                      accessStatus: 'fully-accessible',
+                      accessStatus: lockedIn.includes(String(params.courseId)) ? 'not-accessible' : 'fully-accessible',
                       completionStatus: 'not-completed',
                     },
                   ],
@@ -157,6 +157,24 @@ describe('SearchPage', () => {
       '/my/courses/c1/lessons/l1',
     );
     expect(within(lessonGroup).getByText('Silnik').tagName).toBe('MARK');
+  });
+
+  it.each([
+    { courses: ['c1', 'c2'], lockedIn: ['c1'], href: '/my/courses/c2/lessons/l1' },
+    { courses: ['c1', 'c2'], lockedIn: ['c2'], href: '/my/courses/c1/lessons/l1' },
+    { courses: ['c1', 'c2'], lockedIn: [], href: '/my/courses/c2/lessons/l1' },
+  ])('links a lesson hit into a course of $courses that opens it, locked in $lockedIn', async ({ courses, lockedIn, href }) => {
+    server.use(
+      okNavigation(courses),
+      okStructure(lockedIn),
+      okHits([hit({ id: 'h2', contextKind: 'lesson', contextId: 'l1' })]),
+    );
+    const user = userEvent.setup();
+
+    await renderSearch();
+    await user.type(screen.getByTestId('search-input'), 'silnik');
+
+    expect(await screen.findByTestId('search-hit-h2')).toHaveAttribute('href', href);
   });
 
   it('sends a reply hit to its thread root, not to the reply itself', async () => {

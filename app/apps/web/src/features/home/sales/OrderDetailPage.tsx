@@ -1,6 +1,6 @@
 import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
-import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
+import { Alert, AlertTitle, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { SALES_LINK_TIME_ZONE, capabilitiesForPrincipal, orderLineLabel, type OrderLine, type ParcelTemplate } from '#core/domain/index.js';
@@ -197,6 +197,12 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                 <Typography sx={{ overflowWrap: 'anywhere' }}>{value}</Typography>
               </Stack>
             ))}
+            {order.shipping.pickupPoint?.verified === false ? (
+              <Alert severity="warning" data-testid="order-locker-unverified">
+                <AlertTitle>{t.shipping.orderLockerUnverified}</AlertTitle>
+                {t.shipping.orderLockerUnverifiedHint}
+              </Alert>
+            ) : null}
             <OrderShipx
               order={order}
               view={shipx.data}

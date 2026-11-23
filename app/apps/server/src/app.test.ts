@@ -10,6 +10,7 @@ import { marketingContactDeps } from '#core/server/testing/marketing-contact-fak
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createPickupPointDirectoryFake } from '#core/server/testing/pickup-point-fake.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
@@ -10784,6 +10785,25 @@ it.each([undefined, 'BUNDLE'])('simulates the full sales link through the HTTP r
     expect([...h.couponSessions.values()]).toMatchObject([{ originalCents: 2130, finalCents: 1917 }]);
     expect([...h.snapshots.values()]).toMatchObject([{ salesLinkId: 'bundle-link', lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
   }
+});
+
+it('asks the carrier once for the parcel locker of a simulated purchase through the HTTP route', async () => {
+  const h = simulatedBundleApp();
+  const print = h.products.find((item) => item.id === 'print');
+  if (print === undefined) throw new Error('Expected the printed item');
+  print.deliveryMethod = 'shipping';
+  h.base.tenants.findSettings = async () => tenantSettingsSchema.parse({ name: acme.name, billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+    { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+  ] });
+  const directory = createPickupPointDirectoryFake();
+  h.base.pickupPoints = directory;
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+    shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+  });
+  expect(await response.json()).toMatchObject({ ok: true, data: { orderId: expect.any(String) } });
+  expect(directory.lookups).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ shipping: { pickupPoint: { code: 'WAW01M', name: 'Next to the main entrance' } } });
 });
 
 it.each(['consent capture', 'coupon session'] as const)('releases the simulated coupon stock hold when the %s write fails', async (stage) => {

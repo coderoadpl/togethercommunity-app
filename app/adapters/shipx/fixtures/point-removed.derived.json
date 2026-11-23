@@ -1,0 +1,70 @@
+{
+  "href": "https://api-pl-points.easypack24.net/v1/points/KRA14A",
+  "name": "KRA14A",
+  "display_name": "InPost locker KRA14A",
+  "type": [],
+  "status": "Removed",
+  "location": {
+    "longitude": 20.00547,
+    "latitude": 50.09049
+  },
+  "location_type": "Outdoor",
+  "location_date": null,
+  "location_description": "Next to the main entrance",
+  "distance": null,
+  "opening_hours": "24/7",
+  "address": {
+    "line1": "Main Street 1",
+    "line2": "00-001 Warsaw"
+  },
+  "address_details": {
+    "city": "Warsaw",
+    "province": "Example Province",
+    "post_code": "00-001",
+    "street": "Main Street",
+    "building_number": "1",
+    "flat_number": null
+  },
+  "phone_number": null,
+  "functions": [
+    "allegro_courier_collect",
+    "allegro_courier_reverse_return_send",
+    "allegro_courier_send",
+    "allegro_letter_send",
+    "allegro_parcel_collect",
+    "allegro_parcel_reverse_return_send",
+    "allegro_parcel_send",
+    "cross_network_parcel_collect",
+    "cross_network_parcel_send",
+    "parcel",
+    "parcel_collect",
+    "parcel_reverse_return_send",
+    "parcel_send",
+    "standard_courier_reverse_return_send",
+    "standard_courier_send"
+  ],
+  "partner_id": 0,
+  "is_next": false,
+  "payment_available": true,
+  "payment_type": {
+    "0": "Payments are not supported"
+  },
+  "virtual": "0",
+  "recommended_low_interest_box_machines_list": [
+    "KRA273M",
+    "KRA175M",
+    "KRA22APP",
+    "KRA39A",
+    "KRA03A"
+  ],
+  "apm_doubled": null,
+  "location_247": true,
+  "operating_hours_extended": {
+    "customer": null
+  },
+  "agency": "KRA",
+  "easy_access_zone": true,
+  "air_index_level": null,
+  "physical_type_mapped": "003",
+  "physical_type_description": null
+}

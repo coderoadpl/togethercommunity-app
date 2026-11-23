@@ -873,6 +873,11 @@ export interface Messages {
     lockerTypeCode: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
+    lockerChecking: string;
+    lockerCheckFound: string;
+    lockerRejected: Record<'not_found' | 'not_usable' | 'not_operating', string>;
+    orderLockerUnverified: string;
+    orderLockerUnverifiedHint: string;
     lockerMapStaffHint: string;
     chooseDelivery: string;
     noDeliveryOptions: string;
@@ -3134,6 +3139,7 @@ export interface Messages {
     couponEmailHint: string;
     payBlockedDelivery: string;
     payBlockedLocker: string;
+    payBlockedLockerRejected: string;
     payBlockedPersonalizationText: string;
     payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;

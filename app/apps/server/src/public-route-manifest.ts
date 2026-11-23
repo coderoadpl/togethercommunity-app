@@ -50,6 +50,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: API_PATHS.studentLesson, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview' },
   { path: API_PATHS.publicCheckoutSessionStatus, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Rate-limited checkout payment confirmation with opt-in purchase analytics and, for Meta conversions, the order consent state with locale-resolved consent copy; no buyer name, email or address' },
   { path: '/api/public/payment-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Checkout capability discovery' },
+  { path: API_PATHS.publicParcelLocker, methods: ['GET'], mutating: false, why: 'Rate-limited same-origin parcel locker lookup at the carrier for a workspace with a locker delivery option; code pattern-checked before the call' },
   { path: '/api/public/checkout/coupon', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Read-only coupon validation' },
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },
   { path: '/api/public/checkout/session', methods: ['POST'], mutating: true, why: 'Checkout session start' },

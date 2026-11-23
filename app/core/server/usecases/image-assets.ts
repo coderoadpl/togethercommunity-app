@@ -10,6 +10,7 @@ import {
   imageAssetUploadInputSchema,
   notFound,
   ok,
+  parseProposalImagePath,
   validation,
   type AppError,
   type ImageAssetKind,
@@ -462,10 +463,15 @@ export const importGoogleAvatar = async (
   }
 };
 
+export interface PublicImageAssetDeps extends Pick<ImageAssetDeps, 'secretResolver' | 'storage'> {
+  quarantinedImages: Pick<QuarantinedImageRepository, 'publicationPending'>;
+}
+
+/** A content-addressed copy an approval wrote is served only once no attempt holds its publication record, so not before that approval commits. */
 export const getPublicImageAssetUrl = async (
   tenantId: string,
   input: { kind: string; file: string },
-  deps: Pick<ImageAssetDeps, 'secretResolver' | 'storage'>,
+  deps: PublicImageAssetDeps,
 ): Promise<Result<string, AppError>> => {
   const kind = imageAssetKindSchema.safeParse(input.kind);
   const fileMatch = publicImageAssetFilePattern.exec(input.file);
@@ -475,6 +481,8 @@ export const getPublicImageAssetUrl = async (
     || (kind.data === 'avatar' && contentType !== 'image/webp')) {
     return err(notFound('Image asset not found'));
   }
+  const proposed = parseProposalImagePath(servePath(kind.data, input.file));
+  if (proposed !== null && await deps.quarantinedImages.publicationPending(tenantId, proposed)) return err(notFound('Image asset not found'));
   try {
     const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
     if (!configuration.ok) return err(notFound('Image asset not found'));

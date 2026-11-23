@@ -28,6 +28,7 @@ import {
   removeAvatar,
   type ImageAssetDeps,
   type LiveImageCompleteDeps,
+  type PublicImageAssetDeps,
 } from './image-assets.js';
 
 const TENANT_ID = 'tenant-1';
@@ -100,13 +101,13 @@ const testDeps = (sizeBytes = 1024, body = new Uint8Array([137, 80, 78, 71, 13, 
     healthcheck: async () => ok({ healthy: true }),
     test: async () => ok({ code: 'storage.available', message: 'ok' }),
   };
-  const deps: ImageAssetDeps & LiveImageCompleteDeps = {
+  const deps: ImageAssetDeps & LiveImageCompleteDeps & PublicImageAssetDeps = {
     storage,
     logger: { error: (message) => errors.push(message) },
     secretResolver: { resolve: async () => ok(storageConfiguration) },
     ids: { nextId: () => ASSET_ID },
     clock: { nowIso: () => NOW },
-    quarantinedImages: { findUpload: async () => null },
+    quarantinedImages: { findUpload: async () => null, publicationPending: async () => false },
   };
   return { deps, removed, signed, written, errors };
 };

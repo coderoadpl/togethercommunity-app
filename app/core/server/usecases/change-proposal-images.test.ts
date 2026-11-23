@@ -1278,4 +1278,18 @@ describe('the live image upload use-cases', () => {
     expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest.slice(1)}.png` }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
+
+  it('answers not found for a content-addressed image while an approval attempt of its workspace holds its publication record', async () => {
+    const h = harness();
+    const digest = sha256HexOfBytes(PNG(1));
+    const image = { kind: 'product-cover' as const, digest, extension: 'png' as const };
+    await h.deps.quarantinedImages.recordPublications(TENANT, 'attempt-open', [image], NOW);
+    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest}.png` }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await getPublicImageAssetUrl(TENANT, { kind: 'logo', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
+    expect(await getPublicImageAssetUrl(NEIGHBOUR, { kind: 'product-cover', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
+    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: '11111111-1111-4111-8111-111111111111.png' }, h.deps)).toMatchObject({ ok: true });
+    h.store.imagePublications.splice(0);
+    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
+  });
 });

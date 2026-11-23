@@ -1053,8 +1053,9 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 
 A propose-mode key can propose a new product cover and new branding images
 (logo, dark logo, favicon, share image). Nothing it uploads is publicly
-reachable until an owner approval of a proposal that attaches it writes the
-public copy, which happens just before that approval commits. The
+reachable until an owner approval of a proposal that attaches it commits; that
+approval writes the public copy just before its commit, and the public route
+does not serve the copy before then. The
 use-cases are in `core/server/usecases/change-proposal-images.ts`; the routes
 are the shop image routes a direct-mode key uses, which are of route class
 `direct` and branch on the key's mode.
@@ -1063,7 +1064,7 @@ are the shop image routes a direct-mode key uses, which are of route class
 |---|---|
 | The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
 | The owners | the proposed image through the owner preview while the proposal is pending (the quarantined copy, or the published copy when the address is one a live field already shows), then the public image once approved |
-| Everyone else | for a new image, nothing until an approval writes its public copy just before it commits; from that write the address answers with the bytes, and if that approval then does not end `applied`, until its withdrawal or the minute sweep deletes the copy again (below). An address a live field already shows is public already |
+| Everyone else | for a new image, nothing until the approval that writes its public copy commits: while a publication record of an attempt holds the address, the public route answers `404`, also after that approval did not end `applied`, until its withdrawal or the minute sweep has deleted the copy and the record (below). An address a live field already shows is public already |
 
 **Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
 `shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
@@ -1263,7 +1264,12 @@ the lock pass as well. When every item applied, the approval locks the records o
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
-approval commits. The workspace's approval lock it holds, and the refusal of
+approval commits. While a record of any attempt names a workspace, kind, digest
+and extension, the public asset route answers `404` for that address without
+asking the storage (one lookup by the workspace's key prefix of the records'
+primary key), so a copy written before the commit is served only once the
+approval that wrote it committed, never during that approval and never after
+one that did not end `applied`; a UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
 every address with an unresolved delete (below), keep each reused public copy
 there until the commit. Publishing before the commit, and checking every reused
 address under that lock, mean committed live state never points at an object

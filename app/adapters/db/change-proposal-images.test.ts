@@ -28,6 +28,7 @@ import {
   approveChangeProposal,
   completeProposedProductCoverUpload,
   beginProposedProductCoverUpload,
+  getPublicImageAssetUrl,
   shopManagementKeyCapabilities,
   submitChangeProposal,
   sweepQuarantinedImages,
@@ -405,7 +406,10 @@ describe('a proposed product cover end to end on the database', () => {
 
 const publications = async () => (await database.db.select().from(changeProposalImagePublications)).map((row) => row.digest.replace(/^0+/u, ''));
 
-const failingOnce = (transaction: ChangeProposalTransaction): ChangeProposalTransaction & { armed: boolean } => {
+const failingOnce = (
+  transaction: ChangeProposalTransaction,
+  beforeRollback: () => Promise<void> = async () => undefined,
+): ChangeProposalTransaction & { armed: boolean } => {
   const wrapped = {
     armed: true,
     dryRun: transaction.dryRun,
@@ -413,6 +417,7 @@ const failingOnce = (transaction: ChangeProposalTransaction): ChangeProposalTran
       const result = await operation(scope);
       if (!wrapped.armed || !result.ok) return result;
       wrapped.armed = false;
+      await beforeRollback();
       return err(changeProposalsBusy());
     }),
   };
@@ -423,19 +428,28 @@ describe('public copies of an approval that did not end applied', () => {
   it('stay recorded when the withdrawal cannot delete them, and the sweep removes them after the bound', async () => {
     const harness = endToEnd();
     const { id, url } = await harness.proposeCover(PNG_BYTES);
-    const publicKey = `image-assets/${TENANT}/product-cover/${createContentHash().sha256(PNG_BYTES)}.png`;
-    const transaction = failingOnce(harness.deps.changeProposalTransaction);
+    const file = `${createContentHash().sha256(PNG_BYTES)}.png`;
+    const publicKey = `image-assets/${TENANT}/product-cover/${file}`;
+    const publicRead = () => getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file }, harness.deps);
+    let readBeforeRollback: Awaited<ReturnType<typeof publicRead>> | null = null;
+    const transaction = failingOnce(harness.deps.changeProposalTransaction, async () => {
+      expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+      readBeforeRollback = await publicRead();
+    });
     harness.objects.failDeletes = (objectKey) => objectKey.startsWith('image-assets/');
 
     expect(await approveChangeProposal(ownerSession, { id }, { ...harness.deps, changeProposalTransaction: transaction }))
       .toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(readBeforeRollback).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
     expect(await publications()).toHaveLength(1);
+    expect(await publicRead()).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
     harness.objects.failDeletes = () => false;
     harness.clock.now = '2026-03-01T10:14:00.000Z';
     await sweepQuarantinedImages(harness.deps);
     expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    expect(await publicRead()).toMatchObject({ ok: false, error: { code: 'not_found' } });
     harness.clock.now = '2026-03-01T10:16:00.000Z';
     expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { tenants: 1 } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
@@ -444,6 +458,7 @@ describe('public copies of an approval that did not end applied', () => {
     expect(await approveChangeProposal(ownerSession, { id }, harness.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
     expect(await publications()).toEqual([]);
+    expect(await publicRead()).toMatchObject({ ok: true, value: expect.stringContaining(publicKey) });
     const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(eq(products.id, 'mug'));
     expect(cover?.coverUrl).toBe(url);
   });

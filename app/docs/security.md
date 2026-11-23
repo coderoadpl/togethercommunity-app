@@ -754,7 +754,10 @@ scopes on every shop key.
   and starts at most 60 uploads in 15 minutes, each presigned for exactly its
   declared size; decisions, revocation and a sweep on the minute tick remove
   them, and the sweep also removes the key's upload candidates and the public
-  copies of approvals that did not end applied. A
+  copies of approvals that did not end applied. The public asset route answers
+  `404` for a content-addressed address while an approval attempt holds its
+  publication record, so a public copy written before an approval's commit is
+  served only once that approval committed. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before

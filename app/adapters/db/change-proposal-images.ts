@@ -394,6 +394,13 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       await executor.update(changeProposalImageUploads).set({ sweepAttemptedAt: now })
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
     }, undefined),
+    publicationPending: async (tenantId, image) => (await db.select({ kind: changeProposalImagePublications.kind }).from(changeProposalImagePublications)
+      .where(and(
+        eq(changeProposalImagePublications.tenantId, tenantId),
+        eq(changeProposalImagePublications.kind, image.kind),
+        eq(changeProposalImagePublications.digest, image.digest),
+        eq(changeProposalImagePublications.extension, image.extension),
+      )).limit(1)).length > 0,
     recordPublications: async (tenantId, attemptId, images, startedAt) => {
       if (images.length === 0) return;
       const rows = images.map((image) => proposalImagePublicationSchema.parse({ attemptId, image: { kind: image.kind, digest: image.digest, extension: image.extension }, startedAt }));

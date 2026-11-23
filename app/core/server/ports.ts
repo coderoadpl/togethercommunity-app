@@ -3353,6 +3353,11 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   deleteUpload(tenantId: string, objectKey: string, boundMs?: number): Promise<void>;
   /** Records a failed removal, so the upload moves behind the others. */
   markUploadAttempted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
+  /**
+   * Whether an approval attempt of the workspace holds a publication record of this image: its public copy then has no
+   * committed approval yet, so the public route does not serve it.
+   */
+  publicationPending(tenantId: string, image: ProposalImageReference): Promise<boolean>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
   /** Records whose last unresolved delete, or else whose start, lies before `startedBefore`. */

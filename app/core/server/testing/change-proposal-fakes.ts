@@ -757,6 +757,7 @@ export const createQuarantinedImagesFake = (
       removeWhere(store.imageUploads, (row) => row.tenantId === tenantId && row.objectKey === objectKey);
     },
     markUploadAttempted: async () => undefined,
+    publicationPending: async (tenantId, image) => store.imagePublications.some((row) => row.tenantId === tenantId && sameProposalImage(row.image, image)),
     recordPublications: async (tenantId, attemptId, images, startedAt) => {
       for (const image of images) {
         if (!store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))) {

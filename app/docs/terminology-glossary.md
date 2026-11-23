@@ -85,7 +85,7 @@ add it here before using it in either dictionary.
 | Lesson building block | blok treści | content block | Short form: blok / block. |
 | Collapsible lesson reading preview | `lesson.showAll` / `lesson.collapseText` in the Polish dictionary | Show all / Collapse text | Reveals the full lesson text or returns to the clipped reading preview; distinct from collapsing an embedded editor. |
 | Embedded editor collapse action | `lesson.collapseEmbed` in the Polish dictionary | Collapse the editor | Applies only to the embedded editor, not the lesson reading preview. |
-| Course outline | program kursu | course curriculum | Eyebrow: course syllabus. |
+| Course outline | program kursu | course program | Member course page heading: Course program. Eyebrow: course syllabus. |
 | Connect or disconnect a module | podepnij / odepnij | attach / detach | Use the same pair throughout. Do not use podłącz / odłącz for this concept. |
 | Publication state | wersja robocza / opublikowany | draft / published | Use consistently for state labels. |
 | Archived course filter | `courses.archived` in the Polish dictionary | Archived | Use the established archived state term, including in the confirmation dialog. |

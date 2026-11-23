@@ -1,6 +1,6 @@
 # Member lessons
 
-Open a lesson from the course curriculum to read its content and use the lesson
+Open a lesson from the course program to read its content and use the lesson
 actions to mark it complete or continue to the next lesson.
 
 A text block that opens the lesson always starts expanded. A long text block

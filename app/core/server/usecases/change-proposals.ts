@@ -66,6 +66,7 @@ import { applyLockedProposal, previewChangeProposal } from './change-proposal-ap
 import {
   checkApprovalFiles,
   checkProposedFiles,
+  fileRefusalAfterDryRun,
   prepareApprovalFiles,
   releaseFilesOfProposals,
   type ChangeProposalFileApprovalDeps,
@@ -180,13 +181,14 @@ export const submitChangeProposal = async (
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
   const ownerEquivalent: Ctx = { identity: ctx.identity };
 
-  const files = await checkProposedFiles(tenantId, keyId, parsedRequest.data.operation, input, operation.invalidInputMessage, deps);
+  const checkFiles = () => checkProposedFiles(tenantId, keyId, parsedRequest.data.operation, input, operation.invalidInputMessage, deps);
+  const files = await checkFiles();
   if (!files.ok) return files;
 
-  const dryRun = await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
+  const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
     const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId });
     return effect.ok ? ok({ effect: effect.value }) : effect;
-  });
+  }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, parsedRequest.data.operation, dryRun.value.effect, operation.invalidInputMessage, deps);
   if (!images.ok) return images;

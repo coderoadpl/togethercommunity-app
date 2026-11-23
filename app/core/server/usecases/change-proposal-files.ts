@@ -61,6 +61,17 @@ export const checkProposedFiles = async (
   return ok([fileId]);
 };
 
+/** A file the key discarded after the read-only check and before the dry run answers as if it was discarded before. */
+export const fileRefusalAfterDryRun = async <T>(
+  dryRun: Result<T, AppError>,
+  checked: readonly string[],
+  check: () => Promise<Result<string[], AppError>>,
+): Promise<Result<T, AppError>> => {
+  if (dryRun.ok || checked.length === 0 || dryRun.error.code !== 'not_found') return dryRun;
+  const again = await check();
+  return again.ok ? dryRun : err(again.error);
+};
+
 export interface ChangeProposalFileApprovalDeps {
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'findStaged'>;
   storage: StorageProvider;

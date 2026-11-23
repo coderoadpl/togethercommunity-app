@@ -77,6 +77,7 @@ import { applyLockedProposal, changeProposalGroupReferences, lockGroupCourses, p
 import {
   checkApprovalFiles,
   checkProposedFiles,
+  fileRefusalAfterDryRun,
   prepareApprovalFiles,
   releaseFilesOfProposals,
   type ChangeProposalFileApprovalDeps,
@@ -265,12 +266,13 @@ export const submitGroupedChangeProposal = async (
   if (!storedReferencesChecked.ok) return storedReferencesChecked;
   const reachedCap = await deps.changeProposals.countCapReached(tenantId, keyId, startedAt);
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
-  const files = await checkProposedFiles(tenantId, keyId, operationName, prepared.value.input, operation.invalidInputMessage, deps);
+  const checkFiles = () => checkProposedFiles(tenantId, keyId, operationName, prepared.value.input, operation.invalidInputMessage, deps);
+  const files = await checkFiles();
   if (!files.ok) return files;
 
   const proposalId = deps.ids.nextId();
   const ownerEquivalent: Ctx = { identity: ctx.identity };
-  const dryRun = await deps.changeProposalTransaction.dryRun<ChangeProposalEffect>(tenantId, async (scope) => {
+  const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<ChangeProposalEffect>(tenantId, async (scope) => {
     const inside = await scope.repositories.changeProposalGroups.findByKey(tenantId, keyId, groupId);
     if (inside === null) return err(keyGroupMissing(groupId));
     const readAt = deps.clock.nowIso();
@@ -288,7 +290,7 @@ export const submitGroupedChangeProposal = async (
     const runnable = operation.prepare(resolved);
     if (!runnable.ok) return runnable;
     return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId });
-  }, { groupId });
+  }, { groupId }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, operationName, dryRun.value, operation.invalidInputMessage, deps);
   if (!images.ok) return images;

@@ -1499,7 +1499,9 @@ pending proposal, and a group cannot attach it twice. A file of another key, a
 discarded, unknown or held file, also one an ended proposal has not released
 yet, answers `400 validation` with the field error
 `stagedFileId: Must be a file this key staged that no other pending proposal
-attaches`, and nothing is stored. The key may still discard a file a pending
+attaches`, and nothing is stored; a file the key discards while its own
+submission is running gets the same answer, since a dry run that finds no file
+checks the file again. The key may still discard a file a pending
 proposal holds; an approval of that proposal then ends `stale` (below).
 
 **Owner link.** `GET /api/change-proposals/:id/files/:fileId`

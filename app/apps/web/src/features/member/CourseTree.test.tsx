@@ -510,6 +510,12 @@ describe('CourseTree', () => {
     expect(screen.queryByTestId('lesson-duration-l3')).not.toBeInTheDocument();
   });
 
+  it('keeps a member lesson name on one line', async () => {
+    await renderTree();
+
+    expect(await screen.findByTestId('lesson-name-l1')).toHaveClass('MuiTypography-noWrap');
+  });
+
   it('opens only the module and chapter of the focused lesson', async () => {
     await renderFocusedTree('l3');
 

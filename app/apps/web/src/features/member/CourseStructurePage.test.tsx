@@ -14,9 +14,12 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { LanguageProvider } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { languagePreference } from '../../theme-mode.js';
 import { CourseStructurePage } from './CourseStructurePage.js';
 
 const structure: CourseStructureWithAccess = {
@@ -594,6 +597,20 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
 
+  it('tells a visitor a missing public course is not open to visitors instead of naming a library', async () => {
+    server.use(
+      anonMe(),
+      http.get('/api/public/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+    );
+    await renderPage(<CourseStructurePage courseId="course-9" />);
+
+    expect(await screen.findByText(en.anon.courseNotFoundBody)).toBeInTheDocument();
+    expect(screen.queryByText(en.courseTree.courseNotInLibrary)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.shell.start })).toHaveAttribute('href', '/');
+  });
+
   it('serves an anonymous visitor the public program without progress or discussion', async () => {
     anonCoursePage(null);
 
@@ -772,26 +789,66 @@ describe('CourseStructurePage', () => {
     expect(screen.queryByTestId('course-cover')).not.toBeInTheDocument();
   });
   it.each([
-    { name: 'product before sales URL', product: anonOffer.product, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: '/checkout/prod-advanced', label: en.anon.unlockCta, contact: false },
-    { name: 'sales URL without product', product: null, salesUrl: 'https://courses.example.org/offer', supportUrl: 'https://courses.example.org/contact', href: 'https://courses.example.org/offer', label: en.anon.salesCta, contact: false },
-    { name: 'login and contact', product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact', href: '/login', label: en.auth.signInLink, contact: true },
-    { name: 'unlisted product excluded by the offer', product: null, salesUrl: null, supportUrl: null, href: '/login', label: en.auth.signInLink, contact: false },
-    { name: 'login without contact', product: null, salesUrl: null, supportUrl: null, href: '/login', label: en.auth.signInLink, contact: false },
-  ])('resolves $name', async ({ product, salesUrl, supportUrl, href, label, contact }) => {
-    anonCoursePage(null, { ...anonOffer, product, salesUrl, supportUrl });
+    { name: 'product before sales URL', product: anonOffer.product, salesUrl: 'https://courses.example.org/offer', href: '/checkout/prod-advanced', label: en.anon.unlockCta },
+    { name: 'sales URL without product', product: null, salesUrl: 'https://courses.example.org/offer', href: 'https://courses.example.org/offer', label: en.anon.salesCta },
+  ])('resolves $name', async ({ product, salesUrl, href, label }) => {
+    anonCoursePage(null, { ...anonOffer, product, salesUrl, supportUrl: 'https://courses.example.org/contact' });
     await renderPage(<CourseStructurePage courseId="course-1" />);
     for (const id of ['public-course-unlock-cta', 'public-course-unlock-cta-mobile']) {
       expect(await screen.findByTestId(id)).toHaveAttribute('href', href);
       expect(screen.getByTestId(id)).toHaveTextContent(label);
     }
-    const contactLink = screen.queryByRole('link', { name: en.anon.contactCreator });
-    if (contact) {
-      expect(contactLink).toHaveAttribute('href', supportUrl);
-      if (contactLink === null) throw new Error('Expected public contact link');
-      for (const width of [390, 1440]) {
-        expect(stylesAt(contactLink, width)['min-height']).toBe('44px');
-      }
-    } else expect(contactLink).not.toBeInTheDocument();
+    expect(screen.queryByTestId('guest-course-not-on-sale')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.anon.contactCreator })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { name: 'with a support link', supportUrl: 'https://courses.example.org/contact' },
+    { name: 'without a support link', supportUrl: null },
+  ])('says a course with nothing to buy is not on sale, $name', async ({ supportUrl }) => {
+    anonCoursePage(null, { ...anonOffer, product: null, salesUrl: null, supportUrl });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const notOnSale = await screen.findByTestId('guest-course-not-on-sale');
+    expect(notOnSale).toHaveTextContent(en.anon.courseNotOnSale);
+    const signIn = within(notOnSale).getByTestId('public-course-sign-in');
+    expect(signIn).toHaveAttribute('href', '/login?returnTo=%2Fmy%2Fcourses%2Fcourse-1');
+    expect(signIn).toHaveTextContent(en.anon.courseHaveAccessSignIn);
+    expect(signIn).not.toHaveClass('MuiButton-root');
+    for (const width of [390, 1440]) {
+      expect(stylesAt(signIn, width)['min-height']).toBe('44px');
+    }
+    const contact = within(notOnSale).queryByTestId('public-course-contact');
+    if (supportUrl === null) {
+      expect(contact).not.toBeInTheDocument();
+    } else {
+      expect(contact).toHaveAttribute('href', supportUrl);
+      expect(contact).toHaveAttribute('target', '_blank');
+      expect(contact).toHaveTextContent(en.anon.contactCreator);
+      expect(contact).toHaveClass('MuiButton-contained');
+    }
+    expect(screen.queryByTestId('public-course-unlock-cta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('guest-course-sticky-offer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('guest-course-offer-repeat')).not.toBeInTheDocument();
+  });
+
+  it('drops the have-access sign-in for a signed-in visitor on a course with nothing to buy', async () => {
+    anonCoursePage(null, { ...anonOffer, product: null, salesUrl: null, supportUrl: 'https://courses.example.org/contact' });
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u9', email: 'visitor@acme.example', emailVerified: true, name: 'Visitor',
+            tenantAccess: 'none', tenant: null, impersonation: null,
+          },
+        })),
+    );
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const notOnSale = await screen.findByTestId('guest-course-not-on-sale');
+    expect(within(notOnSale).getByTestId('public-course-contact')).toHaveAttribute('href', 'https://courses.example.org/contact');
+    expect(within(notOnSale).queryByTestId('public-course-sign-in')).not.toBeInTheDocument();
   });
 
   it('opens only preview rows after expanding a guest module', async () => {
@@ -808,6 +865,16 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('lesson-button-l2').closest('[role="treeitem"]')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('lesson-button-l2')).not.toHaveAttribute('href');
     expect(screen.queryByTestId('unlock-lesson-l2')).not.toBeInTheDocument();
+  });
+
+  it('wraps a visitor preview lesson name beside the Polish preview chip instead of truncating it', async () => {
+    languagePreference.save('pl');
+    anonCoursePage(null);
+    await renderPage(<LanguageProvider><CourseStructurePage courseId="course-1" /></LanguageProvider>);
+    await userEvent.setup().click(await screen.findByTestId('module-toggle-m1'));
+
+    expect(await screen.findByTestId('lesson-button-l1')).toHaveTextContent(pl.anon.previewChip);
+    expect(screen.getByTestId('lesson-name-l1')).not.toHaveClass('MuiTypography-noWrap');
   });
 
   it.each(['month', 'year'] as const)('shows the %s cadence on the offer and mobile bar', async (interval) => {

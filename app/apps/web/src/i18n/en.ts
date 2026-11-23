@@ -2594,7 +2594,6 @@ export const en: Messages = {
     offersSection: 'Offer',
     offerBuyCta: 'Buy now',
     guestHeading: 'For visitors',
-    joinOfferCta: 'Join the community — see the offer',
     readOnlyBanner:
       'You are browsing as a visitor: reading is open, posting and reactions are for community members.',
     emptyFeed: 'The creator has not published anything here yet.',
@@ -2603,6 +2602,10 @@ export const en: Messages = {
     unlockCta: 'Unlock access',
     emptyTitle: 'This community has no public content',
     emptyBody: 'The creator has not opened any space or course to visitors.',
+    courseNotFoundBody: 'This course does not exist or is not open to visitors.',
+    lockedSpaceBody: 'Unlock access to read the posts in this space and join the conversation.',
+    courseNotOnSale: 'This course is not on sale right now.',
+    courseHaveAccessSignIn: 'Already have access? Sign in',
   },
   search: {
     title: 'Search',
@@ -2847,7 +2850,12 @@ export const en: Messages = {
     emptyFeed: 'Nobody has posted in this space yet. Start the conversation!',
     emptyFeedReadOnly: 'Nobody has posted in this space yet.',
     openThread: 'Open thread',
+    openThreadAria: ({ author, excerpt }) =>
+      excerpt === ''
+        ? format('Open thread by {author}', { author })
+        : format('Open thread by {author}: {excerpt}', { author, excerpt }),
     reactAria: ({ emoji }) => format('React: {emoji}', { emoji }),
+    reactionCountAria: ({ emoji, count }) => format('{emoji} reactions: {count}', { emoji, count: String(count) }),
     addReaction: 'Add a reaction',
     postMenu: 'More post options',
     copyLink: 'Copy link',
@@ -2860,6 +2868,7 @@ export const en: Messages = {
     backToSpaces: 'Back to spaces',
     backToFeed: 'Back to the space',
     pinnedHeading: 'Pinned',
+    latestHeading: 'Latest',
     pinnedChip: 'Pinned',
     announcementChip: 'Announcement',
     pin: 'Pin',

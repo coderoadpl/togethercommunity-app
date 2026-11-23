@@ -2283,13 +2283,16 @@ export interface Messages {
     offersSection: string;
     offerBuyCta: string;
     guestHeading: string;
-    joinOfferCta: string;
     readOnlyBanner: string;
     emptyFeed: string;
     lockedCourseHint: string;
     unlockCta: string;
     emptyTitle: string;
     emptyBody: string;
+    courseNotFoundBody: string;
+    lockedSpaceBody: string;
+    courseNotOnSale: string;
+    courseHaveAccessSignIn: string;
   };
   search: {
     title: string;
@@ -2528,7 +2531,9 @@ export interface Messages {
     emptyFeed: string;
     emptyFeedReadOnly: string;
     openThread: string;
+    openThreadAria: (params: { author: string; excerpt: string }) => string;
     reactAria: (params: { emoji: string }) => string;
+    reactionCountAria: (params: { emoji: string; count: number }) => string;
     addReaction: string;
     postMenu: string;
     copyLink: string;
@@ -2541,6 +2546,7 @@ export interface Messages {
     backToSpaces: string;
     backToFeed: string;
     pinnedHeading: string;
+    latestHeading: string;
     pinnedChip: string;
     announcementChip: string;
     pin: string;

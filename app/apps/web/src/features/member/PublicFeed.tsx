@@ -1,4 +1,4 @@
-import { Box, Chip, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Chip, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import { communityPostPath } from '#core/contract/index.js';
@@ -8,6 +8,7 @@ import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { PostContent } from '../../components/ui/PostContent.js';
+import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
   AuthorChip,
@@ -18,45 +19,63 @@ import {
 } from '../../theme.js';
 import { EmptyFeedIcon } from './community-icons.js';
 
+const EXCERPT_WORDS = 8;
+
+const postExcerpt = (text: string): string => {
+  const words = text.replaceAll(/\s+/gu, ' ').trim().split(' ').filter((word) => word.length > 0);
+  const lead = words.slice(0, EXCERPT_WORDS).join(' ');
+  return words.length > EXCERPT_WORDS ? `${lead}…` : lead;
+};
+
 const PublicReactions = ({ reactions }: { reactions: ReactionSummary[] }) => {
+  const t = useTranslations();
   const counted = reactions.filter((reaction) => reaction.count > 0);
   if (counted.length === 0) return null;
   return (
-    <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', flexWrap: 'wrap' }}>
+    <Stack direction="row" useFlexGap sx={{ columnGap: '0.9rem', flexWrap: 'wrap' }} data-testid="public-reactions">
       {counted.map((reaction) => (
-        <Chip
+        <PostMetaText
           key={reaction.emoji}
-          size="small"
-          variant="outlined"
-          label={`${reaction.emoji} ${String(reaction.count)}`}
+          component="span"
+          role="img"
+          aria-label={t.community.reactionCountAria({ emoji: reaction.emoji, count: reaction.count })}
           data-testid={`public-reaction-${reaction.emoji}`}
-        />
+        >
+          {`${reaction.emoji} ${String(reaction.count)}`}
+        </PostMetaText>
       ))}
     </Stack>
   );
 };
 
-const PostHeader = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
+const PostHeader = ({
+  post,
+  underPinnedHeading = false,
+}: {
+  post: DiscussionPost | SpaceFeedItem;
+  underPinnedHeading?: boolean;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const pinChip = post.pinnedAt === null
+    ? null
+    : post.authorIsStaff
+      ? t.community.announcementChip
+      : underPinnedHeading ? null : t.community.pinnedChip;
   return (
     <Stack
       direction="row"
       useFlexGap
-      sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}
+      sx={{ alignItems: 'center', columnGap: '0.6rem', flexWrap: 'wrap' }}
     >
+      <UserAvatar name={translateDeletedContent(post.authorDisplay, t)} imageUrl={post.authorAvatarUrl} size="sm" />
       <PostAuthorName component="span">{translateDeletedContent(post.authorDisplay, t)}</PostAuthorName>
       {post.authorIsStaff && (
         <AuthorChip data-testid={`public-author-chip-${post.id}`}>
           {t.discussion.authorChip}
         </AuthorChip>
       )}
-      {post.pinnedAt !== null ? (
-        <Chip
-          size="small"
-          label={post.authorIsStaff ? t.community.announcementChip : t.community.pinnedChip}
-        />
-      ) : null}
+      {pinChip === null ? null : <Chip size="small" label={pinChip} data-testid={`public-pin-chip-${post.id}`} />}
       <PostMetaText component="time" dateTime={post.createdAt}>
         {formatRelativeTime(post.createdAt, language)}
       </PostMetaText>
@@ -75,13 +94,21 @@ const PostText = ({ post }: { post: DiscussionPost | SpaceFeedItem }) => {
   );
 };
 
-const PublicFeedPost = ({ spaceId, item }: { spaceId: string; item: SpaceFeedItem }) => {
+const PublicFeedPost = ({
+  spaceId,
+  item,
+  underPinnedHeading = false,
+}: {
+  spaceId: string;
+  item: SpaceFeedItem;
+  underPinnedHeading?: boolean;
+}) => {
   const t = useTranslations();
   return (
     <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`public-feed-post-${item.id}`}>
       <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
         <Box>
-          <PostHeader post={item} />
+          <PostHeader post={item} underPinnedHeading={underPinnedHeading} />
           <PostText post={item} />
         </Box>
         <PublicReactions reactions={item.reactions} />
@@ -96,6 +123,10 @@ const PublicFeedPost = ({ spaceId, item }: { spaceId: string; item: SpaceFeedIte
           <MuiLink
             component={Link}
             to={communityPostPath(spaceId, item.id)}
+            aria-label={t.community.openThreadAria({
+              author: translateDeletedContent(item.authorDisplay, t),
+              excerpt: item.deletedAt === null ? postExcerpt(item.bodyPlainText) : '',
+            })}
             data-testid={`public-open-thread-${item.id}`}
           >
             {t.community.openThread}
@@ -106,7 +137,21 @@ const PublicFeedPost = ({ spaceId, item }: { spaceId: string; item: SpaceFeedIte
   );
 };
 
-export const PublicFeedList = ({ spaceId, feed }: { spaceId: string; feed: SpaceFeed }) => {
+const FeedGroupHeading = ({ component, testId, children }: { component: 'h2' | 'h3'; testId: string; children: string }) => (
+  <Typography variant="h3" component={component} sx={{ mt: '0.5rem' }} data-testid={testId}>
+    {children}
+  </Typography>
+);
+
+export const PublicFeedList = ({
+  spaceId,
+  feed,
+  headingComponent = 'h2',
+}: {
+  spaceId: string;
+  feed: SpaceFeed;
+  headingComponent?: 'h2' | 'h3';
+}) => {
   const t = useTranslations();
   if (feed.items.length === 0 && feed.pinned.length === 0) {
     return (
@@ -118,10 +163,19 @@ export const PublicFeedList = ({ spaceId, feed }: { spaceId: string; feed: Space
   }
   return (
     <Stack useFlexGap sx={{ rowGap: '1rem' }}>
-      {feed.pinned.length > 0 ? <Chip label={t.community.pinnedHeading} /> : null}
+      {feed.pinned.length > 0 ? (
+        <FeedGroupHeading component={headingComponent} testId="public-feed-pinned-heading">
+          {t.community.pinnedHeading}
+        </FeedGroupHeading>
+      ) : null}
       {feed.pinned.map((item) => (
-        <PublicFeedPost key={`pinned-${item.id}`} spaceId={spaceId} item={item} />
+        <PublicFeedPost key={`pinned-${item.id}`} spaceId={spaceId} item={item} underPinnedHeading />
       ))}
+      {feed.pinned.length > 0 && feed.items.length > 0 ? (
+        <FeedGroupHeading component={headingComponent} testId="public-feed-latest-heading">
+          {t.community.latestHeading}
+        </FeedGroupHeading>
+      ) : null}
       {feed.items.map((item) => (
         <PublicFeedPost key={item.id} spaceId={spaceId} item={item} />
       ))}

@@ -2636,7 +2636,7 @@ export const pl: Messages = {
   anon: {
     salesCta: 'Zobacz ofertę',
     contactCreator: 'Napisz do twórcy',
-    previewChip: 'Podgląd',
+    previewChip: 'Lekcja próbna',
     monthlyPrice: (params: { price: string }) => `${params.price} / miesiąc`,
     yearlyPrice: (params: { price: string }) => `${params.price} / rok`,
     eyebrow: 'Podgląd dla gości',
@@ -2645,16 +2645,19 @@ export const pl: Messages = {
     spacesSection: 'Przestrzenie',
     offersSection: 'Oferta',
     offerBuyCta: 'Kup teraz',
-    guestHeading: 'Dla odwiedzających',
-    joinOfferCta: 'Dołącz do społeczności — zobacz ofertę',
+    guestHeading: 'Dla gości',
     readOnlyBanner:
       'Przeglądasz jako gość — możesz czytać. Pisanie i reakcje są dla uczestników społeczności.',
     emptyFeed: 'Twórca jeszcze nic tu nie opublikował.',
     lockedCourseHint:
-      'Bezpłatne lekcje próbne otworzysz od razu; resztę odblokujesz po zakupie.',
+      'Lekcje oznaczone „Lekcja próbna” otworzysz od razu; resztę odblokujesz po zakupie.',
     unlockCta: 'Odblokuj dostęp',
     emptyTitle: 'Ta społeczność nie ma treści publicznych',
     emptyBody: 'Twórca nie udostępnił gościom żadnej przestrzeni ani kursu.',
+    courseNotFoundBody: 'Tego kursu nie ma albo nie jest dostępny dla gości.',
+    lockedSpaceBody: 'Odblokuj dostęp, aby czytać wpisy w tej przestrzeni i dołączyć do rozmowy.',
+    courseNotOnSale: 'Ten kurs nie jest teraz w sprzedaży.',
+    courseHaveAccessSignIn: 'Masz już dostęp? Zaloguj się',
   },
   search: {
     title: 'Szukaj',
@@ -2899,7 +2902,12 @@ export const pl: Messages = {
     emptyFeed: 'Nikt jeszcze nic nie napisał w tej przestrzeni. Zacznij rozmowę!',
     emptyFeedReadOnly: 'Nikt jeszcze nic nie napisał w tej przestrzeni.',
     openThread: 'Otwórz wątek',
+    openThreadAria: ({ author, excerpt }) =>
+      excerpt === ''
+        ? format('Otwórz wątek – {author}', { author })
+        : format('Otwórz wątek – {author}: {excerpt}', { author, excerpt }),
     reactAria: ({ emoji }) => format('Zareaguj: {emoji}', { emoji }),
+    reactionCountAria: ({ emoji, count }) => format('Reakcje {emoji}: {count}', { emoji, count: String(count) }),
     addReaction: 'Dodaj reakcję',
     postMenu: 'Więcej opcji wpisu',
     copyLink: 'Kopiuj link',
@@ -2912,6 +2920,7 @@ export const pl: Messages = {
     backToSpaces: 'Wróć do listy przestrzeni',
     backToFeed: 'Wróć do przestrzeni',
     pinnedHeading: 'Przypięte',
+    latestHeading: 'Najnowsze',
     pinnedChip: 'Przypięty',
     announcementChip: 'Ogłoszenie',
     pin: 'Przypnij',

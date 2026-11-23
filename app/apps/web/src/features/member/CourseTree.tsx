@@ -235,7 +235,12 @@ const LessonRow = ({
     void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
   };
   const label = (
-    <TreeLessonTitle component="span" noWrap sx={{ display: 'block', minWidth: 0, flex: 1 }}>
+    <TreeLessonTitle
+      component="span"
+      noWrap={!guest}
+      sx={{ display: 'block', minWidth: 0, flex: 1, ...(guest ? { overflowWrap: 'anywhere' } : {}) }}
+      data-testid={`lesson-name-${lesson.lessonId}`}
+    >
       <Highlighted text={lesson.name} query={search} />
     </TreeLessonTitle>
   );
@@ -243,7 +248,7 @@ const LessonRow = ({
     <Stack
       direction="row"
       useFlexGap
-      sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem', flexShrink: 0 }}
+      sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem', flexShrink: 0, ...(guest ? { alignSelf: 'flex-start' } : {}) }}
     >
       {lesson.durationMinutes !== undefined && (
         <LessonDurationText data-testid={`lesson-duration-${lesson.lessonId}`}>

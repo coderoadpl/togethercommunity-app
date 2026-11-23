@@ -1,21 +1,24 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
-import { appBarClasses, Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { appBarClasses, Box, Paper, Stack, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { Cover } from '../../components/ui/Cover.js';
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatOfferPrice } from '../../lib/format.js';
 import { EmberCtaLink } from '../../theme.js';
 import { courseTotals, formatTotalDuration } from './CourseRail.js';
 import { StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+import { useLoginLinkWithReturn } from './use-login-redirect.js';
+import { RouterTextLink } from './visitor-actions.js';
 
 interface GuestOffer {
   purchasable: boolean;
   price: string | null;
   cta: (testId: string) => ReactNode;
-  contact: ReactNode;
 }
 
 const useGuestOffer = (course: CourseStructureWithAccess): GuestOffer => {
@@ -24,25 +27,58 @@ const useGuestOffer = (course: CourseStructureWithAccess): GuestOffer => {
   const offer = course.offer;
   const product = offer?.product;
   const salesUrl = offer?.salesUrl;
-  const href = product ? `/checkout/${encodeURIComponent(product.id)}` : salesUrl || '/login';
-  const label = product ? t.anon.unlockCta : salesUrl ? t.anon.salesCta : t.auth.signInLink;
   const amount = product ? formatOfferPrice(product.priceCents, product.currency, language, t.common.free) : null;
   const price = amount === null ? null : product?.interval === 'month'
     ? t.anon.monthlyPrice({ price: amount })
     : product?.interval === 'year' ? t.anon.yearlyPrice({ price: amount }) : amount;
-  const cta = (testId: string) => product || !salesUrl ? (
-    <EmberCtaLink component={Link} to={href} variant="contained" data-testid={testId} fullWidth>
-      {label}
+  const cta = (testId: string) => product ? (
+    <EmberCtaLink component={Link} to={`/checkout/${encodeURIComponent(product.id)}`} variant="contained" data-testid={testId} fullWidth>
+      {t.anon.unlockCta}
     </EmberCtaLink>
-  ) : (
-    <EmberCtaLink href={href} variant="contained" data-testid={testId} fullWidth>
-      {label}
+  ) : salesUrl ? (
+    <EmberCtaLink href={salesUrl} variant="contained" data-testid={testId} fullWidth>
+      {t.anon.salesCta}
     </EmberCtaLink>
-  );
-  const contact = !product && !salesUrl && offer?.supportUrl ? (
-    <MuiLink href={offer.supportUrl} sx={{ alignSelf: 'center', display: 'inline-flex', alignItems: 'center', minHeight: 44, px: '0.75rem', py: '0.5rem' }}>{t.anon.contactCreator}</MuiLink>
   ) : null;
-  return { purchasable: Boolean(product) || Boolean(salesUrl), price, cta, contact };
+  return { purchasable: Boolean(product) || Boolean(salesUrl), price, cta };
+};
+
+const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
+const CourseNotOnSale = ({ supportUrl }: { supportUrl: string | null }) => {
+  const t = useTranslations();
+  const loginLink = useLoginLinkWithReturn();
+  const me = useQuery(actions.me);
+  const signedIn = me.data?.tenantAccess === 'none';
+  const external = supportUrl !== null && !supportUrl.toLowerCase().startsWith('mailto:');
+  return (
+    <Stack useFlexGap sx={{ rowGap: '0.75rem' }} data-testid="guest-course-not-on-sale">
+      <Typography variant="body1" component="p">
+        {t.anon.courseNotOnSale}
+      </Typography>
+      {supportUrl === null ? null : (
+        <EmberCtaLink
+          component="a"
+          href={supportUrl}
+          {...(external ? NEW_TAB : {})}
+          variant="contained"
+          fullWidth
+          data-testid="public-course-contact"
+        >
+          {t.anon.contactCreator}
+        </EmberCtaLink>
+      )}
+      {signedIn ? null : (
+        <RouterTextLink
+          {...loginLink}
+          sx={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+          data-testid="public-course-sign-in"
+        >
+          {t.anon.courseHaveAccessSignIn}
+        </RouterTextLink>
+      )}
+    </Stack>
+  );
 };
 
 const stickyHeaderBottom = (): number => {
@@ -120,7 +156,7 @@ const CourseFacts = ({ course }: { course: CourseStructureWithAccess }) => {
 
 export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess }) => {
   const t = useTranslations();
-  const { price, cta, contact } = useGuestOffer(course);
+  const { purchasable, price, cta } = useGuestOffer(course);
   const [cardCta, setCardCta] = useState<HTMLElement | null>(null);
   const [bar, setBar] = useState<HTMLElement | null>(null);
   const barShown = useScrolledPastHeader(cardCta);
@@ -137,32 +173,35 @@ export const GuestCourseOffer = ({ course }: { course: CourseStructureWithAccess
           <Stack spacing="1rem" sx={{ p: '1.25rem', minWidth: 0, justifyContent: 'center' }}>
             {price ? <Typography variant="h2" component="p" data-testid="guest-course-price">{price}</Typography> : null}
             <CourseFacts course={course} />
-            <Box ref={setCardCta}>{cardButton}</Box>
-            {contact}
+            {purchasable
+              ? <Box ref={setCardCta}>{cardButton}</Box>
+              : <CourseNotOnSale supportUrl={course.offer?.supportUrl ?? null} />}
           </Stack>
         </Box>
       </Paper>
-      <Paper
-        ref={setBar}
-        square
-        elevation={3}
-        data-testid="guest-course-sticky-offer"
-        data-shown={barShown}
-        aria-hidden={barShown ? undefined : true}
-        inert={!barShown}
-        sx={{
-          display: { xs: 'flex', md: 'none' }, position: 'fixed', bottom: 0, left: 0, right: 0,
-          zIndex: (theme) => theme.zIndex.appBar, alignItems: 'center', gap: '1rem',
-          p: '0.75rem', pb: 'calc(0.75rem + env(safe-area-inset-bottom))',
-          transform: barShown ? 'none' : 'translateY(100%)',
-          visibility: barShown ? 'visible' : 'hidden',
-          transition: 'transform 0.2s ease, visibility 0.2s',
-          '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
-        }}
-      >
-        {price ? <Typography variant="body2" sx={{ flexShrink: 0 }}>{price}</Typography> : null}
-        {barButton}
-      </Paper>
+      {purchasable ? (
+        <Paper
+          ref={setBar}
+          square
+          elevation={3}
+          data-testid="guest-course-sticky-offer"
+          data-shown={barShown}
+          aria-hidden={barShown ? undefined : true}
+          inert={!barShown}
+          sx={{
+            display: { xs: 'flex', md: 'none' }, position: 'fixed', bottom: 0, left: 0, right: 0,
+            zIndex: (theme) => theme.zIndex.appBar, alignItems: 'center', gap: '1rem',
+            p: '0.75rem', pb: 'calc(0.75rem + env(safe-area-inset-bottom))',
+            transform: barShown ? 'none' : 'translateY(100%)',
+            visibility: barShown ? 'visible' : 'hidden',
+            transition: 'transform 0.2s ease, visibility 0.2s',
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        >
+          {price ? <Typography variant="body2" sx={{ flexShrink: 0 }}>{price}</Typography> : null}
+          {barButton}
+        </Paper>
+      ) : null}
     </>
   );
 };

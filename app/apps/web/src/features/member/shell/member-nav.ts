@@ -26,11 +26,6 @@ export const lockedSpaceAnchor = (spaceId: string): string => `${LOCKED_SPACE_AN
 export const isPublicHomeAnchor = (hash: string): boolean =>
   hash === PUBLIC_OFFER_ANCHOR || (hash.startsWith(LOCKED_SPACE_ANCHOR_PREFIX) && hash.length > LOCKED_SPACE_ANCHOR_PREFIX.length);
 
-export const anonOfferLink = (viewedSpaceIsHomeSpace: boolean): { to: '/'; hash?: string } =>
-  viewedSpaceIsHomeSpace
-    ? { to: anonHomePath(), hash: PUBLIC_OFFER_ANCHOR }
-    : { to: anonHomePath() };
-
 export const memberSearchPath = (): '/search' => '/search';
 
 export const memberMessagesPath = (): '/messages' => '/messages';

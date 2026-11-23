@@ -45,7 +45,7 @@ const HomeSpaceFeed = ({ spaceId, name }: { spaceId: string; name: string }) => 
           }}
         />
       ) : (
-        <PublicFeedList spaceId={spaceId} feed={feed.data.feed} />
+        <PublicFeedList spaceId={spaceId} feed={feed.data.feed} headingComponent="h3" />
       )}
     </Box>
   );

@@ -1414,7 +1414,8 @@ dispatch, and the Node ticker, beside them), at most once every 50 seconds per
 server process, independently of the [download file
 sweep](storage.md#download-file-prefixes): each has its own failure and its own
 budget of 10 seconds, and on the cron route both end at the latest 50 seconds
-after the tick started, 10 seconds before the 60-second function limit. Within
+after the tick started, 10 seconds before the 60-second function limit; when
+the dispatch before them already reached that end, neither starts. Within
 its budget the three kinds of work, in this order, quarantined images, upload
 candidates and publication records, each get an equal share of what is left
 among the kinds that have work at the start of the run, and what one kind

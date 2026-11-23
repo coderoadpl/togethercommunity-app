@@ -174,8 +174,9 @@ configure the bucket.
 The minute sweep never holds back e-mail and refund dispatch: the cron route
 runs it after them with an end 50 seconds after the tick started, 10 seconds
 before the 60-second function limit, and the Node ticker runs it beside them.
-It has a budget of 10 seconds of its own. It starts no workspace and no row
-after the earlier of the two ends, and its lock waits and storage requests end
+It has a budget of 10 seconds of its own. On the cron route it does not start
+at all when the dispatch before it already reached that end. It starts no
+workspace and no row after the earlier of the two ends, and its lock waits and storage requests end
 by then. Its discovery of workspaces, the listing of a workspace's rows and the
 recording of their failed attempts run with a statement timeout and a lock
 timeout of what is left, but at least 1 second, and one that runs out lists or

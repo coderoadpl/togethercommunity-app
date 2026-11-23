@@ -3542,6 +3542,27 @@ describe('email dispatch route', () => {
     ]);
   });
 
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('starts neither staged object sweep on the %s tick once the dispatch before them used the time up to the sweep end', async (_trigger, init) => {
+    let now = '1998-07-12T00:00:00.000Z';
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      now = '1998-07-12T00:00:50.000Z';
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchOrderRefundJobs });
+    base.clock = { nowIso: () => now };
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    expect((await buildApp(base).request(API_PATHS.emailDispatch, init)).status).toBe(200);
+    expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(sweepQuarantinedImages).not.toHaveBeenCalled();
+    expect(sweepKeyDownloadFiles).not.toHaveBeenCalled();
+  });
+
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
     const calls: string[] = [];
     const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {

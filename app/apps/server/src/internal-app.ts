@@ -834,10 +834,11 @@ const runStagingSweep = async (
 
 /** Runs after e-mail and refund dispatch, and the two sweeps side by side, so a sweep that uses its budget delays neither. */
 const sweepStagedObjects = async (
-  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger'>,
+  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger' | 'clock'>,
   tickStartedAt: number,
 ): Promise<void> => {
   const tick = { deadlineAt: tickStartedAt + STAGING_SWEEP_TICK_END_MS };
+  if (Date.parse(deps.clock.nowIso()) >= tick.deadlineAt) return;
   await Promise.all([
     runStagingSweep('[change-proposal] quarantined image sweep failed', () => deps.sweepQuarantinedImages(tick), deps.logger),
     runStagingSweep('[key-download] staged download file sweep failed', () => deps.sweepKeyDownloadFiles(tick), deps.logger),

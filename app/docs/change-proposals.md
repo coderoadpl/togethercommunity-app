@@ -324,7 +324,7 @@ the panel reads one page and makes no further call per item:
 | `proposedBy` | `keyId`, `keyName`, `keyState`, `issuerUserId`, `issuerEmail`, `issuerIsVerifiedOwner` (whether that account is still a verified owner of the workspace, the check a key request makes) and `issuerIsFormerTeamMember` |
 | `createdAt`, `expiresAt`, `status` | the times and the derived status |
 | `decidedAt`, `decidedByUserId`, `decidedByEmail`, `decidedByIsFormerTeamMember`, `decisionNote`, `failureCode`, `failureMessage`, `appliedResourceId` | the decision of a settled proposal |
-| `accessLabels` | only on a `product.set-access`, absent on every other proposal: `{ courses, modules, lessons, excludedModulesInOtherCourses, archivedCourses? }`; the first three are each a list of `{ id, title }` for every course, module (named in `moduleIds` or `excludedModuleIds`) and lesson id of the access lists before and after, read from live state at read time; `title` is `null` for an id that no longer names a course, module or lesson of the workspace; `excludedModulesInOtherCourses` lists the ids of the excluded modules of either list that are attached to a course other than the one their item names; `archivedCourses`, present only when one is, lists the ids of the archived courses of either list ([Product access](#product-access)) |
+| `accessLabels` | only on a `product.set-access`, absent on every other proposal: `{ courses, modules, lessons, archivedCourses? }`; the first three are each a list of `{ id, title }` for every course, module (named in `moduleIds` or `excludedModuleIds`) and lesson id of the access lists before and after, read from live state at read time; `title` is `null` for an id that no longer names a course, module or lesson of the workspace; `archivedCourses`, present only when one is, lists the ids of the archived courses of either list ([Product access](#product-access)) |
 | `proposedFiles` | only on a `download.add` or `download.replace`, absent on every other proposal: `[{ id, available, copiedFrom }]` for the staged file it attaches, read at read time: `available` says whether the proposal still holds that staged file, and `copiedFrom` is `{ productId, productTitle, versionNumber }` for a server-side copy (`productTitle` `null` when that product is gone), `null` for an upload or once the staged file is gone ([Download files](#download-files)) |
 
 `proposedFiles` is a key that a panel page or a CLI built from a release before
@@ -582,7 +582,7 @@ file fails, so its row says the download could not be started. Product access
 proposals are in `Panel/ProposalChanges` as well (a list that grants a course
 without one module, a module and two lessons; a list that names an archived
 course, a course and a lesson that no longer exist; a list that lifts the
-exclusion of a module other courses also use; and a list cleared to nothing,
+exclusion of a module; and a list cleared to nothing,
 each in English and Polish), and in `Pages/PanelProposalAccess` (those four
 next to a group that creates a product and sets what it grants, and sets what
 an existing product grants; English and Polish, desktop and mobile). These
@@ -1605,32 +1605,68 @@ current access items of every product the member holds an active grant for
 (`core/server/usecases/entitlements.ts`), so a changed list applies at once to
 everyone who already has access to the product, current buyers included: they
 get what the new list names and lose what it no longer names, unless another
-product they hold grants it. Excluded modules are the exception: they are
-pooled across courses (see below), so one product's list can also change what
-opens inside a course that another product grants in full. The download files
-of a product and the spaces that name it are not part of this list.
+product they hold grants it. The download files of a product and the spaces
+that name it are not part of this list.
 
 What an item grants (`core/server/usecases/access.ts`):
 
 | Item | Grants |
 |---|---|
-| `{ level: "course", courseId }` | every module attached to the course, with every lesson in it, except a module the member's items exclude (next row) |
-| `{ level: "course", courseId, excludedModuleIds }` | the same without the excluded modules |
+| `{ level: "course", courseId }` | every module attached to the course, with every lesson in it, inside that course |
+| `{ level: "course", courseId, excludedModuleIds }` | the same without the excluded modules; they stay closed only inside this course |
 | `{ level: "modules", courseId, moduleIds }` | each module itself, in every course it is attached to |
 | `{ level: "lessons", courseId, lessonIds }` | each lesson itself, in every course that uses it |
 
 The `courseId` of a `modules` or `lessons` item does not limit where its modules
 or lessons open; it names the course they were chosen from.
 
-Exclusions are pooled across courses (`buildAccessLookup`): for each course, a
-module stays excluded when every `course` item for that course among all the
-member's products excludes it, and a module excluded for any course stays
-closed in every course the member gets as a whole, unless a `modules` item of
-one of their products names it. A `lessons` item still opens its lessons. A
-module attached to two courses and excluded by a `course` item for one of them
-is therefore also closed inside the other, even for a member who gets the other
-course in full from another product. A `course` item for the same course
-without that exclusion reopens it; a `course` item for another course does not.
+Exclusions apply only inside the course whose item names them
+(`buildAccessLookup`). For each course, a module is closed inside that course
+when every `course` item for that course among all the member's products
+excludes it and no `modules` item of their products names it; a `lessons` item
+still opens its lessons. A module attached to two courses and excluded by a
+`course` item for one of them stays open inside the other for a member who
+gets the other course as a whole, from the same product or from another one.
+A lesson opens when the member's items open it in any course it sits in: the
+lesson player, completion, discussions, search and notifications look at every
+course of every module that holds the lesson, and completion is recorded under
+the first of those courses that opens it.
+
+Releases before this rule pooled exclusions: a module excluded by a `course`
+item for any course stayed closed in every course the member got as a whole,
+and a lesson was checked only in the first course that holds it. The change
+only opens content. A course item's exclusions for one course are now a subset
+of what was pooled, and a lesson open in its first course is still open there,
+so no member loses a module or a lesson. Members gain:
+
+- a module attached to two or more courses, excluded by a `course` item for one
+  of them, inside another of its courses that a `course` item of theirs grants
+  as a whole (without excluding it), from the same product or another one;
+- a lesson whose first course (in module creation order, then the module's
+  course order) does not open it for them while another course that holds it
+  does, for example a member who gets only the second course of a shared
+  module.
+
+Count the modules and the products the first case concerns in a workspace
+before deploying (replace `acme` with the workspace id):
+
+```sql
+with excluded as (
+  select p.id as product_id, item->>'courseId' as course_id, excluded_id
+  from products p
+  cross join lateral jsonb_array_elements(p.access_items) item
+  cross join lateral jsonb_array_elements_text(coalesce(item->'excludedModuleIds', '[]'::jsonb)) excluded_id
+  where p.tenant_id = 'acme' and item->>'level' = 'course'
+)
+select count(distinct e.excluded_id) as modules, count(distinct e.product_id) as products
+from excluded e
+join course_modules m on m.tenant_id = 'acme' and m.id = e.excluded_id
+where exists (select 1 from jsonb_array_elements_text(m.course_ids) other where other <> e.course_id);
+```
+
+A member gains such a module only while they also hold a `course` item for
+another of its courses; the query counts the exclusions that can open, not the
+members.
 
 **One check.** `checkProductAccessItems`
 (`core/server/usecases/product-access-items.ts`) is the one check of an access
@@ -1679,8 +1715,7 @@ the deleted lesson from every `lessons` item. An import key with
 unpublished, but an unpublished product can still have members with active
 grants from earlier sales or owner grants. A re-import therefore changes what
 they open at once, with no proposal or owner approval, and its list can name
-modules or lessons outside the item's course, or exclude a module that other
-courses also use, which then also closes in those courses.
+modules or lessons outside the item's course.
 
 **Proposing.** `POST /api/m2m/shop/products/access` takes `{ id, accessItems }`
 and nothing else: `checkoutConsentDefinitionIds`, which the owner's editor also
@@ -1695,14 +1730,9 @@ command is `shop products access <productId>` ([CLI](cli.md)).
 
 The route's input refuses a list that repeats an item (two items that grant the
 same, ids in any order) or an item that repeats an id, with `400 validation`;
-the owner's editor accepts both. A proposal may not exclude a module that is
-attached to more than one course, because the exclusion would also close it in
-the other courses (see the pooled exclusions above): such a list is refused at
-submit with `400 validation`, message "Product access excludedModuleIds: this
-module cannot be excluded through a proposal" and that sentence as the only
-field error, on `excludedModuleIds`. The answer names no module or course. The
-owner's editor and product creation, a `product.create` proposal and a
-direct-mode key's creation included, still accept such an exclusion.
+the owner's editor accepts both. A proposal may exclude any module attached to
+the item's course, including one that other courses also use; the exclusion
+holds only inside that course.
 
 The effect compares the product as `{ exists, accessItems }`, so it is
 `{ "accessItems": { "before": [...], "after": [...] } }`, each list as stored and
@@ -1728,22 +1758,15 @@ deadlock victim, or a lock or statement wait runs out, the editor answers
 request") and nothing is written. The approval is `stale` when the product's
 list no longer grants the same as the "before" the owner saw, `failed` with the
 `validation` error when the list no longer passes the check (a lesson moved out
-of its course, a course archived or deleted) or now excludes a module that was
-attached to another course after the proposal, and `applied` otherwise, with
-the product as `appliedResourceId`.
+of its course, a course archived or deleted), and `applied` otherwise, with the
+product as `appliedResourceId`.
 
 **Owner view and panel.** The owner view of a `product.set-access` carries
 [`accessLabels`](#owner-view), the titles of every course, module and lesson of
-both lists, `excludedModulesInOtherCourses`, the excluded modules of either
-list that are also attached to a course other than the one their item names,
-and, when one is, `archivedCourses`, the archived courses of either list, all
-read at read time for display only. Because exclusions are pooled, a
-replaced list can change what the product's holders open in other courses:
-removing an exclusion of such a module (one the owner's editor, product
-creation or an import wrote) can reopen it in those courses, and removing a
-`course` item can let another product's exclusion of a module take effect in
-every course the member holds in full. A module that is attached to another
-course after a list excluding it was written is closed there too.
+both lists and, when one is, `archivedCourses`, the archived courses of either
+list, all read at read time for display only. A replaced list changes what
+its holders open only among the courses, modules and lessons that either list
+names; another product's items keep granting what they grant.
 
 The panel shows one row, "Included access", with both lists in words: "the
 whole course “Intro course”", "the course “Intro course” without its module
@@ -1751,28 +1774,16 @@ whole course “Intro course”", "the course “Intro course” without its mod
 “Intro course”)", "the lessons “Welcome”, “Goodbye”, each in every course that
 uses it (chosen from “Intro course”)". An id that no longer exists reads
 "something that no longer exists" with the id, an archived course is followed
-by "(archived)", an excluded module that `excludedModulesInOtherCourses` names
-by "(also in other courses)", and an empty list reads "no course, module or
-lesson". In Polish the confirmation leads in with "after approval the product
+by "(archived)", and an empty list reads "no course, module or lesson". In Polish the confirmation leads in with "after approval the product
 will give access to the following content:", so the phrases that follow are in
 the nominative, and an empty list reads "no courses, modules or lessons".
 Course, module and lesson titles each sit in their own `<bdi>` element, and the
 phrases break anywhere.
 
-While the proposal is pending the row adds two notes. When the list after
-approval names an id that no longer exists or an archived course, or excludes a
-module that `excludedModulesInOtherCourses` names, a warning says that the list
-no longer passes the shop's check and that approving changes nothing. When the
-current list excludes such a module, a note says that everyone who has the
-product has that module closed in the other courses that contain it too, even
-when another of their products grants such a course whole, that only a product
-that grants the module itself, or the same course without excluding it, opens
-it again, and that a product that grants one of its lessons opens just that
-lesson; when the list after approval passes the check and no longer excludes
-it, the note adds that after approval it can open again in every course that
-contains it. Because `excludedModulesInOtherCourses` covers both
-lists, a module that the two lists exclude under different courses is not
-counted for either note. A decided proposal shows the row without the notes.
+While the proposal is pending, the row adds a warning when the list after
+approval names an id that no longer exists or an archived course: the list no
+longer passes the shop's check and approving changes nothing. A decided
+proposal shows the row without the warning.
 
 The confirmation reads "Buyers of “Field guide” will get access to: the whole
 course “Intro course”. Everyone who already has access to this product, current
@@ -1781,16 +1792,9 @@ names, unless another of their products still opens it for them. Nothing else
 changes."; for an empty list it says that the product will no longer grant any
 course, module or lesson and that everyone who has access loses what it granted
 at once, unless another of their products still opens it for them. When the
-current list excludes a module that other courses also use and the new one does
-not, the sentence "After approval this product no longer excludes the module
-“…”, which other courses also use, so for everyone who has this product it can
-open again in every course that contains it." comes before "Nothing else
-changes.". When the list no longer passes the check as the row's warning
-describes, the confirmation says only "The new list of what “Field guide”
-grants no longer passes the shop’s check, so approving changes nothing.".
-Neither confirmation describes the other ways pooled exclusions reach other
-courses: removing a `course` item can let another product's exclusion of a
-module take effect in every course the member holds in full. A group
+list no longer passes the check as the row's warning describes, the
+confirmation says only "The new list of what “Field guide” grants no longer
+passes the shop’s check, so approving changes nothing.". A group
 confirmation adds the access sentence for each access item; for a product an
 earlier item of the group creates it reads "Everyone who later gets access to
 the new product “Starter Pack” will get access to: …" (or "The new product
@@ -1798,15 +1802,14 @@ the new product “Starter Pack” will get access to: …" (or "The new product
 no longer passes the check reads "… so approving applies none of the changes.".
 `proposals show` and `proposals group show` print the titles under `names:`,
 and "no longer exists" for an id that no longer exists; they do not mark an
-archived course or a module that other courses also use.
+archived course.
 
 **What the key learns.** No shop route serves a key a course, module or lesson;
 the key sees their ids in the access items of the products it lists. A
 refusal of the check names no title, but it tells the key whether an id it
 sent is an active course of the workspace and whether a module or lesson
 belongs to the course it named; a direct-mode key's `product.create` already
-told it the first. The refusal of an excluded module tells it that the module
-is attached to more than one course, and nothing else about those courses.
+told it the first.
 
 **Rolling back.** The release on production when this operation was added,
 `8141fd15`, does not know `product.set-access`; what it does with what this
@@ -1827,6 +1830,12 @@ release stores is proven by
 - A panel tab or a CLI of that release talking to this release's server fails
   to parse an owner view that carries `accessLabels` until it is reloaded or
   updated; after a rollback the server no longer sends it.
+- Exclusions per course store nothing new. That release pools exclusions again
+  and checks a lesson only in the first course that holds it, so the members
+  who gained a module or a lesson with this release
+  ([Product access](#product-access)) lose it again at once; nothing else
+  changes. A list with such an exclusion that an approved `product.set-access`
+  wrote counts among them.
 
 Before the rollback, count the proposals it can no longer apply:
 
@@ -1834,6 +1843,9 @@ Before the rollback, count the proposals it can no longer apply:
 select count(*) from change_proposals
 where status = 'pending' and operation = 'product.set-access';
 ```
+
+and the modules and products whose exclusions close again, with the query in
+[Product access](#product-access).
 
 ## Not yet available
 

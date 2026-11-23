@@ -56,12 +56,12 @@ const withoutTokenBody = (text: string): string => {
 /**
  * Better Auth's bearer plugin and its JSON bodies hand the session token to the
  * caller, which turns the HttpOnly cookie into a portable credential for any script
- * on the page. Current browsers send `Sec-Fetch-Site` on HTTPS and localhost origins
- * and scripts cannot set or remove it; Safari before 16.4 does not, so a request
- * carrying the session cookie counts as a browser too. Those clients still receive
- * the token on a response that creates a session. The CLI and other
- * non-browser clients authenticate with a bearer token, never the session cookie,
- * and keep receiving it.
+ * on the page. Page scripts cannot set or remove `Sec-Fetch-Site`, but Chrome before
+ * 76, Firefox before 90, Safari before 16.4 and webviews on those engines never send
+ * it, so a request carrying the session cookie counts as a browser too; those
+ * browsers still receive the token on the response that creates a session.
+ * Non-browser clients are told apart by sending neither the header nor the session
+ * cookie, and keep receiving the token.
  */
 export const withoutBrowserSessionToken = async (
   request: Request,

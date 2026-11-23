@@ -2834,6 +2834,8 @@ describe('LessonPlayerPage', () => {
   });
 
   it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
     const thread = discussionPost('t1', 'Question about hammocks');
     server.use(
       okLesson(allBlocks),
@@ -2858,15 +2860,27 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
     expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
 
+    const discussionHeading = screen.getByRole('heading', { level: 2, name: en.discussion.heading });
+    const searchShown = (input: HTMLElement) =>
+      scrollIntoView.mock.instances.some((element) => element instanceof Element && element.contains(input));
+    scrollTo.mockClear();
     await user.click(screen.getByTestId('back-to-discussion'));
-    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    const input = await screen.findByTestId('discussion-search-input');
+    expect(input).toHaveValue('hammocks');
     expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+    await waitFor(() => expect(discussionHeading).toHaveFocus());
+    expect(searchShown(input)).toBe(true);
+    expect(scrollTo).not.toHaveBeenCalled();
 
     await user.click(screen.getByTestId('search-hit-link-t1'));
-    expect(await screen.findByTestId('discussion-subthread-t1')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('discussion-subthread-t1')).toHaveFocus());
+    scrollIntoView.mockClear();
     router.history.back();
-    expect(await screen.findByTestId('discussion-search-input')).toHaveValue('hammocks');
+    const inputAfterBack = await screen.findByTestId('discussion-search-input');
+    expect(inputAfterBack).toHaveValue('hammocks');
     expect(await screen.findByTestId('search-hit-link-t1')).toBeInTheDocument();
+    await waitFor(() => expect(discussionHeading).toHaveFocus());
+    expect(searchShown(inputAfterBack)).toBe(true);
 
     await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
     await waitFor(() => expect(screen.getByTestId('discussion-search-input')).toHaveValue(''));

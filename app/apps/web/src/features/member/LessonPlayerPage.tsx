@@ -989,10 +989,12 @@ export const LessonPlayerPage = ({
                         to: '/my/courses/$courseId/lessons/$lessonId',
                         params: { courseId, lessonId },
                         search: {},
+                        resetScroll: false,
                       } : {
                         to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
                         params: { courseId, lessonId, number: editionNumber },
                         search: {},
+                        resetScroll: false,
                       }),
                   },
                 })}

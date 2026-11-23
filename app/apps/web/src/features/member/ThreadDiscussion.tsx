@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Alert, Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -590,11 +590,22 @@ export const ThreadDiscussion = ({
   };
   const followFocus = useEffectEvent((rootPostId: string | null) => switchView(rootPostId));
   const shownFocusRootPostId = useRef(focusRootPostId);
+  const headingElement = useRef<HTMLHeadingElement | null>(null);
+  const revealListOnReturn = useRef(false);
   useLayoutEffect(() => {
     if (shownFocusRootPostId.current === focusRootPostId) return;
+    revealListOnReturn.current = shownFocusRootPostId.current !== null && focusRootPostId === null;
     shownFocusRootPostId.current = focusRootPostId;
     followFocus(focusRootPostId);
   }, [focusRootPostId]);
+  const searchAnchor = useCallback((element: HTMLDivElement | null) => {
+    if (element === null || !revealListOnReturn.current) return;
+    revealListOnReturn.current = false;
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: 'auto', block: 'start' });
+      headingElement.current?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const topComposerOpen = subthreadRoot === null;
   const createErrorOwned = create.isError && (create.variables.parentPostId === undefined
@@ -675,7 +686,7 @@ export const ThreadDiscussion = ({
     <Box component="section" aria-labelledby={heading === undefined ? undefined : headingId} data-testid={testId} sx={{ mt: '2.5rem' }}>
       {heading !== undefined && (
         <Stack useFlexGap sx={{ rowGap: '0.25rem', mb: '1rem' }}>
-          <Typography variant="h2" component="h2" id={headingId}>
+          <Typography ref={headingElement} variant="h2" component="h2" id={headingId} tabIndex={-1}>
             {heading}
           </Typography>
           {eyebrow !== undefined && (
@@ -767,7 +778,7 @@ export const ThreadDiscussion = ({
             />
           )}
 
-          {search}
+          {search !== undefined && <Box ref={searchAnchor} sx={{ scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)' }}>{search}</Box>}
 
           {mutationErrorMessage !== null && <Alert severity="error">{mutationErrorMessage}</Alert>}
 

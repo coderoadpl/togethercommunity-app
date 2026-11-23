@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 import { err, ok, refundFailureOf, validation, type RefundFailureKind } from '#core/domain/index.js';
@@ -397,7 +399,7 @@ describe('fake payment provider refunds', () => {
   });
 
   it('never refunds a payment intent beyond its charge and saves that error under the key', async () => {
-    const f = fake();
+    const f = fake({ pi_paid: 4900 });
     const first = await f.createRefund(refundInput);
     if (!first.ok) throw new Error('Fake refund failed');
     const second = await f.createRefund({ ...refundInput, idempotencyKey: 'oos-refund-order-1-1' });
@@ -419,6 +421,29 @@ describe('fake payment provider refunds', () => {
     const listed = await f.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
     expect(listed.ok ? listed.value.map((refund) => refund.amountCents) : []).toEqual([2900, 2000]);
     expect(await f.listRefunds({ mode: 'live', tenantId: 'tenant-2', paymentIntentId: 'pi_paid' })).toEqual(ok([]));
+  });
+
+  it('issues two partial refunds of a payment whose charge it was never told, as the composition builds it', async () => {
+    const f = fake();
+    const first = await f.createRefund({ ...refundInput, amountCents: 1000, idempotencyKey: 'staff-refund-refund-1', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-1' } });
+    const second = await f.createRefund({ ...refundInput, amountCents: 500, idempotencyKey: 'staff-refund-refund-2', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-2' } });
+    expect([first, second]).toMatchObject([{ ok: true, value: { amountCents: 1000 } }, { ok: true, value: { amountCents: 500 } }]);
+  });
+
+  it('caps refunds at the amount a verified checkout webhook reported for the payment intent', async () => {
+    const webhookSecret = 'whsec_fake_charge';
+    const provider = createFakePaymentProvider({ resolve: async () => ok('rk_test_fake') });
+    const payloadRaw = JSON.stringify({
+      id: 'evt_paid', livemode: false, type: 'checkout.session.completed',
+      data: { object: { id: 'cs_paid', payment_intent: 'pi_paid', amount_total: 4900, metadata: { tenantId: 'tenant-1' } } },
+    });
+    const timestamp = '1700000000';
+    const signatureHeader = `t=${timestamp},v1=${createHmac('sha256', webhookSecret).update(`${timestamp}.${payloadRaw}`).digest('hex')}`;
+    expect((await provider.verifyWebhookEvent({ tenantId: 'tenant-1', mode: 'live', payloadRaw, signatureHeader, webhookSecret })).ok).toBe(true);
+    const part = await provider.createRefund?.({ ...refundInput, amountCents: 4000, idempotencyKey: 'part' });
+    const tooMuch = await provider.createRefund?.({ ...refundInput, amountCents: 1000, idempotencyKey: 'too-much' });
+    expect(part).toMatchObject({ ok: true });
+    expect(tooMuch !== undefined && !tooMuch.ok ? refundFailureOf(tooMuch.error)?.kind : null).toBe('refund_failed');
   });
 
   it('lists a staff refund with the refund id it was tagged with', async () => {

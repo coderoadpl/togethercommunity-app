@@ -48,17 +48,14 @@ interface FakePaymentProviderOptions {
 const refundsFor = (refunds: ReadonlyMap<string, StoredFakeRefund>, tenantId: string, paymentIntentId: string): ProviderRefund[] =>
   [...refunds.values()].filter((stored) => stored.tenantId === tenantId && stored.refund.paymentIntentId === paymentIntentId).map((stored) => stored.refund);
 
-const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProviderOptions): Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'> => {
+const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProviderOptions) => {
   const refunds = new Map<string, StoredFakeRefund>();
   const responses = new Map<string, SavedFakeRefundResponse>();
   const charges = new Map<string, number>();
   const resolveKey = (tenantId: string, mode: 'live' | 'test') =>
     resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
   const execute = (tenantId: string, paymentIntentId: string, amountCents: number, metadata: { orderId: string; reason: string; refundJobId?: string }): Result<ProviderRefund, AppError> => {
-    const chargeKey = JSON.stringify([tenantId, paymentIntentId]);
-    // Without a configured charge, the first refund asked of a payment intent stands for its whole amount.
-    const chargeCents = charges.get(chargeKey) ?? options.chargeAmountCents?.[paymentIntentId] ?? amountCents;
-    charges.set(chargeKey, chargeCents);
+    const chargeCents = charges.get(JSON.stringify([tenantId, paymentIntentId])) ?? options.chargeAmountCents?.[paymentIntentId] ?? Number.POSITIVE_INFINITY;
     const remainingCents = chargeCents - refundsFor(refunds, tenantId, paymentIntentId)
       .filter((refund) => refund.status !== 'failed' && refund.status !== 'canceled')
       .reduce((sum, refund) => sum + refund.amountCents, 0);
@@ -71,7 +68,7 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
     refunds.set(refund.refundId, { tenantId, refund });
     return ok(refund);
   };
-  return {
+  const refundMethods: Pick<PaymentProvider, 'createRefund' | 'getRefund' | 'listRefunds'> = {
     createRefund: async (input) => {
       const key = await resolveKey(input.tenantId, input.mode);
       if (!key.ok) return err(refundFailure('credentials_unavailable', key.error.message));
@@ -102,6 +99,10 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
       return ok(refundsFor(refunds, input.tenantId, input.paymentIntentId).toReversed());
     },
   };
+  const noteCharge = (tenantId: string, paymentIntentId: string, amountCents: number) => {
+    charges.set(JSON.stringify([tenantId, paymentIntentId]), amountCents);
+  };
+  return { refundMethods, noteCharge };
 };
 
 /**
@@ -110,123 +111,129 @@ const fakeRefunds = (resolver: TenantSecretResolver, options: FakePaymentProvide
  * realistically (no key configured -> the test connection fails), but never
  * touches the network.
  */
-export const createFakePaymentProvider = (resolver: TenantSecretResolver, options: FakePaymentProviderOptions = {}): PaymentProvider => ({
-  ...fakeRefunds(resolver, options),
-  configureWebhook: async () => ok({
-    webhookEndpointId: `we_fake_${randomUUID()}`,
-    webhookSecret: `whsec_fake_${randomUUID()}`,
-  }),
-  deleteWebhookEndpoint: async () => ok({ deleted: true }),
-  test: async ({ tenantId }) => {
-    const key = await resolver.resolve(tenantId, 'stripe.restrictedKey');
-    return key.ok
-      ? ok({ code: 'payment.available', message: 'Payment credentials are available.' })
-      : key;
-  },
-  ensureCouponPromotion: async (input) =>
-    ok({
-      stripeCouponId: input.stripeCouponId ?? `fake_coupon_${input.couponId}`,
-      stripePromotionCodeId:
-        input.stripePromotionCodeId ?? `fake_promotion_${input.couponId}`,
+export const createFakePaymentProvider = (resolver: TenantSecretResolver, options: FakePaymentProviderOptions = {}): PaymentProvider => {
+  const { refundMethods, noteCharge } = fakeRefunds(resolver, options);
+  return {
+    ...refundMethods,
+    configureWebhook: async () => ok({
+      webhookEndpointId: `we_fake_${randomUUID()}`,
+      webhookSecret: `whsec_fake_${randomUUID()}`,
     }),
-  createCheckoutSession: async (input) => {
-    const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
-    if (!key.ok) return key;
-    const sessionId = `cs_fake_${randomUUID()}`;
-    return ok({ url: `https://fake.checkout.local/${sessionId}`, sessionId });
-  },
-  expireCheckoutSession: async (input) => {
-    const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
-    if (!key.ok) return key;
-    return ok({ expired: true });
-  },
-  cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
-  verifyWebhookEvent: async (input) => {
-    if (!signatureIsValid(input.payloadRaw, input.signatureHeader, input.webhookSecret))
-      return err(validation('Stripe webhook signature verification failed'));
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(input.payloadRaw);
-    } catch {
-      return err(validation('Webhook payload is not valid JSON'));
-    }
-    const event = stripeWebhookPayloadSchema.safeParse(parsed);
-    if (!event.success) return err(validation('Webhook payload does not match the Stripe event shape'));
-    const object = event.data.data.object;
-    const type = event.data.type;
-    const epochToIso = (seconds: number | null | undefined): string | null =>
-      seconds == null ? null : new Date(seconds * 1000).toISOString();
-    return ok({
-      id: event.data.id,
-      ...(event.data.livemode === undefined ? {} : { livemode: event.data.livemode }),
-      type,
-      objectId: object.id,
-      createdAt: epochToIso(event.data.created),
-      checkoutSession:
-        CHECKOUT_SESSION_EVENT_TYPES.has(type)
-          ? {
-              email: object.customer_details?.email ?? object.customer_email ?? null,
-              paymentStatus: object.payment_status ?? 'paid',
-              subscriptionId: object.subscription ?? null,
-              paymentIntentId: object.payment_intent ?? null,
-              invoiceId: object.invoice ?? null,
-              amountTotalCents: object.amount_total ?? null,
-              discountTotalCents: object.total_details?.amount_discount ?? null,
-              ...checkoutShippingFromStripe(object),
-              metadata: {
-                attribution: attributionFromMetadata(object.metadata),
-                tenantId: object.metadata?.tenantId ?? null,
-                productId: object.metadata?.productId ?? null,
-                priceId: object.metadata?.priceId || null,
-                memberEmail: object.metadata?.memberEmail || null,
-                language: object.metadata?.language || null,
-                checkoutConsentCaptureId:
-                  object.metadata?.checkoutConsentCaptureId || null,
-                ...(object.metadata?.checkoutSnapshotId ? { checkoutSnapshotId: object.metadata.checkoutSnapshotId } : {}),
-                ...(object.metadata?.salesLinkId ? { salesLinkId: object.metadata.salesLinkId } : {}),
-                ...checkoutProductIdsMetadata(object.metadata),
-                couponCheckoutSessionId:
-                  object.metadata?.couponCheckoutSessionId || null,
-              },
-            }
-          : null,
-      invoice:
-        type === 'invoice.paid' || type === 'invoice.payment_failed'
-          ? {
-              subscriptionId: object.subscription ?? null,
-              chargeId: object.charge ?? null,
-              paymentIntentId: object.payment_intent ?? null,
-              amountCents: object.amount_total ?? null,
-              currency: object.currency?.toUpperCase() ?? null,
-              periodEnd: epochToIso(object.period_end),
-            }
-          : null,
-      adjustment:
-        type === 'charge.refunded' || type === 'charge.dispute.created'
-          ? {
-              chargeId: type === 'charge.refunded' ? object.id : (object.charge ?? null),
-              paymentIntentId: object.payment_intent ?? null,
-              invoiceId: object.invoice ?? null,
-              refund:
-                type === 'charge.refunded'
-                  ? refundCoverage({
-                      refunded: object.refunded ?? null,
-                      amount: object.amount ?? null,
-                      amountRefunded: object.amount_refunded ?? null,
-                    })
-                  : null,
-            }
-          : null,
-      subscription:
-        type === 'customer.subscription.updated' || type === 'customer.subscription.deleted'
-          ? {
-              id: object.id,
-              status: object.status ?? null,
-              cancelAtPeriodEnd: object.cancel_at_period_end ?? false,
-              currentPeriodEnd: epochToIso(object.current_period_end),
-              endedAt: epochToIso(object.ended_at),
-            }
-          : null,
-    });
-  },
-});
+    deleteWebhookEndpoint: async () => ok({ deleted: true }),
+    test: async ({ tenantId }) => {
+      const key = await resolver.resolve(tenantId, 'stripe.restrictedKey');
+      return key.ok
+        ? ok({ code: 'payment.available', message: 'Payment credentials are available.' })
+        : key;
+    },
+    ensureCouponPromotion: async (input) =>
+      ok({
+        stripeCouponId: input.stripeCouponId ?? `fake_coupon_${input.couponId}`,
+        stripePromotionCodeId:
+          input.stripePromotionCodeId ?? `fake_promotion_${input.couponId}`,
+      }),
+    createCheckoutSession: async (input) => {
+      const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+      if (!key.ok) return key;
+      const sessionId = `cs_fake_${randomUUID()}`;
+      return ok({ url: `https://fake.checkout.local/${sessionId}`, sessionId });
+    },
+    expireCheckoutSession: async (input) => {
+      const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+      if (!key.ok) return key;
+      return ok({ expired: true });
+    },
+    cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
+    verifyWebhookEvent: async (input) => {
+      if (!signatureIsValid(input.payloadRaw, input.signatureHeader, input.webhookSecret))
+        return err(validation('Stripe webhook signature verification failed'));
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(input.payloadRaw);
+      } catch {
+        return err(validation('Webhook payload is not valid JSON'));
+      }
+      const event = stripeWebhookPayloadSchema.safeParse(parsed);
+      if (!event.success) return err(validation('Webhook payload does not match the Stripe event shape'));
+      const object = event.data.data.object;
+      const type = event.data.type;
+      if (CHECKOUT_SESSION_EVENT_TYPES.has(type) && object.payment_intent != null && object.amount_total != null) {
+        noteCharge(input.tenantId, object.payment_intent, object.amount_total);
+      }
+      const epochToIso = (seconds: number | null | undefined): string | null =>
+        seconds == null ? null : new Date(seconds * 1000).toISOString();
+      return ok({
+        id: event.data.id,
+        ...(event.data.livemode === undefined ? {} : { livemode: event.data.livemode }),
+        type,
+        objectId: object.id,
+        createdAt: epochToIso(event.data.created),
+        checkoutSession:
+          CHECKOUT_SESSION_EVENT_TYPES.has(type)
+            ? {
+                email: object.customer_details?.email ?? object.customer_email ?? null,
+                paymentStatus: object.payment_status ?? 'paid',
+                subscriptionId: object.subscription ?? null,
+                paymentIntentId: object.payment_intent ?? null,
+                invoiceId: object.invoice ?? null,
+                amountTotalCents: object.amount_total ?? null,
+                discountTotalCents: object.total_details?.amount_discount ?? null,
+                ...checkoutShippingFromStripe(object),
+                metadata: {
+                  attribution: attributionFromMetadata(object.metadata),
+                  tenantId: object.metadata?.tenantId ?? null,
+                  productId: object.metadata?.productId ?? null,
+                  priceId: object.metadata?.priceId || null,
+                  memberEmail: object.metadata?.memberEmail || null,
+                  language: object.metadata?.language || null,
+                  checkoutConsentCaptureId:
+                    object.metadata?.checkoutConsentCaptureId || null,
+                  ...(object.metadata?.checkoutSnapshotId ? { checkoutSnapshotId: object.metadata.checkoutSnapshotId } : {}),
+                  ...(object.metadata?.salesLinkId ? { salesLinkId: object.metadata.salesLinkId } : {}),
+                  ...checkoutProductIdsMetadata(object.metadata),
+                  couponCheckoutSessionId:
+                    object.metadata?.couponCheckoutSessionId || null,
+                },
+              }
+            : null,
+        invoice:
+          type === 'invoice.paid' || type === 'invoice.payment_failed'
+            ? {
+                subscriptionId: object.subscription ?? null,
+                chargeId: object.charge ?? null,
+                paymentIntentId: object.payment_intent ?? null,
+                amountCents: object.amount_total ?? null,
+                currency: object.currency?.toUpperCase() ?? null,
+                periodEnd: epochToIso(object.period_end),
+              }
+            : null,
+        adjustment:
+          type === 'charge.refunded' || type === 'charge.dispute.created'
+            ? {
+                chargeId: type === 'charge.refunded' ? object.id : (object.charge ?? null),
+                paymentIntentId: object.payment_intent ?? null,
+                invoiceId: object.invoice ?? null,
+                refund:
+                  type === 'charge.refunded'
+                    ? refundCoverage({
+                        refunded: object.refunded ?? null,
+                        amount: object.amount ?? null,
+                        amountRefunded: object.amount_refunded ?? null,
+                      })
+                    : null,
+              }
+            : null,
+        subscription:
+          type === 'customer.subscription.updated' || type === 'customer.subscription.deleted'
+            ? {
+                id: object.id,
+                status: object.status ?? null,
+                cancelAtPeriodEnd: object.cancel_at_period_end ?? false,
+                currentPeriodEnd: epochToIso(object.current_period_end),
+                endedAt: epochToIso(object.ended_at),
+              }
+            : null,
+      });
+    },
+  };
+};

@@ -32,7 +32,7 @@ export interface ProposedFileSystem {
 
 const nodeFileSystem: ProposedFileSystem = {
   exists: (path) => access(path).then(() => true, () => false),
-  openExclusive: (path) => open(path, 'wx'),
+  openExclusive: (path) => open(path, 'wx', 0o600),
   linkNew: (from, to) => link(from, to),
   replace: (from, to) => rename(from, to),
   remove: (path) => rm(path, { force: true }),

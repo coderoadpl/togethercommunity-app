@@ -1,4 +1,4 @@
-import { mkdtemp, open, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -110,6 +110,32 @@ describe('saving a proposed file', () => {
     expect(await saveProposedFile(link, out, true, body('%PDF-1'))).toMatchObject({ ok: true });
     expect(await readFile(out, 'utf8')).toBe('%PDF-1');
     expect(await leftovers()).toEqual([]);
+  });
+
+  it('keeps the partial and the saved file readable by the owner only, also when --force replaces an owner-only file', async () => {
+    const modeOf = async (path: string): Promise<number> => (await stat(path)).mode & 0o777;
+    const partialModes: number[] = [];
+    const parts = ['%PDF', '-1'];
+    const watched: typeof fetch = async () => new Response(new ReadableStream({
+      pull: async (controller) => {
+        const part = parts.shift();
+        if (part === undefined) {
+          for (const name of (await readdir(directory)).filter((entry) => entry.includes('.partial-'))) partialModes.push(await modeOf(join(directory, name)));
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(part));
+      },
+    }));
+    expect(await saveProposedFile(link, out, false, watched)).toMatchObject({ ok: true });
+    expect(partialModes).toEqual([0o600]);
+    expect(await modeOf(out)).toBe(0o600);
+
+    const ownerOnly = join(directory, 'owner-only.pdf');
+    await writeFile(ownerOnly, 'reviewed earlier', { mode: 0o600 });
+    expect(await saveProposedFile(link, ownerOnly, true, body('%PDF-1'))).toMatchObject({ ok: true });
+    expect(await readFile(ownerOnly, 'utf8')).toBe('%PDF-1');
+    expect(await modeOf(ownerOnly)).toBe(0o600);
   });
 
   it('refuses an existing target without --force, also when it appears during the download', async () => {

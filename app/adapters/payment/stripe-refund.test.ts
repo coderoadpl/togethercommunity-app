@@ -256,6 +256,24 @@ describe('Stripe getRefund', () => {
   });
 });
 
+describe('provider failure reasons', () => {
+  it('replaces an API key in the failure reason of a refund Stripe returns before core sees it', async () => {
+    const failed = refundObject({ status: 'failed', failure_reason: 'declined, key rk_live_51SYNTHETICmarker55 for ch_3Visible03' });
+    const h = providerOverFetch((request) => stripeJson(new URL(request.url).pathname === '/v1/refunds' && request.method === 'GET'
+      ? { object: 'list', has_more: false, data: [failed] }
+      : failed));
+    const reasons = [
+      await h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' }),
+      await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' }),
+      await h.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' }),
+    ].map((result) => JSON.stringify(result));
+    for (const reason of reasons) {
+      expect(reason).toContain('declined, key [credential] for ch_3Visible03');
+      expect(reason).not.toMatch(/rk_live_|SYNTHETICmarker/);
+    }
+  });
+});
+
 describe('Stripe listRefunds', () => {
   it('lists the refunds of the payment intent with the order and reason a refund was issued for', async () => {
     const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [

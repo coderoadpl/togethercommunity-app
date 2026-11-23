@@ -7,7 +7,7 @@ import type { TransactionalEmailTransport } from './email-send.js';
 import type { EmailIntegrationTransport } from './integration.js';
 import { languageOrDefault, languageSchema, type Language } from './language.js';
 import type { OrderRefundAlert } from './order-refund-job.js';
-import { currencyFractionDigits } from './order-staff-refund.js';
+import { currencyFractionDigits, type StaffRefundReason } from './order-staff-refund.js';
 import { currencySchema, productTypeSchema } from './product.js';
 import { productVatRateSchema } from './product-vat.js';
 import { absoluteBrandingAssetUrl, resolveTenantLogo } from './tenant.js';
@@ -809,6 +809,7 @@ export const staffRefundAlertEmail = (
     amountCents: number;
     currency: string;
     mayHaveRefunded: boolean;
+    reason: StaffRefundReason | null;
     restocked: boolean;
     removedFromPackingList: boolean;
     diagnostic: string;
@@ -823,7 +824,7 @@ export const staffRefundAlertEmail = (
     ...(input.diagnostic === '' ? [] : [`${messages.lastErrorLabel}: ${escape(input.diagnostic)}`]),
   ];
   return emailMessageSchema.parse({
-    subject: `[${input.tenantName}] ${messages.subjects[input.alert]}: ${input.orderId}`,
+    subject: `[${input.tenantName}] ${input.alert === 'retrying' && input.mayHaveRefunded ? messages.retryingOutcomeUnknownSubject : messages.subjects[input.alert]}: ${input.orderId}`,
     html: `${paragraphs(escapeHtml).map((paragraph) => `<p>${paragraph}</p>`).join('')}<p>${link(input.orderUrl, messages.openOrder)}</p>`,
     text: `${paragraphs((value) => value).join('\n')}\n${input.orderUrl}`,
   });

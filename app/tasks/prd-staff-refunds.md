@@ -427,3 +427,17 @@ guard against refunding more than the charge.
   Studio and the CLI say that nothing more can be refunded there instead of calling it refunded.
   Why: a dispute is not a refund, and the card claimed the whole payment was refunded. Revert:
   "undo D22 → refunded as paid minus remainder".
+- D23. Staff alerts branch on whether the refund request may have reached the provider: a retry
+  after an unknown outcome has its own subject and never says the refund has not reached it, and an
+  `unconfirmed` alert names why and points to the provider's dashboard (nothing to do when the
+  refund is listed there, refund it there when it is not). Why: the old wording contradicted
+  itself and sent staff to a Refund action the reserved remainder hides. Revert: "undo D23 → one
+  retry and unconfirmed wording".
+- D24. A staff refund's `last_error` keeps only the provider's sanitized diagnostic or a short
+  neutral token; Studio and the staff alerts derive the explanation in the reader's language from
+  the refund's status and flags. Why: application-authored English in `last_error` reached Polish
+  recipients. Revert: "undo D24 → explanations in last_error".
+- D25. The credential redaction of refund failure messages also covers the `failure_reason` of
+  refund objects the provider returns, in the adapter and again before a failed refund stores it.
+  Why: a successful response carrying a failed refund took a path the redaction did not cover.
+  Revert: "undo D25 → failure reasons as the provider sent them".

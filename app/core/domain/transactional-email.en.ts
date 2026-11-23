@@ -249,18 +249,27 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       failed_after_submission: 'Staff refund failed after it was issued',
       unconfirmed: 'Staff refund not confirmed by Stripe, check it',
     },
+    retryingOutcomeUnknownSubject: 'Staff refund outcome not known yet, retrying',
     lastErrorLabel: 'Last error',
     openOrder: 'Open the order',
-    paragraphs: ({ alert, amount, orderId, mayHaveRefunded, restocked, removedFromPackingList }) => {
+    paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
+      const checkInDashboard = 'Check the payment in the Stripe Dashboard: if this refund is listed there, nothing more is needed; if it is not, refund it there, and the order is updated once Stripe reports the refund.';
+      const unconfirmedBecause = reason === 'create_outcome_unknown'
+        ? 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'
+        : reason === 'awaiting_provider'
+          ? 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.'
+          : reason === 'refunded_outside'
+            ? 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.'
+            : 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.';
       const states = {
-        retrying: `The refund has not reached Stripe yet. It is retried automatically for 7 days; you get another message if it still fails. ${mayHaveRefunded
-          ? 'Stripe may already have received the request; the retries repeat that same request, so the order is never refunded twice.'
-          : 'Nothing has been refunded yet.'}`,
+        retrying: mayHaveRefunded
+          ? 'Stripe may already have received this refund request, but its answer was lost. The same request is repeated automatically for 7 days, so the order is never refunded twice; you get another message if it still fails.'
+          : 'The refund has not reached Stripe yet, so nothing has been refunded yet. It is retried automatically for 7 days; you get another message if it still fails.',
         blocked_permission: 'Stripe refused it because the workspace\'s restricted Stripe key lacks the Charges and Refunds (write) permission, so nothing has been refunded yet. Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt. Attempts continue every hour for 72 hours.',
         blocked_permission_failed: 'The refund was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Nothing was refunded. Once the permission is added, refund the order again from its page, or refund it by hand in the Stripe Dashboard.',
         failed: 'The refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.',
         failed_after_submission: 'Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund the order again from its page, or return the money another way.',
-        unconfirmed: 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it may or may not have been paid. Check the payment in the Stripe Dashboard before you refund the order again; if the refund failed or was never made, refund the order again from its page.',
+        unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';
       const backToPacking = 'To send the order after all, put it back on the packing list from its page.';

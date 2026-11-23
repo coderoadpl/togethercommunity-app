@@ -1960,11 +1960,25 @@ to refund.
   failed after it was issued, not confirmed) on the same outbox id scheme
   (`order-refund-alert:<refundId>:<alert>:<attempt>:<recipient>`) and attempt
   rules, but with wording of its own: a staff member asked to refund the amount
-  of the order, what state it is in, whether anything was refunded (a retry
-  after an unknown outcome says the request may already have reached Stripe and
-  is never made twice), the stock and packing changes that stay for a refund
-  that is no longer tried, the access guidance for a refund that failed after
-  it was issued (grant access again on the member page) and the last error.
+  of the order, what state it is in, whether anything was refunded, the stock
+  and packing changes that stay for a refund that is no longer tried, the
+  access guidance for a refund that failed after it was issued (grant access
+  again on the member page) and the last error. A retry whose request got an
+  answer says the refund has not reached Stripe yet; a retry after an unknown
+  outcome has a subject of its own ("outcome not known yet") and says Stripe
+  may already have received the request, which the retries repeat, so the
+  order is never refunded twice. An `unconfirmed` alert names why (the request
+  may have reached Stripe but its refunds could not be read, Stripe still had
+  the refund in progress at the last check, a full refund made outside the
+  platform the key could not confirm, or no confirmation) and tells staff to
+  check the payment in the Stripe Dashboard: nothing more is needed when the
+  refund is listed there; when it is not, staff refund it there and the
+  order is updated once Stripe reports it. The explanation of a staff refund
+  in the alerts and in Studio's refund history is derived in the reader's
+  language from the refund's status and flags (`create_outcome_unknown`,
+  `provider_refund_status`, `permission_blocked_at`); `last_error` keeps only
+  Stripe's own diagnostic, or a short neutral token when there is none (for
+  example `waiting_for_other_refund` or `refund_pending`).
   Each alert is rendered per recipient in the recipient's language when it is
   queued and stored pre-rendered as an `m2m-transactional` message with source
   `staff-refunds`, like the buyer notice, so the previous release renders and
@@ -1981,7 +1995,9 @@ to refund.
   object ids for Studio and the staff alert, but every refund failure message
   has Stripe API keys and webhook secrets (`sk_`, `rk_`, `pk_`, `ek_` live or
   test keys and `whsec_` secrets) replaced with `[credential]` before it is
-  stored, shown or e-mailed. The log line written when `charge.refunded` makes
+  stored, shown or e-mailed; so is the `failure_reason` of every refund object
+  Stripe returns, before the refund that failed after it was issued stores it.
+  The log line written when `charge.refunded` makes
   staff refunds due names no Stripe event id. Stripe metadata carries `tenantId`, `orderId`, `reason: staff` and
   `refundJobId` only.
 

@@ -76,8 +76,8 @@ describe('the staff refund alerts as the previous release reads them', () => {
     ['pl', alert, longestTenantName, 99_999_999, 'JPY', false],
   ] as const))('parses and renders the %s %s alert of %s unchanged', (language, alert, tenantName, amountCents, currency, kept) => {
     const message = staffRefundAlertEmail(language, {
-      tenantName, alert, orderId: 'order-1', amountCents, currency, mayHaveRefunded: !kept, restocked: kept, removedFromPackingList: kept,
-      diagnostic: `The payment provider refused the refund, so nothing was refunded: ${'x'.repeat(2_000)}`, orderUrl: 'https://acme.example.com/panel/sales/order-1',
+      tenantName, alert, orderId: 'order-1', amountCents, currency, mayHaveRefunded: !kept, reason: kept ? 'not_refunded' : 'create_outcome_unknown', restocked: kept, removedFromPackingList: kept,
+      diagnostic: `Stripe rejected the refund: ${'x'.repeat(2_000)}`, orderUrl: 'https://acme.example.com/panel/sales/order-1',
     });
     expect(previousRender(prerenderedTransactionalPayload(message))).toStrictEqual({ success: true, data: message });
   });

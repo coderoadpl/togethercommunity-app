@@ -9,13 +9,17 @@ import { z } from 'zod';
 
 import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
+import { LanguageProvider } from '../../../i18n/index.js';
 import { en } from '../../../i18n/en.js';
+import { pl } from '../../../i18n/pl.js';
+import { languagePreference } from '../../../theme-mode.js';
 import { formatDateTime, formatMinorUnitsPrice } from '../../../lib/format.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { createThemeForMode } from '../../../theme.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
+import { OrderStaffRefundHistory } from './OrderStaffRefunds.js';
 import { SalesPanel } from './SalesPanel.js';
 
 const messages = en.sales.staffRefund;
@@ -50,7 +54,7 @@ const preview: StaffRefundPreview = {
 
 const staffRefund = (overrides: Partial<OrderStaffRefundView>): OrderStaffRefundView => ({
   id: 'refund-1', kind: 'amount', status: 'succeeded', amountCents: 5000, currency: 'PLN', attempts: 1, nextAttemptAt: null, lastError: null,
-  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com',
+  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, createOutcomeUnknown: false, requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com',
   note: null, restocked: false, removedFromPackingList: false, createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
   ...overrides,
 });
@@ -647,7 +651,7 @@ describe('staff refund history and ship anyway', () => {
     expect(within(blocked).getByText(/Attempts: 2/)).toBeVisible();
     expect(within(blocked).getByText(messages.lastAttempt({ time: formatDateTime('2026-11-25T07:05:00.000Z', 'en', SALES_LINK_TIME_ZONE) }))).toBeVisible();
 
-    expect(within(within(history).getByTestId('order-staff-refund-r-failed')).getByText(messages.failedHelp)).toBeVisible();
+    expect(within(within(history).getByTestId('order-staff-refund-r-failed')).getByText(messages.reasonHelp.not_refunded)).toBeVisible();
     const done = within(history).getByTestId('order-staff-refund-r-done');
     expect(within(done).getByTestId('order-staff-refund-state')).toHaveTextContent(messages.states.succeeded);
     expect(within(done).getByText(messages.restocked)).toBeVisible();
@@ -661,6 +665,30 @@ describe('staff refund history and ship anyway', () => {
     expect(within(payment).getByText(messages.waitingForPermission)).toBeVisible();
     expect(within(blocked).getByText(messages.blockedNoAction)).toBeVisible();
     expect(within(blocked).getByRole('link', { name: messages.paymentSettingsLink })).toHaveAttribute('href', '/panel/integrations#stripe');
+  });
+
+  it.each([{ language: 'en', t: en }, { language: 'pl', t: pl }] as const)('explains each failed or unconfirmed refund from its status and flags in $language only', async ({ language, t }) => {
+    languagePreference.save(language);
+    const refunds = [
+      staffRefund({ id: 'r-refused', status: 'failed', providerRefundStatus: null, lastError: 'Refund declined' }),
+      staffRefund({ id: 'r-after', status: 'failed', providerRefundStatus: 'failed', lastError: 'expired_or_canceled_card' }),
+      staffRefund({ id: 'r-permission', status: 'failed', providerRefundStatus: null, permissionBlockedAt: '2026-11-19T07:05:00.000Z' }),
+      staffRefund({ id: 'r-unknown', status: 'unconfirmed', providerRefundStatus: null, createOutcomeUnknown: true, lastError: 'Stripe could not list the refunds: timeout' }),
+      staffRefund({ id: 'r-awaiting', status: 'unconfirmed', providerRefundStatus: 'pending', lastError: 'refund_pending' }),
+    ];
+    renderWithProviders(<LanguageProvider><OrderStaffRefundHistory refunds={refunds} /></LanguageProvider>);
+    const help = (id: string) => within(screen.getByTestId(`order-staff-refund-${id}`)).getByTestId('order-staff-refund-help');
+    expect(help('r-refused')).toHaveTextContent(t.sales.staffRefund.reasonHelp.not_refunded);
+    expect(help('r-after')).toHaveTextContent(t.sales.staffRefund.reasonHelp.failed_after_submission);
+    expect(help('r-permission')).toHaveTextContent(t.sales.staffRefund.reasonHelp.permission_expired);
+    expect(help('r-unknown')).toHaveTextContent(t.sales.staffRefund.reasonHelp.create_outcome_unknown);
+    expect(help('r-awaiting')).toHaveTextContent(t.sales.staffRefund.reasonHelp.awaiting_provider);
+    if (language === 'pl') {
+      for (const id of ['r-refused', 'r-after', 'r-permission', 'r-unknown', 'r-awaiting']) {
+        expect(help(id).textContent).not.toMatch(/\b(the|refund|request|check|dashboard|nothing|may)\b/iu);
+      }
+    }
+    languagePreference.save('en');
   });
 
   it('underlines the payment settings link of a refund blocked by the missing permission even where links underline only on hover', async () => {

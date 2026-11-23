@@ -1,4 +1,5 @@
 import type { OrderRefundAlert } from './order-refund-job.js';
+import type { StaffRefundReason } from './order-staff-refund.js';
 
 interface TransactionalEmailMessageContent {
   subject: string;
@@ -300,6 +301,7 @@ export interface TransactionalEmailMessages {
   };
   staffRefundAlertEmail: {
     subjects: Record<OrderRefundAlert, string>;
+    retryingOutcomeUnknownSubject: string;
     lastErrorLabel: string;
     openOrder: string;
     paragraphs: (input: {
@@ -307,6 +309,7 @@ export interface TransactionalEmailMessages {
       amount: string;
       orderId: string;
       mayHaveRefunded: boolean;
+      reason: StaffRefundReason | null;
       restocked: boolean;
       removedFromPackingList: boolean;
     }) => string[];

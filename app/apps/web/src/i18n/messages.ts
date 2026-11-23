@@ -11,6 +11,7 @@ import type {
   OrderRefundJobView,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
+  StaffRefundReason,
   StripeAdoptionRefusal,
   TenantAuditEventKind,
   VersionPreviewFieldName,
@@ -1209,7 +1210,7 @@ export interface Messages {
       lastAttempt: (params: { time: string }) => string;
       restocked: string;
       removedFromPackingList: string;
-      failedHelp: string;
+      reasonHelp: Record<StaffRefundReason, string>;
       blockedTitle: string;
       blockedBuyerEmail: string;
       blockedBody: string;

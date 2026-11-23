@@ -11,9 +11,11 @@ import {
   REFUND_REQUEST_WORST_CASE_MS,
   refundFailure,
   refundFailureOf,
+  redactProviderCredentials,
   refundJobOfClaim,
   resolveEmailLanguage,
   staffRefundAlertEmail,
+  staffRefundReason,
   type AppError,
   type ClaimedRefundJob,
   type OrderListItem,
@@ -94,9 +96,11 @@ const unconfirmed = (update: RefundJobUpdate & { lastError: string }): Settlemen
 // seen: the money may have left, so staff must check the provider's dashboard.
 const createMayHaveRefunded = (job: RefundJob): boolean => job.source === 'staff' && job.createOutcomeUnknown;
 
-const unconfirmedCreate = (lastError: string): Settlement => unconfirmed({
-  lastError: `A refund request may have reached the payment provider, but its refunds could not be read before the retries ended (${lastError}); check the payment in the provider's dashboard`,
-});
+// A staff refund keeps only the provider's own diagnostic, or a neutral token: Studio and the staff alerts explain it in the
+// reader's language from its status and flags.
+const staffDiagnostic = (job: RefundJob, soldOut: string, staff: string): string => (job.source === 'staff' ? staff : soldOut);
+
+const unconfirmedCreate = (lastError: string): Settlement => unconfirmed({ lastError });
 
 const settlePermissionMissing = (job: RefundJob, lastError: string, now: string): Settlement => {
   const blockedAt = job.permissionBlockedAt ?? now;
@@ -109,12 +113,20 @@ const settlePermissionMissing = (job: RefundJob, lastError: string, now: string)
   };
 };
 
-const handRefundUnconfirmed = (order: OrderListItem, settlement: Settlement): Settlement =>
-  order.status === 'refunded' && settlement.alert === 'blocked_permission_failed'
-    ? unconfirmed({
-      lastError: `The payment shows a full refund made outside the platform that the refund key cannot confirm (${settlement.update.lastError ?? 'permission missing'}); check it in the payment provider's dashboard`,
-    })
-    : settlement;
+const handRefundUnconfirmed = (job: RefundJob, order: OrderListItem, settlement: Settlement): Settlement => {
+  if (order.status !== 'refunded' || settlement.alert !== 'blocked_permission_failed') return settlement;
+  const diagnostic = settlement.update.lastError ?? 'permission missing';
+  return unconfirmed({
+    lastError: staffDiagnostic(job, `The payment shows a full refund made outside the platform that the refund key cannot confirm (${diagnostic}); check it in the payment provider's dashboard`, diagnostic),
+  });
+};
+
+const withUpdate = (settlement: Settlement, update: RefundJobUpdate): Settlement => ({ ...settlement, update: { ...settlement.update, ...update } });
+
+// Studio and the alerts read a failed staff refund with permissionBlockedAt as one the missing permission ended, so any
+// other ending clears it.
+const nothingRefunded = (job: RefundJob, lastError: string): Settlement =>
+  (job.source === 'staff' ? withUpdate(finalFailure(lastError), { permissionBlockedAt: null }) : finalFailure(lastError));
 
 const skippedRefunded = (): Settlement =>
   ({ update: { status: 'skipped_refunded', nextAttemptAt: null, lastError: null }, outcome: 'skipped_refunded', alert: null });
@@ -130,10 +142,10 @@ const settleRefundFailure = (job: RefundJob, error: AppError, now: string): Sett
   if (kind === 'already_refunded') return watchRefunds(error.message, now);
   if (kind === 'permission_missing') return settlePermissionMissing(job, error.message, now);
   if (kind === 'idempotency_mismatch') return { update: { status: 'pending', nextAttemptAt: now, lastError: error.message }, outcome: 'retrying', alert: null };
-  if (kind === 'not_found' || kind === 'refund_failed') return finalFailure(job.source === 'staff' ? `The payment provider refused the refund, so nothing was refunded: ${error.message}` : error.message);
+  if (kind === 'not_found' || kind === 'refund_failed') return nothingRefunded(job, error.message);
   const transientFailureStreak = job.transientFailureStreak + 1;
   const retryAt = orderRefundRetryAt(transientFailureStreak, now, job.createdAt);
-  if (retryAt === null) return createMayHaveRefunded(job) ? unconfirmedCreate(error.message) : finalFailure(error.message);
+  if (retryAt === null) return createMayHaveRefunded(job) ? unconfirmedCreate(error.message) : nothingRefunded(job, error.message);
   return {
     update: { status: 'pending', nextAttemptAt: retryAt, lastError: error.message, transientFailureStreak },
     outcome: 'retrying',
@@ -185,16 +197,19 @@ const coverageAtCheck = (job: RefundJob, refunds: readonly ProviderRefund[], ord
   return chargeCoverage.kind === 'covered' ? chargeCoverage : coverage;
 };
 
-const ownRefundFailed = (refund: ProviderRefund, update: RefundJobUpdate = {}): Settlement => ({
+const ownRefundFailed = (job: RefundJob, refund: ProviderRefund, update: RefundJobUpdate = {}): Settlement => ({
   update: {
     ...update, status: 'failed', nextAttemptAt: null, providerRefundId: refund.refundId, providerRefundStatus: refund.status,
-    lastError: refund.failureReason ?? `Refund ${refund.status ?? 'failed'}`,
+    lastError: refund.failureReason === null
+      ? staffDiagnostic(job, `Refund ${refund.status ?? 'failed'}`, `refund_${refund.status ?? 'failed'}`)
+      : redactProviderCredentials(refund.failureReason),
   },
   outcome: 'failed',
   alert: 'failed_after_submission',
 });
 
-const awaitingError = (refund: ProviderRefund): string => `Refund still ${refund.status ?? 'pending'} at the last scheduled status check`;
+const awaitingError = (job: RefundJob, refund: ProviderRefund): string =>
+  staffDiagnostic(job, `Refund still ${refund.status ?? 'pending'} at the last scheduled status check`, `refund_${refund.status ?? 'pending'}`);
 
 const settleCoverageAfterRefund = (own: ProviderRefund | undefined, awaiting: ProviderRefund | undefined, now: string): Settlement => {
   if (own === undefined && awaiting === undefined) return skippedRefunded();
@@ -210,12 +225,16 @@ const settleCoverageAfterRefund = (own: ProviderRefund | undefined, awaiting: Pr
 const settleCoverageAtCheck = (job: RefundJob, submittedAt: string, refunds: readonly ProviderRefund[], order: OrderListItem | null, now: string): Settlement => {
   const coverage = coverageAtCheck(job, refunds, order);
   const statusChecks = job.statusChecks + 1;
-  if (coverage.kind === 'own_failed') return ownRefundFailed(coverage.refund, { statusChecks });
+  if (coverage.kind === 'own_failed') return ownRefundFailed(job, coverage.refund, { statusChecks });
   if (coverage.kind === 'short') {
     return {
       update: {
         status: 'pending', nextAttemptAt: now, keyGeneration: job.keyGeneration + 1, transientFailureStreak: 0,
-        lastError: `A refund made outside the platform failed or was canceled; ${String(coverage.remainingCents)} minor units are left to refund`,
+        lastError: staffDiagnostic(
+          job,
+          `A refund made outside the platform failed or was canceled; ${String(coverage.remainingCents)} minor units are left to refund`,
+          'outside_refund_failed',
+        ),
       },
       outcome: 'reopened',
       alert: null,
@@ -229,16 +248,14 @@ const settleCoverageAtCheck = (job: RefundJob, submittedAt: string, refunds: rea
   if (coverage.awaiting === undefined) {
     return { update: { status: 'succeeded', providerRefundStatus, statusChecks, nextAttemptAt, lastError: null }, outcome: 'checked', alert: null, ...ownRefund };
   }
-  if (nextAttemptAt === null) return { ...unconfirmed({ providerRefundStatus, statusChecks, lastError: awaitingError(coverage.awaiting) }), ...ownRefund };
+  if (nextAttemptAt === null) return { ...unconfirmed({ providerRefundStatus, statusChecks, lastError: awaitingError(job, coverage.awaiting) }), ...ownRefund };
   return { update: { status: 'submitted', providerRefundStatus, statusChecks, nextAttemptAt, lastError: null }, outcome: 'checked', alert: null, ...ownRefund };
 };
 
-const ownRefundNotListed = (refundId: string): AppError =>
-  refundFailure('transient', `The refund list does not show refund ${refundId} yet`);
+const ownRefundNotListed = (job: RefundJob, refundId: string): AppError =>
+  refundFailure('transient', staffDiagnostic(job, `The refund list does not show refund ${refundId} yet`, `refund_not_listed ${refundId}`));
 
 const ownRefundSeen = (job: RefundJob): RefundJobUpdate => (job.source === 'staff' ? { createOutcomeUnknown: false } : {});
-
-const withUpdate = (settlement: Settlement, update: RefundJobUpdate): Settlement => ({ ...settlement, update: { ...settlement.update, ...update } });
 
 const leaseLost: Settlement = { update: {}, outcome: 'lease_lost', alert: null };
 
@@ -247,7 +264,7 @@ const leaseLost: Settlement = { update: {}, outcome: 'lease_lost', alert: null }
 const settleListFailure = (job: RefundJob, order: OrderListItem, error: AppError, now: string): Settlement =>
   createMayHaveRefunded(job)
     ? settleRefundFailure(job, refundFailure('transient', error.message), now)
-    : handRefundUnconfirmed(order, settleRefundFailure(job, error, now));
+    : handRefundUnconfirmed(job, order, settleRefundFailure(job, error, now));
 
 // A worker can be lost after the provider accepted a staff refund but before its result is saved, so the attempt
 // and the key it uses are saved first; a later run then never takes the refund for failed.
@@ -285,10 +302,10 @@ const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: Ord
   if (!listed.ok) return settleListFailure(job, order, listed.error, now);
   const { refunds } = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
-    return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
+    return settleRefundFailure(job, ownRefundNotListed(job, job.providerRefundId), now);
   }
   const coverage = coverageOf(job, refunds);
-  if (coverage.kind === 'own_failed') return ownRefundFailed(coverage.refund, { submittedAt: now, ...ownRefundSeen(job) });
+  if (coverage.kind === 'own_failed') return ownRefundFailed(job, coverage.refund, { submittedAt: now, ...ownRefundSeen(job) });
   if (coverage.kind === 'covered') return withUpdate(settleCoverageAfterRefund(ownRefundsOf(job, refunds)[0], coverage.awaiting, now), ownRefundSeen(job));
   // An own refund the job never recorded came from a call whose result was not saved, so it spent the
   // current key; a recorded one moved the generation on when the job reopened.
@@ -308,7 +325,7 @@ const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: Ord
     // The created refund is this staff refund's own even when the provider echoes no metadata.
     const owner: RefundJob = job.source === 'staff' ? { ...job, providerRefundId: created.value.refundId } : job;
     const after = coverageOf(owner, withCreated);
-    if (after.kind === 'own_failed') return ownRefundFailed(after.refund, { submittedAt: now, keyGeneration, ...ownRefundSeen(job) });
+    if (after.kind === 'own_failed') return ownRefundFailed(job, after.refund, { submittedAt: now, keyGeneration, ...ownRefundSeen(job) });
     if (after.kind === 'short') {
       const settlement = settleRefundFailure(job, refundFailure('transient', `Refund ${created.value.refundId} does not cover the rest of the payment`), now);
       return withUpdate(settlement, { keyGeneration: keyGeneration + 1, ...ownRefundSeen(job) });
@@ -321,7 +338,7 @@ const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: Ord
   const outcomeUnknown = failureDetails?.outcomeUnknown === true || (job.source === 'staff' && failureDetails?.providerServerError === true);
   const attempted: RefundJob = job.source === 'staff' ? { ...job, createOutcomeUnknown: outcomeUnknown } : job;
   const failure = settleRefundFailure(attempted, created.error, now);
-  const settlement = refunds.some((refund) => !isCommitted(refund)) ? failure : handRefundUnconfirmed(order, failure);
+  const settlement = refunds.some((refund) => !isCommitted(refund)) ? failure : handRefundUnconfirmed(job, order, failure);
   return withUpdate(settlement, {
     keyGeneration: outcomeUnknown ? keyGeneration : keyGeneration + 1,
     ...(attempted.source === 'staff' ? { createOutcomeUnknown: attempted.createOutcomeUnknown } : {}),
@@ -335,7 +352,7 @@ const settleAttempt = (settlement: Settlement): Settlement => {
 
 const refundJob = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem | null, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
   if (job.source === 'staff') {
-    if (order === null) return finalFailure('The order was not found');
+    if (order === null) return finalFailure('order_not_found');
     return settleAttempt(await attemptRefund(claim, job, order, job.paymentIntentId, now, deadlineAt, deps));
   }
   if (order === null) return finalFailure('The cancelled order was not found');
@@ -356,10 +373,10 @@ const settleReadFailure = (submittedAt: string, lastError: string, now: string):
 };
 
 // Only one staff refund of an order may wait to reach the provider, so the reopen waits for the other one.
-const waitForOtherStaffRefund = (reopen: Settlement, now: string): Settlement => ({
+const waitForOtherStaffRefund = (now: string): Settlement => ({
   update: {
     nextAttemptAt: new Date(Date.parse(now) + STATUS_READ_RETRY_MS).toISOString(),
-    lastError: `${reopen.update.lastError ?? 'Part of the payment is left to refund'}; another refund of this order is still waiting to reach the payment provider`,
+    lastError: 'waiting_for_other_refund',
   },
   outcome: 'checked',
   alert: null,
@@ -373,12 +390,12 @@ const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, no
   if (!listed.ok) return settleReadFailure(job.submittedAt, listed.error.message, now);
   const { refunds, complete } = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
-    return settleReadFailure(job.submittedAt, ownRefundNotListed(job.providerRefundId).message, now);
+    return settleReadFailure(job.submittedAt, ownRefundNotListed(job, job.providerRefundId).message, now);
   }
   const settlement = settleCoverageAtCheck(job, job.submittedAt, refunds, complete ? order : null, now);
   if (settlement.outcome !== 'reopened' || job.source !== 'staff') return settlement;
   const anotherWaiting = await deps.refundJobs.staffRefundWaiting?.(job.tenantId, job.orderId, { except: job.id }) ?? false;
-  return anotherWaiting ? waitForOtherStaffRefund(settlement, now) : settlement;
+  return anotherWaiting ? waitForOtherStaffRefund(now) : settlement;
 };
 
 const STAFF_REFUND_EMAIL_SOURCE = 'staff-refunds';
@@ -438,7 +455,7 @@ const staffAlertEmails = async (job: RefundJob, alert: OrderRefundAlert, deps: D
       to: recipient.email,
       payload: prerenderedTransactionalPayload(staffRefundAlertEmail(recipient.language, {
         tenantName: tenant.name, alert, orderId: job.orderId, amountCents: job.amountCents, currency: job.currency,
-        mayHaveRefunded: job.createOutcomeUnknown, restocked: job.restocked, removedFromPackingList: job.removedFromPackingList,
+        mayHaveRefunded: job.createOutcomeUnknown, reason: staffRefundReason(job), restocked: job.restocked, removedFromPackingList: job.removedFromPackingList,
         diagnostic: job.lastError ?? '', orderUrl,
       })),
       sourceApp: STAFF_REFUND_EMAIL_SOURCE,

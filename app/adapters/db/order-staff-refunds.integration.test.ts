@@ -372,6 +372,51 @@ describe('staff refunds against a real database', () => {
     expect(h.provider.created).toHaveLength(1);
   });
 
+  it('stores only the provider diagnostic of an unknown outcome and words both alerts for a Polish recipient in Polish only', async () => {
+    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
+    const polishStaff = { tenantAccess: { listStaffForTenant: async () => [{ userId: 'admin', email: 'admin@acme.example.com', staffRole: 'admin' as const, language: 'pl' as const }] } };
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1), polishStaff);
+    h.provider.failLists(...Array.from({ length: 60 }, () => refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout')));
+    for (let at = 2; at <= 60 * 24 * 8; at += 6 * 60) await h.dispatch(minutes(at), polishStaff);
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'unconfirmed', lastError: 'Stripe could not list the refunds: Request aborted due to timeout' }]);
+    const [retrying, unconfirmedAlert] = await alertPayloads();
+    expect(retrying?.text).toContain('Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła.');
+    expect(unconfirmedAlert?.text).toContain('Zlecenie tego zwrotu mogło dotrzeć do Stripe');
+    expect(unconfirmedAlert?.text).toContain('Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić');
+    for (const alert of [retrying, unconfirmedAlert]) {
+      expect(alert?.text.replace(/Ostatni błąd: .*/u, '')).not.toMatch(/\b(the|refund|request|check|dashboard|nothing|may)\b/iu);
+    }
+  });
+
+  it('words the refusal alert for a Polish recipient in Polish only and keeps just the provider\'s reason as the last error', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Refund declined') }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1), { tenantAccess: { listStaffForTenant: async () => [{ userId: 'admin', email: 'admin@acme.example.com', staffRole: 'admin' as const, language: 'pl' as const }] } });
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', lastError: 'Refund declined', permissionBlockedAt: null }]);
+    const [refused] = await alertPayloads();
+    expect(refused?.text).toContain('Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło.');
+    expect(refused?.text).toContain('Ostatni błąd: Refund declined');
+    expect(refused?.text.replace('Ostatni błąd: Refund declined', '')).not.toMatch(/\b(the|refund|provider|nothing|refused)\b/iu);
+  });
+
+  it('keeps an API key in the failure reason of a refund that failed after it was issued out of the stored refund, the Studio view and the staff alert', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_1', 'Card issuer said: key sk_live_51SYNTHETICmarker77 rejected for charge ch_3Visible02');
+    await h.dispatch(minutes(60 * 24 + 1));
+
+    const [stored] = await database.db.select({ status: orderStaffRefunds.status, lastError: orderStaffRefunds.lastError }).from(orderStaffRefunds);
+    const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    const outbox = await database.db.select({ payload: emailOutbox.payload }).from(emailOutbox).where(like(emailOutbox.id, 'order-refund-alert:%'));
+    expect(stored).toMatchObject({ status: 'failed', lastError: 'Card issuer said: key [credential] rejected for charge ch_3Visible02' });
+    expect(outbox).toHaveLength(1);
+    for (const sink of [stored?.lastError, JSON.stringify(detail), JSON.stringify(outbox)]) expect(sink).not.toMatch(/sk_live_|SYNTHETICmarker/);
+  });
+
   it('ends a staff refund the provider accepted before its worker was lost as unconfirmed, still counted, when its refunds cannot be read until the retries end', async () => {
     const h = harness();
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
@@ -552,14 +597,14 @@ describe('staff refunds against a real database', () => {
     expect(h.provider.calls.map((call) => call.amountCents)).toStrictEqual([4099]);
     expect(h.provider.created).toStrictEqual([]);
     expect(await refundRows('order-1')).toMatchObject([{
-      status: 'failed', amountCents: 4099, lastError: 'The payment provider refused the refund, so nothing was refunded: Refund amount is greater than the unrefunded amount on the charge',
+      status: 'failed', amountCents: 4099, lastError: 'Refund amount is greater than the unrefunded amount on the charge',
     }]);
     expect(await buyerEmails()).toStrictEqual([]);
     const [refusedFull] = await alertPayloads();
     expect(refusedFull).toMatchObject({ alert: 'failed', kind: 'm2m-transactional', sourceApp: 'staff-refunds' });
     expect(refusedFull?.text).toContain('A staff member asked to refund PLN\u00a040.99 of order order-1.\nThe refund failed and is no longer retried. Nothing was refunded by this request.');
     expect(refusedFull?.text).toContain('The goods returned to stock and the order taken off the packing list with this refund stay that way.');
-    expect(refusedFull?.text).toContain('Last error: The payment provider refused the refund, so nothing was refunded: Refund amount is greater than the unrefunded amount on the charge');
+    expect(refusedFull?.text).toContain('Last error: Refund amount is greater than the unrefunded amount on the charge');
     const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
     expect(detail.staffRefunds?.map((refund) => [refund.kind, refund.amountCents, refund.status])).toStrictEqual([['remainder', 4099, 'failed']]);
     expect(detail.refundTotals).toMatchObject({ refundedCents: 0, remainingCents: 4099 });
@@ -571,7 +616,7 @@ describe('staff refunds against a real database', () => {
     h.provider.refundByHand(handRefund(2000));
     await h.dispatch(minutes(1));
 
-    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', lastError: 'The payment provider refused the refund, so nothing was refunded: Refund amount is greater than the unrefunded amount on the charge' }]);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', lastError: 'Refund amount is greater than the unrefunded amount on the charge' }]);
     expect(h.provider.created).toStrictEqual([]);
     expect(await buyerEmails()).toStrictEqual([]);
     const [refusedPartial] = await alertPayloads();
@@ -834,7 +879,7 @@ describe('staff refunds against a real database', () => {
     const [watched, waiting] = await refundRows('order-1');
     expect(waiting).toMatchObject({ status: 'blocked_permission' });
     expect(watched).toMatchObject({ status: 'submitted', nextAttemptAt: minutes(60 * 25 + 1) });
-    expect(watched?.lastError).toContain('another refund of this order is still waiting');
+    expect(watched?.lastError).toBe('waiting_for_other_refund');
     expect(h.provider.created).toStrictEqual([]);
     expect(h.logs.filter((line) => line.includes('settlement not saved'))).toStrictEqual([]);
   });
@@ -856,12 +901,12 @@ describe('staff refunds against a real database', () => {
       ['order-refund-alert:refund-1:failed:1:1', 'admin@acme.example.com', 'm2m-transactional', 'staff-refunds'],
     ]);
     const rendered = (language: string) => staffRefundAlertEmail(language, {
-      tenantName: 'Acme', alert: 'failed', orderId: 'order-1', amountCents: 1000, currency: 'PLN', mayHaveRefunded: false, restocked: false, removedFromPackingList: false,
-      diagnostic: 'The payment provider refused the refund, so nothing was refunded: Refund declined', orderUrl: 'https://acme.togethercommunity.app/panel/sales/order-1',
+      tenantName: 'Acme', alert: 'failed', orderId: 'order-1', amountCents: 1000, currency: 'PLN', mayHaveRefunded: false, reason: null, restocked: false, removedFromPackingList: false,
+      diagnostic: 'Refund declined', orderUrl: 'https://acme.togethercommunity.app/panel/sales/order-1',
     });
     expect(rows.map((row) => row.payload)).toStrictEqual([{ kind: 'm2m-transactional', ...rendered('en') }, { kind: 'm2m-transactional', ...rendered('pl') }]);
     expect(rendered('pl').text).not.toBe(rendered('en').text);
-    expect(textOf(rows[0]?.payload)).toBe('A staff member asked to refund PLN\u00a010.00 of order order-1.\nThe refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.\nLast error: The payment provider refused the refund, so nothing was refunded: Refund declined\nhttps://acme.togethercommunity.app/panel/sales/order-1');
+    expect(textOf(rows[0]?.payload)).toBe('A staff member asked to refund PLN\u00a010.00 of order order-1.\nThe refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.\nLast error: Refund declined\nhttps://acme.togethercommunity.app/panel/sales/order-1');
   });
 
   it('names in the staff alert the amount of a full refund the provider refused and says nothing was refunded', async () => {
@@ -874,7 +919,7 @@ describe('staff refunds against a real database', () => {
     expect(declined).toMatchObject({ alert: 'failed', text: expect.stringContaining('A staff member asked to refund PLN\u00a040.99 of order order-1.') });
     expect(declined?.text).toContain('Nothing was refunded by this request.');
     expect(declined?.text).toContain('The goods returned to stock and the order taken off the packing list with this refund stay that way.');
-    expect(declined?.text).toContain('Last error: The payment provider refused the refund, so nothing was refunded: Refund declined');
+    expect(declined?.text).toContain('Last error: Refund declined');
   });
 
   it('keeps an API key from a provider error out of the stored refund, the Studio view and the staff alert', async () => {

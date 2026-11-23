@@ -349,6 +349,31 @@ export const newOrderStaffRefund = (input: {
   updatedAt: input.now,
 });
 
+export const STAFF_REFUND_REASONS = [
+  'not_refunded',
+  'permission_expired',
+  'failed_after_submission',
+  'create_outcome_unknown',
+  'awaiting_provider',
+  'refunded_outside',
+  'not_confirmed',
+] as const;
+
+export type StaffRefundReason = (typeof STAFF_REFUND_REASONS)[number];
+
+export const staffRefundReason = (
+  refund: Pick<OrderStaffRefund, 'status' | 'createOutcomeUnknown' | 'providerRefundStatus' | 'permissionBlockedAt'>,
+): StaffRefundReason | null => {
+  if (refund.status === 'failed') {
+    if (refund.providerRefundStatus === 'failed' || refund.providerRefundStatus === 'canceled') return 'failed_after_submission';
+    return refund.permissionBlockedAt === null ? 'not_refunded' : 'permission_expired';
+  }
+  if (refund.status !== 'unconfirmed') return null;
+  if (refund.createOutcomeUnknown) return 'create_outcome_unknown';
+  if (refund.providerRefundStatus === 'pending' || refund.providerRefundStatus === 'requires_action') return 'awaiting_provider';
+  return refund.permissionBlockedAt === null ? 'not_confirmed' : 'refunded_outside';
+};
+
 export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   id: true,
   kind: true,
@@ -361,6 +386,7 @@ export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   providerRefundStatus: true,
   submittedAt: true,
   permissionBlockedAt: true,
+  createOutcomeUnknown: true,
   requestedByUserId: true,
   requestedByEmail: true,
   note: true,

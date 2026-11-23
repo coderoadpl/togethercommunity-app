@@ -15,7 +15,7 @@ const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => 
 
 const refundView = (over: Partial<OrderStaffRefundView> = {}): OrderStaffRefundView => ({
   id: 'refund-1', kind: 'remainder', status: 'pending', amountCents: 3099, currency: 'PLN', attempts: 0, nextAttemptAt: '2026-11-22T10:00:00.000Z',
-  lastError: null, providerRefundStatus: null, submittedAt: null, permissionBlockedAt: null, requestedByUserId: 'owner-1', requestedByEmail: 'owner@acme.example.com',
+  lastError: null, providerRefundStatus: null, submittedAt: null, permissionBlockedAt: null, createOutcomeUnknown: false, requestedByUserId: 'owner-1', requestedByEmail: 'owner@acme.example.com',
   note: null, restocked: true, removedFromPackingList: true, createdAt: '2026-11-22T10:00:00.000Z', updatedAt: '2026-11-22T10:00:00.000Z', ...over,
 });
 

@@ -40,7 +40,7 @@ const preview = {
 
 const refund = (overrides: Record<string, unknown>) => ({
   id: 'refund-demo-1', kind: 'amount', status: 'succeeded', amountCents: 5000, currency: 'PLN', attempts: 1, nextAttemptAt: null, lastError: null,
-  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, requestedByUserId: 'fixture-user-f9e5468247b51d08', requestedByEmail: 'creator@together.dev',
+  providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, createOutcomeUnknown: false, requestedByUserId: 'fixture-user-f9e5468247b51d08', requestedByEmail: 'creator@together.dev',
   note: null, restocked: false, removedFromPackingList: false, createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
   ...overrides,
 });

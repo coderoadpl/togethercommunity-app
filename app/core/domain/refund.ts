@@ -65,7 +65,7 @@ const refundFailureDetailsSchema = z.object({
 // provider echoes back never gets that far; the provider's object ids stay, because staff look them up.
 const PROVIDER_CREDENTIAL = /\b(?:(?:sk|rk|pk|ek)_(?:live|test)|whsec)_[A-Za-z0-9*]+/gu;
 
-const redactProviderCredentials = (message: string): string => message.replace(PROVIDER_CREDENTIAL, '[credential]');
+export const redactProviderCredentials = (message: string): string => message.replace(PROVIDER_CREDENTIAL, '[credential]');
 
 export const refundFailure = (
   kind: RefundFailureKind,

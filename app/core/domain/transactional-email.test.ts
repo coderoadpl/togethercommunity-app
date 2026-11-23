@@ -590,7 +590,7 @@ describe('transactional message catalogue', () => {
       tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 1500, currency: 'PLN', shopUrl: 'https://acme.test/',
     })],
     ['staff-refund-alert', (language) => staffRefundAlertEmail(language, {
-      tenantName: 'Acme Courses', alert: 'failed', orderId: 'order-1', amountCents: 1500, currency: 'PLN', mayHaveRefunded: false,
+      tenantName: 'Acme Courses', alert: 'failed', orderId: 'order-1', amountCents: 1500, currency: 'PLN', mayHaveRefunded: false, reason: null,
       restocked: false, removedFromPackingList: false, diagnostic: 'Refund declined', orderUrl: 'https://acme.test/panel/sales/order-1',
     })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
@@ -827,7 +827,7 @@ describe('order refund issued email', () => {
 
 describe('staff refund alert email', () => {
   const input = {
-    tenantName: 'Acme', alert: 'failed' as const, orderId: 'order-<1>', amountCents: 4099, currency: 'PLN', mayHaveRefunded: false,
+    tenantName: 'Acme', alert: 'failed' as const, orderId: 'order-<1>', amountCents: 4099, currency: 'PLN', mayHaveRefunded: false, reason: null,
     restocked: true, removedFromPackingList: true, diagnostic: 'Stripe rejected the refund: <declined>', orderUrl: 'https://acme.example.com/panel/sales/order-1',
   };
 
@@ -869,10 +869,38 @@ describe('staff refund alert email', () => {
     expect(staffRefundAlertEmail('en', { ...input, restocked: false, removedFromPackingList: false }).text).not.toContain('packing list');
   });
 
-  it('says whether a retried refund may already have reached Stripe', () => {
-    expect(staffRefundAlertEmail('en', { ...input, alert: 'retrying' }).text).toContain('Nothing has been refunded yet.');
-    expect(staffRefundAlertEmail('en', { ...input, alert: 'retrying', mayHaveRefunded: true }).text)
-      .toContain('Stripe may already have received the request; the retries repeat that same request, so the order is never refunded twice.');
+  it.each([
+    ['en', false, 'Staff refund not issued yet, retrying',
+      'The refund has not reached Stripe yet, so nothing has been refunded yet. It is retried automatically for 7 days; you get another message if it still fails.'],
+    ['en', true, 'Staff refund outcome not known yet, retrying',
+      'Stripe may already have received this refund request, but its answer was lost. The same request is repeated automatically for 7 days, so the order is never refunded twice; you get another message if it still fails.'],
+    ['pl', false, 'Zwrot zlecony przez zespół jeszcze niezrealizowany, ponawiamy',
+      'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'],
+    ['pl', true, 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
+      'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'],
+  ] as const)('words the %s retry alert by whether the request may have reached Stripe (%s), never saying it has not when it may have', (language, mayHaveRefunded, subject, state) => {
+    const message = staffRefundAlertEmail(language, { ...input, alert: 'retrying', mayHaveRefunded, diagnostic: '' });
+    expect(message.subject).toBe(`[Acme] ${subject}: order-<1>`);
+    expect(message.text.split('\n')[1]).toBe(state);
+    if (mayHaveRefunded) expect(message.text).not.toMatch(/has not reached Stripe|nie dotarł jeszcze do Stripe/);
+  });
+
+  it.each([
+    ['en', 'create_outcome_unknown', 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'],
+    ['en', 'awaiting_provider', 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.'],
+    ['en', 'refunded_outside', 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.'],
+    ['en', 'not_confirmed', 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.'],
+    ['pl', 'create_outcome_unknown', 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'],
+    ['pl', 'awaiting_provider', 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.'],
+    ['pl', 'refunded_outside', 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić, więc nie wiadomo, czy ten zwrot został wypłacony.'],
+    ['pl', 'not_confirmed', 'Stripe nie potwierdził zwrotu, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.'],
+  ] as const)('tells staff in the %s unconfirmed alert (%s) to check the dashboard and refund there only when the refund is missing', (language, reason, because) => {
+    const check = language === 'en'
+      ? 'Check the payment in the Stripe Dashboard: if this refund is listed there, nothing more is needed; if it is not, refund it there, and the order is updated once Stripe reports the refund.'
+      : 'Sprawdź płatność w panelu Stripe: jeśli ten zwrot jest tam widoczny, nic więcej nie trzeba robić; jeśli go nie ma, zwróć płatność tam, a zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.';
+    const text = staffRefundAlertEmail(language, { ...input, alert: 'unconfirmed', reason, mayHaveRefunded: reason === 'create_outcome_unknown', diagnostic: '' }).text;
+    expect(text.split('\n')[1]).toBe(`${because} ${check}`);
+    expect(text).not.toMatch(/refund the order again from its page|zleć go ponownie na stronie zamówienia/);
   });
 
   it('gives every alert its own staff refund subject in both languages', () => {

@@ -1,7 +1,7 @@
 import { Alert, AlertTitle, Box, Button, Chip, Divider, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { orderRefundPermissionDeadline, SALES_LINK_TIME_ZONE, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
+import { orderRefundPermissionDeadline, SALES_LINK_TIME_ZONE, staffRefundReason, type OrderListItem, type OrderRefundTotals, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { SectionCard } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -145,6 +145,7 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
   const time = (value: string) => formatDateTime(value, language, SALES_LINK_TIME_ZONE);
   const waiting = refund.status === 'pending' || refund.status === 'running' || refund.status === 'submitted';
   const blocked = refund.status === 'blocked_permission';
+  const reason = staffRefundReason(refund);
   const facts = [
     refund.status === 'succeeded' ? messages.completedAt({ time: time(refund.updatedAt) }) : null,
     blocked ? [messages.attempts({ count: refund.attempts }), refund.nextAttemptAt === null ? null : messages.nextAttempt({ time: time(refund.nextAttemptAt) })].filter((part) => part !== null).join(' · ') : null,
@@ -194,8 +195,7 @@ const RefundItem = ({ refund }: { refund: OrderStaffRefundView }) => {
           </Stack>
         </Alert>
       ) : null}
-      {refund.status === 'failed' ? <Alert severity="error">{messages.failedHelp}</Alert> : null}
-      {refund.status === 'unconfirmed' ? <Alert severity="error">{t.sales.refundJobUnconfirmedHelp}</Alert> : null}
+      {reason === null ? null : <Alert severity="error" data-testid="order-staff-refund-help">{messages.reasonHelp[reason]}</Alert>}
     </RefundHistoryItem>
   );
 };

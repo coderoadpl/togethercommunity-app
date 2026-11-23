@@ -579,7 +579,7 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         .slice(0, limit)
         .map(([tenantId]) => tenantId);
     }, []),
-    listToSweep: (tenantId, cutoffs, limit, boundMs) => within(boundMs, async (executor): Promise<KeyDownloadSweepBatch> => {
+    listToSweep: (tenantId, cutoffs, limit, boundMs) => within(boundMs, async (executor): Promise<{ rows: KeyDownloadSweepRow[] }> => {
       const recordRows = await executor.select({ row: records, waiting: waitingSince(records) }).from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
         .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit);
       const stagedRows = await executor.select({ row: stagedFiles, waiting: waitingSince(stagedFiles) }).from(stagedFiles)

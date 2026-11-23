@@ -1224,8 +1224,9 @@ commit fails), it withdraws its attempt right after the transaction: each
 record is removed in a short transaction of its own under the workspace's
 approval lock, so no concurrent approval can publish the same address in
 between. An object the attempt tried to write is deleted first, except when a
-live field shows the address or an applied proposal carries it in its input; a
-record whose object the attempt never tried to write is only dropped. When the
+live field shows the address or an applied proposal sets it in one of the five
+image fields of its input (an address that appears only in another field, such
+as a description, does not count); a record whose object the attempt never tried to write is only dropped. When the
 write of an image ended without a definite answer (no answer within its 5
 seconds, a connection error, a server error), the storage may still store it
 after this delete, so the withdrawal deletes the object but keeps its record,

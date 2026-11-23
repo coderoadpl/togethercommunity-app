@@ -7,6 +7,7 @@ import {
   changeProposalEffectWithinLimit,
   changeProposalGroupOpen,
   changeProposalImageReferences,
+  proposalImagePublicPath,
   err,
   sameProposalImage,
   QUARANTINED_IMAGE_LIMITS,
@@ -357,8 +358,8 @@ const catalogRepositoriesOver = (
         const row = store.imageRows.find((candidate) => sameImageRow(candidate, tenantId, apiKeyId, image));
         return row === undefined ? null : { ...row };
       },
-      inAppliedProposal: async (tenantId, path) =>
-        store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied' && JSON.stringify(proposal.input).includes(path)),
+      inAppliedProposal: async (tenantId, path) => store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied'
+        && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => proposalImagePublicPath(image) === path)),
       claimPublications: async (tenantId, attemptId, images) =>
         images.every((image) => store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))),
       settlePublications: async (tenantId, attemptId) => {

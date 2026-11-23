@@ -2,6 +2,7 @@ import { and, asc, count, eq, gt, isNotNull, isNull, lt, not, or, sql, type SQL 
 
 import {
   CHANGE_PROPOSAL_IMAGE_FIELDS,
+  parseProposalImagePath,
   proposalImageExtensionsFor,
   storageFailureIsDefinite,
   proposalImagePublicationSchema,
@@ -145,11 +146,16 @@ const publicationOf = (tenantId: string, attemptId: string, image: ProposalImage
 export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks => ({
   ...liveUseOver(executor),
   lockForPublication: (tenantId, apiKeyId, image) => findUnreleased(executor, tenantId, apiKeyId, image, 'share'),
-  inAppliedProposal: async (tenantId, path) => (await executor.select({ id: changeProposals.id }).from(changeProposals).where(and(
-    eq(changeProposals.tenantId, tenantId),
-    eq(changeProposals.status, 'applied'),
-    sql`strpos(${changeProposals.input}::text, ${path}) > 0`,
-  )).limit(1)).length > 0,
+  inAppliedProposal: async (tenantId, path) => {
+    const image = parseProposalImagePath(path);
+    const fields = CHANGE_PROPOSAL_IMAGE_FIELDS.filter(({ kind }) => kind === image?.kind);
+    if (image === null || fields.length === 0) return false;
+    return (await executor.select({ id: changeProposals.id }).from(changeProposals).where(and(
+      eq(changeProposals.tenantId, tenantId),
+      eq(changeProposals.status, 'applied'),
+      or(...fields.map(({ operation, field }) => and(eq(changeProposals.operation, operation), sql`${changeProposals.input} ->> ${field}::text = ${path}`))),
+    )).limit(1)).length > 0;
+  },
   claimPublications: async (tenantId, attemptId, images) => {
     if (images.length === 0) return true;
     const claimed = await executor.select({ kind: changeProposalImagePublications.kind }).from(changeProposalImagePublications)

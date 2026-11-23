@@ -465,6 +465,21 @@ describe('public copies of an approval that did not end applied', () => {
     expect(await publications()).toEqual([]);
   });
 
+  it('deletes a recorded address that an applied proposal mentions only in a text field', async () => {
+    const harness = endToEnd();
+    const mentioned = image(1);
+    const publicKey = `image-assets/${TENANT}/product-cover/${mentioned.digest}.png`;
+    harness.objects.objects.set(publicKey, { bytes: PNG_BYTES, contentType: 'image/png' });
+    await pendingProposal('p-applied-text', { description: `See ${pathOf(mentioned)} soon` }, { status: 'applied' });
+    await pendingProposal('p-applied-settings', { logoUrl: pathOf(mentioned) }, { status: 'applied', operation: 'settings.update' });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [mentioned], NOW);
+
+    harness.clock.now = '2026-03-01T10:11:00.000Z';
+    expect(await sweepQuarantinedImages(harness.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([]);
+    expect(await publications()).toEqual([]);
+  });
+
   it('never removes a record while an approval holds the workspace lock, and removes it once the lock is free', async () => {
     const harness = endToEnd({ lockWaitMs: 200 });
     harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${digestOf(1)}.png`, { bytes: PNG_BYTES, contentType: 'image/png' });

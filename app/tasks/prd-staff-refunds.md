@@ -421,3 +421,9 @@ guard against refunding more than the charge.
   read. Why: a failed refund in the provider's list alone cannot tell a failed full refund from
   a dispute that marked the order refunded after an unrelated failed partial refund. Revert:
   "undo D21 → any failed provider refund reopens".
+- D22. The preview's `refundedCents` is the amount actually refunded (Stripe's list when read,
+  else the platform's committed refunds), apart from the policy-limited `remainderCents`;
+  `remainderWithheld` marks an order marked refunded whose refunds do not cover the payment, and
+  Studio and the CLI say that nothing more can be refunded there instead of calling it refunded.
+  Why: a dispute is not a refund, and the card claimed the whole payment was refunded. Revert:
+  "undo D22 → refunded as paid minus remainder".

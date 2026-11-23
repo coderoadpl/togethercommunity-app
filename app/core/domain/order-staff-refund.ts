@@ -219,6 +219,7 @@ export const staffRefundPreviewSchema = z.object({
   currency: currencySchema,
   mode: stripeModeSchema,
   remainderSource: z.enum(['provider', 'platform']),
+  remainderWithheld: z.boolean(),
   returnableStock: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().nonnegative() })),
   onPackingList: z.boolean(),
   hasShipment: z.boolean(),

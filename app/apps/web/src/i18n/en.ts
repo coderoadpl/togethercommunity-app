@@ -1307,6 +1307,8 @@ export const en: Messages = {
       action: 'Refund',
       fullyRefunded: 'The whole amount was refunded.',
       paymentPlatformTotals: 'From the platform\'s records: Stripe\'s refund list could not be read, so refunds made in the Stripe Dashboard may be missing.',
+      paymentPreviewFailedTotals: 'From the platform\'s records: the refund check could not be loaded, so refunds made in the Stripe Dashboard may be missing.',
+      remainderWithheld: 'The order is marked refunded, but its refunds do not cover the payment, for example after a dispute. Nothing more can be refunded here; check the payment in the Stripe Dashboard.',
       waitingBlocksAction: 'The previous refund of this order is waiting for confirmation from Stripe. The next refund is possible once Stripe confirms or rejects it.',
       notPaidOut: 'The refund has not been paid out yet. Details are in the refund history.',
       stateChip: ({ state }) => format('Refund: {state}', { state }),

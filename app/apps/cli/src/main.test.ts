@@ -451,7 +451,7 @@ beforeEach(() => {
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
   h.orderRefundPreview.mockReset().mockResolvedValue(ok({
     orderId: 'order-number', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN',
-    mode: 'live', remainderSource: 'provider', returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
+    mode: 'live', remainderSource: 'provider', remainderWithheld: false, returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
     fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
     waitingRefundId: null,
   }));

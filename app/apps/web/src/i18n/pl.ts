@@ -1345,6 +1345,8 @@ export const pl: Messages = {
       action: 'Zwróć pieniądze',
       fullyRefunded: 'Cała kwota została zwrócona.',
       paymentPlatformTotals: 'Według zapisów platformy: nie udało się odczytać listy zwrotów ze Stripe, więc może brakować zwrotów zleconych w panelu Stripe.',
+      paymentPreviewFailedTotals: 'Według zapisów platformy: nie udało się wczytać sprawdzenia zwrotu, więc może brakować zwrotów zleconych w panelu Stripe.',
+      remainderWithheld: 'Zamówienie jest oznaczone jako zwrócone, ale jego zwroty nie pokrywają płatności, na przykład po sporze. Tutaj nie można już nic zwrócić; sprawdź płatność w panelu Stripe.',
       waitingBlocksAction: 'Poprzedni zwrot tego zamówienia czeka na potwierdzenie ze Stripe. Kolejny będzie możliwy, gdy Stripe go potwierdzi albo odrzuci.',
       notPaidOut: 'Zwrot nie został jeszcze wypłacony. Szczegóły w historii zwrotów.',
       stateChip: ({ state }) => format('Zwrot: {state}', { state }),

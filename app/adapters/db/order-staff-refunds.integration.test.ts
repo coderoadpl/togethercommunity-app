@@ -487,7 +487,9 @@ describe('staff refunds against a real database', () => {
     await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
     const h = harness();
 
-    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'provider' });
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
+      refundable: false, refundedCents: 0, remainderCents: 0, remainderSource: 'provider', remainderWithheld: true,
+    });
     expect(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await refundRows('order-1')).toStrictEqual([]);
   });
@@ -501,7 +503,10 @@ describe('staff refunds against a real database', () => {
     expect(await refundRows('order-1')).toMatchObject([{ kind: 'amount', status: 'failed', providerRefundStatus: 'failed' }]);
     await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
 
-    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ refundable: false, remainderCents: 0, remainderSource: 'provider' });
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
+      refundable: false, refundedCents: 0, remainderCents: 0, remainderSource: 'provider', remainderWithheld: true,
+      blockedReason: 'The order is marked refunded although its refunds do not cover the payment, for example after a dispute; nothing more can be refunded here',
+    });
     expect(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000, expectedRemainderCents: 1000 })).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(await refundRows('order-1')).toHaveLength(1);
   });

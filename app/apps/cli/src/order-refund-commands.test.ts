@@ -8,7 +8,7 @@ import { refundPreviewLines, runOrderRefund } from './order-refund-commands.js';
 
 const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => ({
   orderId: 'order-1', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 1000, remainderCents: 3099, currency: 'PLN',
-  mode: 'live', remainderSource: 'provider', returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
+  mode: 'live', remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
   hasInvoice: true, cancelsSubscription: false, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
   waitingRefundId: null, ...over,
 });
@@ -88,6 +88,16 @@ describe('order refund command', () => {
       orderId: 'order-1', requestKey: 'label-1', expectedAmountCents: 3099, expectedRemainderCents: 3099, expectedShipmentState: { onPackingList: false, hasShipmentOrLabel: true },
     });
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('prints the amount actually refunded and says why nothing more can be refunded on an order a dispute marked refunded', () => {
+    const lines = refundPreviewLines(preview({
+      refundable: false, blockedReason: 'The order is marked refunded although its refunds do not cover the payment, for example after a dispute; nothing more can be refunded here',
+      refundedCents: 0, remainderCents: 0, remainderWithheld: true,
+    })).split('\n');
+    expect(lines[1]).toBe('paid 40.99 PLN, refunded 0.00 PLN, remaining 0.00 PLN (read from the payment provider)');
+    expect(lines).toContain('the order is marked refunded although its refunds do not cover the payment (for example after a dispute); nothing more can be refunded here, check the payment in the Stripe Dashboard');
+    expect(refundPreviewLines(preview())).not.toContain('marked refunded');
   });
 
   it('names a subscription a full refund would cancel in the preview', () => {

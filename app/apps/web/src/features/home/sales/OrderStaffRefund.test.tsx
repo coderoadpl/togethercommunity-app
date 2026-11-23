@@ -43,7 +43,7 @@ const paidOrder: OrderListItem = {
 
 const preview: StaffRefundPreview = {
   orderId: 'o1', refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN',
-  mode: 'live', remainderSource: 'provider', returnableStock: [{ productId: 'mug', quantity: 1 }], onPackingList: true,
+  mode: 'live', remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'mug', quantity: 1 }], onPackingList: true,
   hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
 };
@@ -187,6 +187,41 @@ describe('payment card totals', () => {
     const payment = screen.getByTestId('order-payment');
     expect(within(payment).getByText(`−${pln(5000)}`)).toBeVisible();
     expect(within(payment).getByText(pln(19900))).toBeVisible();
+  });
+
+  it('says why nothing more can be refunded on an order a dispute marked refunded, without claiming the money was refunded', async () => {
+    serve(
+      { order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 24900, remainingCents: 0, currency: 'PLN' } },
+      { ...preview, refundable: false, blockedReason: 'The order is marked refunded although its refunds do not cover the payment', refundedCents: 0, remainderCents: 0, remainderWithheld: true },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByTestId('order-payment-withheld')).toHaveTextContent(messages.remainderWithheld);
+    expect(within(payment).queryByText(messages.fullyRefunded)).toBeNull();
+    expect(within(payment).queryByText(`−${pln(24900)}`)).toBeNull();
+    expect(screen.queryByRole('button', { name: messages.action })).toBeNull();
+  });
+
+  it('lists a refund blocked by the missing permission beside the provider\'s refunded total instead of inside it', async () => {
+    serve(
+      { order: { ...paidOrder, status: 'partially_refunded' }, staffRefunds: [staffRefund({ id: 'r-blocked', status: 'blocked_permission', amountCents: 1000, permissionBlockedAt: '2026-11-22T07:05:00.000Z' })] },
+      { ...preview, refundable: false, waitingRefundId: 'r-blocked', refundedCents: 5000, remainderCents: 18900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(`−${pln(5000)}`)).toBeVisible();
+    expect(within(payment).getByText(messages.requestedRefund)).toBeVisible();
+    expect(within(payment).getByText(`−${pln(1000)}`)).toBeVisible();
+    expect(within(payment).getByText(pln(18900))).toBeVisible();
+  });
+
+  it('blames the failed refund check, not Stripe\'s refund list, when the preview request itself fails', async () => {
+    serve({ order: { ...paidOrder, status: 'partially_refunded' }, refundTotals: { paidCents: 24900, refundedCents: 4900, remainingCents: 20000, currency: 'PLN' } });
+    server.use(http.get('/api/orders/o1/refund-preview', () => HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Too many requests' } }, { status: 429 })));
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(messages.paymentPreviewFailedTotals)).toBeVisible();
+    expect(within(payment).queryByText(messages.paymentPlatformTotals)).toBeNull();
   });
 
   it('labels the totals as the platform\'s records when the provider\'s refund list could not be read', async () => {

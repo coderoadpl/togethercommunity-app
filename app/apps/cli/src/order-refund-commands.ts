@@ -44,6 +44,7 @@ export const refundPreviewLines = (preview: StaffRefundPreview): string => {
   return [
     `order ${preview.orderId}: ${preview.refundable ? 'refundable' : `not refundable: ${preview.blockedReason ?? 'unknown reason'}`}`,
     `paid ${money(preview.paidCents)}, refunded ${money(preview.refundedCents)}, remaining ${money(preview.remainderCents)} (${preview.remainderSource === 'provider' ? 'read from the payment provider' : 'platform records only; the payment provider list could not be read'})`,
+    ...(preview.remainderWithheld ? ['the order is marked refunded although its refunds do not cover the payment (for example after a dispute); nothing more can be refunded here, check the payment in the Stripe Dashboard'] : []),
     `mode: ${preview.mode}`,
     `on the packing list: ${yesNo(preview.onPackingList)}; shipment or label: ${yesNo(preview.hasShipment)}; invoice: ${yesNo(preview.hasInvoice)}`,
     `stock a full refund can return: ${stock}`,

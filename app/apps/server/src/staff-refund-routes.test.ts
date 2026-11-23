@@ -164,7 +164,7 @@ describe('staff refund HTTP routes', () => {
     expect(previewed.status).toBe(200);
     expect(envelope(staffRefundContracts.orderRefundPreview.output).parse(await previewed.json()).data).toMatchObject({
       orderId: 'order-1', refundable: true, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN', mode: 'live',
-      remainderSource: 'provider', returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
+      remainderSource: 'provider', remainderWithheld: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
       fullRefundOptions: { restockDefault: true, removeFromPackingListDefault: true }, waitingRefundId: null,
     });
     expect(h.listRefunds).toHaveBeenCalledWith({ mode: 'live', tenantId: 'acme', paymentIntentId: 'pi_1' });

@@ -139,19 +139,25 @@ export const previewStaffRefund = async (
     providerCommittedCents: provider.cents, providerUncommittedCents: provider.uncommittedCents, platformCommittedCents, latestStaffRefund: refunds[0] ?? null,
   });
   const waiting = refunds.find((refund) => refund.status === 'pending' || refund.status === 'running' || refund.status === 'blocked_permission') ?? null;
+  const refundedCents = Math.min(order.amountCents, provider.cents ?? platformCommittedCents);
+  const coveredCents = Math.min(order.amountCents, Math.max(provider.cents ?? 0, platformCommittedCents));
+  const remainderWithheld = order.status === 'refunded' && remainderCents < order.amountCents - coveredCents;
   const blocker = staffRefundOrderBlocker(order)
     ?? (waiting === null ? null : appError('conflict', 'Another refund of this order is still waiting to reach the payment provider'))
-    ?? (remainderCents <= 0 ? appError('conflict', 'Nothing is left to refund on this order') : null);
+    ?? (remainderCents > 0 ? null : remainderWithheld
+      ? appError('conflict', 'The order is marked refunded although its refunds do not cover the payment, for example after a dispute; nothing more can be refunded here')
+      : appError('conflict', 'Nothing is left to refund on this order'));
   return ok({
     orderId: order.id,
     refundable: blocker === null,
     blockedReason: blocker?.message ?? null,
     paidCents: order.amountCents,
-    refundedCents: order.amountCents - remainderCents,
+    refundedCents,
     remainderCents,
     currency: order.currency,
     mode: order.mode,
     remainderSource: provider.source,
+    remainderWithheld,
     returnableStock,
     onPackingList: shipmentState.onPackingList,
     hasShipment: shipmentState.hasShipmentOrLabel,

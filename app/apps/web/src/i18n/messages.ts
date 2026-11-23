@@ -1191,6 +1191,8 @@ export interface Messages {
       action: string;
       fullyRefunded: string;
       paymentPlatformTotals: string;
+      paymentPreviewFailedTotals: string;
+      remainderWithheld: string;
       waitingBlocksAction: string;
       notPaidOut: string;
       stateChip: (params: { state: string }) => string;

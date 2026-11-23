@@ -1989,7 +1989,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/orders/:orderId/refund-preview` | Paid, refunded and remaining amounts, currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether a full refund cancels a subscription, the default choices and any refund still waiting |
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds actually committed (`refundedCents`: Stripe's list when it was read, else the platform's records) and the remainder staff may refund (`remainderCents`, which the rules above may hold below the rest of the payment; `remainderWithheld` says so for an order marked refunded), currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether a full refund cancels a subscription, the default choices and any refund still waiting |
 | `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
@@ -2015,8 +2015,13 @@ a refund waiting for the refund permission is listed apart as a requested
 refund, with a warning that it has not been paid out). When the refund preview
 read Stripe's list, the card takes its amounts from the preview, so a refund
 made in the Stripe Dashboard and a full refund that failed after
-`charge.refunded` show as Stripe holds them; otherwise it shows the platform's
-records and says so,
+`charge.refunded` show as Stripe holds them, and a refund waiting for the
+permission is listed beside Stripe's total, never inside it; otherwise it shows
+the platform's records and says why (Stripe's list could not be read, or the
+refund check itself could not be loaded). An order marked refunded whose
+refunds do not cover the payment (for example after a dispute) is never shown
+as wholly refunded: the card shows the amount actually refunded and says that
+nothing more can be refunded there,
 a **Refund history** with each refund's amount, requester, time, staff-only
 reason and state (a refund waiting for the refund permission also names its
 attempts, the next attempt and the last possible one, 72 hours after the first

@@ -23,6 +23,8 @@ import { CheckCircleIcon, ClockIcon, RefundIcon, WarningIcon } from './refund-ic
 
 const UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['pending', 'running', 'submitted', 'unconfirmed'];
 
+const PROVIDER_UNCONFIRMED_STATUSES: readonly OrderStaffRefundView['status'][] = ['running', 'submitted', 'unconfirmed'];
+
 const sumOf = (refunds: readonly OrderStaffRefundView[], statuses: readonly OrderStaffRefundView['status'][]): number =>
   refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
 
@@ -57,20 +59,25 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const { language } = useLanguage();
   const money = (cents: number) => formatMinorUnitsPrice(cents, order.currency, language);
   const providerTotals = action.kind === 'ready' && action.preview.remainderSource === 'provider' ? action.preview : null;
-  const platformTotalsOnly = action.kind === 'error' || (action.kind === 'ready' && action.preview.remainderSource === 'platform');
+  const totalsNote = action.kind === 'error'
+    ? messages.paymentPreviewFailedTotals
+    : action.kind === 'ready' && action.preview.remainderSource === 'platform' ? messages.paymentPlatformTotals : null;
+  const withheld = action.kind === 'ready' && action.preview.remainderWithheld;
   const paidCents = providerTotals?.paidCents ?? totals?.paidCents ?? order.amountCents;
   const refundedCents = providerTotals?.refundedCents ?? totals?.refundedCents ?? (order.status === 'refunded' ? order.amountCents : 0);
   const remainingCents = providerTotals?.remainderCents ?? totals?.remainingCents ?? paidCents - refundedCents;
-  const blockedCents = Math.min(refundedCents, sumOf(staffRefunds, ['blocked_permission']));
-  const settledCents = refundedCents - blockedCents;
-  const unconfirmedCents = Math.min(settledCents, sumOf(staffRefunds, UNCONFIRMED_STATUSES));
+  const requestedCents = sumOf(staffRefunds, ['blocked_permission']);
+  // Stripe's list holds no refund that never reached it, so a blocked one is listed beside the provider's total, not inside it.
+  const blockedCents = providerTotals === null ? Math.min(refundedCents, requestedCents) : requestedCents;
+  const settledCents = providerTotals === null ? refundedCents - blockedCents : refundedCents;
+  const unconfirmedCents = Math.min(settledCents, sumOf(staffRefunds, providerTotals === null ? UNCONFIRMED_STATUSES : PROVIDER_UNCONFIRMED_STATUSES));
   const shippingCents = order.shipping?.amountCents ?? 0;
   const blocked = staffRefunds.some((refund) => refund.status === 'blocked_permission');
 
   return (
     <SectionCard title={messages.paymentTitle} headerActions={chips} data-testid="order-payment">
       <Stack useFlexGap spacing="0.6rem">
-        {refundedCents === 0 ? (
+        {refundedCents === 0 && blockedCents === 0 ? (
           <>
             <AmountRow label={messages.productsSubtotal}>{money(paidCents - shippingCents + order.discountCents)}</AmountRow>
             {order.shipping == null ? null : <AmountRow label={messages.deliverySubtotal}>{money(shippingCents)}</AmountRow>}
@@ -93,14 +100,20 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
         )}
-        {platformTotalsOnly ? <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{messages.paymentPlatformTotals}</Typography> : null}
+        {totalsNote === null ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{totalsNote}</Typography>}
       </Stack>
+      {withheld ? (
+        <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-withheld">
+          <WarningIcon />
+          <Typography variant="body2">{messages.remainderWithheld}</Typography>
+        </RefundWarningRow>
+      ) : null}
       {blocked ? (
         <RefundWarningRow direction="row" useFlexGap spacing="0.5rem" data-testid="order-payment-not-paid-out">
           <WarningIcon />
           <Typography variant="body2">{messages.notPaidOut}</Typography>
         </RefundWarningRow>
-      ) : refundedCents > 0 && remainingCents === 0 && unconfirmedCents === 0 ? (
+      ) : refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && unconfirmedCents === 0 ? (
         <RefundMutedRow direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
           <CheckCircleIcon />
           <Typography variant="body2">{messages.fullyRefunded}</Typography>

@@ -716,6 +716,7 @@ export interface Messages {
     approveGroupImagesPublic: (params: { count: number }) => string;
     approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
     approveFileAddToNewProduct: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileNotKept: (params: { file: string; facts: string; target: string }) => string;
     approveFileCopiedFrom: (params: { version: number; product: string }) => string;
     approveFileCopiedFromGone: (params: { version: number }) => string;
     approveFileNewVersion: (params: { file: string; facts: string; version: number; target: string }) => string;

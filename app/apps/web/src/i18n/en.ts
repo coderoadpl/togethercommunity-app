@@ -769,6 +769,10 @@ export const en: Messages = {
       '“{file}” ({facts}) will be added to “{target}”. Everyone who later gets access to this product can download the file.',
       { file, facts, target },
     ),
+    approveGroupFileNotKept: ({ file, facts, target }) => format(
+      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group removes or replaces it or deletes the product, so no buyer gets this file.',
+      { file, facts, target },
+    ),
     approveFileCopiedFrom: ({ version, product }) => format('It is a copy of version {version} of a file from “{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('It is a copy of version {version} of a file from a product that no longer exists.', { version }),
     approveFileNewVersion: ({ file, facts, version, target }) => format(

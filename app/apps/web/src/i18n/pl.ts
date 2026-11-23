@@ -809,6 +809,10 @@ export const pl: Messages = {
       'Plik „{file}” ({facts}) zostanie dodany do produktu „{target}”. Każdy, kto później otrzyma dostęp do tego produktu, będzie mógł pobrać plik.',
       { file, facts, target },
     ),
+    approveGroupFileNotKept: ({ file, facts, target }) => format(
+      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go usunie lub zastąpi albo usunie produkt, więc żaden kupujący nie dostanie tego pliku.',
+      { file, facts, target },
+    ),
     approveFileCopiedFrom: ({ version, product }) => format('To kopia wersji {version} pliku z produktu „{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('To kopia wersji {version} pliku z produktu, którego już nie ma.', { version }),
     approveFileNewVersion: ({ file, facts, version, target }) => format(

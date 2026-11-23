@@ -357,6 +357,49 @@ describe('the approval confirmation of a file proposal', () => {
       .toContain('will be added to “Mug”. Everyone who has access to this product, current buyers included, can download it at once.');
   });
 
+  it('promises buyers no file that a later item of the group removes, replaces or deletes with its product', () => {
+    const added = { ...samples['download.add'], id: 'item-add' };
+    const removedAgain = {
+      ...samples['download.remove'],
+      id: 'item-remove-again',
+      input: { productId: 'product-mug', assetId: careSheet.id },
+      effect: { files: { before: [mugGuide, careSheet], after: [mugGuide] } },
+    };
+    const removal = normalized(dialogText(<GroupFileSentences items={[added, removedAgain]} references={groupReferences([])} />));
+    expect(removal).not.toContain('can download it at once');
+    expect(removal).toContain(normalized(t.approveGroupFileNotKept({
+      file: 'care-sheet.pdf',
+      facts: `PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}`,
+      target: 'Mug',
+    })));
+    expect(removal).toContain('Buyers of “Mug” will no longer be able to download “care-sheet.pdf” version 1.');
+
+    const replaced = { ...samples['download.replace'], id: 'item-replace' };
+    const replacedAgain = {
+      ...samples['download.replace'],
+      id: 'item-replace-again',
+      input: { productId: 'product-mug', replacesAssetId: mugGuideSecond.id, stagedFileId: 'staged-mug-guide-3' },
+      effect: { files: {
+        before: [{ ...mugGuide, latest: false }, mugGuideSecond],
+        after: [{ ...mugGuide, latest: false }, { ...mugGuideSecond, latest: false }, { ...mugGuideSecond, id: 'staged-mug-guide-3', versionNumber: 3 }],
+      } },
+    };
+    const versions = dialogText(<GroupFileSentences items={[replaced, replacedAgain]} references={groupReferences([])} />);
+    expect(versions.match(/buyers get the new version/gu)).toHaveLength(1);
+
+    const deleted = dialogText(<GroupFileSentences items={[added, { ...samples['product.delete-draft'], id: 'item-delete' }]} references={groupReferences([])} />);
+    expect(deleted).not.toContain('can download it at once');
+    expect(deleted).toContain('so no buyer gets this file');
+
+    const otherFile = {
+      ...samples['download.replace'],
+      id: 'item-other-file',
+      effect: { files: { before: [mugGuide, careSheet], after: [{ ...mugGuide, latest: false }, careSheet, mugGuideSecond] } },
+    };
+    const kept = dialogText(<GroupFileSentences items={[added, otherFile]} references={groupReferences([])} />);
+    expect(kept).toContain('current buyers included, can download it at once');
+  });
+
   it('names the product a copied file comes from in a group confirmation, isolated', () => {
     const title = `Mug${OVERRIDE}tnirp`;
     const copy = { ...samples['download.add'], id: 'item-copy' };

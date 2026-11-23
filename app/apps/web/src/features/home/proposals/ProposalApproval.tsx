@@ -16,6 +16,7 @@ import {
   priceOf,
   proposalCreatesRecord,
   proposalFileChanges,
+  proposalFilesAfter,
   proposalRemovesRecord,
   proposalRows,
   proposalTarget,
@@ -92,11 +93,13 @@ const FileApprovalText = ({
   target,
   copiedFrom,
   newProduct,
+  reachesBuyers = true,
 }: {
   change: FileChange;
   target: string;
   copiedFrom: CopySource;
   newProduct: boolean;
+  reachesBuyers?: boolean;
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
@@ -108,6 +111,17 @@ const FileApprovalText = ({
   const fileName = <bdi>{change.file.fileName}</bdi>;
   const fingerprint = change.file.fingerprint === null ? null : <Fingerprint value={change.file.fingerprint} />;
   const product = <bdi>{target}</bdi>;
+  if (!reachesBuyers && change.kind !== 'removed') {
+    return (
+      <>
+        <Sentence
+          text={(file, slot, name) => t.approveGroupFileNotKept({ file, facts: facts(change.file, slot), target: name })}
+          parts={[fileName, fingerprint, product]}
+        />
+        <CopySentence source={copiedFrom} />
+      </>
+    );
+  }
   switch (change.kind) {
     case 'added': {
       const add = newProduct ? t.approveFileAddToNewProduct : t.approveFileAdd;
@@ -279,6 +293,16 @@ export const ApprovalFilesNote = ({
   );
 };
 
+const keptAtGroupEnd = (items: readonly ApprovalFacts[], item: ApprovalFacts, change: FileChange): boolean => {
+  const product = item.target.id;
+  if (product === null) return true;
+  const later = items.slice(items.indexOf(item) + 1).filter((entry) => entry.target.id === product);
+  if (later.some((entry) => entry.operation === 'product.delete-draft')) return false;
+  const last = later.findLast((entry) => FILE_OPERATIONS.has(entry.operation));
+  const final = last === undefined ? null : proposalFilesAfter(last);
+  return final === null || final.some((file) => file.id === change.file.id && file.latest);
+};
+
 export const GroupFileSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
   const t = useTranslations().changeProposals;
   const files = items.flatMap((item) => {
@@ -294,6 +318,7 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
           target={target}
           copiedFrom={copySourceOf(item, change)}
           newProduct={shownTarget.kind === 'reference'}
+          reachesBuyers={keptAtGroupEnd(items, item, change)}
         />
       ) }];
   });

@@ -1783,7 +1783,12 @@ approving does nothing." A group with a file item is approved like any other gro
 its confirmation repeats the sentence of each file item, with the copy source
 as above; a file added to a product an earlier item of the group creates reads
 "… will be added to “Field Guide (digital)”. Everyone who later gets access to
-this product can download the file." instead of naming current buyers. It adds the only-file sentence when an item's removal
+this product can download the file." instead of naming current buyers. An item
+whose file is not the current version of its product's file list after the
+last file item of the group, or whose product a later item deletes, makes no
+availability claim: "“field-guide.pdf” (PDF, …) will be attached to “Field
+Guide (digital)” by this step, but a later change in this group removes or
+replaces it or deletes the product, so no buyer gets this file." It adds the only-file sentence when an item's removal
 leaves its product no ready file and no later item of the group changes that
 product's files, and "If the proposed file no longer exists, none of the
 changes is applied." when an item attaches one ("If one of the 2 proposed files

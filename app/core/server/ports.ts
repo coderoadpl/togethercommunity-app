@@ -1300,6 +1300,13 @@ export interface PaymentProvider {
     paymentIntentId: string;
     deadlineAt?: number;
   }): Promise<Result<ProviderRefund[], AppError>>;
+  /** Newest first; a page that could not finish before `deadlineAt`, or past the page cap, is left unread and `complete` is false. */
+  listNewestRefunds?(input: {
+    mode: 'live' | 'test';
+    tenantId: string;
+    paymentIntentId: string;
+    deadlineAt?: number;
+  }): Promise<Result<{ refunds: ProviderRefund[]; complete: boolean }, AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
     mode: 'live' | 'test';

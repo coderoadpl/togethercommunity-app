@@ -647,7 +647,10 @@ pre-rendered as `m2m-transactional` messages with source `staff-refunds` (see
 API keys and webhook secrets before they are stored or e-mailed. The refund list is read page by page
 (`starting_after`, 100 refunds a page, at most 10 pages); the refund dispatcher
 gives the read a deadline, and a page that could not end before it is not
-started (see [the shop guide](shop.md#staff-refunds)).
+started. A sold-out refund job needs the whole list; a staff refund settles on
+the newest pages a run could read, because Stripe lists refunds newest first,
+its own refund is always made by its own job and Stripe caps refunds at the
+charge (see [the shop guide](shop.md#automatic-refund-of-a-cancelled-order)).
 
 ## Order and subscription e-mail subjects
 

@@ -1,4 +1,4 @@
-import { err, ok, refundFailure, type AppError, type ProviderRefund, type Result } from '#core/domain/index.js';
+import { err, ok, REFUND_REQUEST_WORST_CASE_MS, refundFailure, type AppError, type ProviderRefund, type Result } from '#core/domain/index.js';
 
 import type { PaymentProvider } from '../ports.js';
 
@@ -17,10 +17,17 @@ interface SavedResponse {
 
 const noResponse = refundFailure('transient', 'Request aborted due to timeout being reached (80000ms)', null, true);
 
+interface RefundListPaging {
+  pageSize: number;
+  nowMs: () => number;
+  readPage: () => void;
+}
+
 export const createRefundProviderFake = (input: {
   chargeAmountCents: number;
   steps?: RefundProviderStep[];
   refundedByHand?: ProviderRefund[];
+  paging?: RefundListPaging;
 }) => {
   const steps = [...(input.steps ?? [])];
   const listFailures: AppError[] = [];
@@ -50,7 +57,20 @@ export const createRefundProviderFake = (input: {
   const save = (call: CreateRefundInput, response: Result<ProviderRefund, AppError>) =>
     responses.set(call.idempotencyKey, { paymentIntentId: call.paymentIntentId, amountCents: call.amountCents, response });
 
-  const payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds'> = {
+  const listPages = (call: { paymentIntentId: string; deadlineAt?: number }): { refunds: ProviderRefund[]; complete: boolean } => {
+    const newestFirst = refunds.filter((refund) => refund.paymentIntentId === call.paymentIntentId).toReversed();
+    const { paging } = input;
+    if (paging === undefined) return { refunds: newestFirst, complete: true };
+    const read: ProviderRefund[] = [];
+    for (let page = 0; page * paging.pageSize < newestFirst.length; page += 1) {
+      if (page > 0 && call.deadlineAt !== undefined && paging.nowMs() + REFUND_REQUEST_WORST_CASE_MS > call.deadlineAt) return { refunds: read, complete: false };
+      paging.readPage();
+      read.push(...newestFirst.slice(page * paging.pageSize, (page + 1) * paging.pageSize));
+    }
+    return { refunds: read, complete: true };
+  };
+
+  const payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds' | 'listNewestRefunds'> = {
     createRefund: async (call) => {
       calls.push(call);
       const saved = responses.get(call.idempotencyKey);
@@ -78,7 +98,16 @@ export const createRefundProviderFake = (input: {
       listCalls.push(call.paymentIntentId);
       const failure = listFailures.shift();
       if (failure !== undefined) return err(failure);
-      return ok(refunds.filter((refund) => refund.paymentIntentId === call.paymentIntentId).toReversed());
+      const listed = listPages(call);
+      return listed.complete
+        ? ok(listed.refunds)
+        : err(refundFailure('transient', 'The refund list of the payment could not be read in full before the run deadline'));
+    },
+    listNewestRefunds: async (call) => {
+      listCalls.push(call.paymentIntentId);
+      const failure = listFailures.shift();
+      if (failure !== undefined) return err(failure);
+      return ok(listPages(call));
     },
   };
 

@@ -11,7 +11,11 @@ import {
   listOrders,
   previewStaffRefund,
   shipRefundedOrderAnyway,
+  ORDER_REFUND_CRON_TICK_MAX_JOBS,
+  ORDER_REFUND_JOB_WORST_CASE_MS,
+  ORDER_REFUND_TICK_BUDGET_MS,
   type Ctx,
+  type DispatchOrderRefundJobsOptions,
 } from '#core/server/index.js';
 import { createRefundProviderFake, type RefundProviderStep } from '#core/server/testing/refund-provider-fake.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
@@ -65,11 +69,14 @@ const handRefund = (amountCents: number): ProviderRefund => ({
   refundId: 're_hand', paymentIntentId: 'pi_order-1', amountCents, status: 'succeeded', failureReason: null, orderId: null, reason: null,
 });
 
-const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
+const harness = (input: { steps?: RefundProviderStep[]; pageSize?: number } = {}) => {
   let now = start;
   let sequence = 0;
   const logs: string[] = [];
-  const provider = createRefundProviderFake({ chargeAmountCents: 4099, ...(input.steps === undefined ? {} : { steps: input.steps }) });
+  const paging = input.pageSize === undefined ? {} : {
+    paging: { pageSize: input.pageSize, nowMs: () => Date.parse(now), readPage: () => { now = new Date(Date.parse(now) + 300).toISOString(); } },
+  };
+  const provider = createRefundProviderFake({ chargeAmountCents: 4099, ...(input.steps === undefined ? {} : { steps: input.steps }), ...paging });
   let listsHidden = false;
   let crashAfterCreate = false;
   const payment = {
@@ -81,6 +88,8 @@ const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
     },
     listRefunds: async (call: Parameters<NonNullable<typeof provider.payment.listRefunds>>[0]) =>
       (listsHidden ? ok([]) : provider.payment.listRefunds?.(call) ?? ok([])),
+    listNewestRefunds: async (call: Parameters<NonNullable<typeof provider.payment.listNewestRefunds>>[0]) =>
+      (listsHidden ? ok({ refunds: [], complete: true }) : provider.payment.listNewestRefunds?.(call) ?? ok({ refunds: [], complete: true })),
   };
   const staffRefunds = createOrderStaffRefundRepository(database.db);
   const orderDetails = createOrderRepository(database.db);
@@ -112,9 +121,9 @@ const harness = (input: { steps?: RefundProviderStep[] } = {}) => {
     singleTenantMode: false,
   };
   const refund = (orderId: string, body: Record<string, unknown>, ctx: Ctx = staff('tenant-a')) => createStaffRefund(ctx, orderId, body, deps);
-  const dispatch = async (at: string, overrides: Partial<Parameters<typeof dispatchOrderRefundJobs>[0]> = {}) => {
+  const dispatch = async (at: string, overrides: Partial<Parameters<typeof dispatchOrderRefundJobs>[0]> = {}, options: DispatchOrderRefundJobsOptions = {}) => {
     now = at;
-    const result = await dispatchOrderRefundJobs({ ...dispatchDeps, ...overrides });
+    const result = await dispatchOrderRefundJobs({ ...dispatchDeps, ...overrides }, options);
     if (!result.ok) throw new Error(result.error.message);
     return result.value;
   };
@@ -733,6 +742,24 @@ describe('staff refunds against a real database', () => {
     expect(await refundRows('order-2')).toStrictEqual([]);
     expect(await h.refund('order-2', { requestKey: 'req-2', amountCents: 4000 })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(unwrap(await h.refund('order-2', { requestKey: 'req-1', amountCents: 4000, expectedRemainderCents: 4000 })).refund).toMatchObject({ kind: 'amount', amountCents: 4000 });
+  });
+
+  it('completes a staff refund of a payment whose refund history fills two pages under cron ticks alone, reading only the pages a tick has time for', async () => {
+    const h = harness({ pageSize: 100 });
+    for (let index = 0; index < 150; index += 1) h.provider.refundByHand({ ...handRefund(1), refundId: `re_hand_${String(index)}` });
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps)).remainderCents).toBe(3949);
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 3949 }));
+    const tick = (at: string) => h.dispatch(at, {}, {
+      deadlineAt: Date.parse(at) + ORDER_REFUND_TICK_BUDGET_MS, maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS, jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS,
+    });
+
+    await tick(minutes(1));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000]);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded', amountCents: 1000 }]);
+    for (const at of [60 * 24 + 1, 60 * 24 * 7 + 1]) await tick(minutes(at));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'succeeded' }]);
+    expect(h.provider.created).toHaveLength(1);
+    expect(await alertPayloads()).toStrictEqual([]);
   });
 
   it('refuses a full refund confirmed for a remainder that grew because a sibling failed meanwhile, and pays the new remainder once confirmed', async () => {

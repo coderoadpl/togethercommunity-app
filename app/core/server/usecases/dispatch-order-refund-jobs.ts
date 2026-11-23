@@ -43,7 +43,7 @@ export interface DispatchOrderRefundJobsDeps extends TenantUrlDeps {
   refundJobs: Pick<RefundJobQueue, 'claimDue' | 'release' | 'countDue'> & Partial<Pick<RefundJobQueue, 'staffRefundWaiting' | 'markCreateAttempt'>>;
   orderDetails: OrderDetailRepository;
   members?: Pick<MemberRepository, 'findById'>;
-  payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds'>;
+  payment: Pick<PaymentProvider, 'createRefund' | 'listRefunds' | 'listNewestRefunds'>;
   tenants: Pick<TenantRepository, 'findById' | 'findSettings'>;
   tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   tenantDomains: Pick<TenantDomainRepository, 'listByTenant'>;
@@ -256,12 +256,34 @@ const markCreateAttempt = async (claim: ClaimedRefundJob, keyGeneration: number,
   return deps.refundJobs.markCreateAttempt(claim.job.tenantId, claim.job.id, claim.lease, { keyGeneration, now: deps.clock.nowIso() });
 };
 
+interface RefundList {
+  refunds: ProviderRefund[];
+  complete: boolean;
+}
+
+// A staff refund's own refund is always made by this job and the provider lists newest first, so the pages a run
+// can read in time are enough for it; a create it cannot see stays capped by the provider at the charge. A sold-out
+// job decides from the whole charge and keeps needing the whole list.
+const listRefundsFor = async (
+  job: RefundJob,
+  input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt: number },
+  deps: DispatchOrderRefundJobsDeps,
+): Promise<Result<RefundList, AppError>> => {
+  const { listNewestRefunds, listRefunds } = deps.payment;
+  if (job.source === 'staff' && listNewestRefunds !== undefined) return listNewestRefunds(input);
+  if (listRefunds === undefined) return err(providerUnavailable);
+  const listed = await listRefunds(input);
+  return listed.ok ? ok({ refunds: listed.value, complete: true }) : listed;
+};
+
 const attemptRefund = async (claim: ClaimedRefundJob, job: RefundJob, order: OrderListItem, paymentIntentId: string, now: string, deadlineAt: number, deps: DispatchOrderRefundJobsDeps): Promise<Settlement> => {
-  const { createRefund, listRefunds } = deps.payment;
-  if (createRefund === undefined || listRefunds === undefined) return settleRefundFailure(job, providerUnavailable, now);
-  const listed = await listRefunds({ mode: order.mode, tenantId: job.tenantId, paymentIntentId, deadlineAt: deadlineAt - REFUND_REQUEST_WORST_CASE_MS });
+  const { createRefund } = deps.payment;
+  if (createRefund === undefined || (deps.payment.listRefunds === undefined && deps.payment.listNewestRefunds === undefined)) {
+    return settleRefundFailure(job, providerUnavailable, now);
+  }
+  const listed = await listRefundsFor(job, { mode: order.mode, tenantId: job.tenantId, paymentIntentId, deadlineAt: deadlineAt - REFUND_REQUEST_WORST_CASE_MS }, deps);
   if (!listed.ok) return settleListFailure(job, order, listed.error, now);
-  const refunds = listed.value;
+  const { refunds } = listed.value;
   if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleRefundFailure(job, ownRefundNotListed(job.providerRefundId), now);
   }
@@ -347,14 +369,13 @@ const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, no
   if (job.submittedAt === null || job.paymentIntentId === null) {
     return { update: { nextAttemptAt: null }, outcome: 'checked', alert: null };
   }
-  const listed = deps.payment.listRefunds === undefined
-    ? err(providerUnavailable)
-    : await deps.payment.listRefunds({ mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId, deadlineAt });
+  const listed = await listRefundsFor(job, { mode: order?.mode ?? 'live', tenantId: job.tenantId, paymentIntentId: job.paymentIntentId, deadlineAt }, deps);
   if (!listed.ok) return settleReadFailure(job.submittedAt, listed.error.message, now);
-  if (job.providerRefundId !== null && !listed.value.some((refund) => refund.refundId === job.providerRefundId)) {
+  const { refunds, complete } = listed.value;
+  if (job.providerRefundId !== null && !refunds.some((refund) => refund.refundId === job.providerRefundId)) {
     return settleReadFailure(job.submittedAt, ownRefundNotListed(job.providerRefundId).message, now);
   }
-  const settlement = settleCoverageAtCheck(job, job.submittedAt, listed.value, order, now);
+  const settlement = settleCoverageAtCheck(job, job.submittedAt, refunds, complete ? order : null, now);
   if (settlement.outcome !== 'reopened' || job.source !== 'staff') return settlement;
   const anotherWaiting = await deps.refundJobs.staffRefundWaiting?.(job.tenantId, job.orderId, { except: job.id }) ?? false;
   return anotherWaiting ? waitForOtherStaffRefund(settlement, now) : settlement;

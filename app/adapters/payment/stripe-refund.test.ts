@@ -35,9 +35,11 @@ const providerOverFetch = (respond: (request: Request) => Response) => {
       }),
     }),
   });
-  const { createRefund, getRefund, listRefunds, probeStripePermissions } = provider;
-  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) throw new Error('Refund methods missing');
-  return { createRefund, getRefund, listRefunds, probeStripePermissions, requests, keys };
+  const { createRefund, getRefund, listRefunds, listNewestRefunds, probeStripePermissions } = provider;
+  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || listNewestRefunds === undefined || probeStripePermissions === undefined) {
+    throw new Error('Refund methods missing');
+  }
+  return { createRefund, getRefund, listRefunds, listNewestRefunds, probeStripePermissions, requests, keys };
 };
 
 const refundInput = {
@@ -316,6 +318,37 @@ describe('Stripe listRefunds', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('returns the newest pages a deadline left time for, marked incomplete, when asked for the newest refunds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const startedAt = Date.now();
+      let page = 0;
+      const h = providerOverFetch(() => {
+        page += 1;
+        vi.setSystemTime(Date.now() + 200);
+        return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+      });
+      const result = await h.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: startedAt + 10_500 });
+      expect(result).toStrictEqual({ ok: true, value: { refunds: [expect.objectContaining({ refundId: 're_1' })], complete: false } });
+      expect(h.requests).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('marks the newest refunds complete when the list ends, and incomplete past ten pages', async () => {
+    const short = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [refundObject()] }));
+    expect(await short.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toMatchObject({ ok: true, value: { complete: true, refunds: [{ refundId: 're_123' }] } });
+    let page = 0;
+    const long = providerOverFetch(() => {
+      page += 1;
+      return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+    });
+    const result = await long.listNewestRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    expect(result.ok && result.value.complete).toBe(false);
+    expect(result.ok ? result.value.refunds : []).toHaveLength(10);
   });
 
   it('reads the first page even when the deadline it is given leaves no time for a worst-case request', async () => {

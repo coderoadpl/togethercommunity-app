@@ -1564,12 +1564,19 @@ deadline: the job's deadline is the run's deadline, and on the cron tick at
 most 21 seconds after the job was claimed. The first page is read at once (claiming
 the job already made room for it); the list stops before any further page that
 could not end by that deadline less the worst case of the create call (a status
-read keeps no time for one), so the job still ends by its deadline. A
-list cut short this way, or longer than 1,000 refunds, counts as a list that
-could not be read (a temporary failure, retried on the schedule below), never
-as Stripe refusing the refund. On the cron tick this leaves a payment with more
-than 100 refunds to be refunded by the kick after a webhook or the Node ticker,
-whose 30-second runs leave room for more pages. Every refund call has a 5-second
+read keeps no time for one), so the job still ends by its deadline. For a
+sold-out job a list cut short this way, or longer than 1,000 refunds, counts as
+a list that could not be read (a temporary failure, retried on the schedule
+below), never as Stripe refusing the refund; on the cron tick this leaves a
+payment with more than 100 refunds to be refunded by the kick after a webhook
+or the Node ticker, whose 30-second runs leave room for more pages. A staff
+refund treats such a list as sufficient (decision D20): Stripe lists refunds
+newest first and its own refund is always made by its own job, so it is
+matched among the newest refunds; a create call made while its own refund is
+not among them is still capped by Stripe at what is left on the charge; and the
+rule that ends a staff refund once refunds made outside the platform cover the
+whole charge only applies to a complete list. A staff refund of a payment with
+a long refund history therefore completes on cron ticks alone. Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a

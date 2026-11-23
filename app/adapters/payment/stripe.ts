@@ -439,6 +439,12 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
   }
 };
 
+interface RefundPages {
+  refunds: ProviderRefund[];
+  complete: boolean;
+  stoppedBy: 'deadline' | 'page_cap' | null;
+}
+
 const REFUND_LIST_LIMIT = 100;
 const REFUND_LIST_MAX_PAGES = 10;
 const REFUND_REQUEST_OPTIONS = { timeout: REFUND_REQUEST_TIMEOUT_MS, maxNetworkRetries: REFUND_REQUEST_MAX_NETWORK_RETRIES } as const;
@@ -490,6 +496,36 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
     if (!key.ok) return key;
     if (stripeKeyModeConflicts(key.value, mode)) return err(validation('Stripe key mode does not match the requested mode'));
     return ok(createClient(key.value));
+  };
+
+  const listRefundPages = async (input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt?: number }): Promise<Result<RefundPages, AppError>> => {
+    const client = await clientFor(input.tenantId, input.mode);
+    if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
+    const refunds: ProviderRefund[] = [];
+    let startingAfter: string | undefined;
+    for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
+      if (pageCount > 0 && input.deadlineAt !== undefined && Date.now() + REFUND_REQUEST_WORST_CASE_MS > input.deadlineAt) {
+        return ok({ refunds, complete: false, stoppedBy: 'deadline' });
+      }
+      let page: { data: unknown[]; has_more: boolean };
+      try {
+        page = await client.value.refunds.list({
+          payment_intent: input.paymentIntentId,
+          limit: REFUND_LIST_LIMIT,
+          ...(startingAfter === undefined ? {} : { starting_after: startingAfter }),
+        }, REFUND_REQUEST_OPTIONS);
+      } catch (cause) {
+        return err(stripeRefundFailure('Stripe could not list the refunds', cause));
+      }
+      for (const raw of page.data) {
+        const refund = providerRefund(raw);
+        if (!refund.ok) return refund;
+        refunds.push(refund.value);
+      }
+      startingAfter = refunds.at(-1)?.refundId;
+      if (!page.has_more || startingAfter === undefined) return ok({ refunds, complete: true, stoppedBy: null });
+    }
+    return ok({ refunds, complete: false, stoppedBy: 'page_cap' });
   };
 
   return {
@@ -788,33 +824,16 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       return providerRefund(raw);
     },
     listRefunds: async (input) => {
-      const client = await clientFor(input.tenantId, input.mode);
-      if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
-      const refunds: ProviderRefund[] = [];
-      let startingAfter: string | undefined;
-      for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
-        if (pageCount > 0 && input.deadlineAt !== undefined && Date.now() + REFUND_REQUEST_WORST_CASE_MS > input.deadlineAt) {
-          return err(refundFailure('transient', 'The refund list of the payment could not be read in full before the run deadline'));
-        }
-        let page: { data: unknown[]; has_more: boolean };
-        try {
-          page = await client.value.refunds.list({
-            payment_intent: input.paymentIntentId,
-            limit: REFUND_LIST_LIMIT,
-            ...(startingAfter === undefined ? {} : { starting_after: startingAfter }),
-          }, REFUND_REQUEST_OPTIONS);
-        } catch (cause) {
-          return err(stripeRefundFailure('Stripe could not list the refunds', cause));
-        }
-        for (const raw of page.data) {
-          const refund = providerRefund(raw);
-          if (!refund.ok) return refund;
-          refunds.push(refund.value);
-        }
-        startingAfter = refunds.at(-1)?.refundId;
-        if (!page.has_more || startingAfter === undefined) return ok(refunds);
-      }
-      return err(refundFailure('transient', `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`));
+      const listed = await listRefundPages(input);
+      if (!listed.ok) return listed;
+      if (listed.value.complete) return ok(listed.value.refunds);
+      return err(refundFailure('transient', listed.value.stoppedBy === 'deadline'
+        ? 'The refund list of the payment could not be read in full before the run deadline'
+        : `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`));
+    },
+    listNewestRefunds: async (input) => {
+      const listed = await listRefundPages(input);
+      return listed.ok ? ok({ refunds: listed.value.refunds, complete: listed.value.complete }) : listed;
     },
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a

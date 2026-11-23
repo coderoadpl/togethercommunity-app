@@ -409,3 +409,8 @@ guard against refunding more than the charge.
   with `conflict` when it changed; only a replay by request key may leave it out. Why: a typed
   amount that a dashboard refund turned into the whole remainder would end access and cancel a
   subscription without the warning. Revert: "undo D19 → partial refunds without the remainder".
+- D20. A staff refund settles on the newest pages of the provider's refund list that a run could
+  read in time, and the "covered by refunds made outside the platform" end applies only to a
+  complete list; sold-out jobs keep needing the whole list. Why: on cron ticks alone a payment
+  with more than 100 refunds could never be read in full, and the staff refund's own refund is
+  always among the newest. Revert: "undo D20 → staff refunds need the whole list".

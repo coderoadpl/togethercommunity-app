@@ -12,7 +12,8 @@ import { createQuarantinedImageRepository } from '#adapters/db/change-proposal-i
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from '#adapters/db/change-proposal-people.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from '#adapters/db/change-proposals.js';
-import { createTenantSecretRepository } from '#adapters/db/repositories.js';
+import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
+import { createProductDownloadAssetRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { type changeProposals, notifications, products, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
@@ -529,6 +530,9 @@ const harness = () => {
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(database.db),
     realtimeBus: { publish: () => undefined },
     quarantinedImages: createQuarantinedImageRepository(database.db),
+    keyDownloadFiles: createKeyDownloadFileRepository(database.db),
+    keyDownloadAttach: createKeyDownloadAttachRepository(database.db),
+    downloadAssets: createProductDownloadAssetRepository(database.db),
     storage: objects.storage,
     secretResolver: createTenantSecretResolver(createTenantSecretRepository(database.db), secretCrypto),
     contentHash: createContentHash(),

@@ -1627,28 +1627,55 @@ excludes it and no `modules` item of their products names it; a `lessons` item
 still opens its lessons. A module attached to two courses and excluded by a
 `course` item for one of them stays open inside the other for a member who
 gets the other course as a whole, from the same product or from another one.
-A lesson opens when the member's items open it in any course it sits in: the
-lesson player, completion, discussions, search and notifications look at every
-course of every module that holds the lesson, and completion is recorded under
-the first of those courses that opens it.
+
+A lesson sits in every course of every module that holds it; these places are
+ordered by module creation time, then by the module's course order
+(`lessonLocations`), and the first of them is the lesson's first course. A
+lesson opens when the member's items open it in any of these places
+(`locateAccessibleLesson`): the lesson player with its media, editions and
+attachments, completion, discussions, discussion search and the reach of
+lesson-thread notifications check every place. Where a member is sent or
+progress is recorded follows a course that opens the lesson for them:
+
+- a lesson-thread notification (the e-mail link and the course of the in-app
+  notification) names, for each member, the first place their items open;
+  staff get the lesson's first course, so does a member it opens there;
+- the next lesson (`GET /api/student/lessons/next` and the CLI's
+  `student next`) is taken from the first course that opens the lesson for a
+  member, or from the lesson's first course when none does; staff walk the
+  lesson's first course;
+- completion and un-completion take the course the member is viewing as an
+  optional `courseId` (the lesson player sends the course it shows) and are
+  recorded under it when it opens the lesson for the member (for staff, when
+  it holds the lesson), otherwise under the first course that opens it; a
+  request without `courseId`, as from the CLI or an older player, is recorded
+  under the first course that opens it. The player then shows the completion
+  it wrote;
+- a lesson hit on the search page links into a course of the member's
+  navigation whose tree opens the lesson when there is one, and a course's own
+  discussion search covers only the lessons that course opens.
 
 Releases before this rule pooled exclusions: a module excluded by a `course`
 item for any course stayed closed in every course the member got as a whole,
-and a lesson was checked only in the first course that holds it. The change
-only opens content. A course item's exclusions for one course are now a subset
-of what was pooled, and a lesson open in its first course is still open there,
-so no member loses a module or a lesson. Members gain:
+and a lesson was checked only in its first course, in the first module that
+holds it. The change only opens content. A course item's exclusions for one
+course are now a subset of what was pooled, and a lesson open in its first
+course is still open there, so no member loses a module or a lesson. Members
+gain:
 
-- a module attached to two or more courses, excluded by a `course` item for one
-  of them, inside another of its courses that a `course` item of theirs grants
-  as a whole (without excluding it), from the same product or another one;
-- a lesson whose first course (in module creation order, then the module's
-  course order) does not open it for them while another course that holds it
-  does, for example a member who gets only the second course of a shared
-  module.
+- (a) a module attached to two or more courses, excluded by a `course` item for
+  one of them, inside another of its courses that a `course` item of theirs
+  grants as a whole (without excluding it), from the same product or another
+  one;
+- (b) a lesson whose first course does not open it for them while another
+  course that holds it does, for example a member who gets only the second
+  course of a shared module;
+- (c) a lesson that also sits in another module, of the same or another
+  course, that their items open while the first module holding it is excluded
+  for them.
 
-Count the modules and the products the first case concerns in a workspace
-before deploying (replace `acme` with the workspace id):
+Count the modules and the products of case (a) in a workspace before deploying
+(replace `acme` with the workspace id):
 
 ```sql
 with excluded as (
@@ -1664,9 +1691,10 @@ join course_modules m on m.tenant_id = 'acme' and m.id = e.excluded_id
 where exists (select 1 from jsonb_array_elements_text(m.course_ids) other where other <> e.course_id);
 ```
 
-A member gains such a module only while they also hold a `course` item for
-another of its courses; the query counts the exclusions that can open, not the
-members.
+The query counts distinct excluded modules attached to another course and
+distinct products whose `course` items exclude them, not members: a member
+gains such a module only while they also hold a `course` item for another of
+its courses. It does not count cases (b) and (c).
 
 **One check.** `checkProductAccessItems`
 (`core/server/usecases/product-access-items.ts`) is the one check of an access
@@ -1831,11 +1859,14 @@ release stores is proven by
   to parse an owner view that carries `accessLabels` until it is reloaded or
   updated; after a rollback the server no longer sends it.
 - Exclusions per course store nothing new. That release pools exclusions again
-  and checks a lesson only in the first course that holds it, so the members
-  who gained a module or a lesson with this release
-  ([Product access](#product-access)) lose it again at once; nothing else
-  changes. A list with such an exclusion that an approved `product.set-access`
-  wrote counts among them.
+  and checks a lesson only in its first course, so the members who gained a
+  module or a lesson with this release ([Product access](#product-access))
+  lose it again at once. A list with such an exclusion that an approved
+  `product.set-access` wrote counts among them. That release also links every
+  lesson-thread notification and walks the next lesson in the lesson's first
+  course, and drops the `courseId` a lesson player of this release sends with
+  a completion, recording it under the lesson's first course. Completions this
+  release recorded under another course stay in that course's progress.
 
 Before the rollback, count the proposals it can no longer apply:
 

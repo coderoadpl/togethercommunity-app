@@ -439,6 +439,7 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
 };
 
 const REFUND_LIST_LIMIT = 100;
+const REFUND_LIST_MAX_PAGES = 10;
 const REFUND_REQUEST_OPTIONS = { timeout: REFUND_REQUEST_TIMEOUT_MS, maxNetworkRetries: REFUND_REQUEST_MAX_NETWORK_RETRIES } as const;
 
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
@@ -788,20 +789,28 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
     listRefunds: async (input) => {
       const client = await clientFor(input.tenantId, input.mode);
       if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
-      let page: { data: unknown[]; has_more: boolean };
-      try {
-        page = await client.value.refunds.list({ payment_intent: input.paymentIntentId, limit: REFUND_LIST_LIMIT }, REFUND_REQUEST_OPTIONS);
-      } catch (cause) {
-        return err(stripeRefundFailure('Stripe could not list the refunds', cause));
-      }
-      if (page.has_more) return err(refundFailure('refund_failed', `The payment has more than ${String(REFUND_LIST_LIMIT)} refunds`));
       const refunds: ProviderRefund[] = [];
-      for (const raw of page.data) {
-        const refund = providerRefund(raw);
-        if (!refund.ok) return refund;
-        refunds.push(refund.value);
+      let startingAfter: string | undefined;
+      for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
+        let page: { data: unknown[]; has_more: boolean };
+        try {
+          page = await client.value.refunds.list({
+            payment_intent: input.paymentIntentId,
+            limit: REFUND_LIST_LIMIT,
+            ...(startingAfter === undefined ? {} : { starting_after: startingAfter }),
+          }, REFUND_REQUEST_OPTIONS);
+        } catch (cause) {
+          return err(stripeRefundFailure('Stripe could not list the refunds', cause));
+        }
+        for (const raw of page.data) {
+          const refund = providerRefund(raw);
+          if (!refund.ok) return refund;
+          refunds.push(refund.value);
+        }
+        startingAfter = refunds.at(-1)?.refundId;
+        if (!page.has_more || startingAfter === undefined) return ok(refunds);
       }
-      return ok(refunds);
+      return err(refundFailure('transient', `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`));
     },
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a

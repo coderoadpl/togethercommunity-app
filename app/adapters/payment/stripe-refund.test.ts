@@ -256,11 +256,29 @@ describe('Stripe listRefunds', () => {
     expect(h.keys).toEqual(['stripe.testRestrictedKey']);
   });
 
-  it('refuses a payment with more refunds than one page', async () => {
-    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: true, data: [refundObject()] }));
+  it('follows the next pages of a payment with more refunds than one page', async () => {
+    const h = providerOverFetch((request) => {
+      const after = new URL(request.url).searchParams.get('starting_after');
+      if (after === null) return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: 're_3' }), refundObject({ id: 're_2' })] });
+      if (after === 're_2') return stripeJson({ object: 'list', has_more: false, data: [refundObject({ id: 're_1', amount: 100 })] });
+      return stripeJson({ object: 'list', has_more: false, data: [] });
+    });
     const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
-    if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)?.kind).toBe('refund_failed');
+    expect(result.ok ? result.value.map((refund) => refund.refundId) : result.error.message).toEqual(['re_3', 're_2', 're_1']);
+    expect(h.requests.map((request) => new URL(request.url).searchParams.get('starting_after'))).toEqual([null, 're_2']);
+  });
+
+  it('reports a refund list longer than ten pages as a read failure, never as a refusal of the refund', async () => {
+    let page = 0;
+    const h = providerOverFetch(() => {
+      page += 1;
+      return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+    });
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    if (result.ok) throw new Error('Expected a read failure');
+    expect(refundFailureOf(result.error)?.kind).toBe('transient');
+    expect(result.error.message).toBe('The refund list of the payment is longer than 1000 refunds and could not be read in full');
+    expect(h.requests).toHaveLength(10);
   });
 
   it('maps a missing permission', async () => {

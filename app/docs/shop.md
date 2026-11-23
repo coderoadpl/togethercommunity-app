@@ -323,11 +323,15 @@ reference does not list but live answers for withdrawn points have carried.
 Any other status is read as if the carrier could not be asked
 (`withKnownPointStatus`): the page answers `unavailable`, the sale goes on with
 `verified: false`, and the status string itself is never stored. This is what the map
-offers with `config="parcelCollect"`, so InPost partner pickup points that hold
+offers with `config="parcelCollect"`, and InPost partner pickup points that hold
 parcels for collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
-are accepted as on the map; the shipment still requests `inpost_locker_standard`,
-and InPost switches a partner pickup point target to
-`inpost_locker_customer_service_point` on its side. A usable point replaces what
+would pass these three rules. They cannot be chosen today, though: every partner
+pickup point is named like `POP-ABC1`, which the code pattern `^[A-Z0-9]{4,12}$`
+refuses, so a map choice of one is ignored (`parseGeowidgetPoint`) and a typed
+one is refused as malformed before the carrier is asked. If they are allowed
+later, the shipment still requests `inpost_locker_standard`, and InPost switches
+a partner pickup point target to `inpost_locker_customer_service_point` on its
+side. A usable point replaces what
 the client sent with the carrier's canonical code, the location description as
 the name and `address.line1, address.line2` as the address, built by
 `pickupPointDetails`, the same function that reads a map choice.

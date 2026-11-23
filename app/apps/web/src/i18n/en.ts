@@ -3026,7 +3026,7 @@ export const en: Messages = {
     passwordStatusUnset: 'No password',
     passwordHeading: 'Password',
     passwordIntro:
-      'Change your password here using your current password. If you do not have a password yet, use the email password link to set one. Magic-link sign-in keeps working.',
+      'Change your password here using your current password. If you do not have a password yet, use the email password link to set one. Sign-in links keep working.',
     forgotPasswordPrompt: 'Forgot your current password?',
     forgotPasswordEmailLink: 'Email me a reset link',
     resetSending: 'Sending…',

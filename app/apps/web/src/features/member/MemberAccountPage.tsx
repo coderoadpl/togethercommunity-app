@@ -38,7 +38,7 @@ import { AccountNameFields } from './AccountNameFields.js';
 import { AccountSupportForm } from './AccountSupportForm.js';
 import { AccountExportCard } from './AccountExportCard.js';
 import { AccountErasureCard } from './AccountErasureCard.js';
-import { AccountAvatar } from './AccountAvatar.js';
+import { AccountAvatar, type AvatarFileError } from './AccountAvatar.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { MemberSurface } from './MemberSurface.js';
 import { useImpersonation } from './viewer.js';
@@ -114,7 +114,7 @@ export const MemberAccountPage = () => {
   });
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
   const [lessonTextAutoExpand, setLessonTextAutoExpand] = useState(readLessonTextAutoExpand);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<AvatarFileError | null>(null);
   const updateProfile = useMutation({
     ...actions.updateMyProfile,
     onSuccess: async () => {
@@ -341,12 +341,12 @@ export const MemberAccountPage = () => {
                     event.target.value = '';
                     if (file === undefined) return;
                     if (file.size > AVATAR_IMAGE_MAX_BYTES) {
-                      setAvatarError(t.account.avatarTooLarge);
+                      setAvatarError('tooLarge');
                       return;
                     }
                     const contentType = avatarContentType(file.type);
                     if (contentType === null) {
-                      setAvatarError(t.account.avatarUnsupportedType);
+                      setAvatarError('unsupportedType');
                       return;
                     }
                     setAvatarError(null);

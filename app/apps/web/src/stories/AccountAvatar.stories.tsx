@@ -2,13 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AccountAvatar } from '../features/member/AccountAvatar.js';
 import { AccountCard } from '../features/member/AccountCard.js';
 import { withAccountPreview, previewFailure } from './page-decorators.js';
-import { pl } from '../i18n/pl.js';
 const meta = { title: 'Account/Avatar', component: AccountAvatar, decorators: [withAccountPreview], render: (args) => <AccountCard title="Profile"><AccountAvatar {...args} /></AccountCard> } satisfies Meta<typeof AccountAvatar>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile'): Story => ({
   parameters: { colorScheme }, globals: { viewport: { value: viewport } },
-  args: { name: 'Demo Member', email: 'demo@example.com', avatarUrl: state === 'Fallback' ? 'data:image/png;base64,broken' : null, uploadPending: state === 'Pending', removePending: false, uploadError: state === 'Failure' ? previewFailure : null, removeError: null, avatarError: state === 'Oversize' ? pl.account.avatarTooLarge : null, onUpload: () => undefined, onRemove: () => undefined },
+  args: { name: 'Demo Member', email: 'demo@example.com', avatarUrl: state === 'Fallback' ? 'data:image/png;base64,broken' : null, uploadPending: state === 'Pending', removePending: false, uploadError: state === 'Failure' ? previewFailure : null, removeError: null, avatarError: state === 'Oversize' ? 'tooLarge' : null, onUpload: () => undefined, onRemove: () => undefined },
 });
 export const PendingLightDesktop1440: Story = stateStory('Pending', 'light', 'desktop');
 export const PendingLightMobile390: Story = stateStory('Pending', 'light', 'mobile');

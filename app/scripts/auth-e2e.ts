@@ -5,7 +5,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type Response } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page, type Response } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
@@ -419,6 +419,80 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
   }
 };
 
+const runPasswordChangeSessionsPath = async (webBaseUrl: string): Promise<void> => {
+  const password = 'demo-password-15';
+  const newPassword = passwordFixture('changed-password');
+  const protectedLessonPath = '/my/courses/course-acme/lessons/lesson-acme-intro';
+  let browser: Browser | null = null;
+  try {
+    const launched = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    browser = launched;
+    const openSecurityTab = async (page: Page): Promise<void> => {
+      await page.goto(`${webBaseUrl}/account`, { waitUntil: 'networkidle' });
+      await page.getByRole('tab', { name: en.account.tabs.security }).click();
+      await page.getByTestId('active-sessions').waitFor({ state: 'attached', timeout: 15000 });
+    };
+    const signIn = async (): Promise<{ context: BrowserContext; page: Page }> => {
+      const context = await launched.newContext();
+      await restrictBrowserToLocalRequests(context);
+      await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
+      const page = await context.newPage();
+      await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+      await signInWithPassword(page, SMOKE_TENANT_MEMBER_EMAIL, password);
+      await page.waitForURL((url) => url.pathname !== '/login', { timeout: 15000 });
+      return { context, page };
+    };
+    const first = await signIn();
+    const second = await signIn();
+
+    await openSecurityTab(second.page);
+    const secondSessionRow = second.page.locator('[data-testid^="session-"][data-current="true"]');
+    await secondSessionRow.waitFor({ state: 'visible', timeout: 15000 });
+    const secondSessionTestId = await secondSessionRow.getAttribute('data-testid');
+    assert(secondSessionTestId !== null, 'the second context did not show its own session');
+
+    await openSecurityTab(first.page);
+    const secondSessionInFirst = first.page.getByTestId(secondSessionTestId);
+    await secondSessionInFirst.waitFor({ state: 'visible', timeout: 15000 });
+    await first.page.getByTestId('change-password-open').click();
+    const revokeOthers = first.page.getByTestId('change-revoke-sessions');
+    await revokeOthers.waitFor({ state: 'visible', timeout: 15000 });
+    assert(await revokeOthers.isChecked(), 'signing out other sessions was not ticked by default');
+    await first.page.getByTestId('change-current-password').fill(password);
+    await first.page.getByTestId('change-new-password').fill(newPassword);
+    await first.page.getByTestId('change-confirm-password').fill(newPassword);
+    await first.page.getByTestId('change-password-submit').click();
+    await first.page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 15000 });
+    await secondSessionInFirst.waitFor({ state: 'detached', timeout: 15000 });
+    const disclosure = first.page.getByTestId('active-sessions-disclosure');
+    if (await disclosure.getAttribute('aria-expanded') === 'false') await disclosure.click();
+    const remainingRows = first.page.locator('[data-testid^="session-"]');
+    await remainingRows.first().waitFor({ state: 'visible', timeout: 15000 });
+    assert(await remainingRows.count() === 1, `the first context still listed ${await remainingRows.count()} sessions after the change`);
+    assert(await remainingRows.first().getAttribute('data-current') === 'true', 'the remaining session was not the current one');
+
+    await first.page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+    assert(new URL(first.page.url()).pathname === protectedLessonPath, `the first context lost its session (${first.page.url()})`);
+    await openSecurityTab(first.page);
+    assert(new URL(first.page.url()).pathname === '/account', 'the first context could not reopen the account page');
+
+    const secondMe = await second.context.request.get(`${webBaseUrl}${API_PATHS.me}`);
+    assert(secondMe.status() === 401, `the second context was not denied (HTTP ${secondMe.status()})`);
+    await second.page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+    await second.page.waitForURL((url) => url.pathname === '/login', { timeout: 15000 });
+
+    await first.context.close();
+    await second.context.close();
+    console.log('auth-e2e: password change signs out other sessions OK');
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 try {
@@ -456,6 +530,7 @@ try {
   await runAttributionPurchase(studioBaseUrl);
   await runCheckoutAnalyticsNavigation(studioBaseUrl);
   await runPasskeyPath(webBaseUrl);
+  await runPasswordChangeSessionsPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof E2eFailure ? error.message : String(error);

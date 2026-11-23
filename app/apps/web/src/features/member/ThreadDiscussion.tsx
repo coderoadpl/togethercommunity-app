@@ -480,6 +480,8 @@ export const ThreadDiscussion = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const replyOpening = useRef(0);
   const editOpening = useRef(0);
+  const [detachedCreate, setDetachedCreate] = useState<object | null>(null);
+  const [detachedUpdate, setDetachedUpdate] = useState<object | null>(null);
   const [deleting, setDeleting] = useState<DiscussionPost | null>(null);
   const [subthreadRootId, setSubthreadRootId] = useState<string | null>(focus?.rootPostId ?? null);
   const [subOverride, setSubOverride] = useState<Record<string, ThreadSubscriptionState>>({});
@@ -572,10 +574,12 @@ export const ThreadDiscussion = ({
       : error instanceof ApiError && error.appError.code === 'rate_limited'
         ? t.community.postTooFast
         : localizeError(error, t);
+  const createErrorAttached = create.isError && create.variables !== detachedCreate;
+  const updateErrorAttached = update.isError && update.variables !== detachedUpdate;
   const createErrorFor = (parentId: string | undefined) =>
-    create.isError && create.variables.parentPostId === parentId ? errorMessage(create.error) : null;
+    createErrorAttached && create.variables.parentPostId === parentId ? errorMessage(create.error) : null;
   const editErrorFor = (postId: string) =>
-    update.isError && update.variables.id === postId ? errorMessage(update.error) : null;
+    updateErrorAttached && update.variables.id === postId ? errorMessage(update.error) : null;
 
   const changeReplyTarget = (id: string | null) => {
     if (id !== replyingTo) {
@@ -616,10 +620,10 @@ export const ThreadDiscussion = ({
   }, []);
 
   const topComposerOpen = subthreadRoot === null;
-  const createErrorOwned = create.isError && (create.variables.parentPostId === undefined
+  const createErrorOwned = createErrorAttached && (create.variables.parentPostId === undefined
     ? topComposerOpen
     : create.variables.parentPostId === replyingTo);
-  const updateErrorOwned = update.isError && update.variables.id === editingId;
+  const updateErrorOwned = updateErrorAttached && update.variables.id === editingId;
   const orphanWriteError =
     (create.isError && !createErrorOwned ? create.error : null) ??
     (update.isError && !updateErrorOwned ? update.error : null);
@@ -654,6 +658,9 @@ export const ThreadDiscussion = ({
             replyOpening.current += 1;
             setReplyingTo(null);
           },
+          onError: (_error, variables) => {
+            if (replyOpening.current !== opening) setDetachedCreate(variables);
+          },
         },
       );
     },
@@ -667,6 +674,9 @@ export const ThreadDiscussion = ({
             reset();
             editOpening.current += 1;
             setEditingId(null);
+          },
+          onError: (_error, variables) => {
+            if (editOpening.current !== opening) setDetachedUpdate(variables);
           },
         },
       );

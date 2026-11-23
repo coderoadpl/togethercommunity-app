@@ -2919,6 +2919,83 @@ describe('LessonPlayerPage', () => {
     expect(screen.getByTestId('edit-composer-t1-input')).toHaveValue('Question about hammocks again');
   });
 
+  it('shows a reply sent from the linked thread that fails after a new reply draft under the same post opened in the discussion alert', async () => {
+    let releasePost: (value: undefined) => void = () => undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(discussionPost('t1', 'Question about hammocks')),
+      http.post('/api/posts', async () => {
+        await postResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, { status: 429 });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
+
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'My reply');
+    await user.click(screen.getByTestId('reply-composer-t1-submit'));
+    await screen.findByTestId('pending-post');
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    await user.click(await screen.findByTestId('reply-button-t1'));
+    await user.type(screen.getByTestId('reply-composer-t1-input'), 'New draft');
+    releasePost(undefined);
+
+    const discussion = screen.getByTestId('discussion-section');
+    const error = await within(discussion).findByRole('alert');
+    expect(error).toHaveTextContent(en.community.postTooFast);
+    expect(screen.getByTestId('reply-composer-t1')).not.toContainElement(error);
+    expect(within(screen.getByTestId('reply-composer-t1')).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByTestId('reply-composer-t1-input')).toHaveTextContent('New draft');
+  });
+
+  it('shows an edit sent from the linked thread that fails after a new edit draft of the same post opened in the discussion alert', async () => {
+    const thread = { ...discussionPost('t1', 'Question about hammocks'), isOwn: true };
+    let releaseUpdate: (value: undefined) => void = () => undefined;
+    const updateResponse = new Promise<undefined>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      ...focusedThreadHandlers(thread),
+      http.post('/api/posts/update', async () => {
+        await updateResponse;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Write failed' } }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1');
+
+    await user.click(await screen.findByTestId('edit-button-t1'));
+    await user.type(screen.getByTestId('edit-composer-t1-input'), ' changed');
+    await user.click(screen.getByTestId('edit-composer-t1-submit'));
+    await waitFor(() => expect(screen.getByTestId('edit-composer-t1-submit')).toHaveTextContent(en.discussion.saving));
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    await waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    await user.click(await screen.findByTestId('edit-button-t1'));
+    await user.type(screen.getByTestId('edit-composer-t1-input'), ' again');
+    releaseUpdate(undefined);
+
+    const discussion = screen.getByTestId('discussion-section');
+    const error = await within(discussion).findByRole('alert');
+    expect(error).toHaveTextContent(en.errors.messageInternal);
+    expect(screen.getByTestId('edit-composer-t1')).not.toContainElement(error);
+    expect(within(screen.getByTestId('edit-composer-t1')).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(discussion).getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByTestId('edit-composer-t1-input')).toHaveValue('Question about hammocks again');
+  });
+
   it('keeps the discussion search term and its hits after opening a hit and coming back', async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);

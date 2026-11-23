@@ -182,6 +182,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   ProposedFileHandle: 'Local file handle of a CLI download with no persistence access.',
   ProposedFileSystem: 'Local file system of a CLI download with no persistence access.',
   PublicMarketingMessages: 'Localized message formatter callbacks.',
+  QuarantinedImageWrite: 'Object-storage callbacks of one quarantined image insert; the caller binds them to the object of the tenant and key it inserts for, and they have no persistence access.',
   RawSesClient: 'External SES API boundary.',
   RealtimeBusPort: 'Ephemeral event-delivery boundary with no persistence access.',
   RealtimeNotifyDb: 'Realtime NOTIFY execution boundary; the tenant scope is the channel name.',

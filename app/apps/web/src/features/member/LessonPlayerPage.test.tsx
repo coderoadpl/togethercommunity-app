@@ -224,7 +224,7 @@ const discussionPost = (id: string, body: string): DiscussionPost => ({
   replyCount: 0,
 });
 
-const renderLessonRoute = async (initialEntry: string) => {
+const renderLessonRoute = async (initialEntry: string, queryClient?: QueryClient) => {
   const rootRoute = createRootRoute();
   const LessonRouteComponent = () => {
     const params = useParams({ strict: false });
@@ -251,7 +251,8 @@ const renderLessonRoute = async (initialEntry: string) => {
     }),
   });
   await router.load();
-  renderWithProviders(<RouterProvider router={router} />);
+  if (queryClient === undefined) renderWithProviders(<RouterProvider router={router} />);
+  else render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
   return router;
 };
 
@@ -3095,5 +3096,56 @@ describe('LessonPlayerPage', () => {
 
     await user.click(await screen.findByTestId('search-hit-link-t1'));
     await waitFor(() => expect(screen.getByTestId('discussion-subthread-t1')).toHaveFocus());
+  });
+
+  it('keeps the next lesson where it starts after leaving a thread opened by link for that lesson', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const chainPost = (id: string, parentPostId: string, replies: DiscussionPost[]): DiscussionPost => ({
+      ...discussionPost(id, `Reply ${id}`), contextId: 'l2', parentPostId, rootPostId: 'r1', replies, replyCount: replies.length,
+    });
+    const deepThread: DiscussionPost = {
+      ...discussionPost('r1', 'Question about rafters'),
+      contextId: 'l2',
+      replies: [chainPost('c2', 'r1', [chainPost('c3', 'c2', [chainPost('c4', 'c3', [chainPost('c5', 'c4', [chainPost('c6', 'c5', [])])])])])],
+    };
+    const linked = discussionPost('t1', 'Question about hammocks');
+    server.use(
+      okLesson(allBlocks),
+      okStructure(),
+      okProgress(),
+      http.get('/api/discussion', ({ request }) => {
+        const threads = new URL(request.url).searchParams.get('contextId') === 'l2' ? [deepThread] : [linked];
+        return HttpResponse.json({ ok: true, data: { discussion: { threads, nextCursor: null, viewerSubscriptions: {} } } });
+      }),
+      http.get('/api/discussion/threads/:postId', () =>
+        HttpResponse.json({ ok: true, data: { discussion: { threads: [linked], nextCursor: null, viewerSubscriptions: {} } } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
+    const router = await renderLessonRoute('/my/courses/course-1/lessons/l1?thread=t1', queryClient);
+
+    await waitFor(() => expect(screen.getByTestId('discussion-subthread-t1')).toHaveFocus());
+    await waitFor(() => expect(queryClient.getQueryState(actions.studentLesson('l2').queryKey)?.status).toBe('success'));
+    const discussionHeading = screen.getByRole('heading', { level: 2, name: en.discussion.heading });
+    const nextFrame = () => new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+    const discussionScrolled = () =>
+      scrollIntoView.mock.instances.some((element) => element instanceof Element && screen.getByTestId('discussion-section').contains(element));
+    scrollIntoView.mockClear();
+
+    await router.navigate({ to: '/my/courses/$courseId/lessons/$lessonId', params: { courseId: 'course-1', lessonId: 'l2' } });
+    expect(await screen.findByTestId('discussion-thread-r1')).toBeInTheDocument();
+    await nextFrame();
+    expect(discussionScrolled()).toBe(false);
+    expect(discussionHeading).not.toHaveFocus();
+
+    await user.click(await screen.findByTestId('continue-thread-c5'));
+    await user.click(await screen.findByTestId('back-to-discussion'));
+    expect(await screen.findByTestId('discussion-thread-r1')).toBeInTheDocument();
+    await nextFrame();
+    expect(discussionScrolled()).toBe(false);
+    expect(discussionHeading).not.toHaveFocus();
   });
 });

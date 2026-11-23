@@ -602,11 +602,15 @@ export const ThreadDiscussion = ({
   };
   const followFocus = useEffectEvent((rootPostId: string | null) => switchView(rootPostId));
   const shownFocusRootPostId = useRef(focusRootPostId);
+  const shownContext = useRef({ contextKind: context.contextKind, contextId: context.contextId });
   const headingBlock = useRef<HTMLDivElement | null>(null);
   const headingElement = useRef<HTMLHeadingElement | null>(null);
   useLayoutEffect(() => {
+    const sameContext =
+      shownContext.current.contextKind === context.contextKind && shownContext.current.contextId === context.contextId;
+    shownContext.current = { contextKind: context.contextKind, contextId: context.contextId };
     if (shownFocusRootPostId.current === focusRootPostId) return;
-    const returnedToList = shownFocusRootPostId.current !== null && focusRootPostId === null;
+    const returnedToList = sameContext && shownFocusRootPostId.current !== null && focusRootPostId === null;
     shownFocusRootPostId.current = focusRootPostId;
     followFocus(focusRootPostId);
     if (!returnedToList) return;
@@ -615,7 +619,7 @@ export const ThreadDiscussion = ({
       headingElement.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusRootPostId]);
+  }, [focusRootPostId, context.contextKind, context.contextId]);
 
   const topComposerOpen = subthreadRoot === null;
   const createErrorOwned = createErrorAttached && (create.variables.parentPostId === undefined

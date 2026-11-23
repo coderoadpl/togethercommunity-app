@@ -156,14 +156,10 @@ export const AccessApprovalText = ({
   group: boolean;
 }) => {
   const t = useTranslations().changeProposals;
-  if (accessFacts(change, labels).refused) {
-    const refused = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
-    return <Isolated sentence={(slot) => refused({ target: slot })} value={target} />;
-  }
   const items = change.after;
   const nothing = newProduct ? t.approveProductSetAccessNothingNewProduct : t.approveProductSetAccessNothing;
   const grants = newProduct ? t.approveProductSetAccessNewProduct : t.approveProductSetAccess;
-  return items.length === 0 ? <Isolated sentence={(slot) => nothing({ target: slot })} value={target} /> : (
+  const applied = items.length === 0 ? <Isolated sentence={(slot) => nothing({ target: slot })} value={target} /> : (
     <Sentence
       text={(name, access) => grants({ target: name, access })}
       parts={[
@@ -179,4 +175,7 @@ export const AccessApprovalText = ({
       ]}
     />
   );
+  if (!accessFacts(change, labels).refused) return applied;
+  const refused = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
+  return <><Isolated sentence={(slot) => refused({ target: slot })} value={target} />{' '}{applied}</>;
 };

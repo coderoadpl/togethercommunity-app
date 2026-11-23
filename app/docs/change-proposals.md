@@ -1962,9 +1962,10 @@ Course, module and lesson titles each sit in their own `<bdi>` element, and the
 phrases break anywhere.
 
 While the proposal is pending, the row adds a warning when the list after
-approval names an id that no longer exists or an archived course: the list no
-longer passes the shop's check and approving changes nothing. A decided
-proposal shows the row without the warning.
+approval names an id that no longer exists or an archived course: as the shop
+is now, the list does not pass the shop's check and approving would change
+nothing unless that changes before the owner approves. A decided proposal shows
+the row without the warning.
 
 The confirmation reads "Buyers of “Field guide” will get access to: the whole
 course “Intro course”. Everyone who already has access to this product, current
@@ -1973,14 +1974,19 @@ names, unless another of their products still opens it for them. Nothing else
 changes."; for an empty list it says that the product will no longer grant any
 course, module or lesson and that everyone who has access loses what it granted
 at once, unless another of their products still opens it for them. When the
-list no longer passes the check as the row's warning describes, the
-confirmation says only "The new list of what “Field guide” grants no longer
-passes the shop’s check, so approving changes nothing.". A group
+list does not pass the check as the row's warning describes, the
+confirmation leads with "As the shop is now, the new list of what “Field guide”
+grants does not pass the shop’s check, so approving would change nothing; if it
+passes the check when you approve, it applies as follows." and then gives the
+sentence above: the approval checks the list again, so a course restored or a
+lesson moved back in the meantime lets it apply. A group
 confirmation adds the access sentence for each access item; for a product an
 earlier item of the group creates it reads "Everyone who later gets access to
 the new product “Starter Pack” will get access to: …" (or "The new product
 “Starter Pack” will not grant any course, module or lesson."), and a list that
-no longer passes the check reads "… so approving applies none of the changes.".
+does not pass the check leads with "… so approving would apply none of the
+changes; if it passes the check when you approve, the group applies and the
+list as follows.".
 `proposals show` and `proposals group show` print the titles under `names:`,
 and "no longer exists" for an id that no longer exists; they do not mark an
 archived course.

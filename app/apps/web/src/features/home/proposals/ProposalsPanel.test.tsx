@@ -923,7 +923,7 @@ describe('ProposalsPanel', () => {
     expect(body).toEqual({ id: accessChangeProposal.id, payload: expect.any(String) });
   });
 
-  it('marks a gone id and an archived course and says that approving a list that no longer passes the check changes nothing', async () => {
+  it('marks a gone id and an archived course and says that approving a list that does not pass the check now would change nothing unless it passes then', async () => {
     usePending([accessGoneProposal]);
 
     renderPanel();
@@ -941,7 +941,11 @@ describe('ProposalsPanel', () => {
     await userEvent.click(within(card).getByTestId('proposal-approve'));
     const dialog = await screen.findByTestId('proposal-approve-dialog');
     expect(normalized(within(dialog).getByTestId('proposal-approve-summary').textContent ?? ''))
-      .toBe(t.approveProductSetAccessRefused({ target: 'Field Guide (digital)' }));
+      .toBe(`${t.approveProductSetAccessRefused({ target: 'Field Guide (digital)' })} ${t.approveProductSetAccess({
+        target: 'Field Guide (digital)',
+        access: 'the whole course “Life drawing 2025” (archived); the whole course something that no longer exists (course-studio-retired); '
+          + 'the lessons “Mixing palettes”, something that no longer exists (lesson-studio-retired), each in every course that uses it (chosen from “Colour basics”)',
+      })}`);
   });
 
   it('shows a lifted exclusion as the two lists alone, with no note, and confirms only what the new list grants', async () => {

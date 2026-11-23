@@ -494,12 +494,18 @@ describe('the approval confirmation of what a product grants', () => {
     expect(textOutsideBdi(summary)).not.toContain(OVERRIDE);
   });
 
-  it('says that approving changes nothing when the new list names something gone or an archived course', () => {
-    const refused = `${t.approveProductSetAccessRefused({ target: 'Mug' })}`;
-    expect(summaryOf(accessChange([{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] }], LABELS))).toBe(refused);
-    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS))).toBe(refused);
-    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-deep' }], { ...LABELS, archivedCourses: ['course-deep'] }))).toBe(refused);
-    expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe('The new list of what “Mug” grants no longer passes the shop’s check, so approving changes nothing.');
+  it('says that approving would change nothing as the shop is now, and what the list grants if it passes when the owner approves', () => {
+    const refused = (access: string) => `${t.approveProductSetAccessRefused({ target: 'Mug' })} ${t.approveProductSetAccess({ target: 'Mug', access })}`;
+    expect(summaryOf(accessChange([{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] }], LABELS)))
+      .toBe(refused('the lessons “Welcome”, something that no longer exists (lesson-retired), each in every course that uses it (chosen from “Intro course”)'));
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS))).toBe(refused('the whole course something that no longer exists (course-gone)'));
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-deep' }], { ...LABELS, archivedCourses: ['course-deep'] })))
+      .toBe(refused('the whole course “Deep course” (archived)'));
+    expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe(
+      'As the shop is now, the new list of what “Mug” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
+    );
+    expect(t.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/would apply none of the changes; if it passes the check when you approve, /u);
+    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'Mug' })).toMatch(/niczego by nie zmieni\p{L}o; je\p{L}li przejdzie j\p{L} w chwili zatwierdzenia/u);
     expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
       .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
   });
@@ -536,8 +542,9 @@ describe('the approval confirmation of what a product grants', () => {
     expect(dialogText(<GroupAccessSentences items={[emptied]} references={groupWithNewProduct} />))
       .toBe('The new product “Starter pack” will not grant any course, module or lesson.');
     const gone = { ...created, effect: { accessItems: { before: [], after: [{ level: 'course', courseId: 'course-gone' }] } } };
-    expect(dialogText(<GroupAccessSentences items={[gone]} references={groupWithNewProduct} />))
-      .toBe(t.approveGroupProductSetAccessRefused({ target: 'Starter pack' }));
+    expect(dialogText(<GroupAccessSentences items={[gone]} references={groupWithNewProduct} />)).toBe(
+      `${t.approveGroupProductSetAccessRefused({ target: 'Starter pack' })} ${t.approveProductSetAccessNewProduct({ target: 'Starter pack', access: 'the whole course something that no longer exists (course-gone)' })}`,
+    );
   });
 
   it('lets a 255-character name without a break opportunity wrap anywhere in the summary and the group sentences', () => {

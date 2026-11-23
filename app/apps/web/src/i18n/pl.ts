@@ -851,7 +851,7 @@ export const pl: Messages = {
     accessNameWithId: ({ name, id }) => format('„{name}” ({id})', { name, id }),
     accessArchivedWithId: ({ name, id }) => format('„{name}” ({id}) (zarchiwizowany)', { name, id }),
     accessListRefused:
-      'Lista po zatwierdzeniu nie przechodzi już kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego nie zmieni.',
+      'Przy obecnym stanie sklepu lista po zatwierdzeniu nie przechodzi kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego by nie zmieniło, chyba że zmieni się to przed zatwierdzeniem.',
     approveProductSetAccess: ({ target, access }) => format(
       'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu zyska dostęp do tego, co jest na liście, i straci dostęp do tego, czego na niej nie ma, chyba że nadal daje mu go inny jego produkt.',
       { target, access },
@@ -865,10 +865,12 @@ export const pl: Messages = {
       { target, access },
     ),
     approveProductSetAccessNothingNewProduct: ({ target }) => format('Nowy produkt „{target}” nie będzie dawał dostępu do żadnego kursu, modułu ani lekcji.', { target }),
-    approveProductSetAccessRefused: ({ target }) =>
-      format('Nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi już kontroli sklepu, więc zatwierdzenie niczego nie zmieni.', { target }),
+    approveProductSetAccessRefused: ({ target }) => format(
+      'Przy obecnym stanie sklepu nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc zatwierdzenie niczego by nie zmieniło; jeśli przejdzie ją w chwili zatwierdzenia, zostanie wprowadzona tak, jak opisano dalej.',
+      { target },
+    ),
     approveGroupProductSetAccessRefused: ({ target }) => format(
-      'Nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi już kontroli sklepu, więc po zatwierdzeniu nie zostanie wprowadzona żadna ze zmian.',
+      'Przy obecnym stanie sklepu nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian; jeśli przejdzie ją w chwili zatwierdzenia, zostanie wprowadzona cała grupa, a lista tak, jak opisano dalej.',
       { target },
     ),
     approveConfirm: 'Zatwierdź',

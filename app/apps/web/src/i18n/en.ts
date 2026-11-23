@@ -808,7 +808,7 @@ export const en: Messages = {
     accessNameWithId: ({ name, id }) => format('“{name}” ({id})', { name, id }),
     accessArchivedWithId: ({ name, id }) => format('“{name}” ({id}) (archived)', { name, id }),
     accessListRefused:
-      'The list after approval no longer passes the shop’s check: something on it no longer exists or a course on it is archived. Approving changes nothing.',
+      'As the shop is now, the list after approval does not pass the shop’s check: something on it no longer exists or a course on it is archived. Approving would change nothing unless that changes before you approve.',
     approveProductSetAccess: ({ target, access }) => format(
       'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them.',
       { target, access },
@@ -819,10 +819,14 @@ export const en: Messages = {
     ),
     approveProductSetAccessNewProduct: ({ target, access }) => format('Everyone who later gets access to the new product “{target}” will get access to: {access}.', { target, access }),
     approveProductSetAccessNothingNewProduct: ({ target }) => format('The new product “{target}” will not grant any course, module or lesson.', { target }),
-    approveProductSetAccessRefused: ({ target }) =>
-      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving changes nothing.', { target }),
-    approveGroupProductSetAccessRefused: ({ target }) =>
-      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving applies none of the changes.', { target }),
+    approveProductSetAccessRefused: ({ target }) => format(
+      'As the shop is now, the new list of what “{target}” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefused: ({ target }) => format(
+      'As the shop is now, the new list of what “{target}” grants does not pass the shop’s check, so approving would apply none of the changes; if it passes the check when you approve, the group applies and the list as follows.',
+      { target },
+    ),
     approveConfirm: 'Approve',
     rejectTitle: 'Reject this change?',
     rejectGroupTitle: 'Reject the whole group?',

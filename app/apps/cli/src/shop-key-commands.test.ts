@@ -1258,7 +1258,34 @@ describe('shop files CLI', () => {
       await run('shop', 'files', 'upload', 'product-1', file);
       const message = printedErrorMessage(soleJson());
       expect(message).toContain('remove a file of the product first');
-      expect(message).toContain('the file stays staged as staged-1');
+      expect(message).toContain('the file stays staged as staged-1 until it is discarded, or until 7 days after it was staged once no pending proposal holds it');
+    });
+  });
+
+  it('does not claim the file is still staged when the attach answer was lost after the server may have attached it', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = async (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        if (url.pathname !== '/api/m2m/shop/products/downloads') return fileFetch(input, init);
+        calls.push({ method: init?.method ?? 'GET', path: url.pathname, search: '', headers: new Headers(init?.headers), body: null });
+        throw new TypeError('socket hang up');
+      };
+      await run('shop', 'files', 'upload', 'product-1', file);
+      const message = printedErrorMessage(soleJson());
+      expect(message).not.toContain('stays staged');
+      expect(message).toContain('staged-1');
+      expect(message).toContain('together shop files list product-1');
+      expect(message).toContain('together shop files staged');
+    });
+  });
+
+  it('says that a file a pending proposal holds is not deleted after its 7 days', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/downloads/upload', 409, {
+        code: 'conflict', message: 'The workspace staging budget is full', details: { changeProposalCap: 'workspace_staged_bytes' },
+      });
+      await run('shop', 'files', 'upload', 'product-1', file);
+      expect(printedErrorMessage(soleJson())).toContain('a staged file that no pending proposal holds is deleted 7 days after it was staged');
     });
   });
 

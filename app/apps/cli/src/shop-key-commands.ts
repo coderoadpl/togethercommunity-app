@@ -6,6 +6,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import {
+  apiFailureSource,
   changeProposalCreatedKind,
   createShopManagementClient,
   isProposedChange,
@@ -236,7 +237,7 @@ const downloadFileInput = async (file: string) => {
 const FILE_CAP_HINTS = {
   key_staged_files: 'list this key\'s staged files with "together shop files staged" and discard the ones it no longer needs with "together shop files discard <id>"',
   key_staged_bytes: 'list this key\'s staged files with "together shop files staged" and discard the ones it no longer needs with "together shop files discard <id>"',
-  workspace_staged_bytes: 'every key of the workspace shares this budget; a staged file is deleted 7 days after it was staged',
+  workspace_staged_bytes: 'every key of the workspace shares this budget; a staged file that no pending proposal holds is deleted 7 days after it was staged',
   key_file_uploads: 'retry once the uploads and copies of the last 15 minutes fall out of the window',
   key_file_bytes_daily: 'retry once the uploads and copies of the last 24 hours fall out of the window',
   product_files: 'remove a file of the product first with "together shop files remove <productId> <assetId>"',
@@ -244,11 +245,16 @@ const FILE_CAP_HINTS = {
 
 const capDetailsSchema = z.object({ changeProposalCap: z.string() });
 
-const withFileHint = (error: AppError, stagedId?: string): AppError => {
+const stagedFileState = (error: AppError, attach: { stagedId: string; productId: string }): string =>
+  apiFailureSource(error) === 'server'
+    ? `; the file stays staged as ${attach.stagedId} until it is discarded, or until 7 days after it was staged once no pending proposal holds it ("together shop files discard ${attach.stagedId}")`
+    : `; the answer to the attach was lost, so it is not known whether the staged file ${attach.stagedId} was attached or proposed: check "together shop files list ${attach.productId}", "together shop files staged" and "together shop proposals list"`;
+
+const withFileHint = (error: AppError, attach?: { stagedId: string; productId: string }): AppError => {
   const cap = capDetailsSchema.safeParse(error.details);
   const hint = cap.success ? Object.entries(FILE_CAP_HINTS).find(([known]) => known === cap.data.changeProposalCap)?.[1] : undefined;
-  const kept = stagedId === undefined ? '' : `; the file stays staged as ${stagedId} until it is discarded or 7 days pass ("together shop files discard ${stagedId}")`;
-  return { ...error, message: `${error.message}${hint === undefined ? '' : ` (${hint})`}${kept}` };
+  const state = attach === undefined ? '' : stagedFileState(error, attach);
+  return { ...error, message: `${error.message}${hint === undefined ? '' : ` (${hint})`}${state}` };
 };
 
 const sizeLabel = (bytes: number): string => `${String(bytes)} bytes`;
@@ -837,7 +843,7 @@ export const registerShopKeyCommands = (
     const attached = options.replaces === undefined
       ? await client.addProductDownload({ productId, stagedFileId: staged.id, ...note }, undefined, proposal)
       : await client.replaceProductDownload({ productId, replacesAssetId: options.replaces, stagedFileId: staged.id, ...note }, undefined, proposal);
-    return attached.ok ? ok({ ...attached.value, staged }) : err(withFileHint(attached.error, staged.id));
+    return attached.ok ? ok({ ...attached.value, staged }) : err(withFileHint(attached.error, { stagedId: staged.id, productId }));
   };
 
   const targetCheck = async (client: ShopManagementClient, productId: string, proposal: ProposalRequestOptions) =>

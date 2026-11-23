@@ -869,9 +869,12 @@ download fails before anything is uploaded, and so do a `--note` longer than
 product (`not_found`) or not ready (`validation`). It takes the type from the file
 extension (`.pdf`, `.epub`, `.zip`, `.mp3`, `.m4a`, `.m4b`, `.mp4`, `.m4v`,
 `.png`, `.jpg`, `.jpeg`), streams the file from disk, completes the upload and
-attaches it; a failed upload or completion attaches nothing. When the attach
-itself is refused, the staged file stays and the error message names it and
-the command that discards it. `shop files copy` checks the target product the
+attaches it; a failed upload or completion attaches nothing. When the server
+refuses the attach itself, the staged file stays and the error message names it
+and the command that discards it. When the answer to the attach is lost, the
+message names the staged file and says that it is not known whether it was
+attached or proposed, with the commands that show the product's files, the
+key's staged files and its proposals. `shop files copy` checks the target product the
 same way, copies on the server and attaches the copy to the target; both
 commands take `--note`. A cap refusal adds what to do next: discard staged
 files, wait for the window, or remove a file of the product. With a

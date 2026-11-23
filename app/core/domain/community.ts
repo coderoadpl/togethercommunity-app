@@ -123,8 +123,9 @@ const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm', 'tenant']
  * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
  * name for space contexts and the sender display for direct messages, while
  * `domain` carries tenant contexts, which have no post, author or context row
- * (courseId stays null outside lessons). A change proposal carries its own
- * typed `changeProposal` facts instead; read them with
+ * (courseId stays null outside lessons). A change proposal names the proposing
+ * key in `authorDisplay` and its group in `contextId` and `snippet`, and also
+ * carries them as typed `changeProposal` facts; read them with
  * `changeProposalNotificationFacts`.
  */
 const changeProposalNotificationPayloadSchema = z.object({

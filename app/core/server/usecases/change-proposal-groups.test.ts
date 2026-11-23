@@ -1012,7 +1012,7 @@ describe('the owner notification of a group', () => {
       { recipientUserId: ISSUER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, changeProposal: { keyName: 'Catalogue agent', groupId, groupTitle: 'Spring launch' } },
     ]);
-    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === null && row.payload.snippet === '' && row.payload.contextId === null)).toBe(true);
+    expect(h.notifications.rows.every((row) => row.payload.authorDisplay === 'Catalogue agent' && row.payload.snippet === 'Spring launch' && row.payload.contextId === groupId)).toBe(true);
     const rowIds = new Map(h.notifications.rows.map((row) => [row.recipientUserId, row.id]));
     expect(h.notifications.published).toHaveLength(10);
     expect(h.notifications.published.every((event) => event.kind === 'notification'

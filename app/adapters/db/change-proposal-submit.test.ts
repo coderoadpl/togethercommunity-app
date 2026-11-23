@@ -263,7 +263,7 @@ describe('the owner notification of a submitted proposal over the database', () 
       [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
     ]);
     expect(unread[0]?.payload).toMatchObject({
-      contextKind: 'tenant', contextId: null, authorDisplay: null, snippet: '',
+      contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '',
       changeProposal: { keyName: key.name, groupId: null, groupTitle: null },
     });
     const unreadIds = new Map(unread.map((row) => [row.recipientUserId, row.id]));

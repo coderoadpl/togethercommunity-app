@@ -963,7 +963,7 @@ describe('the owner notification of a submitted proposal', () => {
       { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
     ]);
     expect(h.notifications.rows[0]?.payload).toMatchObject({
-      contextKind: 'tenant', contextId: null, authorDisplay: null, snippet: '', domain: null,
+      contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null,
       changeProposal: { keyName: 'Catalogue agent', groupId: null, groupTitle: null },
     });
     const rowIds = h.notifications.rows.map((row) => row.id);

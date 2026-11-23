@@ -301,7 +301,7 @@ describe('the owner bell for change proposals', () => {
     expect(rung).toHaveLength(1);
     expect(rung[0]).toMatchObject({
       readAt: null,
-      payload: { authorDisplay: null, contextKind: 'tenant', changeProposal: { keyName: proposer.apiKey.name, groupId: null, groupTitle: null } },
+      payload: { authorDisplay: proposer.apiKey.name, contextKind: 'tenant', changeProposal: { keyName: proposer.apiKey.name, groupId: null, groupTitle: null } },
     });
 
     const read = await sessionRequest(ownerToken, 'POST', API_PATHS.notificationRead, { id: rung[0]?.id });

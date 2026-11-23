@@ -329,12 +329,14 @@ owner of the workspace gets an in-app notification of kind `change-proposal`:
 the direct owners and the owners derived from the active organisation that
 manages the workspace, by the same effective grant the owner session checks.
 Its payload carries its own typed field, `changeProposal: { keyName, groupId,
-groupTitle }`, with the key name and, for a group, the group id and title; the
-community fields `authorDisplay`, `contextId` and `snippet` stay empty. A
-notification stored before this field existed held the key name in
-`authorDisplay` and the group in `contextId` and `snippet`;
-`changeProposalNotificationFacts` in `core/domain` reads both forms, so such a
-notification stays readable. There is at most one unread notification per
+groupTitle }`, with the key name and, for a group, the group id and title. The
+community fields repeat them, the key name in `authorDisplay` and the group in
+`contextId` and `snippet`, because the release before the typed field reads
+only those (see [Rolling back](#rolling-back)). A notification stored before
+the typed field existed has only the community fields;
+`changeProposalNotificationFacts` in `core/domain` reads the typed field when
+it is there and the community fields otherwise, so such a notification stays
+readable. There is at most one unread notification per
 owner and key: the notification's source key is `change-proposal:<key id>`,
 and the unique source key per recipient makes the insert atomic, so a second
 proposal while it is unread adds nothing; once the owner read it, the next

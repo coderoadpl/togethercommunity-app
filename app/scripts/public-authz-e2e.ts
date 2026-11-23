@@ -467,6 +467,25 @@ const runReturningVisitorJourney = async (browser: Browser, baseUrl: string): Pr
   }
 };
 
+const runHeaderSignInReturnJourney = async (browser: Browser, baseUrl: string): Promise<void> => {
+  const returnPath = `/community/${studioSpaceId}?x=1`;
+  const context = await browser.newContext();
+  await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
+  const page = await context.newPage();
+  await page.goto(`${baseUrl}${returnPath}`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId(`public-feed-post-${publicThreadId}`).waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByRole('banner').getByRole('link', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(
+    (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === returnPath,
+    { timeout: 15000 },
+  );
+  await signInWithPassword(page, 'creator@together.dev', 'demo-password-15');
+  await page.waitForURL((url) => url.pathname !== '/login', { timeout: 15000 });
+  assert(page.url() === `${baseUrl}${returnPath}`, `header sign-in returned to ${page.url()} instead of ${returnPath}`);
+  await context.close();
+  console.log('public-authz-e2e: header sign-in return path OK');
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -508,6 +527,7 @@ try {
   page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
 
   await runReturningVisitorJourney(browser, studioBaseUrl);
+  await runHeaderSignInReturnJourney(browser, studioBaseUrl);
   await runHomeJourney(page, studioBaseUrl);
   await runReadOnlyCommunityJourney(page, studioBaseUrl);
   await runCourseJourney(page, studioBaseUrl);

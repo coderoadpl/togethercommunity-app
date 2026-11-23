@@ -308,7 +308,7 @@ try {
           } finally {
             if (preparation !== undefined) {
               await preparation.cleanup();
-              await page.getByRole('status', { name: 'Opening your workspace…' }).waitFor({ state: 'hidden', timeout: 20000 });
+              await page.getByTestId('tenant-gate-pending').waitFor({ state: 'hidden', timeout: 20000 });
               await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
             }
           }

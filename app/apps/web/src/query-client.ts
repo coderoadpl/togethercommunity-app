@@ -7,11 +7,13 @@ import { refreshToastStore } from './refresh-toast.js';
 
 const MAX_RETRIES = 3;
 
-const isExpectedMissingPublicOffer = (error: unknown, queryKey: readonly unknown[]): boolean =>
+const BOOT_QUERY_KEYS: readonly unknown[] = ['public-offer', 'me', 'public-navigation'];
+
+const isExpectedMissingTenant = (error: unknown, queryKey: readonly unknown[]): boolean =>
   error instanceof ApiError &&
   error.appError.code === 'tenant_not_found' &&
   queryKey.length === 1 &&
-  queryKey[0] === 'public-offer';
+  BOOT_QUERY_KEYS.includes(queryKey[0]);
 
 const isExpectedAnonymousMe = (error: unknown, queryKey: readonly unknown[]): boolean =>
   error instanceof ApiError &&
@@ -20,7 +22,7 @@ const isExpectedAnonymousMe = (error: unknown, queryKey: readonly unknown[]): bo
   queryKey[0] === 'me';
 
 const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): boolean =>
-  isExpectedMissingPublicOffer(error, queryKey) || isExpectedAnonymousMe(error, queryKey);
+  isExpectedMissingTenant(error, queryKey) || isExpectedAnonymousMe(error, queryKey);
 
 /**
  * QueryCache is the single global error surface (one notice per failing query,

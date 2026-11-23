@@ -321,8 +321,11 @@ describe('MemberShell', () => {
       en.tenant.visitorNotice({ email: 'jan@example.com' }),
     );
     expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', 'http://start.localhost:3000');
-    expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeEnabled();
-    expect(screen.getByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    expect(within(screen.getByTestId('foreign-tenant-notice')).queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: en.auth.signInLink })).not.toBeInTheDocument();
+    const header = screen.getByRole('banner');
+    expect(within(header).getByTestId('anon-visitor-email')).toHaveTextContent('jan@example.com');
+    expect(within(header).getByRole('button', { name: en.tenant.signOut })).toBeEnabled();
     expect(screen.queryByText(en.errors.messageForbidden)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.common.retry })).not.toBeInTheDocument();
   });
@@ -335,7 +338,10 @@ describe('MemberShell', () => {
     stubViewport(true);
     server.use(okMe({ tenant: null, tenantAccess }), okOffer(), okPublicNavigation());
     await renderShell('/start', page(en.redirects.targetLesson), page(en.redirects.targetCourse), hostname);
-    expect(await screen.findByRole('link', { name: en.auth.signInLink })).toBeInTheDocument();
+    const headerAction = tenantAccess === 'none'
+      ? await screen.findByRole('button', { name: en.tenant.signOut })
+      : await screen.findByRole('link', { name: en.auth.signInLink });
+    expect(headerAction.closest('header')).not.toBeNull();
     expect(screen.queryByTestId('foreign-tenant-notice')).not.toBeInTheDocument();
   });
 
@@ -1293,7 +1299,8 @@ describe('MemberShell', () => {
     expect(signIn.closest('header')).not.toBeNull();
     expect(within(screen.getByTestId('anon-sidebar')).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.queryByTestId('member-sidebar')).not.toBeInTheDocument();
-    expect(screen.getByTestId('anon-sidebar')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: en.shell.publicNavigationAria })).toBe(screen.getByTestId('anon-sidebar'));
+    expect(screen.queryByRole('navigation', { name: en.shell.navigationAria })).not.toBeInTheDocument();
     expect(screen.getByText('Biblioteka')).toBeInTheDocument();
     expect(screen.getByTestId('color-scheme-cycle')).toBeInTheDocument();
     expect(screen.queryByTestId('color-scheme-switcher')).not.toBeInTheDocument();
@@ -1308,9 +1315,12 @@ describe('MemberShell', () => {
     const signIn = await screen.findByRole('link', { name: en.auth.signInLink });
     expect(signIn).toHaveStyle({ whiteSpace: 'nowrap', minHeight: '44px' });
     expect(screen.getByTestId('tenant-name-mark')).toHaveStyle({ fontSize: '0.95rem' });
+    expect(screen.getByTestId('shell-brand')).not.toHaveAttribute('aria-label');
+    expect(screen.getByRole('link', { name: 'Acme' })).toBe(screen.getByTestId('shell-brand'));
+    expect(screen.getByTestId('color-scheme-cycle')).toBeVisible();
   });
 
-  it('lists public spaces, public courses and locked checkout rows for a visitor', async () => {
+  it('lists public spaces, public courses and locked rows that lead to the home offer for a visitor', async () => {
     stubViewport(true);
     server.use(
       okMe({ tenant: null }),
@@ -1342,15 +1352,33 @@ describe('MemberShell', () => {
       '/my/courses/c1',
     );
     const locked = within(nav).getByTestId('anon-sidebar-locked-s9');
-    expect(locked).toHaveAttribute(
-      'href',
-      '/checkout/p1',
-    );
+    expect(locked).toHaveAttribute('href', '/#locked-s9');
+    expect(within(screen.getByTestId('anon-sidebar-spaces')).getByTestId('anon-sidebar-locked-s9')).toBe(locked);
+    expect(within(screen.getByTestId('anon-sidebar-courses')).getByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
+    expect(within(nav).getByText(en.shell.spacesSection)).toBeInTheDocument();
+    expect(within(nav).getByText(en.anon.coursesSection)).toBeInTheDocument();
     await user.hover(locked);
     expect(await screen.findByText(en.shell.lockedSpaceHint)).toBeInTheDocument();
     expect(await screen.findByText(en.community.productGatedFor({ product: 'Program Pro' }))).toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: en.auth.signInLink })).toBeNull();
     expect(screen.getAllByRole('link', { name: en.auth.signInLink })).toHaveLength(1);
     expect(within(nav).queryByTestId('member-identity')).not.toBeInTheDocument();
+  });
+
+  it('renders a sidebar group heading only when the group has rows', async () => {
+    stubViewport(true);
+    server.use(
+      okMe({ tenant: null }),
+      okOffer(),
+      okPublicNavigation(publicNavigation({ spaces: [], lockedSpaces: [] })),
+    );
+
+    await renderShell('/my');
+
+    const nav = await screen.findByTestId('anon-sidebar');
+    expect(await within(nav).findByTestId('anon-sidebar-course-c1')).toBeInTheDocument();
+    expect(within(nav).getByText(en.anon.coursesSection)).toBeInTheDocument();
+    expect(within(nav).queryByText(en.shell.spacesSection)).not.toBeInTheDocument();
+    expect(within(nav).queryByTestId('anon-sidebar-spaces')).not.toBeInTheDocument();
   });
 });

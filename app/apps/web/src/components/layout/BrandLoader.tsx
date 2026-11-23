@@ -2,6 +2,8 @@ import { useId, type ReactNode } from 'react';
 import { Box, Stack, Typography, useMediaQuery } from '@mui/material';
 import { keyframes, styled, useTheme } from '@mui/material/styles';
 
+import { MEMBER_BACKGROUND } from '../../theme.js';
+
 const markPulse = keyframes({
   '0%, 100%': { transform: 'scale(0.92)' },
   '50%': { transform: 'scale(1)' },
@@ -12,22 +14,30 @@ const glowBreath = keyframes({
   '50%': { opacity: 1 },
 });
 
-const LoaderStack = styled(Stack, { shouldForwardProp: (prop) => prop !== 'viewport' })<{
+type LoaderSurface = 'theme' | 'member';
+
+const LoaderStack = styled(Stack, { shouldForwardProp: (prop) => prop !== 'viewport' && prop !== 'surface' })<{
   viewport: boolean;
-}>(({ theme, viewport }) => (viewport ? { backgroundColor: theme.palette.background.default } : {}));
+  surface: LoaderSurface;
+}>(({ theme, viewport, surface }) => (viewport
+  ? { backgroundColor: surface === 'member' ? MEMBER_BACKGROUND[theme.palette.mode] : theme.palette.background.default }
+  : {}));
 
 interface BrandLoaderProps {
   caption?: ReactNode;
   scope?: 'viewport' | 'container';
+  surface?: LoaderSurface;
   'data-testid'?: string;
 }
 
 export const BrandLoader = ({
   caption,
   scope = 'viewport',
+  surface = 'theme',
   'data-testid': testId,
 }: BrandLoaderProps) => {
   const theme = useTheme();
+  const markColor = theme.palette.text.secondary;
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const glowId = `brand-loader-glow-${useId().replaceAll(':', '')}`;
   const viewport = scope === 'viewport';
@@ -35,6 +45,8 @@ export const BrandLoader = ({
   return (
     <LoaderStack
       viewport={viewport}
+      surface={surface}
+      data-surface={surface}
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -77,13 +89,13 @@ export const BrandLoader = ({
       >
         <defs>
           <radialGradient id={glowId} cx="0" cy="0" r="175" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#F49A5E" stopOpacity="0.55" />
-            <stop offset="0.8" stopColor="#F49A5E" stopOpacity="0.55" />
-            <stop offset="0.85" stopColor="#F49A5E" stopOpacity="0.2921" />
-            <stop offset="0.9" stopColor="#F49A5E" stopOpacity="0.1197" />
-            <stop offset="0.944" stopColor="#F49A5E" stopOpacity="0.0334" />
-            <stop offset="0.976" stopColor="#F49A5E" stopOpacity="0.0052" />
-            <stop offset="1" stopColor="#F49A5E" stopOpacity="0" />
+            <stop offset="0" stopColor={markColor} stopOpacity="0.55" />
+            <stop offset="0.8" stopColor={markColor} stopOpacity="0.55" />
+            <stop offset="0.85" stopColor={markColor} stopOpacity="0.2921" />
+            <stop offset="0.9" stopColor={markColor} stopOpacity="0.1197" />
+            <stop offset="0.944" stopColor={markColor} stopOpacity="0.0334" />
+            <stop offset="0.976" stopColor={markColor} stopOpacity="0.0052" />
+            <stop offset="1" stopColor={markColor} stopOpacity="0" />
           </radialGradient>
         </defs>
         <g opacity={theme.palette.mode === 'light' ? 0.62 : 1}>
@@ -100,8 +112,8 @@ export const BrandLoader = ({
             }}
           />
         </g>
-        <circle cx="0" cy="0" r="140" fill="#F49A5E" />
-        <circle cx="0" cy="0" r="100" fill="#E8682A" />
+        <circle cx="0" cy="0" r="140" fill={markColor} fillOpacity={0.35} data-testid="brand-loader-ring" />
+        <circle cx="0" cy="0" r="100" fill={markColor} data-testid="brand-loader-core" />
       </Box>
       {caption !== undefined ? (
         <Typography variant="caption" component="div" color="text.secondary" align="center">

@@ -152,7 +152,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
         <LanguageProvider><ToastProvider><AppChromeProvider>
           <CssBaseline />
           <NotificationsTransportProvider><TenantBrandingBoundary>
-          <TenantGate><RouterProvider router={state.router} /></TenantGate>
+          <TenantGate pathname={new URL(parameters.fixture.route, 'http://localhost').pathname}><RouterProvider router={state.router} /></TenantGate>
         </TenantBrandingBoundary></NotificationsTransportProvider></AppChromeProvider></ToastProvider></LanguageProvider>
       </ThemeModeProvider>
     </QueryClientProvider>

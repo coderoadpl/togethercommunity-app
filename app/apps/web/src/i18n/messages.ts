@@ -366,12 +366,16 @@ export interface Messages {
     headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
+    bootEyebrow: string;
+    bootHeading: string;
+    backToStart: string;
     headingValidation: string;
     headingConflict: string;
     headingSlugReserved: string;
     headingSoldOut: string;
     detailGeneric: string;
     traceId: string;
+    traceIdHint: string;
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;
@@ -501,7 +505,6 @@ export interface Messages {
   tenant: {
     visitorNotice: (params: { email: string }) => string;
     visitorOwnCommunity: string;
-    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;
@@ -1249,9 +1252,11 @@ export interface Messages {
     nextPage: string;
   };
   tenantNotFound: {
+    eyebrow: string;
     title: string;
     body: string;
     hint: string;
+    startCta: string;
   };
   panel: {
     navigation: string;
@@ -2225,6 +2230,7 @@ export interface Messages {
   };
   shell: {
     navigationAria: string;
+    publicNavigationAria: string;
     start: string;
     searchEntry: string;
     downloadsSection: string;

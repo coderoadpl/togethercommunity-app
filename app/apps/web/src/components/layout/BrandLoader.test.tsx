@@ -1,6 +1,8 @@
+import { ThemeProvider } from '@mui/material/styles';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createThemeForMode, MEMBER_BACKGROUND } from '../../theme.js';
 import { BrandLoader } from './BrandLoader.js';
 
 const stubReducedMotion = (matches: boolean) => {
@@ -35,6 +37,27 @@ describe('BrandLoader', () => {
     render(<BrandLoader caption={<span>Otwieranie przestrzeni…</span>} />);
 
     expect(screen.getByText('Otwieranie przestrzeni…')).toBeInTheDocument();
+  });
+
+  it('draws the mark in the neutral secondary text token instead of a brand colour', () => {
+    stubReducedMotion(false);
+    const theme = createThemeForMode('shadcn', undefined, 'light');
+    render(<ThemeProvider theme={theme}><BrandLoader /></ThemeProvider>);
+
+    expect(screen.getByTestId('brand-loader-core')).toHaveAttribute('fill', theme.palette.text.secondary);
+    expect(screen.getByTestId('brand-loader-ring')).toHaveAttribute('fill', theme.palette.text.secondary);
+    expect(screen.getByTestId('brand-loader-mark').innerHTML).not.toMatch(/#F49A5E|#E8682A/i);
+  });
+
+  it.each(['light', 'dark'] as const)('paints the member background on the member surface (%s)', (scheme) => {
+    stubReducedMotion(false);
+    render(
+      <ThemeProvider theme={createThemeForMode('shadcn', undefined, scheme)}>
+        <BrandLoader surface="member" />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByRole('status')).toHaveStyle({ backgroundColor: MEMBER_BACKGROUND[scheme] });
   });
 
   it('uses the static reduced-motion class and disables both animations', () => {

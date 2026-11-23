@@ -15,7 +15,7 @@ import { ColorSchemeCycleButton } from '../../../components/ui/ColorSchemeSwitch
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { isConfiguredBaseDomainHost } from '../../../lib/tenant.js';
 import { NotificationBell } from '../../../NotificationBell.js';
-import { MEMBER_BOTTOM_BAR_HEIGHT } from '../../../theme.js';
+import { MEMBER_BOTTOM_BAR_HEIGHT, SHELL_TOOLBAR_MIN_HEIGHT } from '../../../theme.js';
 import { MemberAccountMenu } from '../MemberAccountMenu.js';
 import { StudioIcon } from '../account-icons.js';
 import { useCanOpenStudio, useViewerKind } from '../viewer.js';
@@ -31,8 +31,6 @@ import { CourseProgramSheet, MemberMenuSheet } from './MemberMenuSheet.js';
 import { MemberSidebar } from './MemberSidebar.js';
 import { BrandLink, SidebarColumn } from './shell-chrome.js';
 import { ProgramIcon } from './shell-icons.js';
-
-const TOOLBAR_MIN_HEIGHT = 52;
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -227,7 +225,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
 
   if (viewer === 'anonymous') {
     return (
-      <AnonShell>
+      <AnonShell visitorEmail={me.data?.tenantAccess === 'none' ? me.data.email : null}>
         {me.data?.tenantAccess === 'none' ? (
           <ForeignTenantNotice email={me.data.email} hostname={hostname} />
         ) : null}
@@ -243,7 +241,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
         ref={shellRef}
         onFocusCapture={handleMobileFocus}
         onBlurCapture={handleMobileBlur}
-        sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${TOOLBAR_MIN_HEIGHT + 1}px` }}
+        sx={{ display: 'flex', minHeight: '100vh', '--member-app-bar-height': `${SHELL_TOOLBAR_MIN_HEIGHT + 1}px` }}
       >
         {sidebar === null ? null : activeCourseContext === null ? (
           <SidebarColumn component="aside">{sidebar}</SidebarColumn>
@@ -267,7 +265,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
           <AppBar ref={appBarRef} position="sticky">
-            <Toolbar variant="dense" sx={{ minHeight: `${TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
+            <Toolbar variant="dense" sx={{ minHeight: `${SHELL_TOOLBAR_MIN_HEIGHT}px`, px: '1.25rem', gap: '0.75rem' }}>
               {lessonCrumbs === null && (activeCourseContext === null || !isDesktop) ? (
                 <Box sx={{ display: { xs: 'flex', md: 'none' }, flex: '1 1 auto', minWidth: 0 }}>
                   {brand}

@@ -1,21 +1,37 @@
 import { useId, type ReactNode } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import { Link } from '@tanstack/react-router';
 
 import type { PublicOfferOutput } from '#core/contract/index.js';
 
 import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatOfferPriceTerms, formatPrice, type OfferPriceTerms } from '../../lib/format.js';
+import { htmlToPlainText, markdownToPlainText, plainTextExcerpt } from './plain-text.js';
 import { CourseCardRoot, DataValue, EmberCtaLink } from '../../theme.js';
 import { TileSection } from './StartPage.js';
 
 type OfferProduct = PublicOfferOutput['products'][number];
 type OfferSalesLink = PublicOfferOutput['salesLinks'][number];
 
-const offerProductPrices = (product: OfferProduct): OfferPriceTerms[] =>
+export const offerProductPrices = (product: OfferProduct): OfferPriceTerms[] =>
   product.prices.length > 0
     ? product.prices
     : [{ kind: 'one_time', interval: null, amountCents: product.priceCents, currency: product.currency }];
+
+const offerProductSoldOut = (product: OfferProduct): boolean =>
+  product.stock.soldOut && product.variants.every((variant) => variant.soldOut);
+
+export const useOfferPriceFormatter = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const labels = {
+    free: t.common.free,
+    oneTime: t.common.priceOneTime,
+    monthly: t.common.priceMonthly,
+    yearly: t.common.priceYearly,
+  };
+  return (price: OfferPriceTerms) => formatOfferPriceTerms(price, language, labels);
+};
 
 export const uniqueOfferProducts = (products: readonly OfferProduct[]): OfferProduct[] => {
   const seen = new Set<string>();
@@ -47,7 +63,18 @@ const OfferCard = ({
           {heading}
         </Typography>
         {description ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid={`${testId}-description`}
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+            }}
+          >
             {description}
           </Typography>
         ) : null}
@@ -62,21 +89,28 @@ const OfferCard = ({
 
 const ProductOfferCard = ({ product }: { product: OfferProduct }) => {
   const t = useTranslations();
-  const { language } = useLanguage();
+  const formatTerms = useOfferPriceFormatter();
   const prices = offerProductPrices(product);
-  const labels = {
-    free: t.common.free,
-    oneTime: t.common.priceOneTime,
-    monthly: t.common.priceMonthly,
-    yearly: t.common.priceYearly,
-  };
   const free = prices.every((price) => price.amountCents === 0);
+  const soldOut = offerProductSoldOut(product);
   return (
     <OfferCard
       testId={`offer-product-${product.id}`}
       heading={product.title}
-      price={prices.map((price) => formatOfferPriceTerms(price, language, labels)).join(' · ')}
-      renderAction={(headingId) => (
+      description={plainTextExcerpt(htmlToPlainText(product.description))}
+      price={prices.map(formatTerms).join(' · ')}
+      renderAction={(headingId) => soldOut ? (
+        <Button
+          id={`${headingId}-cta`}
+          aria-labelledby={`${headingId}-cta ${headingId}`}
+          variant="outlined"
+          size="small"
+          disabled
+          data-testid={`offer-product-sold-out-${product.id}`}
+        >
+          {t.checkout.soldOut}
+        </Button>
+      ) : (
         <EmberCtaLink
           id={`${headingId}-cta`}
           aria-labelledby={`${headingId}-cta ${headingId}`}
@@ -100,7 +134,7 @@ const SalesLinkOfferCard = ({ salesLink }: { salesLink: OfferSalesLink }) => {
     <OfferCard
       testId={`offer-sales-link-${salesLink.id}`}
       heading={salesLink.heading}
-      description={salesLink.description}
+      description={plainTextExcerpt(markdownToPlainText(salesLink.description))}
       price={formatPrice(salesLink.totalCents, salesLink.currency, language)}
       renderAction={(headingId) => (
         <EmberCtaLink

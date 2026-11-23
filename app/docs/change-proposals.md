@@ -1649,11 +1649,21 @@ progress is recorded follows a course that opens the lesson for them:
   recorded under it when it opens the lesson for the member (for staff, when
   it holds the lesson), otherwise under the first course that opens it; a
   request without `courseId`, as from the CLI or an older player, is recorded
-  under the first course that opens it. The player then shows the completion
-  it wrote;
-- a lesson hit on the search page links into a course of the member's
-  navigation whose tree opens the lesson when there is one, and a course's own
-  discussion search covers only the lessons that course opens.
+  under the first course that opens it. Un-completion also removes the lesson
+  from the member's own progress of the named course when that course holds
+  the lesson but no longer opens it for them, so a completion recorded there
+  while it was open does not come back; a named course that does not hold the
+  lesson, or that belongs to another workspace, is never written. Once the
+  request settles, the player shows the progress the server holds: the course
+  it shows, and the course the request was recorded under when that is
+  another one, each read again from the server;
+- a lesson hit on the search page links only into a course of the member's
+  navigation whose tree opens the lesson. While course trees are still
+  loading, a hit that no loaded tree opens is held back; once loading ends, a
+  hit that no tree opens, including when the tree of the course that would
+  open it failed to load, is listed without a link among the hits whose lesson
+  does not resolve. A course's own discussion search covers only the lessons
+  that course opens.
 
 Releases before this rule pooled exclusions: a module excluded by a `course`
 item for any course stayed closed in every course the member got as a whole,

@@ -161,6 +161,20 @@ describe('Stripe createRefund', () => {
     expect(refundFailureOf(result.error)).toMatchObject({ outcomeUnknown, providerServerError: status >= 500 });
   });
 
+  it.each([
+    ['createRefund', (h: ReturnType<typeof providerOverFetch>) => h.createRefund(refundInput)],
+    ['getRefund', (h: ReturnType<typeof providerOverFetch>) => h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' })],
+    ['listRefunds', (h: ReturnType<typeof providerOverFetch>) => h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })],
+  ] as const)('%s keeps the provider object ids but hides API keys and webhook secrets in the error it returns', async (_name, call) => {
+    const h = providerOverFetch(() => stripeError(401, {
+      message: 'Invalid API Key provided: sk_live_51MARKERsecret00; restricted rk_test_51MARKERsecret01, publishable pk_live_MARKER02, webhook whsec_MARKERsecret03, payment pi_3MARKER04',
+    }));
+    const result = await call(h);
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(result.error.message).not.toMatch(/sk_live_|rk_test_|pk_live_|whsec_|MARKERsecret|MARKER02/);
+    expect(result.error.message).toContain('payment pi_3MARKER04');
+  });
+
   it('maps an unparseable refund response to transient', async () => {
     const h = providerOverFetch(() => stripeJson({ object: 'refund', status: 'weird' }));
     const result = await h.createRefund(refundInput);

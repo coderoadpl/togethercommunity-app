@@ -690,6 +690,19 @@ describe('staff refunds against a real database', () => {
     }]);
   });
 
+  it('keeps an API key from a provider error out of the stored refund, the Studio view and the staff alert', async () => {
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('refund_failed', 'Invalid API Key provided: rk_live_51SYNTHETICmarker99 for charge ch_3Visible01') }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+
+    const [stored] = await database.db.select({ lastError: orderStaffRefunds.lastError }).from(orderStaffRefunds);
+    const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    const outbox = await database.db.select({ payload: emailOutbox.payload }).from(emailOutbox);
+    expect(stored?.lastError).toContain('ch_3Visible01');
+    expect(outbox).toHaveLength(1);
+    for (const sink of [stored?.lastError, JSON.stringify(detail), JSON.stringify(outbox)]) expect(sink).not.toMatch(/rk_live_|SYNTHETICmarker/);
+  });
+
   it('waits on a missing refund permission, refuses a second refund meanwhile and succeeds once the permission is granted', async () => {
     const permissionMissing = refundFailure('permission_missing', 'The provided key does not have the required permissions', 'permission_denied');
     const h = harness({ steps: [{ outcome: 'error', error: permissionMissing }] });

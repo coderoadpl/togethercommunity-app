@@ -61,6 +61,12 @@ const refundFailureDetailsSchema = z.object({
   providerServerError: z.boolean().default(false),
 });
 
+// A refund failure's message is stored on the refund, shown in Studio and copied into staff e-mails, so a key the
+// provider echoes back never gets that far; the provider's object ids stay, because staff look them up.
+const PROVIDER_CREDENTIAL = /\b(?:(?:sk|rk|pk|ek)_(?:live|test)|whsec)_[A-Za-z0-9*]+/gu;
+
+const redactProviderCredentials = (message: string): string => message.replace(PROVIDER_CREDENTIAL, '[credential]');
+
 export const refundFailure = (
   kind: RefundFailureKind,
   message: string,
@@ -68,7 +74,7 @@ export const refundFailure = (
   outcomeUnknown = false,
   providerServerError = false,
 ): AppError =>
-  appError(REFUND_FAILURE_ERROR_CODE[kind], message, { refundFailure: kind, providerCode, outcomeUnknown, providerServerError });
+  appError(REFUND_FAILURE_ERROR_CODE[kind], redactProviderCredentials(message), { refundFailure: kind, providerCode, outcomeUnknown, providerServerError });
 
 export const refundFailureOf = (error: AppError): {
   kind: RefundFailureKind;

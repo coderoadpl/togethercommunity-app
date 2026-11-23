@@ -53,7 +53,7 @@ describe('i18n dictionaries', () => {
     expect(en.account.erasureConfirmLabel).toBe('Retype your email address');
   });
 
-  it('names two-factor authentication and the setup link consistently in the security copy', () => {
+  it('names two-factor authentication and the setup link in English and translates the backup-code and session sign-out labels into Polish', () => {
     expect(en.security.disableTwoFactorConfirm).toContain('two-factor authentication');
     expect(en.security.otpauthUriLabel).toBe('Setup link (advanced)');
     expect(pl.security.backupCodesSaved).not.toBe(en.security.backupCodesSaved);

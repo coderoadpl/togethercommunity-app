@@ -175,7 +175,9 @@ staged file a download file proposal attaches, where a copy comes from and,
 while the proposal is pending, whether it still holds the file and the command
 that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
 server for a 60-second link and streams the file from the storage, without
-printing the link, into a new temporary file next to `--out`
+printing the link, through `fetchProposedFile` of `core/client` (no
+credentials, no redirect followed, and no failure message that repeats the
+link), into a new temporary file next to `--out`
 (`.<name>.partial-<random>`, opened exclusively with mode `0600`, so only the
 account that runs the command can read it, whatever the umask, and so can the
 file moved onto `--out`, also one that replaces a file of another mode with

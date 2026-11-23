@@ -1,7 +1,8 @@
 import { access, link, open, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
-import { appError, err, notFound, ok, unavailable, type AppError, type Result } from '#core/domain/index.js';
+import { fetchProposedFile } from '#core/client/index.js';
+import { appError, err, ok, unavailable, type AppError, type Result } from '#core/domain/index.js';
 
 export interface ProposedFileLink {
   url: string;
@@ -42,15 +43,6 @@ const refusedOverwrite = (out: string): AppError =>
   appError('conflict', `${out} already exists; nothing was downloaded. Pass --force to overwrite it`);
 
 const errorCode = (cause: unknown): unknown => cause instanceof Error && 'code' in cause ? cause.code : undefined;
-
-// The link is a bearer capability, so no message below may carry it or a fetch error that could quote it.
-const fetchLink = async (url: string, fetchImpl: typeof fetch): Promise<Result<Response, AppError>> => {
-  try {
-    return ok(await fetchImpl(url, { redirect: 'error' }));
-  } catch {
-    return err(unavailable('The proposed file could not be downloaded from the storage; nothing was written'));
-  }
-};
 
 const interrupted = (out: string): AppError =>
   unavailable(`The download of the proposed file was interrupted; ${out} was not changed`);
@@ -119,12 +111,8 @@ export const saveProposedFile = async (
   files: ProposedFileSystem = nodeFileSystem,
 ): Promise<Result<SavedProposedFile, AppError>> => {
   if (!force && await files.exists(out)) return err(refusedOverwrite(out));
-  const response = await fetchLink(proposedLink.url, fetchImpl);
-  if (!response.ok) return response;
-  if (response.value.status === 404) return err(notFound('The proposed file is no longer available; approving the proposal changes nothing'));
-  if (!response.value.ok || response.value.body === null) {
-    return err(unavailable(`The storage answered ${String(response.value.status)} for the proposed file; nothing was written`));
-  }
+  const body = await fetchProposedFile(proposedLink.url, fetchImpl);
+  if (!body.ok) return body;
   const temporary = join(dirname(out), `.${basename(out)}.partial-${crypto.randomUUID()}`);
   let handle: ProposedFileHandle;
   try {
@@ -133,7 +121,7 @@ export const saveProposedFile = async (
     return err(unavailable(`Could not open a file next to ${out} for writing; nothing was downloaded`));
   }
   try {
-    const written = await copyBody(response.value.body, handle, proposedLink.sizeBytes, out);
+    const written = await copyBody(body.value, handle, proposedLink.sizeBytes, out);
     if (!written.ok) return written;
     if (written.value !== proposedLink.sizeBytes) {
       return err(unavailable(`The storage sent ${String(written.value)} bytes instead of ${String(proposedLink.sizeBytes)}; ${out} was not changed`));

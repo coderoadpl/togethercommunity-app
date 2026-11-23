@@ -594,17 +594,18 @@ describe('sign-up pages', () => {
 
   it.each([
     ['en', '<p class="signup-consent">By signing up you give Studio Demo this consent: “I want to receive the monthly newsletter from Studio Demo”. We will email you a link to confirm.'],
-    ['pl', '<p class="signup-consent">Zapisując się, wyrażasz wobec nadawcy Studio Demo zgodę o treści: „I want to receive the monthly newsletter from Studio Demo”.'],
+    ['pl', `<p class="signup-consent">${publicMarketingMessagesPl.signupConsent({ tenant: 'Studio Demo', wording: 'I want to receive the monthly newsletter from Studio Demo' })} ${publicMarketingMessagesPl.signupConsentConfirm}`],
   ] as const)('quotes a first-person consent label exactly as recorded in %s', (language, sentence) => {
     const html = renderSignupFormPage({
       nonce: 'test-nonce', brand, language, form: signupForm, wording: '  I want to receive the monthly newsletter from Studio Demo.  ', doubleOptIn: true, thanks: false,
     });
     expect(html).toContain(sentence);
+    expect(html).toMatch(/ [“„]I want to receive the monthly newsletter from Studio Demo”\. /);
   });
 
   it.each([
     ['en', 'https://studio.test/privacy?a="b"&c=<d>', ' More information: <a href="https://studio.test/privacy?a=&quot;b&quot;&amp;c=&lt;d&gt;" target="_blank" rel="noopener noreferrer">privacy and consent details</a></p>'],
-    ['pl', 'http://studio.test/zgody', ' Więcej informacji: <a href="http://studio.test/zgody" target="_blank" rel="noopener noreferrer">szczegóły zgody i przetwarzania danych</a></p>'],
+    ['pl', 'http://studio.test/consents', ` ${publicMarketingMessagesPl.signupConsentDocument} <a href="http://studio.test/consents" target="_blank" rel="noopener noreferrer">${publicMarketingMessagesPl.signupConsentExternalDocument}</a></p>`],
   ] as const)('links an external consent document with a generic %s label', (language, url, link) => {
     const html = renderSignupFormPage({
       nonce: 'test-nonce', brand, language, form: signupForm, wording: 'the monthly newsletter', doubleOptIn: true, thanks: false,

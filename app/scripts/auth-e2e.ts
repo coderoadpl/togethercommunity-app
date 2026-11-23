@@ -5,7 +5,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type Response } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
@@ -44,6 +44,20 @@ class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
 }
+const assertNoBrowserSessionToken = async (response: Response): Promise<void> => {
+  assert(response.status() === 200, `browser password sign-in answered ${response.status()}`);
+  const headers = await response.allHeaders();
+  assert(!('set-auth-token' in headers), 'browser sign-in response carried a set-auth-token header');
+  assert(
+    !(headers['access-control-expose-headers'] ?? '').toLowerCase().includes('set-auth-token'),
+    'browser sign-in response exposed set-auth-token',
+  );
+  const body = z.object({
+    token: z.unknown().optional(),
+    session: z.object({ token: z.unknown().optional() }).optional(),
+  }).parse(await response.json());
+  assert(body.token === undefined && body.session?.token === undefined, 'browser sign-in response body carried the session token');
+};
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
   try {
@@ -318,7 +332,12 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     });
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+    const signInResponse = page.waitForResponse(
+      (response) => new URL(response.url()).pathname.endsWith('/sign-in/email') && response.request().method() === 'POST',
+      { timeout: 15000 },
+    );
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
+    await assertNoBrowserSessionToken(await signInResponse);
     await page.waitForURL('**/start', { timeout: 15000 });
     await page.goto(`${webBaseUrl}/panel`, { waitUntil: 'networkidle' });
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });

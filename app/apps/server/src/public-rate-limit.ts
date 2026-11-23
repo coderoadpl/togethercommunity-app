@@ -40,6 +40,10 @@ export interface PublicRateLimitPolicies {
   deepHealthPerIp: RateLimitWindow;
   signupsPerIp: RateLimitWindow;
   signupsPerEmail: RateLimitWindow;
+  parcelLockerLookupsPerIp: RateLimitWindow;
+  parcelLockerLookupsPerTenant: RateLimitWindow;
+  parcelLockerLookupsGlobal: RateLimitWindow;
+  parcelLockerLookupsPublic: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -65,6 +69,10 @@ const PRODUCTION_LIMITS = {
   deepHealthPerIp: 12,
   signupsPerIp: 10,
   signupsPerEmail: 3,
+  parcelLockerLookupsPerIp: 30,
+  parcelLockerLookupsPerTenant: 600,
+  parcelLockerLookupsGlobal: 1_200,
+  parcelLockerLookupsPublic: 600,
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
@@ -79,6 +87,10 @@ const DEVELOPMENT_LIMITS = {
   deepHealthPerIp: 1_200,
   signupsPerIp: 1_000,
   signupsPerEmail: 100,
+  parcelLockerLookupsPerIp: 3_000,
+  parcelLockerLookupsPerTenant: 60_000,
+  parcelLockerLookupsGlobal: 120_000,
+  parcelLockerLookupsPublic: 60_000,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -97,10 +109,16 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES'
->;
+> & Partial<Pick<Env, 'PAYMENT_PROVIDER'>>;
+
+export const wiresRealPickupPointDirectory = (env: { PAYMENT_PROVIDER?: Env['PAYMENT_PROVIDER'] | undefined }): boolean =>
+  env.PAYMENT_PROVIDER === 'stripe';
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
+  const parcelLockers = isProductionEnvironment(env) || wiresRealPickupPointDirectory(env)
+    ? PRODUCTION_LIMITS
+    : DEVELOPMENT_LIMITS;
   return {
     redirectHitsPerRedirect: {
       limit: env.PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE
@@ -146,6 +164,10 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       limit: env.PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE ?? fallback.deepHealthPerIp,
       windowMs: MINUTE_MS,
     },
+    parcelLockerLookupsPerIp: { limit: parcelLockers.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
+    parcelLockerLookupsPerTenant: { limit: parcelLockers.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
+    parcelLockerLookupsGlobal: { limit: parcelLockers.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
+    parcelLockerLookupsPublic: { limit: parcelLockers.parcelLockerLookupsPublic, windowMs: MINUTE_MS },
   };
 };
 
@@ -157,6 +179,8 @@ const AUTH_LINK_PATHS = new Set<string>([
 ]);
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
+
+const PARCEL_LOCKER_PATH_PATTERN = /^\/api\/public\/parcel-lockers\/[^/]+$/;
 
 export const claimCouponPreview = async (c: Context, tenantId: string, deps: PublicRateLimitMiddlewareDeps): Promise<boolean> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
@@ -263,6 +287,20 @@ const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimit
       limiter,
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
+  }
+  if (c.req.method === 'GET' && PARCEL_LOCKER_PATH_PATTERN.test(c.req.path)) {
+    const perIp = await claimRateLimitWindow(
+      { scope: 'parcel-locker:ip', key: clientIp(), window: policies.parcelLockerLookupsPerIp },
+      limiter,
+    );
+    if (!perIp.ok) return rateLimitedResponse(perIp.error);
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok || tenant.value === null) return null;
+    const perTenant = await claimRateLimitWindow(
+      { scope: 'parcel-locker:tenant', key: tenant.value.tenant.id, window: policies.parcelLockerLookupsPerTenant },
+      limiter,
+    );
+    return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
   }
   if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;

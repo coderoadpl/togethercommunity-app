@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { QueryClient } from '@tanstack/query-core';
 
 import {
   lessonPlaybackVideoSchema,
@@ -7,7 +8,8 @@ import {
 } from '#core/contract/index.js';
 import { ok, type AppError, type Result } from '#core/domain/index.js';
 
-import { ApiError, createApiClient, unwrap } from './http.js';
+import { ApiError, apiFailureSource, createApiClient, unwrap } from './http.js';
+import { publicParcelLockerQuery } from './queries.js';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -688,6 +690,46 @@ it.each(['pending', 'paid'] as const)('requests public checkout status %s with a
 
   await expect(client.publicCheckoutSessionStatus('cs_test_one&other=value', controller.signal))
     .resolves.toEqual(ok({ status }));
+});
+
+it('looks a parcel locker up by its encoded code alone', async () => {
+  const fetchImpl: typeof fetch = async (input, init) => {
+    expect(input).toBe('https://api.example.test/api/public/parcel-lockers/WAW01M%3Fx%3D1');
+    expect(init?.method).toBe('GET');
+    expect(init?.body).toBeNull();
+    return jsonResponse({ ok: true, data: { status: 'unavailable' } });
+  };
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+  await expect(client.publicParcelLocker('WAW01M?x=1')).resolves.toEqual(ok({ status: 'unavailable' }));
+});
+
+it('marks a parcel locker lookup that never reached the server as a network-stage failure and a server refusal as server-stage', async () => {
+  const offline = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  const unreachable = await offline.publicParcelLocker('WAW01M');
+  expect(unreachable.ok ? null : apiFailureSource(unreachable.error)).toBe('network');
+  const refusing = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => jsonResponse({ ok: false, error: { code: 'rate_limited', message: 'Slow down' } }, 429),
+  });
+  const refused = await refusing.publicParcelLocker('WAW01M');
+  expect(refused.ok ? null : apiFailureSource(refused.error)).toBe('server');
+});
+
+it('asks for a failed parcel locker lookup once even when the query client retries by default', async () => {
+  let requests = 0;
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => {
+      requests += 1;
+      throw new TypeError('Failed to fetch');
+    },
+  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } });
+  const lookup = publicParcelLockerQuery(client, 'WAW01M');
+  expect(lookup.meta).toEqual({ background: true });
+  await expect(queryClient.fetchQuery(lookup)).rejects.toThrow();
+  expect(requests).toBe(1);
 });
 
 it('rejects checkout status responses containing extra data', async () => {

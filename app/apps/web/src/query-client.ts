@@ -1,6 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '#core/client/index.js';
+import { ApiError, apiFailureSource } from '#core/client/index.js';
 
 import { reportError } from './observability.js';
 import { refreshToastStore } from './refresh-toast.js';
@@ -21,8 +21,16 @@ const isExpectedAnonymousMe = (error: unknown, queryKey: readonly unknown[]): bo
   queryKey.length === 1 &&
   queryKey[0] === 'me';
 
+const EXPECTED_PARCEL_LOCKER_REFUSALS = new Set(['rate_limited', 'not_found']);
+
+const isExpectedParcelLockerRefusal = (error: unknown, queryKey: readonly unknown[]): boolean =>
+  error instanceof ApiError &&
+  (EXPECTED_PARCEL_LOCKER_REFUSALS.has(error.appError.code) || apiFailureSource(error.appError) === 'network') &&
+  queryKey[0] === 'parcel-locker';
+
 const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): boolean =>
-  isExpectedMissingTenant(error, queryKey) || isExpectedAnonymousMe(error, queryKey);
+  isExpectedMissingTenant(error, queryKey) || isExpectedAnonymousMe(error, queryKey) ||
+  isExpectedParcelLockerRefusal(error, queryKey);
 
 /**
  * QueryCache is the single global error surface (one notice per failing query,
@@ -30,6 +38,8 @@ const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): b
  * id) when configured, except for expected anonymous/public misses. With data
  * already on screen we keep it and toast the refresh failure; with no data the
  * query's local render or the root error boundary handles it.
+ * Parcel locker lookup failures are expected: the page treats them as an
+ * unavailable carrier and the server decides at checkout.
  */
 const queryCache = new QueryCache({
   onError: (error, query) => {

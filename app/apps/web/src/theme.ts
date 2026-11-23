@@ -2832,14 +2832,18 @@ export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
   fontWeight: 600,
 }));
 
-export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
+export const CheckoutFieldset = styled('fieldset')({ border: 0, margin: 0, padding: 0, minWidth: 0 });
+
+export const CheckoutLockerChosen = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'rejected',
+})<{ rejected?: boolean }>(({ rejected = false, theme }) => ({
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'space-between',
   alignSelf: 'stretch',
   gap: '0.75rem',
   padding: '0.5rem 0.5rem 0.5rem 0.875rem',
-  border: `1px solid ${theme.palette.divider}`,
+  border: `1px solid ${rejected ? theme.palette.error.main : theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
 }));
 
@@ -2852,6 +2856,15 @@ export const CheckoutLockerChosenCaption = styled(Typography)(({ theme }) => ({
 }));
 
 export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerRejection = styled(Typography)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.25rem',
+  color: theme.palette.error.main,
+  overflowWrap: 'anywhere',
+  '& svg': { flex: 'none', width: '1rem', height: '1rem', marginTop: '0.125rem', color: theme.palette.error.main },
+}));
 
 export const CheckoutLockerDialog = styled(Dialog)({
   '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },

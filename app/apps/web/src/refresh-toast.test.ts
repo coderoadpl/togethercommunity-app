@@ -7,6 +7,18 @@ import { refreshToastStore } from './refresh-toast.js';
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 vi.mock('./observability.js', () => ({ reportError }));
 
+const { networkStage } = vi.hoisted(() => ({ networkStage: new WeakSet<object>() }));
+vi.mock(import('#core/client/index.js'), async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, apiFailureSource: (error) => (networkStage.has(error) ? 'network' : actual.apiFailureSource(error)) };
+});
+
+const networkFailure = (message: string): ApiError => {
+  const error = new ApiError({ code: 'internal', message });
+  networkStage.add(error.appError);
+  return error;
+};
+
 const { queryClient } = await import('./query-client.js');
 
 const failingQuery = async (error: Error): Promise<never> => {
@@ -41,6 +53,38 @@ describe('query retry policy', () => {
       queryClient.fetchQuery({ queryKey: ['retry', label], queryFn, retryDelay: 0 }),
     ).rejects.toThrow(error.message);
     expect(queryFn).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('error reporting policy', () => {
+  it.each(['rate_limited', 'not_found'] as const)('does not report a parcel locker lookup the server refused as %s', async (code) => {
+    await expect(queryClient.fetchQuery({
+      queryKey: ['parcel-locker', 'WAW01M'],
+      queryFn: () => failingQuery(new ApiError({ code, message: `${code} refusal` })),
+      retry: false,
+    })).rejects.toThrow(`${code} refusal`);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('does not report a parcel locker lookup that never reached the server, but reports the same failure on another query', async () => {
+    const lookup = networkFailure('Lookup never left the browser');
+    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: () => failingQuery(lookup), retry: false }))
+      .rejects.toThrow('Lookup never left the browser');
+    expect(reportError).not.toHaveBeenCalled();
+    const elsewhere = networkFailure('Payment config never left the browser');
+    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: () => failingQuery(elsewhere), retry: false }))
+      .rejects.toThrow('Payment config never left the browser');
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(elsewhere);
+  });
+
+  it('still reports an unexpected parcel locker lookup failure and the same refusal on another query', async () => {
+    const unexpected = new ApiError({ code: 'internal', message: 'Lookup broke' });
+    await expect(queryClient.fetchQuery({ queryKey: ['parcel-locker', 'WAW01M'], queryFn: () => failingQuery(unexpected), retry: false }))
+      .rejects.toThrow('Lookup broke');
+    const elsewhere = new ApiError({ code: 'not_found', message: 'Missing elsewhere' });
+    await expect(queryClient.fetchQuery({ queryKey: ['payment-config'], queryFn: () => failingQuery(elsewhere), retry: false }))
+      .rejects.toThrow('Missing elsewhere');
+    expect(reportError.mock.calls).toEqual([[unexpected], [elsewhere]]);
   });
 });
 

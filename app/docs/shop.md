@@ -73,6 +73,45 @@ short reason when there is one. The pay button stays disabled until an option,
 and a valid code when the option needs one, is chosen, and a line under the
 button says which of the two is missing.
 
+A typed code is checked at the carrier through the
+[parcel locker lookup](#parcel-locker-lookup-at-the-carrier) when the buyer
+leaves the code field and again when the form is submitted, through the bound
+`actions.publicParcelLocker` query (no vendor script, so the check works the
+same for staff sessions and test mode). A polite live region under the field
+(`role="status"`) says **Checking the parcel locker code…** while the carrier
+is asked, then shows **Parcel locker found** with the code, the locker name and
+its address, or one error, behind an exclamation-circle glyph, for a code the
+carrier does not know, a point where parcels cannot be collected, or a locker
+that is not operating. While that line is shown it is the first line under the
+field and the example hint is hidden; the hint is shown for an empty field,
+before the code is checked, or when the carrier cannot be asked, and becomes
+the format error for a
+malformed code. The field's `aria-describedby` names only the line that is
+shown. On an error the field and its label turn red and the field is marked
+`aria-invalid`, the pay button stays disabled and the line under it reads
+**Choose another parcel locker or type another code to go to payment.** (the
+hosted cart page shows the same line under its button); editing the code
+clears the verdict, and so does an answer for a code the field no longer shows. When the carrier cannot be
+asked (it is down, the lookup is rate-limited or the workspace answer is
+refused) the page shows nothing and lets the buyer pay, because the server
+accepts the code as unverified. The page asks its own server once per lookup,
+without retries. A code chosen on the map is never looked up by the page. When
+the server still refuses the locker on checkout start or on a simulated
+purchase, the page shows its reason once: under the field, or under the
+selected point for a map choice (a `role="alert"` line, and the box takes the
+error border), never again in an alert by the pay button. A preview answer that
+arrives after that refusal does not replace it. The pay button stays disabled
+until the buyer changes the locker. The submit-time check runs only when the chosen
+delivery option needs a locker. While it runs the form is locked and the pay
+button shows its pending label; the payment then starts from the form as it is
+at that moment, and does not start when the locker, the form, the payable
+amount, the currency or the payment mode changed. The page waits at most five
+seconds for that check; after that it leaves the decision to the server and
+starts the payment, and a later answer never starts it again. The lookup runs
+also when the browser reports being offline, so the check never pauses. Focus
+and keyboard rules of the page do not change: Enter in the code field still
+does not submit the form.
+
 ### Parcel locker picker
 
 The map never sits inside the checkout page. `LockerPicker` in
@@ -201,8 +240,9 @@ days, and otherwise keeps its own layout, a
 plain list of delivery options with the parcel locker block (**Choose a parcel
 locker** or the chosen locker, and **I know the code**) directly under the
 locker option, before the next option.
-The locker name and address stored on the order are as entered by the buyer;
-only the code is validated, and staff pack by the code. When the buyer reaches
+The locker stored on the order carries the carrier's canonical code, name and
+address whenever the carrier answered, see
+[Parcel locker lookup at the carrier](#parcel-locker-lookup-at-the-carrier). When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
 keeps that page's content security policy, the map does not load, the picker
 says so, and the code input remains the way to choose a locker.
@@ -218,6 +258,9 @@ The server validates it again:
 | unknown or inactive option | `validation` |
 | locker option without a locker, or address option with one | `validation` |
 | locker code not matching `^[A-Z0-9]{4,12}$` after trimming and upper-casing | `validation` |
+| locker code the carrier does not know | `validation` with the message `No InPost parcel locker has this code` and `details.pickupPointReason: 'not_found'` |
+| carrier point that is not a parcel locker or cannot hold parcels for collection | `validation`, `This InPost point cannot hold parcels for collection`, `not_usable` |
+| carrier point that is not operating | `validation`, `This InPost parcel locker is not operating`, `not_operating` |
 | order total, shipping fee included, is zero (a free or fully discounted product with a zero-fee option) | `validation` with the message `Delivery is not available for free orders`, returned before any checkout snapshot or coupon session is written; the checkout page shows it as a localized message |
 
 The zero-total rule exists because a free order never reaches Stripe, so
@@ -238,6 +281,79 @@ one shipping option (`shipping_rate_data` with a fixed amount, the option label
 as `display_name`, `tax_behavior: 'inclusive'` and the optional business-day
 estimate), plus `shipping_address_collection` limited to the allowed countries
 and `phone_number_collection`. See [Payments](payments.md#shipping-in-stripe-checkout).
+
+### Parcel locker lookup at the carrier
+
+Every checkout path that accepts a parcel locker (single product, sales link and
+cart, which meet in `withCheckoutShipping` in
+`core/server/usecases/checkout-selection.ts`, and the simulated purchase) asks
+the carrier about the code through the `PickupPointDirectory` port before any
+checkout snapshot, consent capture, coupon session, stock reservation or payment
+session is written. Coupon validation previews and the direct sales-link
+handoff ignore delivery and never ask the carrier; the direct handoff refuses
+shipped products anyway.
+
+The production adapter (`adapters/shipx/points.ts`) calls the public ShipX
+Points resource `GET https://api-shipx-pl.easypack24.net/v1/points/<code>`,
+which needs no authentication, with a fixed host for live and test mode alike
+(the codes are real lockers), the normalized code URL-encoded as the only
+variable part, a 3-second timeout, no retries and no redirects. Carrier
+documentation:
+[Points 1.23.0](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/28639230/1.23.0+Points)
+and [the points field reference](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/18153470);
+the newer token-gated `api.inpost.pl` points gateways are not used. The adapter
+parses the answer strictly: an HTTP 200 body
+`{"status":404,"key":"point_not_found"}` and a real HTTP 404 mean not found; any
+other status, a timeout, a network error, a body that does not parse or an
+answer for another point mean the carrier is unavailable. Recorded answers live
+in `adapters/shipx/fixtures/point-*.json`: `point-operating.json` and
+`point-not-found.json` keep the recorded shape of real answers with every
+human-language value (address, location description, display name) replaced by
+an English placeholder, and the `*.derived.json` files change only `status`,
+`type` or `functions`.
+
+A point is usable only when `status` is exactly `Operating` (`NonOperating`,
+`Disabled`, `Removed` and any other value refuse it), its `type` includes
+`parcel_locker` and its `functions` include `parcel_collect`
+(`inpostPointRejection` in `core/domain/shipping.ts`). This is what the map
+offers with `config="parcelCollect"`, so InPost partner pickup points that hold
+parcels for collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
+are accepted as on the map; the shipment still requests `inpost_locker_standard`,
+and InPost switches a partner pickup point target to
+`inpost_locker_customer_service_point` on its side. A usable point replaces what
+the client sent with the carrier's canonical code, the location description as
+the name and `address.line1, address.line2` as the address, built by
+`pickupPointDetails`, the same function that reads a map choice.
+
+When the carrier cannot be asked, the sale is not blocked: the code is kept as
+the buyer typed it and the stored pickup point gains `verified: false`, which
+Studio shows as **Locker not verified**. There is no staff e-mail for new
+orders, so the note appears only in Studio. Alternative considered: block
+payment when the locker cannot be verified.
+
+The page uses `GET /api/public/parcel-lockers/<code>`: it resolves the workspace
+like the other public checkout routes, refuses a code that does not match the
+pattern with `validation` before any carrier call, answers `not_found` without
+a carrier call when the workspace has no active parcel locker option, and
+otherwise returns `{ status: 'found', code, name, address, usable, reason }`,
+`{ status: 'not_found' }` or `{ status: 'unavailable' }` with
+`Cache-Control: no-store`. It never forwards a query string or another path. It
+is same-origin only (no open CORS) and limited per client address (30 per
+minute in production), per workspace (600 per minute) and across the platform
+(1,200 per minute for every carrier call, of which the page's lookups may use
+600), see
+[Security](security.md#parcel-locker-lookup).
+
+The directory follows the payment provider: a deployment with
+`PAYMENT_PROVIDER=stripe` (production and any staging that runs Stripe test
+mode) asks InPost, and one with `PAYMENT_PROVIDER=fake` (development,
+end-to-end runs and the smoke gate) uses the fake directory in
+`adapters/shipx/fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
+`CLOSED01` is not operating, `SENDONLY1` is a send-only point, `OUTAGE01`
+simulates the carrier being down, and every other code, such as `MISSING1`, is
+not found. The lookup limits above follow the directory too: every deployment
+that asks InPost, staging included, uses the production figures, and only one
+with the fake directory uses the higher development values.
 
 ## Order data
 
@@ -260,10 +376,21 @@ total check compares `amount_total + amount_discount` with the sum of all
 snapshot lines, shipping included. The paid order stores:
 
 - `orders.lines` with the shipping line last;
-- `orders.shipping`: the frozen option, the pickup point or `null`, the
+- `orders.shipping`: the frozen option, the pickup point or `null` (with
+  `verified: false` only when the carrier could not be asked), the
   delivery address (`name`, `line1`, `line2`, `postalCode`, `city`, `country`)
   and the phone number collected by Stripe;
 - `orders.fulfilment_status = 'to_pack'`. Orders without shipping keep `null`.
+
+Rollback: the unverified mark is one optional key, written only when the carrier
+could not be asked, in the same JSONB pickup point object of
+`checkout_snapshots.shipping` and `orders.shipping`; no migration adds it. Every
+schema the previous release uses to read stored orders, checkout snapshots,
+fulfilment views and e-mail payloads is non-strict, so that release reads such a
+row and drops the key, and e-mail payloads never carry it
+(`orderDeliveryDetails` copies only the code, name and address).
+`core/domain/shipping-rollback.test.ts` holds a literal copy of the previous
+release's shipping schemas and proves they parse what this release writes.
 
 Every consumer that grants or revokes access, issues physical lines, lists My
 products or enrols products skips the shipping line. Coupons discount product
@@ -298,7 +425,8 @@ is shown below that line, see [Fulfilment](#fulfilment).
 ## Studio
 
 The order detail page shows a **Delivery** card (option, price, locker,
-address, phone) and a fulfilment chip (**To pack** or **Shipped**). The orders
+address, phone, and a **Locker not verified** warning for a pickup point stored
+with `verified: false`) and a fulfilment chip (**To pack** or **Shipped**). The orders
 list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,

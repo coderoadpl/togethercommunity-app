@@ -395,12 +395,14 @@ the delivery options and the stored order data.
 A webhook endpoint registered with an `api_version` receives events rendered
 in that version; an endpoint registered without one receives events in the
 account's default API version at the time the event was created, and a retry
-delivers the same payload. Registration in the payment configuration creates
-the endpoint without an `api_version`, so every tenant endpoint follows the
-account default version, which on an older account can be years old. The
-webhook therefore reads every known location of the fields it uses (delivery
-address, phone, shipping fee, invoice subscription and payment references,
-subscription period end) instead of trusting one version.
+delivers the same payload. The `api_version` of an endpoint cannot be changed
+after it is created. Registration in the payment configuration pins every
+endpoint it creates from this release on to the API version of the installed
+Stripe library. An endpoint registered before that has no `api_version` and
+keeps following the account default version, which on an older account can be
+years old. The webhook therefore still reads every known location of the fields
+it uses (delivery address, phone, shipping fee, invoice subscription and payment
+references, subscription period end) instead of trusting one version.
 
 To check an account, open Stripe Dashboard → Developers (Workbench) → Webhooks, select the
 Together endpoint (`/api/webhooks/stripe/<tenantId>`, `?mode=test` for the test

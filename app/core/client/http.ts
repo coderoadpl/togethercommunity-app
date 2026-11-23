@@ -248,6 +248,7 @@ import {
   publicNavigationOutputSchema,
   publicOfferOutputSchema,
   publicPaymentConfigOutputSchema,
+  publicParcelLockerOutputSchema,
   publicCheckoutSessionStatusOutputSchema,
   stripeTestSessionOutputSchema,
   stripeTestRemoveOutputSchema,
@@ -1197,6 +1198,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.publicPaymentConfig.method,
       API_ROUTES.publicPaymentConfig.path,
       publicPaymentConfigOutputSchema,
+      undefined,
+      signal,
+    ),
+  publicParcelLocker: (code: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicParcelLocker.method,
+      API_ROUTES.publicParcelLocker.path.replace(':code', encodeURIComponent(code)),
+      publicParcelLockerOutputSchema,
       undefined,
       signal,
     ),

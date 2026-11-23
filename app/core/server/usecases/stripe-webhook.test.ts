@@ -3832,6 +3832,16 @@ describe('shipped checkout fulfilment', () => {
     expect(h.grants.size).toBe(0);
   });
 
+  it('rejects a shipped payment that reports neither a shipping cost nor a session total', async () => {
+    const h = shippedPayment();
+    h.session.shippingCostCents = null;
+    h.session.amountTotalCents = null;
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(
+      err(validation('Checkout shipping cost is missing and the session total does not confirm its shipping line')),
+    );
+    expect(h.orders).toHaveLength(0);
+  });
+
   it('accepts a shipped payment whose event carries no shipping amount when the session total matches every line', async () => {
     const h = shippedPayment();
     h.session.shippingCostCents = null;

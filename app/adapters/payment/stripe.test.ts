@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 
 import {
+  STRIPE_WEBHOOK_API_VERSION,
   STRIPE_WEBHOOK_EVENTS,
   createStripePaymentProvider,
   stripeCancelAlreadySettled,
@@ -139,7 +140,12 @@ describe('configureWebhook', () => {
     const body = new URLSearchParams(await request.text());
     expect(body.get('url')).toBe(webhookUrl);
     expect(body.get('metadata[tenantId]')).toBe('tenant-1');
+    expect(body.get('api_version')).toBe('2025-09-30.clover');
     expect(STRIPE_WEBHOOK_EVENTS.every((event) => [...body.values()].includes(event))).toBe(true);
+  });
+
+  it('pins new endpoints to the API version of the installed Stripe library', () => {
+    expect(STRIPE_WEBHOOK_API_VERSION).toBe(Stripe.API_VERSION);
   });
 
   it('replaces the tenant endpoints of the same slot and preserves the other slot and other tenants', async () => {

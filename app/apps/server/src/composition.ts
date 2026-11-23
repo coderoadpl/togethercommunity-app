@@ -30,12 +30,13 @@ import { createOrderVerificationRepository } from '#adapters/db/order-verificati
 import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
-import { createFakeShipxClient } from '#adapters/shipx/fake.js';
+import { createFakePickupPointDirectory, createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, withPickupPointLookupBudget, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -425,7 +426,7 @@ import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesce
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
-import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { selectPublicRateLimitPolicies, wiresRealPickupPointDirectory, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
@@ -562,6 +563,7 @@ export interface AppDeps {
   orderPersonalizations?: OrderPersonalizationRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
+  pickupPoints?: PickupPointDirectory;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -993,6 +995,7 @@ export const createDeps = (
     env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
   const notificationRepository = createNotificationRepository(db);
   const publicRateLimitBuckets = createPublicRateLimitRepository(db);
+  const publicRateLimitPolicies = selectPublicRateLimitPolicies(env);
   const tenantRepositoryOptions = singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
@@ -1636,6 +1639,10 @@ export const createDeps = (
       shipxSettings: createShipxSettingsRepository(db),
       wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
+    pickupPoints: withPickupPointLookupBudget(
+      wiresRealPickupPointDirectory(env) ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
+      { buckets: publicRateLimitBuckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
+    ),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
@@ -1679,7 +1686,7 @@ export const createDeps = (
     importHourlyValidationRecordLimit: env.IMPORT_HOURLY_VALIDATION_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
-    publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
+    publicRateLimitPolicies,
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
       perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,

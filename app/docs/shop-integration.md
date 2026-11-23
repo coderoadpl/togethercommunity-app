@@ -303,6 +303,12 @@ allow open CORS without credentialed requests:
 | `/api/public/checkout/session` | `POST`, `OPTIONS` | Create the checkout handoff |
 | `/api/public/checkout/session-status?session_id=<stripe-session-id>` | `GET`, `OPTIONS` | `pending`, `paid` or `cancelled` status, not buyer/address details |
 
+The parcel locker lookup the Together checkout page uses,
+`GET /api/public/parcel-lockers/<code>`, is same-origin only and not part of this
+table; a storefront on another origin sends the locker code with the checkout
+request and the server checks it there (see
+[the shop guide](shop.md#parcel-locker-lookup-at-the-carrier)).
+
 The allowed request headers are `x-tenant, content-type, if-none-match`, not
 Authorization or API-key headers. Never widen authenticated-origin rules or send
 a staff token to the storefront. The separate

@@ -273,7 +273,7 @@ export interface AvatarImageProcessor {
   }): Promise<Result<void, AppError>>;
 }
 
-export interface ProductAccessWriteOptions {
+interface ProductAccessWriteOptions {
   archivedCourses?: 'refuse' | 'write';
 }
 

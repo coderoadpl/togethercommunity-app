@@ -3355,8 +3355,11 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   lockForPublication(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
   /** Whether an applied proposal of the workspace carries this address in its input. */
   inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
-  /** Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone. */
-  claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[]): Promise<boolean>;
+  /**
+   * Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone,
+   * or, with `dueBefore`, when one is no longer due: its last unresolved delete, or else its start, is not before it.
+   */
+  claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], dueBefore?: string): Promise<boolean>;
   /** Deletes every publication record of the attempt, so they disappear exactly when the transaction commits. */
   settlePublications(tenantId: string, attemptId: string): Promise<void>;
   deletePublication(tenantId: string, attemptId: string, image: ProposalImageReference): Promise<void>;

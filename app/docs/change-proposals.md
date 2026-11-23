@@ -1270,7 +1270,9 @@ A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
 stays, and the minute sweep retries it: it removes every record whose start,
 or whose last delete without a definite answer, is more than 10 minutes ago,
-under the same lock, always deleting its object with the same
+under the same lock, where it checks again that the record is still due: a
+record another sweep marked after this one listed it is left as it is, with no
+storage request and no change to the record. It always deletes its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
 remove for the next run, with the time of that attempt, so it moves behind the

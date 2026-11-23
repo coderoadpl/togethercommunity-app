@@ -363,8 +363,8 @@ const catalogRepositoriesOver = (
       },
       inAppliedProposal: async (tenantId, path) => store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied'
         && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => proposalImagePublicPath(image) === path)),
-      claimPublications: async (tenantId, attemptId, images) =>
-        images.every((image) => store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))),
+      claimPublications: async (tenantId, attemptId, images, dueBefore) => images.every((image) => store.imagePublications.some((row) =>
+        samePublication(row, tenantId, attemptId, image) && (dueBefore === undefined || (row.deleteUnresolvedAt ?? row.startedAt) < dueBefore))),
       settlePublications: async (tenantId, attemptId) => {
         removeWhere(store.imagePublications, (row) => row.tenantId === tenantId && row.attemptId === attemptId);
       },

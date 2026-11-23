@@ -150,6 +150,9 @@ const publicationOf = (tenantId: string, attemptId: string, image: ProposalImage
   eq(changeProposalImagePublications.extension, image.extension),
 );
 
+const publicationDueBefore = (startedBefore: string): SQL =>
+  sql`coalesce(${changeProposalImagePublications.deleteUnresolvedAt}, ${changeProposalImagePublications.startedAt}) < ${startedBefore}`;
+
 export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks => ({
   ...liveUseOver(executor),
   lockForPublication: (tenantId, apiKeyId, image) => findUnreleased(executor, tenantId, apiKeyId, image, 'share'),
@@ -163,10 +166,13 @@ export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks
       or(...fields.map(({ operation, field }) => and(eq(changeProposals.operation, operation), sql`${changeProposals.input} ->> ${field}::text = ${path}`))),
     )).limit(1)).length > 0;
   },
-  claimPublications: async (tenantId, attemptId, images) => {
+  claimPublications: async (tenantId, attemptId, images, dueBefore) => {
     if (images.length === 0) return true;
     const claimed = await executor.select({ kind: changeProposalImagePublications.kind }).from(changeProposalImagePublications)
-      .where(or(...images.map((image) => publicationOf(tenantId, attemptId, image)))).for('update');
+      .where(and(
+        or(...images.map((image) => publicationOf(tenantId, attemptId, image))),
+        dueBefore === undefined ? undefined : publicationDueBefore(dueBefore),
+      )).for('update');
     return claimed.length === images.length;
   },
   settlePublications: async (tenantId, attemptId) => {
@@ -233,9 +239,6 @@ const uploadDue = (createdBefore: string, deletedBefore: string): SQL | undefine
 );
 
 const publicationWaiting = sql`coalesce(${changeProposalImagePublications.sweepAttemptedAt}, ${changeProposalImagePublications.startedAt})`;
-
-const publicationDueBefore = (startedBefore: string): SQL =>
-  sql`coalesce(${changeProposalImagePublications.deleteUnresolvedAt}, ${changeProposalImagePublications.startedAt}) < ${startedBefore}`;
 
 export const createQuarantinedImageRepository = (db: Db, options: ChangeProposalBoundOptions = {}): QuarantinedImageRepository => {
   const bounds = changeProposalBounds(options);

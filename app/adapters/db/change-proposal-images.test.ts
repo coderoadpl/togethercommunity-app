@@ -501,6 +501,47 @@ describe('public copies of an approval that did not end applied', () => {
     }
   });
 
+  it('lets a sweep that listed a record before another sweep marked its delete send nothing and leave the mark', async () => {
+    const harness = endToEnd();
+    const publicKey = `image-assets/${TENANT}/product-cover/${digestOf(1)}.png`;
+    harness.objects.objects.set(publicKey, { bytes: PNG_BYTES, contentType: 'image/png' });
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-crashed', [image(1)], NOW);
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
+    const deletes: string[] = [];
+    const deleteObject = harness.objects.storage.delete;
+    const deps = {
+      ...harness.deps,
+      storage: {
+        ...harness.objects.storage,
+        delete: async (input: Parameters<typeof deleteObject>[0]) => {
+          deletes.push(input.url);
+          return deletes.length === 1 ? err(integrationUnavailable('Could not reach S3.: the storage request deadline passed')) : deleteObject(input);
+        },
+      },
+    };
+    const holder = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    await observer.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [`change-proposal-transaction:${TENANT}`]);
+      const sweeps = [sweepQuarantinedImages(deps), sweepQuarantinedImages(deps)];
+      for (const deadline = Date.now() + 10_000; await lockWaiters(observer) < 2;) {
+        if (Date.now() > deadline) throw new Error('The two sweeps never both waited');
+      }
+      await holder.query('commit');
+      await Promise.all(sweeps);
+    } finally {
+      await holder.end();
+      await observer.end();
+    }
+    expect(deletes).toHaveLength(1);
+    expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
+    expect(await database.db.select({ unresolvedAt: changeProposalImagePublications.deleteUnresolvedAt }).from(changeProposalImagePublications))
+      .toEqual([{ unresolvedAt: expect.any(String) }]);
+  });
+
   it('writes nothing when the record of its attempt is gone by the time it holds the lock', async () => {
     const harness = endToEnd();
     const { id } = await harness.proposeCover(PNG_BYTES);

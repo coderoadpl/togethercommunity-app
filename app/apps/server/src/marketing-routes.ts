@@ -706,6 +706,10 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       }
       return tokenFailurePage(c, resolved.value.tenant, token, result.error);
     }
+    if (result.value.subscriptionsRefused) {
+      const { language } = await publicPageContext(deps, resolved.value.tenant, c.req.raw);
+      return c.redirect(`/u/${encodeURIComponent(token)}?lang=${language}&notice=subscriptions-refused`, 303);
+    }
     return html(renderPreferenceResultPage({
       nonce: pageNonce(c),
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
@@ -732,6 +736,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
       ...await publicPageContext(deps, resolved.value.tenant, c.req.raw),
       token: c.req.param('token'),
       ...preferences.value,
+      subscriptionsRefused: c.req.query('notice') === 'subscriptions-refused',
     }));
   });
 

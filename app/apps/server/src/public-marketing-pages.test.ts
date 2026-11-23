@@ -162,6 +162,34 @@ describe('public marketing pages', () => {
     expect(notSuppressed).not.toContain('You cannot subscribe again from this page');
   });
 
+  it('disables only the consents a suppressed address does not hold and keeps the rest editable', () => {
+    const definitions = [
+      { ...withdrawnNews, active: true },
+      { ...withdrawnOffers, pendingConfirmation: true },
+      { id: 'events', label: 'Event announcements', active: false, pendingConfirmation: false },
+    ];
+    const suppressed = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions }));
+    expect(suppressed).toContain('name="consent" value="newsletter" checked>');
+    expect(suppressed).toContain('name="consent" value="offers" checked>');
+    expect(suppressed).toContain('name="consent" value="events" disabled>');
+    expect(suppressed).toContain('name="present-consent" value="events"');
+    const open = renderPreferencesPage(preferenceInput({ definitions }));
+    expect(open).toContain('name="consent" value="events">');
+    expect(open).not.toContain('value="events" disabled');
+  });
+
+  it('says that the withdrawal was saved and the new consents were not added', () => {
+    const definitions = [{ ...withdrawnNews, active: true }, withdrawnOffers];
+    const html = renderPreferencesPage(preferenceInput({ globallySuppressed: true, definitions, subscriptionsRefused: true }));
+    expect(html).toContain('<p class="notice" role="status" data-state="subscriptions-refused">Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.</p>');
+    const everything = renderPreferencesPage(preferenceInput({
+      globallySuppressed: true, definitions: withdrawnDefinitions, subscriptionsRefused: true, language: 'pl',
+    }));
+    expect(everything).toContain(publicMarketingMessagesPl.subscriptionsRefusedAfterSave);
+    expect(everything).toContain('data-state="unsubscribed-all"');
+    expect(renderPreferencesPage(preferenceInput())).not.toContain('data-state="subscriptions-refused"');
+  });
+
   it('replaces the scoped button with the withdrawn state and keeps the rest', () => {
     const html = renderPreferencesPage(preferenceInput({
       definitions: [{ id: 'newsletter', label: 'Product news', active: false, pendingConfirmation: false }],

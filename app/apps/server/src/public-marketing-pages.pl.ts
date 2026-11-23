@@ -34,6 +34,7 @@ export const publicMarketingMessagesPl = {
   savePreferences: 'Zapisz preferencje',
   unsubscribedEverything: ({ tenant }) => `Ten adres jest wypisany ze wszystkich wiadomości marketingowych od nadawcy ${tenant}.`,
   resubscribeBlocked: 'Na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.',
+  subscriptionsRefusedAfterSave: 'Wypisanie zostało zapisane. Nowo zaznaczonych zgód nie dodaliśmy: na tej stronie nie zapiszesz się ponownie; skontaktuj się z nadawcą.',
   supportLink: 'Pomoc i kontakt',
   preferencesSavedTitle: 'Preferencje zapisane',
   preferencesSavedBody: 'Twoje ustawienia zostały zaktualizowane.',

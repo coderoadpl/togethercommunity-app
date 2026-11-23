@@ -6,6 +6,7 @@ import {
   buildAccessLookup,
   fullCourseLookup,
   isLessonAccessibleByLookup,
+  lessonIdsOpenedByLookup,
   lessonLocations,
   locateAccessibleLesson,
   locateLesson,
@@ -250,5 +251,14 @@ describe('every combination the lookup can express opens at least what release 8
     }
     expect(combinations).toHaveLength(232);
     expect(gained).toBeGreaterThan(0);
+  });
+
+  it('collects in one walk exactly the lessons a lesson request opens', () => {
+    for (const items of combinations) {
+      const lookup = buildAccessLookup(items);
+      const expected = lessonIds.filter((lessonId) => locateAccessibleLesson(lessonId, courses, modules, lookup) !== null);
+      expect({ items, opened: [...lessonIdsOpenedByLookup(courses, modules, lookup)].sort() }).toEqual({ items, opened: expected.sort() });
+    }
+    expect(lessonIdsOpenedByLookup([courseRow('c2')], modules, buildAccessLookup([{ level: 'course', courseId: 'c1' }]))).toEqual(new Set());
   });
 });

@@ -25,7 +25,7 @@ import type {
   SpaceRepository,
   TenantAccessReader,
 } from '../ports.js';
-import { locateAccessibleLesson, type AccessLookup } from './access.js';
+import { lessonIdsOpenedByLookup, locateAccessibleLesson, type AccessLookup } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 
 export interface TenantScope {
@@ -139,11 +139,8 @@ const accessibleLessons = (
   lessons: CourseLesson[],
   lookup: AccessLookup,
 ): Set<string> => {
-  const ids = new Set<string>();
-  for (const lesson of lessons) {
-    if (locateAccessibleLesson(lesson.id, courses, modules, lookup)) ids.add(lesson.id);
-  }
-  return ids;
+  const opened = lessonIdsOpenedByLookup(courses, modules, lookup);
+  return new Set(lessons.filter((lesson) => opened.has(lesson.id)).map((lesson) => lesson.id));
 };
 
 export interface SpaceAccessDeps {

@@ -700,7 +700,10 @@ compressed or not first, an empty or spanned ZIP, an MP3 with padding or
 another tag before its first frame, a PDF whose `%PDF-` does not lie within the
 first 1024 bytes, and ISO media of any other brand (QuickTime, 3GP, HEIC,
 AVIF). A file name has 1 to 255 characters after trimming and no control
-or bidirectional formatting characters. A key's file is at most 256 MiB (the
+or bidirectional formatting characters, and its last extension, in any letter
+case, must be one the CLI maps to the declared type (below): `400 validation`
+on `fileName` otherwise, so a buyer never saves a checked PDF as `.html` or
+`.exe`. A key's file is at most 256 MiB (the
 product editor keeps its 1 GiB), so that one completion can copy and hash it
 within a single request.
 
@@ -709,7 +712,7 @@ same workspace, made by the storage; the server then streams the copy through
 SHA-256 to check its size and first bytes, and the bytes never pass through
 the key. A file of another product or workspace, or one that is not ready,
 answers `404`; a source above 256 MiB, or with a type or name a key could not
-upload, answers `400`; nothing is staged then. The copy counts against the
+upload (a name whose extension is not of its type included), answers `400`; nothing is staged then. The copy counts against the
 same limits as an upload. Before the copy is reserved, a limit answers `409
 conflict` with its cap and a busy workspace `503 unavailable`. Once the copy was
 reserved, every failure answers the same `400 validation` `This file cannot be

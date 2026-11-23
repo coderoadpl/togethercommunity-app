@@ -169,11 +169,22 @@ const FORBIDDEN_NAME_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f
 export const keyDownloadFileNameSchema = z.string().trim().min(1).max(255)
   .refine((name) => !FORBIDDEN_NAME_CHARACTERS.test(name), { message: 'File names cannot contain control or bidirectional formatting characters' });
 
+/** The saved file opens by its name, so a name whose extension names another type than the checked one is refused. */
+export const keyDownloadNameMatchesType = (fileName: string, contentType: KeyDownloadContentType): boolean => {
+  const name = fileName.trim();
+  const dot = name.lastIndexOf('.');
+  const extension = dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
+  return Object.hasOwn(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION, extension) && KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION[extension] === contentType;
+};
+
 export const keyDownloadUploadInputSchema = z.object({
   fileName: keyDownloadFileNameSchema,
   contentType: keyDownloadContentTypeSchema,
   sizeBytes: z.number().int().min(1).max(KEY_DOWNLOAD_FILE_LIMITS.maxBytes, { message: `A file a key stages is at most ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.maxBytes)}` }),
-}).strict();
+}).strict().refine((input) => keyDownloadNameMatchesType(input.fileName, input.contentType), {
+  message: 'The file name must end in an extension of the declared type',
+  path: ['fileName'],
+});
 
 export type KeyDownloadUploadInput = z.input<typeof keyDownloadUploadInputSchema>;
 

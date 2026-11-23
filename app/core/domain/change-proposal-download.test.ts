@@ -28,6 +28,7 @@ import {
   keyDownloadObjectOwner,
   keyDownloadStagedFileView,
   keyDownloadStagedKey,
+  keyDownloadNameMatchesType,
   keyDownloadUploadInputSchema,
   type KeyDownloadContentType,
   type KeyDownloadFileCap,
@@ -153,6 +154,20 @@ describe('file names and upload inputs of keys', () => {
     expect(keyDownloadUploadInputSchema.safeParse({ ...input, sizeBytes: KEY_DOWNLOAD_FILE_LIMITS.maxBytes + 1 }).success).toBe(false);
     expect(keyDownloadUploadInputSchema.safeParse({ ...input, contentType: 'text/html' }).success).toBe(false);
     expect(keyDownloadUploadInputSchema.safeParse({ ...input, extra: true }).success).toBe(false);
+  });
+
+  it('takes a file name only when its last extension names the declared type, in any letter case', () => {
+    const input = { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 10 };
+    for (const [fileName, contentType] of [['Guide.PDF', 'application/pdf'], ['book.epub', 'application/epub+zip'], ['track.m4b', 'audio/mp4'], ['photo.jpeg', 'image/jpeg']]) {
+      expect(keyDownloadUploadInputSchema.safeParse({ ...input, fileName, contentType }).success).toBe(true);
+    }
+    for (const fileName of ['page.html', 'tool.exe', 'guide', 'guide.pdf.html', 'guide.', 'a.constructor']) {
+      const refused = keyDownloadUploadInputSchema.safeParse({ ...input, fileName });
+      expect(refused.error?.issues.map((issue) => issue.path)).toEqual([['fileName']]);
+    }
+    expect(keyDownloadUploadInputSchema.safeParse({ ...input, fileName: 'a.png' }).success).toBe(false);
+    expect(keyDownloadNameMatchesType('a.pdf', 'application/pdf')).toBe(true);
+    expect(keyDownloadNameMatchesType('a.pdf', 'image/png')).toBe(false);
   });
 
   it('bounds the id of a staged file to discard', () => {

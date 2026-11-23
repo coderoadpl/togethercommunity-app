@@ -16,6 +16,7 @@ import {
   keyDownloadFileCapExceeded,
   keyDownloadFileNameSchema,
   keyDownloadFilesBusy,
+  keyDownloadNameMatchesType,
   keyDownloadStagedFileView,
   keyDownloadStagedKey,
   keyDownloadTypeMismatch,
@@ -349,7 +350,7 @@ export const copyKeyDownloadFile = async (
   }
   const contentType = keyDownloadContentTypeSchema.safeParse(asset.contentType);
   const fileName = keyDownloadFileNameSchema.safeParse(asset.fileName);
-  if (!contentType.success || !fileName.success) return err(keyDownloadCopyRefused());
+  if (!contentType.success || !fileName.success || !keyDownloadNameMatchesType(fileName.data, contentType.data)) return err(keyDownloadCopyRefused());
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const recordId = deps.ids.nextId();

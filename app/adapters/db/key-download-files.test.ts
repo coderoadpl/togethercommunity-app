@@ -356,6 +356,13 @@ describe('copying a product file on the server', () => {
     expect(await copyKeyDownloadFile(keyCtx(), { productId: 'mug', assetId: 'page' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'pending' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'page' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    await database.db.insert(productDownloadAssets).values([
+      { id: 'renamed', tenantId: TENANT, productId: PRODUCT, lineageId: 'renamed', fileName: 'guide.html', contentType: 'application/pdf', sizeBytes: 10, storageKey: 'k3', status: 'ready', createdAt: NOW },
+      { id: 'unnamed', tenantId: TENANT, productId: PRODUCT, lineageId: 'unnamed', fileName: 'guide', contentType: 'application/pdf', sizeBytes: 10, storageKey: 'k4', status: 'ready', createdAt: NOW },
+    ]);
+    for (const assetId of ['renamed', 'unnamed']) {
+      expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId }, h.deps)).toEqual({ ok: false, error: keyDownloadCopyRefused() });
+    }
     expect(await recordStates()).toEqual([]);
   });
 

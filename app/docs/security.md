@@ -632,7 +632,12 @@ scopes on every shop key.
   staged object only the server writes, with its metadata replaced
   (`application/octet-stream`, `attachment`, `no-store`), hashes that copy
   while streaming it and checks its size and its first bytes against the
-  declared type, one of an allow-list of eight; a second `PUT` through the
+  declared type, one of an allow-list of eight, whose extension the file name
+  must end in, at the start and for the source of a copy. That check reads
+  only a signature in the first bytes (a `%PDF-` anywhere in the first KiB, for
+  example), not the whole format, so a file can pass it and still hold content
+  of another kind; the name keeps a buyer's saved file opening as the checked
+  type. A second `PUT` through the
   still valid URL changes nothing staged. Exactly one request completes an
   upload: completion first claims its record in a committed transaction, and a
   concurrent completion answers `409`; a new claim takes an upload over only

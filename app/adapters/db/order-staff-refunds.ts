@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
 import {
   appError,
@@ -63,13 +63,11 @@ const committedCents = async (executor: Pick<Executor, 'select'>, tenantId: stri
   return Number(staff?.cents ?? 0) + Number(soldOut?.cents ?? 0);
 };
 
+// A carrier attempt that failed or was given up is deleted, so any remaining row, even a claim the carrier has not
+// been called for yet, may still become a bought label.
 const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<boolean> => {
   const [row] = await executor.select({ id: orderShipments.id }).from(orderShipments)
-    .where(and(
-      eq(orderShipments.tenantId, tenantId),
-      eq(orderShipments.orderId, orderId),
-      or(isNotNull(orderShipments.providerShipmentId), isNotNull(orderShipments.boughtAt), isNotNull(orderShipments.createAttemptedAt)),
-    ))
+    .where(and(eq(orderShipments.tenantId, tenantId), eq(orderShipments.orderId, orderId)))
     .limit(1);
   return row !== undefined;
 };

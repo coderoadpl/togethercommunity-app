@@ -453,7 +453,7 @@ describe('shop order routes with a shop management key', () => {
     const shipments = createShipxShipmentRepository(database.db);
     const held = await shipments.acquire('akademia', {
       id: 'held-lease', orderId: leased, token: 'held-token', environment: 'production', organizationId: '1234',
-      now, leaseExpiredBefore: '2026-11-15T09:58:30.000Z', actorUserId: 'another-request',
+      now, leaseExpiredBefore: '2026-11-15T09:58:30.000Z', actorUserId: 'another-request', orderShippable: () => true,
     });
     expect(held.kind).toBe('acquired');
     const busy = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path, leased), undefined, akademiaHost);

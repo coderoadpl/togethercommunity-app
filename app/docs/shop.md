@@ -827,7 +827,11 @@ one conditional `UPDATE` that succeeds only when `operation_started_at` is
 `NULL` or older than the lease of 90 seconds; a request that finds the claim
 held answers `fulfilment_conflict` ("Another request is creating the InPost
 shipment for this order; refresh the order in a moment") without calling
-ShipX. The lease is longer than the slowest request: the 20-second deadline
+ShipX. Taking the claim first locks the order row (`SELECT … FOR UPDATE`, the
+lock a staff refund takes) and re-reads it; an order that is no longer paid and
+`to_pack`, for example because a staff refund took it off the packing list
+after the request read it, is refused with `conflict` and no claim is taken.
+The lease is longer than the slowest request: the 20-second deadline
 plus the last ShipX step: one call of at most 5 seconds, since no call in this
 flow is retried, or the reconciliation lookup of at most 5 pages of 5 seconds
 each.
@@ -1883,8 +1887,14 @@ list cannot be read have nothing left to refund.
   keeping a `to_pack` order on the list is refused with `validation` (put the
   order back later with Ship anyway, which takes the stock back). With a
   shipment or bought label, stock return defaults to off and the label is not
-  cancelled; a carrier shipment whose create call started but has no carrier id
-  yet counts as a bought label. A `shipped` order is never moved. A typed amount that covers the
+  cancelled; any carrier shipment row of the order counts as a bought label,
+  also a claim the carrier has not been called for yet (an attempt that failed
+  or was given up is deleted). The carrier claim and the refund serialise on the
+  order row: the InPost create use-case takes its claim only after re-reading the
+  order under `SELECT … FOR UPDATE` and refuses with `conflict` before any
+  carrier call when the order is no longer `to_pack` (a staff refund took it off
+  the packing list), and a refund that runs after the claim sees the claim. A
+  `shipped` order is never moved. A typed amount that covers the
   whole remainder when it is requested gets the same stock and packing choices
   and defaults; any smaller amount changes no stock, packing or access, and
   asking for either change with it is refused. Both

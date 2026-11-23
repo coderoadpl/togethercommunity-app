@@ -2,7 +2,7 @@ import { and, asc, eq, like, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { ok, orderRefundIssuedEmail, outOfStockRefundJob, refundFailure, staffRefundAlertEmail, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
+import { ok, orderRefundIssuedEmail, orderShipmentAllowed, outOfStockRefundJob, refundFailure, staffRefundAlertEmail, type Identity, type OrderShipping, type ProviderRefund } from '#core/domain/index.js';
 import {
   createStaffRefund,
   dispatchOrderRefundJobs,
@@ -19,6 +19,7 @@ import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenan
 import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
 import { deadlockDetected, uniqueViolation } from './pg-errors.js';
 import { createRefundJobQueue } from './refund-job-queue.js';
+import { createShipxShipmentRepository } from './shipx.js';
 import { createMemberRepository, createOrderRepository } from './repositories.js';
 import {
   emailEvents,
@@ -142,6 +143,11 @@ const textOf = (payload: unknown): string =>
 const alertPayloads = async () => (await database.db.select({ id: emailOutbox.id, kind: emailOutbox.kind, sourceApp: emailOutbox.sourceApp, payload: emailOutbox.payload })
   .from(emailOutbox).where(like(emailOutbox.id, 'order-refund-alert:%')).orderBy(asc(emailOutbox.id)))
   .map((row) => ({ alert: row.id.split(':')[2], kind: row.kind, sourceApp: row.sourceApp, text: textOf(row.payload) }));
+
+const carrierClaim = {
+  id: 'claim-1', orderId: 'order-1', token: 'token-1', environment: 'sandbox' as const, organizationId: 'org-1', leaseExpiredBefore: start, actorUserId: 'staff',
+  orderShippable: (locked: { status: string; fulfilmentStatus: 'to_pack' | 'shipped' | null } | null) => locked !== null && orderShipmentAllowed(locked).ok,
+};
 
 const fulfilmentOf = async (orderId: string) =>
   (await database.db.select({ fulfilmentStatus: orders.fulfilmentStatus }).from(orders).where(eq(orders.id, orderId)))[0]?.fulfilmentStatus;
@@ -926,6 +932,56 @@ describe('staff refunds against a real database', () => {
     });
     expect(unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 })).refund).toMatchObject({ restocked: false, removedFromPackingList: false });
     expect(await fulfilmentOf('order-1')).toBe('to_pack');
+  });
+
+  it('counts a carrier claim taken after the preview, before ShipX was called, as a possible label and refuses the refund confirmed without it', async () => {
+    const h = harness();
+    const shown = unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps));
+    expect(await createShipxShipmentRepository(database.db).acquire('tenant-a', { ...carrierClaim, now: minutes(1) })).toMatchObject({ kind: 'acquired' });
+
+    expect(await h.refund('order-1', {
+      requestKey: 'req-1', expectedAmountCents: 4099, expectedShipmentState: { onPackingList: shown.onPackingList, hasShipmentOrLabel: shown.hasShipment },
+    })).toMatchObject({ ok: false, error: { code: 'conflict', details: { shipmentState: { onPackingList: true, hasShipmentOrLabel: true } } } });
+    expect(await refundRows('order-1')).toStrictEqual([]);
+    expect(await fulfilmentOf('order-1')).toBe('to_pack');
+  });
+
+  it('makes a carrier claim wait for a staff refund holding the order and then refuses it, so ShipX is never called for an order taken off the packing list', async () => {
+    const h = harness();
+    const holder = new pg.Client({ connectionString: database.url });
+    const observer = new pg.Client({ connectionString: database.url });
+    await holder.connect();
+    await observer.connect();
+    const lockWaiters = async (count: number) => {
+      for (let poll = 0; poll < 100; poll += 1) {
+        const waiting = await observer.query<{ count: number }>("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type IN ('Lock', 'Advisory')");
+        if ((waiting.rows[0]?.count ?? 0) >= count) return true;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return false;
+    };
+    try {
+      await holder.query('CREATE FUNCTION pause_staff_refund_insert() RETURNS trigger AS $$ BEGIN PERFORM pg_advisory_xact_lock(4242); RETURN NEW; END $$ LANGUAGE plpgsql');
+      await holder.query('CREATE TRIGGER pause_staff_refund_insert BEFORE INSERT ON order_staff_refunds FOR EACH ROW EXECUTE FUNCTION pause_staff_refund_insert()');
+      await holder.query('SELECT pg_advisory_lock(4242)');
+      const requested = h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 });
+      expect(await lockWaiters(1)).toBe(true);
+      const claimed = createShipxShipmentRepository(database.db).acquire('tenant-a', { ...carrierClaim, now: minutes(1) });
+      const claimWaited = await lockWaiters(2);
+      await holder.query('SELECT pg_advisory_unlock(4242)');
+
+      expect(unwrap(await requested).refund).toMatchObject({ restocked: true, removedFromPackingList: true });
+      expect(await claimed).toStrictEqual({ kind: 'order_changed' });
+      expect(claimWaited).toBe(true);
+      expect(await database.db.select().from(orderShipments)).toStrictEqual([]);
+      expect(await fulfilmentOf('order-1')).toBeNull();
+    } finally {
+      await holder.query('SELECT pg_advisory_unlock_all()');
+      await holder.query('DROP TRIGGER IF EXISTS pause_staff_refund_insert ON order_staff_refunds');
+      await holder.query('DROP FUNCTION IF EXISTS pause_staff_refund_insert()');
+      await holder.end();
+      await observer.end();
+    }
   });
 
   it('refuses a refund confirmed for a packing and label state that changed since the preview, naming the new state, and changes nothing', async () => {

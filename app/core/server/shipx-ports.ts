@@ -1,5 +1,6 @@
 import type {
   AppError,
+  FulfilmentStatus,
   Result,
   ShipxEnvironment,
   ShipxLabel,
@@ -38,7 +39,13 @@ export interface ShipxShipmentRecord extends ShipxShipment {
 
 export type ShipxShipmentAcquisition =
   | { kind: 'acquired'; shipment: ShipxShipmentRecord }
-  | { kind: 'in_progress'; shipment: ShipxShipmentRecord };
+  | { kind: 'in_progress'; shipment: ShipxShipmentRecord }
+  | { kind: 'order_changed' };
+
+export interface ShipxLockedOrder {
+  status: string;
+  fulfilmentStatus: FulfilmentStatus | null;
+}
 
 interface ShipxClaimLost {
   kind: 'lost_lock';
@@ -94,6 +101,8 @@ export interface ShipxShipmentRepository {
     now: string;
     leaseExpiredBefore: string;
     actorUserId: string | null;
+    /** Decides on the order row locked for update before the claim is taken; a refusal takes no claim. */
+    orderShippable(order: ShipxLockedOrder | null): boolean;
   }): Promise<ShipxShipmentAcquisition>;
   update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch, step: ShipxShipmentStep): Promise<ShipxOwnedUpdate>;
   finishOperation(tenantId: string, orderId: string, token: string, end: ShipxOperationEnd): Promise<{ kind: 'finished' } | ShipxClaimLost>;

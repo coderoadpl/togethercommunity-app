@@ -51,8 +51,10 @@ as a browser once its jar holds the session cookie: a later sign-in that still
 sends that cookie gets the new session cookie but no `set-auth-token` header and
 no body `token`. Such a client keeps using the session cookie it holds, or signs
 in from a client without a cookie jar. A backend that signs in to obtain a
-bearer token must send neither a session cookie nor browser fetch metadata
-(`Sec-Fetch-*` headers) on that request, or it gets no token to hand on.
+bearer token gets no token to hand on when that request carries
+`Sec-Fetch-Site` or a session cookie, the only two triggers of the strip.
+Separately, such a backend should forward no other browser metadata either
+(the remaining `Sec-Fetch-*` headers), even though they do not trigger it.
 The auth end-to-end run (`scripts/auth-e2e.ts`) signs a browser in with a
 virtual passkey, by identifier and as a discoverable credential, and asserts
 that each `/passkey/verify-authentication` response (whose unstripped body

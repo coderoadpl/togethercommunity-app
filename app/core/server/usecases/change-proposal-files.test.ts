@@ -72,7 +72,12 @@ const MAXIMUM_FILE_ITEMS = KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey;
 
 const fileIndex = (url: string): number => Number(/staged-(\d+)\//u.exec(url)?.[1]);
 
-const harness = (options: { headMs: (index: number) => number; findMs?: number; headAnswer?: (index: number) => 'present' | 'missing' | 'unavailable' }) => {
+const harness = (options: {
+  headMs: (index: number) => number;
+  findMs?: number;
+  rowsGone?: boolean;
+  headAnswer?: (index: number) => 'present' | 'missing' | 'unavailable';
+}) => {
   const time = virtualTime();
   const items = Array.from({ length: MAXIMUM_FILE_ITEMS }, (_unused, index) => fileItem(index + 1));
   let inFlight = 0;
@@ -99,7 +104,7 @@ const harness = (options: { headMs: (index: number) => number; findMs?: number; 
       findStaged: async (_tenantId: string, _apiKeyId: string, id: string) => {
         if (options.findMs !== undefined) await time.after(options.findMs);
         const index = Number(id.replace('staged-', ''));
-        return stagedFile(index, `proposal-${String(index)}`);
+        return options.rowsGone === true ? null : stagedFile(index, `proposal-${String(index)}`);
       },
     },
     storage: {
@@ -147,6 +152,17 @@ describe('the file checks before an approval', () => {
     expect(h.heads.length).toBeLessThan(MAXIMUM_FILE_ITEMS);
     expect(h.heads.every((head) => head.startedAt + head.deadlineMs <= CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs)).toBe(true);
     expect(h.time.elapsed()).toBeLessThanOrEqual(CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs);
+  });
+
+  it('answers a retry, not gone files, when the staged row lookups outlast the budget', async () => {
+    const { budgetMs, concurrency, minimumHeadMs } = CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS;
+    const rounds = Math.ceil(MAXIMUM_FILE_ITEMS / concurrency);
+    const findMs = (budgetMs - minimumHeadMs) / (rounds - 1);
+    expect((rounds - 1) * findMs).toBeLessThanOrEqual(budgetMs - minimumHeadMs);
+    expect(rounds * findMs).toBeGreaterThan(budgetMs);
+    const h = harness({ headMs: () => 100, findMs, rowsGone: true });
+    expect(await h.check()).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } });
+    expect(h.heads).toEqual([]);
   });
 
   it('answers the storage failure of the first item in group order, whichever answered first', async () => {

@@ -102,6 +102,7 @@ export const checkApprovalFiles = async (
   const check = async (proposal: ChangeProposal, fileId: string): Promise<FileCheck> => {
     if (left() < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
     const file = await deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId);
+    if (left() <= 0) return err(changeProposalFileChecksOutOfTime());
     if (file?.proposalId !== proposal.id) return ok(null);
     const resolved = await configured();
     if (!resolved.ok) return resolved;

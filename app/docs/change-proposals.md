@@ -1536,8 +1536,12 @@ staged file the proposal (or every item of the group) attaches and, when the
 proposal still holds it, asks the storage whether its object exists and has the
 recorded size. These file checks run at most 4 at a time
 (`CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.concurrency`), each storage request
-within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and all of them
-within one wall-clock budget of 25 seconds: a group holds at most as many file
+within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and every storage
+request starts and ends within one wall-clock budget of 25 seconds; the
+database reads of the staged rows and of the storage configuration are not
+bounded by that budget, so a slow database can extend the checks beyond it,
+and a check whose staged row read ends after the budget ends the checks with
+`503 unavailable` as below instead of counting the file as gone. A group holds at most as many file
 items as its key may have staged files (20), and 20 checks 4 at a time are 5
 rounds of at most 5 seconds. The other 35 seconds of the 60-second server
 function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
@@ -1547,11 +1551,12 @@ mixed group, is still read and written under that lock, each storage request
 within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the
-budget left, or a storage request the budget cut short that did not answer,
-ends the checks with `503 unavailable` and `Retry-After: 5`; any other storage
-failure, an answer that does not come within the 5 seconds included, is
-answered with its error, the first in the order of the items when several
-fail. Either way nothing is decided and the proposal or group stays
+budget left, a check whose staged row read ends after the budget, or any
+storage failure other than a missing object on a request whose 5 seconds the
+budget shortened, ends the checks with `503 unavailable` and `Retry-After: 5`;
+any other storage failure of a request that had its full 5 seconds, a timeout
+included, is answered with its error, the first in the order of the items when
+several fail. Either way nothing is decided and the proposal or group stays
 `pending`. Inside the transaction, before any target lock, the
 approval locks each attached staged row of the proposing key and checks that
 it is the file the storage confirmed (id, key, object key, size, SHA-256, held

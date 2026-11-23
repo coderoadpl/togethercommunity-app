@@ -26,20 +26,32 @@ export const format = (template: string, params: MessageParams): string =>
 export interface Messages {
   metaCapi: {
     privacyPolicy: string;
+    newTabHint: string;
     fieldsToggle: string;
     fieldsPurchase: string;
     fieldsIdentity: string;
     fieldsBrowser: string;
     fieldsAttribution: string;
     decisionError: string;
+    textChanged: string;
+    withdrawError: string;
+    saving: string;
+    decide: string;
     granted: string;
     denied: string;
     undecided: string;
     withdrawn: string;
     withdraw: string;
+    withdrawShort: string;
+    withdrawing: string;
     withdrawHint: string;
+    rowGranted: string;
+    rowDenied: string;
+    rowWithdrawn: string;
+    withdrawnNotice: (params: { title: string }) => string;
     privacyHeading: string;
     order: (params: { id: string }) => string;
+    purchase: (params: { product: string; date: string }) => string;
     settingsHeading: string;
     enabled: string;
     settingsHelp: string;

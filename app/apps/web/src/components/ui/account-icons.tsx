@@ -45,6 +45,10 @@ export const MapPinIcon = () => (<Glyph><path d="M20 10c0 4.993-5.539 10.193-7.3
 
 export const ChevronDownIcon = () => (<Glyph><path d="m6 9 6 6 6-6" /></Glyph>);
 
+export const ExternalLinkIcon = () => (<Glyph><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></Glyph>);
+
 export const PlusIcon = () => (<Glyph><path d="M12 5v14" />
   <path d="M5 12h14" /></Glyph>);
 

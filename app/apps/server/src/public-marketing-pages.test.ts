@@ -8,6 +8,7 @@ import { envSchema } from './env.js';
 import { createPendingWork } from './graceful-shutdown.js';
 import { describe, expect, it } from 'vitest';
 
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { contrastRatio, deriveLightAccent, type MarketingSignupForm } from '#core/domain/index.js';
 
@@ -540,7 +541,7 @@ const signupForm: MarketingSignupForm = {
   id: 'form-1', tenantId: 'tenant-1', slug: 'newsletter', name: 'Internal newsletter form',
   consentDefinitionId: 'newsletter',
   consentVersion: { id: 'newsletter-v1', tenantId: 'tenant-1', definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.test/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
-  listId: null, tags: [], collectName: true, successText: { en: 'Welcome aboard.', pl: 'Witamy.' },
+  listId: null, tags: [], collectName: true, successText: { en: 'Welcome aboard.', pl: 'Welcome text for the Polish page.' },
   redirectUrl: null, allowedOrigins: [], token: 'form_token_1234567890123456', status: 'active', revision: 1,
   createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
 };
@@ -565,9 +566,9 @@ describe('sign-up pages', () => {
       nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'the monthly newsletter.', doubleOptIn: true, thanks: false,
       consentDocument: { title: 'Privacy policy', href: '/legal/privacy/v/2' },
     });
-    expect(html).toContain('<h1>Sign up for e-mails from Studio Demo</h1>');
+    expect(html).toContain('<h1>Sign up for emails from Studio Demo</h1>');
     expect(html).not.toContain('Internal newsletter form');
-    expect(html).toContain('<p class="signup-consent">By signing up you agree to receive from Studio Demo: the monthly newsletter. We will e-mail you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/2">Privacy policy</a></p><div class="actions"><button type="submit">Sign up</button></div>');
+    expect(html).toContain('<p class="signup-consent">By signing up you agree to receive from Studio Demo: the monthly newsletter. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/2">Privacy policy</a></p><div class="actions"><button type="submit">Sign up</button></div>');
   });
 
   it('drops the confirmation clause without double opt-in and localizes the form in Polish', () => {
@@ -592,17 +593,17 @@ describe('sign-up pages', () => {
   });
 
   it('makes the pending confirmation the headline of the thanks page with double opt-in', () => {
-    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: { ...signupForm, successText: { en: 'Welcome <aboard>.', pl: 'Witamy.' } }, wording: 'news', doubleOptIn: true, thanks: true });
+    const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: { ...signupForm, successText: { en: 'Welcome <aboard>.', pl: 'Welcome text for the Polish page.' } }, wording: 'news', doubleOptIn: true, thanks: true });
     expect(html).toContain('data-testid="marketing-signup-thanks"');
-    expect(html).toContain('<h1>One more step: confirm your e-mail</h1>');
+    expect(html).toContain('<h1>One more step: confirm your email</h1>');
     expect(html).toContain('status-cue--info');
-    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet, we have sent a confirmation link to it. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the e-mail, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
+    expect(html).toContain('<div class="status"><p class="lede">If this address is not subscribed yet and can receive our emails, a confirmation link is on its way. Open the link to complete your sign-up.</p><p class="fine">The link is valid for 24 hours.</p><p class="fine">If you cannot find the email, check your spam or promotions folder.</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">Sign up again</a><a class="button-link" href="/">Go to the home page</a></div><p class="fine status-after">Welcome &lt;aboard&gt;.</p></div>');
     expect(html).toContain('<a href="/marketing/forms/newsletter/thanks?lang=pl"');
     expect(html).not.toContain('Thank you for signing up');
   });
 
   it.each([
-    ['success', 'You are subscribed', 'status-cue--success', 'You will receive e-mails from Studio Demo. Every message has a link to unsubscribe.'],
+    ['success', 'You are subscribed', 'status-cue--success', 'You will receive emails from Studio Demo. Every message has a link to unsubscribe.'],
     ['expired', 'This link is no longer active', 'status-cue--error', 'The confirmation link has expired or is invalid. Ask the sender to send you a new link.'],
     ['prompt', 'Confirm your subscription', 'status-cue--info', 'Confirm that you want to receive messages from Studio Demo.'],
   ] as const)('renders the %s confirmation page left-aligned with a state cue', (state, title, cue, body) => {
@@ -668,8 +669,8 @@ describe('sign-up pages', () => {
 
   it.each(['generic', 'rate_limited'] as const)('moves focus to the %s alert, describes the e-mail field with it and marks the title as an error', (error) => {
     const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false, error, values: { email: 'reader@example.org', displayName: '' } });
-    expect(html).toContain('<title>Error: Sign up for e-mails from Studio Demo · Studio Demo</title>');
-    expect(html).toContain('<h1>Sign up for e-mails from Studio Demo</h1>');
+    expect(html).toContain('<title>Error: Sign up for emails from Studio Demo · Studio Demo</title>');
+    expect(html).toContain('<h1>Sign up for emails from Studio Demo</h1>');
     expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">');
     expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="reader@example.org" aria-describedby="signup-error">');
     expect(html.match(/<script/g)).toHaveLength(1);
@@ -689,10 +690,10 @@ describe('sign-up pages', () => {
 
   it('keeps the plain title and no focus script without an error', () => {
     const html = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false });
-    expect(html).toContain('<title>Sign up for e-mails from Studio Demo · Studio Demo</title>');
+    expect(html).toContain('<title>Sign up for emails from Studio Demo · Studio Demo</title>');
     expect(html).not.toContain('signup-error');
     const invalidEmail = renderSignupFormPage({ nonce: 'test-nonce', brand, language: 'en', form: signupForm, wording: 'news', doubleOptIn: true, thanks: false, error: 'email', values: { email: 'reader@', displayName: '' } });
-    expect(invalidEmail).toContain('<title>Error: Sign up for e-mails from Studio Demo · Studio Demo</title>');
+    expect(invalidEmail).toContain('<title>Error: Sign up for emails from Studio Demo · Studio Demo</title>');
     expect(invalidEmail).not.toContain('signup-error');
   });
 
@@ -714,7 +715,7 @@ describe('sign-up pages', () => {
     expect(pending).toContain(`<h1>${publicMarketingMessagesPl.signupPendingTitle}</h1>`);
     expect(pending).toContain(`<p class="lede">${publicMarketingMessagesPl.signupPending}</p>`);
     expect(pending).toContain(`<a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupAgain}</a>`);
-    expect(pending).toContain('</div><p class="fine status-after">Witamy.</p></div>');
+    expect(pending).toContain('</div><p class="fine status-after">Welcome text for the Polish page.</p></div>');
   });
 });
 
@@ -764,7 +765,13 @@ describe('public signup persistence and confirmation', () => {
       expect(location).toMatch(/^\/marketing\/forms\/newsletter\/thanks\?lang=/);
       const thanks = await fixture.request(location);
       expect(thanks.status).toBe(200);
-      expect(await thanks.text()).toContain('Thank you');
+      const thanksHtml = await thanks.text();
+      expect(thanksHtml).toContain('Thank you');
+      if (doubleOptIn) {
+        expect(thanksHtml).toContain(`<p class="lede">${publicMarketingMessagesEn.signupPending}</p>`);
+        expect(publicMarketingMessagesEn.signupPending).toMatch(/^If this address is not subscribed yet and can receive our emails, /);
+        expect(thanksHtml).not.toMatch(/we have sent|we sent/i);
+      }
       expect(await fixture.snapshot()).toEqual(before);
       expect(await fixture.deps.marketing?.suppressions.findActive('directory-a', fixture.contact.emailHmac)).toEqual(suppression);
     } finally { await fixture.close(); }
@@ -781,9 +788,9 @@ describe('public signup persistence and confirmation', () => {
       await marketing.definitions.create('directory-a', { ...definition, id: 'hosted', key: 'hosted', documentRef: { mode: 'hosted', documentId: 'privacy-doc' } }, { id: 'hosted-v1', tenantId: 'directory-a', definitionId: 'hosted', version: 1, label: 'Hosted news', documentVersionRef: { mode: 'hosted', documentVersionId: published.version.id }, createdAt: fixture.now, createdBy: 'owner' });
       directoryValue(await createMarketingSignupForm(directoryCtx(), { slug: 'hosted', name: 'Hosted', consentDefinitionId: 'hosted', successText: { en: 'Thank you', pl: 'Thank you' } }, fixture.deps.marketingSignup));
       const hosted = await (await fixture.request('/marketing/forms/hosted?lang=en')).text();
-      expect(hosted).toContain(`Hosted news. We will e-mail you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
+      expect(hosted).toContain(`Hosted news. We will email you a link to confirm. You can unsubscribe at any time. More information: <a href="/legal/privacy/v/${String(published.version.version)}">Privacy &amp; data</a></p>`);
       const linked = await (await fixture.request('/marketing/forms/newsletter?lang=en')).text();
-      expect(linked).toContain('Newsletter consent. We will e-mail you a link to confirm. You can unsubscribe at any time.</p>');
+      expect(linked).toContain('Newsletter consent. We will email you a link to confirm. You can unsubscribe at any time.</p>');
       expect(linked).not.toContain('More information:');
     } finally { await fixture.close(); }
   });
@@ -837,8 +844,8 @@ describe('public signup persistence and confirmation', () => {
       expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
       const html = await response.text();
       expect(html).toContain('data-testid="marketing-signup-form"');
-      expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="bad&quot;&lt;b&gt;@nowhere" aria-invalid="true" aria-describedby="signup-email-error" autofocus><p class="field-error" id="signup-email-error" role="alert">Enter a complete e-mail address, for example name@example.com.</p>');
-      expect(html).toContain('<title>Error: Sign up for e-mails from Directory A');
+      expect(html).toContain('<input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required value="bad&quot;&lt;b&gt;@nowhere" aria-invalid="true" aria-describedby="signup-email-error" autofocus><p class="field-error" id="signup-email-error" role="alert">Enter a complete email address, for example name@example.com.</p>');
+      expect(html).toContain('<title>Error: Sign up for emails from Directory A');
       expect(html).toContain('value="&lt;script&gt;alert(1)&lt;/script&gt;"');
       expect(html).not.toContain('<script>alert(1)</script>');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
@@ -902,7 +909,7 @@ describe('public signup persistence and confirmation', () => {
       const html = await response.text();
       expect(html).toContain('<p class="signup-alert" id="signup-error" role="alert" tabindex="-1">Too many sign-up attempts. Wait a few minutes and try again.</p>');
       expect(html).toContain('required value="limit@example.org" aria-describedby="signup-error">');
-      expect(html).toContain('<title>Error: Sign up for e-mails from Directory A');
+      expect(html).toContain('<title>Error: Sign up for emails from Directory A');
       expect(html).toContain('value="limit@example.org"');
       expect(html).toContain(`<input type="hidden" name="token" value="${fixture.form.token}">`);
       const json = await post('application/json', JSON.stringify({ email: 'limit@example.org', token: fixture.form.token }));

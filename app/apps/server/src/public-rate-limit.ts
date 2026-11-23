@@ -315,7 +315,7 @@ const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimit
     const limited = await claimSignupRateLimit(c, deps, clientIp());
     if (limited === null) return null;
     if (!isFormEncoded(c)) return rateLimitedResponse(limited.error);
-    // A per-IP rejection is answered here without tenant or form lookups, so flooding the submit path stays cheap.
+    // The per-IP page needs no tenant or form lookup of its own, so flooding the submit path stays cheap; the signup CORS middleware may still have read them for an Origin header.
     if (limited.bucket === 'ip') return signupRateLimitedPage(c, limited.error);
     // The submit handler answers an HTML form post with the form page itself, so it needs the error instead of a JSON response.
     c.set('signupRateLimit', limited.error);

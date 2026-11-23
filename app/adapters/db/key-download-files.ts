@@ -113,6 +113,9 @@ const parseDeletion = (row: typeof deletions.$inferSelect): KeyDownloadPendingDe
   notBefore: row.notBefore,
 });
 
+/** The second delete of an upload object is due when the daily limit stops counting the upload's bytes; until then that limit counts them. */
+const UPLOAD_OBJECT_PATTERN = '%/product-downloads/key-uploads/%';
+
 const workspaceLock = (tenantId: string): string => `key-download-files:${tenantId}`;
 
 const keyLock = (tenantId: string, apiKeyId: string): string => `key-download-files:${tenantId}:${apiKeyId}`;
@@ -149,6 +152,7 @@ const usageOf = async (tx: Db, tenantId: string, apiKeyId: string, now: string):
     ), owed as (
       select ${deletions.apiKeyId} as api_key_id, ${deletions.sizeBytes}::bigint as bytes
       from ${deletions} where ${deletions.tenantId} = ${tenantId}
+        and not (${deletions.objectKey} like ${UPLOAD_OBJECT_PATTERN} and ${deletions.notBefore} > ${now})
     ), open as (
       select ${records.apiKeyId} as api_key_id, ${records.createdAt} as created_at, ${records.declaredBytes}::bigint as declared,
         ${records.declaredBytes}::bigint * ((${records.candidateKey} is not null)::int + (${records.stagedKey} is not null)::int) as bytes,
@@ -485,6 +489,16 @@ export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalB
         await tx.update(records).set({ state: failing ? 'failed' : row.state, stagedKey: null }).where(recordOf(tenantId, uploadId));
         if (failing) await appendEvent(tx, eventOf(row, 'failed', selection.attemptId, selection.reason, now));
         return 'removed';
+      }
+      if (row.candidateKey !== null) {
+        await tx.insert(deletions).values({
+          tenantId,
+          objectKey: row.candidateKey,
+          apiKeyId: row.apiKeyId,
+          sizeBytes: row.declaredBytes,
+          createdAt: now,
+          notBefore: after(row.createdAt, KEY_DOWNLOAD_FILE_LIMITS.uploadObjectDeleteAgainAfterMs),
+        }).onConflictDoNothing();
       }
       await tx.update(records).set({ state: 'settled', candidateKey: null, stagedKey: null }).where(recordOf(tenantId, uploadId));
       await appendEvent(tx, eventOf(row, 'settled', row.attemptId, 'swept', now));

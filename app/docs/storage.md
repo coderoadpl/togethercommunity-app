@@ -55,7 +55,7 @@ Product files live under the workspace's private download prefix:
 | Prefix | Holds | Served |
 |---|---|---|
 | `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
-| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included |
+| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included, and once more a day after the upload started, so a `PUT` accepted before the URL expired that finishes after the sweep does not stay |
 | `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never to a key or a buyer while staged; the verified owner gets a 60-second signed download of one a pending change proposal holds ([Download files](change-proposals.md#download-files)); an attached file is served like any other product file |
 
 A key writes only its own `key-uploads/` object, through the presigned `PUT`
@@ -72,7 +72,13 @@ Who deletes them:
 - a `key-uploads/` object: a completion that staged it or that failed for a
   definite reason (nothing uploaded, a wrong size or type, a copy the storage
   refused), and the minute sweep once its upload record is 20 minutes old and
-  30 minutes have passed since its last completion attempt started;
+  30 minutes have passed since its last completion attempt started. When the
+  sweep settles the record it records, in the same transaction, an owed
+  deletion of the upload object that is due a day after the upload started, and
+  deletes it once more then, whether or not an object is there. Until it is
+  due, that owed deletion is not counted against the staging limits: the daily
+  limit still counts the upload's declared bytes for that day; once due, it
+  counts until the storage confirms the delete;
 - a `key-files/` object that is still staged: a completion or copy that wrote
   it and then failed for a definite reason; the key's discard, also of a file a
   pending proposal holds (an approval of that proposal then ends `stale`);
@@ -126,9 +132,10 @@ completion attempt and every copy writes a destination of its own under a fresh
 file id, and no path writes to a `key-files/` address that a staged file or a
 product file names. A late copy of a superseded completion attempt lands only on
 that attempt's own destination, which no staged file names and the sweep
-deletes. This rests on one assumption: an S3-compatible provider finishes or
-abandons a CopyObject it accepted within 30 minutes; the signed copy request
-itself expires 60 seconds after it was signed.
+deletes. This rests on two assumptions: an S3-compatible provider finishes or
+abandons a CopyObject it accepted within 30 minutes (the signed copy request
+itself expires 60 seconds after it was signed), and a `PUT` it accepted before
+the upload URL expired within a day.
 
 The minute sweep never holds back e-mail and refund dispatch: the cron route
 runs it after them with an end 50 seconds after the tick started, 10 seconds

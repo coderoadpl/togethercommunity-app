@@ -58,7 +58,7 @@ CREATE INDEX "change_proposal_download_uploads_created_idx" ON "change_proposal_
 --> statement-breakpoint
 CREATE TABLE "change_proposal_download_deletions" (
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
-  "object_key" text NOT NULL CONSTRAINT "change_proposal_download_deletions_object_key_check" CHECK ("object_key" LIKE '%/product-downloads/key-files/%'),
+  "object_key" text NOT NULL CONSTRAINT "change_proposal_download_deletions_object_key_check" CHECK ("object_key" LIKE '%/product-downloads/key-files/%' OR "object_key" LIKE '%/product-downloads/key-uploads/%'),
   "api_key_id" text NOT NULL,
   "size_bytes" integer NOT NULL CONSTRAINT "change_proposal_download_deletions_size_check" CHECK ("size_bytes" BETWEEN 1 AND 268435456),
   "created_at" text NOT NULL CONSTRAINT "change_proposal_download_deletions_created_at_check" CHECK ("created_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),

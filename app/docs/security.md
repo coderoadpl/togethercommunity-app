@@ -641,7 +641,10 @@ scopes on every shop key.
   a copy result) deletes nothing and keeps its destination owned and counted
   until the minute sweep deletes it, once the record is 20 minutes old and
   30 minutes have passed since that attempt started, because the storage may
-  still write it until then. A key attaches only files it staged itself, and no route
+  still write it until then. Settling an upload also owes its upload object a
+  second delete a day after the upload started, so a `PUT` the storage
+  accepted before the URL expired and finished after the sweep does not stay;
+  the daily limit counts those bytes until then. A key attaches only files it staged itself, and no route
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the

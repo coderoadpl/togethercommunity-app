@@ -793,7 +793,8 @@ checked is counted once. The byte limits count staged files, objects whose
 deletion is still owed, and each object an upload or a copy still owns at its
 declared size: the upload object of an upload until the minute sweep settles
 it, at the earliest 20 minutes after it started (a still valid upload URL can
-write it again until then), and the staged copy of an upload or a copy until a
+write it again until then), and again from a day after it started while the
+sweep's second delete of it is not confirmed, and the staged copy of an upload or a copy until a
 completion hands it to a staged file or a delete of it is confirmed (by the
 failed attempt, or by the minute sweep when the attempt's outcome was
 unknown); the destination of an attempt that a later completion took over

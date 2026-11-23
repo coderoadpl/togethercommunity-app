@@ -1,6 +1,6 @@
 {
-  "hash": "6ce36b1f480f1c950fe2caefe026aa2a41588636d3a0bfc280959a0f1314120a",
-  "shortId": "6ce36b1f480f",
+  "hash": "e70a49f847d8194819472578f090943c1aff13066a4022d8a3df79b97e8e2385",
+  "shortId": "e70a49f847d8",
   "schema": {
     "constraints": [
       {
@@ -166,6 +166,11 @@
       {
         "definition": "CHECK (((not_before IS NULL) OR (not_before ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
         "name": "change_proposal_download_deletions_not_before_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((object_key ~~ '%/product-downloads/key-files/%'::text) OR (object_key ~~ '%/product-downloads/key-uploads/%'::text)))",
+        "name": "change_proposal_download_deletions_object_key_check",
         "table": "change_proposal_download_deletions"
       },
       {
@@ -527,11 +532,6 @@
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
         "name": "product_grants_mode_check",
         "table": "product_grants"
-      },
-      {
-        "definition": "CHECK ((object_key ~~ '%/product-downloads/key-files/%'::text))",
-        "name": "change_proposal_download_deletions_object_key_check",
-        "table": "change_proposal_download_deletions"
       },
       {
         "definition": "CHECK ((object_key ~~ '%/product-downloads/key-files/%'::text))",

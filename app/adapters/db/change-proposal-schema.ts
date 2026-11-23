@@ -258,7 +258,7 @@ export const changeProposalDownloadDeletions = pgTable('change_proposal_download
 }, (table) => [
   primaryKey({ name: 'change_proposal_download_deletions_pkey', columns: [table.tenantId, table.objectKey] }),
   index('change_proposal_download_deletions_created_idx').on(table.createdAt),
-  check('change_proposal_download_deletions_object_key_check', sql`${table.objectKey} LIKE '%/product-downloads/key-files/%'`),
+  check('change_proposal_download_deletions_object_key_check', sql`${table.objectKey} LIKE '%/product-downloads/key-files/%' OR ${table.objectKey} LIKE '%/product-downloads/key-uploads/%'`),
   check('change_proposal_download_deletions_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 268435456`),
   check('change_proposal_download_deletions_created_at_check', isoMillisecondTimestamp(table.createdAt)),
   check('change_proposal_download_deletions_sweep_attempted_at_check', sql`${table.sweepAttemptedAt} IS NULL OR ${isoMillisecondTimestamp(table.sweepAttemptedAt)}`),

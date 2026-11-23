@@ -23,6 +23,7 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
   uploadTtlSeconds: 15 * 60,
   completionDeadlineMs: 10 * MINUTE_MS,
   supersededDestinationDeleteAfterMs: 30 * MINUTE_MS,
+  uploadObjectDeleteAgainAfterMs: DAY_MS,
   recordSweepAfterMs: 20 * MINUTE_MS,
   recordRetentionMs: DAY_MS,
   recordEventRetentionMs: 30 * DAY_MS,
@@ -294,7 +295,7 @@ export type KeyDownloadRecordEvent = z.output<typeof keyDownloadRecordEventSchem
 export const keyDownloadPendingDeletionSchema = z.object({
   tenantId: z.string().min(1),
   apiKeyId: z.string().min(1),
-  objectKey: keyFileObjectSchema,
+  objectKey: z.union([keyFileObjectSchema, keyUploadObjectSchema]),
   sizeBytes: z.number().int().min(1).max(2147483647),
   createdAt: isoMilliseconds,
   notBefore: isoMilliseconds.nullable(),

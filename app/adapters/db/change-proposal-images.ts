@@ -245,7 +245,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         const [usage] = await tx
           .select({ images: count(), bytes: sql<number>`coalesce(sum(${changeProposalImages.sizeBytes}), 0)::bigint` })
           .from(changeProposalImages)
-          .where(and(eq(changeProposalImages.tenantId, tenantId), eq(changeProposalImages.apiKeyId, parsed.apiKeyId), unreleased));
+          .where(and(eq(changeProposalImages.tenantId, tenantId), eq(changeProposalImages.apiKeyId, parsed.apiKeyId), not(sameImage(parsed) ?? sql`false`)));
         if ((usage?.images ?? 0) >= QUARANTINED_IMAGE_LIMITS.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
         if (Number(usage?.bytes ?? 0) + parsed.sizeBytes > QUARANTINED_IMAGE_LIMITS.bytesPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };
         if (row === undefined) await tx.insert(changeProposalImages).values({ ...parsed, pendingSince });

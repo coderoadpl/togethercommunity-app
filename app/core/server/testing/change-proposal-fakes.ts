@@ -661,7 +661,8 @@ export const createQuarantinedImagesFake = (
         const stored = await storeObject();
         return stored.ok ? { kind: 'existing', asset: { ...existing } } : { kind: 'store_failed', error: stored.error };
       }
-      const keyRows = rows.filter((row) => row.tenantId === tenantId && row.apiKeyId === asset.apiKeyId);
+      const keyRows = [...rows, ...released]
+        .filter((row) => row.tenantId === tenantId && row.apiKeyId === asset.apiKeyId && !sameImageRow(row, tenantId, asset.apiKeyId, asset));
       if (keyRows.length >= limits.assetsPerKey) return { kind: 'cap_exceeded', cap: 'key_quarantined_images' };
       if (keyRows.reduce((total, row) => total + row.sizeBytes, 0) + asset.sizeBytes > limits.bytesPerKey) {
         return { kind: 'cap_exceeded', cap: 'key_quarantined_bytes' };

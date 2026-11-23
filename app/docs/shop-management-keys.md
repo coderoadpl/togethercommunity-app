@@ -200,7 +200,7 @@ copy just before it commits. A new `checkoutAppearance.logoUrl` or `iconUrl`
 cannot be proposed yet and is refused with `400`. The upload start answers
 `servePath: null` and `quarantined: true`; its presigned `PUT` accepts only a
 body of the declared `sizeBytes`. A key holds at most 100 such images and
-50 MiB of them at a time, and starts at most 60 uploads in 15 minutes (`409`
+50 MiB of them at a time, counting released ones until their object is deleted, and starts at most 60 uploads in 15 minutes (`409`
 beyond); see
 [Images](change-proposals.md#images) for the checks, the owner preview,
 publication and cleanup.

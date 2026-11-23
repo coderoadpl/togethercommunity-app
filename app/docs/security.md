@@ -720,7 +720,7 @@ scopes on every shop key.
   panel never renders a proposed SVG. No key can read
   quarantined bytes. A propose-mode key cannot propose a new checkout
   appearance logo or icon address (`checkoutAppearance.logoUrl`, `iconUrl`):
-  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB,
+  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB, released images whose object is not deleted yet included,
   and starts at most 60 uploads in 15 minutes, each presigned for exactly its
   declared size; decisions, revocation and a sweep on the minute tick remove
   them, and the sweep also removes the key's upload candidates and the public

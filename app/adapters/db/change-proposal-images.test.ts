@@ -640,21 +640,32 @@ describe('quarantined rows and objects of one key', () => {
     expect(await releasedRows()).toEqual(['2']);
   });
 
-  it('hides a released row from the limits, the submit check and the approval lock, and lets the sweep retry its removal', async () => {
+  it('hides a released row from the submit check and the approval lock but counts it toward the limits until its object is deleted', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     await database.db.insert(changeProposalImages).values(Array.from({ length: 100 }, (_unused, index) => image(index + 100)));
     expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_images' });
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [image(100)] }, NOW);
-    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_images' });
+    expect(await repository.insert(TENANT, image(100), stored)).toMatchObject({ kind: 'stored' });
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID, images: [image(100)] }, NOW);
     await database.db.transaction(async (tx) => {
       expect(await createQuarantinedImageLocks(tx).lockForPublication(TENANT, KEY_ID, image(100))).toBeNull();
     });
     expect(await repository.finishRelease(TENANT, image(100), async () => 'failed' as const, NOW)).toBe('failed');
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_images' });
     const retried = await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, NOW);
     expect(retried).toEqual({ kind: 'written', value: [image(100)] });
     expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', NOW, 10)).toEqual([TENANT]);
     expect(await repository.finishRelease(TENANT, image(100), async () => 'deleted' as const, NOW)).toBe('removed');
     expect(await releasedRows()).toEqual([]);
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+  });
+
+  it('counts the bytes of released rows whose object is not deleted yet', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await database.db.insert(changeProposalImages).values(Array.from({ length: 10 }, (_unused, index) => image(index + 100, { sizeBytes: IMAGE_ASSET_MAX_BYTES })));
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    expect(await repository.insert(TENANT, image(1), stored)).toEqual({ kind: 'cap_exceeded', cap: 'key_quarantined_bytes' });
   });
 
   it('keeps a released row whose delete had no definite answer from revival and from the sweep until the bound, then deletes it again', async () => {

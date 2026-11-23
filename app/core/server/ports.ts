@@ -3273,7 +3273,7 @@ export interface QuarantinedImageLiveUse {
 export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /**
    * Under a lock of the key, commits the image as a pending row (or revives a released row as pending) after counting
-   * the key's unreleased images and bytes, pending ones included; then runs `store` to write the object and, under the
+   * the key's other images and bytes, pending and released ones included; then runs `store` to write the object and, under the
    * lock again, marks the row written, or on a refused write rolls the row back. A write without a definite answer, or
    * a process that dies before the second commit, leaves the row pending and counted: no lookup sees it, and the sweep
    * removes its object and the row once `unresolvedDeleteGraceMs` passed. A pending row answers `busy`. The same bytes

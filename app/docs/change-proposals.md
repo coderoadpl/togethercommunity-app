@@ -740,7 +740,11 @@ A decision note is at most 500 characters. The key's own rate limits (60
 requests a minute, 10,000 a day) apply as on every shop route. The images a
 key holds for approval have two limits of their own, checked when an upload
 is completed, in the same transaction that records it, and the uploads it
-starts a third, checked when an upload is started (see [Images](#images)):
+starts a third, checked when an upload is started (see [Images](#images)).
+The first two count every image of the key whose object the application has
+not deleted yet: a released image counts until its object is deleted and its
+row removed, so a storage that refuses deletes cannot grow a key's quarantine
+past them:
 
 | Limit | Value | `changeProposalCap` |
 |---|---|---|
@@ -1091,8 +1095,8 @@ can never replace it, because the digest is the name. Each quarantined image
 is a row of `change_proposal_images` (workspace, key, kind, digest, extension,
 size, creation time, release time), so the limits, the references and the
 cleanup never depend on listing object storage. Under a lock of that key,
-completion counts the key's limits (above) over its unreleased rows, pending
-ones included, and commits the row as pending (`pending_since`), or revives a
+completion counts the key's limits (above) over all its rows, pending and
+released ones included, and commits the row as pending (`pending_since`), or revives a
 released row of the same image as pending; then it writes the quarantined
 object and, under the lock again, marks the row written. A pending row counts
 toward the limits but is invisible to the submit check, the approval and the
@@ -1128,7 +1132,8 @@ holding the row, that each attached image is still quarantined for the key; one
 released meanwhile is refused with `400` and the live route's message, with a
 form error naming no field: "An image this key uploaded for approval is no
 longer available; upload it again". A released row counts as
-gone everywhere: for the submit check, the approval and the limits. An owner session and a
+gone for the submit check and the approval; toward the key's limits it counts
+until its object is deleted and the row removed. An owner session and a
 direct-mode key set any address the live validator accepts, exactly as before.
 
 **Owner preview.** `GET /api/change-proposals/:id/assets/:digest`

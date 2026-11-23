@@ -1479,6 +1479,7 @@ describe('LessonPlayerPage', () => {
     ['https://support.example.org/help', null, `${en.lesson.contactCreator} ${en.lesson.newTabHint}`],
     ['mailto:help@example.org', null, `${en.lesson.contactCreator} ${en.lesson.mailHint}`],
     [null, '/account?tab=profile&support=open', en.lesson.contactCreator],
+    ['javascript:alert(1)', '/account?tab=profile&support=open', en.lesson.contactCreator],
   ] as const)('links the workspace contact %s from an unavailable video', async (supportUrl, formHref, accessibleName) => {
     server.use(okStructure(), okProgress(), okLesson([{ type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' }]),
       http.get('/api/student/lessons/:lessonId/playback', () => HttpResponse.json({ ok: true, data: {

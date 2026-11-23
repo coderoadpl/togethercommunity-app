@@ -72,7 +72,7 @@ Who deletes them:
 - a `key-uploads/` object: a completion that staged it or that failed for a
   definite reason (nothing uploaded, a wrong size or type, a copy the storage
   refused), and the minute sweep once its upload record is 20 minutes old and
-  the lease of its last completion attempt (10 minutes) has ended;
+  30 minutes have passed since its last completion attempt started;
 - a `key-files/` object that is still staged: a completion or copy that wrote
   it and then failed for a definite reason; the key's discard, also of a file a
   pending proposal holds (an approval of that proposal then ends `stale`);
@@ -85,8 +85,10 @@ Who deletes them:
 - the destination of a completion or copy whose storage outcome is unknown (a
   copy or read the storage did not answer in time, a connection error, a server
   error, a copy answer without a copy result): only the minute sweep, once its
-  record is 20 minutes old and the attempt's lease has ended, because a copy
-  the storage still runs may land after any earlier delete. Until then the
+  record is 20 minutes old and 30 minutes have passed since the attempt
+  started, the time within which the storage finishes a copy it accepted
+  (below), because a copy the storage still runs may land after any earlier
+  delete. Until then the
   record keeps the upload object and the destination, and both count against
   the key's limits;
 - the destination of a completion attempt that a later completion took over:

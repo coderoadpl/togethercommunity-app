@@ -372,10 +372,10 @@ describe('copying a product file on the server', () => {
     expect(copies).toHaveLength(1);
     expect(await recordStates()).toEqual(['completing']);
 
-    h.clock.now = at(15);
+    h.clock.now = at(29);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual(copies);
-    h.clock.now = at(21);
+    h.clock.now = at(31);
     expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);
@@ -813,11 +813,44 @@ describe('copies whose outcome the storage leaves unknown', () => {
       .toMatchObject({ ok: false, error: { details: { changeProposalCap: 'key_staged_files' } } });
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(record?.stagedKey ?? '-')).toHaveLength(1);
-    h.clock.now = at(21);
+    h.clock.now = at(29);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(record?.stagedKey ?? '-')).toHaveLength(1);
+    h.clock.now = at(31);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);
     expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
+  });
+
+  it('keeps the record of an unconfirmed copy until 30 minutes after its attempt, so a copy the storage finishes after 20 minutes is still deleted', async () => {
+    const h = harness();
+    const original = `${TENANT}/product-downloads/${PRODUCT}/asset-owner/guide.pdf`;
+    h.objects.objects.set(original, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('asset-owner', PDF.byteLength, original));
+    let land: () => void = () => undefined;
+    const late: StorageProvider = {
+      ...h.objects.storage,
+      copyObject: async (input) => {
+        land = () => { h.objects.objects.set(input.key, { bytes: PDF, contentType: 'application/octet-stream' }); };
+        return err(integrationUnavailable('Could not copy the storage object: the storage request deadline passed'));
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-owner' }, { ...h.deps, storage: late }))
+      .toEqual({ ok: false, error: keyDownloadCopyRefused() });
+    h.clock.now = at(21);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await recordStates()).toEqual(['interrupted']);
+    h.clock.now = at(25);
+    land();
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toHaveLength(1);
+    h.clock.now = at(29);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toHaveLength(1);
+    h.clock.now = at(31);
+    expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+    expect(await recordStates()).toEqual(['settled']);
   });
 
   it('answers one key-safe refusal whatever the stored bytes of a source with the same metadata are, and logs one cause line per source', async () => {
@@ -908,7 +941,10 @@ describe('a completion that cannot finish', () => {
     h.clock.now = at(16);
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('start a new upload') } });
-    h.clock.now = at(21);
+    h.clock.now = at(36);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await recordStates()).toEqual(['interrupted']);
+    h.clock.now = at(37);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);

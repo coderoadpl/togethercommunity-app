@@ -674,7 +674,8 @@ staged copy when the storage confirms the deletes; what it cannot delete stays
 owned by the upload, counts against the limits, and is deleted by the minute
 sweep. A completion whose storage outcome is unknown deletes nothing, because a
 copy the storage still runs may land later: the minute sweep deletes both
-objects once the upload is 20 minutes old and the attempt's lease has ended.
+objects once the upload is 20 minutes old and 30 minutes have passed since the
+attempt started, the time within which the storage finishes a copy it accepted.
 When a later completion takes the upload over, the failed attempt's destination
 becomes an owed deletion due 30 minutes after that attempt started; it counts
 against the limits until the minute sweep's delete is confirmed, and the sweep
@@ -762,8 +763,7 @@ Discarding it removes it from the staged list at once and deletes its
 object, or, when that delete fails, owes the deletion, which the sweep
 retries; the discard answers success either way. An upload that is never
 completed becomes due for the same sweep 20 minutes after it started, and one
-whose last completion attempt is still inside its 10-minute lease once that
-lease has ended. The destination of a completion attempt that a later
+with a completion attempt 30 minutes after its last attempt started. The destination of a completion attempt that a later
 completion took over becomes due 30 minutes after that attempt started. The
 sweep serves the longest-waiting rows first within its own
 time budget, so a due row may wait for a later run

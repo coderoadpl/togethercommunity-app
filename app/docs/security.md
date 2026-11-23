@@ -640,7 +640,8 @@ scopes on every shop key.
   outcome is unknown (no answer in time, a server error, a copy answer without
   a copy result) deletes nothing and keeps its destination owned and counted
   until the minute sweep deletes it, once the record is 20 minutes old and
-  that lease has ended, because the storage may still write it. A key attaches only files it staged itself, and no route
+  30 minutes have passed since that attempt started, because the storage may
+  still write it until then. A key attaches only files it staged itself, and no route
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the

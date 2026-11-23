@@ -427,7 +427,7 @@ const before = (now: string, ms: number): string => new Date(Date.parse(now) - m
 const keyDownloadSweepCutoffs = (now: string): KeyDownloadSweepCutoffs => ({
   now,
   recordsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordSweepAfterMs),
-  attemptsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.completionDeadlineMs),
+  attemptsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.supersededDestinationDeleteAfterMs),
   stagedCreatedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.stagedMaxAgeMs),
   settledStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordRetentionMs),
   eventsBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordEventRetentionMs),

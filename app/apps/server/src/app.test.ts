@@ -668,8 +668,8 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
-    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0 }),
-    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
+    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -3527,6 +3527,19 @@ describe('email dispatch route', () => {
     expect(sweepKeyDownloadFiles.mock.calls).toStrictEqual([[{ deadlineAt }]]);
     expect(logger.error).toHaveBeenCalledWith('[change-proposal] quarantined image sweep failed: image storage unavailable');
     expect(logger.error).toHaveBeenCalledWith('[key-download] staged download file sweep failed: file storage unavailable');
+  });
+
+  it('logs a failed tick for a staged object sweep that answered with failed steps', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const base = deps({ logger });
+    base.sweepQuarantinedImages = async () => ok({ tenants: 2, removed: 1, failed: 1 });
+    base.sweepKeyDownloadFiles = async () => ok({ tenants: 3, removed: 0, failed: 2 });
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(logger.error.mock.calls).toStrictEqual([
+      ['[change-proposal] quarantined image sweep failed: 1 of its steps failed'],
+      ['[key-download] staged download file sweep failed: 2 of its steps failed'],
+    ]);
   });
 
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {

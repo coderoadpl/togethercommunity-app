@@ -9,6 +9,12 @@ export type SweepBudget = () => number;
 
 export const UNBOUNDED: SweepBudget = () => Number.POSITIVE_INFINITY;
 
+export interface StagingSweepOutcome {
+  tenants: number;
+  removed: number;
+  failed: number;
+}
+
 const bounded = (budget: SweepBudget): boolean => Number.isFinite(budget());
 
 /**

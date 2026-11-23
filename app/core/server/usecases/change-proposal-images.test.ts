@@ -1143,6 +1143,28 @@ describe('releasing quarantined images', () => {
     expect(h.store.imagePublications).toEqual([]);
   });
 
+  it('counts a workspace whose release rejected as a failure, logs it and still withdraws the publications of another workspace', async () => {
+    const h = harness();
+    const image = { kind: 'product-cover' as const, digest: sha256HexOfBytes(PNG(3)), extension: 'png' as const };
+    h.objects.objects.set(`image-assets/${TENANT}/product-cover/${image.digest}.png`, { bytes: PNG(3), contentType: 'image/png' });
+    h.store.imagePublications.push({ tenantId: TENANT, attemptId: 'attempt-crashed', image, startedAt: NOW });
+    h.store.releasedImageRows.push({
+      tenantId: NEIGHBOUR, apiKeyId: NEIGHBOUR_KEY_ID, kind: 'product-cover', digest: sha256HexOfBytes(PNG(1)), extension: 'png', sizeBytes: 10, createdAt: NOW,
+    });
+    h.clock.now = '2026-03-01T10:16:00.000Z';
+    const images = h.deps.quarantinedImages;
+    const quarantinedImages: typeof images = {
+      ...images,
+      release: (tenantId, selection, now, wait) =>
+        tenantId === NEIGHBOUR ? Promise.reject(new Error('connection reset')) : images.release(tenantId, selection, now, wait),
+    };
+
+    expect(await sweepQuarantinedImages({ ...h.deps, quarantinedImages })).toEqual({ ok: true, value: { tenants: 2, removed: 1, failed: 1 } });
+    expect(h.logger.error).toHaveBeenCalledWith(expect.stringContaining('quarantined image release failed'));
+    expect(h.store.imagePublications).toEqual([]);
+    expect(h.store.releasedImageRows).toHaveLength(1);
+  });
+
   it('deletes an upload candidate a second time after a longer bound, so a write that lands after the first delete does not stay', async () => {
     const h = harness();
     const started = await beginProposedProductCoverUpload(keyCtx(), { kind: 'product-cover', fileName: 'a.png', contentType: 'image/png', sizeBytes: 10 }, h.deps);
@@ -1174,7 +1196,7 @@ describe('releasing quarantined images', () => {
     revoked.revokedAt = h.clock.now;
     h.clock.now = '2026-03-08T10:00:01.000Z';
 
-    expect(await sweepQuarantinedImages(h.deps)).toEqual({ ok: true, value: { tenants: 1, removed: 6 } });
+    expect(await sweepQuarantinedImages(h.deps)).toEqual({ ok: true, value: { tenants: 1, removed: 6, failed: 0 } });
     expect(h.store.imageUploads.map((upload) => upload.firstDeletedAt)).toEqual(Array.from({ length: 4 }, () => '2026-03-08T10:00:01.000Z'));
     expect(h.objects.keysUnder('image-asset-candidates/')).toEqual([]);
     expect(h.store.imageRows.map((row) => [row.apiKeyId, row.digest])).toEqual([

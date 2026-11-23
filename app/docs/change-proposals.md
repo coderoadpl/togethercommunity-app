@@ -1441,7 +1441,9 @@ after it. That allowance starts only once the release holds its database
 connection: the wait for a connection from the pool is not counted in it, so
 after a long wait the release can still run its statements past the end the
 sweep gave that step. A failing sweep is logged and never stops the tick
-or the other sweep. The
+or the other sweep. A step whose database or storage call rejects is logged
+and counted, the sweep goes on with the other workspaces, and a run with any
+such failure answers its count, which the tick logs as a failed run. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.

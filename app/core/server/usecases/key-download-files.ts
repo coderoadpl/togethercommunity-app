@@ -44,7 +44,7 @@ import type { KeyDownloadFileRepository, KeyDownloadObjectRemoval, KeyDownloadSw
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt, storageFileName } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, sweepStatementBound, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStatementBound, UNBOUNDED, type StagingSweepOutcome, type SweepBudget } from './sweep-budget.js';
 
 export interface KeyDownloadStagingDeps {
   keyDownloadFiles: KeyDownloadFileRepository;
@@ -488,7 +488,7 @@ const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, r
 };
 
 /** A failed row records its attempt, so rows whose deletion keeps failing move behind the others instead of filling every batch. */
-export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise<Result<StagingSweepOutcome, AppError>> => {
   const now = deps.clock.nowIso();
   const cutoffs = keyDownloadSweepCutoffs(now);
   const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? KEY_DOWNLOAD_FILE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
@@ -497,6 +497,7 @@ export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise
   const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants, sweepStatementBound(left));
   let removed = 0;
   let visited = 0;
+  let failed = 0;
   for (const tenantId of tenants) {
     if (sweepLockWait(left, 1) === null) break;
     visited += 1;
@@ -504,7 +505,8 @@ export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise
       removed += await sweepTenant(tenantId, cutoffs, batch.rows, left, deps);
     } catch (cause) {
       logFailure(deps, tenantId, 'staged download file sweep failed', cause);
+      failed += 1;
     }
   }
-  return ok({ tenants: visited, removed });
+  return ok({ tenants: visited, removed, failed });
 };

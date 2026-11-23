@@ -40,8 +40,8 @@ const harness = vi.hoisted(() => {
     dispatchAutoInvoices: vi.fn(),
     dispatchOrderRefundJobs: vi.fn(async () => ({ ok: true, value: { processedCount: 0, outcomes: {} } })),
     releaseExpiredStockReservations: vi.fn(),
-    sweepQuarantinedImages: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0 } })),
-    sweepKeyDownloadFiles: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0 } })),
+    sweepQuarantinedImages: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0, failed: 0 } })),
+    sweepKeyDownloadFiles: vi.fn(async () => ({ ok: true, value: { tenants: 0, removed: 0, failed: 0 } })),
     ksef: { marker: 'ksef' },
     logger: { marker: 'logger', warn: vi.fn() },
   };

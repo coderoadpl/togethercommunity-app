@@ -478,7 +478,8 @@ import {
   type AuthenticatedUser,
   type Ctx,
   type PaymentWebhookEvent,
-  type SimulatePurchaseResult
+  type SimulatePurchaseResult,
+  type StagingSweepOutcome
 } from '#core/server/index.js';
 
 import { ctxOf } from './ctx-of.js';
@@ -819,12 +820,13 @@ const STAGING_SWEEP_TICK_END_MS = CRON_FUNCTION_LIMIT_MS - STAGING_SWEEP_MARGIN_
 
 const runStagingSweep = async (
   failure: string,
-  sweep: () => Promise<Result<unknown, AppError>>,
+  sweep: () => Promise<Result<StagingSweepOutcome, AppError>>,
   logger: AppDeps['logger'],
 ): Promise<void> => {
   try {
     const swept = await sweep();
     if (!swept.ok) logger.error(`${failure}: ${swept.error.message}`);
+    else if (swept.value.failed > 0) logger.error(`${failure}: ${String(swept.value.failed)} of its steps failed`);
   } catch (error) {
     logger.error(`${failure}: ${safeErrorMessage(error)}`);
   }

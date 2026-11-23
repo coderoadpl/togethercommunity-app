@@ -198,7 +198,10 @@ workspace one queue of upload and copy records, staged files and owed deletions
 waiting first, by the time of a row's last failed delete or else its creation;
 a failed delete records its attempt, so rows whose deletion keeps failing move
 behind the others. A row another request holds past the lock wait, and a row
-the budget could not cover, are tried again on the next run. Each state change of an
+the budget could not cover, are tried again on the next run. A workspace whose
+database or storage call rejects is logged and counted and the sweep goes on
+with the next workspace; a run with any such failure answers its count, which
+the tick logs as a failed run, and the rows wait for the next run. Each state change of an
 upload or copy record is appended, in the same transaction, to
 `change_proposal_download_upload_events` (the record, the key, the attempt, the
 kind of change and a short machine reason), which the sweep deletes 30 days

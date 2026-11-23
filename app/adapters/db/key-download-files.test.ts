@@ -27,6 +27,7 @@ import {
   shopManagementKeyCapabilities,
   sweepKeyDownloadFiles,
   type Ctx,
+  type KeyDownloadSweepCutoffs,
   type StorageProvider,
 } from '#core/server/index.js';
 import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
@@ -698,9 +699,24 @@ describe('the order of the staged file sweep', () => {
     h.objects.failDeletes = (target) => target === failing;
     const deps = { ...h.deps, batch: { tenants: 1, rows: 1 } };
     await sweepKeyDownloadFiles(deps);
-    expect(await sweepKeyDownloadFiles(deps)).toMatchObject({ ok: true, value: { tenants: 1, removed: 1 } });
+    expect(await sweepKeyDownloadFiles(deps)).toMatchObject({ ok: true, value: { tenants: 1, removed: 1, failed: 0 } });
     expect(await owedRows()).toEqual([failing]);
     expect(neighbour).not.toBe(failing);
+  });
+
+  it('counts a workspace whose sweep rejected as a failure, logs it and still sweeps the other workspaces', async () => {
+    const h = harness();
+    await owe(TENANT, 'unreachable', '2026-03-01T09:00:00.000Z');
+    await owe(NEIGHBOUR, 'neighbour', '2026-03-01T09:30:00.000Z');
+    const files = h.deps.keyDownloadFiles;
+    const keyDownloadFiles = {
+      ...files,
+      purgeSettled: (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, lockWaitMs?: number) =>
+        tenantId === TENANT ? Promise.reject(new Error('connection reset')) : files.purgeSettled(tenantId, cutoffs, limit, lockWaitMs),
+    };
+    expect(await sweepKeyDownloadFiles({ ...h.deps, keyDownloadFiles })).toEqual({ ok: true, value: { tenants: 2, removed: 1, failed: 1 } });
+    expect(h.logger.error).toHaveBeenCalledWith(expect.stringContaining(`staged download file sweep failed tenant=${TENANT}`));
+    expect(await owedRows()).toEqual([`${TENANT}/product-downloads/key-files/${KEY_ID}/unreachable/f.pdf`]);
   });
 
   it('sweeps staged files of a revoked key and staged files past their age, and keeps younger ones of active keys', async () => {
@@ -1172,7 +1188,7 @@ describe('the time budget of the staged file sweep', () => {
         return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
       },
     };
-    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow })).toEqual({ ok: true, value: { tenants: 1, removed: 0 } });
+    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow })).toEqual({ ok: true, value: { tenants: 1, removed: 0, failed: 0 } });
     expect(deadlines).toEqual([10_000, 6_000, 2_000]);
     expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow, deadlineAt: Date.parse(h.clock.now) + 5_000 })).toMatchObject({ ok: true });
     expect(deadlines.slice(3)).toEqual([5_000]);
@@ -1198,7 +1214,7 @@ describe('the database statements of the staged file sweep', () => {
       const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
       const elapsed = Date.now() - started;
       await released;
-      expect({ outcome, quick: elapsed < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 0, removed: 0 } }, quick: true });
+      expect({ outcome, quick: elapsed < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 0, removed: 0, failed: 0 } }, quick: true });
     } finally {
       await holder.end();
     }
@@ -1213,7 +1229,7 @@ describe('the database statements of the staged file sweep', () => {
     try {
       const started = Date.now();
       const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
-      expect({ outcome, quick: Date.now() - started < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 1, removed: 0 } }, quick: true });
+      expect({ outcome, quick: Date.now() - started < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 1, removed: 0, failed: 0 } }, quick: true });
     } finally {
       await database.db.execute(sql`drop trigger slow_download_purge on change_proposal_download_uploads`);
       await database.db.execute(sql`drop function slow_download_purge()`);

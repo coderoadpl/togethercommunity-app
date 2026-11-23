@@ -1345,7 +1345,7 @@ describe('database statements of the sweep', () => {
       const outcome = await sweepQuarantinedImages({ ...harness.deps, budgetMs: 1_000 });
       const elapsed = Date.now() - started;
       await released;
-      expect(outcome).toEqual({ ok: true, value: { tenants: 0, removed: 0 } });
+      expect(outcome).toEqual({ ok: true, value: { tenants: 0, removed: 0, failed: 0 } });
       expect(elapsed).toBeLessThan(3_000);
     } finally {
       await holder.end();

@@ -70,37 +70,124 @@ The owner adds `promotion-guard` to the `main` ruleset as a required check.
 
 ## Required checks
 
-The required branch checks for `staging` and `main` are derived from the GitHub
-Actions workflow files by `app/scripts/rulesets-required-checks.ts` and pinned
-in `app/config-regression/rulesets-required-checks.snapshot.json`. Changing a CI
-job name or an e2e matrix suite changes the derived list, so the snapshot test
-forces the ruleset update to be reviewed with the workflow change.
+The `staging` and `main` rulesets require one CI check, `dispatch-ci`, plus
+three checks that report from their own workflows. What CI runs and what blocks
+a merge is decided in the repository by `app/ci/dispatch-ci.manifest.json`, so
+adding, removing or relaxing a CI job never needs a ruleset edit.
 
-The derivation scans every workflow file. A workflow is left out of the derived
-list when it cannot report on every push to a pull request: no `pull_request`
-trigger for that branch, a `paths` or `paths-ignore` filter, a `types` list
-without `synchronize`, or `pull_request_target`. A job-level
-`continue-on-error: true` also leaves that job out because an advisory job
-concludes green even when it fails, so requiring it only adds waiting time.
-`chromatic.yml` is an explicit exception in `IGNORED_WORKFLOW_FILES`: its token
-detection job is not a product gate, and its Chromatic job is gated on an
-optional project token. A matrix or a job `name:` expression the derivation
-cannot resolve is a hard error rather than a guess.
+### Manifest, plan and gate
 
-`pnpm run rulesets-drift` compares that derived list with the live `staging` and
-`main` branch rulesets. In scheduled mode, any mismatch fails with the exact
-status-check names to add or remove. In pull-request mode, a workflow-produced
-context that the ruleset does not yet require is a warning, while a
-ruleset-required context that no pull-request workflow produces is a failure.
+The manifest is the single source of truth. It names the gate check, lists
+every job of `.github/workflows/ci.yml` except the plan job and the gate, marks
+each job `required` or `advisory`, carries an optional `runOn` filter by event
+(`pull_request`, `push`) and target branch (`staging`, `main`) that defaults to
+always, and holds the e2e suites as matrix entries (`suite` plus a `browser`
+flag that installs Chrome for that leg). `afterGate` lists jobs that run only
+after the gate succeeded (`release-tag`), `separateRequiredChecks` lists the
+checks that stay outside the gate per branch with a reason each, and
+`deletionProtectedBranches` lists the branches the drift check watches for
+deletion protection. `postDeploy` is an empty slot per environment (`staging`,
+`production`) reserved for jobs that will run after a deploy; nothing runs it
+yet and validation keeps it empty.
+
+`app/scripts/dispatch-ci.ts` runs with plain Node 24, without `pnpm install`,
+and has two subcommands:
+
+1. `plan` (the first job, `plan`) reads the manifest and the event, and writes
+   the plan as JSON, one `run-<job>` flag per job and `matrix-<job>` for a
+   matrix job. An event other than `pull_request` or `push`, or a branch other
+   than `staging` or `main`, fails the plan, and with it the gate.
+2. Every planned job has `needs: [plan]` and runs only when its flag is
+   `true`. The e2e job takes its matrix from the plan and keeps reporting
+   `e2e (<suite>)`.
+3. `gate` (the last job, `dispatch-ci`, `if: always()`) matches every result
+   in `needs` against the plan. It is red when the plan job did not succeed or
+   its output is missing or unreadable, when any job was cancelled, when a
+   required job failed, when a job planned to run and required was skipped,
+   when a job the plan skipped ran anyway, or when `needs` and the plan do not
+   list the same jobs. An advisory failure leaves it green and is named in the
+   headline.
+
+The first line of the gate's log and of its step summary names what blocked,
+for example
+`dispatch-ci: RED — failed: check (step "pnpm run depcruise"), e2e (coupon) (step "Run E2E suite"); cancelled: none; skipped but required: none`.
+Failures and cancellations are listed apart, so a red job is never read as a
+cancellation. The step names and matrix legs come from a best-effort read of
+the run's jobs API with `actions: read`; when that read fails the verdict
+stands and the gate says the step names are unavailable.
+
+The `check` job runs each sub-gate of `pnpm run check` as its own step named
+after the command, so the gate can name the failing one. `pnpm run check`
+stays the documented local static gate;
+`app/config-regression/dispatch-ci-workflow.test.ts` keeps the workflow steps
+equal to the script's chain, in order.
+
+### Changing what CI runs
+
+- Add a job: add it to `ci.yml` with `needs: [plan]` and
+  `if: needs.plan.outputs.run-<job> == 'true'`, add `run-<job>` to the plan
+  job's outputs, add the job to the gate's `needs`, and add it to the manifest
+  `jobs`. The binding test fails until the four agree. No ruleset change.
+- Make a job advisory: set `mode` to `advisory` in the manifest and
+  `continue-on-error: true` on the job. Its failure no longer blocks; its
+  cancellation still does.
+- Run a job only for some events or branches: set `runOn` in the manifest.
+- Add an e2e suite: add a matrix entry with its `browser` flag; the job name
+  pattern `e2e (${{ matrix.suite }})` keeps the check name stable.
+
+The plan runs in the pull request's merge context, like every other job, so a
+pull request can change its own plan exactly as it can change any job today.
+Nothing runs pull request code with base-branch privileges.
+
+### Separate required checks
+
+`ai-review` (both branches), `staging-freeze` (`staging`) and
+`promotion-guard` (`main`) stay separate required checks because they run in
+their own workflows on events that do not start a CI run, or are re-run on
+their own; the manifest records the reason for each. The expected required
+checks of a branch are the gate plus that branch's separate checks, pinned in
+`app/config-regression/rulesets-required-checks.snapshot.json`, so the snapshot
+test forces a reviewed change whenever the list moves.
+
+### Drift check
+
+`app/scripts/rulesets-required-checks.ts` derives the produced checks, the
+names a workflow reports on every push to a pull request for a branch, from
+the workflow files. It resolves the plan-driven jobs and the e2e matrix through
+the manifest. A workflow is left out when it cannot report on every push to a
+pull request: no `pull_request` trigger for that branch, a `paths` or
+`paths-ignore` filter, a `types` list without `synchronize`, or
+`pull_request_target`. A job-level `continue-on-error: true` also leaves that
+job out. `chromatic.yml` is an explicit exception in `IGNORED_WORKFLOW_FILES`.
+A matrix or a job `name:` expression the derivation cannot resolve is a hard
+error rather than a guess. A test asserts that each expected required check is
+produced by exactly one job for its branch, and that only one job in
+`.github/workflows` reports the gate name.
+
+`pnpm run rulesets-drift` compares the expected and produced checks with the
+live rulesets in three lists per branch:
+
+- expected but not required: add these to the ruleset;
+- required, not expected, but still produced (legacy): a per-job check that
+  now reports through the gate; remove it from the ruleset;
+- required and produced by nothing (unknown): it blocks every pull request
+  forever; remove it now.
+
+It also checks deletion protection for every branch in
+`deletionProtectedBranches`: the live branch rules must contain a `deletion`
+rule from a ruleset other than the one that requires status checks, so the
+branch stays undeletable while the gate ruleset is disabled. The owner creates
+that as a separate ruleset with only "Restrict deletions" turned on; while
+deletion is restricted only inside the gate ruleset the report lists it under
+"Branch deletion protection".
 
 Three surfaces run that comparison:
 
 - `.github/workflows/ci.yml` runs it inside `check` on every pull request whose
-  diff touches `.github/workflows/**`. It warns for newly introduced contexts
-  that the live rulesets do not require yet, and fails only when a workflow
-  change removes or renames a context still required by the live rulesets.
+  diff touches `.github/workflows/**`. It warns on expected, legacy and
+  deletion-protection findings, and fails only on unknown checks.
 - `.github/workflows/rulesets-drift.yml` runs it daily at 05:43 UTC and on
-  demand, with `contents: read` + `issues: write`. It fails on both directions,
+  demand, with `contents: read` + `issues: write`. It fails on any finding,
   opens one issue titled `Ruleset drift`, labelled `ruleset-drift`, updates its
   body while the drift lasts, closes it once the rulesets match, and closes any
   older duplicate carrying the same label. Do not edit that issue by hand; it is
@@ -109,12 +196,19 @@ Three surfaces run that comparison:
   (or `REPO`) in the environment. It defaults to scheduled mode; pass
   `-- --mode=pull-request` to check the pull-request policy.
 
-Rollout order matters in both directions. Add a context to a ruleset only after
+### Transition from per-job checks
+
+`ci.yml` still reports every per-job check under its old name (`check`,
+`visual`, `smoke`, `e2e (<suite>)`), because the live rulesets keep requiring
+them until the owner swaps the list. Until then the drift report lists
+`dispatch-ci` as expected and the per-job names as legacy, and the
+`Ruleset drift` issue stays open. Swap order: wait until `dispatch-ci` has
+reported on a run of each branch, add it to both rulesets, then remove the
+legacy names, and add the separate deletion-protection ruleset.
+
+Rollout order matters in both directions. Add a check to a ruleset only after
 a run of the branch has already reported it, otherwise every open pull request
-waits on a check that never arrives. So: merge the workflow change first, wait
-for one run on the target branch, then add the context. The pull-request gate
-allows that order by warning on the new context, and the scheduled drift monitor
-keeps the follow-up visible until the ruleset is updated. When removing a check,
-drop it from the ruleset first and delete the job afterwards; if a pull request
-deletes or renames a still-required context, the pull-request gate fails because
-the live ruleset would otherwise block every pull request.
+waits on a check that never arrives. When removing a check, drop it from the
+ruleset first and delete the job afterwards; if a pull request deletes or
+renames a still-required check, the pull-request drift gate fails because the
+live ruleset would otherwise block every pull request.

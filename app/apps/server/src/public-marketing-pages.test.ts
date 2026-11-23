@@ -5,6 +5,7 @@ import { createMarketingSignupForm } from '#core/server/index.js';
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
+import { createPendingWork } from './graceful-shutdown.js';
 import { describe, expect, it } from 'vitest';
 
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
@@ -694,7 +695,8 @@ const signupHttpFixture = async (doubleOptIn: boolean) => {
   const definition = await fixture.deps.definitions.findById('directory-a', 'newsletter');
   if (definition === null) throw new Error('Missing definition');
   await fixture.deps.definitions.update('directory-a', { ...definition, doubleOptIn });
-  const deps = createDeps(envSchema.parse({ NODE_ENV: 'test', DATABASE_URL: fixture.url, REALTIME_TRANSPORT: 'in-process', APP_BASE_DOMAIN: 'example.org', APP_BASE_URL: 'https://platform.example.org', SECRETS_MASTER_KEY: Buffer.alloc(32, 1).toString('base64') }), { db: fixture.db, clock: fixture.deps.clock });
+  const backgroundWork = createPendingWork();
+  const deps = createDeps(envSchema.parse({ NODE_ENV: 'test', DATABASE_URL: fixture.url, REALTIME_TRANSPORT: 'in-process', APP_BASE_DOMAIN: 'example.org', APP_BASE_URL: 'https://platform.example.org', SECRETS_MASTER_KEY: Buffer.alloc(32, 1).toString('base64') }), { db: fixture.db, clock: fixture.deps.clock, keepAlive: backgroundWork.track });
   if (deps.marketingSignup === undefined) throw new Error('Missing signup dependencies');
   const now = fixture.deps.clock.nowIso();
   directoryValue(await fixture.deps.lists.save('directory-a', { list: { id: 'newsletter-list', tenantId: 'directory-a', key: 'newsletter', name: 'Newsletter', kind: 'static', rule: null, revision: 1, createdAt: now, updatedAt: now, archivedAt: null }, expectedRevision: null }));
@@ -702,7 +704,12 @@ const signupHttpFixture = async (doubleOptIn: boolean) => {
   const { contact } = await fixture.deps.contacts.upsertByEmail('directory-a', { email: 'reader@example.org', displayName: 'Real Name', source: 'import', tags: ['existing'] });
   await fixture.deps.contacts.archive('directory-a', { contactId: contact.id, archivedAt: now });
   const app = buildApp(deps);
-  const request = (path: string, init: RequestInit = {}) => app.request(`https://directory-a.example.org${path}`, { ...init, headers: { host: 'directory-a.example.org', ...init.headers } });
+  const settle = async (response: Response | Promise<Response>): Promise<Response> => {
+    const settled = await response;
+    await backgroundWork.settled();
+    return settled;
+  };
+  const request = (path: string, init: RequestInit = {}) => settle(app.request(`https://directory-a.example.org${path}`, { ...init, headers: { host: 'directory-a.example.org', ...init.headers } }));
   const submit = () => request('/api/public/marketing/forms/newsletter/submit', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email: contact.email, displayName: 'Fake', token: form.token }) });
   const snapshot = async () => ({
     contact: await fixture.deps.contacts.findByEmail('directory-a', contact.email),
@@ -713,7 +720,7 @@ const signupHttpFixture = async (doubleOptIn: boolean) => {
     submissions: await fixture.db.select().from(marketingSignupSubmissions),
     confirmations: await fixture.db.select().from(consentConfirmationTokens),
   });
-  return { ...fixture, deps, form, contact, now, request, submit, snapshot };
+  return { ...fixture, deps, form, contact, now, request, settle, submit, snapshot };
 };
 
 describe('public signup persistence and confirmation', () => {
@@ -854,9 +861,9 @@ describe('public signup persistence and confirmation', () => {
     const fixture = await signupHttpFixture(true);
     try {
       const limited = buildApp({ ...fixture.deps, publicRateLimitPolicies: { ...fixture.deps.publicRateLimitPolicies, signupsPerEmail: { limit: 1, windowMs: 600_000 } } });
-      const post = (contentType: string, body: string) => limited.request('https://directory-a.example.org/api/public/marketing/forms/newsletter/submit?lang=en', {
+      const post = (contentType: string, body: string) => fixture.settle(limited.request('https://directory-a.example.org/api/public/marketing/forms/newsletter/submit?lang=en', {
         method: 'POST', headers: { host: 'directory-a.example.org', 'content-type': contentType }, body,
-      });
+      }));
       const form = () => post('application/x-www-form-urlencoded', new URLSearchParams({ email: 'limit@example.org', displayName: 'Limit', token: fixture.form.token }).toString());
       expect((await form()).status).toBe(303);
       const before = await fixture.snapshot();
@@ -939,7 +946,7 @@ describe('public signup persistence and confirmation', () => {
       const pending = await fixture.snapshot();
       expect(pending.contact).toEqual(before.contact);
       expect(pending.memberships).toEqual([]);
-      expect(pending.outbox).toHaveLength(1);
+      expect(pending.outbox).toMatchObject([{ status: 'sent', transport: 'platform' }]);
       expect(pending.submissions).toHaveLength(1);
       const consent = pending.consents[0];
       if (consent === undefined) throw new Error('Missing consent');

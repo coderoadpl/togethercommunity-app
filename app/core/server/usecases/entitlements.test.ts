@@ -895,6 +895,25 @@ describe('getNextLesson', () => {
     });
   });
 
+  it('walks on from the occurrence that opens the lesson when one course holds it in two modules', async () => {
+    const closedFirst = module('m-closed', '1998-03-01T00:00:00.000Z', [
+      { id: 'ch-closed', name: 'Closed', contents: [{ id: 'c-twice-1', name: 'Twice', lessonId: 'l-twice' }, { id: 'c-after-closed', name: 'After closed', lessonId: 'l-after-closed' }] },
+    ], ['c-dup']);
+    const openSecond = module('m-open', '1998-03-02T00:00:00.000Z', [
+      { id: 'ch-open', name: 'Open', contents: [{ id: 'c-twice-2', name: 'Twice', lessonId: 'l-twice' }, { id: 'c-after-open', name: 'After open', lessonId: 'l-after-open' }] },
+    ], ['c-dup']);
+    const d = deps(
+      [grant('g1', 'p-open', '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z')],
+      [product('p-open', [{ level: 'modules', courseId: 'c-dup', moduleIds: ['m-open'] }])],
+      [course('c-dup', ['m-closed', 'm-open'])],
+      [closedFirst, openSecond],
+      [],
+      [lesson('l-twice'), lesson('l-after-closed'), lesson('l-after-open')],
+    );
+    expect(await getNextLesson(ctx({}), 'l-twice', d)).toEqual({ ok: true, value: { id: 'l-after-open', name: 'Lesson l-after-open' } });
+    expect(await getNextLesson(ctx({ staffRole: 'owner', memberId: null }), 'l-twice', d)).toEqual({ ok: true, value: { id: 'l-after-closed', name: 'Lesson l-after-closed' } });
+  });
+
   it('unknown lesson is not found', async () => {
     expect(await getNextLesson(ctx({}), 'nope', d)).toMatchObject({
       ok: false,

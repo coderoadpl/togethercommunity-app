@@ -1805,7 +1805,9 @@ progress is recorded follows a course that opens the lesson for them:
 - the next lesson (`GET /api/student/lessons/next` and the CLI's
   `student next`) is taken from the first course that opens the lesson for a
   member, or from the lesson's first course when none does; staff walk the
-  lesson's first course;
+  lesson's first course. It is the lesson that follows the place chosen, so
+  when one course holds the lesson in two modules, the walk goes on from the
+  module that opens it;
 - completion and un-completion take the course the member is viewing as an
   optional `courseId` (the lesson player sends the course it shows) and are
   recorded under it when it opens the lesson for the member (for staff, when

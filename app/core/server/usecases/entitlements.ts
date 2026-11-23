@@ -271,7 +271,8 @@ export const getNextLesson = async (
     ) ?? first;
 
   const linear = linearizeCourse(location.course, modules, lessonMap(lessons));
-  const index = linear.findIndex((content) => content.lessonId === lessonId);
+  const index = linear.findIndex((content) =>
+    content.lessonId === lessonId && content.moduleId === location.moduleId && content.chapterId === location.chapterId);
   const next = index >= 0 ? linear[index + 1] : undefined;
   return ok(next ? { id: next.lessonId, name: next.name } : null);
 };

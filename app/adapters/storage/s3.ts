@@ -611,10 +611,6 @@ export const createS3StorageProvider = (
   const allowPrivateEndpoints = options.allowPrivateEndpoints ?? false;
   const lookupAddresses = options.lookupAddresses ?? (async (hostname: string) =>
     (await dns.lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address));
-  /**
-   * A caller's deadline bounds the whole request, the endpoint lookup included; without one the default deadline starts
-   * once the endpoint resolved, after a lookup bounded on its own.
-   */
   const boundedRequest = async <T>(
     url: string,
     deadlineMs: number | undefined,

@@ -117,7 +117,7 @@ export const quarantinedImagesPresent = async (
 
 const rowPath = sql`'/api/public/assets/' || ${changeProposalImages.kind} || '/' || ${changeProposalImages.digest} || '.' || ${changeProposalImages.extension}`;
 
-/** The SQL form of `changeProposalImageReferences`: a field of the operation holds the row's address and the row's kind and format fit the field. */
+/** Must match `changeProposalImageReferences` exactly, or the sweep releases an image a pending proposal still attaches. */
 const fieldAttaches = or(...CHANGE_PROPOSAL_IMAGE_FIELDS.map(({ operation, field, kind }) => and(
   eq(changeProposals.operation, operation),
   eq(changeProposalImages.kind, kind),

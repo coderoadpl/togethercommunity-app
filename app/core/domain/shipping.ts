@@ -109,7 +109,7 @@ export const inpostGeowidgetPointSchema = z.object({
   address: z.object({ line1: z.string().nullish(), line2: z.string().nullish() }).nullish(),
 });
 
-const UNPAIRED_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
 
 export const storableText = (value: string): boolean => !value.includes('\u0000') && !UNPAIRED_SURROGATE.test(value);
 

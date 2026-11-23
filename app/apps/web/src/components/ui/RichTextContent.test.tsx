@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { RichTextContent } from './RichTextContent.js';
@@ -155,7 +155,7 @@ describe('RichTextContent', () => {
     await user.click(trigger);
     const vector = within(screen.getByRole('dialog')).getByRole('img', { name: 'Wordmark' });
     expect(stylesAt(vector, 1440)['width']).not.toBe('auto');
-    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 3))'))).toBe(true);
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(calc(100cqh - var(--lightbox-caption-height, 0px)) * 3))'))).toBe(true);
   });
 
   it('fills the viewer with an unmeasured vector image and sizes it by its natural ratio once loaded', async () => {
@@ -163,13 +163,29 @@ describe('RichTextContent', () => {
     render(<RichTextContent html={'<img src="/badge.svg" alt="Badge">'} />);
     await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Badge' }) }));
     const vector = within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' });
-    expect(stylesAt(vector, 1440)).toMatchObject({ width: '100cqw', height: '100cqh', 'object-fit': 'contain' });
+    expect(stylesAt(vector, 1440)).toMatchObject({ width: '100cqw', height: 'calc(100cqh - var(--lightbox-caption-height, 0px))', 'object-fit': 'contain' });
 
     Object.defineProperties(vector, { naturalWidth: { value: 200 }, naturalHeight: { value: 50 } });
     fireEvent.load(vector);
 
     await waitFor(() => expect(stylesAt(within(screen.getByRole('dialog')).getByRole('img', { name: 'Badge' }), 1440)['height']).toBe('auto'));
-    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(100cqh * 4))'))).toBe(true);
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('width:min(100cqw, calc(calc(100cqh - var(--lightbox-caption-height, 0px)) * 4))'))).toBe(true);
+  });
+
+  it('sets the caption directly under the image and leaves the image the height above the caption', async () => {
+    const user = userEvent.setup();
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 300, height: 48 }));
+    render(<RichTextContent html={'<figure><img src="/diagram.png" alt="Diagram"><figcaption>Overview</figcaption></figure>'} />);
+    await user.click(screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) }));
+    const dialog = screen.getByRole('dialog', { name: 'Diagram' });
+    const image = within(dialog).getByRole('img', { name: 'Diagram' });
+    const caption = within(dialog).getByText('Overview');
+
+    expect(image.parentElement).toHaveAttribute('data-slot', 'stage');
+    expect(image.nextElementSibling).toBe(caption);
+    expect(stylesAt(image, 1440)['max-height']).toBe('calc(100cqh - var(--lightbox-caption-height, 0px))');
+    expect([...document.querySelectorAll('style')].some((style) => style.textContent.includes('--lightbox-caption-height:48px'))).toBe(true);
+    rect.mockRestore();
   });
 
   it('shows the image edge to edge on a phone and inset from a tablet up', async () => {

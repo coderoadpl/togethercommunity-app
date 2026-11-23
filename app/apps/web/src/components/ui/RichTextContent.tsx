@@ -1,5 +1,5 @@
 import { Box, IconButton, Modal, SvgIcon, Typography } from '@mui/material';
-import { useId, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useId, useMemo, useState, type MouseEvent } from 'react';
 
 import { useTranslations } from '../../i18n/index.js';
 import { LessonHtmlContent, LessonImageLightbox, LessonLightboxBackdrop, LessonLightboxImage } from '../../theme.js';
@@ -45,6 +45,7 @@ export const RichTextContent = ({
   const t = useTranslations();
   const captionId = useId();
   const [selected, setSelected] = useState<LightboxImage | null>(null);
+  const [captionHeight, setCaptionHeight] = useState(0);
   if (selected !== null && selected.html !== html) {
     setSelected(null);
   }
@@ -84,6 +85,17 @@ export const RichTextContent = ({
       ? { ...current, fillRatio: naturalWidth / naturalHeight }
       : current);
   };
+  const observeCaption = useCallback((caption: HTMLElement | null) => {
+    if (caption === null) return;
+    const measure = () => setCaptionHeight(caption.getBoundingClientRect().height);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(caption);
+    return () => {
+      observer?.disconnect();
+      setCaptionHeight(0);
+    };
+  }, []);
   const close = () => setSelected(null);
   const closeOutsideImage = (event: MouseEvent<HTMLElement>) => {
     if (event.target instanceof Element && event.target.closest('img, button, [data-slot="caption"]')) return;
@@ -117,10 +129,10 @@ export const RichTextContent = ({
         onClick={closeOutsideImage}
       >
         <IconButton autoFocus disableFocusRipple data-slot="close" aria-label={t.common.close} onClick={close}><CloseIcon /></IconButton>
-        <Box data-slot="stage">
+        <Box data-slot="stage" sx={{ '--lightbox-caption-height': `${String(captionHeight)}px` }}>
           {image && <LessonLightboxImage src={image.src} alt={image.alt} vector={image.vector} fillRatio={image.fillRatio} onLoad={(event) => measureVector(event.currentTarget)} />}
+          {figcaption && <Typography ref={observeCaption} id={captionId} data-slot="caption">{figcaption}</Typography>}
         </Box>
-        {figcaption && <Typography id={captionId} data-slot="caption">{figcaption}</Typography>}
       </LessonImageLightbox>
     </Modal>
   </>;

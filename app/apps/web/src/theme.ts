@@ -4305,6 +4305,7 @@ export const LessonImageLightbox = styled(Box)(({ theme }) => ({
     minHeight: 0,
     containerType: 'size',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4313,7 +4314,6 @@ export const LessonImageLightbox = styled(Box)(({ theme }) => ({
     width: '100%',
     maxWidth: '44rem',
     maxHeight: '20dvh',
-    marginInline: 'auto',
     padding: '0.75rem 1rem 1rem',
     overflowY: 'auto',
     overflowWrap: 'anywhere',
@@ -4326,12 +4326,15 @@ export const LessonImageLightbox = styled(Box)(({ theme }) => ({
   },
 }));
 
+const LIGHTBOX_IMAGE_ROOM = 'calc(100cqh - var(--lightbox-caption-height, 0px))';
+
 export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' && prop !== 'vector' })<{ vector: boolean; fillRatio: number | null }>(({ theme, vector, fillRatio }) => ({
   display: 'block',
-  width: fillRatio !== null ? `min(100cqw, calc(100cqh * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
-  height: vector && fillRatio === null ? '100cqh' : 'auto',
+  flexShrink: 0,
+  width: fillRatio !== null ? `min(100cqw, calc(${LIGHTBOX_IMAGE_ROOM} * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
+  height: vector && fillRatio === null ? LIGHTBOX_IMAGE_ROOM : 'auto',
   maxWidth: '100cqw',
-  maxHeight: '100cqh',
+  maxHeight: LIGHTBOX_IMAGE_ROOM,
   objectFit: 'contain',
   backgroundColor: theme.palette.common.white,
 }));

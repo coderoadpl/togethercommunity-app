@@ -219,7 +219,10 @@ its read scope; it never carries the effect, a before value or the deciding
 account. Whether a proposal is accepted or refused depends on
 live state, so a propose-mode key always holds the read scope of the family it
 proposes in and learns nothing from a refused or accepted proposal that it
-could not read with that read scope. See [Change proposals](change-proposals.md) for the
+could not read with that read scope, except for product access lists: a
+refusal tells it whether a course id it sent is an active course of the
+workspace and whether a module or lesson belongs to the course it named
+([What the key learns](change-proposals.md#product-access)). See [Change proposals](change-proposals.md) for the
 route classes, statuses, limits and what is not available yet.
 
 ## Authenticating a request

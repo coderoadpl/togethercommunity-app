@@ -250,7 +250,10 @@ effect, a before value, a live label or the deciding account. Whether a proposal
 live state (a stock adjustment below zero is refused, a large before value
 can hit the effect limit), which is why a write scope always comes with its
 read scope: a propose-mode key learns nothing from a refused or accepted
-proposal that it could not read with its read scope. The owner view is
+proposal that it could not read with its read scope, except for product access
+lists: a refusal tells it whether a course id it sent is an active course of the
+workspace and whether a module or lesson belongs to the course it named (see
+[What the key learns](#product-access)). The owner view is
 separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
 `expired`, `revoked`, `purged`), the issuer's state, a live label of the
@@ -261,8 +264,9 @@ The typed client returns a discriminated result for the eleven catalogue
 mutations (`setProductAccess` included), for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
 `updateSettings`, and for `addProductDownload`, `replaceProductDownload` and
 `removeProductDownload`: `{ outcome: 'applied', product }` (or `price`,
-`stock`, `salesLink`, `settings`, `asset`, `deleted`) for a direct-mode key and
-`{ outcome: 'proposed', proposal }` for a propose-mode key;
+`stock`, `salesLink`, `settings`, `asset`, `deleted`) for a direct-mode key,
+except `setProductAccess`, which no direct-mode scope grants and which answers
+such a key `403`, and `{ outcome: 'proposed', proposal }` for a propose-mode key;
 `isProposedChange(value)` narrows it. The keyed CLI commands
 (`shop products|prices|stock …`, `shop settings set`,
 `shop sales-links create|update|delete`, `shop files upload|copy|remove`) print
@@ -1577,7 +1581,10 @@ attach or propose. Every one of these paths must lock the staged row to remove i
 waits for an approval that holds the row: after the approval commits the row
 is gone (attached) and there is nothing to discard or sweep, and a path that
 removed the row first leaves the approval nothing to lock, so it ends `stale`.
-The object therefore cannot disappear between the check and the attach. The
+No database path can remove the object between the check and the attach; a
+storage delete the minute sweep sent earlier and whose answer did not arrive in
+time can still land later, because the sweep keeps such a staged row
+proposable. The
 attach makes no
 storage request: the new product file points at the staged object, and the
 staged row is deleted in the same transaction. A removal's storage delete runs
@@ -1754,8 +1761,10 @@ purchase does not copy that list. Access is resolved on every request from the
 current access items of every product the member holds an active grant for
 (`core/server/usecases/entitlements.ts`), so a changed list applies at once to
 everyone who already has access to the product, current buyers included: they
-get what the new list names and lose what it no longer names, unless another
-product they hold grants it. The download files of a product and the spaces
+get what the new list names and lose the access this product gave them to what
+it no longer names, unless another product they hold grants it; a preview
+lesson stays open to every signed-in member, and staff keep their access. The
+download files of a product and the spaces
 that name it are not part of this list.
 
 What an item grants (`core/server/usecases/access.ts`):

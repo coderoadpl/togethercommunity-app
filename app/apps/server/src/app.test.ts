@@ -3371,7 +3371,7 @@ describe('public rate limiting', () => {
     expect(scopes).toEqual(['public-write:ip', 'public-write:tenant']);
   });
 
-  it('answers HEAD on a parcel locker lookup with 404 before any rate limit or directory lookup', async () => {
+  it('answers HEAD on a parcel locker lookup with 404 without claiming a rate limit or asking the directory', async () => {
     const scopes: string[] = [];
     const configured = deps({
       rateLimitBuckets: {

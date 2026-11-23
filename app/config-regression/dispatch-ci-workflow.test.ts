@@ -20,6 +20,7 @@ const stepSchema = z.object({
   run: z.string().optional(),
   env: z.record(z.string()).optional(),
   with: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  'timeout-minutes': z.number().optional(),
 });
 
 const jobSchema = z.object({
@@ -72,6 +73,19 @@ const needsOf = (id: string): string[] => {
 const plannedIds = manifest.jobs.map((entry) => entry.id);
 const planOutput = (key: string): string => `needs.${manifest.planJob}.outputs.${key}`;
 const pinned = /^[^@]+@[0-9a-f]{40}$/;
+const projectCommandMarkers = [
+  'pnpm run',
+  'pnpm exec',
+  'pnpm --silent exec',
+  'pnpm audit',
+  'node scripts/',
+] as const;
+
+const isProjectCommand = (run: string): boolean =>
+  projectCommandMarkers.some((marker) => run.includes(marker));
+
+const stepLabel = (step: z.infer<typeof stepSchema>, index: number): string =>
+  step.name ?? step.id ?? step.uses ?? step.run?.split('\n')[0] ?? `#${String(index + 1)}`;
 
 describe('dispatch-ci workflow binding', () => {
   it('declares exactly the plan job, the manifest jobs, the gate and the after-gate jobs', () => {
@@ -236,5 +250,26 @@ describe('dispatch-ci workflow binding', () => {
     );
 
     expect(ungatedCheckViolations(producers, manifest)).toEqual([]);
+  });
+
+  it('bounds every setup step to a numeric timeout of at most 10 minutes', () => {
+    const unbounded: string[] = [];
+
+    for (const [jobId, ciJob] of Object.entries(ci.jobs)) {
+      const firstProject = ciJob.steps.findIndex((step) => {
+        const run = step.run;
+        return run !== undefined && isProjectCommand(run);
+      });
+      ciJob.steps.forEach((step, index) => {
+        const beforeProject = firstProject === -1 || index < firstProject;
+        const limited = step.uses !== undefined || (step.run !== undefined && beforeProject);
+        if (!limited) return;
+        const timeout = step['timeout-minutes'];
+        if (typeof timeout === 'number' && timeout <= 10) return;
+        unbounded.push(`${jobId}: ${stepLabel(step, index)}`);
+      });
+    }
+
+    expect(unbounded, unbounded.join('\n')).toEqual([]);
   });
 });

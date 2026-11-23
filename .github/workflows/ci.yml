@@ -33,9 +33,11 @@ jobs:
       matrix-e2e: ${{ steps.plan.outputs.matrix-e2e }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
       - id: plan
@@ -54,18 +56,22 @@ jobs:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           persist-credentials: false
           fetch-depth: 0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - name: 'Start service container: postgres'
+        timeout-minutes: 6
         uses: ./.github/actions/service-container
         with:
           name: postgres
@@ -79,11 +85,14 @@ jobs:
           health-interval: 10s
           health-timeout: 5s
           health-retries: '5'
-      - run: |
+      - name: Install system packages
+        timeout-minutes: 5
+        run: |
           sudo rm -f /etc/apt/sources.list.d/google-chrome.sources /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/microsoft-edge.sources /etc/apt/sources.list.d/microsoft-edge.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - name: Check branch ruleset drift after workflow changes
         if: github.event_name == 'pull_request'
         shell: bash
@@ -169,17 +178,21 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - name: pnpm audit --prod --audit-level=moderate
         run: |
           audit_status=0
@@ -217,17 +230,21 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - name: 'Start service container: mongodb'
+        timeout-minutes: 6
         uses: ./.github/actions/service-container
         with:
           name: mongodb
@@ -240,6 +257,7 @@ jobs:
           health-timeout: 5s
           health-retries: '5'
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - name: MongoDB telemetry adapter integration tests
         env:
           MONGODB_TEST_URL: mongodb://127.0.0.1:27017/together_test
@@ -255,25 +273,32 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - id: setup-chrome
+        timeout-minutes: 10
         uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd
         with:
           chrome-version: 152.0.7977.82
       - run: '"$CHROME_PATH" --version'
+        timeout-minutes: 5
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - name: Pin native macOS date controls to the golden authoring locale
+        timeout-minutes: 5
         run: |
           defaults write NSGlobalDomain AppleLocale -string en_PL
           defaults write NSGlobalDomain AppleLanguages -array en-PL
@@ -282,6 +307,7 @@ jobs:
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - if: always()
+        timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: visual
@@ -299,17 +325,21 @@ jobs:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - name: 'Start service container: postgres'
+        timeout-minutes: 6
         uses: ./.github/actions/service-container
         with:
           name: postgres
@@ -324,8 +354,10 @@ jobs:
           health-timeout: 5s
           health-retries: '5'
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: pnpm run smoke
       - id: setup-chrome
+        timeout-minutes: 10
         uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
@@ -353,17 +385,21 @@ jobs:
       E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - name: 'Start service container: postgres'
+        timeout-minutes: 6
         uses: ./.github/actions/service-container
         with:
           name: postgres
@@ -378,12 +414,15 @@ jobs:
           health-timeout: 5s
           health-retries: '5'
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - if: matrix.browser
+        timeout-minutes: 10
         id: setup-chrome
         uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
       - if: matrix.browser
+        timeout-minutes: 5
         run: '"$CHROME_PATH" --version'
         env:
           CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
@@ -396,6 +435,7 @@ jobs:
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - if: always() && matrix.suite == 'auth'
+        timeout-minutes: 10
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: visual-app
@@ -412,6 +452,7 @@ jobs:
         env:
           PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - name: Upload E2E failure artifacts
+        timeout-minutes: 10
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -435,6 +476,7 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           persist-credentials: false
           sparse-checkout: |
@@ -443,6 +485,7 @@ jobs:
             app/ci/dispatch-ci.manifest.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
       - name: Match job results against the plan
@@ -464,18 +507,22 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        timeout-minutes: 10
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        timeout-minutes: 10
         with:
           package_json_file: app/package.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 10
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - id: derive
         run: |
           pnpm --silent exec tsx scripts/derive-version.ts --json > "$RUNNER_TEMP/version.json"

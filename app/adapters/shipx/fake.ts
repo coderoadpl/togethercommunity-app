@@ -3,11 +3,12 @@ import {
   normalizePickupPointCode,
   ok,
   shipxRejected,
+  type InpostPoint,
+  type PickupPointLookup,
   type ShipxRemoteShipment,
   type ShipxService,
 } from '#core/domain/index.js';
 import type { PickupPointDirectory, ShipxClient } from '#core/server/index.js';
-import { testPickupPointAnswer } from '#core/server/testing/pickup-point-fake.js';
 
 const FAKE_ID_PREFIX = '9';
 const FAKE_TRACKING_PREFIX = '6';
@@ -82,6 +83,35 @@ export const createFakeShipxClient = (): ShipxClient => ({
   }),
 });
 
+export const FAKE_PICKUP_POINT_CODES = {
+  operating: 'WAW01M',
+  operatingNorth: 'WAW02M',
+  operatingSouth: 'WAW03M',
+  notFound: 'MISSING1',
+  notOperating: 'CLOSED01',
+  wrongType: 'SENDONLY1',
+  unavailable: 'OUTAGE01',
+} as const;
+
+const fakeLocker = (change: Partial<InpostPoint> = {}): InpostPoint => ({
+  name: FAKE_PICKUP_POINT_CODES.operating,
+  status: 'Operating',
+  types: ['parcel_locker'],
+  functions: ['parcel_collect', 'parcel_send'],
+  locationDescription: 'Next to the main entrance',
+  address: { line1: 'Main Street 1', line2: '00-001 Warsaw' },
+  ...change,
+});
+
+const FAKE_PICKUP_POINTS: Readonly<Record<string, PickupPointLookup>> = {
+  [FAKE_PICKUP_POINT_CODES.operating]: { kind: 'found', point: fakeLocker() },
+  [FAKE_PICKUP_POINT_CODES.operatingNorth]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.operatingNorth, locationDescription: 'By the north gate', address: { line1: 'North Street 2', line2: '00-002 Warsaw' } }) },
+  [FAKE_PICKUP_POINT_CODES.operatingSouth]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.operatingSouth, locationDescription: null, address: { line1: 'South Street 3', line2: null } }) },
+  [FAKE_PICKUP_POINT_CODES.notOperating]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.notOperating, status: 'NonOperating' }) },
+  [FAKE_PICKUP_POINT_CODES.wrongType]: { kind: 'found', point: fakeLocker({ name: FAKE_PICKUP_POINT_CODES.wrongType, types: ['pop'], functions: ['parcel_send'] }) },
+  [FAKE_PICKUP_POINT_CODES.unavailable]: { kind: 'unavailable' },
+};
+
 export const createFakePickupPointDirectory = (): PickupPointDirectory => ({
-  lookup: async (code) => testPickupPointAnswer(normalizePickupPointCode(code)),
+  lookup: async (code) => FAKE_PICKUP_POINTS[normalizePickupPointCode(code)] ?? { kind: 'not_found' },
 });

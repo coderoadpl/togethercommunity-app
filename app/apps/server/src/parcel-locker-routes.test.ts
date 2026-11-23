@@ -1,11 +1,10 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createFakePickupPointDirectory } from '#adapters/shipx/fake.js';
+import { createFakePickupPointDirectory, FAKE_PICKUP_POINT_CODES } from '#adapters/shipx/fake.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { tenantSchema, tenantSettingsSchema, type ShippingRate } from '#core/domain/index.js';
 import { withPickupPointLookupBudget, type PublicRateLimitRepository, type TenantRepository } from '#core/server/index.js';
-import { TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 import { tenantDomainRepositoryStub } from '#core/server/testing/tenant-domain-fakes.js';
 
 import type { AppVars } from './app-vars.js';
@@ -67,10 +66,10 @@ describe('public parcel locker lookup route', () => {
   });
 
   it.each([
-    [TEST_PICKUP_POINTS.notFound, { status: 'not_found' }],
-    [TEST_PICKUP_POINTS.notOperating, { status: 'found', code: 'CLOSED01', usable: false, reason: 'not_operating' }],
-    [TEST_PICKUP_POINTS.wrongType, { status: 'found', code: 'SENDONLY1', usable: false, reason: 'not_usable' }],
-    [TEST_PICKUP_POINTS.unavailable, { status: 'unavailable' }],
+    [FAKE_PICKUP_POINT_CODES.notFound, { status: 'not_found' }],
+    [FAKE_PICKUP_POINT_CODES.notOperating, { status: 'found', code: 'CLOSED01', usable: false, reason: 'not_operating' }],
+    [FAKE_PICKUP_POINT_CODES.wrongType, { status: 'found', code: 'SENDONLY1', usable: false, reason: 'not_usable' }],
+    [FAKE_PICKUP_POINT_CODES.unavailable, { status: 'unavailable' }],
   ])('answers %s', async (code, data) => {
     const response = await harness().get(code);
     expect(response.status).toBe(200);

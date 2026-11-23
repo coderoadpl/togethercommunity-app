@@ -4,9 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { applyPickupPointLookup, parcelLockerLookupView } from '#core/domain/index.js';
-import { TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 
-import { createFakePickupPointDirectory } from './fake.js';
+import { createFakePickupPointDirectory, FAKE_PICKUP_POINT_CODES } from './fake.js';
 import { createInpostPointsDirectory } from './points.js';
 
 const fixture = (name: string): string => readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8');
@@ -128,14 +127,14 @@ describe('fake pickup point directory', () => {
   const outcome = async (code: string) => applyPickupPointLookup({ ...selection, pickupPoint: { ...selection.pickupPoint, code } }, await fake.lookup(code));
 
   it('knows three operating lockers, one unknown code, one closed locker, one send-only point and one outage', async () => {
-    expect(await outcome(TEST_PICKUP_POINTS.operating)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW01M', name: 'Next to the main entrance' } } });
-    expect(await outcome(TEST_PICKUP_POINTS.operatingNorth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW02M', name: 'By the north gate', address: 'North Street 2, 00-002 Warsaw' } } });
-    expect(await outcome(TEST_PICKUP_POINTS.operatingSouth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW03M', address: 'South Street 3' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.operating)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW01M', name: 'Next to the main entrance' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.operatingNorth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW02M', name: 'By the north gate', address: 'North Street 2, 00-002 Warsaw' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.operatingSouth)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'WAW03M', address: 'South Street 3' } } });
     expect((await outcome('WAW04M')).ok).toBe(false);
-    expect(await outcome(TEST_PICKUP_POINTS.notFound)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_found' } } });
-    expect(await outcome(TEST_PICKUP_POINTS.notOperating)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_operating' } } });
-    expect(await outcome(TEST_PICKUP_POINTS.wrongType)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_usable' } } });
-    expect(await outcome(TEST_PICKUP_POINTS.unavailable)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'OUTAGE01', verified: false } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.notFound)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_found' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.notOperating)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_operating' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.wrongType)).toMatchObject({ ok: false, error: { details: { pickupPointReason: 'not_usable' } } });
+    expect(await outcome(FAKE_PICKUP_POINT_CODES.unavailable)).toMatchObject({ ok: true, value: { pickupPoint: { code: 'OUTAGE01', verified: false } } });
   });
 
   it('normalises the code like the carrier does', async () => {

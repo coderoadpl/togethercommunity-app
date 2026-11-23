@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { z } from 'zod';
@@ -23,8 +24,33 @@ export type RequiredWorkflow = 'ci.yml' | 'staging-smoke.yml';
 
 export type WorkflowRun = {
   workflow: RequiredWorkflow;
+  status: string;
   conclusion: string | null;
   url: string;
+};
+
+export type WaitPolicy = {
+  pollMs: number;
+  boundMs: number;
+  graceMs: number;
+};
+
+export type UnfinishedWorkflow = {
+  workflow: RequiredWorkflow;
+  state: 'running' | 'missing';
+};
+
+export type WaitOutcome = {
+  runs: WorkflowRun[];
+  waitedMs: number;
+  unfinished: UnfinishedWorkflow[];
+};
+
+export type WaitDeps = {
+  read: () => WorkflowRun[];
+  now: () => number;
+  sleep: (milliseconds: number) => Promise<void>;
+  log: (line: string) => void;
 };
 
 export type WorkflowEvidence = {
@@ -52,6 +78,7 @@ export type RenderInput = {
   migrations: string[];
   areas: AreaCount[];
   workflows: WorkflowEvidence[];
+  wait?: WaitOutcome | null;
 };
 
 type RuntimeEnv = {
@@ -75,6 +102,7 @@ const runtimeEnvSchema = z.object({
 const workflowRunResponseSchema = z.object({
   workflow_runs: z.array(z.object({
     conclusion: z.string().nullable(),
+    status: z.string().nullable(),
     html_url: z.string().url(),
   })),
 });
@@ -92,6 +120,12 @@ const issueCommentsSchema = z.array(z.object({
 const paginatedIssueCommentsSchema = z.array(issueCommentsSchema);
 
 const requiredWorkflows: RequiredWorkflow[] = ['ci.yml', 'staging-smoke.yml'];
+
+export const defaultWaitPolicy: WaitPolicy = {
+  pollMs: 30_000,
+  boundMs: 40 * 60_000,
+  graceMs: 3 * 60_000,
+};
 
 const trackedAreas = [
   'app/core',
@@ -146,12 +180,54 @@ export function evaluateWorkflowRuns(runs: WorkflowRun[]): WorkflowEvidence[] {
   });
 }
 
-export function workflowReasons(evidence: WorkflowEvidence[]): GuardReason[] {
+export function unfinishedWorkflows(runs: WorkflowRun[]): UnfinishedWorkflow[] {
+  return requiredWorkflows.flatMap((workflow): UnfinishedWorkflow[] => {
+    const workflowRuns = runs.filter((run) => run.workflow === workflow);
+    if (workflowRuns.some((run) => run.conclusion === 'success')) return [];
+    if (workflowRuns.some((run) => run.status !== 'completed')) return [{ workflow, state: 'running' }];
+    return workflowRuns.length === 0 ? [{ workflow, state: 'missing' }] : [];
+  });
+}
+
+export function worthWaitingFor(unfinished: UnfinishedWorkflow[], elapsedMs: number, policy: WaitPolicy): UnfinishedWorkflow[] {
+  return unfinished.filter((entry) =>
+    elapsedMs < (entry.state === 'running' ? policy.boundMs : policy.graceMs));
+}
+
+export async function awaitWorkflowRuns(deps: WaitDeps, policy: WaitPolicy = defaultWaitPolicy): Promise<WaitOutcome> {
+  const start = deps.now();
+  for (;;) {
+    const runs = deps.read();
+    const waitedMs = deps.now() - start;
+    const unfinished = unfinishedWorkflows(runs);
+    const pending = worthWaitingFor(unfinished, waitedMs, policy);
+    if (pending.length === 0) return { runs, waitedMs, unfinished };
+    deps.log(`promotion-guard: waiting for ${pending.map(describeUnfinished).join(', ')} (${formatDuration(waitedMs)} so far)`);
+    await deps.sleep(policy.pollMs);
+  }
+}
+
+export function formatDuration(milliseconds: number): string {
+  const seconds = Math.round(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `${String(rest)} s`;
+  return rest === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(rest)} s`;
+}
+
+export function describeWait(wait: WaitOutcome | null): string | null {
+  if (wait === null || wait.waitedMs === 0) return null;
+  const waited = formatDuration(wait.waitedMs);
+  if (wait.unfinished.length === 0) return `Waited ${waited} for the staging runs of the head SHA to finish.`;
+  return `Stopped waiting after ${waited}: ${wait.unfinished.map(describeUnfinished).join(', ')}.`;
+}
+
+export function workflowReasons(evidence: WorkflowEvidence[], wait: WaitOutcome | null = null): GuardReason[] {
   return evidence
     .filter((run) => !run.passed)
     .map((run) => ({
       check: run.workflow,
-      message: `No successful staging branch run found for ${run.workflow} at the PR head SHA.`,
+      message: `No successful staging branch run found for ${run.workflow} at the PR head SHA${waitSuffix(run.workflow, wait)}`,
     }));
 }
 
@@ -213,23 +289,39 @@ export function renderPromotionComment(input: RenderInput): string {
     '',
     '**Staging Runs**',
     ...input.workflows.map(renderWorkflowRun),
+    ...waitLine(input.wait ?? null),
   ].join('\n');
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const env = parseRuntimeEnv(process.env);
-
-  fetchBranchRefs();
-
-  const stagingTip = git(['rev-parse', 'origin/staging']).trim();
-  const workflowEvidence = evaluateWorkflowRuns(readWorkflowRuns(env));
-  const ancestryReasons = evaluatePromotionSource({
-    headRef: env.HEAD_REF,
-    headSha: env.HEAD_SHA,
-    stagingTip,
-  });
   const freezeReasons = evaluateStagingFreeze(env.STAGING_FREEZE);
-  const runReasons = workflowReasons(workflowEvidence);
+  const readSource = (): GuardReason[] => {
+    fetchBranchRefs();
+    return evaluatePromotionSource({
+      headRef: env.HEAD_REF,
+      headSha: env.HEAD_SHA,
+      stagingTip: git(['rev-parse', 'origin/staging']).trim(),
+    });
+  };
+
+  let ancestryReasons = readSource();
+  let wait: WaitOutcome | null = null;
+  let runs: WorkflowRun[];
+  if (ancestryReasons.length === 0 && freezeReasons.length === 0) {
+    wait = await awaitWorkflowRuns({
+      read: () => readWorkflowRuns(env),
+      now: Date.now,
+      sleep: async (milliseconds) => { await delay(milliseconds); },
+      log: (line) => { console.log(line); },
+    });
+    runs = wait.runs;
+    if (wait.waitedMs > 0) ancestryReasons = readSource();
+  } else {
+    runs = readWorkflowRuns(env);
+  }
+  const workflowEvidence = evaluateWorkflowRuns(runs);
+  const runReasons = workflowReasons(workflowEvidence, wait);
   const reasons = [...ancestryReasons, ...freezeReasons, ...runReasons];
   const includedPullRequests = readIncludedPullRequests(env);
   const migrations = lines(git([
@@ -252,6 +344,7 @@ function main(): void {
     migrations,
     areas,
     workflows: workflowEvidence,
+    wait,
   });
 
   upsertComment(env, comment);
@@ -263,6 +356,24 @@ function main(): void {
   }
 
   console.log('promotion-guard passed');
+}
+
+function describeUnfinished(entry: UnfinishedWorkflow): string {
+  return entry.state === 'running' ? `${entry.workflow} still running` : `no ${entry.workflow} run created`;
+}
+
+function waitSuffix(workflow: RequiredWorkflow, wait: WaitOutcome | null): string {
+  if (wait === null || wait.waitedMs === 0) return '.';
+  const unfinished = wait.unfinished.find((entry) => entry.workflow === workflow);
+  const state = unfinished === undefined
+    ? ''
+    : unfinished.state === 'running' ? '; its run is still in progress' : '; no run was created';
+  return ` after waiting ${formatDuration(wait.waitedMs)}${state}.`;
+}
+
+function waitLine(wait: WaitOutcome | null): string[] {
+  const text = describeWait(wait);
+  return text === null ? [] : ['', text];
 }
 
 function fileBelongsToArea(file: string, area: string): boolean {
@@ -286,7 +397,7 @@ function renderList(items: string[]): string {
 function renderWorkflowRun(run: WorkflowEvidence): string {
   if (run.url === null) return `- \`${run.workflow}\`: missing successful staging run`;
   if (run.passed) return `- \`${run.workflow}\`: [successful staging run](${run.url})`;
-  return `- \`${run.workflow}\`: missing successful staging run ([latest ${run.conclusion ?? 'unknown'} run](${run.url}))`;
+  return `- \`${run.workflow}\`: missing successful staging run ([latest ${run.conclusion ?? 'unfinished'} run](${run.url}))`;
 }
 
 function parseRuntimeEnv(env: NodeJS.ProcessEnv): RuntimeEnv {
@@ -337,6 +448,7 @@ function readWorkflowRuns(env: RuntimeEnv): WorkflowRun[] {
 
     return parsed.workflow_runs.map((run) => ({
       workflow,
+      status: run.status ?? (run.conclusion === null ? 'unknown' : 'completed'),
       conclusion: run.conclusion,
       url: run.html_url,
     }));
@@ -432,5 +544,5 @@ function bareIncludedPullRequest(number: number): IncludedPullRequest {
 
 const mainModuleUrl = process.argv[1] === undefined ? null : pathToFileURL(process.argv[1]).href;
 if (mainModuleUrl === import.meta.url) {
-  main();
+  await main();
 }

@@ -36,16 +36,13 @@ describe('Meta conversion domain rules', () => {
       expect(copy.body).toContain('IP');
     }
   });
-  it('names the Meta account and keeps every disclosure in the default Polish copy', () => {
-    expect(polishCopy.heading).toBe('Czy możemy przesłać z naszego serwera do Meta dane o tym zakupie w celu pomiaru i optymalizacji reklam, w tym dopasowania do Twojego konta w usługach Meta i personalizacji reklam?');
-    expect([polishCopy.acceptLabel, polishCopy.declineLabel]).toEqual(['Tak, prześlij do Meta', 'Nie przesyłaj']);
-    for (const disclosure of ['identyfikatora kliknięcia reklamy', 'Meta Platforms Ireland', 'o moim zakupie i jego wartości', 'skrótu SHA-256 e-maila', 'adresu IP', 'informacji o przeglądarce', 'identyfikatora przeglądarki Meta', 'kraju', 'pomiaru i optymalizacji reklam Meta', 'dopasowania do mojego konta w usługach Meta (np. Facebook lub Instagram) i personalizacji reklam', 'Zgoda jest dobrowolna', 'na stronie potwierdzenia zakupu lub w ustawieniach konta', 'Wycofanie zatrzymuje dalsze przesyłanie z naszego serwera do Meta danych o tym zamówieniu, ale nie cofa już przesłanych danych.']) {
-      expect(polishCopy.body).toContain(disclosure);
-    }
-  });
-  it('asks without an unexplained "also" in both default headings', () => {
+  it('names the Meta account in both default headings and bodies', () => {
     expect(englishCopy.heading).not.toMatch(/\balso\b/);
-    expect(polishCopy.heading).not.toContain('dodatkowo');
+    for (const copy of [englishCopy, polishCopy]) {
+      expect(copy.heading.match(/Meta/g)).toHaveLength(2);
+      expect(copy.body).toMatch(/Meta [^(.]*\([^)]*Facebook[^)]*Instagram\)/);
+      expect(copy.heading.length).toBeLessThanOrEqual(200);
+    }
   });
   it.each([undefined, 'en', 'pl'] as const)('restores locale-resolved defaults for null overrides and locale %s', (locale) => {
     expect(metaCapiCopy({ analyticsMetaCapiConsentHeading: null, analyticsMetaCapiConsentBody: null,

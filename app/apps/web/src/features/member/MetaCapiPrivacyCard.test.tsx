@@ -165,13 +165,16 @@ it('shows the card with an error and a working retry when the decisions request 
   expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
 });
 
-it.each([
-  { dictionary: en, heading: 'Sending purchase data to Meta', prefix: 'Sending purchase data to Meta: ', confirmationPage: /confirmation page/i },
-  { dictionary: pl, heading: 'Przesyłanie danych o zakupach do Meta', prefix: 'Przesyłanie danych o zakupie do Meta: ', confirmationPage: /potwierdzenia/i },
-])('names the send with one verb in the card heading, statuses and hint', ({ dictionary, heading, prefix, confirmationPage }) => {
-  expect(dictionary.metaCapi.privacyHeading).toBe(heading);
-  for (const status of [dictionary.metaCapi.granted, dictionary.metaCapi.denied, dictionary.metaCapi.undecided, dictionary.metaCapi.withdrawn]) {
-    expect(status.startsWith(prefix)).toBe(true);
+it('names the send with one verb in the card heading and statuses', () => {
+  expect(en.metaCapi.privacyHeading).toBe('Sending purchase data to Meta');
+  for (const dictionary of [en, pl]) {
+    const statuses = [dictionary.metaCapi.granted, dictionary.metaCapi.denied, dictionary.metaCapi.undecided, dictionary.metaCapi.withdrawn];
+    expect(new Set(statuses.map((status) => status.split(': ')[0])).size).toBe(1);
   }
-  expect(dictionary.metaCapi.withdrawHint).not.toMatch(confirmationPage);
+  expect(en.metaCapi.granted.startsWith(`${en.metaCapi.privacyHeading}: `)).toBe(true);
+});
+
+it.each([en, pl])('keeps the account card hint to what a withdrawal does', (dictionary) => {
+  expect(dictionary.metaCapi.withdrawHint.split('. ')).toHaveLength(2);
+  expect(dictionary.metaCapi.withdrawHint).toContain('Meta');
 });

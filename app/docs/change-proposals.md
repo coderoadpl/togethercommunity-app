@@ -1259,9 +1259,12 @@ that was missing at the commit, also after a crash; a reused copy is known to
 match by its hash before the transaction and by its size and entity tag at the
 commit, so a copy replaced in between by other bytes of the same size on a
 storage that sends no entity tag is not detected. Only a delete outside the
-application or a loss in the storage can remove a committed object later: an
-application delete is sent only after its unresolved mark committed, and no
-sweep sends one for a record whose mark is newer than the record's 15 minutes.
+application, a loss in the storage, or an application delete that the storage
+carries out more than 10 minutes after it was sent can remove a committed
+object later: an application delete of a public copy is sent only after its
+unresolved mark committed, the mark is cleared only once the storage confirmed
+or refused that delete, and a sweep that finds under the lock a mark newer than
+the record's 15 minutes, set after it listed the record, sends nothing.
 
 When the approval does not end `applied` (it ends `stale`, `failed` or
 expired, a write fails, a lock wait runs out, or the status change or the

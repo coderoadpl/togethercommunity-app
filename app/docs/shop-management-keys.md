@@ -779,9 +779,12 @@ proposal is pending` instead of its 7-day expiry. The key may discard a file
 a pending proposal holds; an approval of that proposal then ends `stale`.
 Discarding it removes it from the staged list at once and deletes its
 object, or, when that delete fails, owes the deletion, which the sweep
-retries; the discard answers success either way. An upload that is never
-completed becomes due for the same sweep 20 minutes after it started, and one
-with a completion attempt 30 minutes after its last attempt started. The destination of a completion attempt that a later
+retries; the discard answers success either way. An upload or copy record
+that is not settled becomes due for the same sweep 20 minutes after it
+started; one whose completion or copy is still running or was interrupted
+(its outcome unknown) only once its last attempt also started 30 minutes ago,
+while a completed attempt or one that failed definitely needs only the 20
+minutes. The destination of a completion attempt that a later
 completion took over becomes due 30 minutes after that attempt started. The
 sweep serves the longest-waiting rows first within its own
 time budget, so a due row may wait for a later run
@@ -818,9 +821,15 @@ staging budget and counts again only if its removal owes a delete. The file coun
 deletions and the uploads and copies, failed ones included, that still own an
 object, without counting a completed upload again. Removing an attached file
 is never refused: when its delete fails, what it owes counts against the key
-that staged it, so it can exceed a limit only by what that key legitimately
-attached before, and it blocks that key's new uploads and copies until the
-storage confirms the delete. The 24-hour limit counts every upload and copy
+that staged it until the storage confirms the delete, so the key's counted
+usage can exceed a limit by what it attached before; a new upload or copy is
+refused only when its own share does not fit beside that debt, so a small debt
+does not block a start that still fits. The limits count rows, not the bucket:
+an upload object that a still valid URL writes again after the sweep's first
+delete is not counted until a day after its upload started, when the owed
+second delete of it counts again, so the objects in the bucket can exceed a
+limit meanwhile and the counted usage can rise above a limit then without any
+new start or attach. The 24-hour limit counts every upload and copy
 started in the window, whatever became of it. When the workspace's staging lock
 is not free within its bound, the start answers `503 unavailable` with
 `Retry-After: 1` and reserves nothing.

@@ -39,8 +39,12 @@ signed overrides is accepted (below), the server also writes every SVG under
 `image-assets/` with a stored `content-disposition: attachment`, both a live
 completion and a change proposal approval, so a browser that opens such an
 address downloads it on any provider. An SVG written before this release
-keeps the metadata it was written with; on a provider that ignores overrides,
-upload such a logo again to give it the stored disposition.
+keeps the metadata it was written with, and nothing rewrites it: on a provider
+that ignores overrides, upload the image again in the owner's session (a live
+upload writes a new object under a new address, with the stored disposition)
+and set the field to that address. Proposing the same bytes again through a
+propose-mode key does not help: they have the same digest, so approval reuses
+the existing public copy, old metadata included.
 
 A propose-mode key's presigned `PUT` targets the candidate prefix like any
 other upload, so the bucket CORS rules above cover it; its signature also

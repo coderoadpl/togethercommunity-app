@@ -625,8 +625,11 @@ scopes on every shop key.
   the copy request's answer. A stored object larger than its file row is
   refused after the copy and the headers of the following read. A smaller or
   mistyped one is refused only after the server read all of it, which takes
-  longer the more bytes it holds. Each refusal also waits for the deletion of
-  the copy's destination. A key that times its copies can therefore
+  longer the more bytes it holds. A refusal after a definite failure also
+  waits for one attempt to delete the copy's destination; a refusal after a
+  storage answer that was not confirmed records the attempt as interrupted and
+  answers at once, without a delete, and the minute sweep deletes the
+  destination later. A key that times its copies can therefore
   tell a missing or larger stored object from a smaller one or one of the full
   size that failed the type check, and estimate how many bytes a smaller one
   holds; it never receives a byte, a fingerprint, a size or a type of the
@@ -663,11 +666,16 @@ scopes on every shop key.
   Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
   by what the key attached before and by the upload objects whose second
-  delete, a day after their upload started, is due and not yet confirmed, and
-  it blocks the key's new uploads and
-  copies until the storage confirms the delete. Completions, copies and the
-  minute sweep of a record hold the row that owns an upload object or a
-  destination until the storage answers; the key's discard and removal and the
+  delete, a day after their upload started, is due and not yet confirmed (an
+  upload object written again after the first delete is not counted before
+  then); a new upload or copy is refused only while its own share does not fit
+  beside that debt. A completion's or a copy's `CopyObject` and digest run
+  after the transaction that claimed the record or reserved the copy has
+  committed; no row lock is held across them: the attempt id of the claim and
+  the destination only that attempt's record owns fence them, and a later
+  attempt writes a destination of its own. The release of a failed attempt and
+  the minute sweep of a record hold the record row until the storage answers
+  their deletes; the key's discard and removal and the
   minute sweep of a staged file first move the file to the owed deletions in a
   committed transaction, so no attach or proposal takes a file whose delete
   was sent, also when its answer is lost; an owner's removal or draft

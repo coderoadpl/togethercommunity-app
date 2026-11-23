@@ -386,10 +386,10 @@ describe('staff refund history and ship anyway', () => {
     expect(screen.queryByRole('button', { name: messages.shipAnyway })).toBeNull();
   });
 
-  it('shows the state of an unsettled staff refund in the orders list', async () => {
+  it('shows the state of an unsettled staff refund in the orders list from its own field', async () => {
     server.use(
       http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
-        orders: [{ ...paidOrder, refundJobStatus: 'running' }, { ...paidOrder, id: 'o2' }], total: 2, page: 1, pageSize: 25, sources: [],
+        orders: [{ ...paidOrder, staffRefundStatus: 'running' }, { ...paidOrder, id: 'o2', refundJobStatus: 'failed' }, { ...paidOrder, id: 'o3' }], total: 3, page: 1, pageSize: 25, sources: [],
       } })),
       http.get('/api/orders/consumer-sales-summary', ({ request }) => {
         const params = new URL(request.url).searchParams;

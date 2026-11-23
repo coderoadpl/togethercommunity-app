@@ -8,6 +8,7 @@ import {
   dispatchOrderRefundJobs,
   exportOrders,
   getOrder,
+  listOrders,
   previewStaffRefund,
   shipRefundedOrderAnyway,
   type Ctx,
@@ -503,14 +504,19 @@ describe('staff refunds against a real database', () => {
     expect(changes?.count).toBeGreaterThanOrEqual(3);
   });
 
-  it('shows the most recent unsettled staff refund on the orders list', async () => {
+  it('shows the most recent unsettled staff refund on the Studio orders list in its own field and leaves the sold-out refund field and machine keys alone', async () => {
     const h = harness();
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
-    const listed = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
-    expect(listed.orders.map((order) => [order.id, order.refundJobStatus])).toStrictEqual([['order-1', 'pending']]);
+    const listDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
+    const listed = unwrap(await listOrders(staff('tenant-a'), {}, listDeps));
+    expect(listed.orders.map((order) => [order.id, order.staffRefundStatus, order.refundJobStatus])).toStrictEqual([['order-1', 'pending', undefined]]);
+    const machineKey: Ctx = { ...staff('tenant-a'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' } };
+    const machineListed = unwrap(await listOrders(machineKey, {}, listDeps));
+    expect(machineListed.orders.map((order) => [order.id, order.staffRefundStatus, order.refundJobStatus])).toStrictEqual([['order-1', undefined, undefined]]);
+    expect((await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 })).orders[0]?.refundJobStatus).toBeUndefined();
     await h.dispatch(minutes(1));
-    const settled = await createOrderRepository(database.db).list('tenant-a', { page: 1, pageSize: 10 });
-    expect(settled.orders.map((order) => [order.id, order.refundJobStatus])).toStrictEqual([['order-1', undefined]]);
+    const settled = unwrap(await listOrders(staff('tenant-a'), {}, listDeps));
+    expect(settled.orders.map((order) => [order.id, order.staffRefundStatus])).toStrictEqual([['order-1', undefined]]);
   });
 
   it('adds the refunded amount to the CSV and JSON export', async () => {

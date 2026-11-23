@@ -45,10 +45,22 @@ export interface OrdersPage {
   pageSize: number;
 }
 
+const withStaffRefundStatus = async (
+  tenantId: string,
+  orders: OrderListItem[],
+  staffRefunds: Pick<OrderStaffRefundRepository, 'activeStatusByOrder'>,
+): Promise<OrderListItem[]> => {
+  const statuses = await staffRefunds.activeStatusByOrder(tenantId, orders.flatMap((order) => (order.cancelReason == null ? [order.id] : [])));
+  return orders.map((order) => {
+    const staffRefundStatus = statuses.get(order.id);
+    return staffRefundStatus === undefined ? order : { ...order, staffRefundStatus };
+  });
+};
+
 export const listOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'>,
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'activeStatusByOrder'> },
 ): Promise<Result<OrdersPage, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
@@ -69,7 +81,8 @@ export const listOrders = async (
     ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
     ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
   });
-  return ok({ orders, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
+  const listed = deps.staffRefunds === undefined || ctx.machineActor !== undefined ? orders : await withStaffRefundStatus(tenant.value, orders, deps.staffRefunds);
+  return ok({ orders: listed, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
 };
 
 export const getOrder = async (

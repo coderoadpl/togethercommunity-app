@@ -175,8 +175,10 @@ workspace's restricted key and what to do about it.
   now (as it does for the sold-out job), so Studio shows the outcome within a minute.
 - FR-13: Studio order detail: "Refund" action, dialog (full / partial), refund history (amount,
   staff member, time, reason, state badge reusing `OrderRefundJob`), totals Paid / Refunded /
-  Remaining, "Ship anyway" when the order was taken off the packing list. The orders list badge
-  shows the most recent active refund of either kind.
+  Remaining, "Ship anyway" when the order was taken off the packing list. The Studio orders list
+  carries a separate optional `staffRefundStatus` (the latest staff refund while unsettled) for its
+  badge; `refundJobStatus` keeps meaning only the sold-out refund job, and the shop key list and
+  the order feed stay unchanged.
 - FR-14: Exports: the orders CSV gains a trailing `refunded_amount` column and the JSON export a
   `refundedCents` field (platform-recorded committed refunds, or the paid amount when the order
   is `refunded`). The packing list excludes orders without fulfilment status (unchanged query).

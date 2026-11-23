@@ -2929,7 +2929,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
     };
-    const result = await listOrders(ctxOf(c), query, deps);
+    const result = await listOrders(ctxOf(c), query, { orders: deps.orders, ...(deps.orderStaffRefunds === undefined ? {} : { staffRefunds: deps.orderStaffRefunds }) });
     return respond(result);
   });
 

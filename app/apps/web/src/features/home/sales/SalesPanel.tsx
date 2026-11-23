@@ -414,10 +414,10 @@ export const SalesPanel = () => {
                     <TableCell>
                       <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
                       <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
-                      {order.cancelReason != null || order.refundJobStatus == null ? null : (
+                      {order.cancelReason != null || order.staffRefundStatus === undefined ? null : (
                         <RefundStatusChip
-                          status={order.refundJobStatus}
-                          label={t.sales.staffRefund.stateChip({ state: t.sales.staffRefund.states[order.refundJobStatus] })}
+                          status={order.staffRefundStatus}
+                          label={t.sales.staffRefund.stateChip({ state: t.sales.staffRefund.states[order.staffRefundStatus] })}
                           data-testid="sales-staff-refund-chip"
                         />
                       )}

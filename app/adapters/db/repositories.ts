@@ -1,7 +1,6 @@
 import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
 import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
-import { orderStaffRefunds } from './order-staff-refund-schema.js';
 import { lockActiveCourses } from './course-reference-lock.js';
 import { normalizeOrderDates } from './order-dates.js';
 import { surveyResponses } from './survey-schema.js';
@@ -15,7 +14,6 @@ import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'js
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
 
 import {
-  isActiveStaffRefundStatus,
   ACCESS_RETAINING_ORDER_STATUSES,
   SMOKE_TENANT_ID,
   SUBSCRIPTION_GRACE_DAYS,
@@ -3488,20 +3486,6 @@ export const createOrderRepository = (
     }));
   };
 
-  const withStaffRefundBadges = async (tenantId: string, items: OrderListItem[]): Promise<OrderListItem[]> => {
-    const orderIds = items.flatMap((item) => item.cancelReason == null ? [item.id] : []);
-    if (orderIds.length === 0) return items;
-    const latest = await db.selectDistinctOn([orderStaffRefunds.orderId], { orderId: orderStaffRefunds.orderId, status: orderStaffRefunds.status })
-      .from(orderStaffRefunds)
-      .where(and(eq(orderStaffRefunds.tenantId, tenantId), inArray(orderStaffRefunds.orderId, orderIds)))
-      .orderBy(orderStaffRefunds.orderId, desc(orderStaffRefunds.createdAt), desc(orderStaffRefunds.id));
-    const active = new Map(latest.flatMap((row) => isActiveStaffRefundStatus(row.status) ? [[row.orderId, row.status]] : []));
-    return items.map((item) => {
-      const status = active.get(item.id);
-      return status === undefined ? item : { ...item, refundJobStatus: status };
-    });
-  };
-
   return {
     completeTestCheckout: async (tenantId, order) => db.transaction(async (tx) => {
       const [row] = await tx.update(orders).set({
@@ -3629,7 +3613,7 @@ export const createOrderRepository = (
           sql`${orders.attribution}->>'utmSource' IS NOT NULL`,
         )).orderBy(sql`${orders.attribution}->>'utmSource'`);
       return {
-        orders: await withStaffRefundBadges(tenantId, await toListItems(tenantId, rows)),
+        orders: await toListItems(tenantId, rows),
         total: totals[0]?.value ?? 0,
         sources: sourceRows.map((row) => row.value),
       };

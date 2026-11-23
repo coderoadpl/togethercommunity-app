@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import {
   appError,
   err,
+  isActiveStaffRefundStatus,
   notFound,
   ok,
   orderSchema,
@@ -138,6 +139,14 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
       for (const row of rows) committed.set(row.orderId, Number(row.cents));
     }
     return committed;
+  },
+  activeStatusByOrder: async (tenantId, orderIds) => {
+    if (orderIds.length === 0) return new Map();
+    const latest = await db.selectDistinctOn([orderStaffRefunds.orderId], { orderId: orderStaffRefunds.orderId, status: orderStaffRefunds.status })
+      .from(orderStaffRefunds)
+      .where(and(eq(orderStaffRefunds.tenantId, tenantId), inArray(orderStaffRefunds.orderId, [...orderIds])))
+      .orderBy(orderStaffRefunds.orderId, desc(orderStaffRefunds.createdAt), desc(orderStaffRefunds.id));
+    return new Map(latest.flatMap((row) => isActiveStaffRefundStatus(row.status) ? [[row.orderId, row.status]] : []));
   },
   returnableStock: async (tenantId, orderId) => returnableOrderStock(db, tenantId, orderId, STAFF_REFUND_STOCK_REASON),
   noteChargeRefunded: async (tenantId, orderId, now) =>

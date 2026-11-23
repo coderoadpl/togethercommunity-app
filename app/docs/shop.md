@@ -1738,8 +1738,11 @@ rate-limited with the shared limiter per staff member and per workspace: 10 and
 60 requests a minute for refunds and ship anyway, 60 and 300 for previews; a
 refused request answers `429 rate_limited` with `Retry-After`. The order detail
 (`GET /api/orders/:orderId`) carries `staffRefunds` (newest first) and
-`refundTotals` (paid, refunded, remaining); the orders list shows the state of
-the latest staff refund while it is unsettled. The orders export gains a
+`refundTotals` (paid, refunded, remaining). The Studio orders list
+(`GET /api/orders`) carries `staffRefundStatus`, the state of the order's latest
+staff refund while it is unsettled; `refundJobStatus` keeps meaning only the
+sold-out refund job, and the shop key order list and the order feed carry no
+staff refund state. The orders export gains a
 trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
 the platform-recorded refunds, or the paid amount for a `refunded` order. The
 shop integration order feed is unchanged. An invoiced order gets no automatic

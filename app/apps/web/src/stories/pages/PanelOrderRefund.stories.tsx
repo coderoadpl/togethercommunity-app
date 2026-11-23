@@ -106,7 +106,7 @@ const listed = (overrides: Record<string, unknown>) => ({ ...order, invoice: nul
 const toPack = [
   listed({ id: 'order-demo-1', createdAt: '2026-11-22T07:14:00.000Z', memberName: 'Sam Taylor', memberEmail: 'sam.taylor@example.com', amountCents: 10400 }),
   listed({ id: 'order-demo-2', createdAt: '2026-11-21T18:40:00.000Z', memberName: 'Jamie Lee', memberEmail: 'jamie.lee@example.com' }),
-  listed({ id: 'order-demo-3', createdAt: '2026-11-20T08:27:00.000Z', memberName: 'Robin Park', memberEmail: 'robin.park@example.com', amountCents: 10400, status: 'partially_refunded', refundJobStatus: 'running' }),
+  listed({ id: 'order-demo-3', createdAt: '2026-11-20T08:27:00.000Z', memberName: 'Robin Park', memberEmail: 'robin.park@example.com', amountCents: 10400, status: 'partially_refunded', staffRefundStatus: 'running' }),
 ];
 
 const allOrders = [

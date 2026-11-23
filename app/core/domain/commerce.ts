@@ -266,6 +266,7 @@ export const orderListItemSchema = orderSchema.extend({
   productTitle: z.string(),
   couponCode: z.string().nullable(),
   refundJobStatus: orderRefundJobStatusSchema.nullable().optional(),
+  staffRefundStatus: orderRefundJobStatusSchema.optional(),
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;

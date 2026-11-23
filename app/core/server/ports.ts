@@ -1502,6 +1502,8 @@ export interface OrderStaffRefundRepository {
   hasLabel(tenantId: string, orderId: string): Promise<boolean>;
   returnableStock(tenantId: string, orderId: string): Promise<Array<{ productId: string; quantity: number }>>;
   committedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
+  /** The status of each order's most recent staff refund, for orders whose latest one is not settled. */
+  activeStatusByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, OrderStaffRefund['status']>>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
   shipAnyway(tenantId: string, orderId: string, input: { actorUserId: string; now: string }): Promise<Result<Order, AppError>>;
 }

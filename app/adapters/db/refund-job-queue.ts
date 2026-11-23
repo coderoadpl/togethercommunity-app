@@ -118,7 +118,7 @@ export const createRefundJobQueue = (db: Db): RefundJobQueue => ({
         const queued = await outbox.enqueue(alert);
         if (!queued.ok) throw new Error(`Refund alert ${alert.id} not queued: ${queued.error.message}`);
       }
-      if (buyerNotice === undefined || (row.status !== 'submitted' && row.status !== 'succeeded')) return toStaffRefund(row);
+      if (buyerNotice === undefined || (row.status !== 'submitted' && row.status !== 'succeeded' && row.status !== 'unconfirmed')) return toStaffRefund(row);
       if (buyerNotice.tenantId !== tenantId) throw new Error(`Refund notice ${buyerNotice.id} belongs to another workspace`);
       const [notified] = await tx.update(orderStaffRefunds)
         .set({ buyerNotifiedAt: now })

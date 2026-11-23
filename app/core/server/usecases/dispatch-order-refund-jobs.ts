@@ -227,7 +227,7 @@ const settleCoverageAtCheck = (job: RefundJob, submittedAt: string, refunds: rea
   if (coverage.awaiting === undefined) {
     return { update: { status: 'succeeded', providerRefundStatus, statusChecks, nextAttemptAt, lastError: null }, outcome: 'checked', alert: null, ...ownRefund };
   }
-  if (nextAttemptAt === null) return unconfirmed({ providerRefundStatus, statusChecks, lastError: awaitingError(coverage.awaiting) });
+  if (nextAttemptAt === null) return { ...unconfirmed({ providerRefundStatus, statusChecks, lastError: awaitingError(coverage.awaiting) }), ...ownRefund };
   return { update: { status: 'submitted', providerRefundStatus, statusChecks, nextAttemptAt, lastError: null }, outcome: 'checked', alert: null, ...ownRefund };
 };
 
@@ -360,6 +360,9 @@ const checkRefundStatus = async (job: RefundJob, order: OrderListItem | null, no
 
 const STAFF_REFUND_EMAIL_SOURCE = 'staff-refunds';
 
+// A refund still awaited at the last check ends unconfirmed for staff, yet the buyer is told once the provider holds it.
+const BUYER_NOTICE_STATUSES: ReadonlySet<string> = new Set(['submitted', 'succeeded', 'unconfirmed']);
+
 const STOCK_KEPT_ALERTS: ReadonlySet<OrderRefundAlert> = new Set(['failed', 'failed_after_submission', 'blocked_permission_failed', 'unconfirmed']);
 
 const staffRefundAlertError = (job: Extract<RefundJob, { source: 'staff' }>, alert: OrderRefundAlert): string => {
@@ -383,7 +386,7 @@ const buyerNotice = async (
   const status = settlement.update.status;
   const ownRefund = settlement.ownRefund;
   if (job.source !== 'staff' || job.buyerNotifiedAt !== null || order === null || order.mode === 'test' || ownRefund === undefined) return undefined;
-  if (status !== 'submitted' && status !== 'succeeded') return undefined;
+  if (status === undefined || !BUYER_NOTICE_STATUSES.has(status)) return undefined;
   if (ownRefund.status !== 'pending' && ownRefund.status !== 'succeeded') return undefined;
   const tenant = await deps.tenants.findById(job.tenantId);
   if (tenant === null) return undefined;

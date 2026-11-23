@@ -431,6 +431,21 @@ describe('staff refunds against a real database', () => {
     expect(await buyerEmails()).toMatchObject([{ id: 'order-refund-issued:refund-1', payload: { subject: noticeSubject(1000) } }]);
   });
 
+  it('tells the buyer once when the last scheduled check first sees the refund pending, and still ends it unconfirmed for staff', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'requires_action' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000 }));
+    await h.dispatch(minutes(1));
+    await h.dispatch(minutes(60 * 24 + 1));
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundStatus: 'requires_action', buyerNotifiedAt: null }]);
+
+    h.provider.setRefundStatus('re_1', 'pending');
+    await h.dispatch(minutes(60 * 24 * 7 + 1));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'unconfirmed', providerRefundStatus: 'pending', buyerNotifiedAt: minutes(60 * 24 * 7 + 1) }]);
+    expect(await buyerEmails()).toMatchObject([{ id: 'order-refund-issued:refund-1', payload: { subject: noticeSubject(1000) } }]);
+    expect(await alertPayloads()).toHaveLength(1);
+  });
+
   it('lets staff refund an order marked refunded again once the provider shows its full refund failed, and tells them access stays ended', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 }));

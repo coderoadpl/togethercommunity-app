@@ -1217,12 +1217,21 @@ and the minute sweep deletes the object once more after the record's 10 minutes
 and only then removes the record; a write the storage refused (a `4xx` answer)
 is withdrawn like any other. This rests on the storage finishing or abandoning
 a write it accepted within those 10 minutes; the signed write itself expires 60
-seconds after it was signed. Once the withdrawal of an attempt without such a
+seconds after it was signed. When the delete itself ends without a definite
+answer, the storage may still carry it out later, after a new approval has
+committed the address, so the withdrawal keeps the record and marks it with the
+time of that delete (`delete_unresolved_at`). While such a mark exists, every
+approval that would write the address or keep its quarantined image for it
+answers `503 unavailable` and changes nothing; the minute sweep deletes the
+object again 10 minutes after the marked delete, under the same assumption, and
+only then removes the record, so a retry after that publishes the image
+again. Once the withdrawal of an attempt without such a
 write succeeds, the attempt has left neither a record nor a public copy behind.
 A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
-stays, and the minute sweep retries it: it removes every record older than 10
-minutes under the same lock, always deleting its object with the same
+stays, and the minute sweep retries it: it removes every record whose start,
+or whose last delete without a definite answer, is more than 10 minutes ago,
+under the same lock, always deleting its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
 remove for the next run, with the time of that attempt, so it moves behind the
@@ -1238,6 +1247,12 @@ attaches them. Then, for each image, a short transaction under the key's lock
 that completion takes deletes the object and then the row, if the row is still
 released; a completion that revived it meanwhile keeps both. A failed or busy
 object delete leaves the row released and invisible, and the sweep retries it.
+A delete that ended without a definite answer also records its time in
+`delete_unresolved_at`: for 10 minutes after it the sweep leaves the row alone,
+and a completion of the same image by that key answers `503 unavailable` instead
+of reviving the row, so a late delete never removes a new quarantined copy;
+then the sweep deletes the object again and removes the row, and the image can
+be uploaded again.
 The workspace's approval lock is never held across these storage requests. This
 follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
@@ -1285,8 +1300,12 @@ transaction commits, a moment since nothing is scanned.
 
 Migration `0170_key_download_files` adds a nullable `sweep_attempted_at`
 column without a default to each of the three tables (constant time; each
-table's `ACCESS EXCLUSIVE` lock is held until the migration commits); a release
-before it ignores that column.
+table's `ACCESS EXCLUSIVE` lock is held until the migration commits), and a
+nullable `delete_unresolved_at` column with a timestamp format check to
+`change_proposal_images` and `change_proposal_image_publications`; the check
+reads the table once under that lock, which `0169` created moments before or
+which holds only rows of unreleased proposals. A release before it ignores these
+columns.
 
 The release on production when proposed images were added, `8141fd15`,
 predates `0169`. What it does with what this release stores and answers is

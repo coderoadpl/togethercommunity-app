@@ -3248,13 +3248,17 @@ export type QuarantinedImageInsertion =
   | { kind: 'stored'; asset: QuarantinedImageAsset }
   | { kind: 'existing'; asset: QuarantinedImageAsset }
   | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap }
-  | { kind: 'store_failed'; error: AppError };
+  | { kind: 'store_failed'; error: AppError }
+  | { kind: 'busy' };
 
 export type QuarantinedImageRelease =
   | { kind: 'key'; apiKeyId: string; images?: readonly ProposalImageReference[] }
   | { kind: 'sweep'; createdBefore: string; limit: number };
 
 export type QuarantinedImageReleaseEnd = 'removed' | 'revived' | 'gone' | 'failed' | 'busy';
+
+/** `unresolved`: the delete ended without a definite answer, so the storage may still carry it out later. */
+export type QuarantinedImageObjectRemoval = 'deleted' | 'failed' | 'unresolved';
 
 export type QuarantinedImageUploadRecord =
   | { kind: 'recorded' }
@@ -3270,7 +3274,9 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /**
    * Under a lock of the key, records the image (or revives a released row) after counting the key's unreleased images
    * and bytes, then runs `store` to write the object before the lock is released; a failed `store` rolls back the row.
-   * The same bytes again answer the unreleased row already there, after `store` rewrote its object.
+   * The same bytes again answer the unreleased row already there, after `store` rewrote its object. A released row
+   * whose object delete ended without a definite answer answers `busy` and is not revived, so a late delete cannot
+   * remove a new object, until the sweep has deleted it again.
    */
   insert(tenantId: string, asset: QuarantinedImageAsset, store: () => Promise<Result<void, AppError>>): Promise<QuarantinedImageInsertion>;
   find(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
@@ -3284,13 +3290,15 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   release(tenantId: string, selection: QuarantinedImageRelease, now: string, lockWaitMs?: number): Promise<ChangeProposalWrite<QuarantinedImageAsset[]>>;
   /**
    * In a short transaction under the lock of the key that `insert` takes: when the row is still released, runs
-   * `removeObject` and deletes the row once it answers true, or records the failed attempt at `now`; a row a completion
-   * revived meanwhile is left as it is. `lockWaitMs` shortens every lock wait below the repository's own bound.
+   * `removeObject` and deletes the row once it answers `deleted`, or records the failed attempt at `now`, and for an
+   * `unresolved` delete also the time it ended; a row a completion revived meanwhile is left as it is, and a row whose
+   * last delete was unresolved less than `unresolvedDeleteGraceMs` ago answers `busy` without a delete. `lockWaitMs`
+   * shortens every lock wait below the repository's own bound.
    */
   finishRelease(
     tenantId: string,
     asset: QuarantinedImageAsset,
-    removeObject: () => Promise<boolean>,
+    removeObject: () => Promise<QuarantinedImageObjectRemoval>,
     now: string,
     lockWaitMs?: number,
   ): Promise<QuarantinedImageReleaseEnd>;
@@ -3314,6 +3322,7 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   markUploadAttempted(tenantId: string, objectKey: string, now: string): Promise<void>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
+  /** Records whose last unresolved delete, or else whose start, lies before `startedBefore`. */
   listTenantIdsWithPublicationsBefore(startedBefore: string, limit: number): Promise<string[]>;
   listPublicationsBefore(tenantId: string, startedBefore: string, limit: number): Promise<ProposalImagePublication[]>;
   /** Records a failed removal, so the publication record moves behind the others. */
@@ -3330,6 +3339,10 @@ export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   /** Deletes every publication record of the attempt, so they disappear exactly when the transaction commits. */
   settlePublications(tenantId: string, attemptId: string): Promise<void>;
   deletePublication(tenantId: string, attemptId: string, image: ProposalImageReference): Promise<void>;
+  /** Whether a publication record of the workspace holds an unresolved delete of this image's public object. */
+  deleteUnresolved(tenantId: string, image: ProposalImageReference): Promise<boolean>;
+  /** Records that the delete of this record's public object ended without a definite answer at `now`. */
+  markDeleteUnresolved(tenantId: string, attemptId: string, image: ProposalImageReference, now: string): Promise<void>;
 }
 
 export interface ChangeProposalRepositories {

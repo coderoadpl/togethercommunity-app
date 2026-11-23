@@ -367,11 +367,18 @@ const catalogRepositoriesOver = (
       deletePublication: async (tenantId, attemptId, image) => {
         removeWhere(store.imagePublications, (row) => samePublication(row, tenantId, attemptId, image));
       },
+      deleteUnresolved: async (tenantId, image) => store.imagePublications.some((row) =>
+        row.tenantId === tenantId && sameProposalImage(row.image, image) && row.deleteUnresolvedAt !== undefined),
+      markDeleteUnresolved: async (tenantId, attemptId, image, now) => {
+        for (const row of store.imagePublications) {
+          if (samePublication(row, tenantId, attemptId, image)) row.deleteUnresolvedAt = now;
+        }
+      },
     },
   };
 };
 
-type FakeImagePublication = ProposalImagePublication & { tenantId: string };
+type FakeImagePublication = ProposalImagePublication & { tenantId: string; deleteUnresolvedAt?: string };
 
 type FakeImageUpload = QuarantinedImageUpload & { tenantId: string };
 
@@ -385,6 +392,7 @@ export interface FakeChangeProposalStore {
   keys: ShopManagementKey[];
   imageRows: QuarantinedImageAsset[];
   releasedImageRows: QuarantinedImageAsset[];
+  unresolvedImageDeletes: Map<QuarantinedImageAsset, string>;
   imageUploads: FakeImageUpload[];
   imagePublications: FakeImagePublication[];
   seed(proposal: ChangeProposal): void;
@@ -607,7 +615,7 @@ export const createChangeProposalStoreFake = (keys: ShopManagementKey[] = []): F
   };
   return {
     repository, events, groups, proposals, eventRows, groupRows, keys, imageRows,
-    releasedImageRows: [], imageUploads: [], imagePublications: [],
+    releasedImageRows: [], unresolvedImageDeletes: new Map(), imageUploads: [], imagePublications: [],
     seed: (proposal) => { proposals.push({ ...proposal }); },
   };
 };
@@ -623,12 +631,15 @@ export interface FakeQuarantinedImages {
 
 export const createQuarantinedImagesFake = (
   state: FakeCatalogState,
-  store: Pick<FakeChangeProposalStore, 'imageRows' | 'releasedImageRows' | 'imageUploads' | 'imagePublications' | 'proposals' | 'keys'>,
+  store: Pick<FakeChangeProposalStore, 'imageRows' | 'releasedImageRows' | 'unresolvedImageDeletes' | 'imageUploads' | 'imagePublications' | 'proposals' | 'keys'>,
   limits: { assetsPerKey: number; bytesPerKey: number; uploadsPerKey?: number } = QUARANTINED_IMAGE_LIMITS,
 ): FakeQuarantinedImages => {
   const rows = store.imageRows;
   const released = store.releasedImageRows;
   const releases: QuarantinedImageRelease[] = [];
+  const unresolved = store.unresolvedImageDeletes;
+  const graceEnd = (now: string): string => new Date(Date.parse(now) - QUARANTINED_IMAGE_LIMITS.unresolvedDeleteGraceMs).toISOString();
+  const deleteSettled = (row: QuarantinedImageAsset, now: string): boolean => (unresolved.get(row) ?? '') < graceEnd(now);
   const keyActive = (row: QuarantinedImageAsset): boolean =>
     store.keys.some((key) => key.tenantId === row.tenantId && key.id === row.apiKeyId && key.revokedAt === null);
   const sweepable = (row: QuarantinedImageAsset, createdBefore: string): boolean => row.createdAt < createdBefore || !keyActive(row);
@@ -643,6 +654,7 @@ export const createQuarantinedImagesFake = (
   const repository: QuarantinedImageRepository = {
     inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
     insert: async (tenantId, asset, storeObject) => {
+      if (released.some((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset) && unresolved.has(row))) return { kind: 'busy' };
       const existing = rows.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
       if (existing !== undefined) {
         const stored = await storeObject();
@@ -671,7 +683,7 @@ export const createQuarantinedImagesFake = (
     },
     release: async (tenantId, selection, now) => {
       releases.push(selection);
-      const earlier = released.filter(selection.kind === 'sweep' ? (row) => row.tenantId === tenantId : ofKey(selection, tenantId));
+      const earlier = released.filter(selection.kind === 'sweep' ? (row) => row.tenantId === tenantId && deleteSettled(row, now) : ofKey(selection, tenantId));
       const fresh = rows.filter(selection.kind === 'sweep'
         ? (row) => row.tenantId === tenantId && sweepable(row, selection.createdBefore) && !referenced(row, now)
         : ofKey(selection, tenantId));
@@ -688,15 +700,19 @@ export const createQuarantinedImagesFake = (
       }
       return { kind: 'written', value: answered };
     },
-    finishRelease: async (tenantId, asset, removeObject) => {
+    finishRelease: async (tenantId, asset, removeObject, now) => {
       const row = released.find((candidate) => sameImageRow(candidate, tenantId, asset.apiKeyId, asset));
       if (row === undefined) return rows.some((candidate) => sameImageRow(candidate, tenantId, asset.apiKeyId, asset)) ? 'revived' : 'gone';
-      if (!await removeObject()) return 'failed';
+      if (!deleteSettled(row, now)) return 'busy';
+      const removal = await removeObject();
+      if (removal === 'unresolved') unresolved.set(row, now);
+      if (removal !== 'deleted') return 'failed';
       released.splice(released.indexOf(row), 1);
+      unresolved.delete(row);
       return 'removed';
     },
     listTenantIdsToSweep: async (createdBefore, now, limit) => [...new Set([
-      ...released.map((row) => row.tenantId),
+      ...released.filter((row) => deleteSettled(row, now)).map((row) => row.tenantId),
       ...rows.filter((row) => sweepable(row, createdBefore) && !referenced(row, now)).map((row) => row.tenantId),
     ])].sort().slice(0, limit),
     recordUpload: async (tenantId, upload, countedAfter) => {
@@ -727,9 +743,9 @@ export const createQuarantinedImagesFake = (
       }
     },
     listTenantIdsWithPublicationsBefore: async (startedBefore, limit) =>
-      [...new Set(store.imagePublications.filter((row) => row.startedAt < startedBefore).map((row) => row.tenantId))].sort().slice(0, limit),
+      [...new Set(store.imagePublications.filter((row) => (row.deleteUnresolvedAt ?? row.startedAt) < startedBefore).map((row) => row.tenantId))].sort().slice(0, limit),
     listPublicationsBefore: async (tenantId, startedBefore, limit) => store.imagePublications
-      .filter((row) => row.tenantId === tenantId && row.startedAt < startedBefore)
+      .filter((row) => row.tenantId === tenantId && (row.deleteUnresolvedAt ?? row.startedAt) < startedBefore)
       .slice(0, limit)
       .map(({ attemptId, image, startedAt }) => ({ attemptId, image: { ...image }, startedAt })),
     markPublicationAttempted: async () => undefined,

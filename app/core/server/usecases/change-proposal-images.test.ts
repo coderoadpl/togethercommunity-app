@@ -521,6 +521,68 @@ describe('approving a proposal with an image', () => {
     expect(liveCover(h, 'product-mug')).toBeNull();
   });
 
+  it('reuses no address whose withdrawal delete had no definite answer until the sweep deleted it again after the bound', async () => {
+    const h = harness();
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const transition = h.store.repository.transition;
+    h.store.repository.transition = async () => ({ kind: 'busy' });
+    const remove = h.objects.storage.delete;
+    let land: () => Promise<unknown> = async () => undefined;
+    h.objects.storage.delete = async (input) => {
+      if (!input.url.includes('/image-assets/')) return remove(input);
+      land = () => remove(input);
+      return err(integrationUnavailable('Could not delete the published image: the storage request deadline passed'));
+    };
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    expect(h.publicKeys()).toHaveLength(1);
+    h.store.repository.transition = transition;
+    h.objects.storage.delete = remove;
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    await land();
+    expect(liveCover(h, 'product-mug')).toBeNull();
+    h.clock.now = '2026-03-01T10:09:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.imagePublications).toHaveLength(1);
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+    h.clock.now = '2026-03-01T10:11:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.imagePublications).toEqual([]);
+
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(liveCover(h, 'product-mug')).toBe(cover);
+    expect(h.publicKeys()).toHaveLength(1);
+  });
+
+  it('revives no released quarantined row whose delete had no definite answer until the sweep deleted it again after the bound', async () => {
+    const h = harness();
+    const bytes = PNG(1);
+    const cover = await h.upload(bytes);
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    const remove = h.objects.storage.delete;
+    let land: () => Promise<unknown> = async () => undefined;
+    h.objects.storage.delete = async (input) => {
+      if (!input.url.includes('/image-asset-quarantine/')) return remove(input);
+      land = () => remove(input);
+      return err(integrationUnavailable('Could not delete the quarantined image: the storage request deadline passed'));
+    };
+    expect(await rejectChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true });
+    h.objects.storage.delete = remove;
+    await expect(h.upload(bytes)).rejects.toThrow('busy');
+    await land();
+    expect(h.quarantinedKeys()).toEqual([]);
+
+    h.clock.now = '2026-03-01T10:05:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.releasedImageRows).toHaveLength(1);
+    h.clock.now = '2026-03-01T10:11:00.000Z';
+    await sweepQuarantinedImages(h.deps);
+    expect(h.store.releasedImageRows).toEqual([]);
+    expect(await h.upload(bytes)).toBe(cover);
+    expect(h.quarantinedKeys()).toHaveLength(1);
+  });
+
   it('removes the record with the withdrawal when the storage refused the write', async () => {
     const h = harness();
     const cover = await h.upload(PNG(1));
@@ -797,6 +859,7 @@ describe('releasing quarantined images', () => {
     expect((await h.propose('product.update', { id: 'product-mug', coverUrl: cover })).ok).toBe(false);
 
     h.objects.failDeletes = () => false;
+    h.clock.now = '2026-03-01T10:11:00.000Z';
     await sweepQuarantinedImages(h.deps);
     expect(h.store.releasedImageRows).toEqual([]);
     expect(h.quarantinedKeys()).toEqual([]);

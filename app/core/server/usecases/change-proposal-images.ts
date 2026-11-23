@@ -111,8 +111,9 @@ const finishReleases = async (
         ...credentialsOf(configuration.value),
         deadlineMs: deleteDeadline(budget),
       });
-      if (!deleted.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
-      return deleted.ok;
+      if (deleted.ok) return 'deleted';
+      logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
+      return storageFailureIsDefinite(deleted.error) ? 'failed' : 'unresolved';
     }, deps.clock.nowIso(), wait);
     if (finished === 'removed') removed += 1;
   }
@@ -242,6 +243,7 @@ const completeProposedImageUpload = async (
     body: bytes,
     contentType,
   }));
+  if (inserted.kind === 'busy') return err(changeProposalsBusy());
   if (inserted.kind === 'cap_exceeded' || inserted.kind === 'store_failed') {
     const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
     if (!removed.ok) return removed;
@@ -429,6 +431,9 @@ export const publishApprovalImages = async (
 ): Promise<Result<void, AppError>> => {
   const images = scope.repositories.quarantinedImages;
   const recorded = (image: ProposalImageReference) => publication.images.some((known) => sameProposalImage(known, image));
+  for (const image of [...publication.images, ...prepared.images.map((known) => known.image)]) {
+    if (await images.deleteUnresolved(tenantId, image)) return err(changeProposalsBusy());
+  }
   const toWrite = prepared.images.filter(({ image }) => recorded(image)).map(({ image }) => image);
   if (toWrite.length > 0 && !await images.claimPublications(tenantId, publication.attemptId, toWrite)) return err(changeProposalsBusy());
   const { configuration } = prepared;
@@ -458,6 +463,7 @@ export interface ChangeProposalImageWithdrawDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   storage: StorageProvider;
   logger: { error(message: string): void };
+  clock: Clock;
 }
 
 /**
@@ -465,7 +471,9 @@ export interface ChangeProposalImageWithdrawDeps {
  * When `written`, it deletes the public object first, except when a live field shows the address or an applied
  * proposal carries it: then an applied approval published it, and product history may still point at it. When
  * `keepRecord`, the record stays after the delete, so the sweep deletes the object once more after the record's age
- * bound: a write whose outcome was unknown may still land after this delete.
+ * bound: a write whose outcome was unknown may still land after this delete. A delete without a definite answer may
+ * still land later too, so it keeps the record and marks it: no approval reuses the address until the sweep, after the
+ * record's age bound counted from that delete, has deleted the object again.
  */
 const removePublication = async (
   tenantId: string,
@@ -491,7 +499,12 @@ const removePublication = async (
           ...credentialsOf(configuration.value),
           deadlineMs: deleteDeadline(budget),
         });
-        if (!deleted.ok) return deleted;
+        if (!deleted.ok && storageFailureIsDefinite(deleted.error)) return deleted;
+        if (!deleted.ok) {
+          logImageFailure(deps, tenantId, failure, deleted.error.message);
+          await images.markDeleteUnresolved(tenantId, attemptId, image, deps.clock.nowIso());
+          return ok(false);
+        }
       }
       if (written.keepRecord) return ok(false);
       await images.deletePublication(tenantId, attemptId, image);

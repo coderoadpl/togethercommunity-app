@@ -162,13 +162,28 @@ export const createQuarantinedImageLocks = (executor: Db): QuarantinedImageLocks
   deletePublication: async (tenantId, attemptId, image) => {
     await executor.delete(changeProposalImagePublications).where(publicationOf(tenantId, attemptId, image));
   },
+  deleteUnresolved: async (tenantId, image) => (await executor.select({ kind: changeProposalImagePublications.kind }).from(changeProposalImagePublications).where(and(
+    eq(changeProposalImagePublications.tenantId, tenantId),
+    eq(changeProposalImagePublications.kind, image.kind),
+    eq(changeProposalImagePublications.digest, image.digest),
+    eq(changeProposalImagePublications.extension, image.extension),
+    isNotNull(changeProposalImagePublications.deleteUnresolvedAt),
+  )).limit(1)).length > 0,
+  markDeleteUnresolved: async (tenantId, attemptId, image, now) => {
+    await executor.update(changeProposalImagePublications).set({ deleteUnresolvedAt: now }).where(publicationOf(tenantId, attemptId, image));
+  },
 });
 
 const keyIsActive = sql`exists (select 1 from ${shopManagementKeys} where ${shopManagementKeys.tenantId} = ${changeProposalImages.tenantId}
   and ${shopManagementKeys.id} = ${changeProposalImages.apiKeyId} and ${shopManagementKeys.revokedAt} is null)`;
 
+const unresolvedGraceEnd = (now: string): string => new Date(Date.parse(now) - QUARANTINED_IMAGE_LIMITS.unresolvedDeleteGraceMs).toISOString();
+
+const deleteSettled = (now: string): SQL | undefined =>
+  or(isNull(changeProposalImages.deleteUnresolvedAt), lt(changeProposalImages.deleteUnresolvedAt, unresolvedGraceEnd(now)));
+
 const sweepable = (createdBefore: string, now: string): SQL | undefined => or(
-  isNotNull(changeProposalImages.releasedAt),
+  and(isNotNull(changeProposalImages.releasedAt), deleteSettled(now)),
   and(or(lt(changeProposalImages.createdAt, createdBefore), sql`not ${keyIsActive}`), not(attached(now))),
 );
 
@@ -191,6 +206,9 @@ const uploadWaiting = sql`coalesce(${changeProposalImageUploads.sweepAttemptedAt
 
 const publicationWaiting = sql`coalesce(${changeProposalImagePublications.sweepAttemptedAt}, ${changeProposalImagePublications.startedAt})`;
 
+const publicationDueBefore = (startedBefore: string): SQL =>
+  sql`coalesce(${changeProposalImagePublications.deleteUnresolvedAt}, ${changeProposalImagePublications.startedAt}) < ${startedBefore}`;
+
 export const createQuarantinedImageRepository = (db: Db, options: ChangeProposalBoundOptions = {}): QuarantinedImageRepository => {
   const bounds = changeProposalBounds(options);
   const boundsFor = (wait: number | undefined) => wait === undefined ? bounds : { ...bounds, lockWaitMs: Math.min(bounds.lockWaitMs, lockWaitMs(wait)) };
@@ -204,6 +222,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         return await db.transaction(async (tx): Promise<QuarantinedImageInsertion> => {
           await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${keyLock(tenantId, parsed.apiKeyId)}, 0))`);
           const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, parsed.apiKeyId, parsed)).for('update');
+          if (row !== undefined && row.releasedAt !== null && row.deleteUnresolvedAt !== null) return { kind: 'busy' };
           if (row !== undefined && row.releasedAt === null) {
             const stored = await store();
             return stored.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: stored.error };
@@ -255,8 +274,12 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       const [row] = await tx.select().from(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset)).for('update');
       if (row === undefined) return 'gone';
       if (row.releasedAt === null) return 'revived';
-      if (!await removeObject()) {
-        await tx.update(changeProposalImages).set({ sweepAttemptedAt: now }).where(imageOfKey(tenantId, asset.apiKeyId, asset));
+      if (row.deleteUnresolvedAt !== null && row.deleteUnresolvedAt >= unresolvedGraceEnd(now)) return 'busy';
+      const removal = await removeObject();
+      if (removal !== 'deleted') {
+        await tx.update(changeProposalImages)
+          .set(removal === 'unresolved' ? { sweepAttemptedAt: now, deleteUnresolvedAt: now } : { sweepAttemptedAt: now })
+          .where(imageOfKey(tenantId, asset.apiKeyId, asset));
         return 'failed';
       }
       await tx.delete(changeProposalImages).where(imageOfKey(tenantId, asset.apiKeyId, asset));
@@ -311,12 +334,12 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
     },
     listTenantIdsWithPublicationsBefore: async (startedBefore, limit) =>
       (await db.select({ tenantId: changeProposalImagePublications.tenantId }).from(changeProposalImagePublications)
-        .where(lt(changeProposalImagePublications.startedAt, startedBefore)).groupBy(changeProposalImagePublications.tenantId)
+        .where(publicationDueBefore(startedBefore)).groupBy(changeProposalImagePublications.tenantId)
         .orderBy(sql`min(${publicationWaiting})`, asc(changeProposalImagePublications.tenantId)).limit(limit))
         .map((row) => row.tenantId),
     listPublicationsBefore: async (tenantId, startedBefore, limit) =>
       (await db.select().from(changeProposalImagePublications)
-        .where(and(eq(changeProposalImagePublications.tenantId, tenantId), lt(changeProposalImagePublications.startedAt, startedBefore)))
+        .where(and(eq(changeProposalImagePublications.tenantId, tenantId), publicationDueBefore(startedBefore)))
         .orderBy(asc(publicationWaiting), asc(changeProposalImagePublications.attemptId), asc(changeProposalImagePublications.kind),
           asc(changeProposalImagePublications.digest), asc(changeProposalImagePublications.extension)).limit(limit)).map(parsePublication),
     markPublicationAttempted: async (tenantId, attemptId, image, now) => {

@@ -124,6 +124,7 @@ export const changeProposalImages = pgTable('change_proposal_images', {
   createdAt: text('created_at').notNull(),
   releasedAt: text('released_at'),
   sweepAttemptedAt: text('sweep_attempted_at'),
+  deleteUnresolvedAt: text('delete_unresolved_at'),
 }, (table) => [
   primaryKey({ name: 'change_proposal_images_pkey', columns: [table.tenantId, table.apiKeyId, table.kind, table.digest, table.extension] }),
   index('change_proposal_images_created_idx').on(table.createdAt),
@@ -133,6 +134,7 @@ export const changeProposalImages = pgTable('change_proposal_images', {
   check('change_proposal_images_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 5242880`),
   check('change_proposal_images_created_at_check', isoMillisecondTimestamp(table.createdAt)),
   check('change_proposal_images_released_at_check', sql`${table.releasedAt} IS NULL OR ${isoMillisecondTimestamp(table.releasedAt)}`),
+  check('change_proposal_images_delete_unresolved_at_check', sql`${table.deleteUnresolvedAt} IS NULL OR ${isoMillisecondTimestamp(table.deleteUnresolvedAt)}`),
 ]);
 
 export const changeProposalImageUploads = pgTable('change_proposal_image_uploads', {
@@ -157,6 +159,7 @@ export const changeProposalImagePublications = pgTable('change_proposal_image_pu
   extension: text('extension').$type<ProposalImageExtension>().notNull(),
   startedAt: text('started_at').notNull(),
   sweepAttemptedAt: text('sweep_attempted_at'),
+  deleteUnresolvedAt: text('delete_unresolved_at'),
 }, (table) => [
   primaryKey({ name: 'change_proposal_image_publications_pkey', columns: [table.tenantId, table.attemptId, table.kind, table.digest, table.extension] }),
   index('change_proposal_image_publications_started_idx').on(table.startedAt),
@@ -164,6 +167,7 @@ export const changeProposalImagePublications = pgTable('change_proposal_image_pu
   check('change_proposal_image_publications_digest_check', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
   check('change_proposal_image_publications_extension_check', sql`${table.extension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
   check('change_proposal_image_publications_started_at_check', isoMillisecondTimestamp(table.startedAt)),
+  check('change_proposal_image_publications_delete_unresolved_at_check', sql`${table.deleteUnresolvedAt} IS NULL OR ${isoMillisecondTimestamp(table.deleteUnresolvedAt)}`),
 ]);
 
 const KEY_DOWNLOAD_CONTENT_TYPE_CHECK = sql.raw(`'application/pdf', 'application/epub+zip', 'application/zip', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'image/png', 'image/jpeg'`);

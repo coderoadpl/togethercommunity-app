@@ -552,7 +552,7 @@ describe('quarantined rows and objects of one key', () => {
     expect(await repository.find(TENANT, KEY_ID, image(1))).toBeNull();
     const revivedAt = '2026-03-01T11:00:00.000Z';
     expect(await repository.insert(TENANT, image(1, { createdAt: revivedAt }), stored)).toEqual({ kind: 'stored', asset: image(1, { createdAt: revivedAt }) });
-    const removeObject = vi.fn(async () => true);
+    const removeObject = vi.fn(async () => 'deleted' as const);
     expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW)).toBe('revived');
     expect(removeObject).not.toHaveBeenCalled();
     expect(await rows()).toEqual([`${TENANT}/${KEY_ID}/1`]);
@@ -575,7 +575,7 @@ describe('quarantined rows and objects of one key', () => {
         return ok(undefined);
       });
       await writeStarted;
-      const removeObject = vi.fn(async () => true);
+      const removeObject = vi.fn(async () => 'deleted' as const);
       const finish = repository.finishRelease(TENANT, image(1), removeObject, NOW);
       await untilWaiting(observer, 'The release finish');
       finishWrite();
@@ -600,7 +600,7 @@ describe('quarantined rows and objects of one key', () => {
       for (const name of [`change-proposal-images:${TENANT}:${KEY_ID}`, `change-proposals:${TENANT}`, `change-proposal-transaction:${TENANT}`]) {
         await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [name]);
       }
-      const removeObject = vi.fn(async () => true);
+      const removeObject = vi.fn(async () => 'deleted' as const);
       expect(await repository.finishRelease(TENANT, image(1), removeObject, NOW, 50)).toBe('busy');
       expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: NOW, limit: 10 }, NOW, 50)).toEqual({ kind: 'busy' });
       const operation = vi.fn(async () => ok(true));
@@ -634,12 +634,46 @@ describe('quarantined rows and objects of one key', () => {
     await database.db.transaction(async (tx) => {
       expect(await createQuarantinedImageLocks(tx).lockForPublication(TENANT, KEY_ID, image(100))).toBeNull();
     });
-    expect(await repository.finishRelease(TENANT, image(100), async () => false, NOW)).toBe('failed');
+    expect(await repository.finishRelease(TENANT, image(100), async () => 'failed' as const, NOW)).toBe('failed');
     const retried = await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, NOW);
     expect(retried).toEqual({ kind: 'written', value: [image(100)] });
     expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', NOW, 10)).toEqual([TENANT]);
-    expect(await repository.finishRelease(TENANT, image(100), async () => true, NOW)).toBe('removed');
+    expect(await repository.finishRelease(TENANT, image(100), async () => 'deleted' as const, NOW)).toBe('removed');
     expect(await releasedRows()).toEqual([]);
+  });
+
+  it('keeps a released row whose delete had no definite answer from revival and from the sweep until the bound, then deletes it again', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
+    expect(await repository.finishRelease(TENANT, image(1), async () => 'unresolved' as const, NOW)).toBe('failed');
+    const store = vi.fn(stored);
+    expect(await repository.insert(TENANT, image(1), store)).toEqual({ kind: 'busy' });
+    expect(store).not.toHaveBeenCalled();
+    const early = '2026-03-01T10:09:00.000Z';
+    expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', early, 10)).toEqual([]);
+    const removeObject = vi.fn(async () => 'deleted' as const);
+    expect(await repository.finishRelease(TENANT, image(1), removeObject, early)).toBe('busy');
+    expect(removeObject).not.toHaveBeenCalled();
+    const late = '2026-03-01T10:11:00.000Z';
+    expect(await repository.release(TENANT, { kind: 'sweep', createdBefore: '2026-01-01T00:00:00.000Z', limit: 10 }, late)).toEqual({ kind: 'written', value: [image(1)] });
+    expect(await repository.finishRelease(TENANT, image(1), removeObject, late)).toBe('removed');
+    expect(await repository.insert(TENANT, image(1), stored)).toMatchObject({ kind: 'stored' });
+  });
+
+  it('marks a publication record whose delete had no definite answer, blocks its address and lists it by that time', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.recordPublications(TENANT, 'attempt-unresolved', [image(1)], NOW);
+    const locks = createQuarantinedImageLocks(database.db);
+    expect(await locks.deleteUnresolved(TENANT, image(1))).toBe(false);
+    const deletedAt = '2026-03-01T10:20:00.000Z';
+    await locks.markDeleteUnresolved(TENANT, 'attempt-unresolved', image(1), deletedAt);
+    expect(await locks.deleteUnresolved(TENANT, image(1))).toBe(true);
+    expect(await locks.deleteUnresolved(NEIGHBOUR, image(1))).toBe(false);
+    expect(await locks.deleteUnresolved(TENANT, image(2))).toBe(false);
+    expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:15:00.000Z', 10)).toEqual([]);
+    expect(await repository.listTenantIdsWithPublicationsBefore('2026-03-01T10:15:00.000Z', 10)).toEqual([]);
+    expect(await repository.listPublicationsBefore(TENANT, '2026-03-01T10:30:01.000Z', 10)).toMatchObject([{ attemptId: 'attempt-unresolved' }]);
   });
 });
 
@@ -709,7 +743,7 @@ describe('the order of the image sweep', () => {
     const sweep = { kind: 'sweep', createdBefore: '2026-02-01T00:00:00.000Z', limit: 1 } as const;
     const first = await repository.release(TENANT, sweep, NOW);
     expect(first).toMatchObject({ kind: 'written', value: [{ digest: digestOf(1) }] });
-    expect(await repository.finishRelease(TENANT, image(1, { createdAt: '2026-03-01T09:00:00.000Z' }), async () => false, LATER)).toBe('failed');
+    expect(await repository.finishRelease(TENANT, image(1, { createdAt: '2026-03-01T09:00:00.000Z' }), async () => 'failed' as const, LATER)).toBe('failed');
     expect(await repository.release(TENANT, sweep, NOW)).toMatchObject({ kind: 'written', value: [{ digest: digestOf(2) }] });
   });
 
@@ -717,7 +751,7 @@ describe('the order of the image sweep', () => {
     const repository = createQuarantinedImageRepository(database.db);
     await database.db.insert(changeProposalImages).values([released(1, TENANT, '2026-03-01T09:00:00.000Z'), released(2, NEIGHBOUR, '2026-03-01T09:30:00.000Z')]);
     expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', NOW, 1)).toEqual([TENANT]);
-    await repository.finishRelease(TENANT, image(1), async () => false, LATER);
+    await repository.finishRelease(TENANT, image(1), async () => 'failed' as const, LATER);
     expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', NOW, 1)).toEqual([NEIGHBOUR]);
   });
 

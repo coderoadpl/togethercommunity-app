@@ -218,7 +218,7 @@ describe('lesson edition routes', () => {
       http.get('/api/student/lessons/l1/editions', editionReads),
     );
     await renderLessonUrl(`/my/courses/course-1/lessons/l1${suffix}`);
-    expect(await screen.findByRole('heading', { name: en.lesson.contentLocked })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.lesson.notForSaleTitle })).toBeInTheDocument();
     expect(editionReads).not.toHaveBeenCalled();
   });
 });

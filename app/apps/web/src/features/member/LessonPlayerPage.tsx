@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  type ButtonProps,
   Chip,
   Link as MuiLink,
   Paper,
@@ -12,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createLink, Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import {
@@ -36,9 +37,10 @@ import { localizeError, useLanguage, useTranslations, type Messages } from '../.
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
 import {
-  DataValue,
   Eyebrow,
   LessonActionLabel,
+  LessonCompletionStatus,
+  LessonDestinationLabel,
   LessonFooterBar,
   LessonMediaFrame,
   LessonNavLabel,
@@ -48,10 +50,13 @@ import {
   LESSON_CARD_PADDING_X,
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
+  LockedLeadText,
+  LockedScopeText,
+  VisuallyHidden,
 } from '../../theme.js';
 import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
+import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
 import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
@@ -195,19 +200,76 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
   }
 };
 
+const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
+const ButtonLink = createLink(({ href = '', ...props }: Omit<ButtonProps<'a'>, 'component'>) => <Button href={href} {...props} />);
+
+const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
+const TEXT_BREAK = '\u2029';
+const ENDS_WITH_PUNCTUATION = /[.,;:!?…]$/u;
+
+const plainText = (html: string): string => {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  for (const block of template.content.querySelectorAll(TEXT_BLOCK_SELECTOR)) {
+    block.before(TEXT_BREAK);
+    block.after(TEXT_BREAK);
+  }
+  for (const lineBreak of template.content.querySelectorAll('br')) lineBreak.replaceWith(TEXT_BREAK);
+  const segments = (template.content.textContent ?? '')
+    .split(TEXT_BREAK)
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter((segment) => segment !== '');
+  return segments.reduce(
+    (text, segment) => text === '' ? segment : `${text}${ENDS_WITH_PUNCTUATION.test(text) ? ' ' : ' · '}${segment}`,
+    '',
+  );
+};
+
+const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (
+  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+    <LockedLeadIcon />
+    <LockedLeadText variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
+      {children}
+    </LockedLeadText>
+  </Stack>
+);
+
+const LockedCardSkeleton = () => {
+  const t = useTranslations();
+  return (
+    <Stack role="status" aria-label={t.lesson.loading} aria-busy="true" useFlexGap spacing="1rem" data-testid="locked-lesson-skeleton">
+      <Skeleton width="70%" />
+      <Skeleton variant="text" width="40%" />
+      <Skeleton variant="rounded" height="3rem" />
+    </Stack>
+  );
+};
+
 const LockedView = ({
   courseId,
   lessonName,
   unlockProductId,
+  pending,
+  supportUrl,
+  supportConfigured,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   unlockProductId?: string;
+  pending: boolean;
+  supportUrl: string | null | undefined;
+  supportConfigured: boolean;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
+  const scope = useMemo(() => {
+    if (product === undefined) return null;
+    const description = plainText(product.description);
+    return description === '' ? t.salesLinks.lineTypes[product.type] : description;
+  }, [product, t]);
   const price = product === undefined ? null : product.prices[0] ?? ({
     kind: 'one_time',
     interval: null,
@@ -222,9 +284,16 @@ const LockedView = ({
       monthly: t.common.priceMonthly,
       yearly: t.common.priceYearly,
     });
+  const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
+  const externalSupport = typeof supportUrl === 'string' && !supportUrl.toLowerCase().startsWith('mailto:');
+  const supportForm = supportUrl === null && supportConfigured;
+  const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
-      title={lessonName ?? t.lesson.contentLocked}
+      title={lessonName ?? (pending
+        ? <><VisuallyHidden>{t.lesson.loading}</VisuallyHidden><Skeleton width="min(24rem, 65vw)" aria-hidden /></>
+        : t.lesson.contentLocked)}
+      documentTitle={lessonName ?? (pending ? t.lesson.loading : t.lesson.contentLocked)}
       eyebrow={t.lesson.eyebrow}
       width="wide"
     >
@@ -234,23 +303,56 @@ const LockedView = ({
           elevation={1}
           sx={{ p: '1.5rem', width: '100%', maxWidth: '28rem' }}
           data-testid="locked-lesson-upsell"
+          data-state={loading ? 'loading' : unlockProductId === undefined ? 'not-for-sale' : 'for-sale'}
         >
-          <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch', width: '100%', maxWidth: '28rem' }}>
-            <Typography variant="overline" component="p" color="text.secondary">
-              {t.lesson.lockedInProduct}
-            </Typography>
-            <Typography variant="h2" component="h2">
-              {product?.title ?? t.lesson.contentLocked}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {t.lesson.noAccessYet}
-            </Typography>
-            {priceTerms !== null ? (
-              <Typography variant="h3" component="p" data-testid="locked-product-price">
-                <DataValue>{priceTerms}</DataValue>
+          {loading ? <LockedCardSkeleton /> : unlockProductId === undefined ? (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
+              <Typography variant="body2" color="text.secondary">
+                {typeof supportUrl === 'string' || supportForm ? t.lesson.notForSaleBody : t.lesson.notForSaleBodyNoContact}
               </Typography>
-            ) : null}
-            {unlockProductId === undefined ? null : (
+              <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
+                {t.lesson.backToCourse}
+              </Button>
+              {typeof supportUrl === 'string' ? (
+                <Button
+                  href={supportUrl}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  data-testid="locked-contact-creator"
+                  {...(externalSupport ? NEW_TAB : {})}
+                  aria-label={`${t.lesson.contactCreator} ${externalSupport ? t.lesson.newTabHint : t.lesson.mailHint}`}
+                >
+                  {t.lesson.contactCreator}
+                </Button>
+              ) : supportForm ? (
+                <ButtonLink
+                  to="/account"
+                  search={{ tab: 'profile', support: 'open' }}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  data-testid="locked-contact-creator"
+                >
+                  {t.lesson.contactCreator}
+                </ButtonLink>
+              ) : null}
+            </Stack>
+          ) : (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead>{t.lesson.noAccess}</LockedLead>
+              {product === undefined ? null : (
+                <Stack useFlexGap spacing="0.25rem">
+                  <Typography variant="overline" component="p" color="text.secondary">
+                    {t.lesson.lockedInProduct}
+                  </Typography>
+                  <Typography variant="h2" component="h2">
+                    {product.title}
+                  </Typography>
+                  {scope === null ? null : <LockedScopeText variant="body2" data-testid="locked-product-scope">{scope}</LockedScopeText>}
+                </Stack>
+              )}
               <Button
                 component={Link}
                 to={`/checkout/${encodeURIComponent(unlockProductId)}`}
@@ -261,10 +363,10 @@ const LockedView = ({
               >
                 {priceTerms === null ? t.courseTree.unlockAccess : t.courseTree.unlockAccessWithPrice({ price: priceTerms })}
               </Button>
-            )}
-          </Stack>
+            </Stack>
+          )}
         </Paper>
-        <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
+        {!loading && unlockProductId === undefined ? null : <MuiLink component={Link} to={courseHref}>{t.lesson.backToCourse}</MuiLink>}
       </Stack>
     </MemberSurface>
   );
@@ -474,6 +576,9 @@ export const LessonPlayerPage = ({
         <LockedView
           courseId={courseId}
           lessonName={lockedRow?.name}
+          pending={structure.isPending}
+          supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
+          supportConfigured={tenantSettings.data?.settings.supportConfigured === true}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -507,9 +612,10 @@ export const LessonPlayerPage = ({
   const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
     .some((query) => query.isError);
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
-  const compactCompletion = nextHref !== null;
   const previousLesson = neighbours?.previous ?? null;
-  const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
+  const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
+  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.firstUnlockableSkipped ?? neighbours.next : null;
+  const completionSlot = nextHref !== null ? 'compact' : nextLockedLesson !== null ? 'wide' : 'fill';
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
@@ -623,6 +729,20 @@ export const LessonPlayerPage = ({
         ) : null}
 
         {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+          {firstSkipped !== null && neighbours !== null ? (
+            <MuiLink
+              component={Link}
+              to={lessonPath(courseId, firstSkipped.lessonId)}
+              variant="body2"
+              data-testid="locked-lessons-skipped"
+              sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', mb: '0.5rem' }}
+            >
+              <LockedLessonIcon />
+              {firstSkipped.unlockable
+                ? t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })
+                : t.lesson.lockedSkippedNotForSale({ count: neighbours.lockedSkipped })}
+            </MuiLink>
+          ) : null}
           <Stack
             direction="row"
             useFlexGap
@@ -656,33 +776,39 @@ export const LessonPlayerPage = ({
                 variant="outlined"
                 data-testid="skip-to-next-lesson"
                 data-slot="compact"
+                sx={{ display: { xs: 'none', md: 'inline-flex' } }}
               >
                 <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLesson}</LessonNavLabel>
               </Button>
             )}
             <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
             {!continuing && progress.isSuccess && completed && (
-              <Button
-                variant="outlined"
-                data-testid="unmark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => uncomplete.mutate({ lessonId })}
-                disabled={uncomplete.isPending}
-                startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
-                title={t.lesson.unmarkCompletedHint}
-              >
-                {compactCompletion ? <LessonNavLabel>{t.lesson.unmarkCompleted}</LessonNavLabel> : <LessonActionLabel>{t.lesson.unmarkCompleted}</LessonActionLabel>}
-              </Button>
+              <>
+                <LessonCompletionStatus data-testid="lesson-completed-status">
+                  <CompletionMark label={t.lesson.completed} />
+                  <LessonNavLabel aria-hidden>{t.lesson.completed}</LessonNavLabel>
+                </LessonCompletionStatus>
+                <Button
+                  variant="text"
+                  data-testid="unmark-complete"
+                  onClick={() => uncomplete.mutate({ lessonId })}
+                  disabled={uncomplete.isPending}
+                  aria-label={t.lesson.unmarkCompleted}
+                  data-slot="undo"
+                >
+                  {t.lesson.undoCompletion}
+                </Button>
+              </>
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
-                variant={nextHref === null ? 'contained' : 'outlined'}
+                variant={completionSlot === 'fill' ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
+                data-slot={completionSlot}
                 onClick={() => complete.mutate({ lessonId })}
                 disabled={complete.isPending}
               >
-                {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
+                {completionSlot === 'compact' ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
               </Button>
             )}
             {continuing ? (
@@ -707,18 +833,26 @@ export const LessonPlayerPage = ({
                 variant="contained"
                 data-testid="next-lesson"
                 data-slot="primary"
+                aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonActionLabel>{t.lesson.next({ name: nextLesson.name })}</LessonActionLabel>
+                <LessonDestinationLabel>
+                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name: nextLesson.name })}</Box>
+                  <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{nextLesson.name}</Box>
+                </LessonDestinationLabel>
+                <NextLessonIcon />
               </Button>
             )}
-            {lockedAhead && (
-              <Tooltip title={t.courseTree.lockedTooltip}>
-                <Box component="span" data-slot="compact">
-                  <Button variant="outlined" data-testid="next-locked" disabled>
-                    <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLocked}</LessonNavLabel>
-                  </Button>
-                </Box>
-              </Tooltip>
+            {!continuing && nextLockedLesson !== null && (
+              <Button
+                component={Link}
+                to={lessonPath(courseId, nextLockedLesson.lessonId)}
+                variant="contained"
+                data-testid="next-locked"
+                data-slot="primary"
+                startIcon={<LockedLessonIcon />}
+              >
+                <LessonDestinationLabel>{nextLockedLesson.unlockable ? t.lesson.unlockNextLesson : t.lesson.nextLocked}</LessonDestinationLabel>
+              </Button>
             )}
             {atCourseEnd && (
               structure.data?.structure.completionStatus === 'fully-completed' ? (

@@ -2422,14 +2422,13 @@ export interface Messages {
     videoPlaceholder: string;
     openPdf: string;
     contentLocked: string;
-    noAccessYet: string;
+    noAccess: string;
     lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
     markCompleted: string;
     completed: string;
     unmarkCompleted: string;
-    unmarkCompletedHint: string;
     completeContinue: string;
     completing: string;
     previousLesson: string;
@@ -2458,6 +2457,14 @@ export interface Messages {
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;
+    lockedSkipped: (params: { count: number }) => string;
+    notForSaleTitle: string;
+    notForSaleBody: string;
+    notForSaleBodyNoContact: string;
+    contactCreator: string;
+    undoCompletion: string;
+    unlockNextLesson: string;
+    lockedSkippedNotForSale: (params: { count: number }) => string;
   };
   discussion: {
     heading: string;

@@ -158,6 +158,21 @@ const stubMobileViewport = () => {
   }));
 };
 
+const MAX_WIDTH = /max-width:\s*([\d.]+)px/u;
+
+const stylesBelow = (element: Element, viewportWidth: number): Record<string, string> => Object.fromEntries(
+  [...document.styleSheets]
+    .flatMap((sheet) => [...sheet.cssRules])
+    .flatMap((rule) => {
+      if (!(rule instanceof CSSMediaRule)) return [];
+      const maxWidth = MAX_WIDTH.exec(rule.conditionText);
+      return maxWidth !== null && Number(maxWidth[1]) >= viewportWidth ? [...rule.cssRules] : [];
+    })
+    .flatMap((rule) => rule instanceof CSSStyleRule && element.matches(rule.selectorText)
+      ? Array.from({ length: rule.style.length }, (_, index) => rule.style.item(index)).map((property) => [property, rule.style.getPropertyValue(property)] as const)
+      : []),
+);
+
 const renderPage = async (node: ReactNode, queryClient?: QueryClient, shell = false) => {
   if (shell) server.use(http.get('/api/public/offer', () => HttpResponse.json({
     ok: true, data: { tenant: { slug: 'acme', name: 'Acme', socialLinks: [] }, products: [], contentVersion: 1 },
@@ -1381,7 +1396,7 @@ describe('LessonPlayerPage', () => {
     await user.click(button);
 
     const unmarkButton = await screen.findByTestId('unmark-complete');
-    expect(within(unmarkButton).getByTestId('completion-mark')).toBeInTheDocument();
+    expect(within(screen.getByTestId('lesson-completed-status')).getByTestId('completion-mark')).toBeInTheDocument();
     expect(unmarkButton).toBeEnabled();
     expect(completeCalls).toBe(1);
     await waitFor(() => expect(progressReads).toBeGreaterThan(readsBefore));
@@ -1491,12 +1506,14 @@ describe('LessonPlayerPage', () => {
 
     const complete = await screen.findByRole('button', { name: en.lesson.markCompleted });
     const previous = screen.getByRole('button', { name: en.lesson.previousLesson });
-    const next = screen.getByRole('link', { name: en.lesson.nextLesson });
+    const next = screen.getByTestId('skip-to-next-lesson');
     for (const action of [previous, next, complete]) {
       expect(action).toHaveClass('MuiButton-outlined');
     }
     expect(previous).toBeDisabled();
     expect(next).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(stylesAt(next, 390)).toMatchObject({ display: 'none' });
+    expect(stylesAt(next, 900)).toMatchObject({ display: 'inline-flex' });
     const primary = screen.getByRole('button', { name: en.lesson.completeContinue });
     expect(primary).toHaveClass('MuiButton-contained');
     expect(stylesAt(complete.parentElement, 390)).toMatchObject({ 'flex-direction': 'row', gap: '0.5rem' });
@@ -1504,6 +1521,7 @@ describe('LessonPlayerPage', () => {
     expect(previous.parentElement).toHaveAttribute('data-slot', 'compact');
     expect(next).toHaveAttribute('data-slot', 'compact');
     expect(complete).toHaveAttribute('data-slot', 'compact');
+    expect(stylesAt(complete, 390)).not.toHaveProperty('flex-basis');
     expect(primary).toHaveAttribute('data-slot', 'primary');
     for (const icon of screen.getAllByTestId('lesson-nav-icon')) {
       expect(stylesAt(icon, 900)).toMatchObject({ display: 'none' });
@@ -1512,15 +1530,40 @@ describe('LessonPlayerPage', () => {
     expect(stylesAt(complete.closest('footer'), 390)).toMatchObject({ position: 'sticky' });
   });
 
-  it('keeps completion compact next to the primary next lesson on mobile', async () => {
+  it('shows completion as a status mark with a labelled undo and drops the Next prefix on mobile', async () => {
     stubMobileViewport();
     server.use(okStructure(), okProgress(['l1']), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const complete = await screen.findByTestId('unmark-complete');
-    expect(complete).toHaveAttribute('data-slot', 'compact');
-    expect(complete).toHaveAccessibleName(expect.stringContaining(en.lesson.unmarkCompleted));
-    expect(screen.getByTestId('next-lesson')).toHaveAttribute('data-slot', 'primary');
+    const undo = await screen.findByRole('button', { name: en.lesson.unmarkCompleted });
+    expect(undo).toHaveAttribute('data-testid', 'unmark-complete');
+    expect(undo).toHaveTextContent(en.lesson.undoCompletion);
+    expect(undo).toHaveClass('MuiButton-text');
+    expect(undo).not.toHaveAttribute('data-slot', 'compact');
+    const status = screen.getByTestId('lesson-completed-status');
+    expect(status.closest('button, a')).toBeNull();
+    expect(within(status).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(status).getByRole('img', { name: en.lesson.completed })).toBeInTheDocument();
+    const next = screen.getByTestId('next-lesson');
+    expect(next).toHaveAttribute('data-slot', 'primary');
+    expect(next).toHaveAccessibleName(en.lesson.next({ name: 'Advanced Variables' }));
+    const prefixed = within(next).getByText(en.lesson.next({ name: 'Advanced Variables' }));
+    const bare = within(next).getByText('Advanced Variables', { exact: true });
+    expect(stylesAt(prefixed, 390)).toMatchObject({ display: 'none' });
+    expect(stylesAt(bare, 390)).toMatchObject({ display: 'inline' });
+    expect(stylesAt(prefixed, 900)).toMatchObject({ display: 'inline' });
+    expect(stylesAt(bare, 900)).toMatchObject({ display: 'none' });
+    expect(screen.queryByTestId('skip-to-next-lesson')).not.toBeInTheDocument();
+    const chevron = within(next).getByTestId('lesson-nav-icon');
+    expect(bare.compareDocumentPosition(chevron)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(stylesAt(chevron, 390)).not.toMatchObject({ display: 'none' });
+    expect(stylesAt(chevron, 900)).toMatchObject({ display: 'none' });
+    expect(stylesBelow(next, 390)).toMatchObject({ 'min-height': '44px' });
+    const label = bare.parentElement;
+    if (label === null) throw new Error('next-lesson label has no wrapper');
+    expect(stylesBelow(label, 390)).toMatchObject({ display: '-webkit-box', '-webkit-line-clamp': '2' });
+    expect(stylesBelow(label, 390)['white-space']).toBeUndefined();
+    expect(stylesBelow(undo, 390)).toMatchObject({ 'min-width': '44px', 'padding-inline': '0.5rem' });
   });
 
   it('gives mark-as-completed the full row on the final lesson', async () => {
@@ -1602,7 +1645,7 @@ describe('LessonPlayerPage', () => {
     expect(primary).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
     expect(primary).toHaveTextContent('Advanced Variables');
     expect(primary.className).toContain('MuiButton-contained');
-    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-outlined');
+    expect(screen.getByTestId('unmark-complete').className).toContain('MuiButton-text');
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
   });
 
@@ -1667,7 +1710,8 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('prev-lesson')).toBeDisabled();
   });
 
-  it('disables the next slot when every remaining lesson is locked', async () => {
+  it('links the next locked lesson with a visible label when every remaining lesson is locked', async () => {
+    stubMobileViewport();
     server.use(
       okStructureOf(
         structureOf([entry('l1', 'Intro to Variables'), entry('l2', 'Advanced Variables', false)]),
@@ -1677,10 +1721,121 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('next-locked')).toBeDisabled();
-    expect(screen.getByTestId('mark-complete').className).toContain('MuiButton-contained');
+    const nextLocked = await screen.findByRole('link', { name: en.lesson.nextLocked });
+    expect(nextLocked).toHaveAttribute('data-testid', 'next-locked');
+    expect(nextLocked).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(nextLocked).not.toHaveAttribute('aria-disabled');
+    expect(nextLocked).toHaveClass('MuiButton-contained');
+    expect(nextLocked).toHaveAttribute('data-slot', 'primary');
+    expect(within(nextLocked).getByTestId('lock-closed')).toBeInTheDocument();
+    const label = within(nextLocked).getByText(en.lesson.nextLocked);
+    expect(stylesAt(label, 390)).not.toMatchObject({ position: 'absolute' });
+    expect(stylesBelow(label, 390)).toMatchObject({ '-webkit-line-clamp': '2' });
+    expect(stylesBelow(within(screen.getByTestId('mark-complete')).getByText(en.lesson.markCompleted), 390)).toMatchObject({ 'white-space': 'nowrap' });
+    const markComplete = screen.getByTestId('mark-complete');
+    expect(markComplete).toHaveClass('MuiButton-outlined');
+    expect(markComplete).toHaveAttribute('data-slot', 'wide');
+    expect(markComplete).toHaveTextContent(en.lesson.markCompleted);
+    expect(within(markComplete).queryByTestId('lesson-nav-icon')).not.toBeInTheDocument();
+    const previous = screen.getByTestId('prev-lesson');
+    expect(previous.compareDocumentPosition(markComplete)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(markComplete.compareDocumentPosition(nextLocked)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const width of [390, 900]) {
+      expect(stylesAt(markComplete, width)).not.toHaveProperty('order');
+      expect(stylesAt(markComplete, width)).not.toHaveProperty('flex-basis');
+      expect(stylesAt(nextLocked, width)).not.toMatchObject({ 'flex-basis': '100%' });
+    }
+    expect(stylesBelow(markComplete, 390)).toMatchObject({ 'min-width': '0px' });
+    expect(stylesBelow(markComplete, 390)).not.toHaveProperty('order');
+    expect(stylesBelow(nextLocked, 390)).toMatchObject({ 'flex-basis': '100%' });
     expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument();
     expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lessons-skipped')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [1, ['l2']],
+    [2, ['l2', 'l3']],
+  ] as const)('says that %i locked lessons were skipped and links the first one', async (count, lockedIds) => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          ...lockedIds.map((id) => ({ ...entry(id, `Locked ${id}`, false), unlockProductId: 'prod-full' })),
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkipped({ count }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(skipped.closest('footer')).not.toBeNull();
+    expect(screen.getByTestId('complete-continue')).toBeInTheDocument();
+    expect(screen.queryByTestId('next-locked')).not.toBeInTheDocument();
+  });
+
+  it('links the first skipped lesson a product can unlock', async () => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          entry('l2', 'Locked l2', false),
+          { ...entry('l3', 'Locked l3', false), unlockProductId: 'prod-full' },
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkipped({ count: 2 }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l3');
+  });
+
+  it.each([1, 2] as const)('says that %i skipped lessons are locked without promising an unlock when no product sells them', async (count) => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          ...['l2', 'l3'].slice(0, count).map((id) => entry(id, `Locked ${id}`, false)),
+          entry('l9', 'Scopes'),
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skipped = await screen.findByTestId('locked-lessons-skipped');
+    expect(skipped).toHaveTextContent(en.lesson.lockedSkippedNotForSale({ count }));
+    expect(skipped).not.toHaveTextContent(en.lesson.lockedSkipped({ count }));
+    expect(skipped).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+  });
+
+  it('invites the member to unlock the next lesson when a product sells it', async () => {
+    server.use(
+      okStructureOf(
+        structureOf([
+          entry('l1', 'Intro to Variables'),
+          { ...entry('l2', 'Advanced Variables', false), unlockProductId: 'prod-full' },
+        ]),
+      ),
+      okProgress(),
+      okLesson(allBlocks),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const nextLocked = await screen.findByRole('link', { name: en.lesson.unlockNextLesson });
+    expect(nextLocked).toHaveAttribute('data-testid', 'next-locked');
+    expect(nextLocked).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(within(nextLocked).getByTestId('lock-closed')).toBeInTheDocument();
+    expect(nextLocked).not.toHaveTextContent(en.lesson.nextLocked);
   });
 
   it('renders an entitlement-backed attachment download', async () => {
@@ -1720,141 +1875,272 @@ describe('LessonPlayerPage', () => {
     );
   });
 
-  it('renders a locked state inside the member skeleton without a paid CTA', async () => {
-    server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
+  const forbiddenLesson = () =>
+    http.get('/api/student/lessons/:lessonId', () =>
+      HttpResponse.json(
+        { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
+        { status: 403 },
       ),
-      okStructure(),
-      okProgress(),
     );
-    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByRole('heading', { name: en.lesson.contentLocked })).toBeInTheDocument();
-    expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute(
-      'href',
-      '/my/courses/course-1',
-    );
-    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
-  });
-
-  it('shows an unlock CTA on the locked page when a product covers the lesson', async () => {
-    const lockedStructure: CourseStructureWithAccess = {
-      ...structure,
-      modules: structure.modules.map((module) => ({
-        ...module,
-        chapters: module.chapters.map((chapter) => ({
-          ...chapter,
-          lessons: chapter.lessons.map((entry) => ({
-            ...entry,
-            accessStatus: 'not-accessible',
-            unlockProductId: 'prod-full',
-          })),
+  const lockedStructure: CourseStructureWithAccess = {
+    ...structure,
+    modules: structure.modules.map((module) => ({
+      ...module,
+      chapters: module.chapters.map((chapter) => ({
+        ...chapter,
+        lessons: chapter.lessons.map((entry) => ({
+          ...entry,
+          accessStatus: 'not-accessible',
+          unlockProductId: 'prod-full',
         })),
       })),
-    };
+    })),
+  };
+
+  const offerProduct = {
+    id: 'prod-full',
+    type: 'course',
+    slug: 'complete-javascript-course',
+    title: 'Complete JavaScript Course',
+    description: 'All lessons',
+    coverUrl: null,
+    priceCents: 19900,
+    currency: 'PLN',
+    prices: [{
+      id: 'price-prod-full-monthly',
+      kind: 'recurring',
+      interval: 'month',
+      amountCents: 4900,
+      currency: 'PLN',
+    }],
+  };
+
+  const okOffer = (product: Record<string, unknown> = {}) =>
+    http.get('/api/public/offer', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          tenant: { slug: 'studio', name: 'Studio' },
+          contentVersion: 1,
+          products: [{ ...offerProduct, ...product }],
+        },
+      }),
+    );
+
+  it('tells the member a lesson no product sells is not for sale and leads back to the course', async () => {
+    server.use(forbiddenLesson(), okStructure(), okProgress());
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByRole('heading', { name: en.lesson.notForSaleTitle })).toBeInTheDocument();
+    expect(within(card).getByText(en.lesson.notForSaleBodyNoContact)).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.notForSaleBody)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('locked-contact-creator')).not.toBeInTheDocument();
+    expect(within(card).getByTestId('locked-lesson-lock')).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.lockedInProduct)).not.toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.contentLocked)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
+    const backLinks = screen.getAllByRole('link', { name: en.lesson.backToCourse });
+    expect(backLinks).toHaveLength(1);
+    expect(backLinks[0]).toHaveAttribute('href', '/my/courses/course-1');
+    expect(backLinks[0]).toHaveAttribute('data-testid', 'locked-back-to-course');
+  });
+
+  it.each([
+    ['https://help.studio.togethercommunity.app/contact', true],
+    ['mailto:help@studio.togethercommunity.app', false],
+  ] as const)('offers to contact the course creator at %s when the workspace has a support address', async (supportUrl, opensNewTab) => {
     server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
-      ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
-      ),
-      http.get('/api/public/offer', () =>
+      forbiddenLesson(),
+      okStructure(),
+      okProgress(),
+      http.get('/api/member/settings', () =>
         HttpResponse.json({
           ok: true,
           data: {
-            tenant: { slug: 'studio', name: 'Studio' },
-            contentVersion: 1,
-            products: [{
-              id: 'prod-full',
-              type: 'course',
-              slug: 'complete-javascript-course',
-              title: 'Complete JavaScript Course',
-              description: 'All lessons',
-              coverUrl: null,
-              priceCents: 19900,
-              currency: 'PLN',
-              prices: [{
-                id: 'price-prod-full-monthly',
-                kind: 'recurring',
-                interval: 'month',
-                amountCents: 4900,
-                currency: 'PLN',
-              }],
-            }],
+            settings: {
+              billingPortalUrl: null,
+              supportUrl, supportConfigured: true,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
           },
         }),
       ),
-      okProgress(),
     );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    const contact = within(card).getByTestId('locked-contact-creator');
+    expect(contact).toHaveAttribute('href', supportUrl);
+    expect(contact).toHaveTextContent(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    if (opensNewTab) {
+      expect(contact).toHaveAttribute('target', '_blank');
+      expect(contact).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(contact).toHaveAccessibleName(`${en.lesson.contactCreator} ${en.lesson.newTabHint}`);
+    } else {
+      expect(contact).not.toHaveAttribute('target');
+      expect(contact).toHaveAccessibleName(`${en.lesson.contactCreator} ${en.lesson.mailHint}`);
+    }
+    expect(within(card).getByTestId('locked-back-to-course').compareDocumentPosition(contact))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('offers the in-app support form from the not-for-sale card when the workspace has no support address', async () => {
+    server.use(
+      forbiddenLesson(),
+      okStructure(),
+      okProgress(),
+      http.get('/api/member/settings', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            settings: {
+              billingPortalUrl: null,
+              supportUrl: null, supportConfigured: true,
+              videoAutoplayDefault: false,
+              memberVideoAutoplayOverride: false,
+            },
+          },
+        }),
+      ),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const card = await screen.findByTestId('locked-lesson-upsell');
+    await waitFor(() => expect(card).toHaveAttribute('data-state', 'not-for-sale'));
+    expect(within(card).getByText(en.lesson.notForSaleBody)).toBeInTheDocument();
+    expect(within(card).queryByText(en.lesson.notForSaleBodyNoContact)).not.toBeInTheDocument();
+    const contact = within(card).getByTestId('locked-contact-creator');
+    expect(contact).toHaveAttribute('href', '/account?tab=profile&support=open');
+    expect(contact).not.toHaveAttribute('target');
+    expect(contact).toHaveAccessibleName(en.lesson.contactCreator);
+    expect(contact).toHaveClass('MuiButton-outlined');
+    expect(within(card).getByTestId('locked-back-to-course').compareDocumentPosition(contact))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('shows a skeleton card instead of the fallback copy while the course structure loads', async () => {
+    let releaseStructure: () => void = () => undefined;
+    const structureGate = new Promise<void>((resolve) => { releaseStructure = resolve; });
+    server.use(
+      forbiddenLesson(),
+      okProgress(),
+      okOffer(),
+      http.get('/api/student/courses/:courseId/structure', async () => {
+        await structureGate;
+        return HttpResponse.json({ ok: true, data: { structure: lockedStructure } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const skeleton = await screen.findByTestId('locked-lesson-skeleton');
+    expect(skeleton).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('locked-lesson-upsell')).toHaveAttribute('data-state', 'loading');
+    expect(screen.queryByText(en.lesson.notForSaleTitle)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.contentLocked)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.lesson.lockedInProduct)).not.toBeInTheDocument();
+
+    releaseStructure();
+    expect(await screen.findByTestId('unlock-lesson-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('locked-lesson-skeleton')).not.toBeInTheDocument();
+  });
+
+  it('keeps the skeleton card while the offer for the unlocking product loads', async () => {
+    let releaseOffer: () => void = () => undefined;
+    const offerGate = new Promise<void>((resolve) => { releaseOffer = resolve; });
+    server.use(
+      forbiddenLesson(),
+      okProgress(),
+      okStructureOf(lockedStructure),
+      http.get('/api/public/offer', async () => {
+        await offerGate;
+        return HttpResponse.json({
+          ok: true,
+          data: { tenant: { slug: 'studio', name: 'Studio' }, contentVersion: 1, products: [offerProduct] },
+        });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Intro to Variables' })).toBeInTheDocument();
+    expect(screen.getByTestId('locked-lesson-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
+
+    releaseOffer();
+    expect(await screen.findByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
+  });
+
+  it('leads with the lock and the no-access line and shows the price once, in the unlock button', async () => {
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer(), okProgress());
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     const unlock = await screen.findByTestId('unlock-lesson-cta');
+    const price = en.common.priceMonthly({ price: 'PLN 49.00' });
     expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
-    expect(unlock).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceMonthly({ price: 'PLN 49.00' }) }));
-    expect(await screen.findByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceMonthly({ price: 'PLN 49.00' }));
+    expect(unlock).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price }));
+    const card = screen.getByTestId('locked-lesson-upsell');
+    expect(card.textContent?.match(/49\.00/g)).toHaveLength(1);
+    expect(screen.queryByTestId('locked-product-price')).not.toBeInTheDocument();
+    const lead = within(card).getByTestId('locked-lesson-lead');
+    expect(lead).toHaveTextContent(en.lesson.noAccess);
+    expect(lead.parentElement?.firstElementChild).toBe(within(card).getByTestId('locked-lesson-lock'));
+    expect(stylesAt(lead.parentElement, 390)).toMatchObject({ 'align-items': 'flex-start' });
+    expect(stylesAt(lead, 390)).toMatchObject({ 'line-height': '1.4' });
+    expect(card.querySelector('[data-testid="locked-lesson-lead"]')).toBe(
+      [...card.querySelectorAll('p, h2')][0],
+    );
+    expect(within(card).getByText(en.lesson.lockedInProduct)).toBeInTheDocument();
+    expect(within(card).getByRole('heading', { name: 'Complete JavaScript Course' })).toBeInTheDocument();
+    const scope = within(card).getByTestId('locked-product-scope');
+    expect(scope).toHaveTextContent('All lessons');
+    expect(stylesAt(scope, 390)).toMatchObject({ '-webkit-line-clamp': '3' });
+    expect(stylesAt(scope, 600)).toMatchObject({ '-webkit-line-clamp': '2' });
+    expect(screen.getByRole('link', { name: en.lesson.backToCourse })).toHaveAttribute('href', '/my/courses/course-1');
+  });
+
+  it('reads the scope line from the product description as plain text, or names the product type', async () => {
+    server.use(
+      forbiddenLesson(),
+      okStructureOf(lockedStructure),
+      okOffer({ description: '<p>Every <strong>module</strong>,</p><ul><li>quizzes</li></ul>' }),
+      okProgress(),
+    );
+    const { unmount } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect((await screen.findByTestId('locked-product-scope')).textContent).toBe('Every module, quizzes');
+    unmount();
+
+    server.use(okOffer({ description: '<p> </p>' }));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    expect(await screen.findByTestId('locked-product-scope')).toHaveTextContent(en.salesLinks.lineTypes.course);
+  });
+
+  it('keeps adjacent paragraphs, list items and line breaks apart in the scope line', async () => {
+    const cases = [
+      ['<p>All lessons</p><p>Community access</p>', 'All lessons · Community access'],
+      ['<p>Includes:</p><ul><li>Video\n  lessons</li><li>Quizzes</li></ul>', 'Includes: Video lessons · Quizzes'],
+      ['<p>Lifetime access<br>Certificate</p>', 'Lifetime access · Certificate'],
+    ] as const;
+    for (const [description, expected] of cases) {
+      server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer({ description }), okProgress());
+      const { unmount } = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+      expect((await screen.findByTestId('locked-product-scope')).textContent).toBe(expected);
+      unmount();
+    }
   });
 
   it('falls back to the product price when the locked product has no active price rows', async () => {
-    const lockedStructure: CourseStructureWithAccess = {
-      ...structure,
-      modules: structure.modules.map((module) => ({
-        ...module,
-        chapters: module.chapters.map((chapter) => ({
-          ...chapter,
-          lessons: chapter.lessons.map((entry) => ({
-            ...entry,
-            accessStatus: 'not-accessible',
-            unlockProductId: 'prod-full',
-          })),
-        })),
-      })),
-    };
-    server.use(
-      http.get('/api/student/lessons/:lessonId', () =>
-        HttpResponse.json(
-          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
-          { status: 403 },
-        ),
-      ),
-      http.get('/api/student/courses/:courseId/structure', () =>
-        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
-      ),
-      http.get('/api/public/offer', () =>
-        HttpResponse.json({
-          ok: true,
-          data: {
-            tenant: { slug: 'studio', name: 'Studio' },
-            contentVersion: 1,
-            products: [{
-              id: 'prod-full',
-              type: 'course',
-              slug: 'complete-javascript-course',
-              title: 'Complete JavaScript Course',
-              description: 'All lessons',
-              coverUrl: null,
-              priceCents: 19900,
-              currency: 'PLN',
-              prices: [],
-            }],
-          },
-        }),
-      ),
-      okProgress(),
-    );
+    server.use(forbiddenLesson(), okStructureOf(lockedStructure), okOffer({ prices: [] }), okProgress());
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent(en.common.priceOneTime({ price: 'PLN 199.00' }));
-    expect(screen.getByTestId('unlock-lesson-cta')).toHaveTextContent(en.courseTree.unlockAccessWithPrice({ price: en.common.priceOneTime({ price: 'PLN 199.00' }) }));
+    expect(await screen.findByTestId('unlock-lesson-cta')).toHaveTextContent(
+      en.courseTree.unlockAccessWithPrice({ price: en.common.priceOneTime({ price: 'PLN 199.00' }) }),
+    );
   });
 
   it('leaves the program to the shell below md, where the program sheet carries it', async () => {

@@ -4252,6 +4252,10 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
       minWidth: 0,
       paddingInline: '0.75rem',
     },
+    '& [data-slot="wide"]': { flex: '1 1 0', minWidth: 0 },
+    '& [data-slot="wide"] ~ [data-slot="primary"]': { flexBasis: '100%' },
+    '& [data-slot="primary"] > svg': { flexShrink: 0, marginInlineStart: '0.25rem' },
+    '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
 }));
@@ -4259,6 +4263,39 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
 export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.5rem',
   [theme.breakpoints.up('md')]: { display: 'none' },
+}));
+
+export const LessonCompletionStatus = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.375rem',
+  flex: '0 0 auto',
+  color: theme.palette.text.secondary,
+}));
+
+export const LessonLockIcon = styled(SvgIcon)({
+  fontSize: '1.15rem',
+  color: 'inherit',
+});
+
+export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.5rem',
+  color: theme.palette.text.primary,
+}));
+
+export const LockedLeadText = styled(Typography)<AsElement>({
+  '&.MuiTypography-subtitle1': { lineHeight: 1.4 },
+});
+
+export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  [theme.breakpoints.up('sm')]: { WebkitLineClamp: 2 },
 }));
 
 export const LessonNavLabel = styled('span')(({ theme }) => ({
@@ -4271,6 +4308,19 @@ export const LessonNavLabel = styled('span')(({ theme }) => ({
 export const LessonActionLabel = styled('span')(({ theme }) => ({
   [theme.breakpoints.down('md')]: {
     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+}));
+
+export const LessonDestinationLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    minWidth: 0,
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.25,
+    textAlign: 'center',
   },
 }));
 

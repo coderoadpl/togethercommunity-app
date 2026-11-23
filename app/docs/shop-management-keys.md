@@ -1401,6 +1401,32 @@ was built with. This is expected while the newer schema remains. The order,
 settings, asset and integration routes add no migration, so a retreat from
 them to the release with only the catalog routes needs no data step either.
 
+A retreat to a release that predates migration `0169_change_proposal_images`
+needs no data step either. The migration only adds `change_proposal_images`,
+`change_proposal_image_uploads` and `change_proposal_image_publications` with
+their indexes; it changes no existing table. The release on production when
+proposed images were added, `8141fd15`, is such a release.
+`scripts/change-proposal-image-rollback-8141fd15.test.ts` holds literal copies
+of its schemas and parsing steps and proves what it does with what this
+release stores and answers. It ignores the three tables, and its shop image
+routes refuse a propose-mode key (`403`). It lists, shows and rejects a pending
+proposal that attaches a quarantined image like any other, but it publishes
+nothing, so approving such a proposal there sets the field to an address that
+has no public copy on either release: keep such proposals unapproved until
+rolling forward. Its public asset route accepts only random-id file names and
+answers `404` for a `<sha256>.<ext>` address, so a product cover or branding
+image an approval published is missing on that release until rolling forward;
+nothing is deleted. It reads the `stale` event note `image_unavailable: …` like
+any other note, and names the key and the group of a `change-proposal`
+notification from its community fields, which this release still fills. A
+panel tab or CLI of that release refuses the begin answer of a propose-mode
+key's image upload (`servePath: null`) and shows a pending proposal's
+content-addressed image as not shown. Before the retreat, count the pending
+proposals that attach a content-addressed image and the live image fields that
+show one and, before retreating further than `8141fd15`, delete its
+`change-proposal` notifications, as Rolling back under
+[Images](change-proposals.md#images) shows.
+
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and
 ignores its `mode` column. A propose-mode key is stored under the hash of its

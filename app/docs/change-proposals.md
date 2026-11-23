@@ -332,7 +332,7 @@ Its payload carries its own typed field, `changeProposal: { keyName, groupId,
 groupTitle }`, with the key name and, for a group, the group id and title. The
 community fields repeat them, the key name in `authorDisplay` and the group in
 `contextId` and `snippet`, because the release before the typed field reads
-only those (see [Rolling back](#rolling-back)). A notification stored before
+only those (Rolling back under [Images](#images)). A notification stored before
 the typed field existed has only the community fields;
 `changeProposalNotificationFacts` in `core/domain` reads the typed field when
 it is there and the community fields otherwise, so such a notification stays
@@ -1170,19 +1170,86 @@ index on `started_at`. Each `CREATE INDEX` locks only its new, empty table; the
 foreign key of each table to `tenants` takes a `SHARE ROW EXCLUSIVE` lock on
 `tenants`, which blocks writes to `tenants` (not reads) until the migration
 transaction commits, a moment since nothing is scanned.
-A release before it ignores the three tables, and its image routes refuse a
-propose-mode key. Such a release serves only random-id file names from
-`/api/public/assets`, so an image published under its digest, and any copy a
-publication record still points at, is not served there until rolling forward
-again; quarantined and candidate objects stay private, and the sweep removes
-them after rolling forward. Approving there a pending proposal that
-attaches a quarantined image would set the address without publishing it.
-Before such a rollback, count these proposals:
+
+The release on production when proposed images were added, `8141fd15`,
+predates `0169`. What it does with what this release stores and answers is
+proven by `scripts/change-proposal-image-rollback-8141fd15.test.ts`, which
+holds literal copies of its schemas and parsing steps:
+
+- It ignores the three tables, and its shop image routes refuse a propose-mode
+  key (`403`). Quarantined and candidate objects stay private under prefixes
+  its public route never reads; after rolling forward, the sweep of this
+  release removes them.
+- A pending `product.update`, `product.create` or `settings.update` that
+  attaches a quarantined image is an operation it knows: the row, its
+  before/after effect, the key receipt and the owner view parse as before. It
+  publishes nothing, so approving such a proposal there sets the field to an
+  address that has no public copy on either release, and after rolling
+  forward the sweep removes the quarantined bytes; the image then has to be
+  uploaded and proposed again. Reject such proposals or leave them pending
+  until rolling forward; do not approve them there.
+- A `stale` event note `image_unavailable: …` reads like any other note within
+  its 500 characters.
+- A product cover or a branding field (`logoUrl`, `logoDarkUrl`, `faviconUrl`,
+  `ogImageUrl`) that an approval set to a digest address parses, since its
+  address schemas accept any root-relative path. Its public asset route
+  `/api/public/assets/:kind/:file` accepts only random-id file names
+  (`<uuid>.<ext>`) and answers `404` for `<sha256>.<ext>`. Visitors see a
+  missing cover or logo where the image is shown, the browser's default
+  favicon, a share preview without an image, and e-mails sent meanwhile with a
+  logo image that does not load. The public copy stays in storage (that release deletes only avatar
+  objects; its storage orphan report lists the copy as unreferenced, as a
+  report only), and the address is served again after rolling forward.
+- A `change-proposal` notification keeps the key name in `authorDisplay` and
+  the group in `contextId` and `snippet`, as that release writes them; it drops
+  the typed `changeProposal` field when it parses the row, so the bell names
+  the key and the group as before.
+
+A panel tab or a CLI of that release talking to this release's server: the
+begin answer of a shop image upload for a propose-mode key carries
+`servePath: null`, which its client refuses as not matching the contract (that
+release's server refused such a key anyway); a direct-mode key's answers and a
+completion answer parse as before, without the `quarantined` flag. Its panel
+loads a pending proposal's content-addressed image from the public address,
+which has no copy before approval, so it shows the address with its note that
+the image is not shown.
+
+Before such a rollback, count the pending proposals that attach a
+content-addressed image:
 
 ```sql
 select count(*) from change_proposals
 where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]';
 ```
+
+and the products and workspaces whose live image fields show one:
+
+```sql
+select
+  (select count(*) from products where cover_url ~ '^/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
+  + (select count(*) from tenants where concat_ws(' ', logo_url, logo_dark_url, favicon_url, og_image_url) ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
+  as count;
+```
+
+When the first is not `0`, keep those proposals unapproved during the
+rollback, as above. When the second is not `0`, those images are missing on
+that release until rolling forward; nothing is deleted.
+
+**Rolling back past `8141fd15`.** The notification kind `change-proposal`
+first shipped in `8141fd15`; its parent release `b6a8634a` and every earlier
+release have a closed list of notification kinds without it and parse every
+notification row they list against that list. Before rolling back to such a
+release, delete those rows:
+
+```sql
+delete from notifications where kind = 'change-proposal';
+```
+
+If this step is skipped, that release throws on such a row: listing the
+notifications of an owner whose page holds one, and marking one read, answer
+`500` until the rows are deleted or the release rolls forward; its unread
+count still counts them. The rows only point the owner to the proposals, which
+stay listed under [Change proposals](#owner-panel) after rolling forward.
 
 ## Not yet available
 

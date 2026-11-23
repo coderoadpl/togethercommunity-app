@@ -475,7 +475,7 @@ describe('the approval confirmation of what a product grants', () => {
       .toContain('the lessons “Introduction” (lesson-second), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
     expect(dialogText(<AccessChangeRow change={{ before: [], after: [{ level: 'course', courseId: 'course-deep' }] }} labels={labels} label="Included access" labelComponent="h3" pending={false} />))
       .toContain('the whole course “Intro course” (course-deep) (archived)');
-    expect(pl.changeProposals.accessNameWithId({ name: 'Wstęp', id: 'lesson-first' })).toBe('„Wstęp” (lesson-first)');
+    expect(pl.changeProposals.accessNameWithId({ name: 'Intro', id: 'lesson-first' })).toBe('„Intro” (lesson-first)');
   });
 
   it('isolates every course, module and lesson title in the sentence', () => {

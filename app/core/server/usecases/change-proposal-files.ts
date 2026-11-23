@@ -61,7 +61,6 @@ export const checkProposedFiles = async (
   return ok([fileId]);
 };
 
-/** A file the key discarded after the read-only check and before the dry run answers as if it was discarded before. */
 export const fileRefusalAfterDryRun = async <T>(
   dryRun: Result<T, AppError>,
   checked: readonly string[],

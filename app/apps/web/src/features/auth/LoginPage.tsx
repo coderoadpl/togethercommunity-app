@@ -129,7 +129,7 @@ const useRetryCountdown = (error: unknown): number => {
   return countdown.error === error ? countdown.seconds : retryAfterSecondsOf(error) ?? 0;
 };
 
-// Assistive technology hears the delay once; only the visible copy ticks.
+// Announcing every tick would flood assistive technology.
 const RateLimitMessage = ({ error, remaining, lead = false }: { error: unknown; remaining: number; lead?: boolean }) => {
   const t = useTranslations();
   const initial = retryAfterSecondsOf(error);

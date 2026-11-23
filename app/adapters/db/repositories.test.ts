@@ -2666,6 +2666,8 @@ describe('course/module/lesson repositories', () => {
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });
     expect(await lessons.findById(ACME, 'lesson-acme')).toMatchObject({ isPreview: true });
     expect(await lessons.findById(GLOBEX, 'lesson-acme')).toBeNull();
+    expect(await lessons.existingIds(ACME, ['lesson-acme', 'lesson-gone'])).toEqual(['lesson-acme']);
+    expect(await lessons.existingIds(GLOBEX, ['lesson-acme'])).toEqual([]);
     expect(await lessons.listPreviews(ACME)).toEqual([
       { id: 'lesson-acme', name: 'L', courseId: 'course-acme' },
     ]);

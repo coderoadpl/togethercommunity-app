@@ -275,6 +275,7 @@ import type {
   SecretCrypto,
   TenantSecretRepository,
   TenantSecretResolver,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   ProductDownloadAssetRepository,
@@ -514,7 +515,7 @@ export interface AppDeps {
   productDrafts: ProductDraftRepository;
   courses: CourseRepository & CourseArchiveRepository;
   modules: CourseModuleRepository;
-  lessons: CourseLessonRepository;
+  lessons: CourseLessonRepository & CourseLessonIdLookup;
   redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;

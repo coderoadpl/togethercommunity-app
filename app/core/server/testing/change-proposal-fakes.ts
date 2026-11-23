@@ -315,7 +315,9 @@ const catalogRepositoriesOver = (
       findByIds: async (tenantId, ids) => state.modules.filter((module) => module.tenantId === tenantId && ids.includes(module.id)),
       list: async (tenantId) => state.modules.filter((module) => module.tenantId === tenantId),
     },
-    lessons: { findByIds: async (tenantId, ids) => state.lessons.filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)) },
+    lessons: {
+      existingIds: async (tenantId, ids) => state.lessons.filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)).map((lesson) => lesson.id),
+    },
     stock: stockRepositoryOver(state),
     productDrafts: {
       deleteDraft: async (tenantId, productId) => {

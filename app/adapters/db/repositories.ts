@@ -103,6 +103,7 @@ import type {
   AccountAvatarRepository,
   AccountAvatarTenantReader,
   AvatarSourceReader,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -664,7 +665,7 @@ export const createCourseModuleRepository = (db: Db): CourseModuleRepository => 
   },
 });
 
-export const createCourseLessonRepository = (db: Db): CourseLessonRepository => ({
+export const createCourseLessonRepository = (db: Db): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) =>
     (
       await db
@@ -722,6 +723,15 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .from(courseLessons)
         .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
     ).map(parseLesson);
+  },
+  existingIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select({ id: courseLessons.id })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
+    ).map((row) => row.id);
   },
   create: async (tenantId, lesson) => {
     await db.insert(courseLessons).values({ ...lesson, tenantId });

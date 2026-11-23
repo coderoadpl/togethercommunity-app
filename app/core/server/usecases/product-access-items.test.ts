@@ -29,13 +29,20 @@ const catalog = () => {
     module('module-deep', ['course-deep'], ['lesson-deep']),
   ];
   const lessons = [...LESSON_IDS, 'lesson-deep'].map(lesson);
+  const lessonIds = {
+    existingIds: async (_tenantId: string, ids: string[]) => {
+      calls.lessons += 1;
+      return lessons.filter((candidate) => ids.includes(candidate.id)).map((candidate) => candidate.id);
+    },
+    findByIds: async (): Promise<CourseLesson[]> => { throw new Error('The check must not read lesson bodies'); },
+  };
   const repositories: ProductAccessCatalog = {
     courses: { findByIds: async (_tenantId, ids) => { calls.courses += 1; return courses.filter((candidate) => ids.includes(candidate.id)); } },
     modules: {
       findByIds: async (_tenantId, ids) => { calls.modules += 1; return modules.filter((candidate) => ids.includes(candidate.id)); },
       list: async () => { calls.moduleList += 1; return modules; },
     },
-    lessons: { findByIds: async (_tenantId, ids) => { calls.lessons += 1; return lessons.filter((candidate) => ids.includes(candidate.id)); } },
+    lessons: lessonIds,
   };
   return { calls, repositories };
 };

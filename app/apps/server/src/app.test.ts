@@ -746,6 +746,8 @@ const deps = (input: {
         (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
       findByIds: async (tenantId, ids) =>
         (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
+      existingIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)).map((lesson) => lesson.id),
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
@@ -4572,6 +4574,7 @@ describe('lesson attachment download route', () => {
         findById: async (tenantId, lessonId) =>
           tenantId === acme.id && lessonId === lesson.id ? lesson : null,
         findByIds: async () => [lesson],
+        existingIds: async () => [lesson.id],
         create: async () => undefined,
         update: async () => null,
         delete: async () => false,

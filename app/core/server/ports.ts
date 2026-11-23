@@ -340,6 +340,10 @@ export interface CourseLessonRepository {
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 
+export interface CourseLessonIdLookup {
+  existingIds(tenantId: string, ids: string[]): Promise<string[]>;
+}
+
 export interface CourseLessonPreview {
   id: string;
   name: string;
@@ -3386,7 +3390,7 @@ export interface ChangeProposalRepositories {
   spaces: Pick<SpaceRepository, 'list' | 'findById'>;
   courses: Pick<CourseRepository, 'findByIds'>;
   modules: Pick<CourseModuleRepository, 'findByIds' | 'list'>;
-  lessons: Pick<CourseLessonRepository, 'findByIds'>;
+  lessons: CourseLessonIdLookup;
   stock: StockRepository;
   productDrafts: ProductDraftRepository;
   salesLinks: SalesLinkRepository;

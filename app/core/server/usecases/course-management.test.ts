@@ -15,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type {
+  CourseLessonIdLookup,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -182,13 +183,15 @@ const moduleRepo = (store: CourseModule[], versions: EntityVersionRecord[] = [])
   },
 });
 
-const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository => ({
+const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   listPreviews: async () => [],
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
   findByIds: async (tenantId, ids) =>
     store.filter((item) => item.tenantId === tenantId && ids.includes(item.id)),
+  existingIds: async (tenantId, ids) =>
+    store.filter((item) => item.tenantId === tenantId && ids.includes(item.id)).map((item) => item.id),
   create: async (_tenantId, item) => {
     store.push(item);
   },
@@ -272,7 +275,7 @@ const deps = (input: {
   removedObjects?: string[];
   storageDeleteFails?: boolean;
   errors?: string[];
-} = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository } => {
+} = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository; lessons: CourseLessonRepository & CourseLessonIdLookup } => {
   const ids = input.ids ?? ['generated-id'];
   const versions = input.versions ?? [];
   const attachments = input.attachments ?? [];

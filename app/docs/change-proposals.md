@@ -1976,10 +1976,13 @@ lessons", "Product access moduleIds must belong to the item courseId",
 "Product access excludedModuleIds must belong to the item courseId" or
 "Product access lessonIds must belong to the item courseId through its modules
 and chapters", for the first item in the order of the list that fails. The
-check reads the courses, the modules and the lessons of the whole list in one
-query each, and the workspace's modules once when the list has a `lessons`
-item, whatever the number of items, so a long list costs the locks it runs
-under no more round trips than a short one.
+check reads the courses and the modules of the whole list in one query each,
+the ids of the named lessons that exist in the workspace in one query that
+reads no lesson content, and the workspace's modules once when the list has a
+`lessons` item that names an existing lesson, whatever the number of items, so a
+long list costs the locks it runs under no more round trips than a short one,
+and its memory grows with the named ids and the workspace's modules, not with
+the content of the lessons it names.
 
 Stored lists are not rewritten. The owner's editor runs the check only when the
 list it is sent grants something other than the stored list (items and ids

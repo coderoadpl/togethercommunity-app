@@ -92,7 +92,7 @@ const accessCatalog = ({ courses = [], modules = [], lessons = [] }: AccessCatal
     findByIds: async (tenantId: string, ids: string[]) => modules.filter((row) => row.tenantId === tenantId && ids.includes(row.id)),
     list: async (tenantId: string) => modules.filter((row) => row.tenantId === tenantId),
   },
-  lessons: { findByIds: async (tenantId: string, ids: string[]) => lessons.filter((row) => row.tenantId === tenantId && ids.includes(row.id)) },
+  lessons: { existingIds: async (tenantId: string, ids: string[]) => lessons.filter((row) => row.tenantId === tenantId && ids.includes(row.id)).map((row) => row.id) },
 });
 
 const deps = <T extends ProductRepository>(repo: T, ids: string[] = ['product-1'], catalog: AccessCatalogRows = {}) => ({

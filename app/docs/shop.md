@@ -1672,11 +1672,13 @@ preview says so, and Stripe still refuses anything above the charge.
   applies the sold-out coverage rule with the paid amount as the target, so a
   refund made in the Stripe Dashboard in the meantime is never paid twice, and a
   dashboard refund that fails later is paid again. The shortfall of another
-  staff refund of the order that was still committed when the full refund was
-  requested and fails later is left to that refund, whose staff alert asks for
-  the money to be returned another way, so it is never paid twice. A staff
-  refund that had already failed when the full refund was requested is part of
-  its remainder, so the full refund pays it.
+  staff refund of the order that fails after the full refund was requested
+  (one still committed at that moment or one requested later) is left to that
+  refund, whose staff alert asks for the money to be returned another way, so
+  it is never paid twice. A staff refund that had already failed when the full
+  refund was requested is part of its remainder, so the full refund pays it;
+  the row keeps the ids of those failed refunds from the moment of the
+  request.
 - **Partial refund** (any typed amount, also one equal to the remainder):
   stored as an amount refund and issued exactly once, never more than the typed
   amount. Its own Stripe refund is the one whose metadata `refundJobId` names

@@ -164,14 +164,14 @@ const coverageOf = (job: RefundJob, refunds: readonly ProviderRefund[], targetCe
   return committedCoverage(refunds, targetCents);
 };
 
-const failedForReliedOnSibling = (job: Extract<RefundJob, { source: 'staff' }>, refund: ProviderRefund): boolean =>
-  !isCommitted(refund) && refund.refundJobId !== undefined && job.committedSiblingIds.includes(refund.refundJobId);
+const failedForSiblingNotTakenOver = (job: Extract<RefundJob, { source: 'staff' }>, refund: ProviderRefund): boolean =>
+  !isCommitted(refund) && refund.refundJobId !== undefined && refund.refundJobId !== job.id && !job.failedSiblingIds.includes(refund.refundJobId);
 
-// A sibling counted as committed when this refund was requested alerts staff about its own later failure, so this
-// refund must not pay that shortfall a second time; a sibling that had already failed is inside this refund's amount.
+// A sibling still committed when this refund was requested, or requested after it, alerts staff about its own later
+// failure, so this refund must not pay that shortfall a second time; a sibling that had already failed is inside its amount.
 const coverageTarget = (job: RefundJob, order: OrderListItem | null, refunds: readonly ProviderRefund[]): number =>
   job.source === 'staff' && job.kind === 'remainder'
-    ? (order?.amountCents ?? job.amountCents) - sumCents(refunds.filter((refund) => failedForReliedOnSibling(job, refund)))
+    ? (order?.amountCents ?? job.amountCents) - sumCents(refunds.filter((refund) => failedForSiblingNotTakenOver(job, refund)))
     : job.amountCents;
 
 const amountCoverageAtCheck = (job: RefundJob, coverage: Coverage, refunds: readonly ProviderRefund[], order: OrderListItem | null): Coverage => {

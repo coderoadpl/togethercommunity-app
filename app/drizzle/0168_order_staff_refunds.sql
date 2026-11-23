@@ -25,7 +25,7 @@ CREATE TABLE "order_staff_refunds" (
   "note" text CONSTRAINT "order_staff_refunds_note_check" CHECK (char_length("note") <= 500),
   "restocked" boolean DEFAULT false NOT NULL,
   "removed_from_packing_list" boolean DEFAULT false NOT NULL,
-  "committed_sibling_ids" text[] DEFAULT '{}' NOT NULL,
+  "failed_sibling_ids" text[] DEFAULT '{}' NOT NULL,
   "buyer_notified_at" timestamp with time zone,
   "created_at" timestamp with time zone NOT NULL,
   "updated_at" timestamp with time zone NOT NULL,

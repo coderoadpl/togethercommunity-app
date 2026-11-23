@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 
 import {
   appError,
@@ -62,9 +62,9 @@ const committedCents = async (executor: Pick<Executor, 'select'>, tenantId: stri
   return Number(staff?.cents ?? 0) + Number(soldOut?.cents ?? 0);
 };
 
-const committedRefundIds = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<string[]> =>
+const failedRefundIds = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<string[]> =>
   (await executor.select({ id: orderStaffRefunds.id }).from(orderStaffRefunds)
-    .where(and(ofOrder(tenantId, orderId), inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]))))
+    .where(and(ofOrder(tenantId, orderId), notInArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES]))))
     .map((row) => row.id);
 
 const labelBought = async (executor: Pick<Executor, 'select'>, tenantId: string, orderId: string): Promise<boolean> => {
@@ -101,7 +101,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
     const decision = input.decide({
       order,
       platformCommittedCents: await committedCents(tx, tenantId, input.orderId),
-      committedRefundIds: await committedRefundIds(tx, tenantId, input.orderId),
+      failedRefundIds: await failedRefundIds(tx, tenantId, input.orderId),
       sameRequest: sameRequest === undefined ? null : toStaffRefund(sameRequest),
       waiting: waiting === undefined ? null : toStaffRefund(waiting),
       hasLabel: await labelBought(tx, tenantId, input.orderId),

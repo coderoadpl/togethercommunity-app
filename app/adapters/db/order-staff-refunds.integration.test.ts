@@ -391,6 +391,25 @@ describe('staff refunds against a real database', () => {
     expect(await alertPayloads()).toHaveLength(1);
   });
 
+  it('leaves the shortfall of a partial staff refund requested after the full refund and failing later to that refund', async () => {
+    const h = harness({ steps: [{ outcome: 'refund' }, { outcome: 'refund', status: 'pending' }] });
+    h.provider.refundByHand(handRefund(1000));
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-1' })).refund).toMatchObject({ kind: 'remainder', amountCents: 3099 });
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_hand', 'expired_or_canceled_card');
+    expect(unwrap(await h.refund('order-1', { requestKey: 'req-2', amountCents: 1000 })).refund).toMatchObject({ kind: 'amount', amountCents: 1000 });
+    await h.dispatch(minutes(2));
+
+    await h.dispatch(minutes(60 * 24 + 1));
+    await h.dispatch(minutes(60 * 24 + 2));
+    h.provider.failRefund('re_2', 'expired_or_canceled_card');
+    await h.dispatch(minutes(60 * 24 * 7 + 2));
+    await h.dispatch(minutes(60 * 24 * 7 + 3));
+    expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([3099, 1000]);
+    expect(await refundRows('order-1')).toMatchObject([{ kind: 'remainder', status: 'succeeded', failedSiblingIds: [] }, { kind: 'amount', status: 'failed' }]);
+    expect(await alertPayloads()).toStrictEqual([expect.objectContaining({ alert: 'failed_after_submission', amountCents: 1000 })]);
+  });
+
   it('pays the whole remainder of a full refund requested again after a full staff refund failed', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'failed' }] });
     unwrap(await h.refund('order-1', { requestKey: 'req-1' }));
@@ -413,6 +432,7 @@ describe('staff refunds against a real database', () => {
     await h.dispatch(minutes(2));
     expect(h.provider.created.map((created) => created.amountCents)).toStrictEqual([1000, 4099]);
     expect(h.providerTotal()).toBe(4099);
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', failedSiblingIds: [] }, { status: 'succeeded', failedSiblingIds: ['refund-1'] }]);
     const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
     expect(detail.refundTotals).toStrictEqual({ paidCents: 4099, refundedCents: 4099, remainingCents: 0, currency: 'PLN' });
   });

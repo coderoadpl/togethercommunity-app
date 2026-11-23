@@ -21,7 +21,7 @@ const now = '2026-11-22T10:00:00.000Z';
 const refund = (overrides: Partial<Parameters<typeof newOrderStaffRefund>[0]> = {}) => newOrderStaffRefund({
   id: 'refund-1', tenantId: 'tenant-a', orderId: 'order-1', paymentIntentId: 'pi_1', currency: 'PLN', kind: 'amount', amountCents: 1500,
   requestKey: 'req-1', requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com', note: '  damaged cover  ', restocked: false,
-  removedFromPackingList: false, committedSiblingIds: [], now, ...overrides,
+  removedFromPackingList: false, failedSiblingIds: [], now, ...overrides,
 });
 
 const paidOrder = {

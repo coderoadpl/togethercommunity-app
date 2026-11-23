@@ -59,7 +59,7 @@ const staffRefundsFake = (order: OrderListItem) => {
       const decision = input.decide({
         order,
         platformCommittedCents: committed(),
-        committedRefundIds: refunds.filter((refund) => isIn(PLATFORM_COMMITTED_REFUND_STATUSES, refund.status)).map((refund) => refund.id),
+        failedRefundIds: refunds.filter((refund) => !isIn(PLATFORM_COMMITTED_REFUND_STATUSES, refund.status)).map((refund) => refund.id),
         sameRequest: refunds.find((refund) => refund.requestKey === input.requestKey) ?? null,
         waiting: refunds.find((refund) => isIn(STAFF_REFUND_WAITING_STATUSES, refund.status)) ?? null,
         hasLabel: false,

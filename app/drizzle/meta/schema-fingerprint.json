@@ -1,6 +1,6 @@
 {
-  "hash": "b76cfa11e30c95e88db0e1ad570d58772682bc3a3d75df756b55fd7bfe51274a",
-  "shortId": "b76cfa11e30c",
+  "hash": "d526e1264de84a62786ceab80157ed51513cc42e18298d26ff0cd71921b19e0a",
+  "shortId": "d526e1264de8",
   "schema": {
     "constraints": [
       {
@@ -6581,7 +6581,7 @@
             "default": "'{}'::text[]",
             "generated": "",
             "identity": "",
-            "name": "committed_sibling_ids",
+            "name": "failed_sibling_ids",
             "notNull": true,
             "type": "text[]"
           },

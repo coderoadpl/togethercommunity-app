@@ -14,7 +14,7 @@ import { createChangeProposalTransaction } from '#adapters/db/change-proposal-tr
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from '#adapters/db/change-proposals.js';
 import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
 import { createProductDownloadAssetRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
-import { changeProposalEvents, changeProposals, productDownloadAssets, products, tenants } from '#adapters/db/schema.js';
+import { changeProposalEvents, changeProposals, courses, productDownloadAssets, products, tenants } from '#adapters/db/schema.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import type { Identity, ShopManagementKey } from '#core/domain/index.js';
@@ -508,5 +508,59 @@ describe('release 8141fd15 reading what download file proposals store', () => {
   it('strips the new probe field from a storage diagnostic', () => {
     const diagnostic = { code: 'storage.available', message: 'Storage completed the write, read and delete probe.', signedResponseOverrides: 'honoured' };
     expect(providerDiagnosticSchema.parse(diagnostic)).toEqual({ code: 'storage.available', message: diagnostic.message });
+  });
+});
+
+describe('release 8141fd15 reading what product access proposals store', () => {
+  const COURSE = 'rollback-course';
+
+  beforeAll(async () => {
+    await database.db.insert(courses).values({ id: COURSE, tenantId: TENANT, name: 'Rollback course', description: '', createdAt: NOW });
+  });
+
+  const proposeAccess = async (h: ReturnType<typeof harness>) => {
+    const submitted = await submitChangeProposal(keyCtx, {
+      operation: 'product.set-access', input: { id: WORKBOOK, accessItems: [{ level: 'course', courseId: COURSE }] },
+    }, h.deps);
+    if (!submitted.ok) throw new Error(submitted.error.message);
+    return submitted.value.id;
+  };
+
+  it('lists a stored access proposal, alone and in a group, and its approval ends stale as an unknown operation before any target lock', async () => {
+    const h = harness();
+    const alone = await proposeAccess(h);
+    const group = await createChangeProposalGroup(keyCtx, { title: 'Access launch' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    const created = await submitGroupedChangeProposal(keyCtx, {
+      groupId: group.value.id, operation: 'product.create', input: { title: 'Course pack', slug: 'course-pack', type: 'course', priceCents: 0, currency: 'EUR' },
+    }, h.deps);
+    if (!created.ok) throw new Error(created.error.message);
+    const grouped = await submitGroupedChangeProposal(keyCtx, {
+      groupId: group.value.id, operation: 'product.set-access',
+      input: { id: `$proposal:${created.value.items.at(-1)?.id ?? ''}`, accessItems: [{ level: 'course', courseId: COURSE }] },
+    }, h.deps);
+    if (!grouped.ok) throw new Error(grouped.error.message);
+    const groupedId = grouped.value.items.at(-1)?.id ?? '';
+
+    for (const id of [alone, groupedId]) {
+      const previous = parseProposal(await storedRow(id));
+      expect(previous).toMatchObject({ id, operation: 'product.set-access', status: 'pending', target: { kind: 'product' } });
+      expect(Object.keys(previous.effect)).toEqual(['accessItems']);
+      expect(knownChangeProposalOperation(previous.operation)).toBeNull();
+      expect(applyLockedProposal(previous, NOW, () => { throw new Error('release 8141fd15 locked a target of an operation it does not know'); }))
+        .toEqual({ status: 'stale', note: 'This release does not know the operation "product.set-access", so the proposal cannot be applied; nothing was changed', at: NOW });
+    }
+    expect(labelRequest(parseProposal(await storedRow(alone)))).toEqual({ kind: 'product', id: WORKBOOK });
+    expect(labelRequest(parseProposal(await storedRow(groupedId)))).toBeNull();
+  });
+
+  it('fails, as a client of that release, on an owner view that names courses, and reads every other owner view', async () => {
+    const h = harness();
+    const view = await getChangeProposal(ownerSession, { id: await proposeAccess(h) }, h.deps);
+    if (!view.ok) throw new Error(view.error.message);
+    expect(view.value.accessLabels).toEqual({ courses: [{ id: COURSE, title: 'Rollback course' }], modules: [], lessons: [] });
+    expect(changeProposalOwnerDetailSchema.safeParse(view.value).success).toBe(false);
+    const withoutTheNewKey = Object.fromEntries(Object.entries(view.value).filter(([field]) => field !== 'accessLabels'));
+    expect(changeProposalOwnerDetailSchema.parse(withoutTheNewKey).operation).toBe('product.set-access');
   });
 });

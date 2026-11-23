@@ -239,20 +239,20 @@ const completeProposedImageUpload = async (
   const extension = proposalImageExtensionFor(file);
   if (!kind.success || extension === null) return err(notFound('Image asset not found'));
   const image: ProposalImageReference = { kind: kind.data, digest: deps.contentHash.sha256(bytes), extension };
+  const quarantinedUrl = deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString();
   const inserted = await deps.quarantinedImages.insert(tenantId, {
     tenantId,
     apiKeyId: keyId,
     ...image,
     sizeBytes: bytes.byteLength,
     createdAt: deps.clock.nowIso(),
-  }, async (existing): Promise<Result<void, AppError>> => {
-    const url = deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString();
-    if (existing !== null) {
-      const found = await deps.storage.head({ url, ...credentials, deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
-      if (found.ok && found.value.sizeBytes === existing.sizeBytes) return ok(undefined);
-      if (!found.ok && found.error.code !== 'not_found') return err(found.error);
-    }
-    return deps.storage.putObject({ url, ...credentials, body: bytes, contentType });
+  }, {
+    present: async (existing) => {
+      const found = await deps.storage.head({ url: quarantinedUrl, ...credentials, deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
+      if (found.ok) return ok(found.value.sizeBytes === existing.sizeBytes);
+      return found.error.code === 'not_found' ? ok(false) : err(found.error);
+    },
+    store: () => deps.storage.putObject({ url: quarantinedUrl, ...credentials, body: bytes, contentType }),
   });
   if (inserted.kind === 'busy') return err(changeProposalsBusy());
   if (inserted.kind === 'cap_exceeded' || inserted.kind === 'store_failed') {

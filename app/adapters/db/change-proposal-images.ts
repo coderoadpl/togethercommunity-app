@@ -260,20 +260,24 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
   };
   return {
     ...liveUseOver(db),
-    insert: async (tenantId, asset, store) => {
+    insert: async (tenantId, asset, object) => {
       const parsed = quarantinedImageAssetSchema.parse(asset);
       if (parsed.tenantId !== tenantId) throw new Error('A quarantined image belongs to another tenant');
       const pendingSince = parsed.createdAt;
       const of = imageOfKey(tenantId, parsed.apiKeyId, parsed);
       const lockKey = (tx: Db) => tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${keyLock(tenantId, parsed.apiKeyId)}, 0))`);
-      const reserved = await db.transaction(async (tx): Promise<QuarantinedImageInsertion | { kind: 'reserved'; releasedAt: string | null; revived: boolean }> => {
+      type Reserved = { kind: 'reserved'; releasedAt: string | null; revived: boolean; repair: boolean };
+      const reserved = await db.transaction(async (tx): Promise<QuarantinedImageInsertion | Reserved> => {
         await lockKey(tx);
         const [row] = await tx.select().from(changeProposalImages).where(of).for('update');
         if (row !== undefined && row.pendingSince !== null) return { kind: 'busy' };
         if (row !== undefined && row.releasedAt !== null && row.deleteUnresolvedAt !== null) return { kind: 'busy' };
         if (row !== undefined && row.releasedAt === null) {
-          const stored = await store(parseImage(row));
-          return stored.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: stored.error };
+          const present = await object.present(parseImage(row));
+          if (!present.ok) return { kind: 'store_failed', error: present.error };
+          if (present.value) return { kind: 'existing', asset: parseImage(row) };
+          await tx.update(changeProposalImages).set({ pendingSince }).where(of);
+          return { kind: 'reserved', releasedAt: null, revived: false, repair: true };
         }
         const [usage] = await tx
           .select({ images: count(), bytes: sql<number>`coalesce(sum(${changeProposalImages.sizeBytes}), 0)::bigint` })
@@ -286,20 +290,22 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
           await tx.update(changeProposalImages)
             .set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null, sweepAttemptedAt: null, pendingSince }).where(of);
         }
-        return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined };
+        return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined, repair: false };
       });
       if (reserved.kind !== 'reserved') return reserved;
-      const stored = await store(null);
+      const stored = await object.store();
       if (!stored.ok && !storageFailureIsDefinite(stored.error)) return { kind: 'store_failed', error: stored.error };
       return db.transaction(async (tx): Promise<QuarantinedImageInsertion> => {
         await lockKey(tx);
         const ours = and(of, eq(changeProposalImages.pendingSince, pendingSince));
         if (stored.ok) {
           const [saved] = await tx.update(changeProposalImages).set({ pendingSince: null }).where(ours).returning();
-          return saved === undefined ? { kind: 'busy' } : { kind: 'stored', asset: parseImage(saved) };
+          if (saved === undefined) return { kind: 'busy' };
+          return { kind: reserved.repair ? 'existing' : 'stored', asset: parseImage(saved) };
         }
-        if (reserved.revived) await tx.update(changeProposalImages).set({ releasedAt: reserved.releasedAt, pendingSince: null }).where(ours);
-        else await tx.delete(changeProposalImages).where(ours);
+        if (reserved.revived || reserved.repair) {
+          await tx.update(changeProposalImages).set({ releasedAt: reserved.releasedAt, pendingSince: null }).where(ours);
+        } else await tx.delete(changeProposalImages).where(ours);
         return { kind: 'store_failed', error: stored.error };
       });
     },

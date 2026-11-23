@@ -3269,6 +3269,12 @@ export type QuarantinedImageInsertion =
   | { kind: 'store_failed'; error: AppError }
   | { kind: 'busy' };
 
+export interface QuarantinedImageWrite {
+  /** Whether the storage still holds the object of the key's unreleased row of the same image with the recorded size. */
+  present(existing: QuarantinedImageAsset): Promise<Result<boolean, AppError>>;
+  store(): Promise<Result<void, AppError>>;
+}
+
 export type QuarantinedImageRelease =
   | { kind: 'key'; apiKeyId: string; images?: readonly ProposalImageReference[] }
   | { kind: 'sweep'; createdBefore: string; limit: number };
@@ -3304,16 +3310,13 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * lock again, marks the row written, or on a refused write rolls the row back. A write without a definite answer, or
    * a process that dies before the second commit, leaves the row pending and counted: no lookup sees it, and the sweep
    * removes its object and the row once `unresolvedDeleteGraceMs` passed. A pending row answers `busy`. The same bytes
-   * again answer the unreleased row already there, after `store`, given that row, made sure of its object: it writes
-   * the object only when the storage no longer holds it with the recorded size. A released row
+   * again answer the unreleased row already there once `present` confirmed its object; when it did not, the row is
+   * marked pending again and the object written as a new one is, so a repair write without a definite answer stays
+   * counted until the sweep removes it. A released row
    * whose object delete ended without a definite answer answers `busy` and is not revived, so a late delete cannot
    * remove a new object, until the sweep has deleted it again.
    */
-  insert(
-    tenantId: string,
-    asset: QuarantinedImageAsset,
-    store: (existing: QuarantinedImageAsset | null) => Promise<Result<void, AppError>>,
-  ): Promise<QuarantinedImageInsertion>;
+  insert(tenantId: string, asset: QuarantinedImageAsset, object: QuarantinedImageWrite): Promise<QuarantinedImageInsertion>;
   find(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
   /**
    * Under the workspace proposal lock, locks the selected rows and marks released those no pending, unexpired proposal

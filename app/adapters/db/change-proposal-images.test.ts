@@ -29,6 +29,7 @@ import {
   completeProposedProductCoverUpload,
   beginProposedProductCoverUpload,
   getPublicImageAssetUrl,
+  releaseQuarantinedImages,
   shopManagementKeyCapabilities,
   submitChangeProposal,
   sweepQuarantinedImages,
@@ -104,7 +105,7 @@ const image = (index: number, overrides: Partial<QuarantinedImageAsset> = {}): Q
 const pathOf = (reference: ProposalImageReference): string =>
   `/api/public/assets/${reference.kind}/${reference.digest}.${reference.extension}`;
 
-const stored = async () => ok(undefined);
+const stored = { present: async () => ok(true), store: async () => ok(undefined) };
 
 const pendingProposal = async (
   id: string,
@@ -769,10 +770,13 @@ describe('quarantined rows and objects of one key', () => {
     let writing: () => void = () => undefined;
     const writeStarted = new Promise<void>((resolve) => { writing = resolve; });
     try {
-      const completion = repository.insert(TENANT, image(1), async () => {
-        writing();
-        await writeMayFinish;
-        return ok(undefined);
+      const completion = repository.insert(TENANT, image(1), {
+        ...stored,
+        store: async () => {
+          writing();
+          await writeMayFinish;
+          return ok(undefined);
+        },
       });
       await writeStarted;
       const removeObject = vi.fn(async () => 'deleted' as const);
@@ -817,13 +821,31 @@ describe('quarantined rows and objects of one key', () => {
 
   it('rolls back the row when the storage refused its object, and keeps a released row released', async () => {
     const repository = createQuarantinedImageRepository(database.db);
-    const refused = async () => err(storageDefiniteFailure('S3 refused the published image with status 403'));
+    const refused = { ...stored, store: async () => err(storageDefiniteFailure('S3 refused the published image with status 403')) };
     expect(await repository.insert(TENANT, image(1), refused)).toMatchObject({ kind: 'store_failed', error: { code: 'integration_unavailable' } });
     expect(await rows()).toEqual([]);
     await repository.insert(TENANT, image(2), stored);
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
     expect(await repository.insert(TENANT, image(2), refused)).toMatchObject({ kind: 'store_failed' });
     expect(await releasedRows()).toEqual(['2']);
+  });
+
+  it('keeps a row pending while its object is written again, and written once the storage stored or refused that write', async () => {
+    const repository = createQuarantinedImageRepository(database.db);
+    await repository.insert(TENANT, image(1), stored);
+    const seenDuringWrite: Array<QuarantinedImageAsset | null> = [];
+    const repair = (answer: Result<void, AppError>) => ({
+      present: async () => ok(false),
+      store: async () => {
+        seenDuringWrite.push(await repository.find(TENANT, KEY_ID, image(1)));
+        return answer;
+      },
+    });
+    expect(await repository.insert(TENANT, image(1, { createdAt: '2026-03-01T10:05:00.000Z' }), repair(ok(undefined)))).toEqual({ kind: 'existing', asset: image(1) });
+    expect(await repository.insert(TENANT, image(1, { createdAt: '2026-03-01T10:06:00.000Z' }), repair(err(storageDefiniteFailure('S3 refused the published image with status 403')))))
+      .toMatchObject({ kind: 'store_failed' });
+    expect(seenDuringWrite).toEqual([null, null]);
+    expect(await repository.find(TENANT, KEY_ID, image(1))).toEqual(image(1));
   });
 
   it('hides a released row from the submit check and the approval lock but counts it toward the limits until its object is deleted', async () => {
@@ -859,8 +881,8 @@ describe('quarantined rows and objects of one key', () => {
     await repository.insert(TENANT, image(1), stored);
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
     expect(await repository.finishRelease(TENANT, image(1), async () => 'unresolved' as const, NOW)).toBe('failed');
-    const store = vi.fn(stored);
-    expect(await repository.insert(TENANT, image(1), store)).toEqual({ kind: 'busy' });
+    const store = vi.fn(stored.store);
+    expect(await repository.insert(TENANT, image(1), { ...stored, store })).toEqual({ kind: 'busy' });
     expect(store).not.toHaveBeenCalled();
     const early = '2026-03-01T10:09:00.000Z';
     expect(await repository.listTenantIdsToSweep('2026-01-01T00:00:00.000Z', early, 10)).toEqual([]);
@@ -879,8 +901,8 @@ describe('quarantined rows and objects of one key', () => {
     await repository.release(TENANT, { kind: 'key', apiKeyId: KEY_ID }, NOW);
     await expect(repository.finishRelease(TENANT, image(1), async () => { throw new Error('Connection terminated unexpectedly'); }, NOW))
       .rejects.toThrow('Connection terminated unexpectedly');
-    const store = vi.fn(stored);
-    expect(await repository.insert(TENANT, image(1), store)).toEqual({ kind: 'busy' });
+    const store = vi.fn(stored.store);
+    expect(await repository.insert(TENANT, image(1), { ...stored, store })).toEqual({ kind: 'busy' });
     expect(store).not.toHaveBeenCalled();
     const late = '2026-03-01T10:11:00.000Z';
     expect(await repository.finishRelease(TENANT, image(1), async () => 'failed' as const, late)).toBe('failed');
@@ -891,7 +913,7 @@ describe('quarantined rows and objects of one key', () => {
 
   it('releases a row a completion left pending even while a pending proposal repeats its address unchanged', async () => {
     const repository = createQuarantinedImageRepository(database.db);
-    const unanswered = async () => err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+    const unanswered = { ...stored, store: async () => err(integrationUnavailable('Could not reach S3.: the storage request deadline passed')) };
     expect(await repository.insert(TENANT, image(1), unanswered)).toMatchObject({ kind: 'store_failed' });
     await pendingProposal('p-title', { title: 'Renamed', coverUrl: pathOf(image(1)) });
     const late = '2026-03-01T10:11:00.000Z';
@@ -1068,6 +1090,30 @@ describe('a quarantined write that outlives its completion', () => {
       return written;
     };
     await expect(harness.proposeCover(PNG_BYTES)).rejects.toThrow('Connection terminated unexpectedly');
+    await sweptAfterTheBound(harness);
+  });
+
+  it('keeps the row of a repair write whose answer was lost pending and counted, so a release leaves it and the sweep removes the late copy', async () => {
+    const harness = endToEnd();
+    const complete = async () => {
+      const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: PNG_BYTES.byteLength }, harness.deps);
+      if (!started.ok) throw new Error(started.error.message);
+      harness.objects.objects.set(started.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+      return completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, harness.deps);
+    };
+    expect(await complete()).toMatchObject({ ok: true });
+    harness.objects.objects.delete(quarantinedKey);
+    const put = harness.objects.storage.putObject;
+    let land: () => Promise<unknown> = async () => undefined;
+    harness.objects.storage.putObject = async (input) => {
+      if (!input.url.includes('/image-asset-quarantine/')) return put(input);
+      land = () => put(input);
+      return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
+    };
+    expect(await complete()).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    harness.objects.storage.putObject = put;
+    await releaseQuarantinedImages(TENANT, { kind: 'key', apiKeyId: KEY_ID }, harness.deps);
+    await land();
     await sweptAfterTheBound(harness);
   });
 });

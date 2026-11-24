@@ -575,5 +575,19 @@ guard against refunding more than the charge.
   the sold-out job's target, the whole payment it refunds, also when refunds made outside the
   platform already paid part of it and the job's own provider refund paid only the shortfall.
   Documented in `shop.md`. Why: the job refunds the payment in full together with those
-  refunds, and the export answers how much of the order was refunded. Revert: "undo astra-3
-  acceptance → store the job's own refunded amount".
+  refunds, and the export answers how much of the order was refunded. Revert: "undo D36 → store
+  the job's own refunded amount".
+- D37. A committed provider refund with no status, like `pending` and `requires_action`, counts
+  in `providerNotFinalCents`: only `succeeded` is final. Why: a full refund the provider listed
+  without a status was shown as the whole amount refunded, while the dispatcher waits for proof
+  of success in the same case. Revert: "undo D37 → only pending and requires_action not final".
+- D38. The Payment card takes the order's sold-out refund job: while the job has not succeeded
+  the card never says the whole amount was refunded and names the job's observed amount as not
+  yet confirmed. The exported amount (D36) is unchanged. Why: a full sold-out refund still
+  `submitted` got the completion check, as sold-out orders load no preview. Revert: "undo D38 →
+  completion from staff refunds only".
+- D39. With the provider's totals, a staff refund watching an `already_refunded` refusal is a
+  note below the balance, not a requested line: the refunds the provider lists already cover
+  it. With the platform's records it stays a requested line (D35), as it is reserved there.
+  Why: paid 100.00, refunded −100.00, requested −10.00, left 0.00 read as a second deduction.
+  Revert: "undo D39 → watching refund as a requested line".

@@ -2024,7 +2024,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), the part of Stripe's committed refunds that is not final yet (`providerNotFinalCents`: refunds Stripe lists as `pending` or `requires_action`, dashboard refunds included; 0 when the list could not be read), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), the part of Stripe's committed refunds that is not final yet (`providerNotFinalCents`: every committed refund Stripe lists with a status other than `succeeded`, `pending`, `requires_action` or no status at all, dashboard refunds included; 0 when the list could not be read), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
 | `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
@@ -2060,8 +2060,10 @@ remaining amounts. Refunded counts only observed refunds; with Stripe's totals
 it names the part Stripe has not finished ("of which X not final at Stripe",
 from `providerNotFinalCents`, also for a dashboard refund no staff refund
 belongs to), and with the platform's records the staff refunds Stripe has not
-confirmed yet; "The whole amount was refunded" appears only when none of it is
-left unfinished. With Stripe's totals a staff refund counts in them only when
+confirmed yet, a sold-out refund job with a Stripe refund included until it
+succeeds; "The whole amount was refunded" appears only when none of it is
+left unfinished and never while the order's sold-out refund job has not
+succeeded. With Stripe's totals a staff refund counts in them only when
 the preview says Stripe's list shows it, and with the platform's only when it
 has a Stripe refund of its own. Any other refund still waiting, one whose
 request may have reached Stripe without an answer, or one only watching other
@@ -2070,7 +2072,11 @@ apart as a requested refund, one line per state: "may already be at Stripe"
 when its request may have reached Stripe, "being sent to Stripe now" while the
 dispatcher is calling Stripe, "not sent to Stripe yet", "waiting for the
 permission" with a warning, and "held until other refunds at Stripe settle"
-for a watching refund, which is reserved and so appears on the card too.
+for a watching refund, which is reserved and so appears on the card too. With
+Stripe's totals a watching refund is not another deduction: the refunds Stripe
+lists already cover it, so it appears as a note below the balance ("A requested
+refund of X is held until other refunds at Stripe settle; ... not deducted
+again") instead of a requested line.
 Whenever the refund preview loaded, the card takes its amounts from the
 preview (Stripe's list, or the platform's records with a note saying Stripe's
 list could not be read), so a refund made in the Stripe Dashboard shows as

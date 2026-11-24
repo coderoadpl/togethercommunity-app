@@ -550,7 +550,10 @@ again. An item that attaches a file is read the same way for the note code
 `file_unavailable` ([Download files](#download-files)). When a single
 proposal's events cannot be read, the notice says neutrally that nothing was
 applied because the shop changed or a proposed image or file is no longer
-available, and that its history shows which. A `failed` approval, in the
+available, and that its history shows which. A history row of a `stale`
+proposal that attaches an image or a file reads its events the same way and
+gives that neutral explanation until they have been read, also when they
+cannot be. A `failed` approval, in the
 notice and in its history row, says that the shop refused the change and
 nothing was applied, followed by the reason. The refusals of a product access
 list (a course gone or archived, a module or lesson gone or no longer part of

@@ -30,6 +30,7 @@ import {
   TargetLine,
   type MissingAsset,
   type SettledOutcome,
+  type StaleCause,
 } from './ProposalCards.js';
 import { groupReferences } from './proposal-display.js';
 import { Isolated, operationTitle } from './proposal-text.js';
@@ -234,7 +235,8 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
   const assetStale = mayBeStaleForMissingAsset(proposal);
   const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: assetStale });
   const missing = assetStale && detail.data !== undefined ? staleForMissingAsset(detail.data.proposal.events) : null;
-  const explanation = outcomeExplanation(t, proposal.status, failureOf(proposal), missing);
+  const cause: StaleCause | null = assetStale && detail.data === undefined ? 'unconfirmed' : missing;
+  const explanation = outcomeExplanation(t, proposal.status, failureOf(proposal), cause);
   const decided = decidedLine(t, proposal, language);
   const keyName = proposal.proposedBy.keyName;
   return (

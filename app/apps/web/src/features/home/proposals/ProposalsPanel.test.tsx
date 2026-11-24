@@ -1259,4 +1259,23 @@ describe('ProposalsPanel', () => {
     expect(within(row).queryByTestId('proposed-file-download')).toBeNull();
     expect(within(row).queryByTestId('proposed-file-unavailable')).toBeNull();
   });
+
+  it('gives a history row of a stale file proposal the neutral explanation when its history cannot be read', async () => {
+    usePending([]);
+    server.use(
+      http.get('/api/change-proposals', ({ request }) => HttpResponse.json({
+        ok: true,
+        data: { proposals: new URL(request.url).searchParams.get('status') === 'decided' ? [fileUnavailableHistoryProposal] : [], nextCursor: null, hasMore: false },
+      })),
+      http.get('/api/change-proposals/:id', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'down' } }, { status: 500 })),
+    );
+
+    renderPanel();
+
+    await userEvent.click(await screen.findByRole('tab', { name: t.tabHistory }));
+    const row = await screen.findByTestId(`proposal-history-${fileUnavailableHistoryProposal.id}`);
+    expect(await within(row).findByText(t.outcomeStaleUnconfirmed)).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(t.outcomeStale);
+    expect(within(row).getByTestId('proposal-history-status')).toHaveTextContent(t.status.stale);
+  });
 });

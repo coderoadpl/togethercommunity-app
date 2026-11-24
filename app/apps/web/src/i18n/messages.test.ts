@@ -115,6 +115,33 @@ describe('i18n dictionaries', () => {
     }
   });
 
+  it('counts lessons inline in lowercase with the right plural form', () => {
+    expect([1, 3, 12, 22].map((count) => en.courseOverview.lessonCount({ count }))).toEqual([
+      '1 lesson', '3 lessons', '12 lessons', '22 lessons',
+    ]);
+    const polishNouns = [1, 3, 12, 22].map((count) => {
+      const text = pl.courseOverview.lessonCount({ count });
+      expect(text.startsWith(`${count} `)).toBe(true);
+      const noun = text.slice(`${count} `.length);
+      expect(noun).toMatch(/^\S+$/u);
+      expect(noun).toBe(noun.toLocaleLowerCase('pl'));
+      return noun;
+    });
+    const [one, few, many, twentyTwo] = polishNouns;
+    expect(new Set([one, few, many]).size).toBe(3);
+    expect(twentyTwo).toBe(few);
+  });
+
+  it('starts every open-thread link name with the visible link text', () => {
+    for (const messages of [en, pl]) {
+      for (const excerpt of ['', 'First words…']) {
+        expect(messages.community.openThreadAria({ author: 'Olivia', excerpt })).toMatch(
+          new RegExp(`^${messages.community.openThread}`, 'u'),
+        );
+      }
+    }
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });

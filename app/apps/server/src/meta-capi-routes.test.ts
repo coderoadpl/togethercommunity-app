@@ -35,7 +35,7 @@ const harness = (limited = false) => {
   const metaCapi: MetaCapiDispatchDeps = { tenants, clock: { nowIso: () => now }, hash: { sha256: () => version },
     secrets, gateway: { send: async () => ({ ok: true, fbtraceId: null }) },
     directory: { listAll: async () => [tenant] }, repository: { decide, findOrder: async () => current,
-      listDueTenantIds: async () => [], processNext: async () => false, listEvents, listMemberConsents: async () => [{ orderId: 'purchase', consent: 'granted', consentAt: now, withdrawnAt: null }] } };
+      listDueTenantIds: async () => [], processNext: async () => false, listEvents, listMemberConsents: async () => [{ orderId: 'purchase', consent: 'granted', consentAt: now, withdrawnAt: null, productName: 'Book', purchasedAt: now }] } };
   const deps = { metaCapi, tenants, tenantDomains: tenantDomainRepositoryStub({}), baseDomain: 'example.org', platformHost: null,
     singleTenantMode: true, authTrustedProxyHeader: null };
   app.use('*', publicRateLimitMiddleware({ ...deps, clock: metaCapi.clock, publicRateLimitPolicies: selectPublicRateLimitPolicies({ NODE_ENV: 'production' }),

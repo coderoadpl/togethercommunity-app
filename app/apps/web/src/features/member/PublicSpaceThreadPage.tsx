@@ -1,7 +1,8 @@
-import { Box, Button, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import { communitySpacePath } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
@@ -11,7 +12,11 @@ import { ThreadHeadline } from '../../theme.js';
 import { anonCrumbs } from './anon-crumbs.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PublicThreadView } from './PublicFeed.js';
-import { anonHomePath, anonOfferLink } from './shell/member-nav.js';
+import { anonHomePath } from './shell/member-nav.js';
+import { useVisitorJoin, VisitorContactLinks, VisitorJoinButton } from './visitor-actions.js';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 const threadHeadline = (body: string): string | null => {
   const condensed = body.replaceAll(/\s+/gu, ' ').trim();
@@ -28,6 +33,7 @@ export const PublicSpaceThreadPage = ({
   const t = useTranslations();
   const navigation = useQuery(actions.publicNavigation);
   const thread = useQuery(actions.publicSpaceThread({ spaceId, postId }));
+  const join = useVisitorJoin(spaceId);
 
   if (navigation.isPending) {
     return (
@@ -75,6 +81,7 @@ export const PublicSpaceThreadPage = ({
 
   const root = thread.data?.discussion.threads[0];
   const headline = root === undefined ? null : threadHeadline(root.bodyPlainText);
+  const missing = thread.isError ? isNotFound(thread.error) : thread.isSuccess && root === undefined;
 
   return (
     <MemberSurface
@@ -82,6 +89,9 @@ export const PublicSpaceThreadPage = ({
       title={<ThreadHeadline>{headline ?? t.community.threadTitle}</ThreadHeadline>}
       eyebrow={space.name}
       width="wide"
+      actions={missing || join.target.kind === 'none' || join.target.kind === 'pending' ? undefined : (
+        <VisitorJoinButton target={join.target} testId="anon-join-cta-header" />
+      )}
       breadcrumbs={anonCrumbs(
         t,
         {
@@ -98,7 +108,21 @@ export const PublicSpaceThreadPage = ({
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
         {thread.isPending ? (
           <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
-        ) : thread.isError ? (
+        ) : missing ? (
+          <StatusView
+            state={{
+              kind: 'not-found',
+              title: t.community.threadNotFoundTitle,
+              body: t.community.threadNotFoundBody,
+              action: (
+                <MuiLink component={Link} to={communitySpacePath(spaceId)} data-testid="public-thread-back">
+                  {t.community.backToFeed}
+                </MuiLink>
+              ),
+            }}
+            data-testid="public-thread-not-found"
+          />
+        ) : thread.isError || root === undefined ? (
           <StatusView
             surface={false}
             state={{
@@ -107,27 +131,20 @@ export const PublicSpaceThreadPage = ({
               retry: { label: t.discussion.retry, onRetry: () => void thread.refetch() },
             }}
           />
-        ) : root === undefined ? (
-          <StatusView
-            state={{
-              kind: 'not-found',
-              title: t.community.spaceNotFoundTitle,
-              body: t.community.spaceNotFoundBody,
-            }}
-          />
         ) : (
-          <PublicThreadView root={root} />
+          <>
+            <PublicThreadView root={root} />
+            {join.target.kind === 'none' ? (
+              <Box>
+                <VisitorContactLinks supportUrl={join.supportUrl} signedIn={join.signedIn} />
+              </Box>
+            ) : root.replies.length > 0 ? (
+              <Box>
+                <VisitorJoinButton target={join.target} />
+              </Box>
+            ) : null}
+          </>
         )}
-        <Box>
-          <Button
-            component={Link}
-            {...anonOfferLink(navigation.data.navigation.defaultHomeSpaceId === spaceId)}
-            variant="contained"
-            data-testid="anon-join-cta"
-          >
-            {t.anon.joinOfferCta}
-          </Button>
-        </Box>
       </Stack>
     </MemberSurface>
   );

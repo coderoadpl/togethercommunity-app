@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,17 @@ const anonMe = () =>
       { ok: false, error: { code: 'unauthorized', message: 'Sign in required' } },
       { status: 401 },
     ),
+  );
+
+const signedInWithoutAccessMe = () =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u9', email: 'visitor@acme.example', name: 'Visitor', emailVerified: true,
+        tenantAccess: 'none', tenant: null, impersonation: null,
+      },
+    }),
   );
 
 const navigation = (): PublicNavigation => ({
@@ -110,6 +121,20 @@ const rootPost = (): DiscussionPost => ({
   replyCount: 0,
 });
 
+const emptyOffer = (supportUrl: string | null) => ({
+  ok: true,
+  data: {
+    tenant: { slug: 'acme', name: 'Acme', support: { url: supportUrl } },
+    contentVersion: 1,
+    products: [],
+    salesLinks: [],
+    previewLessons: [],
+  },
+});
+
+const okOffer = (supportUrl: string | null) =>
+  http.get('/api/public/offer', () => HttpResponse.json(emptyOffer(supportUrl)));
+
 const okPublicThread = () =>
   http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
     HttpResponse.json({
@@ -139,14 +164,53 @@ describe('public event surface', () => {
     expect(screen.getByTestId('public-space-events')).toBeInTheDocument();
   });
 
-  it('shows an empty events block when the public space has nothing scheduled', async () => {
-    server.use(anonMe(), okPublicNavigation(), okPublicFeed(), okPublicEvents([]));
+  it('renders no events card when the public space has nothing scheduled', async () => {
+    const served = { events: false };
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () => {
+        served.events = true;
+        return HttpResponse.json({ ok: true, data: { events: [], nextCursor: null } });
+      }),
+    );
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('public-space-events-empty')).toHaveTextContent(
-      en.events.emptyUpcoming,
+    expect(await screen.findByTestId('public-feed-empty-state')).toBeInTheDocument();
+    await waitFor(() => expect(served.events).toBe(true));
+    await waitFor(() => expect(screen.queryByTestId('public-space-events')).not.toBeInTheDocument());
+    expect(screen.queryByText(en.events.emptyUpcoming)).not.toBeInTheDocument();
+  });
+
+  it('keeps the events card while the list loads', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () => new Promise<never>(() => undefined)),
     );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('public-space-events')).toHaveTextContent(en.events.loading);
+  });
+
+  it('keeps the events card with a retry when the list fails', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed(),
+      http.get('/api/public/spaces/:spaceId/events', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const card = await screen.findByTestId('public-space-events');
+    expect(await within(card).findByRole('button', { name: en.common.retry })).toBeInTheDocument();
   });
 
   it('renders the event read-only with counts, a sign-in CTA and the thread', async () => {
@@ -160,12 +224,129 @@ describe('public event surface', () => {
     expect(screen.getByTestId('public-event-going-count')).toHaveTextContent(
       en.events.goingCount({ count: 4 }),
     );
-    expect(screen.getByTestId('public-event-sign-in')).toHaveAttribute('href', '/login');
+    expect(await screen.findByTestId('public-event-sign-in')).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fcommunity%2Fs1%2Fevents%2Fe1',
+    );
     expect(await screen.findByTestId('public-post-root-1')).toHaveTextContent(
       'Event thread: Live Q&A',
     );
+    const details = screen.getByTestId('public-event-details');
+    expect(within(details).getByText(en.events.detailsHeading)).toBeInTheDocument();
+    expect(within(details).getByTestId('public-event-join')).toHaveAttribute('href', '/#offer');
+    expect(within(details).getByTestId('public-event-join')).toHaveTextContent(en.anon.salesCta);
+    expect(within(details).getByTestId('public-event-sign-in')).toHaveClass('MuiButton-outlined');
+    const crumbs = within(screen.getByTestId('member-breadcrumbs'));
+    expect(crumbs.getByRole('link', { name: en.shell.start })).toHaveAttribute('href', '/');
+    expect(crumbs.getByRole('link', { name: 'General' })).toHaveAttribute('href', '/community/s1');
     expect(screen.queryByTestId('event-rsvp')).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-ics')).not.toBeInTheDocument();
+  });
+
+  it('leads with sign-in on the event details when the workspace sells nothing', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicEvent(), okPublicThread(), okOffer(null));
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const signIn = await screen.findByTestId('public-event-sign-in');
+    expect(signIn).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-visitor-contact')).not.toBeInTheDocument();
+  });
+
+  it('offers the creator contact beside sign-in when the workspace sells nothing and has a support link', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      okOffer('https://studio.example.org/contact'),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    const contact = await within(details).findByTestId('anon-visitor-contact');
+    expect(contact).toHaveAttribute('href', 'https://studio.example.org/contact');
+    expect(contact).toHaveAttribute('target', '_blank');
+    expect(contact).toHaveTextContent(en.anon.contactCreator);
+    expect(within(details).getByTestId('public-event-sign-in')).toHaveClass('MuiButton-contained');
+  });
+
+  it('gives a signed-in account without access the join button alone', async () => {
+    server.use(signedInWithoutAccessMe(), okPublicNavigation(), okPublicEvent(), okPublicThread());
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    expect(await within(details).findByTestId('public-event-join')).toHaveAttribute('href', '/#offer');
+    expect(within(details).queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(within(details).queryByTestId('anon-visitor-contact')).not.toBeInTheDocument();
+  });
+
+  it('gives a signed-in account without access only the creator contact when the workspace sells nothing', async () => {
+    server.use(
+      signedInWithoutAccessMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      okOffer('mailto:hello@studio.example.org'),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    expect(await within(details).findByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'mailto:hello@studio.example.org',
+    );
+    expect(within(details).queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(within(details).queryByTestId('public-event-join')).not.toBeInTheDocument();
+  });
+
+  it('leaves the event actions out for a signed-in account without access when nothing is for sale or to contact', async () => {
+    server.use(
+      signedInWithoutAccessMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      okOffer(null),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const details = await screen.findByTestId('public-event-details');
+    await waitFor(() => expect(screen.queryByTestId('public-event-actions-pending')).not.toBeInTheDocument());
+    expect(details.querySelector('a, button')).toBeNull();
+  });
+
+  it('holds the event actions until the offer settles so the sign-in button never changes style', async () => {
+    let releaseOffer: () => void = () => undefined;
+    const offerGate = new Promise<void>((resolve) => {
+      releaseOffer = resolve;
+    });
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      okPublicThread(),
+      http.get('/api/public/offer', async () => {
+        await offerGate;
+        return HttpResponse.json(emptyOffer(null));
+      }),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const placeholder = await screen.findByTestId('public-event-actions-pending');
+    expect(placeholder).toHaveAttribute('aria-hidden', 'true');
+    expect(placeholder).toHaveStyle({ visibility: 'hidden' });
+    expect(screen.queryByTestId('public-event-sign-in')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('public-event-join')).not.toBeInTheDocument();
+
+    releaseOffer();
+    expect(await screen.findByTestId('public-event-sign-in')).toHaveClass('MuiButton-contained');
+    expect(screen.queryByTestId('public-event-actions-pending')).not.toBeInTheDocument();
   });
 
   it('plays the live stream of a public event without offering an RSVP', async () => {
@@ -190,5 +371,37 @@ describe('public event surface', () => {
 
     expect((await screen.findAllByText(en.events.notFoundTitle)).length).toBeGreaterThan(0);
     expect(screen.getByText(en.events.notFoundBody)).toBeInTheDocument();
+  });
+
+  it('offers a retry instead of a not-found state when the public event fails to load', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/events/:eventId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    expect(await screen.findByRole('button', { name: en.common.retry })).toBeInTheDocument();
+    expect(screen.queryByText(en.events.notFoundTitle)).not.toBeInTheDocument();
+  });
+
+  it('shows a retry when the event discussion fails instead of claiming nobody discussed it', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicEvent(),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <EventPage spaceId="s1" eventId="e1" />, '/community/s1/events/e1');
+
+    const failure = await screen.findByTestId('public-event-discussion-error');
+    expect(within(failure).getByRole('button', { name: en.common.retry })).toBeInTheDocument();
+    expect(screen.queryByTestId('public-event-discussion-empty')).not.toBeInTheDocument();
   });
 });

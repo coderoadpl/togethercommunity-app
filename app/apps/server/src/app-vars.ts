@@ -1,4 +1,4 @@
-import type { Identity, ImpersonationPrincipal } from '#core/domain/index.js';
+import type { AppError, Identity, ImpersonationPrincipal } from '#core/domain/index.js';
 import type { AuthenticatedUser } from '#core/server/index.js';
 
 import type { ApiKeyAttribution } from './telemetry.js';
@@ -17,6 +17,7 @@ export type AppVars = {
     secureHeadersNonce?: string;
     signupRedirectOrigin?: string;
     noReferrer?: true;
+    signupRateLimit?: AppError;
     tenantRedirectHit?: { tenantId: string; redirectId: string };
   };
 };

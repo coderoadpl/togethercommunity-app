@@ -28,6 +28,7 @@ export type WorkflowRun = {
   status: string;
   conclusion: string | null;
   url: string;
+  created_at: string;
 };
 
 export type WaitPolicy = {
@@ -107,6 +108,7 @@ const workflowRunResponseSchema = z.object({
     conclusion: z.string().nullable(),
     status: z.string().nullable(),
     html_url: z.string().url(),
+    created_at: z.string().datetime(),
   })),
 });
 
@@ -123,7 +125,6 @@ const issueCommentsSchema = z.array(z.object({
 const paginatedIssueCommentsSchema = z.array(issueCommentsSchema);
 
 const requiredWorkflows: RequiredWorkflow[] = ['ci.yml', 'staging-smoke.yml'];
-const pullRequestEvents: ReadonlySet<string> = new Set(['pull_request', 'pull_request_target']);
 
 export const defaultWaitPolicy: WaitPolicy = {
   pollMs: 30_000,
@@ -169,31 +170,33 @@ export function evaluateStagingFreeze(value: string | undefined): GuardReason[] 
     }];
 }
 
-function stagingRunsOf(runs: WorkflowRun[], workflow: RequiredWorkflow): WorkflowRun[] {
-  return runs.filter((run) => run.workflow === workflow && !pullRequestEvents.has(run.event));
+function latestStagingPushRun(runs: WorkflowRun[], workflow: RequiredWorkflow): WorkflowRun | undefined {
+  let latest: WorkflowRun | undefined;
+  for (const run of runs) {
+    if (run.workflow !== workflow || run.event !== 'push') continue;
+    if (latest === undefined || Date.parse(run.created_at) > Date.parse(latest.created_at)) latest = run;
+  }
+  return latest;
 }
 
 export function evaluateWorkflowRuns(runs: WorkflowRun[]): WorkflowEvidence[] {
   return requiredWorkflows.map((workflow) => {
-    const workflowRuns = stagingRunsOf(runs, workflow);
-    const successful = workflowRuns.find((run) => run.conclusion === 'success');
-    const reported = successful ?? workflowRuns[0];
+    const latest = latestStagingPushRun(runs, workflow);
 
     return {
       workflow,
-      passed: successful !== undefined,
-      url: reported?.url ?? null,
-      conclusion: reported?.conclusion ?? null,
+      passed: latest?.conclusion === 'success',
+      url: latest?.url ?? null,
+      conclusion: latest?.conclusion ?? null,
     };
   });
 }
 
 export function unfinishedWorkflows(runs: WorkflowRun[]): UnfinishedWorkflow[] {
   return requiredWorkflows.flatMap((workflow): UnfinishedWorkflow[] => {
-    const workflowRuns = stagingRunsOf(runs, workflow);
-    if (workflowRuns.some((run) => run.conclusion === 'success')) return [];
-    if (workflowRuns.some((run) => run.status !== 'completed')) return [{ workflow, state: 'running' }];
-    return workflowRuns.length === 0 ? [{ workflow, state: 'missing' }] : [];
+    const latest = latestStagingPushRun(runs, workflow);
+    if (latest === undefined) return [{ workflow, state: 'missing' }];
+    return latest.status === 'completed' ? [] : [{ workflow, state: 'running' }];
   });
 }
 
@@ -258,7 +261,7 @@ export function workflowReasons(evidence: WorkflowEvidence[], wait: WaitOutcome 
       .filter((run) => !run.passed)
       .map((run) => ({
         check: run.workflow,
-        message: `No successful staging branch run found for ${run.workflow} at the PR head SHA${waitSuffix(run.workflow, wait)}`,
+        message: `No successful result from the latest staging push run for ${run.workflow} at the PR head SHA${waitSuffix(run.workflow, wait)}`,
       })),
   ];
 }
@@ -484,6 +487,7 @@ function readWorkflowRuns(env: RuntimeEnv): WorkflowRun[] {
       status: run.status ?? (run.conclusion === null ? 'unknown' : 'completed'),
       conclusion: run.conclusion,
       url: run.html_url,
+      created_at: run.created_at,
     }));
   });
 }

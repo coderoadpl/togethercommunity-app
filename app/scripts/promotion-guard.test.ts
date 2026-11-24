@@ -20,12 +20,14 @@ const run = (
   conclusion: string | null,
   id: number,
   event = 'push',
+  created_at = new Date(Date.UTC(2026, 0, 1, 0, 0, id)).toISOString(),
 ): WorkflowRun => ({
   workflow,
   event,
   status,
   conclusion,
   url: `https://github.com/example/repo/actions/runs/${String(id)}`,
+  created_at,
 });
 
 const ciSuccess = run('ci.yml', 'completed', 'success', 1);
@@ -104,22 +106,7 @@ describe('promotion guard', () => {
   });
 
   it('requires successful ci and staging smoke runs for the staging branch head', () => {
-    const evidence = evaluateWorkflowRuns([
-      {
-        workflow: 'ci.yml',
-        event: 'push',
-        status: 'completed',
-        conclusion: 'success',
-        url: 'https://github.com/example/repo/actions/runs/1',
-      },
-      {
-        workflow: 'staging-smoke.yml',
-        event: 'push',
-        status: 'completed',
-        conclusion: 'failure',
-        url: 'https://github.com/example/repo/actions/runs/2',
-      },
-    ]);
+    const evidence = evaluateWorkflowRuns([ciSuccess, run('staging-smoke.yml', 'completed', 'failure', 2)]);
 
     expect(evidence).toEqual([
       {
@@ -138,7 +125,7 @@ describe('promotion guard', () => {
     expect(workflowReasons(evidence)).toEqual([
       {
         check: 'staging-smoke.yml',
-        message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA.',
+        message: 'No successful result from the latest staging push run for staging-smoke.yml at the PR head SHA.',
       },
     ]);
   });
@@ -262,7 +249,7 @@ describe('promotion guard waiting for the staging runs', () => {
     expect(describeWait(wait)).toBeNull();
     expect(workflowReasons(evidence, wait)).toEqual([{
       check: 'staging-smoke.yml',
-      message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA.',
+      message: 'No successful result from the latest staging push run for staging-smoke.yml at the PR head SHA.',
     }]);
   });
 
@@ -293,7 +280,7 @@ describe('promotion guard waiting for the staging runs', () => {
     expect(wait.waitedMs).toBe(30_000);
     expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([{
       check: 'ci.yml',
-      message: 'No successful staging branch run found for ci.yml at the PR head SHA after waiting 30 s.',
+      message: 'No successful result from the latest staging push run for ci.yml at the PR head SHA after waiting 30 s.',
     }]);
   });
 
@@ -315,7 +302,7 @@ describe('promotion guard waiting for the staging runs', () => {
     expect(describeWait(wait)).toBe('Stopped waiting after 3 min: no staging-smoke.yml run created.');
     expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([{
       check: 'staging-smoke.yml',
-      message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA after waiting 3 min; no run was created.',
+      message: 'No successful result from the latest staging push run for staging-smoke.yml at the PR head SHA after waiting 3 min; no run was created.',
     }]);
   });
 
@@ -341,15 +328,68 @@ describe('promotion guard waiting for the staging runs', () => {
     expect(describeWait(wait)).toBe('Stopped waiting after 40 min: staging-smoke.yml still running.');
     expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([{
       check: 'staging-smoke.yml',
-      message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA after waiting 40 min; its run is still in progress.',
+      message: 'No successful result from the latest staging push run for staging-smoke.yml at the PR head SHA after waiting 40 min; its run is still in progress.',
     }]);
   });
 
-  it('keeps an earlier success even while a later run of the same workflow is still running', async () => {
-    const { deps, sleep } = waitHarness([[ciSuccess, run('staging-smoke.yml', 'in_progress', null, 3), smokeSuccess]]);
+  it('fails when a newer push run fails after an older push run succeeded', async () => {
+    const latest = run('staging-smoke.yml', 'completed', 'failure', 3);
+    const { deps, sleep } = waitHarness([[ciSuccess, smokeSuccess, latest]]);
 
-    expect((await awaitWorkflowRuns(deps)).waitedMs).toBe(0);
+    const wait = await awaitWorkflowRuns(deps);
+
     expect(sleep).not.toHaveBeenCalled();
+    expect(evaluateWorkflowRuns(wait.runs)[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: false, url: latest.url, conclusion: 'failure',
+    });
+  });
+
+  it('reports the newest successful push run despite older failed and successful push runs', () => {
+    const olderFailure = run('staging-smoke.yml', 'completed', 'failure', 5);
+    const latest = run('staging-smoke.yml', 'completed', 'success', 4, 'push', '2026-01-01T00:00:06Z');
+
+    expect(evaluateWorkflowRuns([ciSuccess, olderFailure, smokeSuccess, latest])[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: true, url: latest.url, conclusion: 'success',
+    });
+  });
+
+  it('uses the first push run returned by the API when creation times tie', () => {
+    const first = run('staging-smoke.yml', 'completed', 'failure', 3, 'push', smokeSuccess.created_at);
+
+    expect(evaluateWorkflowRuns([ciSuccess, first, smokeSuccess])[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: false, url: first.url, conclusion: 'failure',
+    });
+  });
+
+  it.each(['success', 'failure'])('waits past an older success and follows a newer push run that ends in %s', async (conclusion) => {
+    const running = run('staging-smoke.yml', 'in_progress', null, 3);
+    const latest = { ...running, status: 'completed', conclusion };
+    const { deps, sleep } = waitHarness([
+      [ciSuccess, running, smokeSuccess],
+      [ciSuccess, latest, smokeSuccess],
+    ]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(sleep.mock.calls).toEqual([[30_000]]);
+    expect(wait).toMatchObject({ waitedMs: 30_000, unfinished: [] });
+    expect(evaluateWorkflowRuns(wait.runs)[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: conclusion === 'success', url: latest.url, conclusion,
+    });
+  });
+
+  it('does not wait for an older unfinished push run behind a newer completed run', async () => {
+    const older = run('ci.yml', 'in_progress', null, 1);
+    const latest = run('ci.yml', 'completed', 'failure', 3);
+    const { deps, sleep } = waitHarness([[older, latest, smokeSuccess]]);
+
+    const wait = await awaitWorkflowRuns(deps);
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(wait).toMatchObject({ waitedMs: 0, unfinished: [] });
+    expect(evaluateWorkflowRuns(wait.runs)[0]).toEqual({
+      workflow: 'ci.yml', passed: false, url: latest.url, conclusion: 'failure',
+    });
   });
 
   it('ignores the promotion pull request run of ci.yml when the push run already failed', async () => {
@@ -366,7 +406,7 @@ describe('promotion guard waiting for the staging runs', () => {
     ]);
     expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([{
       check: 'ci.yml',
-      message: 'No successful staging branch run found for ci.yml at the PR head SHA.',
+      message: 'No successful result from the latest staging push run for ci.yml at the PR head SHA.',
     }]);
   });
 
@@ -390,13 +430,33 @@ describe('promotion guard waiting for the staging runs', () => {
     expect(wait.unfinished).toEqual([{ workflow: 'ci.yml', state: 'missing' }]);
   });
 
-  it.each(['push', 'schedule', 'workflow_dispatch'])('counts a successful %s run as before', async (event) => {
-    const { deps } = waitHarness([[run('ci.yml', 'completed', 'success', 1, event), smokeSuccess]]);
+  it('ignores a successful manual staging smoke run when the push run failed', async () => {
+    const pushFailure = run('staging-smoke.yml', 'completed', 'failure', 2);
+    const manualSuccess = run('staging-smoke.yml', 'completed', 'success', 3, 'workflow_dispatch');
+    const { deps, sleep } = waitHarness([[ciSuccess, manualSuccess, pushFailure]]);
 
     const wait = await awaitWorkflowRuns(deps);
 
-    expect(wait.waitedMs).toBe(0);
-    expect(workflowReasons(evaluateWorkflowRuns(wait.runs), wait)).toEqual([]);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(evaluateWorkflowRuns(wait.runs)[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: false, url: pushFailure.url, conclusion: 'failure',
+    });
+  });
+
+  it.each(['schedule', 'workflow_dispatch'])('waits only the grace period when the only smoke run is a successful %s run', async (event) => {
+    const { deps } = waitHarness([[ciSuccess, run('staging-smoke.yml', 'completed', 'success', 2, event)]]);
+
+    const wait = await awaitWorkflowRuns(deps);
+    const evidence = evaluateWorkflowRuns(wait.runs);
+
+    expect(wait).toMatchObject({
+      waitedMs: defaultWaitPolicy.graceMs,
+      unfinished: [{ workflow: 'staging-smoke.yml', state: 'missing' }],
+    });
+    expect(evidence[1]).toEqual({
+      workflow: 'staging-smoke.yml', passed: false, url: null, conclusion: null,
+    });
+    expect(workflowReasons(evidence, wait)).toHaveLength(1);
   });
 
   it('keeps the first read before any wait failing as before', async () => {
@@ -448,7 +508,7 @@ describe('promotion guard waiting for the staging runs', () => {
       },
       {
         check: 'staging-smoke.yml',
-        message: 'No successful staging branch run found for staging-smoke.yml at the PR head SHA after waiting 40 min; its run is still in progress.',
+        message: 'No successful result from the latest staging push run for staging-smoke.yml at the PR head SHA after waiting 40 min; its run is still in progress.',
       },
     ]);
     expect(renderPromotionComment({

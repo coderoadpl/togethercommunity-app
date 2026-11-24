@@ -12,6 +12,7 @@ import {
 import type { Ctx } from '#core/server/context.js';
 import {
   markLessonCompleted,
+  unmarkLessonCompleted,
   updateLastViewed,
   type ProgressDeps,
 } from '#core/server/usecases/progress.js';
@@ -176,4 +177,65 @@ it('keeps the completion and the last-viewed pointer when they overlap on the sa
     lastViewedLessonId: 'lesson-2',
     lastViewedModuleId: 'module',
   });
+}, 60_000);
+
+it('records one completion event when the same lesson is completed twice at once', async () => {
+  await insertEmptyProgress();
+  const results = await overlapOnLockedRow(() => [
+    markLessonCompleted(ctx, 'lesson-1', deps()),
+    markLessonCompleted(ctx, 'lesson-1', deps()),
+  ]);
+  expect(results.every((result) => result.ok)).toBe(true);
+  expect((await storedProgress())?.completedLessonIds).toEqual(['lesson-1']);
+  expect(await completionEvents()).toHaveLength(1);
+}, 60_000);
+
+it('records a repeated completion once, with a single completion event', async () => {
+  const first = await markLessonCompleted(ctx, 'lesson-1', deps());
+  const repeated = await markLessonCompleted(ctx, 'lesson-1', deps());
+
+  expect(first).toMatchObject({ ok: true, value: { completedLessonIds: ['lesson-1'] } });
+  expect(repeated).toMatchObject({ ok: true, value: { completedLessonIds: ['lesson-1'] } });
+  expect((await storedProgress())?.completedLessonIds).toEqual(['lesson-1']);
+  expect(await completionEvents()).toEqual([{ courseId: COURSE, lessonId: 'lesson-1' }]);
+}, 60_000);
+
+it('removes only the un-completed lesson and keeps the pointers', async () => {
+  await updateLastViewed(ctx, { courseId: COURSE, lessonId: 'lesson-1', moduleId: 'module' }, deps());
+  await markLessonCompleted(ctx, 'lesson-1', deps());
+  await markLessonCompleted(ctx, 'lesson-2', deps());
+
+  const removed = await unmarkLessonCompleted(ctx, 'lesson-1', deps());
+  const repeated = await unmarkLessonCompleted(ctx, 'lesson-1', deps());
+
+  expect(removed).toMatchObject({ ok: true, value: { completedLessonIds: ['lesson-2'] } });
+  expect(repeated).toMatchObject({ ok: true, value: { completedLessonIds: ['lesson-2'] } });
+  expect(await storedProgress()).toMatchObject({
+    completedLessonIds: ['lesson-2'],
+    lastViewedLessonId: 'lesson-1',
+    lastViewedModuleId: 'module',
+  });
+}, 60_000);
+
+it('leaves no progress row behind when un-completing without any progress', async () => {
+  const result = await unmarkLessonCompleted(ctx, 'lesson-1', deps());
+
+  expect(result).toMatchObject({ ok: true, value: { courseId: COURSE, completedLessonIds: [] } });
+  expect(await storedProgress()).toBeUndefined();
+}, 60_000);
+
+it('moves only the given last-viewed pointers and keeps completions', async () => {
+  await markLessonCompleted(ctx, 'lesson-1', deps());
+  await updateLastViewed(ctx, { courseId: COURSE, lessonId: 'lesson-1', moduleId: 'module', chapterId: 'chapter' }, deps());
+
+  const result = await updateLastViewed(ctx, { courseId: COURSE, lessonId: 'lesson-2' }, deps());
+
+  expect(result).toMatchObject({ ok: true, value: { lastViewedLessonId: 'lesson-2' } });
+  expect(await storedProgress()).toMatchObject({
+    completedLessonIds: ['lesson-1'],
+    lastViewedLessonId: 'lesson-2',
+    lastViewedModuleId: 'module',
+    lastViewedChapterId: 'chapter',
+  });
+  expect(await completionEvents()).toHaveLength(1);
 }, 60_000);

@@ -1863,11 +1863,22 @@ its confirmation repeats the sentence of each file item, with the copy source
 as above; a file added to a product an earlier item of the group creates reads
 "… will be added to “Field Guide (digital)”. Everyone who later gets access to
 this product can download the file." instead of naming current buyers. An item
-whose file is not the current version of its product's file list after the
-last file item of the group, or whose product a later item deletes, makes no
-availability claim: "“field-guide.pdf” (PDF, …) will be attached to “Field
-Guide (digital)” by this step, but a later change in this group removes or
-replaces it or deletes the product, so no buyer gets this file." It adds the only-file sentence when an item's removal
+whose file a later item of the group replaces, so that the file is in its
+product's file list after the last file item of the group but not as its
+current version, says buyers can download it only as a previous version, since
+a replaced version stays downloadable under the previous versions: "“field-guide.pdf”
+(PDF, …) will be attached to “Field Guide (digital)” by this step, but a later
+change in this group replaces it, so buyers can download it only as a previous
+version." An item whose file is not in that final list, or whose product a
+later item deletes, says "… but a later change in this group removes it or
+deletes the product, so no buyer gets this file." A removal item says buyers
+lose the file only when the file was in the product's list before the first
+file item of the group; a file an earlier item attached reads "“field-guide.pdf”
+version 1, which an earlier change in this group attaches to “Field Guide
+(digital)”, is removed again by this step, so no buyer gets it." A removal
+item names the version that becomes or stays current only when no later item
+changes the product's files, and compares it with the list before the group.
+It adds the only-file sentence when an item's removal
 leaves its product no ready file and no later item of the group changes that
 product's files, and "If the proposed file no longer exists, none of the
 changes is applied." when an item attaches one ("If one of the 2 proposed files

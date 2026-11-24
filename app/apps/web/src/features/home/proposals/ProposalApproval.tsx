@@ -17,6 +17,7 @@ import {
   proposalCreatesRecord,
   proposalFileChanges,
   proposalFilesAfter,
+  proposalFilesBefore,
   proposalRemovesRecord,
   proposalRows,
   proposalTarget,
@@ -88,18 +89,35 @@ const CopySentence = ({ source }: { source: CopySource }) => {
   );
 };
 
+type GroupFileFate = 'current' | 'previous' | 'gone';
+
+interface GroupFileStep {
+  fate: GroupFileFate;
+  heldBefore: boolean;
+  initial: readonly ProposalFile[] | null;
+  last: boolean;
+}
+
+const groupCurrentVersionText = (t: Translations, change: Extract<FileChange, { kind: 'removed' }>, initial: readonly ProposalFile[] | null): string => {
+  if (change.current === null) return t.fileNoVersionLeft;
+  const current = change.current;
+  return initial?.some((file) => file.id === current.id && file.latest) === true
+    ? t.fileStaysCurrent({ version: current.versionNumber })
+    : t.fileBecomesCurrent({ version: current.versionNumber });
+};
+
 const FileApprovalText = ({
   change,
   target,
   copiedFrom,
   newProduct,
-  reachesBuyers = true,
+  step,
 }: {
   change: FileChange;
   target: string;
   copiedFrom: CopySource;
   newProduct: boolean;
-  reachesBuyers?: boolean;
+  step?: GroupFileStep;
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
@@ -111,11 +129,12 @@ const FileApprovalText = ({
   const fileName = <bdi>{change.file.fileName}</bdi>;
   const fingerprint = change.file.fingerprint === null ? null : <Fingerprint value={change.file.fingerprint} />;
   const product = <bdi>{target}</bdi>;
-  if (!reachesBuyers && change.kind !== 'removed') {
+  if (step !== undefined && step.fate !== 'current' && change.kind !== 'removed') {
+    const notCurrent = step.fate === 'previous' ? t.approveGroupFileKeptAsPrevious : t.approveGroupFileNotKept;
     return (
       <>
         <Sentence
-          text={(file, slot, name) => t.approveGroupFileNotKept({ file, facts: facts(change.file, slot), target: name })}
+          text={(file, slot, name) => notCurrent({ file, facts: facts(change.file, slot), target: name })}
           parts={[fileName, fingerprint, product]}
         />
         <CopySentence source={copiedFrom} />
@@ -163,13 +182,16 @@ const FileApprovalText = ({
           <CopySentence source={copiedFrom} />
         </>
       );
-    case 'removed':
+    case 'removed': {
+      const remove = step?.heldBefore === false ? t.approveGroupFileRemoveUnreleased : t.approveFileRemove;
+      const current = step === undefined ? currentVersionText(t, change) : step.last ? groupCurrentVersionText(t, change, step.initial) : null;
       return (
         <>
-          <Sentence text={(file, name) => t.approveFileRemove({ file, version: change.file.versionNumber, target: name })} parts={[fileName, product]} />
-          {` ${currentVersionText(t, change)}`}
+          <Sentence text={(file, name) => remove({ file, version: change.file.versionNumber, target: name })} parts={[fileName, product]} />
+          {current === null ? null : ` ${current}`}
         </>
       );
+    }
   }
 };
 
@@ -293,14 +315,21 @@ export const ApprovalFilesNote = ({
   );
 };
 
-const keptAtGroupEnd = (items: readonly ApprovalFacts[], item: ApprovalFacts, change: FileChange): boolean => {
+const groupFileStep = (items: readonly ApprovalFacts[], item: ApprovalFacts, change: FileChange): GroupFileStep => {
   const product = item.target.id;
-  if (product === null) return true;
-  const later = items.slice(items.indexOf(item) + 1).filter((entry) => entry.target.id === product);
-  if (later.some((entry) => entry.operation === 'product.delete-draft')) return false;
-  const last = later.findLast((entry) => FILE_OPERATIONS.has(entry.operation));
-  const final = last === undefined ? null : proposalFilesAfter(last);
-  return final === null || final.some((file) => file.id === change.file.id && file.latest);
+  const own = product === null ? [item] : items.filter((entry) => entry.target.id === product);
+  const fileSteps = own.filter((entry) => FILE_OPERATIONS.has(entry.operation));
+  const first = fileSteps[0];
+  const initial = first === undefined ? null : proposalFilesBefore(first);
+  const heldBefore = initial?.some((file) => file.id === change.file.id) ?? true;
+  const later = own.slice(own.indexOf(item) + 1);
+  const lastFile = later.findLast((entry) => FILE_OPERATIONS.has(entry.operation));
+  const step = { heldBefore, initial, last: lastFile === undefined };
+  if (later.some((entry) => entry.operation === 'product.delete-draft')) return { ...step, fate: 'gone' };
+  const final = lastFile === undefined ? null : proposalFilesAfter(lastFile);
+  const kept = final?.find((file) => file.id === change.file.id);
+  if (final === null || kept?.latest === true) return { ...step, fate: 'current' };
+  return { ...step, fate: kept === undefined ? 'gone' : 'previous' };
 };
 
 export const GroupFileSentences = ({ items, references }: { items: readonly ApprovalFacts[]; references: GroupReferences }) => {
@@ -318,7 +347,7 @@ export const GroupFileSentences = ({ items, references }: { items: readonly Appr
           target={target}
           copiedFrom={copySourceOf(item, change)}
           newProduct={shownTarget.kind === 'reference'}
-          reachesBuyers={keptAtGroupEnd(items, item, change)}
+          step={groupFileStep(items, item, change)}
         />
       ) }];
   });

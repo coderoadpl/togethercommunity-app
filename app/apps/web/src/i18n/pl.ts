@@ -810,8 +810,16 @@ export const pl: Messages = {
       { file, facts, target },
     ),
     approveGroupFileNotKept: ({ file, facts, target }) => format(
-      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go usunie lub zastąpi albo usunie produkt, więc żaden kupujący nie dostanie tego pliku.',
+      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go usunie albo usunie produkt, więc żaden kupujący nie dostanie tego pliku.',
       { file, facts, target },
+    ),
+    approveGroupFileKeptAsPrevious: ({ file, facts, target }) => format(
+      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go zastąpi, więc kupujący będą mogli go pobrać tylko jako poprzednią wersję.',
+      { file, facts, target },
+    ),
+    approveGroupFileRemoveUnreleased: ({ file, version, target }) => format(
+      'Plik „{file}” w wersji {version}, który wcześniejsza zmiana w tej grupie dołącza do produktu „{target}”, zostanie w tym kroku usunięty, więc żaden kupujący go nie dostanie.',
+      { file, version, target },
     ),
     approveFileCopiedFrom: ({ version, product }) => format('To kopia wersji {version} pliku z produktu „{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('To kopia wersji {version} pliku z produktu, którego już nie ma.', { version }),

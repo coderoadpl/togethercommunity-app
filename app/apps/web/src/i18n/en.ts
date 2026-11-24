@@ -770,8 +770,16 @@ export const en: Messages = {
       { file, facts, target },
     ),
     approveGroupFileNotKept: ({ file, facts, target }) => format(
-      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group removes or replaces it or deletes the product, so no buyer gets this file.',
+      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group removes it or deletes the product, so no buyer gets this file.',
       { file, facts, target },
+    ),
+    approveGroupFileKeptAsPrevious: ({ file, facts, target }) => format(
+      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group replaces it, so buyers can download it only as a previous version.',
+      { file, facts, target },
+    ),
+    approveGroupFileRemoveUnreleased: ({ file, version, target }) => format(
+      '“{file}” version {version}, which an earlier change in this group attaches to “{target}”, is removed again by this step, so no buyer gets it.',
+      { file, version, target },
     ),
     approveFileCopiedFrom: ({ version, product }) => format('It is a copy of version {version} of a file from “{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('It is a copy of version {version} of a file from a product that no longer exists.', { version }),

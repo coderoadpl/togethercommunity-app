@@ -718,6 +718,8 @@ export interface Messages {
     approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
     approveFileAddToNewProduct: (params: { file: string; facts: string; target: string }) => string;
     approveGroupFileNotKept: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileKeptAsPrevious: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileRemoveUnreleased: (params: { file: string; version: number; target: string }) => string;
     approveFileCopiedFrom: (params: { version: number; product: string }) => string;
     approveFileCopiedFromGone: (params: { version: number }) => string;
     approveFileNewVersion: (params: { file: string; facts: string; version: number; target: string }) => string;

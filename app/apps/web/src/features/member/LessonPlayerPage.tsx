@@ -547,11 +547,13 @@ export const LessonPlayerPage = ({
       to: '/my/courses/$courseId/lessons/$lessonId',
       params: { courseId: recordedCourseId, lessonId },
       search,
+      hash: true,
       replace: true,
     } : {
       to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
       params: { courseId: recordedCourseId, lessonId, number: editionNumber },
       search,
+      hash: true,
       replace: true,
     });
   };

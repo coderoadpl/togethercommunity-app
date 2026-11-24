@@ -1504,6 +1504,41 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('mark-complete')).toBeEnabled();
   });
 
+  it('keeps the heading fragment when it moves to the address of the course the completion was recorded under', async () => {
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), courseId } } });
+      }),
+      http.post('/api/student/lessons/complete', () =>
+        HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } })),
+    );
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: LessonRouteComponent,
+      })]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1#section-two'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-other/lessons/l1'));
+    expect(router.state.location.hash).toBe('section-two');
+    expect(router.history.length).toBe(1);
+  });
+
   it('follows the recorded progress after settling instead of holding what it wrote', async () => {
     const written = new Map<string, string[]>([['course-1', ['l1']]]);
     let posts = 0;

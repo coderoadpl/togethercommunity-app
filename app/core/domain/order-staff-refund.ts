@@ -83,7 +83,7 @@ export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefu
   refunds.filter(isCommittedProviderRefund).reduce((sum, refund) => sum + refund.amountCents, 0);
 
 export const notFinalProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
-  refunds.filter((refund) => refund.status === 'pending' || refund.status === 'requires_action').reduce((sum, refund) => sum + refund.amountCents, 0);
+  refunds.filter((refund) => isCommittedProviderRefund(refund) && refund.status !== 'succeeded').reduce((sum, refund) => sum + refund.amountCents, 0);
 
 export const staffRefundsListedByProvider = (
   staffRefunds: readonly Pick<OrderStaffRefund, 'id' | 'providerRefundId'>[],

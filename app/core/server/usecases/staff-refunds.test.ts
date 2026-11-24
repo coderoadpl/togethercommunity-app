@@ -68,6 +68,7 @@ describe('staff refund preview', () => {
     ['pending', 4900],
     ['requires_action', 4900],
     ['succeeded', 0],
+    [null, 4900],
   ] as const)('returns the amount of a full dashboard refund with no staff refund that Stripe lists as %s and has not finished', async (status, notFinalCents) => {
     const dashboardRefund: ProviderRefund = { refundId: 're_dashboard', paymentIntentId: 'pi_2', amountCents: 4900, status, failureReason: null, orderId: null, reason: null };
     expect(await preview(recurringOrder({ kind: 'one_time', status: 'refunded' }), { listed: [dashboardRefund] })).toMatchObject({

@@ -671,7 +671,10 @@ scopes on every shop key.
   upload object written again after the first delete is not counted before
   then); a new upload or copy is refused only while its own share does not fit
   beside that debt. A completion's or a copy's source check (its size and
-  entity tag; the `CopyObject` is conditioned on that tag), `CopyObject` and digest run
+  entity tag; the `CopyObject` is conditioned on that tag only when it is a
+  strong one, and a weak, malformed or absent tag leaves the copy guarded by
+  the size and first-bytes checks alone, so a same-size replacement of a valid
+  type between the check and the copy is not detected), `CopyObject` and digest run
   after the transaction that claimed the record or reserved the copy has
   committed; no row lock is held across them: the attempt id of the claim and
   the destination only that attempt's record owns fence them, and a later

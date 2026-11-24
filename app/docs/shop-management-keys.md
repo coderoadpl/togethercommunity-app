@@ -728,10 +728,14 @@ same workspace, made by the storage; the server then streams the copy through
 SHA-256 to check its size and first bytes, and the bytes never pass through
 the key. Before the copy is sent, the server asks the storage for the source's
 size and entity tag: a source whose size is not the one its file row records
-is refused without a copy, and the copy is sent on the condition that the
-source still has that entity tag, so a source written again after the check
-is never copied; a storage that answers no entity tag gets the size check
-before the copy and the one after it. A completion checks its upload object
+is refused without a copy. When the answer carries a strong entity tag (a
+quoted string without the `W/` prefix), the copy is sent on the condition that
+the source still has that tag, so on a storage that honours the condition a
+source written again after the check is never copied. A storage that answers
+no entity tag, only a weak one or a malformed value gets the copy without that
+condition: only the size check before the copy and the size and first-bytes
+check after it protect it, so a source replaced meanwhile by bytes of the same
+size and a valid type is copied. A completion checks its upload object
 the same way against the declared size. A file of another product or workspace, or one that is not ready,
 answers `404`; a source above 256 MiB, or with a type or name a key could not
 upload (a name whose extension is not of its type included), answers `400`; nothing is staged then. The copy counts against the

@@ -798,11 +798,22 @@ const deps = (input: {
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],
-      findOrCreate: async (_tenantId, input) => ({
+      addCompletedLesson: async (_tenantId, input) => ({
         id: input.id,
         tenantId: _tenantId,
         memberId: input.memberId,
         courseId: input.courseId,
+        completedLessonIds: [input.lessonId],
+        updatedAt: input.now,
+      }),
+      setLastViewed: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: _tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+        ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+        ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
         completedLessonIds: [],
         updatedAt: input.now,
       }),
@@ -10586,7 +10597,7 @@ describe('staff member self-service routes', () => {
       Object.assign(row, patch);
       return row;
     };
-    const saveProgress = vi.fn(base.progress.update);
+    const saveLastViewed = vi.fn(base.progress.setLastViewed);
     const app = buildApp({
       ...base,
       marketing: marketingDeps(),
@@ -10604,7 +10615,7 @@ describe('staff member self-service routes', () => {
       },
       courses: { ...base.courses, list: async () => [course], findById: async () => course },
       modules: { ...base.modules, list: async () => [module] },
-      progress: { ...base.progress, update: saveProgress },
+      progress: { ...base.progress, setLastViewed: saveLastViewed },
     });
     const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
     const profile = await app.request(API_PATHS.meProfile, {
@@ -10635,7 +10646,7 @@ describe('staff member self-service routes', () => {
       expect(response.status, path).toBe(200);
       expect(await response.json()).toMatchObject({ data: { progress: { courseId: course.id } } });
     }
-    expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
+    expect(saveLastViewed).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lessonId: 'lesson-1' }));
     expect(createMember).toHaveBeenCalledOnce();
   });
 });

@@ -1111,7 +1111,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/progress.ts:57` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:58` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/progress.ts:79` | `const allOpening = ctx.identity.staffRole !== null ? locations : locations.filter(opensForMember);` |
-| staff-role | `core/server/usecases/progress.ts:216` | `if (ctx.identity.staffRole === null && lessonId !== undefined) {` |
+| staff-role | `core/server/usecases/progress.ts:209` | `if (ctx.identity.staffRole === null && lessonId !== undefined) {` |
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/shop-machine-auth.ts:121` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |

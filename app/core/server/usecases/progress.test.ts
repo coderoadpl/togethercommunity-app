@@ -180,6 +180,26 @@ const makeProgressStore = (): {
 } => {
   const rows: MemberCourseProgress[] = [];
   const failWritesTo = new Set<string>();
+  const findIndex = (tenantId: string, input: { memberId: string; courseId: string }) =>
+    rows.findIndex(
+      (r) => r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
+    );
+  const findOrCreateIndex = (
+    tenantId: string,
+    input: { id: string; memberId: string; courseId: string; now: string },
+  ) => {
+    const index = findIndex(tenantId, input);
+    if (index >= 0) return index;
+    rows.push({
+      id: input.id,
+      tenantId,
+      memberId: input.memberId,
+      courseId: input.courseId,
+      completedLessonIds: [],
+      updatedAt: input.now,
+    });
+    return rows.length - 1;
+  };
   const repo: MemberCourseProgressRepository = {
     findByMemberAndCourse: async (tenantId, input) =>
       rows.find(
@@ -188,22 +208,30 @@ const makeProgressStore = (): {
       ) ?? null,
     listByMember: async (tenantId, memberId) =>
       rows.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
-    findOrCreate: async (tenantId, input) => {
-      const existing = rows.find(
-        (r) =>
-          r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
-      );
-      if (existing) return existing;
-      const created: MemberCourseProgress = {
-        id: input.id,
-        tenantId,
-        memberId: input.memberId,
-        courseId: input.courseId,
-        completedLessonIds: [],
+    addCompletedLesson: async (tenantId, input) => {
+      const index = findOrCreateIndex(tenantId, input);
+      const current = nn(rows[index]);
+      if (current.completedLessonIds.includes(input.lessonId)) return current;
+      const updated = {
+        ...current,
+        completedLessonIds: [...current.completedLessonIds, input.lessonId],
         updatedAt: input.now,
       };
-      rows.push(created);
-      return created;
+      rows[index] = updated;
+      return updated;
+    },
+    setLastViewed: async (tenantId, input) => {
+      const index = findOrCreateIndex(tenantId, input);
+      const current = nn(rows[index]);
+      const updated = {
+        ...current,
+        ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+        ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+        ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
+        updatedAt: input.now,
+      };
+      rows[index] = updated;
+      return updated;
     },
     update: async (tenantId, progress) => {
       if (failWritesTo.has(progress.courseId)) throw new Error('progress write failed');
@@ -485,8 +513,18 @@ describe('unmarkLessonCompleted', () => {
 
   it('is an idempotent no-op success when the lesson is not completed', async () => {
     const store = makeProgressStore();
+    const d = deps(store.repo);
+    await markLessonCompleted(ctx({}), 'l2', d);
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', d);
+    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: ['l2'] } });
+    expect(nn(store.rows[0]).completedLessonIds).toEqual(['l2']);
+  });
+
+  it('succeeds without creating a progress row when the member has none', async () => {
+    const store = makeProgressStore();
     const result = await unmarkLessonCompleted(ctx({}), 'l1', deps(store.repo));
-    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: [] } });
+    expect(result).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: [] } });
+    expect(store.rows).toHaveLength(0);
   });
 
   it('forbids un-marking an inaccessible lesson', async () => {
@@ -675,6 +713,18 @@ describe('updateLastViewed', () => {
 
     expect(await updateLastViewed(ctx({}), { courseId: 'c2', lessonId: 'l1', moduleId: 'm1', chapterId: 'ch1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c2', lastViewedLessonId: 'l1' } });
     expect(await updateLastViewed(ctx({ staffRole: 'admin' }), { courseId: 'c1', lessonId: 'l1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+  });
+
+  it('moves only the pointers and keeps completed lessons', async () => {
+    const store = makeProgressStore();
+    const d = deps(store.repo);
+    await markLessonCompleted(ctx({}), 'l1', d);
+    const result = await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l2', chapterId: 'ch1' }, d);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { completedLessonIds: ['l1'], lastViewedLessonId: 'l2', lastViewedChapterId: 'ch1' },
+    });
+    expect(store.rows).toHaveLength(1);
   });
 
   it('is not found for an unknown course', async () => {

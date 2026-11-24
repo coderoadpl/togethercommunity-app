@@ -682,9 +682,9 @@ describe('release 8141fd15 reading the member progress this release records unde
 
   it('parses every row, counts a completion under the course that holds it, and finds it in neither row once removed from both courses', async () => {
     const progress = createMemberCourseProgressRepository(database.db);
-    await progress.findOrCreate(TENANT, { id: 'progress-first', memberId: MEMBER, courseId: FIRST, now: NOW });
-    const second = await progress.findOrCreate(TENANT, { id: 'progress-second', memberId: MEMBER, courseId: SECOND, now: NOW });
-    expect(await progress.update(TENANT, { ...second, completedLessonIds: [LESSON], updatedAt: NOW })).toMatchObject({ completedLessonIds: [LESSON] });
+    await progress.setLastViewed(TENANT, { id: 'progress-first', memberId: MEMBER, courseId: FIRST, now: NOW });
+    expect(await progress.addCompletedLesson(TENANT, { id: 'progress-second', memberId: MEMBER, courseId: SECOND, lessonId: LESSON, now: NOW }))
+      .toMatchObject({ completedLessonIds: [LESSON] });
 
     const stored = async () => (await database.db.select().from(memberCourseProgress))
       .filter((row) => row.tenantId === TENANT && row.memberId === MEMBER)

@@ -2079,9 +2079,9 @@ progress is recorded follows a course that opens the lesson for them:
   request is recorded under, so a completion recorded there
   while it was open does not come back. The lesson leaves both rows in one
   database transaction, so a failed request removes it from neither and a retry
-  finishes the job; the empty progress row of the course the request is
-  recorded under, when the member had none, is created before that transaction
-  and stays when the request then fails. A named course that does not hold the
+  finishes the job. Un-completion creates no progress row: when the member has
+  none in the course the request is recorded under, it answers that course's
+  empty progress and writes nothing there. A named course that does not hold the
   lesson, or that belongs to another workspace, is never written. Once the
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is

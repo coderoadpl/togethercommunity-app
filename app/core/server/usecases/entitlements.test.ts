@@ -238,16 +238,14 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     ) ?? null,
   listByMember: async (tenantId, memberId) =>
     rows.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
-  findOrCreate: async (tenantId, input) => ({
-    id: input.id,
-    tenantId,
-    memberId: input.memberId,
-    courseId: input.courseId,
-    completedLessonIds: [],
-    updatedAt: input.now,
-  }),
-  update: async (_t, progress) => progress,
+  addCompletedLesson: async () => {
+    throw new Error('not used');
+  },
   removeCompletedLesson: async () => [],
+  setLastViewed: async () => {
+    throw new Error('not used');
+  },
+  update: async (_t, progress) => progress,
   countReferencingLesson: async (tenantId, lessonId) =>
     rows.filter(
       (r) =>

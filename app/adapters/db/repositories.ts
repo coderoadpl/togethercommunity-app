@@ -1140,29 +1140,37 @@ export const createAccountAvatarTenantReader = (db: Db): AccountAvatarTenantRead
   },
 });
 
+const progressFromRow = (row: typeof memberCourseProgress.$inferSelect): MemberCourseProgress => parseProgress({
+  ...row,
+  lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+  lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+  lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+});
+
+const progressOfPair = (tenantId: string, input: { memberId: string; courseId: string }) => and(
+  eq(memberCourseProgress.tenantId, tenantId),
+  eq(memberCourseProgress.memberId, input.memberId),
+  eq(memberCourseProgress.courseId, input.courseId),
+);
+
+const progressPairTarget = [
+  memberCourseProgress.tenantId,
+  memberCourseProgress.memberId,
+  memberCourseProgress.courseId,
+];
+
+const findProgressOfPair = async (
+  db: Db,
+  tenantId: string,
+  input: { memberId: string; courseId: string },
+): Promise<MemberCourseProgress | null> => {
+  const rows = await db.select().from(memberCourseProgress).where(progressOfPair(tenantId, input)).limit(1);
+  const row = rows[0];
+  return row ? progressFromRow(row) : null;
+};
+
 export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgressRepository => ({
-  findByMemberAndCourse: async (tenantId, input) => {
-    const rows = await db
-      .select()
-      .from(memberCourseProgress)
-      .where(
-        and(
-          eq(memberCourseProgress.tenantId, tenantId),
-          eq(memberCourseProgress.memberId, input.memberId),
-          eq(memberCourseProgress.courseId, input.courseId),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    return row
-      ? parseProgress({
-          ...row,
-          lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-          lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-          lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-        })
-      : null;
-  },
+  findByMemberAndCourse: async (tenantId, input) => findProgressOfPair(db, tenantId, input),
   listByMember: async (tenantId, memberId) => {
     const rows = await db
       .select()
@@ -1173,17 +1181,10 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
           eq(memberCourseProgress.memberId, memberId),
         ),
       );
-    return rows.map((row) =>
-      parseProgress({
-        ...row,
-        lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-        lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-        lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-      }),
-    );
+    return rows.map(progressFromRow);
   },
-  findOrCreate: async (tenantId, input) => {
-    await db
+  addCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    await tx
       .insert(memberCourseProgress)
       .values({
         id: input.id,
@@ -1193,32 +1194,52 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         completedLessonIds: [],
         updatedAt: input.now,
       })
-      .onConflictDoNothing({
-        target: [
-          memberCourseProgress.tenantId,
-          memberCourseProgress.memberId,
-          memberCourseProgress.courseId,
-        ],
-      });
-    const rows = await db
+      .onConflictDoNothing({ target: progressPairTarget });
+    const [locked] = await tx
       .select()
       .from(memberCourseProgress)
-      .where(
-        and(
-          eq(memberCourseProgress.tenantId, tenantId),
-          eq(memberCourseProgress.memberId, input.memberId),
-          eq(memberCourseProgress.courseId, input.courseId),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    if (!row) throw new Error('Progress create/read failed inside repository');
-    return parseProgress({
-      ...row,
-      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-    });
+      .where(progressOfPair(tenantId, input))
+      .limit(1)
+      .for('update');
+    if (locked === undefined) throw new Error('Progress create/read failed inside repository');
+    if (locked.completedLessonIds.includes(input.lessonId)) return progressFromRow(locked);
+    const [changed] = await tx
+      .update(memberCourseProgress)
+      .set({ completedLessonIds: [...locked.completedLessonIds, input.lessonId], updatedAt: input.now })
+      .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, locked.id)))
+      .returning();
+    if (changed === undefined) throw new Error('Locked progress row vanished inside repository');
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `lesson-completion:${input.id}`,
+      tenantId,
+      memberId: changed.memberId,
+      type: 'lesson-completion',
+      payload: { courseId: changed.courseId, lessonId: input.lessonId },
+      occurredAt: input.now,
+    }));
+    return progressFromRow(changed);
+  }),
+  setLastViewed: async (tenantId, input) => {
+    const pointers = {
+      ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+      ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+      ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
+    };
+    const [row] = await db
+      .insert(memberCourseProgress)
+      .values({
+        id: input.id,
+        tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        ...pointers,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })
+      .onConflictDoUpdate({ target: progressPairTarget, set: { ...pointers, updatedAt: input.now } })
+      .returning();
+    if (row === undefined) throw new Error('Progress upsert returned no row inside repository');
+    return progressFromRow(row);
   },
   update: async (tenantId, progress) => db.transaction(async (tx) => {
     const [current] = await tx
@@ -1251,12 +1272,7 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         occurredAt: progress.updatedAt,
       }));
     }
-    return parseProgress({
-      ...row,
-      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-    });
+    return progressFromRow(row);
   }),
   removeCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
     if (input.courseIds.length === 0) return [];
@@ -1279,19 +1295,14 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       const [updated] = await tx
         .update(memberCourseProgress)
         .set({
-          completedLessonIds: row.completedLessonIds.filter((id) => id !== input.lessonId),
+          completedLessonIds: sql`${memberCourseProgress.completedLessonIds} - ${input.lessonId}::text`,
           updatedAt: input.now,
         })
         .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, row.id)))
         .returning();
       if (updated !== undefined) saved.push(updated);
     }
-    return saved.map((row) => parseProgress({
-      ...row,
-      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-    }));
+    return saved.map(progressFromRow);
   }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db

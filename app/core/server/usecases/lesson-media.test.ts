@@ -188,16 +188,14 @@ const grantsRepo: ProductGrantRepository = {
 const progressRepo: MemberCourseProgressRepository = {
   findByMemberAndCourse: async () => null,
   listByMember: async () => [],
-  findOrCreate: async (tenantId, input) => ({
-    id: input.id,
-    tenantId,
-    memberId: input.memberId,
-    courseId: input.courseId,
-    completedLessonIds: [],
-    updatedAt: input.now,
-  }),
-  update: async (_t, progress) => progress,
+  addCompletedLesson: async () => {
+    throw new Error('not used');
+  },
   removeCompletedLesson: async () => [],
+  setLastViewed: async () => {
+    throw new Error('not used');
+  },
+  update: async (_t, progress) => progress,
   countReferencingLesson: async () => 0,
 };
 

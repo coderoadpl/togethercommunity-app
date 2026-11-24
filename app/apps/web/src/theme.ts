@@ -4628,11 +4628,18 @@ export const AccountTabs = styled(Tabs)(({ theme }) => {
   const accent = accentOnSurface(theme.brandAccent ?? theme.emberCta?.main ?? '#E8682A', theme.palette.background.default, 4.5);
   return {
     '& .MuiTab-root': { minHeight: 48, gap: 8, color: theme.palette.text.secondary, '&:hover': { color: theme.palette.text.primary } },
-    '& .MuiTab-icon': { margin: 0 },
+    '& .MuiTab-root > .MuiTab-icon': { margin: 0 },
     '& .MuiTab-root.Mui-selected': { color: accent, fontWeight: 600 },
     '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
     '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },
     '& .MuiTabScrollButton-root.Mui-disabled': { display: 'none' },
+    [theme.breakpoints.down('sm')]: {
+      '& .MuiTab-root': { minWidth: 0, paddingLeft: 10, paddingRight: 10 },
+      '& .MuiTab-icon': { display: 'none' },
+      '& .MuiTabScrollButton-root': { width: 24, position: 'relative', zIndex: 1, opacity: 1, '& svg': { display: 'none' } },
+      '& .MuiTabScrollButton-root:first-of-type': { marginRight: -24, background: `linear-gradient(to left, transparent, ${theme.palette.background.default})` },
+      '& .MuiTabScrollButton-root:last-of-type': { marginLeft: -24, background: `linear-gradient(to right, transparent, ${theme.palette.background.default})` },
+    },
   };
 });
 

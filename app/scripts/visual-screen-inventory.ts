@@ -192,7 +192,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/login',
     fixtureName: 'login',
     viewports: ['mobile'],
-    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+    ready: (page) => page.getByTestId('sign-in-rate-limited').waitFor(visible),
   },
   {
     name: 'login-tenant',

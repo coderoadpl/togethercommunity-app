@@ -179,9 +179,25 @@ const withDeadline = async <T>(
   }
 };
 
+const XML_PROLOG_ITEMS: readonly (readonly [open: string, close: string])[] = [['<?', '?>'], ['<!--', '-->'], ['<!DOCTYPE', '>']];
+
+const xmlPrologItemAt = (text: string): readonly [open: string, close: string] | undefined =>
+  XML_PROLOG_ITEMS.find(([open]) => text.startsWith(open));
+
+const afterXmlProlog = (xml: string): string => {
+  let rest = xml.replace(/^\uFEFF/u, '').trimStart();
+  let item = xmlPrologItemAt(rest);
+  while (item !== undefined) {
+    const end = rest.indexOf(item[1], item[0].length);
+    if (end === -1) return '';
+    rest = rest.slice(end + item[1].length).trimStart();
+    item = xmlPrologItemAt(rest);
+  }
+  return rest;
+};
+
 const xmlRootName = (xml: string): string | null => {
-  const body = xml.replace(/^\uFEFF/u, '').replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>/gu, '').trimStart();
-  const root = /^<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)[\s/>]/u.exec(body);
+  const root = /^<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)[\s/>]/u.exec(afterXmlProlog(xml));
   return root?.[1] ?? null;
 };
 

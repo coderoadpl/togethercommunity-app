@@ -1229,6 +1229,7 @@ describe('download file storage operations', () => {
     [200, '<s3:Error xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><Code>SlowDown</Code></s3:Error>', 'integration_unavailable', false],
     [200, '', 'integration_unavailable', false],
     [200, '<ListBucketResult></ListBucketResult>', 'integration_unavailable', false],
+    [200, '<CopyObject<!-- -->Result><ETag>"x"</ETag></CopyObject<!-- -->Result>', 'integration_unavailable', false],
   ] as const)('reports a copy answered %s %j as %s, a definite failure: %s', async (status, body, code, definite) => {
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],
@@ -1244,6 +1245,7 @@ describe('download file storage operations', () => {
     '<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>',
     '<?xml version="1.0" encoding="UTF-8"?>\n<CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"x"</ETag></CopyObjectResult>',
     '<s3:CopyObjectResult xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><s3:ETag>"x"</s3:ETag></s3:CopyObjectResult>',
+    '\uFEFF<?xml version="1.0"?>\n<!-- copied -->\n<!DOCTYPE CopyObjectResult>\n<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>',
   ])('accepts a copy answered with the result %j', async (body) => {
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],

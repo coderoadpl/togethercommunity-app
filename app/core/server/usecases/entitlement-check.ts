@@ -33,7 +33,7 @@ export interface ApplicationKeyProductScope {
   productIds: readonly string[] | null;
 }
 
-// A subject that matches nobody still runs every lookup against ids no row can carry, so the query sequence does not reveal whether the person exists.
+// A subject that matches nobody still runs every lookup, with placeholder ids whose results are discarded, so the query sequence does not reveal whether the person exists.
 const NO_USER_ID = 'entitlement-check:no-user';
 const NO_MEMBER_ID = 'entitlement-check:no-member';
 

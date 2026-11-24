@@ -109,7 +109,7 @@ export const MetaCapiConsent = ({ config: initialConfig, sessionId }: { config: 
           {staleText(choice.error) ? [t.metaCapi.decisionError, t.metaCapi.textChanged, refreshError === null ? null : localizeError(refreshError, t)].filter(Boolean).join(' ') : t.metaCapi.decisionError}
         </Alert>
       ) : null}
-      <Stack spacing={0.5} sx={status === null ? emptyStatus : { alignItems: 'flex-start' }} data-testid="meta-capi-status">
+      <Stack spacing={1} sx={status === null ? emptyStatus : { alignItems: 'flex-start' }} data-testid="meta-capi-status">
         <Typography ref={statusText} variant="body1" role="status" tabIndex={-1}>{status?.text ?? ''}</Typography>
         {status?.action ? (
           <Button variant="outlined" size="small" disabled={status.action.pending} onClick={status.action.run} sx={{ minHeight: 44 }}>{status.action.label}</Button>

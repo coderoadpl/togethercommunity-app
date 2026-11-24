@@ -168,11 +168,28 @@ describe('POST /api/m2m/entitlements/check', () => {
     ]);
   });
 
+  it('does not match a signed-in member by id while the member\'s account is unverified', async () => {
+    const byId = await answer(await check('members-secret', { subjects: [{ memberId: 'm-eve' }], productIds: ['prod-pro'] }));
+    expect(byId.results).toEqual([{
+      subject: { memberId: 'm-eve' }, identity: null, member: null,
+      products: [{ productId: 'prod-pro', access: false, source: null, subscription: null, checkedAt: now }],
+    }]);
+  });
+
   it('rejects an invalid body after authentication without echoing the subject', async () => {
     const response = await check('check-secret', { subjects: [{ email: 'not-an-address-private' }] });
     expect(response.status).toBe(400);
     expect(await response.text()).not.toContain('not-an-address-private');
     expect((await check(null, { subjects: 'nonsense' })).status).toBe(401);
+  });
+
+  it('refuses an unexpected property named like an e-mail address without the address anywhere in the response', async () => {
+    const response = await check('check-secret', { subjects: [{ email: 'ada@example.test' }], 'private.person@example.test': 'x' });
+    expect(response.status).toBe(400);
+    const headers = JSON.stringify([...response.headers.entries()]);
+    const body = await response.text();
+    expect(`${headers}${body}`).not.toContain('private.person');
+    expect(JSON.parse(body)).toMatchObject({ ok: false, error: { code: 'validation', details: [{ path: [], code: 'unrecognized_keys' }] } });
   });
 
   it('counts every subject against the minute limit and answers 429 with retry-after', async () => {

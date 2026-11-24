@@ -404,6 +404,7 @@ const deps = (input: {
     },
     entitlementSubjects: {
       findAccountByEmail: async () => null,
+      findAccountById: async () => null,
       findMemberByUser: async () => null,
       findMemberById: async () => null,
       hasSignedIn: async () => false,

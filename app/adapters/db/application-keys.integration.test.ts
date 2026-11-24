@@ -130,6 +130,14 @@ describe('entitlement subject reader', () => {
     expect(await createEntitlementSubjectReader(database.db).findAccountByEmail('nobody@example.test')).toBeNull();
   });
 
+  it('reads the verified flag of the account a member row names', async () => {
+    await database.db.insert(dbSchema.user).values({ id: 'user-eve', name: 'Eve', email: 'eve@example.test', emailVerified: false });
+    const reader = createEntitlementSubjectReader(database.db);
+    expect(await reader.findAccountById('user-ada')).toEqual({ userId: 'user-ada', emailVerified: true });
+    expect(await reader.findAccountById('user-eve')).toEqual({ userId: 'user-eve', emailVerified: false });
+    expect(await reader.findAccountById('user-nobody')).toBeNull();
+  });
+
   it('tells whether a member signed in to this workspace', async () => {
     await database.db.insert(dbSchema.members).values({ id: 'm-ada', tenantId: TENANT, userId: 'user-ada', email: 'ada@example.test', createdAt: NOW });
     const reader = createEntitlementSubjectReader(database.db);

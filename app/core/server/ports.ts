@@ -939,6 +939,7 @@ export interface ApplicationKeyRepository {
 
 export interface EntitlementSubjectReader {
   findAccountByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
+  findAccountById(userId: string): Promise<{ userId: string; emailVerified: boolean } | null>;
   findMemberByUser(tenantId: string, userId: string): Promise<Member | null>;
   findMemberById(tenantId: string, memberId: string): Promise<Member | null>;
   hasSignedIn(tenantId: string, memberId: string): Promise<boolean>;

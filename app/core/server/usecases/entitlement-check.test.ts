@@ -111,6 +111,10 @@ const harness = (world: Partial<World> = {}) => {
       const found = state.accounts.find((account) => account.email === email);
       return found === undefined ? null : { userId: found.userId, emailVerified: found.emailVerified };
     }),
+    findAccountById: vi.fn(async (userId: string) => {
+      const found = state.accounts.find((account) => account.userId === userId);
+      return found === undefined ? null : { userId: found.userId, emailVerified: found.emailVerified };
+    }),
     findMemberByUser: vi.fn(async (tenantId: string, userId: string) =>
       state.members.find((row) => row.tenantId === tenantId && row.userId === userId) ?? null),
     findMemberById: vi.fn(async (tenantId: string, memberId: string) =>
@@ -217,8 +221,49 @@ describe('checkEntitlements', () => {
     const unknown = harness();
     await checkOne(known, { email: ADA.email });
     await checkOne(unknown, { email: 'nobody@example.test' });
-    for (const method of ['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
+    for (const method of ['findAccountByEmail', 'findAccountById', 'findMemberByUser', 'findMemberById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
       expect(vi.mocked(unknown.reader[method]).mock.calls.length).toBe(vi.mocked(known.reader[method]).mock.calls.length);
+    }
+  });
+
+  it('runs the same lookups for a member id that matches nobody as for one that matches', async () => {
+    const membersKey = keyCtx(['entitlement:check', 'entitlement:member:read']);
+    const known = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)] });
+    const unknown = harness();
+    expect((await checkOne(known, { memberId: 'm-ada' }, ['prod-pro'], membersKey)).member).toEqual({ id: 'm-ada' });
+    expect((await checkOne(unknown, { memberId: 'm-nobody' }, ['prod-pro'], membersKey)).member).toBeNull();
+    for (const method of ['findAccountByEmail', 'findAccountById', 'findMemberByUser', 'findMemberById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
+      expect(vi.mocked(unknown.reader[method]).mock.calls.length).toBe(vi.mocked(known.reader[method]).mock.calls.length);
+    }
+  });
+
+  it('matches a member id only while the member\'s account has a verified e-mail address', async () => {
+    const membersKey = keyCtx(['entitlement:check', 'entitlement:member:read']);
+    const unverified = { email: 'eve@example.test', userId: 'user-eve', emailVerified: false };
+    const h = harness({
+      accounts: [ADA, unverified],
+      members: [member('m-ada', ADA.userId), member('m-eve', unverified.userId), member('m-orphan', 'user-without-account')],
+      grants: [grant('m-ada', 'prod-pro'), grant('m-eve', 'prod-pro'), grant('m-orphan', 'prod-pro')],
+    });
+    const verifiedAnswer = await checkOne(h, { memberId: 'm-ada' }, ['prod-pro'], membersKey);
+    expect([verifiedAnswer.identity, verifiedAnswer.member, verifiedAnswer.products[0]?.access]).toEqual(['verified', { id: 'm-ada' }, true]);
+    for (const memberId of ['m-eve', 'm-orphan']) {
+      const answer = await checkOne(h, { memberId }, ['prod-pro'], membersKey);
+      expect([answer.identity, answer.member, answer.products]).toEqual([null, null, [NO_ACCESS]]);
+    }
+  });
+
+  it('never matches a stored member whose user id equals the id used for a person who matches nobody', async () => {
+    const sentinelUserId = 'entitlement-check:no-user';
+    const h = harness({
+      accounts: [{ email: 'eve@example.test', userId: 'user-eve', emailVerified: false }],
+      members: [member('m-sentinel', sentinelUserId)],
+      grants: [grant('m-sentinel', 'prod-pro')],
+    });
+    const membersKey = keyCtx(['entitlement:check', 'entitlement:member:read']);
+    for (const email of ['nobody@example.test', 'eve@example.test']) {
+      const answer = await checkOne(h, { email }, ['prod-pro'], membersKey);
+      expect([answer.identity, answer.member, answer.products]).toEqual([null, null, [NO_ACCESS]]);
     }
   });
 
@@ -313,6 +358,34 @@ describe('checkEntitlements', () => {
     expect((await checkOne(h, { email: ADA.email })).products).toEqual([{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: NOW }]);
   });
 
+  it('does not name a subscription whose paid period ended as the source of a finite grant given another way', async () => {
+    const h = harness({
+      accounts: [ADA],
+      members: [member('m-ada', ADA.userId)],
+      grants: [grant('m-ada', 'prod-pro', { expiresAt: '2026-12-31T00:00:00.000Z' })],
+      subscriptions: [subscription('m-ada', 'prod-pro', { status: 'canceled', currentPeriodEnd: '2026-11-10T00:00:00.000Z' })],
+    });
+    expect((await checkOne(h, { email: ADA.email })).products).toEqual([{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: NOW }]);
+    const withMembers = await checkOne(h, { email: ADA.email }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
+    expect(withMembers.products).toEqual([{
+      productId: 'prod-pro', access: true, source: 'purchase',
+      subscription: { status: 'canceled', currentPeriodEnd: '2026-11-10T00:00:00.000Z', cancelAtPeriodEnd: false }, checkedAt: NOW,
+    }]);
+  });
+
+  it('names a cancelled subscription paid through a later date as the source of the access', async () => {
+    const h = harness({
+      accounts: [ADA],
+      members: [member('m-ada', ADA.userId)],
+      grants: [grant('m-ada', 'prod-pro', { expiresAt: '2026-12-20T00:00:00.000Z' })],
+      subscriptions: [subscription('m-ada', 'prod-pro', { status: 'canceled', currentPeriodEnd: '2026-12-20T00:00:00.000Z' })],
+    });
+    expect((await checkOne(h, { email: ADA.email })).products).toEqual([{
+      productId: 'prod-pro', access: true, source: 'subscription',
+      subscription: { status: 'canceled', currentPeriodEnd: '2026-12-20T00:00:00.000Z', cancelAtPeriodEnd: false }, checkedAt: NOW,
+    }]);
+  });
+
   it('ignores test-mode grants and subscriptions', async () => {
     const h = harness({
       accounts: [ADA],
@@ -352,8 +425,8 @@ describe('checkEntitlements', () => {
   });
 
   it('refuses a member id subject unless the key holds entitlements:members:read', async () => {
-    const h = harness({ members: [member('m-ada', ADA.userId)], grants: [grant('m-ada', 'prod-pro')] });
-    const refused = await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null }, h.deps);
+    const h = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)], grants: [grant('m-ada', 'prod-pro')] });
+    const refused =await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null }, h.deps);
     expect(refused).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     const allowed = await checkOne(h, { memberId: 'm-ada' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
     expect(allowed.products[0]?.access).toBe(true);
@@ -379,5 +452,20 @@ describe('checkEntitlements', () => {
     const invalid = await checkEntitlements(keyCtx(), { subjects: [{ email: 'secret-person-at-example' }] }, { productIds: null }, h.deps);
     expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(JSON.stringify(invalid)).not.toContain('secret-person-at-example');
+  });
+
+  it('refuses an unexpected property with only field paths and issue codes, never the property name', async () => {
+    const h = harness();
+    const refused = await checkEntitlements(
+      keyCtx(),
+      { subjects: [{ email: ADA.email }], 'private.person@example.test': true },
+      { productIds: null },
+      h.deps,
+    );
+    expect(refused).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'validation', details: [{ path: [], code: 'unrecognized_keys' }] }),
+    });
+    expect(JSON.stringify(refused)).not.toContain('private.person');
   });
 });

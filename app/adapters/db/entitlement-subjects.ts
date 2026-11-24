@@ -39,6 +39,14 @@ export const createEntitlementSubjectReader = (db: Db): EntitlementSubjectReader
         .limit(1);
       return row ?? null;
     }),
+    findAccountById: (userId) => sanitized(async () => {
+      const [row] = await db
+        .select({ userId: user.id, emailVerified: user.emailVerified })
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1);
+      return row ?? null;
+    }),
     findMemberByUser: (tenantId, userId) => sanitized(() => tenantAccess.findMember(tenantId, userId)),
     findMemberById: (tenantId, memberId) => sanitized(() => members.findById(tenantId, memberId)),
     hasSignedIn: (tenantId, memberId) => sanitized(async () => {

@@ -1598,9 +1598,12 @@ matches such an address anywhere in the stored input, so a proposal whose
 description quotes one counts, and it counts a proposal still stored as
 `pending` whose expiry has passed. The second matches a branding field that
 contains such a path anywhere, so a foreign URL that contains one counts too.
-When the first is not `0`, keep those proposals unapproved during the
-rollback, as above. When the second is not `0`, those images are missing on
-that release until rolling forward; nothing is deleted.
+A count that is not `0` is a list to inspect, not a finding: read the
+matching fields of each candidate first. Keep unapproved during the rollback,
+as above, only the pending proposals whose expiry has not passed and whose
+image field holds such an address; report as missing on that release, until
+rolling forward, only the product covers and branding fields whose own value is
+such an address. Nothing is deleted.
 
 Before rolling back past `8141fd15`, delete the `change-proposal` notifications
 first: the step is at the end of [Download files](#download-files).

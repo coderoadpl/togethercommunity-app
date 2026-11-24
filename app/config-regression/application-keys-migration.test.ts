@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const migration = join(import.meta.dirname, '..', 'drizzle', '0169_application_keys.sql');
 
 describe('migration 0169', () => {
-  it('only creates its own tables and indexes, so no existing table is locked or rewritten', () => {
+  it('creates only its two new tables and their indexes, and alters or rewrites no existing table', () => {
     const statements = readFileSync(migration, 'utf8')
       .split('--> statement-breakpoint')
       .map((statement) => statement.trim().split('\n')[0] ?? '');

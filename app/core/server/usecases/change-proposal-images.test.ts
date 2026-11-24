@@ -968,6 +968,9 @@ describe('a group with images', () => {
   it.each([
     ['sends no entity tag', undefined],
     ['sends only a weak entity tag', 'W/"unchanged"'],
+    ['sends an empty entity tag', ''],
+    ['sends an unquoted entity tag', 'unchanged'],
+    ['sends a wildcard as the entity tag', '*'],
   ])('reads and hashes a reused public copy again under the lock when the storage %s', async (_label, etag) => {
     const reused = `image-assets/${TENANT}/product-cover/${sha256HexOfBytes(PNG(1))}.png`;
     const withoutStrongTags = async () => {

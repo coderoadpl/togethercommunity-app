@@ -996,6 +996,27 @@ describe('copies whose outcome the storage leaves unknown', () => {
     expect(await stagedRows()).toEqual([]);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
   });
+
+  it.each(['W/"weak"', '', 'unquoted', '*'])('sends a copy without a source condition when the source carries %j, which is no strong entity tag', async (etag) => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/tagged/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('tagged', PDF.byteLength, objectKey));
+    const conditions: Array<string | undefined> = [];
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      head: async (input) => {
+        const answered = await h.objects.storage.head(input);
+        return answered.ok ? { ok: true, value: { ...answered.value, etag } } : answered;
+      },
+      copyObject: async (input) => {
+        conditions.push(input.sourceEtag);
+        return h.objects.storage.copyObject(input);
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'tagged' }, { ...h.deps, storage })).toMatchObject({ ok: true });
+    expect(conditions).toEqual([undefined]);
+  });
 });
 
 describe('a completion that cannot finish', () => {

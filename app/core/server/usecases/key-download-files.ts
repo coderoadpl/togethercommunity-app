@@ -40,6 +40,7 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
+import { strongEntityTag } from '../entity-tag.js';
 import type { KeyDownloadFileRepository, KeyDownloadObjectRemoval, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
@@ -239,7 +240,8 @@ const stageAttempt = async (
     logFailure(deps, tenantId, `source of record ${record.id} refused`, `size_mismatch: ${String(source.value.sizeBytes)} bytes at the source, ${String(record.declaredBytes)} declared`);
     return fail(sizeMismatch);
   }
-  const sourceEtag = source.value.etag === undefined || source.value.etag.startsWith('W/') ? {} : { sourceEtag: source.value.etag };
+  const strongSourceTag = strongEntityTag(source.value.etag);
+  const sourceEtag = strongSourceTag === null ? {} : { sourceEtag: strongSourceTag };
   const copied = await deps.storage.copyObject({
     configuration, sourceKey: attempt.sourceKey, ...sourceEtag, key: destination,
     deadlineMs: Math.max(1, KEY_DOWNLOAD_STORAGE_DEADLINES.copyMs - (Date.parse(deps.clock.nowIso()) - checkedAt)),

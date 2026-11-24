@@ -1286,7 +1286,8 @@ transaction, so the approval never waits for a second database connection while
 it holds one. Under the workspace's approval lock, each public copy that passed
 is checked again: one whose read carried a strong entity tag by a metadata
 request (`HEAD`) only, whose size and entity tag must be those of that read;
-one whose read carried no entity tag or only a weak one is read and hashed
+one whose read carried no strong entity tag (none, a weak one, or a value
+that is not a quoted string) is read and hashed
 again within the 5 seconds of a read, since equal metadata say nothing about
 its bytes. A copy that changed makes an address without a quarantined copy
 `stale`, and answers `503 unavailable` for one with a quarantined copy. When every item applied, the approval locks the records of the

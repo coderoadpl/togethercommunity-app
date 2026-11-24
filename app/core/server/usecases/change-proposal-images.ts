@@ -45,6 +45,7 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid, ownerSession, proposingKey, type ProposingKey } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
+import { strongEntityTag } from '../entity-tag.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type {
   ChangeProposalRepository,
@@ -373,8 +374,6 @@ interface ReusedPublicCopy {
   sizeBytes: number;
   etag: string | null;
 }
-
-const strongEntityTag = (etag: string | null): string | null => etag === null || etag.startsWith('W/') ? null : etag;
 
 /** Without a strong entity tag, equal metadata says nothing about the bytes, so the copy is read and hashed again. */
 const stillTheReusedCopy = async (

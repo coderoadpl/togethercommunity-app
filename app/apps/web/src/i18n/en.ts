@@ -2013,6 +2013,10 @@ export const en: Messages = {
     storageSave: 'Save encrypted configuration',
     storageSaving: 'Testing and saving…',
     storageSaved: 'Storage configuration saved.',
+    storageSavedOverridesRefused:
+      'Storage configuration saved, but your storage refused a signed download link that names the file type and file name. Buyer download links carry these, so buyers may not be able to download files; check your provider’s support for response overrides on signed links.',
+    storageSavedOverridesIgnored:
+      'Storage configuration saved, but your storage ignores the file type and file name a signed download link asks for. Buyers receive a file staged with an API key as a generic download named after its stored object.',
     storageProbeWrongRegion: 'Use the region and endpoint shown for this bucket by your provider.',
     storageProbeCredentials:
       'Check the access key, secret key and PutObject, GetObject and DeleteObject permissions.',

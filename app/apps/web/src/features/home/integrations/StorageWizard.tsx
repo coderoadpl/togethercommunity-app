@@ -97,16 +97,21 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
   return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
 };
 
-const downloadWarning = (diagnostic: ProviderDiagnostic, t: Messages): string | null => {
-  if (diagnostic.signedResponseOverrides === 'refused') return t.integrations.storageDownloadOverridesRefused;
-  return diagnostic.signedResponseOverrides === 'ignored' ? t.integrations.storageDownloadOverridesIgnored : null;
+interface OutcomeTexts {
+  success: string;
+  refused: string;
+  ignored: string;
+}
+
+const downloadWarning = (diagnostic: ProviderDiagnostic, texts: OutcomeTexts): string | null => {
+  if (diagnostic.signedResponseOverrides === 'refused') return texts.refused;
+  return diagnostic.signedResponseOverrides === 'ignored' ? texts.ignored : null;
 };
 
-const ProbeOutcome = ({ diagnostic, success, testId }: { diagnostic: ProviderDiagnostic; success: string; testId: string }) => {
-  const t = useTranslations();
-  const warning = downloadWarning(diagnostic, t);
+const ProbeOutcome = ({ diagnostic, texts, testId }: { diagnostic: ProviderDiagnostic; texts: OutcomeTexts; testId: string }) => {
+  const warning = downloadWarning(diagnostic, texts);
   return warning === null
-    ? <Alert severity="success" data-testid={`${testId}-success`}>{success}</Alert>
+    ? <Alert severity="success" data-testid={`${testId}-success`}>{texts.success}</Alert>
     : <Alert severity="warning" data-testid={`${testId}-warning`}>{warning}</Alert>;
 };
 
@@ -351,7 +356,15 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {probe.isSuccess ? (
-            <ProbeOutcome diagnostic={probe.data.diagnostic} success={t.integrations.storageProbeSuccess} testId="storage-probe" />
+            <ProbeOutcome
+              diagnostic={probe.data.diagnostic}
+              texts={{
+                success: t.integrations.storageProbeSuccess,
+                refused: t.integrations.storageDownloadOverridesRefused,
+                ignored: t.integrations.storageDownloadOverridesIgnored,
+              }}
+              testId="storage-probe"
+            />
           ) : null}
           {probe.isSuccess ? (
             <Button
@@ -371,7 +384,15 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {configure.isSuccess ? (
-            <ProbeOutcome diagnostic={configure.data.diagnostic} success={t.integrations.storageSaved} testId="storage-save" />
+            <ProbeOutcome
+              diagnostic={configure.data.diagnostic}
+              texts={{
+                success: t.integrations.storageSaved,
+                refused: t.integrations.storageSavedOverridesRefused,
+                ignored: t.integrations.storageSavedOverridesIgnored,
+              }}
+              testId="storage-save"
+            />
           ) : null}
         </Stack>
       ) : null}

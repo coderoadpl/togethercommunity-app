@@ -246,8 +246,9 @@ after the last segment of its stored object, the file's sanitised name. For a
 provider that refuses them the diagnostic message is a warning that buyer
 download links carry these overrides, so buyers may not be able to download
 files from it. The storage wizard in the panel shows either outcome after the
-probe and after saving as a warning in the page's language instead of the
-plain success message, and still lets the owner save.
+probe as a warning in the page's language instead of the plain success
+message, and still lets the owner save; after saving, the warning says that
+the configuration was saved and keeps what buyers' downloads get.
 
 ## File versions
 

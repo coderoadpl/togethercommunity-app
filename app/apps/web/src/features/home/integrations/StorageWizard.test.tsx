@@ -118,16 +118,19 @@ describe('StorageWizard download link check', () => {
   };
 
   it.each([
-    ['refused', en.integrations.storageDownloadOverridesRefused],
-    ['ignored', en.integrations.storageDownloadOverridesIgnored],
-  ] as const)('warns after a successful probe and save when the storage %s the download link overrides', async (outcome, warning) => {
+    ['refused', en.integrations.storageDownloadOverridesRefused, en.integrations.storageSavedOverridesRefused],
+    ['ignored', en.integrations.storageDownloadOverridesIgnored, en.integrations.storageSavedOverridesIgnored],
+  ] as const)('warns after a successful probe and confirms the save with the warning when the storage %s the download link overrides', async (outcome, warning, saved) => {
     await probeAndSave(outcome);
 
     expect(await screen.findByTestId('storage-probe-warning')).toHaveTextContent(warning);
     expect(screen.queryByTestId('storage-probe-success')).not.toBeInTheDocument();
     expect(screen.queryByText('Server diagnostic text')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('storage-save'));
-    expect(await screen.findByTestId('storage-save-warning')).toHaveTextContent(warning);
+    const savedWarning = await screen.findByTestId('storage-save-warning');
+    expect(savedWarning).toHaveTextContent(saved);
+    expect(savedWarning).toHaveTextContent(en.integrations.storageSaved.replace(/\.$/u, ''));
+    expect(savedWarning).not.toHaveTextContent('You can still save');
   });
 
   it('shows plain success when the storage honours the download link overrides', async () => {

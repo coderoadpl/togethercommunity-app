@@ -2060,6 +2060,10 @@ export const pl: Messages = {
     storageSave: 'Zapisz zaszyfrowaną konfigurację',
     storageSaving: 'Testowanie i zapisywanie…',
     storageSaved: 'Zapisano konfigurację magazynu plików.',
+    storageSavedOverridesRefused:
+      'Zapisano konfigurację magazynu plików, ale magazyn plików odrzucił podpisany link do pobrania, który podaje typ i nazwę pliku. Linki do pobrania dla kupujących je zawierają, więc kupujący mogą nie móc pobrać plików; sprawdź, czy dostawca obsługuje nadpisywanie odpowiedzi w podpisanych linkach.',
+    storageSavedOverridesIgnored:
+      'Zapisano konfigurację magazynu plików, ale magazyn plików pomija typ i nazwę pliku, o które prosi podpisany link do pobrania. Kupujący dostają plik przesłany kluczem API jako zwykły plik do pobrania z nazwą obiektu w magazynie.',
     storageProbeWrongRegion: 'Użyj regionu i endpointu podanych dla tego bucketu przez dostawcę.',
     storageProbeCredentials:
       'Sprawdź klucz dostępu (access key), tajny klucz (secret key) oraz uprawnienia PutObject, GetObject i DeleteObject.',

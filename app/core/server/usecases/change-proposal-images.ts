@@ -93,6 +93,20 @@ const deleteDeadline = (budget: SweepBudget): number => sweepDeleteDeadline(budg
 
 const spent = (budget: SweepBudget): boolean => sweepLockWait(budget, 1) === null;
 
+/** A workspace whose lookup keeps failing, rejections included, must still move behind the others in the sweep. */
+const storageConfigurationOrMarked = async (
+  tenantId: string,
+  secretResolver: TenantSecretResolver,
+  markAttempted: () => Promise<void>,
+): Promise<Result<StorageConfiguration, AppError>> => {
+  const configuration = await resolveStorageConfiguration(tenantId, secretResolver).catch(async (cause: unknown) => {
+    await markAttempted();
+    throw cause;
+  });
+  if (!configuration.ok) await markAttempted();
+  return configuration;
+};
+
 const finishReleases = async (
   tenantId: string,
   assets: readonly QuarantinedImageAsset[],
@@ -100,10 +114,10 @@ const finishReleases = async (
   budget: SweepBudget,
 ): Promise<number> => {
   if (assets.length === 0) return 0;
-  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  const configuration = await storageConfigurationOrMarked(tenantId, deps.secretResolver, () =>
+    deps.quarantinedImages.markReleaseAttempted(tenantId, assets, deps.clock.nowIso(), sweepStatementBound(budget)));
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove released quarantined images', configuration.error.message);
-    await deps.quarantinedImages.markReleaseAttempted(tenantId, assets, deps.clock.nowIso(), sweepStatementBound(budget));
     return 0;
   }
   let removed = 0;
@@ -751,7 +765,7 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     | 'listUploadsBefore'
     | 'markUploadDeleted'
     | 'deleteUpload'
-    | 'markUploadAttempted'
+    | 'markUploadsAttempted'
     | 'listTenantIdsWithPublicationsBefore'
     | 'listPublicationsBefore'
     | 'markPublicationAttempted'
@@ -782,12 +796,12 @@ const sweepUploads = async (
     tenantId, due.createdBefore, due.deletedBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant, sweepStatementBound(budget),
   );
   if (uploads.length === 0) return 0;
-  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  const configuration = await storageConfigurationOrMarked(tenantId, deps.secretResolver, async () => {
+    if (spent(budget)) return;
+    await deps.quarantinedImages.markUploadsAttempted(tenantId, uploads.map((upload) => upload.objectKey), deps.clock.nowIso(), sweepStatementBound(budget));
+  });
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove expired image uploads', configuration.error.message);
-    for (const upload of uploads) {
-      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
-    }
     return 0;
   }
   let removed = 0;
@@ -800,7 +814,7 @@ const sweepUploads = async (
     });
     if (!deleted.ok) {
       logImageFailure(deps, tenantId, 'could not remove an expired image upload', deleted.error.message);
-      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
+      await deps.quarantinedImages.markUploadsAttempted(tenantId, [upload.objectKey], deps.clock.nowIso(), sweepStatementBound(budget));
       continue;
     }
     if (upload.deletedOnce) {

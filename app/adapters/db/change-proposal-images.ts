@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gt, isNotNull, isNull, lt, not, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, not, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   CHANGE_PROPOSAL_IMAGE_FIELDS,
@@ -416,9 +416,10 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       await executor.delete(changeProposalImageUploads)
         .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
     }, undefined),
-    markUploadAttempted: (tenantId, objectKey, now, boundMs) => within(boundMs, async (executor) => {
+    markUploadsAttempted: (tenantId, objectKeys, now, boundMs) => within(boundMs, async (executor) => {
+      if (objectKeys.length === 0) return;
       await executor.update(changeProposalImageUploads).set({ sweepAttemptedAt: now })
-        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
+        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), inArray(changeProposalImageUploads.objectKey, [...objectKeys])));
     }, undefined),
     recordPublications: async (tenantId, attemptId, images, startedAt) => {
       if (images.length === 0) return;

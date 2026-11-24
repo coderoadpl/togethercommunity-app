@@ -1440,9 +1440,11 @@ records (see above). Workspaces, images, upload candidates and publication
 records are each taken longest waiting first, by the time of their last failed
 removal (recorded in `sweep_attempted_at`) or else their creation or start,
 so rows whose removal keeps failing move behind the others, inside a workspace
-and across workspaces. A workspace whose storage configuration cannot be read
-records that time on every released image and upload record the step listed,
-so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick,
+and across workspaces. A workspace whose storage configuration cannot be read,
+whether the lookup answers an error or rejects, records that time on every
+released image and upload record the step listed, in one write per step (for
+upload records only while the step's budget lasts; a rejection then counts as
+a failed workspace), so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick,
 at most once every 50 seconds per server process, independently of the
 [download file sweep](storage.md#download-file-prefixes), each with its own
 failure and its own budget of 10 seconds: the `/api/internal/dispatch-email`

@@ -1284,9 +1284,9 @@ describe('the order of the image sweep', () => {
     const before = '2026-03-01T09:50:00.000Z';
     expect(await repository.listUploadsBefore(TENANT, before, before, 1)).toMatchObject([{ objectKey: upload(1, TENANT, NOW).objectKey }]);
     expect(await repository.listTenantIdsWithUploadsBefore(before, before, 1)).toEqual([TENANT]);
-    await repository.markUploadAttempted(TENANT, upload(1, TENANT, NOW).objectKey, LATER);
+    await repository.markUploadsAttempted(TENANT, [upload(1, TENANT, NOW).objectKey], LATER);
     expect(await repository.listUploadsBefore(TENANT, before, before, 1)).toMatchObject([{ objectKey: upload(2, TENANT, NOW).objectKey }]);
-    await repository.markUploadAttempted(TENANT, upload(2, TENANT, NOW).objectKey, LATER);
+    await repository.markUploadsAttempted(TENANT, [upload(2, TENANT, NOW).objectKey], LATER);
     expect(await repository.listTenantIdsWithUploadsBefore(before, before, 1)).toEqual([NEIGHBOUR]);
 
     await repository.recordPublications(TENANT, 'attempt-failing', [image(1)], '2026-03-01T09:00:00.000Z');
@@ -1332,6 +1332,25 @@ describe('the order of the image sweep', () => {
     const due = '2026-03-01T09:56:00.000Z';
     expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', harness.clock.now, 1)).toEqual([TENANT]);
     expect(await repository.listTenantIdsWithUploadsBefore(due, due, 1)).toEqual([TENANT]);
+  });
+
+  it('moves a workspace whose storage configuration lookup rejects behind a healthy one, for its images and its upload records, and counts the failure', async () => {
+    const harness = endToEnd();
+    harness.clock.now = '2026-03-01T10:16:00.000Z';
+    const upload = (tenantId: string, createdAt: string) => ({
+      tenantId, apiKeyId: tenantId === TENANT ? KEY_ID : 'key-neighbour', objectKey: `image-asset-candidates/${tenantId}/product-cover/00000000-0000-4000-8000-000000000001.png`, createdAt,
+    });
+    await database.db.insert(changeProposalImages).values(released(1, TENANT, '2026-02-01T10:00:00.000Z'));
+    await database.db.insert(changeProposalImageUploads).values(upload(TENANT, '2026-03-01T09:00:00.000Z'));
+    const rejecting = { resolve: async (): Promise<never> => { throw new Error('Connection terminated unexpectedly'); } };
+    expect(await sweepQuarantinedImages({ ...harness.deps, secretResolver: rejecting })).toMatchObject({ ok: true, value: { removed: 0, failed: 2 } });
+
+    await database.db.insert(changeProposalImages).values(released(2, NEIGHBOUR, '2026-02-15T10:00:00.000Z'));
+    await database.db.insert(changeProposalImageUploads).values(upload(NEIGHBOUR, '2026-03-01T09:30:00.000Z'));
+    const repository = createQuarantinedImageRepository(database.db);
+    const due = '2026-03-01T09:56:00.000Z';
+    expect(await repository.listTenantIdsToSweep('2026-02-01T00:00:00.000Z', harness.clock.now, 1)).toEqual([NEIGHBOUR]);
+    expect(await repository.listTenantIdsWithUploadsBefore(due, due, 1)).toEqual([NEIGHBOUR]);
   });
 
   it('stops once storage deletes used its time budget and gives each delete only what is left of it', async () => {

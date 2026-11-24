@@ -1120,6 +1120,34 @@ describe('releasing quarantined images', () => {
     expect(Date.parse(h.clock.now) - started).toBeLessThanOrEqual(10_000);
   });
 
+  it('marks the due uploads of a workspace without a storage configuration in one write, and starts none once the stage has no time left', async () => {
+    const h = harness();
+    for (let index = 0; index < 200; index += 1) {
+      h.store.imageUploads.push({ tenantId: TENANT, apiKeyId: KEY_ID, objectKey: `image-asset-candidates/${TENANT}/product-cover/${String(index)}.png`, createdAt: '2026-02-01T00:00:00.000Z' });
+    }
+    const images = h.deps.quarantinedImages;
+    const marked: number[] = [];
+    let listingCostMs = 0;
+    const quarantinedImages: typeof images = {
+      ...images,
+      listUploadsBefore: async (...args) => {
+        h.clock.now = new Date(Date.parse(h.clock.now) + listingCostMs).toISOString();
+        return images.listUploadsBefore(...args);
+      },
+      markUploadsAttempted: async (tenantId, objectKeys, now, boundMs) => {
+        marked.push(objectKeys.length);
+        return images.markUploadsAttempted(tenantId, objectKeys, now, boundMs);
+      },
+    };
+    const unconfigured = { resolve: async () => err(integrationUnavailable('Storage is not configured')) };
+    await sweepQuarantinedImages({ ...h.deps, quarantinedImages, secretResolver: unconfigured });
+    expect(marked).toEqual([200]);
+
+    listingCostMs = 10_000;
+    await sweepQuarantinedImages({ ...h.deps, quarantinedImages, secretResolver: unconfigured });
+    expect(marked).toEqual([200]);
+  });
+
   it('leaves the publication records of one workspace their share of the budget while quarantined deletes of another hang', async () => {
     const h = harness();
     const image = { kind: 'product-cover' as const, digest: sha256HexOfBytes(PNG(3)), extension: 'png' as const };

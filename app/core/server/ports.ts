@@ -3379,8 +3379,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   /** Records the first successful delete of the candidate; the record stays for the second. */
   markUploadDeleted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
   deleteUpload(tenantId: string, objectKey: string, boundMs?: number): Promise<void>;
-  /** Records a failed removal, so the upload moves behind the others. */
-  markUploadAttempted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
+  /** Records failed removals, so these uploads move behind the others. */
+  markUploadsAttempted(tenantId: string, objectKeys: readonly string[], now: string, boundMs?: number): Promise<void>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
   /** Records whose last unresolved delete, or else whose start, lies before `startedBefore`. */

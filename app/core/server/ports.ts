@@ -766,9 +766,25 @@ export interface MemberCourseProgressRepository {
     input: { memberId: string; courseId: string },
   ): Promise<MemberCourseProgress | null>;
   listByMember(tenantId: string, memberId: string): Promise<MemberCourseProgress[]>;
-  findOrCreate(
+  addCompletedLesson(
     tenantId: string,
-    input: { id: string; memberId: string; courseId: string; now: string },
+    input: { id: string; memberId: string; courseId: string; lessonId: string; now: string },
+  ): Promise<MemberCourseProgress>;
+  removeCompletedLesson(
+    tenantId: string,
+    input: { memberId: string; courseId: string; lessonId: string; now: string },
+  ): Promise<MemberCourseProgress | null>;
+  setLastViewed(
+    tenantId: string,
+    input: {
+      id: string;
+      memberId: string;
+      courseId: string;
+      lessonId?: string;
+      moduleId?: string;
+      chapterId?: string;
+      now: string;
+    },
   ): Promise<MemberCourseProgress>;
   update(tenantId: string, progress: MemberCourseProgress): Promise<MemberCourseProgress | null>;
   countReferencingLesson(tenantId: string, lessonId: string): Promise<number>;

@@ -115,7 +115,7 @@ const refundRequest = (
   options: z.output<typeof refundOptionsSchema>,
   preview: StaffRefundPreview,
   newRequestKey: () => string,
-): Result<{ request: RefundRequest | null; amountCents: number }, AppError> => {
+): Result<{ request: RefundRequest | null; amountCents: number; confirmedRemainderCents: number | null }, AppError> => {
   if (options.amount === undefined && options.keepOnPackingList === true && options.restock) {
     return err(validation('Use --keep-on-packing-list together with --no-restock: goods returned to stock cannot stay on the packing list'));
   }
@@ -123,10 +123,11 @@ const refundRequest = (
   if (amount !== null && !amount.ok) return amount;
   const remainder = options.remainder === undefined ? null : minorUnitsFromDecimal(options.remainder, preview.currency);
   if (remainder !== null && !remainder.ok) return remainder;
-  const amountCents = amount?.value ?? remainder?.value ?? preview.remainderCents;
-  if (options.yes !== true || remainder === null) return ok({ request: null, amountCents });
+  const amountCents = amount?.value ?? preview.remainderCents;
+  if (options.yes !== true || remainder === null) return ok({ request: null, amountCents, confirmedRemainderCents: remainder?.value ?? null });
   return ok({
     amountCents,
+    confirmedRemainderCents: remainder.value,
     request: {
       requestKey: options.requestKey ?? newRequestKey(),
       ...(amount === null ? { expectedAmountCents: remainder.value } : { amountCents: amount.value }),
@@ -158,9 +159,11 @@ export const runOrderRefund = async (
   if (!planned.ok) { emit(planned, ctx.json, () => ''); return; }
   const { request } = planned.value;
   if (request === null) {
+    const money = (cents: number) => formatMinorUnits(cents, preview.value.currency);
     const command = confirmCommand(orderId, options.data, decimalOf(preview.value.remainderCents, preview.value.currency));
-    const amount = formatMinorUnits(planned.value.amountCents, preview.value.currency);
-    emit(err(validation(`Refunding ${amount} of order ${orderId} cannot be undone; to confirm, repeat it as: ${command}`, { preview: preview.value, command })), ctx.json, () => '');
+    const confirmed = planned.value.confirmedRemainderCents ?? preview.value.remainderCents;
+    const changed = confirmed === preview.value.remainderCents ? '' : `The remainder changed from ${money(confirmed)} to ${money(preview.value.remainderCents)}. `;
+    emit(err(validation(`${changed}Refunding ${money(planned.value.amountCents)} of order ${orderId} cannot be undone; to confirm, repeat it as: ${command}`, { preview: preview.value, command })), ctx.json, () => '');
     if (!ctx.json) console.error(refundPreviewLines(preview.value));
     return;
   }

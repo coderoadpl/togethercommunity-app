@@ -10,13 +10,13 @@ const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => 
   orderId: 'order-1', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 1000, remainderCents: 3099, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
   hasInvoice: true, cancelsSubscription: false, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
-  waitingRefundId: null, ...over,
+  waitingRefundId: null, providerListedRefundIds: [], ...over,
 });
 
 const refundView = (over: Partial<OrderStaffRefundView> = {}): OrderStaffRefundView => ({
   id: 'refund-1', kind: 'remainder', status: 'pending', amountCents: 3099, currency: 'PLN', attempts: 0, nextAttemptAt: '2026-11-22T10:00:00.000Z',
   lastError: null, providerRefundStatus: null, submittedAt: null, permissionBlockedAt: null, createOutcomeUnknown: false, requestedByUserId: 'owner-1', requestedByEmail: 'owner@acme.example.com',
-  note: null, restocked: true, removedFromPackingList: true, createdAt: '2026-11-22T10:00:00.000Z', updatedAt: '2026-11-22T10:00:00.000Z', ...over,
+  note: null, restocked: true, removedFromPackingList: true, createdAt: '2026-11-22T10:00:00.000Z', updatedAt: '2026-11-22T10:00:00.000Z', providerRefundId: null, ...over,
 });
 
 const order = orderListItemSchema.parse({
@@ -186,6 +186,24 @@ describe('order refund command', () => {
     expect(written).toStrictEqual([]);
     expect(errorSpy.mock.calls.map((call) => String(call[0]))).toContain(refundPreviewLines(preview({ paidCents: 10_000, refundedCents: 6000, remainderCents: 4000 })));
     expect(errorSpy.mock.calls.at(-1)?.[0]).toBe('error(conflict): The refundable remainder is now 40.00 PLN; check the refund again before confirming it');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+
+  it('warns about and offers to confirm the same current remainder when a full dry run names a remainder that grew since, and a --yes run with the old one writes nothing', async () => {
+    const h = harness();
+    h.orderRefundPreview.mockImplementation(async () => ok(preview({ paidCents: 4000, refundedCents: 0, remainderCents: 4000 })));
+    const written: unknown[] = [];
+    h.createOrderRefund.mockImplementation(async (input) => {
+      if (input.expectedRemainderCents !== 4000) return err(appError('conflict', 'The refundable remainder is now 40.00 PLN; check the refund again before confirming it', { remainderCents: 4000 }));
+      written.push(input);
+      return ok({ refund: refundView({ amountCents: 4000 }), created: true });
+    });
+    await h.refund({ remainder: '10.00' });
+    expect(errorSpy.mock.calls[0]?.[0]).toBe('error(validation): The remainder changed from 10.00 PLN to 40.00 PLN. Refunding 40.00 PLN of order order-1 cannot be undone; to confirm, repeat it as: order refund order-1 --remainder 40.00 --yes');
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
+    await h.refund({ remainder: '10.00', yes: true, requestKey: 'old-full' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-1', requestKey: 'old-full', expectedAmountCents: 1000, expectedRemainderCents: 1000, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+    expect(written).toStrictEqual([]);
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 

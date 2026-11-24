@@ -333,20 +333,25 @@ export const LessonPlayerPage = ({
   });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
+    const sent = `${courseId}/${lessonId}`;
     if (
       !authenticated ||
       !ownProgress ||
-      lastViewedRef.current === lessonId ||
+      lastViewedRef.current === sent ||
       !lesson.isSuccess ||
       lesson.isPlaceholderData ||
-      structure.isPending
+      structure.isPending ||
+      location === null ||
+      location.module === null ||
+      location.chapter === null ||
+      location.row?.accessStatus !== 'fully-accessible'
     ) return;
-    lastViewedRef.current = lessonId;
+    lastViewedRef.current = sent;
     lastViewed.mutate({
       courseId,
       lessonId,
-      moduleId: location?.module?.id,
-      chapterId: location?.chapter?.id,
+      moduleId: location.module.id,
+      chapterId: location.chapter.id,
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
@@ -535,6 +540,24 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const followRecordedCourse = (recordedCourseId: string) => {
+    if (recordedCourseId === courseId) return;
+    const search = threadRootPostId === null ? {} : { thread: threadRootPostId };
+    void navigate(editionNumber === undefined ? {
+      to: '/my/courses/$courseId/lessons/$lessonId',
+      params: { courseId: recordedCourseId, lessonId },
+      search,
+      hash: true,
+      replace: true,
+    } : {
+      to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+      params: { courseId: recordedCourseId, lessonId, number: editionNumber },
+      search,
+      hash: true,
+      replace: true,
+    });
+  };
+
   const continueToNext = () => {
     setContinuing(true);
     complete.mutate(
@@ -694,7 +717,7 @@ export const LessonPlayerPage = ({
                 variant={nextHref === null ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
                 data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => complete.mutate({ lessonId, courseId })}
+                onClick={() => complete.mutate({ lessonId, courseId }, { onSuccess: (data) => followRecordedCourse(data.progress.courseId) })}
                 disabled={complete.isPending}
               >
                 {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}

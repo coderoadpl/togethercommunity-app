@@ -101,8 +101,8 @@ describe('createDeps', () => {
     const deps = createDeps(env, { db: database.db, clock: { nowIso: () => clock.now }, storage });
     const tick = { deadlineAt: Date.parse(now) + 55_000 };
 
-    expect(await deps.sweepQuarantinedImages(tick)).toEqual({ ok: true, value: { tenants: 1, removed: 0 } });
-    expect(await deps.sweepKeyDownloadFiles(tick)).toEqual({ ok: true, value: { tenants: 1, removed: 0 } });
+    expect(await deps.sweepQuarantinedImages(tick)).toEqual({ ok: true, value: { tenants: 1, removed: 0, failed: 0 } });
+    expect(await deps.sweepKeyDownloadFiles(tick)).toEqual({ ok: true, value: { tenants: 1, removed: 0, failed: 0 } });
     expect(deadlines).toEqual({ images: [5_000, 5_000, 2_000], files: [10_000, 6_000, 2_000] });
     expect(Date.parse(clock.now) - Date.parse(now)).toBe(24_000);
 

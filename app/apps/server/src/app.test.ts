@@ -668,8 +668,8 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
-    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0 }),
-    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
+    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -746,6 +746,8 @@ const deps = (input: {
         (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
       findByIds: async (tenantId, ids) =>
         (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
+      existingIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)).map((lesson) => lesson.id),
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
@@ -803,6 +805,14 @@ const deps = (input: {
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
+      removeCompletedLesson: async (tenantId, input) => input.courseIds.map((courseId) => ({
+        id: `progress-${courseId}`,
+        tenantId,
+        memberId: input.memberId,
+        courseId,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })),
       countReferencingLesson: async () => 0,
     },
     posts: {
@@ -3519,6 +3529,40 @@ describe('email dispatch route', () => {
     expect(logger.error).toHaveBeenCalledWith('[key-download] staged download file sweep failed: file storage unavailable');
   });
 
+  it('logs a failed tick for a staged object sweep that answered with failed steps', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const base = deps({ logger });
+    base.sweepQuarantinedImages = async () => ok({ tenants: 2, removed: 1, failed: 1 });
+    base.sweepKeyDownloadFiles = async () => ok({ tenants: 3, removed: 0, failed: 2 });
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(logger.error.mock.calls).toStrictEqual([
+      ['[change-proposal] quarantined image sweep failed: 1 of its steps failed'],
+      ['[key-download] staged download file sweep failed: 2 of its steps failed'],
+    ]);
+  });
+
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('starts neither staged object sweep on the %s tick once the dispatch before them used the time up to the sweep end', async (_trigger, init) => {
+    let now = '1998-07-12T00:00:00.000Z';
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      now = '1998-07-12T00:00:50.000Z';
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchOrderRefundJobs });
+    base.clock = { nowIso: () => now };
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    expect((await buildApp(base).request(API_PATHS.emailDispatch, init)).status).toBe(200);
+    expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(sweepQuarantinedImages).not.toHaveBeenCalled();
+    expect(sweepKeyDownloadFiles).not.toHaveBeenCalled();
+  });
+
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
     const calls: string[] = [];
     const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
@@ -4564,6 +4608,7 @@ describe('lesson attachment download route', () => {
         findById: async (tenantId, lessonId) =>
           tenantId === acme.id && lessonId === lesson.id ? lesson : null,
         findByIds: async () => [lesson],
+        existingIds: async () => [lesson.id],
         create: async () => undefined,
         update: async () => null,
         delete: async () => false,

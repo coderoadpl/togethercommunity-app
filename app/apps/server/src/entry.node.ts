@@ -71,11 +71,13 @@ const productionTickers: BackgroundTicker[] = [
       const sweeps = Promise.all([
         deps.sweepQuarantinedImages().then((result) => {
           if (!result.ok) process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeLogMessage(result.error.message)}\n`);
+          else if (result.value.failed > 0) process.stderr.write(`[change-proposal] quarantined image sweep failed: ${String(result.value.failed)} of its steps failed\n`);
         }, (error: unknown) => {
           process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}\n`);
         }),
         deps.sweepKeyDownloadFiles().then((result) => {
           if (!result.ok) process.stderr.write(`[key-download] staged download file sweep failed: ${safeLogMessage(result.error.message)}\n`);
+          else if (result.value.failed > 0) process.stderr.write(`[key-download] staged download file sweep failed: ${String(result.value.failed)} of its steps failed\n`);
         }, (error: unknown) => {
           process.stderr.write(`[key-download] staged download file sweep failed: ${safeErrorMessage(error)}\n`);
         }),

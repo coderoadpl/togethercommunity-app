@@ -77,6 +77,7 @@ import { applyLockedProposal, changeProposalGroupReferences, lockGroupCourses, p
 import {
   checkApprovalFiles,
   checkProposedFiles,
+  fileRefusalAfterDryRun,
   prepareApprovalFiles,
   releaseFilesOfProposals,
   type ChangeProposalFileApprovalDeps,
@@ -137,7 +138,7 @@ export interface ChangeProposalGroupApprovalDeps
   ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted' | 'recordPublications'>;
   changeProposalGroups: Pick<ChangeProposalGroupRepository, 'findById' | 'listByIds' | 'recordExpiry'>;
   changeProposalEvents: ChangeProposalEventRepository;
 }
@@ -265,12 +266,13 @@ export const submitGroupedChangeProposal = async (
   if (!storedReferencesChecked.ok) return storedReferencesChecked;
   const reachedCap = await deps.changeProposals.countCapReached(tenantId, keyId, startedAt);
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
-  const files = await checkProposedFiles(tenantId, keyId, operationName, prepared.value.input, operation.invalidInputMessage, deps);
+  const checkFiles = () => checkProposedFiles(tenantId, keyId, operationName, prepared.value.input, operation.invalidInputMessage, deps);
+  const files = await checkFiles();
   if (!files.ok) return files;
 
   const proposalId = deps.ids.nextId();
   const ownerEquivalent: Ctx = { identity: ctx.identity };
-  const dryRun = await deps.changeProposalTransaction.dryRun<ChangeProposalEffect>(tenantId, async (scope) => {
+  const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<ChangeProposalEffect>(tenantId, async (scope) => {
     const inside = await scope.repositories.changeProposalGroups.findByKey(tenantId, keyId, groupId);
     if (inside === null) return err(keyGroupMissing(groupId));
     const readAt = deps.clock.nowIso();
@@ -279,7 +281,7 @@ export const submitGroupedChangeProposal = async (
     const references = changeProposalGroupReferences();
     await lockGroupCourses(tenantId, [...earlier, { operation: operationName, input: prepared.value.input }], scope);
     for (const [index, item] of earlier.entries()) {
-      const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references });
+      const outcome = await applyLockedProposal(item, ownerEquivalent, scope, deps, { earlier: earlier.slice(0, index), references }, 'submission');
       if (outcome.status === 'aborted') return err(outcome.error);
       if (outcome.status !== 'applied') return err(earlierItemNoLongerApplies(item));
     }
@@ -287,8 +289,8 @@ export const submitGroupedChangeProposal = async (
     if (resolved === null) return err(validation('A proposal reference names an item that created nothing'));
     const runnable = operation.prepare(resolved);
     if (!runnable.ok) return runnable;
-    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId });
-  }, { groupId });
+    return previewChangeProposal(runnable.value, tenantId, ownerEquivalent, scope, deps, { proposalId, operation: operationName, references }, { keyId, stage: 'submission' });
+  }, { groupId }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, operationName, dryRun.value, operation.invalidInputMessage, deps);
   if (!images.ok) return images;
@@ -529,7 +531,7 @@ export const approveChangeProposalGroup = async (
     const expired = locked.items.some((item) => changeProposalExpired(item, deps.clock.nowIso()));
     const images = expired
       ? { kind: 'ready' as const, images: [], configuration: null }
-      : await prepareApprovalImages(tenantId, locked.items, scope, deps);
+      : await prepareApprovalImages(tenantId, locked.items, publication.value, scope, deps);
     if (images.kind === 'failed') return err(images.error);
     if (images.kind === 'missing') {
       halt.current = { item: images.proposal, outcome: { status: 'stale', note: changeProposalImageMissingNote(images.image), at: deps.clock.nowIso() } };

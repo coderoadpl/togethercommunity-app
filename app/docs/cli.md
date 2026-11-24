@@ -175,10 +175,17 @@ staged file a download file proposal attaches, where a copy comes from and,
 while the proposal is pending, whether it still holds the file and the command
 that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
 server for a 60-second link and streams the file from the storage, without
-printing the link, into a new temporary file next to `--out`
-(`.<name>.partial-<random>`, opened exclusively), writing every byte of each
-chunk and counting the bytes written. Only when that count is the announced
-size does it move the file onto `--out`: without `--force` an `--out` that
+printing the link, through `fetchProposedFile` of `core/client` (no
+credentials, no redirect followed, and no failure message that repeats the
+link), into a new temporary file next to `--out`
+(`.<name>.partial-<random>`, opened exclusively with mode `0600`, so only the
+account that runs the command can read it, whatever the umask, and so can the
+file moved onto `--out`, also one that replaces a file of another mode with
+`--force`), writing every byte of each
+chunk and counting the bytes written; a chunk that would take the count past
+the announced size is not written, and the download stops there, so the
+temporary file never holds more than the announced size. Only when that count
+is the announced size does it move the file onto `--out`: without `--force` an `--out` that
 exists, also one that appeared during the download, is refused and left as it
 is; with `--force` it is replaced in one rename. A download that breaks off, a
 write that makes no progress and a size that is not the announced one remove

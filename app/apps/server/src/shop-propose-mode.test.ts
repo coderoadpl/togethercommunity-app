@@ -53,6 +53,8 @@ import {
 import { shopManagementKeyHash, type TenantSecretResolver } from '#core/server/index.js';
 import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
+import { collectPermissionInventory, KEY_MODE_ROUTES, KEY_MODE_SUBJECT_SUFFIX } from '../../../scripts/permission-inventory.js';
+
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
@@ -429,6 +431,35 @@ describe('shop route classification', () => {
       'GET /api/m2m/shop/proposals/groups/:id': 'proposal-management',
       'POST /api/m2m/shop/proposals/groups/:id/withdraw': 'proposal-management',
     });
+  });
+
+  it('lists one permission row per key mode for every route whose handler both modes reach and for the access and product file proposal routes', () => {
+    const classes = new Map(registeredShopRoutes().map((route) => [`${route.method} ${route.path}`, routeClass(route)]));
+    const keyModeRoutes = Object.keys(KEY_MODE_ROUTES);
+    expect([...classes].filter(([, kind]) => kind === 'direct').map(([label]) => label).filter((label) => !keyModeRoutes.includes(label))).toEqual([]);
+    expect(Object.fromEntries(keyModeRoutes.map((label) => [label, classes.get(label)]))).toEqual({
+      'POST /api/m2m/shop/downloads/upload': 'direct',
+      'POST /api/m2m/shop/downloads/complete': 'direct',
+      'POST /api/m2m/shop/downloads/copy': 'direct',
+      'GET /api/m2m/shop/downloads/staged': 'read',
+      'DELETE /api/m2m/shop/downloads/staged/:id': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/complete': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/complete': 'direct',
+      'POST /api/m2m/shop/products/access': 'proposal product.set-access',
+      'POST /api/m2m/shop/products/downloads': 'proposal download.add',
+      'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
+      'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
+    });
+    const rows = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
+    for (const label of keyModeRoutes) {
+      expect([rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.direct}`), rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)], label).toEqual([true, true]);
+      const operation = classes.get(label)?.replace(/^proposal /u, '');
+      if (operation !== undefined && operation !== classes.get(label)) {
+        expect(rows.get(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, label).toContain(`stores a ${operation} proposal`);
+      }
+    }
   });
 
   it('registers exactly the classified routes under the shop prefix', () => {

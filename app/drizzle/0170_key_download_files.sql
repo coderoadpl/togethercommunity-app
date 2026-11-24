@@ -58,7 +58,7 @@ CREATE INDEX "change_proposal_download_uploads_created_idx" ON "change_proposal_
 --> statement-breakpoint
 CREATE TABLE "change_proposal_download_deletions" (
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
-  "object_key" text NOT NULL CONSTRAINT "change_proposal_download_deletions_object_key_check" CHECK ("object_key" LIKE '%/product-downloads/key-files/%'),
+  "object_key" text NOT NULL CONSTRAINT "change_proposal_download_deletions_object_key_check" CHECK ("object_key" LIKE '%/product-downloads/key-files/%' OR "object_key" LIKE '%/product-downloads/key-uploads/%'),
   "api_key_id" text NOT NULL,
   "size_bytes" integer NOT NULL CONSTRAINT "change_proposal_download_deletions_size_check" CHECK ("size_bytes" BETWEEN 1 AND 268435456),
   "created_at" text NOT NULL CONSTRAINT "change_proposal_download_deletions_created_at_check" CHECK ("created_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'),
@@ -89,6 +89,20 @@ CREATE INDEX "change_proposal_download_upload_events_at_idx" ON "change_proposal
 --> statement-breakpoint
 ALTER TABLE "change_proposal_images" ADD COLUMN "sweep_attempted_at" text;
 --> statement-breakpoint
+ALTER TABLE "change_proposal_images" ADD COLUMN "delete_unresolved_at" text CONSTRAINT "change_proposal_images_delete_unresolved_at_check" CHECK ("delete_unresolved_at" IS NULL OR "delete_unresolved_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');
+--> statement-breakpoint
+ALTER TABLE "change_proposal_images" ADD COLUMN "pending_since" text CONSTRAINT "change_proposal_images_pending_since_check" CHECK ("pending_since" IS NULL OR "pending_since" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');
+--> statement-breakpoint
 ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "sweep_attempted_at" text;
 --> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "first_deleted_at" text CONSTRAINT "change_proposal_image_uploads_first_deleted_at_check" CHECK ("first_deleted_at" IS NULL OR "first_deleted_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "completed_digest" text CONSTRAINT "change_proposal_image_uploads_completed_digest_check" CHECK ("completed_digest" IS NULL OR "completed_digest" ~ '^[0-9a-f]{64}$');
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD COLUMN "completed_extension" text CONSTRAINT "change_proposal_image_uploads_completed_extension_check" CHECK ("completed_extension" IS NULL OR "completed_extension" IN ('png', 'jpg', 'webp', 'svg', 'ico'));
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_uploads" ADD CONSTRAINT "change_proposal_image_uploads_completed_check" CHECK (("completed_digest" IS NULL) = ("completed_extension" IS NULL));
+--> statement-breakpoint
 ALTER TABLE "change_proposal_image_publications" ADD COLUMN "sweep_attempted_at" text;
+--> statement-breakpoint
+ALTER TABLE "change_proposal_image_publications" ADD COLUMN "delete_unresolved_at" text CONSTRAINT "change_proposal_image_publications_delete_unresolved_at_check" CHECK ("delete_unresolved_at" IS NULL OR "delete_unresolved_at" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$');

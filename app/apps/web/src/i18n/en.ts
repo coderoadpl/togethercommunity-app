@@ -662,7 +662,7 @@ export const en: Messages = {
     proposedImageLoading: 'Loading the proposed image…',
     proposedImageFailed: 'The proposed image could not be loaded. If it no longer exists, approving changes nothing and the image has to be uploaded and proposed again. Otherwise, try again in a moment.',
     proposedImageFacts: ({ format, fingerprint }) => `${format} file · fingerprint ${fingerprint}`,
-    proposedImagePrivate: 'Only the owners of this workspace can see this image. It becomes public at this address when the proposal is approved.',
+    proposedImageOwnerPreview: 'Only the owners of this workspace can open this preview. A new image becomes public at this address when the proposal is approved; an image published there before may already be public.',
     proposedImageSvgReason: 'SVG files can contain scripts, so this one is not shown here.',
     proposedImageSvgDownload: 'Download the proposed SVG file',
     fileAdded: ({ name }) => format('Added: {name}', { name }),
@@ -753,13 +753,13 @@ export const en: Messages = {
       format(plural(count, 'The change will be applied.', 'All {count} changes will be applied together, or none.'), { count }),
     approveImagesPublic: ({ count }) => format(plural(
       count,
-      'Approving makes the proposed image public at the address shown. If it no longer exists, nothing is changed.',
-      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, nothing is changed.',
+      'Approving makes the proposed image public at the address shown, unless it is public there already. If it no longer exists, nothing is changed.',
+      'Approving makes the {count} proposed images public at the addresses shown, unless they are public there already. If one of them no longer exists, nothing is changed.',
     ), { count }),
     approveGroupImagesPublic: ({ count }) => format(plural(
       count,
-      'Approving makes the proposed image public at the address shown. If it no longer exists, none of the changes is applied.',
-      'Approving makes the {count} proposed images public at the addresses shown. If one of them no longer exists, none of the changes is applied.',
+      'Approving makes the proposed image public at the address shown, unless it is public there already. If it no longer exists, none of the changes is applied.',
+      'Approving makes the {count} proposed images public at the addresses shown, unless they are public there already. If one of them no longer exists, none of the changes is applied.',
     ), { count }),
     approveFileAdd: ({ file, facts, target }) => format(
       '“{file}” ({facts}) will be added to “{target}”. Everyone who has access to this product, current buyers included, can download it at once.',
@@ -768,6 +768,18 @@ export const en: Messages = {
     approveFileAddToNewProduct: ({ file, facts, target }) => format(
       '“{file}” ({facts}) will be added to “{target}”. Everyone who later gets access to this product can download the file.',
       { file, facts, target },
+    ),
+    approveGroupFileNotKept: ({ file, facts, target }) => format(
+      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group removes it or deletes the product, so no buyer gets this file.',
+      { file, facts, target },
+    ),
+    approveGroupFileKeptAsPrevious: ({ file, facts, target }) => format(
+      '“{file}” ({facts}) will be attached to “{target}” by this step, but a later change in this group replaces it, so buyers can download it only as a previous version.',
+      { file, facts, target },
+    ),
+    approveGroupFileRemoveUnreleased: ({ file, version, target }) => format(
+      '“{file}” version {version}, which an earlier change in this group attaches to “{target}”, is removed again by this step, so no buyer gets it.',
+      { file, version, target },
     ),
     approveFileCopiedFrom: ({ version, product }) => format('It is a copy of version {version} of a file from “{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('It is a copy of version {version} of a file from a product that no longer exists.', { version }),
@@ -805,22 +817,40 @@ export const en: Messages = {
     accessName: ({ name }) => format('“{name}”', { name }),
     accessGone: ({ id }) => format('something that no longer exists ({id})', { id }),
     accessArchived: ({ name }) => format('“{name}” (archived)', { name }),
+    accessNameWithId: ({ name, id }) => format('“{name}” ({id})', { name, id }),
+    accessArchivedWithId: ({ name, id }) => format('“{name}” ({id}) (archived)', { name, id }),
     accessListRefused:
-      'The list after approval no longer passes the shop’s check: something on it no longer exists or a course on it is archived. Approving changes nothing.',
+      'As the shop is now, the list after approval does not pass the shop’s check: something on it no longer exists or a course on it is archived. Approving would change nothing unless that changes before you approve.',
     approveProductSetAccess: ({ target, access }) => format(
-      'Buyers of “{target}” will get access to: {access}. Everyone who already has access to this product, current buyers included, gets what this list names at once and loses what it no longer names, unless another of their products still opens it for them.',
+      'Buyers of “{target}” will get access to: {access}. For everyone who already has access to this product, current buyers included, this product grants what this list names at once and stops granting what it no longer names; access that something else gives them, such as another product, a free preview lesson or a staff role, stays.',
       { target, access },
     ),
     approveProductSetAccessNothing: ({ target }) => format(
-      '“{target}” will no longer grant any course, module or lesson. Everyone who already has access to this product, current buyers included, loses what it granted at once, unless another of their products still opens it for them.',
+      '“{target}” will no longer grant any course, module or lesson. For everyone who already has access to this product, current buyers included, this product stops granting what it granted at once; access that something else gives them, such as another product, a free preview lesson or a staff role, stays.',
       { target },
     ),
     approveProductSetAccessNewProduct: ({ target, access }) => format('Everyone who later gets access to the new product “{target}” will get access to: {access}.', { target, access }),
     approveProductSetAccessNothingNewProduct: ({ target }) => format('The new product “{target}” will not grant any course, module or lesson.', { target }),
-    approveProductSetAccessRefused: ({ target }) =>
-      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving changes nothing.', { target }),
-    approveGroupProductSetAccessRefused: ({ target }) =>
-      format('The new list of what “{target}” grants no longer passes the shop’s check, so approving applies none of the changes.', { target }),
+    approveProductSetAccessRefused: ({ target }) => format(
+      'As the shop is now, the new list of what “{target}” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefused: ({ target }) => format(
+      'As the shop is now, a list of what “{target}” grants that the group sets does not pass the shop’s check, so approving would apply none of the changes; only if every change of the group passes its checks when you approve does the group apply, with the list as follows.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefusedDeleted: ({ target }) => format(
+      'As the shop is now, a list of what “{target}” grants that the group sets does not pass the shop’s check, so approving would apply none of the changes.',
+      { target },
+    ),
+    approveProductSetAccessUnchanged: ({ target, access }) => format(
+      'The proposed list of what “{target}” grants is the same as the list it started from: {access}. Approving makes no net change to that list, so nobody who has access to this product gains or loses anything through it.',
+      { target, access },
+    ),
+    approveProductSetAccessUnchangedNothing: ({ target }) => format(
+      'The proposed list of what “{target}” grants is the same as the list it started from: no course, module or lesson. Approving makes no net change to that list, so nobody who has access to this product gains or loses anything through it.',
+      { target },
+    ),
     approveConfirm: 'Approve',
     rejectTitle: 'Reject this change?',
     rejectGroupTitle: 'Reject the whole group?',
@@ -836,8 +866,22 @@ export const en: Messages = {
     outcomeGroupRejected: 'Group rejected. Nothing was changed.',
     outcomeStale: 'The shop changed since this was proposed, so nothing was applied. The proposer can send it again.',
     outcomeImageUnavailable: 'The proposed image is no longer available, so nothing was changed. It has to be uploaded and proposed again.',
+    outcomeStaleUnconfirmed: 'Nothing was applied: the shop changed since this was proposed, or a proposed image or file is no longer available. Its history shows which.',
     outcomeFileUnavailable: 'The proposed file is no longer available, so nothing was changed. It has to be staged and proposed again.',
     outcomeFailed: ({ reason }) => format('The shop refused this change, so nothing was applied: {reason}', { reason }),
+    refusal: {
+      accessCourseUnavailable: 'a course on the list no longer exists or is archived',
+      accessModuleMissing: 'a module on the list no longer exists',
+      accessModuleOutsideCourse: 'a module on the list is no longer part of the course named with it',
+      accessExcludedModuleOutsideCourse: 'a module the list leaves out is no longer part of its course',
+      accessLessonMissing: 'a lesson on the list no longer exists',
+      accessLessonOutsideCourse: 'a lesson on the list is no longer part of the course named with it',
+      fileProductNotDigital: 'the product does not deliver downloadable files',
+      fileReplacementMissing: 'the file to be replaced no longer exists',
+      fileReplacementNotReady: 'the file to be replaced is not ready',
+      fileRemovalNotReady: 'the file to be removed is not ready',
+      fileProductFull: 'the product already has as many files as it can hold',
+    },
     outcomeFailedUnknown: 'The shop refused this change, so nothing was applied.',
     outcomeExpired: 'This proposal expired before your decision, so nothing was applied.',
     dismiss: 'Dismiss',
@@ -1962,9 +2006,17 @@ export const en: Messages = {
       'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',
     storageProbeStart: 'Run live probe',
     storageProbeSuccess: 'Write, read and delete all succeeded. You can now save this configuration.',
+    storageDownloadOverridesRefused:
+      'Write, read and delete succeeded, but your storage refused a signed download link that names the file type and file name. Buyer download links carry these, so buyers may not be able to download files. You can still save this configuration; check your provider’s support for response overrides on signed links first.',
+    storageDownloadOverridesIgnored:
+      'Write, read and delete succeeded, but your storage ignores the file type and file name a signed download link asks for. Buyers receive a file staged with an API key as a generic download named after its stored object. You can still save this configuration.',
     storageSave: 'Save encrypted configuration',
     storageSaving: 'Testing and saving…',
     storageSaved: 'Storage configuration saved.',
+    storageSavedOverridesRefused:
+      'Storage configuration saved, but your storage refused a signed download link that names the file type and file name. Buyer download links carry these, so buyers may not be able to download files; check your provider’s support for response overrides on signed links.',
+    storageSavedOverridesIgnored:
+      'Storage configuration saved, but your storage ignores the file type and file name a signed download link asks for. Buyers receive a file staged with an API key as a generic download named after its stored object.',
     storageProbeWrongRegion: 'Use the region and endpoint shown for this bucket by your provider.',
     storageProbeCredentials:
       'Check the access key, secret key and PutObject, GetObject and DeleteObject permissions.',

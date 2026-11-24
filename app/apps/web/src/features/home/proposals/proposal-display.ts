@@ -350,6 +350,17 @@ export const proposalFileChanges = (proposal: Pick<ChangeProposalOwnerView, 'eff
   return { changes, complete, leavesNoFile: after.data.length === 0 };
 };
 
+const proposalFileList = (proposal: Pick<ChangeProposalOwnerView, 'effect'>, side: 'before' | 'after'): ProposalFile[] | null => {
+  const change = proposal.effect[FILES_FIELD];
+  if (change === undefined || !('after' in change)) return null;
+  const list = proposalFileListSchema.safeParse(change[side]);
+  return list.success ? list.data : null;
+};
+
+export const proposalFilesBefore = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): ProposalFile[] | null => proposalFileList(proposal, 'before');
+
+export const proposalFilesAfter = (proposal: Pick<ChangeProposalOwnerView, 'effect'>): ProposalFile[] | null => proposalFileList(proposal, 'after');
+
 export const proposedImagePaths = (proposals: readonly Pick<ChangeProposalOwnerView, 'id' | 'effect' | 'input'>[]): string[] => {
   const paths = proposals.flatMap((proposal) => proposalRows(proposal, NO_REFERENCES, proposal.id).flatMap((row) =>
     row.kind === 'change' && row.after?.kind === 'image' && row.after.awaitingApproval !== null ? [row.after.path] : []));

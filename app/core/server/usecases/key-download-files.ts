@@ -16,6 +16,7 @@ import {
   keyDownloadFileCapExceeded,
   keyDownloadFileNameSchema,
   keyDownloadFilesBusy,
+  keyDownloadNameMatchesType,
   keyDownloadStagedFileView,
   keyDownloadStagedKey,
   keyDownloadTypeMismatch,
@@ -39,11 +40,12 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
-import type { KeyDownloadFileRepository, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
+import { strongEntityTag } from '../entity-tag.js';
+import type { KeyDownloadFileRepository, KeyDownloadObjectRemoval, KeyDownloadSweepCutoffs, KeyDownloadSweepRow } from '../key-download-ports.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type { Clock, IdGenerator, ProductDownloadAssetRepository, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { resolveStorageConfiguration, storageAssetExpiresAt, storageFileName } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStatementBound, UNBOUNDED, type StagingSweepOutcome, type SweepBudget } from './sweep-budget.js';
 
 export interface KeyDownloadStagingDeps {
   keyDownloadFiles: KeyDownloadFileRepository;
@@ -117,7 +119,7 @@ const reservationError = (reservation: Awaited<ReturnType<KeyDownloadFileReposit
   return null;
 };
 
-/** Signed only after the reservation committed, so no write URL exists for bytes the limits did not count. */
+/** The signed URL reaches the key only once the reservation committed, so a key never holds a write URL for bytes the limits did not count. */
 export const beginKeyDownloadUpload = async (
   ctx: Ctx,
   input: KeyDownloadUploadInput,
@@ -223,20 +225,33 @@ const stageAttempt = async (
     logFailure(deps, tenantId, `${what} of record ${record.id} failed`, error.message);
     return storageFailureIsDefinite(error) ? fail(definite) : interrupt(`${what.replace(/ /gu, '_')}_unconfirmed`);
   };
-  const copied = await deps.storage.copyObject({
-    configuration, sourceKey: attempt.sourceKey, key: destination, deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.copyMs,
+  const refusedOrMissing = (error: AppError): AttemptFailure => error.code === 'not_found'
+    ? uploadRefusal(record, validation('No file was uploaded for this upload; start a new upload'), 'source_missing')
+    : uploadRefusal(record, integrationUnavailable('The storage refused to copy the uploaded file; start a new upload'), 'copy_refused');
+  const sizeMismatch = uploadRefusal(record, validation(`The uploaded file does not have the declared ${String(record.declaredBytes)} bytes; start a new upload`), 'size_mismatch');
+  const checkedAt = Date.parse(deps.clock.nowIso());
+  const source = await deps.storage.head({
+    url: deps.storage.objectUrl(configuration, attempt.sourceKey).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.headMs,
   });
-  if (!copied.ok) {
-    return storageFailure('copy', copied.error, copied.error.code === 'not_found'
-      ? uploadRefusal(record, validation('No file was uploaded for this upload; start a new upload'), 'source_missing')
-      : uploadRefusal(record, integrationUnavailable('The storage refused to copy the uploaded file; start a new upload'), 'copy_refused'));
+  if (!source.ok) return storageFailure('head', source.error, refusedOrMissing(source.error));
+  if (source.value.sizeBytes !== record.declaredBytes) {
+    logFailure(deps, tenantId, `source of record ${record.id} refused`, `size_mismatch: ${String(source.value.sizeBytes)} bytes at the source, ${String(record.declaredBytes)} declared`);
+    return fail(sizeMismatch);
   }
+  const strongSourceTag = strongEntityTag(source.value.etag);
+  const sourceEtag = strongSourceTag === null ? {} : { sourceEtag: strongSourceTag };
+  const copied = await deps.storage.copyObject({
+    configuration, sourceKey: attempt.sourceKey, ...sourceEtag, key: destination,
+    deadlineMs: Math.max(1, KEY_DOWNLOAD_STORAGE_DEADLINES.copyMs - (Date.parse(deps.clock.nowIso()) - checkedAt)),
+  });
+  if (!copied.ok) return storageFailure('copy', copied.error, refusedOrMissing(copied.error));
   const digest = await deps.storage.digestObject({
     url: deps.storage.objectUrl(configuration, destination).toString(),
     ...credentialsOf(configuration),
     deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.digestMs,
   }, { maxBytes: record.declaredBytes, headBytes: KEY_DOWNLOAD_FILE_LIMITS.headBytes });
-  const sizeMismatch = uploadRefusal(record, validation(`The uploaded file does not have the declared ${String(record.declaredBytes)} bytes; start a new upload`), 'size_mismatch');
   if (!digest.ok) return storageFailure('digest', digest.error, sizeMismatch);
   if (digest.value.sizeBytes !== record.declaredBytes) {
     logFailure(deps, tenantId, `stored bytes of record ${record.id} refused`, `size_mismatch: ${String(digest.value.sizeBytes)} bytes stored, ${String(record.declaredBytes)} declared`);
@@ -311,6 +326,8 @@ export const completeKeyDownloadUpload = async (
       return err(completeAgainLater(claim.until, claim.reclaimable, now));
     case 'closed':
       return err(appError('conflict', 'This upload can no longer be completed; start a new upload'));
+    case 'cap_exceeded':
+      return err(keyDownloadFileCapExceeded(claim.cap));
     case 'completed':
       return claim.file === null
         ? err(appError('conflict', 'This upload was completed and its file is no longer staged'))
@@ -347,7 +364,7 @@ export const copyKeyDownloadFile = async (
   }
   const contentType = keyDownloadContentTypeSchema.safeParse(asset.contentType);
   const fileName = keyDownloadFileNameSchema.safeParse(asset.fileName);
-  if (!contentType.success || !fileName.success) return err(keyDownloadCopyRefused());
+  if (!contentType.success || !fileName.success || !keyDownloadNameMatchesType(fileName.data, contentType.data)) return err(keyDownloadCopyRefused());
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
   const recordId = deps.ids.nextId();
@@ -427,7 +444,7 @@ const before = (now: string, ms: number): string => new Date(Date.parse(now) - m
 const keyDownloadSweepCutoffs = (now: string): KeyDownloadSweepCutoffs => ({
   now,
   recordsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordSweepAfterMs),
-  attemptsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.completionDeadlineMs),
+  attemptsStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.supersededDestinationDeleteAfterMs),
   stagedCreatedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.stagedMaxAgeMs),
   settledStartedBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordRetentionMs),
   eventsBefore: before(now, KEY_DOWNLOAD_FILE_LIMITS.recordEventRetentionMs),
@@ -450,40 +467,51 @@ const objectsOf = (row: KeyDownloadSweepRow): number => row.kind === 'record'
 
 const sweepTenant = async (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, rows: number, left: SweepBudget, deps: KeyDownloadSweepDeps): Promise<number> => {
   const files = deps.keyDownloadFiles;
-  await files.purgeSettled(tenantId, cutoffs);
-  const batch = await files.listToSweep(tenantId, cutoffs, rows);
+  const purgeWait = sweepLockWait(left, 0);
+  if (purgeWait !== null) await files.purgeSettled(tenantId, cutoffs, rows, purgeWait);
+  if (sweepLockWait(left, 1) === null) return 0;
+  const batch = await files.listToSweep(tenantId, cutoffs, rows, sweepStatementBound(left));
   if (batch.rows.length === 0) return 0;
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) {
     logFailure(deps, tenantId, 'could not sweep staged download files', configuration.error.message);
-    await files.markAttempted(tenantId, batch, cutoffs.now);
+    await files.markAttempted(tenantId, batch, cutoffs.now, sweepStatementBound(left));
     return 0;
   }
   const remove = deleteObjects(tenantId, configuration.value, deps, left);
   let removed = 0;
+  const finish = (objectKey: string, wait: number | undefined): Promise<KeyDownloadObjectRemoval> =>
+    files.finishDeletion(tenantId, objectKey, cutoffs.now, () => remove([objectKey]), wait);
   for (const row of batch.rows) {
     const wait = sweepLockWait(left, objectsOf(row));
     if (wait === null) continue;
-    const outcome = row.kind === 'record'
-      ? await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove, wait)
-      : row.kind === 'staged'
-        ? await files.sweepStaged(tenantId, row.file.id, cutoffs, () => remove([row.file.objectKey]), wait)
-        : await files.finishDeletion(tenantId, row.deletion.objectKey, cutoffs.now, () => remove([row.deletion.objectKey]), wait);
+    let outcome: KeyDownloadObjectRemoval;
+    if (row.kind === 'record') {
+      outcome = await files.releaseRecord(tenantId, row.record.id, { kind: 'sweep', cutoffs }, remove, wait);
+    } else if (row.kind === 'deletion') {
+      outcome = await finish(row.deletion.objectKey, wait);
+    } else {
+      const swept = await files.sweepStaged(tenantId, row.file.id, cutoffs, wait);
+      const deleteWait = sweepLockWait(left, 1);
+      if (swept.kind !== 'owed' || deleteWait === null) continue;
+      outcome = await finish(swept.deletion.objectKey, deleteWait);
+    }
     if (outcome === 'removed') removed += 1;
   }
   return removed;
 };
 
 /** A failed row records its attempt, so rows whose deletion keeps failing move behind the others instead of filling every batch. */
-export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise<Result<StagingSweepOutcome, AppError>> => {
   const now = deps.clock.nowIso();
   const cutoffs = keyDownloadSweepCutoffs(now);
   const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? KEY_DOWNLOAD_FILE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
   const left: SweepBudget = () => endsAt - Date.parse(deps.clock.nowIso());
   const batch = deps.batch ?? { tenants: KEY_DOWNLOAD_FILE_LIMITS.sweepTenantsPerRun, rows: KEY_DOWNLOAD_FILE_LIMITS.sweepRowsPerTenant };
-  const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants);
+  const tenants = await deps.keyDownloadFiles.listTenantIdsToSweep(cutoffs, batch.tenants, sweepStatementBound(left));
   let removed = 0;
   let visited = 0;
+  let failed = 0;
   for (const tenantId of tenants) {
     if (sweepLockWait(left, 1) === null) break;
     visited += 1;
@@ -491,7 +519,8 @@ export const sweepKeyDownloadFiles = async (deps: KeyDownloadSweepDeps): Promise
       removed += await sweepTenant(tenantId, cutoffs, batch.rows, left, deps);
     } catch (cause) {
       logFailure(deps, tenantId, 'staged download file sweep failed', cause);
+      failed += 1;
     }
   }
-  return ok({ tenants: visited, removed });
+  return ok({ tenants: visited, removed, failed });
 };

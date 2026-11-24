@@ -1,4 +1,4 @@
-import { mkdtemp, open, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -23,7 +23,7 @@ const brokenBody = (part: string): typeof fetch => vi.fn<typeof fetch>(async () 
   },
 })));
 
-const nodeFiles = (writesAtMost: (call: number) => number): ProposedFileSystem => ({
+const nodeFiles = (writesAtMost: (call: number) => number, written: { bytes: number } = { bytes: 0 }): ProposedFileSystem => ({
   exists: async (path) => readFile(path).then(() => true, () => false),
   openExclusive: async (path) => {
     const handle = await open(path, 'wx');
@@ -31,12 +31,14 @@ const nodeFiles = (writesAtMost: (call: number) => number): ProposedFileSystem =
     return {
       write: async (buffer, offset, length) => {
         calls += 1;
-        return handle.write(buffer, offset, Math.min(length, writesAtMost(calls)));
+        const result = await handle.write(buffer, offset, Math.min(length, writesAtMost(calls)));
+        written.bytes += result.bytesWritten;
+        return result;
       },
       close: () => handle.close(),
     };
   },
-  linkNew: async (from, to) => { await writeFile(to, await readFile(from), { flag: 'wx' }); },
+  linkUnlessTaken: async (from, to) => { await writeFile(to, await readFile(from), { flag: 'wx' }); },
   replace: async (from, to) => { await writeFile(to, await readFile(from)); },
   remove: (path) => rm(path, { force: true }),
 });
@@ -109,6 +111,58 @@ describe('saving a proposed file', () => {
     expect(await readFile(out, 'utf8')).toBe('reviewed earlier');
     expect(await saveProposedFile(link, out, true, body('%PDF-1'))).toMatchObject({ ok: true });
     expect(await readFile(out, 'utf8')).toBe('%PDF-1');
+    expect(await leftovers()).toEqual([]);
+  });
+
+  it('keeps the partial and the saved file readable by the owner only, also when --force replaces an owner-only file', async () => {
+    const modeOf = async (path: string): Promise<number> => (await stat(path)).mode & 0o777;
+    const partialModes: number[] = [];
+    const parts = ['%PDF', '-1'];
+    const watched: typeof fetch = async () => new Response(new ReadableStream({
+      pull: async (controller) => {
+        const part = parts.shift();
+        if (part === undefined) {
+          for (const name of (await readdir(directory)).filter((entry) => entry.includes('.partial-'))) partialModes.push(await modeOf(join(directory, name)));
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(part));
+      },
+    }));
+    expect(await saveProposedFile(link, out, false, watched)).toMatchObject({ ok: true });
+    expect(partialModes).toEqual([0o600]);
+    expect(await modeOf(out)).toBe(0o600);
+
+    const ownerOnly = join(directory, 'owner-only.pdf');
+    await writeFile(ownerOnly, 'reviewed earlier', { mode: 0o600 });
+    expect(await saveProposedFile(link, ownerOnly, true, body('%PDF-1'))).toMatchObject({ ok: true });
+    expect(await readFile(ownerOnly, 'utf8')).toBe('%PDF-1');
+    expect(await modeOf(ownerOnly)).toBe(0o600);
+  });
+
+  it.each([
+    ['a chunk that crosses the size', '%PDF', 4],
+    ['a first chunk larger than the size', '%PDF-1.7', 0],
+  ])('stops reading and writes nothing more once the storage sends more bytes than announced, with %s', async (_label, chunk, bytesOnDisk) => {
+    let pulls = 0;
+    let cancelled = false;
+    const endless: typeof fetch = async () => new Response(new ReadableStream({
+      pull: (controller) => {
+        pulls += 1;
+        if (pulls > 1_000) throw new Error('The download kept reading past the announced size');
+        controller.enqueue(new TextEncoder().encode(chunk));
+      },
+      cancel: () => { cancelled = true; },
+    }));
+    const written = { bytes: 0 };
+    await writeFile(out, 'reviewed earlier');
+    expect(await saveProposedFile(link, out, true, endless, nodeFiles(() => Number.POSITIVE_INFINITY, written))).toMatchObject({
+      ok: false, error: { code: 'unavailable', message: `The storage sent more than 6 bytes; ${out} was not changed` },
+    });
+    expect(written.bytes).toBe(bytesOnDisk);
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(5);
+    expect(await readFile(out, 'utf8')).toBe('reviewed earlier');
     expect(await leftovers()).toEqual([]);
   });
 

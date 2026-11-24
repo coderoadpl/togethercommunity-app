@@ -23,6 +23,7 @@ export const KEY_DOWNLOAD_FILE_LIMITS = {
   uploadTtlSeconds: 15 * 60,
   completionDeadlineMs: 10 * MINUTE_MS,
   supersededDestinationDeleteAfterMs: 30 * MINUTE_MS,
+  uploadObjectDeleteAgainAfterMs: DAY_MS,
   recordSweepAfterMs: 20 * MINUTE_MS,
   recordRetentionMs: DAY_MS,
   recordEventRetentionMs: 30 * DAY_MS,
@@ -108,11 +109,24 @@ const littleEndian16 = (head: Uint8Array, offset: number): number | null => {
   return low === undefined || high === undefined ? null : low + high * 256;
 };
 
+const littleEndian32 = (head: Uint8Array, offset: number): number | null => {
+  const low = littleEndian16(head, offset);
+  const high = littleEndian16(head, offset + 2);
+  return low === null || high === null ? null : low + high * 65536;
+};
+
+const ZIP_DATA_DESCRIPTOR_FLAG = 0x08;
+
+const EPUB_MIMETYPE = 'application/epub+zip';
+
 const isEpub = (head: Uint8Array): boolean => {
   if (!startsWith(head, 0, ZIP_LOCAL_HEADER) || littleEndian16(head, 8) !== 0 || littleEndian16(head, 26) !== 8) return false;
+  const flags = littleEndian16(head, 6);
+  if (flags === null || (flags & ZIP_DATA_DESCRIPTOR_FLAG) !== 0) return false;
+  if (littleEndian32(head, 18) !== EPUB_MIMETYPE.length || littleEndian32(head, 22) !== EPUB_MIMETYPE.length) return false;
   const extraLength = littleEndian16(head, 28);
   return extraLength !== null && startsWith(head, 30, ascii('mimetype'))
-    && startsWith(head, 38 + extraLength, ascii('application/epub+zip'));
+    && startsWith(head, 38 + extraLength, ascii(EPUB_MIMETYPE));
 };
 
 const isId3Tag = (head: Uint8Array): boolean => {
@@ -168,11 +182,29 @@ const FORBIDDEN_NAME_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f
 export const keyDownloadFileNameSchema = z.string().trim().min(1).max(255)
   .refine((name) => !FORBIDDEN_NAME_CHARACTERS.test(name), { message: 'File names cannot contain control or bidirectional formatting characters' });
 
+/** An audio-only MP4 is commonly named `.mp4`; the preferred type above stays the one the CLI declares for the extension. */
+const KEY_DOWNLOAD_ALSO_ALLOWED_TYPES: Readonly<Record<string, readonly KeyDownloadContentType[]>> = {
+  mp4: ['audio/mp4'],
+};
+
+/** The saved file opens by its name, so a name whose extension names another type than the checked one is refused. */
+export const keyDownloadNameMatchesType = (fileName: string, contentType: KeyDownloadContentType): boolean => {
+  const name = fileName.trim();
+  const dot = name.lastIndexOf('.');
+  const extension = dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
+  if (!Object.hasOwn(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION, extension)) return false;
+  const others = Object.hasOwn(KEY_DOWNLOAD_ALSO_ALLOWED_TYPES, extension) ? KEY_DOWNLOAD_ALSO_ALLOWED_TYPES[extension] ?? [] : [];
+  return KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION[extension] === contentType || others.includes(contentType);
+};
+
 export const keyDownloadUploadInputSchema = z.object({
   fileName: keyDownloadFileNameSchema,
   contentType: keyDownloadContentTypeSchema,
   sizeBytes: z.number().int().min(1).max(KEY_DOWNLOAD_FILE_LIMITS.maxBytes, { message: `A file a key stages is at most ${binarySizeText(KEY_DOWNLOAD_FILE_LIMITS.maxBytes)}` }),
-}).strict();
+}).strict().refine((input) => keyDownloadNameMatchesType(input.fileName, input.contentType), {
+  message: 'The file name must end in an extension of the declared type',
+  path: ['fileName'],
+});
 
 export type KeyDownloadUploadInput = z.input<typeof keyDownloadUploadInputSchema>;
 
@@ -294,7 +326,7 @@ export type KeyDownloadRecordEvent = z.output<typeof keyDownloadRecordEventSchem
 export const keyDownloadPendingDeletionSchema = z.object({
   tenantId: z.string().min(1),
   apiKeyId: z.string().min(1),
-  objectKey: keyFileObjectSchema,
+  objectKey: z.union([keyFileObjectSchema, keyUploadObjectSchema]),
   sizeBytes: z.number().int().min(1).max(2147483647),
   createdAt: isoMilliseconds,
   notBefore: isoMilliseconds.nullable(),
@@ -317,11 +349,13 @@ export const keyDownloadDestinationForFile = (stagedKey: string, apiKeyId: strin
   return slash < 1 ? null : `${stagedKey.slice(0, at + marker.length)}${fileId}${rest.slice(slash)}`;
 };
 
+/** An owner upload of a product whose id is `key-files` shares the prefix, but has two segments after it, not three. */
 export const keyDownloadObjectOwner = (tenantId: string, objectKey: string): string | null => {
   const prefix = `${tenantId}${KEY_FILES_SEGMENT}`;
   if (!objectKey.startsWith(prefix)) return null;
-  const owner = objectKey.slice(prefix.length).split('/')[0];
-  return owner === undefined || owner.length === 0 ? null : owner;
+  const [owner, fileId, name, ...rest] = objectKey.slice(prefix.length).split('/');
+  return owner === undefined || fileId === undefined || name === undefined || rest.length > 0
+    || owner.length === 0 || fileId.length === 0 || name.length === 0 ? null : owner;
 };
 
 export const keyDownloadStagedFileViewSchema = keyDownloadStagedFileSchema.pick({

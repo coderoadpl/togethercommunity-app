@@ -54,7 +54,7 @@ import type {
 } from '../ports.js';
 import { coursesContainingLesson } from './access.js';
 import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
-import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog } from './product-access-items.js';
+import { checkProductAccessItems, PRODUCT_ACCESS_COURSE_MESSAGE, type ProductAccessCatalog, type ProductAccessCheck } from './product-access-items.js';
 
 export interface CourseManagementDeps {
   logger: { error(message: string): void };
@@ -586,6 +586,15 @@ const withoutLesson = (item: AccessItem, lessonId: string): AccessItem | null =>
   return { ...item, lessonIds };
 };
 
+const LESSON_CLEANUP_ATTEMPTS = 3;
+
+const lessonCleanupBusy = (productIds: string[]): AppError =>
+  appError(
+    'unavailable',
+    'The lesson was deleted, but products that granted it were busy and still name it in their access lists; remove it from their lists',
+    { productIds },
+  );
+
 export const deleteLesson = async (
   ctx: Ctx,
   input: unknown,
@@ -622,24 +631,43 @@ export const deleteLesson = async (
     await deps.modules.update(tenant.value, { ...module, chapters }, snapshot.value);
   }
 
-  const products = await deps.products.listByTenant(tenant.value);
-  for (const product of products) {
-    const referencesLesson = product.accessItems.some(
-      (item) => item.level === 'lessons' && item.lessonIds.includes(lesson.id),
-    );
-    if (!referencesLesson) continue;
-    const accessItems = product.accessItems
-      .map((item) => withoutLesson(item, lesson.id))
-      .filter((item): item is AccessItem => item !== null);
-    const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
-    if (!snapshot.ok) return snapshot;
-    await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
+  const busyProductIds: string[] = [];
+  for (const listed of await deps.products.listByTenant(tenant.value)) {
+    if (!namesLesson(listed, lesson.id)) continue;
+    const cleaned = await removeLessonFromProduct(ctx, tenant.value, listed.id, lesson.id, deps);
+    if (!cleaned.ok) return cleaned;
+    if (cleaned.value === 'busy') busyProductIds.push(listed.id);
   }
+  if (busyProductIds.length > 0) return err(lessonCleanupBusy(busyProductIds));
 
   return ok(references);
 };
 
-type ProductAccessItemsDeps =ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'>;
+const namesLesson = (product: Product, lessonId: string): boolean =>
+  product.accessItems.some((item) => item.level === 'lessons' && item.lessonIds.includes(lessonId));
+
+const removeLessonFromProduct = async (
+  ctx: Ctx,
+  tenantId: string,
+  productId: string,
+  lessonId: string,
+  deps: CourseManagementDeps,
+): Promise<Result<'done' | 'busy', AppError>> => {
+  for (let attempt = 0; attempt < LESSON_CLEANUP_ATTEMPTS; attempt += 1) {
+    const product = await deps.products.findById(tenantId, productId);
+    if (!product || !namesLesson(product, lessonId)) return ok('done');
+    const accessItems = product.accessItems
+      .map((item) => withoutLesson(item, lessonId))
+      .filter((item): item is AccessItem => item !== null);
+    const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
+    if (!snapshot.ok) return snapshot;
+    const cleaned = await deps.products.updateAccessItems(tenantId, product.id, accessItems, snapshot.value);
+    if (cleaned !== 'busy') return ok('done');
+  }
+  return ok('busy');
+};
+
+type ProductAccessItemsDeps = ProductAccessCatalog & Pick<CourseManagementDeps, 'products' | 'ids' | 'clock'> & { accessCheck?: ProductAccessCheck };
 
 const productAccessBusy = (): AppError =>
   appError('unavailable', 'The product is busy; nothing was changed, retry the request', { retryAfterSeconds: 1 });
@@ -661,8 +689,11 @@ export const updateProductAccessItems = async (
     return err(validation('Physical products cannot grant access items'));
   }
 
-  if (!sameAccessItems(parsed.data.accessItems, product.accessItems)) {
-    const checked = await checkProductAccessItems(tenant.value, parsed.data.accessItems, deps);
+  const accessCheck = deps.accessCheck ?? 'now';
+  const accessItems = sameAccessItems(parsed.data.accessItems, product.accessItems) ? null : parsed.data.accessItems;
+  if (accessItems === null && parsed.data.checkoutConsentDefinitionIds === undefined) return ok(product);
+  if (accessCheck === 'now' && accessItems !== null) {
+    const checked = await checkProductAccessItems(tenant.value, accessItems, deps);
     if (!checked.ok) return checked;
   }
 
@@ -672,9 +703,10 @@ export const updateProductAccessItems = async (
   const updated = await deps.products.updateAccessItems(
     tenant.value,
     product.id,
-    parsed.data.accessItems,
+    accessItems,
     snapshot.value,
     parsed.data.checkoutConsentDefinitionIds,
+    { archivedCourses: accessCheck === 'now' ? 'refuse' : 'write' },
   );
   if (updated === 'course_unavailable') {
     return err(validation(PRODUCT_ACCESS_COURSE_MESSAGE));

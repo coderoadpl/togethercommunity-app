@@ -580,6 +580,85 @@ describe('notification fan-out', () => {
     });
   });
 
+  it('links a retried delivery into the course that opens the lesson for the recipient now', async () => {
+    const f = fixture({ followers: [] });
+    const lessonCourse = (id: string): Course => ({
+      id, tenantId: TENANT, name: id, description: '', imageUrl: null, moduleOrder: [],
+      publiclyVisible: false, legacyId: null, createdAt: NOW,
+    });
+    const sharedModule: CourseModule = {
+      id: 'm-shared', tenantId: TENANT, courseIds: ['c1', 'c2'], title: 'Shared', prefix: null, name: 'Shared',
+      chapters: [{ id: 'ch', name: 'Chapter', contents: [{ id: 'ct', name: 'Lesson', lessonId: 'lesson-1' }] }],
+      legacyId: null, createdAt: NOW,
+    };
+    f.deps.courses = { ...courses, list: async () => [lessonCourse('c1'), lessonCourse('c2')] };
+    f.deps.modules = { ...modules, list: async () => [sharedModule] };
+    f.deps.posts.findById = async () => ({ ...post, contextKind: 'lesson', contextId: 'lesson-1' });
+    f.deps.links = { ...links, lessonDiscussionUrl: async ({ courseId, lessonId }) => `http://tenant.localhost/my/courses/${courseId ?? '-'}/lessons/${lessonId}` };
+    f.deps.threadSubscriptions = { ...threadSubscriptions, listSubscribersPage: async (tenantId, input) => ['u001']
+      .filter((userId) => input.afterUserId === null || userId > input.afterUserId).slice(0, input.limit)
+      .map((userId) => ({ tenantId, userId, rootPostId: post.id, mutedAt: null, createdAt: NOW })) };
+    let items: AccessItem[] = [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }];
+    f.deps.fanoutBatches.listAccessForUsers = async (_tenantId, userIds) => userIds.map((userId) => ({
+      userId, member: member(userId), isStaff: false, activeProductIds: ['p'], accessItems: items,
+    }));
+    const urls: string[] = [];
+    f.deps.notificationChannels = [{ deliver: async (_notification, context) => {
+      urls.push(context.contextUrl);
+      return urls.length === 1 ? err(internal('channel unavailable')) : ok(undefined);
+    } }];
+    const reply = { ...job, kind: 'thread-reply' as const };
+
+    expect((await runPostFanoutJob(reply, f.deps)).ok).toBe(false);
+    items = [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m-shared'] }, { level: 'course', courseId: 'c2' }];
+    expect(await runPostFanoutJob({ ...reply, attempts: 1 }, f.deps)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+
+    expect(urls).toEqual([
+      'http://tenant.localhost/my/courses/c1/lessons/lesson-1',
+      'http://tenant.localhost/my/courses/c2/lessons/lesson-1',
+    ]);
+    expect(f.notifications.rows.map((row) => row.payload.courseId)).toEqual(['c1']);
+  });
+
+  it('links a retried staff delivery into the course that holds the lesson at the retry', async () => {
+    const f = fixture({ followers: [] });
+    const lessonCourse = (id: string): Course => ({
+      id, tenantId: TENANT, name: id, description: '', imageUrl: null, moduleOrder: [],
+      publiclyVisible: false, legacyId: null, createdAt: NOW,
+    });
+    let placedIn = ['c1'];
+    f.deps.courses = { ...courses, list: async () => [lessonCourse('c1'), lessonCourse('c2')] };
+    f.deps.modules = { ...modules, list: async () => [{
+      id: 'm-moved', tenantId: TENANT, courseIds: placedIn, title: 'Moved', prefix: null, name: 'Moved',
+      chapters: [{ id: 'ch', name: 'Chapter', contents: [{ id: 'ct', name: 'Lesson', lessonId: 'lesson-1' }] }],
+      legacyId: null, createdAt: NOW,
+    }] };
+    f.deps.posts.findById = async () => ({ ...post, contextKind: 'lesson', contextId: 'lesson-1' });
+    f.deps.links = { ...links, lessonDiscussionUrl: async ({ courseId, lessonId }) => `http://tenant.localhost/my/courses/${courseId ?? '-'}/lessons/${lessonId}` };
+    f.deps.threadSubscriptions = { ...threadSubscriptions, listSubscribersPage: async (tenantId, input) => ['u001']
+      .filter((userId) => input.afterUserId === null || userId > input.afterUserId).slice(0, input.limit)
+      .map((userId) => ({ tenantId, userId, rootPostId: post.id, mutedAt: null, createdAt: NOW })) };
+    f.deps.fanoutBatches.listAccessForUsers = async (_tenantId, userIds) => userIds.map((userId) => ({
+      userId, member: member(userId), isStaff: true, activeProductIds: [], accessItems: [],
+    }));
+    const urls: string[] = [];
+    f.deps.notificationChannels = [{ deliver: async (_notification, context) => {
+      urls.push(context.contextUrl);
+      return urls.length === 1 ? err(internal('channel unavailable')) : ok(undefined);
+    } }];
+    const reply = { ...job, kind: 'thread-reply' as const };
+
+    expect((await runPostFanoutJob(reply, f.deps)).ok).toBe(false);
+    placedIn = ['c2'];
+    expect(await runPostFanoutJob({ ...reply, attempts: 1 }, f.deps)).toMatchObject({ ok: true, value: { created: 0, completed: true } });
+
+    expect(urls).toEqual([
+      'http://tenant.localhost/my/courses/c1/lessons/lesson-1',
+      'http://tenant.localhost/my/courses/c2/lessons/lesson-1',
+    ]);
+    expect(f.notifications.rows.map((row) => row.payload.courseId)).toEqual(['c1']);
+  });
+
   it('keys the job and its notifications by the source event', async () => {
     const { deps, notifications } = fixture({ followers: ['u001'] });
 

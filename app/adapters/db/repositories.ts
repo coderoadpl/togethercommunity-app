@@ -103,6 +103,7 @@ import type {
   AccountAvatarRepository,
   AccountAvatarTenantReader,
   AvatarSourceReader,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -424,12 +425,11 @@ export const createProductRepository = (
         .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
     ).map(parseProduct);
   },
-  create: async (tenantId, product) => {
+  create: async (tenantId, product, options = {}) => {
     try {
       return await db.transaction(async (tx) => {
-        if (!await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId))) {
-          return 'course_unavailable';
-        }
+        const active = await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId));
+        if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
         await tx.insert(products).values({
           id: product.id,
           tenantId,
@@ -487,15 +487,15 @@ export const createProductRepository = (
     const row = rows[0];
     return row ? parseProduct(row) : null;
   }),
-  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds, options = {}) =>
     busyAfterRollback(() => db.transaction(async (tx) => {
-      if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
-        return 'course_unavailable';
-      }
+      const active = await lockActiveCourses(tx, tenantId, (accessItems ?? []).map((item) => item.courseId));
+      if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
       if (version) await insertEntityVersion(tx, tenantId, version);
-      const changes = checkoutConsentDefinitionIds === undefined
-        ? { accessItems }
-        : { accessItems, checkoutConsentDefinitionIds };
+      const changes = {
+        ...(accessItems === null ? {} : { accessItems }),
+        ...(checkoutConsentDefinitionIds === undefined ? {} : { checkoutConsentDefinitionIds }),
+      };
       const rows = await tx
         .update(products)
         .set(changes)
@@ -664,7 +664,7 @@ export const createCourseModuleRepository = (db: Db): CourseModuleRepository => 
   },
 });
 
-export const createCourseLessonRepository = (db: Db): CourseLessonRepository => ({
+export const createCourseLessonRepository = (db: Db): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) =>
     (
       await db
@@ -722,6 +722,15 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .from(courseLessons)
         .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
     ).map(parseLesson);
+  },
+  existingIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select({ id: courseLessons.id })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
+    ).map((row) => row.id);
   },
   create: async (tenantId, lesson) => {
     await db.insert(courseLessons).values({ ...lesson, tenantId });
@@ -1248,6 +1257,41 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       lastViewedModuleId: row.lastViewedModuleId ?? undefined,
       lastViewedChapterId: row.lastViewedChapterId ?? undefined,
     });
+  }),
+  removeCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    if (input.courseIds.length === 0) return [];
+    const locked = await tx
+      .select()
+      .from(memberCourseProgress)
+      .where(and(
+        eq(memberCourseProgress.tenantId, tenantId),
+        eq(memberCourseProgress.memberId, input.memberId),
+        inArray(memberCourseProgress.courseId, input.courseIds),
+      ))
+      .orderBy(asc(memberCourseProgress.courseId))
+      .for('update');
+    const saved = [];
+    for (const row of locked) {
+      if (!row.completedLessonIds.includes(input.lessonId)) {
+        saved.push(row);
+        continue;
+      }
+      const [updated] = await tx
+        .update(memberCourseProgress)
+        .set({
+          completedLessonIds: row.completedLessonIds.filter((id) => id !== input.lessonId),
+          updatedAt: input.now,
+        })
+        .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, row.id)))
+        .returning();
+      if (updated !== undefined) saved.push(updated);
+    }
+    return saved.map((row) => parseProgress({
+      ...row,
+      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+    }));
   }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db

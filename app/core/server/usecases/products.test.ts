@@ -16,6 +16,7 @@ import type {
 } from '#core/domain/index.js';
 
 import type { EntityVersionRecord, ProductMetadataRepository, ProductRepository } from '../ports.js';
+import { PRODUCT_ACCESS_KEY_REFUSAL } from './product-access-items.js';
 import { createProduct, listProducts, publishProduct, unpublishProduct, updateProduct } from './products.js';
 
 const identity = (tenantId: string | null, staffRole: StaffRole | null): Identity => ({
@@ -66,7 +67,7 @@ const fakeRepo = (initial: Product[] = []) => {
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
       if (!product) return null;
-      product.accessItems = accessItems;
+      if (accessItems !== null) product.accessItems = accessItems;
       return product;
     },
     setPublished: async (tenantId, id, published) => {
@@ -92,7 +93,7 @@ const accessCatalog = ({ courses = [], modules = [], lessons = [] }: AccessCatal
     findByIds: async (tenantId: string, ids: string[]) => modules.filter((row) => row.tenantId === tenantId && ids.includes(row.id)),
     list: async (tenantId: string) => modules.filter((row) => row.tenantId === tenantId),
   },
-  lessons: { findByIds: async (tenantId: string, ids: string[]) => lessons.filter((row) => row.tenantId === tenantId && ids.includes(row.id)) },
+  lessons: { existingIds: async (tenantId: string, ids: string[]) => lessons.filter((row) => row.tenantId === tenantId && ids.includes(row.id)).map((row) => row.id) },
 });
 
 const deps = <T extends ProductRepository>(repo: T, ids: string[] = ['product-1'], catalog: AccessCatalogRows = {}) => ({
@@ -642,6 +643,38 @@ describe('what a new product grants', () => {
       expect(result, JSON.stringify(accessItems)).toEqual({ ok: false, error: expect.objectContaining({ code: 'validation', message }) });
       expect(store).toEqual([]);
     }
+  });
+
+  it('answers a shop management key one refusal for every reason the access check or the write refuses a list', async () => {
+    const key = {
+      ...owner,
+      capabilities: ['product:write' as const],
+      machineActor: { kind: 'shop_management_key' as const, apiKeyId: 'key-direct', mode: 'direct' as const },
+    };
+    const lists: Array<NonNullable<Parameters<typeof createProduct>[1]['accessItems']>> = [
+      [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }],
+      [{ level: 'lessons', courseId: 'c1', lessonIds: ['missing'] }],
+      [{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }],
+      [{ level: 'modules', courseId: 'c1', moduleIds: ['missing'] }],
+      [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] }],
+      [{ level: 'course', courseId: 'missing' }],
+      [{ level: 'course', courseId: 'c-archived' }],
+    ];
+    const messages = new Set<string>();
+    for (const accessItems of lists) {
+      const { repo, store } = fakeRepo();
+      const result = await createProduct(key, { title: 'Bundle', priceCents: 100, accessItems }, deps(repo, ['product-1'], catalog));
+      if (result.ok) throw new Error(`Accepted ${JSON.stringify(accessItems)}`);
+      expect(result.error.code).toBe('validation');
+      messages.add(result.error.message);
+      expect(store).toEqual([]);
+    }
+    const { repo } = fakeRepo();
+    repo.create = async () => 'course_unavailable';
+    const raced = await createProduct(key, { title: 'Bundle', priceCents: 100, accessItems: [{ level: 'course', courseId: 'c1' }] }, deps(repo, ['product-1'], catalog));
+    if (raced.ok) throw new Error('Accepted a list the write refused');
+    messages.add(raced.error.message);
+    expect([...messages]).toEqual([PRODUCT_ACCESS_KEY_REFUSAL]);
   });
 
   it('stores access items whose lessons and modules belong to their course', async () => {

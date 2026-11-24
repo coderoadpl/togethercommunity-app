@@ -1,6 +1,6 @@
 {
-  "hash": "92c0ffdab2ea69ebd2ba7b3dcd9d0e7705f30af21e7355cacbb41beadb2a9494",
-  "shortId": "92c0ffdab2ea",
+  "hash": "e8c77918a10785c9f5c71689511922bc03fc9831d3b7b7b6d01f7bec22466678",
+  "shortId": "e8c77918a107",
   "schema": {
     "constraints": [
       {
@@ -104,14 +104,44 @@
         "table": "change_proposal_download_uploads"
       },
       {
+        "definition": "CHECK (((completed_digest IS NULL) = (completed_extension IS NULL)))",
+        "name": "change_proposal_image_uploads_completed_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK (((completed_digest IS NULL) OR (completed_digest ~ '^[0-9a-f]{64}$'::text)))",
+        "name": "change_proposal_image_uploads_completed_digest_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK (((completed_extension IS NULL) OR (completed_extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text]))))",
+        "name": "change_proposal_image_uploads_completed_extension_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
         "definition": "CHECK (((declared_bytes >= 1) AND (declared_bytes <= 268435456)))",
         "name": "change_proposal_download_uploads_declared_bytes_check",
         "table": "change_proposal_download_uploads"
       },
       {
+        "definition": "CHECK (((delete_unresolved_at IS NULL) OR (delete_unresolved_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_image_publications_delete_unresolved_at_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK (((delete_unresolved_at IS NULL) OR (delete_unresolved_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_delete_unresolved_at_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK (((first_deleted_at IS NULL) OR (first_deleted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_image_uploads_first_deleted_at_check",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CHECK (((group_id IS NULL) = (group_position IS NULL)))",
@@ -152,6 +182,16 @@
         "definition": "CHECK (((not_before IS NULL) OR (not_before ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
         "name": "change_proposal_download_deletions_not_before_check",
         "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((object_key ~~ '%/product-downloads/key-files/%'::text) OR (object_key ~~ '%/product-downloads/key-uploads/%'::text)))",
+        "name": "change_proposal_download_deletions_object_key_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((pending_since IS NULL) OR (pending_since ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_pending_since_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK (((reason IS NULL) OR (reason ~ '^[a-z_]{1,64}$'::text)))",
@@ -507,11 +547,6 @@
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
         "name": "product_grants_mode_check",
         "table": "product_grants"
-      },
-      {
-        "definition": "CHECK ((object_key ~~ '%/product-downloads/key-files/%'::text))",
-        "name": "change_proposal_download_deletions_object_key_check",
-        "table": "change_proposal_download_deletions"
       },
       {
         "definition": "CHECK ((object_key ~~ '%/product-downloads/key-files/%'::text))",
@@ -11941,6 +11976,75 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "completed_digest",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_extension",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "first_deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_uploads"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "content_type",
             "notNull": true,
             "type": "text"
@@ -12140,6 +12244,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "delete_unresolved_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "digest",
             "notNull": true,
             "type": "text"
@@ -12158,6 +12270,14 @@
             "identity": "",
             "name": "kind",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "pending_since",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -12255,51 +12375,6 @@
           }
         ],
         "name": "change_proposal_download_deletions"
-      },
-      {
-        "columns": [
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "api_key_id",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "created_at",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "object_key",
-            "notNull": true,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "sweep_attempted_at",
-            "notNull": false,
-            "type": "text"
-          },
-          {
-            "default": null,
-            "generated": "",
-            "identity": "",
-            "name": "tenant_id",
-            "notNull": true,
-            "type": "text"
-          }
-        ],
-        "name": "change_proposal_image_uploads"
       },
       {
         "columns": [
@@ -12684,6 +12759,14 @@
             "identity": "",
             "name": "attempt_id",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delete_unresolved_at",
+            "notNull": false,
             "type": "text"
           },
           {

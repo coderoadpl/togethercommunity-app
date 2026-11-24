@@ -66,6 +66,7 @@ import { applyLockedProposal, previewChangeProposal } from './change-proposal-ap
 import {
   checkApprovalFiles,
   checkProposedFiles,
+  fileRefusalAfterDryRun,
   prepareApprovalFiles,
   releaseFilesOfProposals,
   type ChangeProposalFileApprovalDeps,
@@ -119,7 +120,7 @@ export interface ChangeProposalApprovalDeps
   ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'recordPublications'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted' | 'recordPublications'>;
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'recordExpiry'>;
 }
 
@@ -180,13 +181,14 @@ export const submitChangeProposal = async (
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
   const ownerEquivalent: Ctx = { identity: ctx.identity };
 
-  const files = await checkProposedFiles(tenantId, keyId, parsedRequest.data.operation, input, operation.invalidInputMessage, deps);
+  const checkFiles = () => checkProposedFiles(tenantId, keyId, parsedRequest.data.operation, input, operation.invalidInputMessage, deps);
+  const files = await checkFiles();
   if (!files.ok) return files;
 
-  const dryRun = await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
-    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId });
+  const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
+    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId, stage: 'submission' });
     return effect.ok ? ok({ effect: effect.value }) : effect;
-  });
+  }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
   const images = await checkProposedImages(tenantId, keyId, parsedRequest.data.operation, dryRun.value.effect, operation.invalidInputMessage, deps);
   if (!images.ok) return images;
@@ -429,7 +431,7 @@ export const approveChangeProposal = async (
     const expired = changeProposalExpired(locked, deps.clock.nowIso());
     const images = expired
       ? { kind: 'ready' as const, images: [], configuration: null }
-      : await prepareApprovalImages(tenantId, [locked], scope, deps);
+      : await prepareApprovalImages(tenantId, [locked], publication.value, scope, deps);
     if (images.kind === 'failed') return err(images.error);
     const files = expired || images.kind === 'missing'
       ? { kind: 'ready' as const }

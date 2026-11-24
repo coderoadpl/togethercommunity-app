@@ -47,12 +47,13 @@ export const CourseDiscussionSearch = ({
   const lessonIds = [...new Set(lessonEntries.map((entry) => entry.lessonId))];
   const nameByLesson = new Map(lessonEntries.map((entry) => [entry.lessonId, entry.name]));
 
+  const searchable = lessonIds.length > 0;
   const search = useQuery({
     ...actions.postsSearch({ query: debounced, lessonIds }),
-    enabled: enabled && lessonIds.length > 0,
+    enabled: enabled && searchable,
   });
 
-  const groups = groupByLesson(search.data?.hits ?? []);
+  const groups = searchable ? groupByLesson(search.data?.hits ?? []) : [];
 
   return (
     <Paper
@@ -77,9 +78,9 @@ export const CourseDiscussionSearch = ({
           {t.discussion.searchHint}
         </Typography>
         {enabled &&
-          (lessonIds.length > 0 && search.isPending ? (
+          (searchable && search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
-          ) : search.isError ? (
+          ) : searchable && search.isError ? (
             <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />
           ) : groups.length === 0 ? (
             <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="course-search-empty">

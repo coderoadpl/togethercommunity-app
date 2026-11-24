@@ -478,7 +478,8 @@ import {
   type AuthenticatedUser,
   type Ctx,
   type PaymentWebhookEvent,
-  type SimulatePurchaseResult
+  type SimulatePurchaseResult,
+  type StagingSweepOutcome
 } from '#core/server/index.js';
 
 import { ctxOf } from './ctx-of.js';
@@ -626,7 +627,7 @@ const respondImageAssetUpload = async (
 };
 
 const respondImageAssetCompletion = async (
-  complete: typeof completeCourseCoverUpload,
+  complete: (ctx: Ctx, input: { key: string }, deps: AppDeps) => ReturnType<typeof completeCourseCoverUpload>,
   ctx: Ctx,
   body: unknown,
   deps: AppDeps,
@@ -819,12 +820,13 @@ const STAGING_SWEEP_TICK_END_MS = CRON_FUNCTION_LIMIT_MS - STAGING_SWEEP_MARGIN_
 
 const runStagingSweep = async (
   failure: string,
-  sweep: () => Promise<Result<unknown, AppError>>,
+  sweep: () => Promise<Result<StagingSweepOutcome, AppError>>,
   logger: AppDeps['logger'],
 ): Promise<void> => {
   try {
     const swept = await sweep();
     if (!swept.ok) logger.error(`${failure}: ${swept.error.message}`);
+    else if (swept.value.failed > 0) logger.error(`${failure}: ${String(swept.value.failed)} of its steps failed`);
   } catch (error) {
     logger.error(`${failure}: ${safeErrorMessage(error)}`);
   }
@@ -832,10 +834,11 @@ const runStagingSweep = async (
 
 /** Runs after e-mail and refund dispatch, and the two sweeps side by side, so a sweep that uses its budget delays neither. */
 const sweepStagedObjects = async (
-  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger'>,
+  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger' | 'clock'>,
   tickStartedAt: number,
 ): Promise<void> => {
   const tick = { deadlineAt: tickStartedAt + STAGING_SWEEP_TICK_END_MS };
+  if (Date.parse(deps.clock.nowIso()) >= tick.deadlineAt) return;
   await Promise.all([
     runStagingSweep('[change-proposal] quarantined image sweep failed', () => deps.sweepQuarantinedImages(tick), deps.logger),
     runStagingSweep('[key-download] staged download file sweep failed', () => deps.sweepKeyDownloadFiles(tick), deps.logger),

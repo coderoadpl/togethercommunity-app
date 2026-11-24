@@ -13,8 +13,10 @@ import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } f
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from '#adapters/db/change-proposals.js';
 import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
-import { createProductDownloadAssetRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
-import { changeProposalEvents, changeProposals, courses, productDownloadAssets, products, tenants } from '#adapters/db/schema.js';
+import { createMemberCourseProgressRepository, createProductDownloadAssetRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
+import {
+  changeProposalEvents, changeProposals, courseLessons, courseModules, courses, memberCourseProgress, members, productDownloadAssets, products, tenants,
+} from '#adapters/db/schema.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import type { Identity, ShopManagementKey } from '#core/domain/index.js';
@@ -359,6 +361,23 @@ const productDownloadAssetSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+const memberCourseProgressSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  memberId: z.string(),
+  courseId: z.string(),
+  lastViewedLessonId: z.string().optional(),
+  lastViewedModuleId: z.string().optional(),
+  lastViewedChapterId: z.string().optional(),
+  completedLessonIds: z.array(z.string()),
+  updatedAt: z.string().datetime(),
+});
+
+const countedCompletedLessonIds = (input: { completedLessonIds: readonly string[] }, accessibleLessonIds: ReadonlySet<string>): string[] =>
+  input.completedLessonIds.filter((lessonId) =>
+    accessibleLessonIds.has(lessonId),
+  );
+
 const TENANT = 't-change-proposal-rollback';
 const NOW = '2026-03-01T10:00:00.000Z';
 const PROPOSER = 'key-rollback-proposer';
@@ -453,7 +472,7 @@ const harness = () => {
     if (!submitted.ok) throw new Error(submitted.error.message);
     return submitted.value.id;
   };
-  return { deps, stage, propose };
+  return { objects, deps, stage, propose };
 };
 
 const storedRow = async (id: string): Promise<ChangeProposalRow> => {
@@ -526,6 +545,23 @@ describe('release 8141fd15 reading what download file proposals store', () => {
     const withoutTheNewKey = Object.fromEntries(Object.entries(withFile.value).filter(([field]) => field !== 'proposedFiles'));
     expect(changeProposalOwnerDetailSchema.safeParse(withoutTheNewKey).success).toBe(true);
     expect(changeProposalOwnerDetailSchema.parse(withoutFile.value).operation).toBe('download.remove');
+  });
+
+  it('leaves no product file row behind an object a removal approval deletes, so its delete callers never act on an object this release removed', async () => {
+    const h = harness();
+    const file = await h.stage('removed.pdf');
+    expect(await approveChangeProposal(ownerSession, { id: await h.propose('download.add', { productId: WORKBOOK, stagedFileId: file.id }) }, h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    const attached = (await database.db.select().from(productDownloadAssets)).find((asset) => asset.tenantId === TENANT && asset.id === file.id);
+    if (attached === undefined) throw new Error('The approval attached no file');
+    expect(attached.storageKey).toContain('/product-downloads/key-files/');
+    expect(h.objects.objects.has(attached.storageKey)).toBe(true);
+
+    expect(await approveChangeProposal(ownerSession, { id: await h.propose('download.remove', { productId: WORKBOOK, assetId: file.id }) }, h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect((await database.db.select().from(productDownloadAssets)).filter((asset) => asset.storageKey === attached.storageKey)).toEqual([]);
+    expect(h.objects.calls).toContainEqual({ method: 'delete', key: attached.storageKey });
+    expect(h.objects.objects.has(attached.storageKey)).toBe(false);
   });
 
   it('strips the new probe field from a storage diagnostic', () => {
@@ -622,5 +658,51 @@ describe('release 8141fd15 reading what product access proposals store', () => {
     const itemsWithoutTheNewKey = withAccess.items.map((item) => Object.fromEntries(Object.entries(item).filter(([field]) => field !== 'accessLabels')));
     expect(changeProposalGroupOwnerViewSchema.parse({ ...withAccess, items: itemsWithoutTheNewKey }).items.map((item) => item.operation))
       .toEqual(['product.create', 'product.set-access']);
+  });
+});
+
+describe('release 8141fd15 reading the member progress this release records under another course', () => {
+  const FIRST = 'progress-course-first';
+  const SECOND = 'progress-course-second';
+  const LESSON = 'progress-lesson';
+  const MEMBER = 'progress-member';
+
+  beforeAll(async () => {
+    await database.db.insert(courses).values([
+      { id: FIRST, tenantId: TENANT, name: 'First course', description: '', createdAt: NOW },
+      { id: SECOND, tenantId: TENANT, name: 'Second course', description: '', createdAt: NOW },
+    ]);
+    await database.db.insert(courseLessons).values({ id: LESSON, tenantId: TENANT, name: 'Shared lesson', createdAt: NOW });
+    await database.db.insert(courseModules).values({
+      id: 'progress-module', tenantId: TENANT, courseIds: [FIRST, SECOND], title: 'Shared module', createdAt: NOW,
+      chapters: [{ id: 'progress-chapter', name: 'Chapter', contents: [{ id: 'progress-content', lessonId: LESSON, name: 'Shared lesson' }] }],
+    });
+    await database.db.insert(members).values({ id: MEMBER, tenantId: TENANT, userId: 'user-learner', email: 'learner@example.test', createdAt: NOW });
+  });
+
+  it('parses every row, counts a completion under the course that holds it, and finds it in neither row once removed from both courses', async () => {
+    const progress = createMemberCourseProgressRepository(database.db);
+    await progress.findOrCreate(TENANT, { id: 'progress-first', memberId: MEMBER, courseId: FIRST, now: NOW });
+    const second = await progress.findOrCreate(TENANT, { id: 'progress-second', memberId: MEMBER, courseId: SECOND, now: NOW });
+    expect(await progress.update(TENANT, { ...second, completedLessonIds: [LESSON], updatedAt: NOW })).toMatchObject({ completedLessonIds: [LESSON] });
+
+    const stored = async () => (await database.db.select().from(memberCourseProgress))
+      .filter((row) => row.tenantId === TENANT && row.memberId === MEMBER)
+      .map((row) => memberCourseProgressSchema.parse({
+        ...row,
+        lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+        lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+        lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+      }));
+    const completed = await stored();
+    const ofCourse = (rows: typeof completed, courseId: string) => rows.find((row) => row.courseId === courseId) ?? { completedLessonIds: [] };
+    expect(ofCourse(completed, SECOND).completedLessonIds).toEqual([LESSON]);
+    expect(ofCourse(completed, FIRST).completedLessonIds).toEqual([]);
+    expect(countedCompletedLessonIds(ofCourse(completed, SECOND), new Set([LESSON]))).toEqual([LESSON]);
+    expect(countedCompletedLessonIds(ofCourse(completed, SECOND), new Set())).toEqual([]);
+
+    await progress.removeCompletedLesson(TENANT, { memberId: MEMBER, courseIds: [FIRST, SECOND], lessonId: LESSON, now: NOW });
+    const removed = await stored();
+    expect(removed.map((row) => [row.courseId, row.completedLessonIds]).toSorted()).toEqual([[FIRST, []], [SECOND, []]]);
   });
 });

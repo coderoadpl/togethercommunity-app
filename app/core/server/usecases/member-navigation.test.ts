@@ -381,6 +381,7 @@ const deps = (input: {
       updatedAt: query.now,
     }),
     update: async (_t, row) => row,
+    removeCompletedLesson: async () => [],
     countReferencingLesson: async () => 0,
   };
 

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CourseStructureWithAccess, PublicPost } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -178,6 +179,28 @@ describe('CourseDiscussionSearch', () => {
     await user.type(await screen.findByTestId('course-discussion-search-input'), 'engine');
 
     expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(en.discussion.searchCourseEmpty);
+    expect(requestedUrls).toEqual([]);
+  });
+
+  it('shows the empty note and no cached workspace-wide hit when the course opens none of its lessons', async () => {
+    const requestedUrls: string[] = [];
+    server.use(
+      http.get('/api/posts/search', ({ request }) => {
+        requestedUrls.push(request.url);
+        return HttpResponse.json({ ok: true, data: { hits: [] } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    const { queryClient } = renderSearch(lockedIn(structure, ['l1', 'l2']));
+    const workspaceWide = actions.postsSearch({ query: 'engine' }).queryKey;
+    queryClient.setQueryDefaults(workspaceWide, { gcTime: Infinity });
+    queryClient.setQueryData(workspaceWide, { hits: [{ post: post('elsewhere', 'other-lesson', 'Engine elsewhere'), lessonId: 'other-lesson', snippet: 'Engine elsewhere' }] });
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'engine');
+
+    expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(en.discussion.searchCourseEmpty);
+    expect(screen.queryByTestId('course-search-hit-elsewhere')).toBeNull();
+    expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
     expect(requestedUrls).toEqual([]);
   });
 

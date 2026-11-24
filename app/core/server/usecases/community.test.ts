@@ -1735,6 +1735,19 @@ describe('community guard and error branches', () => {
     expect(await searchPosts(memberCtx, { query: 'anything' }, d)).toMatchObject({ ok: true, value: [] });
   });
 
+  it('reads no course catalogue for a search restricted to spaces', async () => {
+    const d = access();
+    const listLessons = vi.fn(d.lessons.list);
+    const listModules = vi.fn(d.modules.list);
+    d.lessons = { ...d.lessons, list: listLessons };
+    d.modules = { ...d.modules, list: listModules };
+    expect(await searchPosts(memberCtx, { query: 'needle', spaceIds: ['space-1'] }, d)).toEqual({ ok: true, value: [] });
+    expect(listLessons).not.toHaveBeenCalled();
+    expect(listModules).not.toHaveBeenCalled();
+    await searchPosts(memberCtx, { query: 'needle', lessonIds: ['l1'] }, d);
+    expect(listLessons).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks a banned member from subscribing while muting stays open', async () => {
     const d = access();
     const rootPostId = await seedPost(d);

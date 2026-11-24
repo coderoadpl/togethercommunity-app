@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectPermissionInventory,
   collectUseCasesInSource,
+  KEY_MODE_SUBJECT_SUFFIX,
   renderPermissionTable,
   SHOP_MANAGEMENT_KEY_PRINCIPAL,
   SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL,
@@ -15,8 +16,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(550);
-    expect(inventory.useCases).toHaveLength(415);
+    expect(inventory.routes).toHaveLength(563);
+    expect(inventory.useCases).toHaveLength(420);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/parcel-lockers/:code'))
@@ -27,22 +28,22 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(60);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(47);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(60);
-    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/access'))
-      .toMatchObject({ capability: 'product:access:write', before: [], after: [], derivable: true });
-    for (const row of shopRoutes.filter((entry) => entry.subject !== 'POST /api/m2m/shop/products/access')) {
-      const principals = row.subject.includes(' /api/m2m/shop/proposals')
+    expect(shopRoutes).toHaveLength(73);
+    for (const row of shopRoutes) {
+      const principals = row.subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.propose) || row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
-        : row.subject.startsWith('GET ') && !row.subject.includes(' /api/m2m/shop/downloads/')
-          ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
-          : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
-      expect(row, row.subject).toMatchObject({ before: principals, after: principals });
+        : row.subject === `POST /api/m2m/shop/products/access${KEY_MODE_SUBJECT_SUFFIX.direct}`
+          ? []
+          : row.subject.startsWith('GET ') && !row.subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.direct)
+            ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
+            : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+      expect(row, row.subject).toMatchObject({ before: principals, after: principals, derivable: true });
       expect([...row.before, ...row.after], row.subject).not.toContain('owner');
     }
     for (const row of [
@@ -262,7 +263,7 @@ describe('permission inventory', () => {
       [...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL));
     expect(proposeRows.length).toBeGreaterThan(0);
     for (const row of proposeRows) {
-      expect(row.subject, row.subject).toMatch(/^(?:GET \/api\/m2m\/shop\/|[A-Z]+ \/api\/m2m\/shop\/proposals(?:\/|$))/u);
+      expect(row.subject, row.subject).toMatch(/^(?:GET \/api\/m2m\/shop\/|[A-Z]+ \/api\/m2m\/shop\/proposals(?:\/|$)|[A-Z]+ \/api\/m2m\/shop\/.* \(propose-mode key\)$)/u);
       expect(['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'], row.subject)
         .not.toContain(row.capability);
     }
@@ -335,6 +336,57 @@ describe('permission inventory', () => {
       ['completeProposedBrandingAssetUpload', 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]],
       ['getChangeProposalImage', 'proposal:read', ['owner']],
     ]);
+  });
+
+  it('lists each key mode of a route that both modes reach with the capabilities and effect of that mode', () => {
+    const routes = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
+    const proposeKey = [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL];
+    const directKey = [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+    for (const [route, direct, propose] of [
+      ['POST /api/m2m/shop/downloads/upload', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['POST /api/m2m/shop/downloads/complete', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['POST /api/m2m/shop/downloads/copy', 'product:write + product:read', 'proposal:asset:upload + proposal:submit:catalog + product:read'],
+      ['GET /api/m2m/shop/downloads/staged', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['DELETE /api/m2m/shop/downloads/staged/:id', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['POST /api/m2m/shop/image-assets/product-cover/upload', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['POST /api/m2m/shop/image-assets/product-cover/complete', 'product:write', 'proposal:asset:upload + proposal:submit:catalog'],
+      ['POST /api/m2m/shop/image-assets/branding/upload', 'tenant:settings:write', 'proposal:asset:upload + proposal:submit:settings'],
+      ['POST /api/m2m/shop/image-assets/branding/complete', 'tenant:settings:write', 'proposal:asset:upload + proposal:submit:settings'],
+      ['POST /api/m2m/shop/products/access', 'product:access:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads', 'product:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads/replace', 'product:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads/remove', 'product:write', 'proposal:submit:catalog + product:read'],
+    ] as const) {
+      expect(routes.has(route), route).toBe(false);
+      const directRow = routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.direct}`);
+      const proposeRow = routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.propose}`);
+      const directPrincipals = route === 'POST /api/m2m/shop/products/access' ? [] : directKey;
+      expect(directRow, route).toMatchObject({ capability: direct.split(' + ')[0], before: directPrincipals, after: directPrincipals });
+      expect(directRow?.evidence, route).toMatch(new RegExp(`^Shop management key, direct mode: ${direct.replaceAll('+', '\\+')}; `, 'u'));
+      expect(proposeRow, route).toMatchObject({ capability: propose.split(' + ')[0], before: proposeKey, after: proposeKey });
+      expect(proposeRow?.evidence, route).toMatch(new RegExp(`^Shop management key, propose mode: ${propose.replaceAll('+', '\\+')}; `, 'u'));
+    }
+    expect(routes.get(`POST /api/m2m/shop/products/access${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence).toContain('stores a product.set-access proposal');
+    for (const [route, operation] of [
+      ['POST /api/m2m/shop/products/downloads', 'download.add'],
+      ['POST /api/m2m/shop/products/downloads/replace', 'download.replace'],
+      ['POST /api/m2m/shop/products/downloads/remove', 'download.remove'],
+    ] as const) {
+      expect(routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, route).toContain(`stores a ${operation} proposal, which only an owner approval applies`);
+    }
+  });
+
+  it('lists each key mode of the staging use-cases with the capabilities their guard authorizes', () => {
+    const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('key-download-files.ts#'));
+    expect(useCases.map(({ subject, capability, after, evidence }) => [subject.replace('key-download-files.ts#', ''), capability, after, evidence.replace(/^.* mode: /u, '')])).toEqual(
+      ['beginKeyDownloadUpload', 'completeKeyDownloadUpload', 'copyKeyDownloadFile', 'listKeyDownloadFiles', 'discardKeyDownloadFile'].flatMap((name) => {
+        const read = name === 'copyKeyDownloadFile' ? ' + product:read' : '';
+        return [
+          [`${name}${KEY_MODE_SUBJECT_SUFFIX.direct}`, 'product:write', [SHOP_MANAGEMENT_KEY_PRINCIPAL], `product:write${read}`],
+          [`${name}${KEY_MODE_SUBJECT_SUFFIX.propose}`, 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], `proposal:asset:upload + proposal:submit:catalog${read}`],
+        ];
+      }),
+    );
   });
 
   it('gives the link to a proposed download file to the owner only', () => {
@@ -497,6 +549,62 @@ describe('use-case shape probe', () => {
         capability: 'product:read',
       },
     ]);
+  });
+
+  const STAGING_KEY = `
+    const stagingKey = (ctx: Ctx) => {
+      const actor = ctx.machineActor;
+      if (actor === undefined) return err(forbidden('Keys only'));
+      return actor.mode === 'direct'
+        ? authorizeTenant(ctx, 'product:write')
+        : bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:catalog'));
+    };
+  `;
+  const STAGING_USE_CASE = `
+    export const stageThing = async (ctx: Ctx) => stagingKey(ctx);
+  `;
+
+  it('reads both mode branches of the staging guard it resolves in the same file', () => {
+    expect(collectUseCasesInSource('probe.ts', `${STAGING_KEY}${STAGING_USE_CASE}`)).toEqual([{
+      name: 'stageThing', file: 'probe.ts', capability: 'product:write',
+      keyModes: { direct: ['product:write'], propose: ['proposal:asset:upload', 'proposal:submit:catalog'] },
+    }]);
+  });
+
+  it.each([
+    ['declared in another file', STAGING_USE_CASE],
+    ['missing its propose-mode guard', `${STAGING_KEY.replace("bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, 'proposal:submit:catalog'))", "authorizeTenant(ctx, 'proposal:asset:upload')")}${STAGING_USE_CASE}`],
+    ['missing its direct-mode guard', `${STAGING_KEY.replace("authorizeTenant(ctx, 'product:write')", 'ok(ctx.identity.tenantId)')}${STAGING_USE_CASE}`],
+    ['an unrelated helper of the same name', `const stagingKey = (ctx: Ctx) => ok(ctx.identity.tenantId);${STAGING_USE_CASE}`],
+    ['branching on something other than the key mode', `${STAGING_KEY.replace("actor.mode === 'direct'", "actor.kind === 'direct'")}${STAGING_USE_CASE}`],
+  ])('refuses a staging guard %s', (_label, source) => {
+    expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(/stagingKey/u);
+  });
+
+  it.each([
+    ['ProductCover', 'proposal:submit:catalog', 'proposal:submit:settings'],
+    ['BrandingAsset', 'proposal:submit:settings', 'proposal:submit:catalog'],
+  ])('binds the %s proposal upload to its own submission capability', (family, own, other) => {
+    const source = (capability: string) => `
+      export const beginProposed${family}Upload = (ctx: Ctx) =>
+        bothAuthorized(authorizeTenant(ctx, 'proposal:asset:upload'), authorizeTenant(ctx, '${capability}'));
+    `;
+    expect(collectUseCasesInSource('change-proposal-images.ts', source(own))).toEqual([
+      { name: `beginProposed${family}Upload`, file: 'change-proposal-images.ts', capability: 'proposal:asset:upload' },
+    ]);
+    expect(() => collectUseCasesInSource('change-proposal-images.ts', source(other))).toThrow(`must authorize proposal:asset:upload + ${own}; found proposal:asset:upload, ${other}`);
+  });
+
+  it.each([
+    ['ProductCover', 'proposal:asset:upload'],
+    ['ProductCover', 'proposal:submit:catalog'],
+    ['BrandingAsset', 'proposal:asset:upload'],
+    ['BrandingAsset', 'proposal:submit:settings'],
+  ])('refuses the %s proposal upload that authorizes only %s', (family, capability) => {
+    const source = `
+      export const completeProposed${family}Upload = (ctx: Ctx) => authorizeTenant(ctx, '${capability}');
+    `;
+    expect(() => collectUseCasesInSource('change-proposal-images.ts', source)).toThrow(/must authorize proposal:asset:upload/u);
   });
 
   it('classifies organization use-cases by the capability given to authorizeOrganization', () => {

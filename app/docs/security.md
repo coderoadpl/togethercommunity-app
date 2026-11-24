@@ -621,10 +621,15 @@ scopes on every shop key.
   failure of the copy answers one refusal without details (a missing, larger,
   smaller or mistyped stored object, or an unanswered storage request alike),
   so the answer tells the key from the bytes only whether the copy was staged.
-  The response time is not uniform: a missing stored object, or one larger than
-  its file row, is refused after the first storage answer, while a smaller or
+  The response time is not uniform. A missing source object is refused after
+  the copy request's answer. A stored object larger than its file row is
+  refused after the copy and the headers of the following read. A smaller or
   mistyped one is refused only after the server read all of it, which takes
-  longer the more bytes it holds. A key that times its copies can therefore
+  longer the more bytes it holds. A refusal after a definite failure also
+  waits for one attempt to delete the copy's destination; a refusal after a
+  storage answer that was not confirmed records the attempt as interrupted and
+  answers at once, without a delete, and the minute sweep deletes the
+  destination later. A key that times its copies can therefore
   tell a missing or larger stored object from a smaller one or one of the full
   size that failed the type check, and estimate how many bytes a smaller one
   holds; it never receives a byte, a fingerprint, a size or a type of the
@@ -632,7 +637,12 @@ scopes on every shop key.
   staged object only the server writes, with its metadata replaced
   (`application/octet-stream`, `attachment`, `no-store`), hashes that copy
   while streaming it and checks its size and its first bytes against the
-  declared type, one of an allow-list of eight; a second `PUT` through the
+  declared type, one of an allow-list of eight, whose extension the file name
+  must end in, at the start and for the source of a copy. That check reads
+  only a signature in the first bytes (a `%PDF-` anywhere in the first KiB, for
+  example), not the whole format, so a file can pass it and still hold content
+  of another kind; the name keeps a buyer's saved file opening as the checked
+  type. A second `PUT` through the
   still valid URL changes nothing staged. Exactly one request completes an
   upload: completion first claims its record in a committed transaction, and a
   concurrent completion answers `409`; a new claim takes an upload over only
@@ -640,16 +650,40 @@ scopes on every shop key.
   outcome is unknown (no answer in time, a server error, a copy answer without
   a copy result) deletes nothing and keeps its destination owned and counted
   until the minute sweep deletes it, once the record is 20 minutes old and
-  that lease has ended, because the storage may still write it. A key attaches only files it staged itself, and no route
+  30 minutes have passed since that attempt started, because the storage may
+  still write it until then. Settling an upload also owes its upload object a
+  second delete a day after the upload URL expired, so a `PUT` the storage
+  accepted before the URL expired and finished after the sweep does not stay;
+  the daily limit counts those bytes for the day after the upload started and
+  the owed delete from when it is due. A key attaches only files it staged itself, and no route
   takes a storage key as input. Per-file, per-key, per-workspace and per-window
   limits are reserved from database rows, counted in one statement, when an
   upload or copy starts, under the workspace's staging lock and then the
-  key's. Owed deletions count against the key whose prefix holds the object;
+  key's. The limits count current objects only, so they hold only on a bucket
+  that keeps no object versions ([Download file prefixes](storage.md#download-file-prefixes)).
+  A completion that takes over an interrupted upload owes the earlier
+  destination and writes a new one, so it takes the same two locks and is
+  refused with the cap when that extra file or its bytes would pass a limit.
+  Owed deletions count against the key whose prefix holds the object;
   removing an attached file is never refused, so that debt can exceed a limit
-  only by what the key attached before, and it blocks the key's new uploads and
-  copies until the storage confirms the delete. Completions, copies, the key's
-  discard and removal, and the minute sweep hold the row that owns a staged or
-  upload object until the storage answers; an owner's removal or draft
+  by what the key attached before and by the upload objects whose second
+  delete, a day after their upload URL expired, is due and not yet confirmed (an
+  upload object written again after the first delete is not counted before
+  then); a new upload or copy is refused only while its own share does not fit
+  beside that debt. A completion's or a copy's source check (its size and
+  entity tag; the `CopyObject` is conditioned on that tag only when it is a
+  strong one, and a weak, malformed or absent tag leaves the copy guarded by
+  the size and first-bytes checks alone, so a same-size replacement of a valid
+  type between the check and the copy is not detected), `CopyObject` and digest run
+  after the transaction that claimed the record or reserved the copy has
+  committed; no row lock is held across them: the attempt id of the claim and
+  the destination only that attempt's record owns fence them, and a later
+  attempt writes a destination of its own. The release of a failed attempt and
+  the minute sweep of a record hold the record row until the storage answers
+  their deletes; the key's discard and removal and the
+  minute sweep of a staged file first move the file to the owed deletions in a
+  committed transaction, so no attach or proposal takes a file whose delete
+  was sent, also when its answer is lost; an owner's removal or draft
   deletion deletes an attached object once after its commit without that row,
   and the minute sweep, which has its own time budget and never holds back
   e-mail or refund dispatch, retries owed deletions
@@ -668,11 +702,23 @@ scopes on every shop key.
   waits under the workspace's approval lock, then locks the staged row and
   checks it is the same file
   (key, object, size, SHA-256, held by that proposal); a gone file ends the
-  proposal or its whole group `stale` and nothing is attached. Because only the
-  server writes the staged object and the row stays locked until the commit,
-  the bytes an approval attaches are the bytes the owner could download. The
+  proposal or its whole group `stale` and nothing is attached. A key cannot
+  write the staged object, which only the server writes by a copy, and the row
+  stays locked until the commit; the storage is asked only for the object's
+  length, and the SHA-256 is compared between the two reads of the row, not
+  with the bytes. Each request resolves the current storage connection, and a
+  staged row names no bucket. Known limits, by when they happen: an object
+  that is missing or has another length when the approval asks the storage,
+  also after the workspace owner switched the connection to a bucket that
+  lacks it, ends the proposal `stale` and nothing is attached; bytes replaced
+  outside the application with others of the same length pass that check, in
+  the current bucket or in one switched to before it, so the approval can
+  attach other bytes than the owner downloaded; and a connection change or a
+  loss of the object after that check, before the commit, is not detected, so
+  the approval can attach an object the storage no longer holds. The
   owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
-  (verified owner session, `proposal:read`, a file the pending proposal holds):
+  (verified owner session, `proposal:read`, a file the pending proposal holds
+  whose object the storage reports with the recorded size, else `404`):
   a 60-second signed `GET` that forces a download of type
   `application/octet-stream` with `no-store`, answered `private, no-store` with
   `referrer-policy: no-referrer`. It is a bearer link: whoever holds the
@@ -694,7 +740,10 @@ scopes on every shop key.
   accepts or refuses a proposal depends on live state (a negative stock
   adjustment, the effect size), so a write-only key could otherwise probe
   values it cannot read; with the rule, a propose-mode key learns nothing from
-  a refused or accepted proposal that it could not read with its read scope. Every shop write route declares a propose-mode class in
+  a refused or accepted proposal that it could not read with its read scope;
+  the course, module and lesson checks of a product's access list, which no
+  read scope covers, therefore run only at the approval
+  ([What a product grants](#shop-management-keys), below). Every shop write route declares a propose-mode class in
   `apps/server/src/shop-machine-auth.ts` and the server refuses to start
   without one: the eleven catalogue write routes, the three sales-link write
   routes, the settings update and the three product file write routes store a
@@ -710,8 +759,13 @@ scopes on every shop key.
   appeared under the public image prefix. A quarantined image is stored under
   `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, a
   private prefix the public asset route never serves; its address names its
-  SHA-256, so the bytes the owner previews are the bytes an approval publishes,
-  and approval checks the hash again before it writes the public copy. The owner
+  SHA-256, the owner preview checks the hash of what it serves, and approval
+  checks the hash of the quarantined bytes again before it writes the public
+  copy. A public copy already at the address is reused without a write when its
+  bytes hashed to the digest before the approval transaction; under the lock it
+  is checked again by its size and strong entity tag, or read and hashed again
+  when the first read carried none, so at the commit a reused copy matches only
+  as far as the storage's entity tag says. The owner
   reads it only through `GET /api/change-proposals/:id/assets/:digest`
   (verified owner session, `proposal:read`, an image the pending proposal
   attaches), with `nosniff`, `private, no-store` and SVG always as an
@@ -720,11 +774,19 @@ scopes on every shop key.
   panel never renders a proposed SVG. No key can read
   quarantined bytes. A propose-mode key cannot propose a new checkout
   appearance logo or icon address (`checkoutAppearance.logoUrl`, `iconUrl`):
-  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB,
+  submit refuses it with `400`, since those fields take any `https` address. Each key holds at most 100 quarantined images and 50 MiB, released images whose object is not deleted yet included,
   and starts at most 60 uploads in 15 minutes, each presigned for exactly its
   declared size; decisions, revocation and a sweep on the minute tick remove
   them, and the sweep also removes the key's upload candidates and the public
-  copies of approvals that did not end applied. A
+  copies of approvals that did not end applied. An approval writes a public
+  copy before its commit, so a copy can be in storage after an approval whose
+  commit failed, until its withdrawal or the minute sweep deletes it. The
+  public asset route signs a link for a content-addressed address only on
+  committed evidence of the same workspace, a live field showing the address or
+  an applied proposal that set it in an image field, and answers `404`
+  otherwise, so a copy written before a commit is served only once that
+  approval committed, and never after one that did not end applied unless the
+  address was public already. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
@@ -774,9 +836,13 @@ scopes on every shop key.
   lock a key event's foreign key takes, so a settings approval and a key
   revocation share only the proposal row lock and cannot deadlock. There is no intermediate state, so a
   repeated or concurrent approve finds no pending row and gets `409`; an
-  infrastructure failure rolls everything back and leaves the proposal
-  pending. Non-database effects of an applied change run only after the
-  commit. The database checks only the shape of a stored operation name; a
+  infrastructure failure rolls back every database change and leaves the
+  proposal pending. Non-database effects of an applied change run only after
+  the commit, except the public copies of proposed images, which the approval
+  writes before its commit and which a rollback does not undo: such a copy
+  stays in storage, answered `404` by the public asset route since no live
+  field shows it and no applied proposal set it, until the withdrawal or the
+  minute sweep deletes it (above). The database checks only the shape of a stored operation name; a
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers
@@ -810,15 +876,28 @@ scopes on every shop key.
   list names and then the product, and ending `stale` when the product's list
   no longer grants what it granted when the proposal was made. A direct-mode
   key can still set what a new product grants with `accessItems` on product
-  creation. The owner's editor, product creation for a session, a key or a
-  `product.create` proposal, and `product.set-access` run one check,
-  `checkProductAccessItems`: every course exists in the workspace and is not
-  archived, every module is attached to its item's course, and every lesson
+  creation. The owner's editor, product creation for a session or a key, and
+  the approval of a `product.create` or `product.set-access` proposal run one
+  check, `checkProductAccessItems`: every course exists in the workspace and is
+  not archived, every module is attached to its item's course, and every lesson
   sits in a chapter of a module attached to its item's course; a course,
-  module or lesson of another workspace is never found. The owner's editor
-  skips the check when the list it is sent grants the same as the stored one,
-  so a consent save does not fail on a stored list the check would refuse,
-  unless that list names an archived course. A module
+  module or lesson of another workspace is never found. The submission of
+  those proposals, alone or in a group, does not run it, and its dry run writes
+  a list that names an archived course: a refused or accepted submission would
+  otherwise tell the key whether a course exists or is archived and where a
+  module or lesson sits, which no read of the key shows. A list that fails the
+  check ends its proposal, or its group, `failed` at the approval; the key's
+  receipt shows that outcome only after an owner chose to approve. A key that
+  creates a product gets one refusal message for every reason the check or the
+  write refuses its list; an owner or admin session gets the specific message. The owner's editor
+  skips the check and the list write when the list it is sent names the same
+  items as the stored one (items and the ids within an item compared in any
+  order, repeats ignored), so a consent save writes only the consents, does not
+  fail on a stored list the check would refuse, an archived course included,
+  and never writes back a list another editor changed after it was read. It
+  compares items, not what they grant: a list that grants the same through
+  differently shaped items, such as one `modules` item split into two, is
+  checked and written. A module
   or lesson item opens that module or lesson wherever it is used, so the check
   only keeps the course shown next to it true. It is a point-in-time check:
   the write locks only the courses, and a later module detach or lesson move
@@ -832,9 +911,16 @@ scopes on every shop key.
   every request, so an applied change reaches everyone who already holds the
   product at once. No shop route
   serves a course, module or lesson to a key, and the receipt carries only the
-  ids the key sent; a refusal of the check names no title but tells the key
-  whether an id it sent is an active course of the workspace and whether a
-  module or lesson belongs to the course it named. The course, module and
+  ids the key sent. A direct-mode key that creates a product still learns
+  whether the list it sent passes the check as a whole, as any write does.
+  Two timing differences remain, both on ids a key cannot list: a
+  propose-mode submission still locks the course rows its list names, so it
+  can wait on, or answer busy for, a course that is being edited at that
+  moment, which an id naming no course never does; and a direct-mode key gets
+  one refusal text, but the check does different database work for different
+  reasons (a course refusal skips the later queries, and a lesson that exists
+  outside its course reads the workspace's module list where a missing lesson
+  does not). The course, module and
   lesson titles of the owner view (`accessLabels`) and its `archivedCourses`
   are read at read time for display only and never take part in a decision. See
   [Product access](change-proposals.md#product-access).

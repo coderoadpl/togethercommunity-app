@@ -28,6 +28,8 @@ import {
   keyDownloadObjectOwner,
   keyDownloadStagedFileView,
   keyDownloadStagedKey,
+  KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
+  keyDownloadNameMatchesType,
   keyDownloadUploadInputSchema,
   type KeyDownloadContentType,
   type KeyDownloadFileCap,
@@ -39,8 +41,10 @@ const bytes = (...parts: Array<string | number[]>): Uint8Array =>
 
 const le16 = (value: number): number[] => [value & 0xff, value >> 8];
 
-const epubHead = (extra = 0, mimetype = 'application/epub+zip', method = 0): Uint8Array => bytes(
-  [0x50, 0x4b, 0x03, 0x04], le16(10), le16(0), le16(method), [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
+const le32 = (value: number): number[] => [...le16(value & 0xffff), ...le16(value >>> 16)];
+
+const epubHead = (extra = 0, mimetype = 'application/epub+zip', method = 0, sizes = [20, 20], flags = 0): Uint8Array => bytes(
+  [0x50, 0x4b, 0x03, 0x04], le16(10), le16(flags), le16(method), [0, 0, 0, 0], [0, 0, 0, 0], le32(sizes[0] ?? 0), le32(sizes[1] ?? 0),
   le16(8), le16(extra), 'mimetype', new Array<number>(extra).fill(0), mimetype,
 );
 
@@ -71,6 +75,11 @@ describe('the type check of a staged download file', () => {
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(4))).toBe(true);
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/zip+xyz'))).toBe(false);
     expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 8))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [0, 0]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 21]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [21, 20]))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 20], 0x08))).toBe(false);
+    expect(keyDownloadBytesMatch('application/epub+zip', epubHead(0, 'application/epub+zip', 0, [20, 20], 0x0800))).toBe(true);
     expect(keyDownloadBytesMatch('application/epub+zip', SAMPLES['application/zip'])).toBe(false);
   });
 
@@ -155,6 +164,32 @@ describe('file names and upload inputs of keys', () => {
     expect(keyDownloadUploadInputSchema.safeParse({ ...input, extra: true }).success).toBe(false);
   });
 
+  it('takes a file name only when its last extension names the declared type, in any letter case', () => {
+    const input = { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 10 };
+    for (const [fileName, contentType] of [['Guide.PDF', 'application/pdf'], ['book.epub', 'application/epub+zip'], ['track.m4b', 'audio/mp4'], ['photo.jpeg', 'image/jpeg']]) {
+      expect(keyDownloadUploadInputSchema.safeParse({ ...input, fileName, contentType }).success).toBe(true);
+    }
+    for (const fileName of ['page.html', 'tool.exe', 'guide', 'guide.pdf.html', 'guide.', 'a.constructor']) {
+      const refused = keyDownloadUploadInputSchema.safeParse({ ...input, fileName });
+      expect(refused.error?.issues.map((issue) => issue.path)).toEqual([['fileName']]);
+    }
+    expect(keyDownloadUploadInputSchema.safeParse({ ...input, fileName: 'a.png' }).success).toBe(false);
+    expect(keyDownloadNameMatchesType('a.pdf', 'application/pdf')).toBe(true);
+    expect(keyDownloadNameMatchesType('a.pdf', 'image/png')).toBe(false);
+  });
+
+  it('takes an .mp4 name for audio and for video, an .m4a name for audio only, and keeps one preferred type per extension', () => {
+    const input = { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 10 };
+    for (const [fileName, contentType, accepted] of [
+      ['audiobook.mp4', 'audio/mp4', true], ['film.mp4', 'video/mp4', true], ['track.m4a', 'audio/mp4', true],
+      ['film.m4a', 'video/mp4', false], ['photo.mp4', 'image/png', false], ['film.m4v', 'audio/mp4', false],
+    ] as const) {
+      expect({ fileName, contentType, accepted: keyDownloadUploadInputSchema.safeParse({ ...input, fileName, contentType }).success })
+        .toEqual({ fileName, contentType, accepted });
+    }
+    expect(KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION['mp4']).toBe('video/mp4');
+  });
+
   it('bounds the id of a staged file to discard', () => {
     expect(keyDownloadDiscardInputSchema.safeParse({ id: 'x'.repeat(200) }).success).toBe(true);
     expect(keyDownloadDiscardInputSchema.safeParse({ id: 'x'.repeat(201) }).success).toBe(false);
@@ -173,6 +208,8 @@ describe('staged file keys and views', () => {
     expect(keyDownloadObjectOwner('acme', file.objectKey)).toBe('key-1');
     expect(keyDownloadObjectOwner('studio', file.objectKey)).toBeNull();
     expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/product-1/asset-1/a.pdf')).toBeNull();
+    expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/key-files/asset-1/a.pdf')).toBeNull();
+    expect(keyDownloadObjectOwner('acme', 'acme/product-downloads/key-files/key-1/file-1/sub/a.pdf')).toBeNull();
   });
 
   it('shows the fingerprint of an uploaded file and never one of a copy', () => {

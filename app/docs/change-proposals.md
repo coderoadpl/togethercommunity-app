@@ -250,7 +250,9 @@ effect, a before value, a live label or the deciding account. Whether a proposal
 live state (a stock adjustment below zero is refused, a large before value
 can hit the effect limit), which is why a write scope always comes with its
 read scope: a propose-mode key learns nothing from a refused or accepted
-proposal that it could not read with its read scope. The owner view is
+proposal that it could not read with its read scope. For that reason the
+submission of a product access list does not check its courses, modules and
+lessons; the approval does (see [What the key learns](#product-access)). The owner view is
 separate and complete: it
 adds the effect, the proposing key's name, id, issuer and state (`active`,
 `expired`, `revoked`, `purged`), the issuer's state, a live label of the
@@ -261,8 +263,9 @@ The typed client returns a discriminated result for the eleven catalogue
 mutations (`setProductAccess` included), for `createSalesLink`, `updateSalesLink`, `deleteSalesLink` and
 `updateSettings`, and for `addProductDownload`, `replaceProductDownload` and
 `removeProductDownload`: `{ outcome: 'applied', product }` (or `price`,
-`stock`, `salesLink`, `settings`, `asset`, `deleted`) for a direct-mode key and
-`{ outcome: 'proposed', proposal }` for a propose-mode key;
+`stock`, `salesLink`, `settings`, `asset`, `deleted`) for a direct-mode key,
+except `setProductAccess`, which no direct-mode scope grants and which answers
+such a key `403`, and `{ outcome: 'proposed', proposal }` for a propose-mode key;
 `isProposedChange(value)` narrows it. The keyed CLI commands
 (`shop products|prices|stock …`, `shop settings set`,
 `shop sales-links create|update|delete`, `shop files upload|copy|remove`) print
@@ -506,8 +509,8 @@ reads "All 5 changes will be applied together, or none.". When the proposal,
 or any item of the group, carries a proposed image under its digest (the
 images the card loads through the owner preview), the confirmation adds one
 more sentence, counted per distinct image: approving makes the proposed image
-public at the address shown, and if it no longer exists nothing is changed (for
-a group: none of the changes is applied). A file proposal, alone or as a group
+public at the address shown unless it is public there already, and if it no
+longer exists nothing is changed (for a group: none of the changes is applied). A file proposal, alone or as a group
 item, adds the sentences described under [Download files](#download-files),
 and a product access proposal, alone or as a group item, the sentence described
 under [Product access](#product-access).
@@ -526,7 +529,9 @@ dialog was open or the server answered that the items changed (nothing is
 applied then), and only "this group changed while you were looking at it" when
 no dialog was open, since nothing was attempted. An open dialog also closes
 when a refetch shows the group is no longer open (expired, withdrawn or
-decided elsewhere); the card then shows that status without the buttons. A single
+decided elsewhere); the card then shows that status without the buttons, and
+its items as in **History**: without the owner preview of a proposed image,
+the download of a proposed file or the notes of a pending access list. A single
 proposal needs no such step: its effect is fixed when it is proposed, so a
 refetch cannot change what the owner approves.
 
@@ -537,11 +542,27 @@ approval stays on the page as an explained notice until it is dismissed, and
 the proposal moves to **History**. A `stale` approval is explained as "the
 shop changed; the proposer can send it again", except when an item that
 attaches an image ended stale because the image is no longer available: the
-panel then reads that item's events and, finding the note code
-`image_unavailable`, says that the proposed image is no longer available,
-nothing was changed, and it has to be uploaded and proposed again. An item that
-attaches a file is read the same way for the note code `file_unavailable`
-([Download files](#download-files)). "Show more proposals" appends the next page
+panel then reads that item's events (a single proposal reads them again from
+the server; a group takes them from the items of its approval answer) and,
+finding the note code `image_unavailable`, says that the proposed image is no
+longer available, nothing was changed, and it has to be uploaded and proposed
+again. An item that attaches a file is read the same way for the note code
+`file_unavailable` ([Download files](#download-files)). When a single
+proposal's events cannot be read, the notice says neutrally that nothing was
+applied because the shop changed or a proposed image or file is no longer
+available, and that its history shows which. A history row of a `stale`
+proposal that attaches an image or a file reads its events the same way and
+gives that neutral explanation until they have been read, also when they
+cannot be. A `failed` approval, in the
+notice and in its history row, says that the shop refused the change and
+nothing was applied, followed by the reason. The refusals of a product access
+list (a course gone or archived, a module or lesson gone or no longer part of
+the course named with it) and of a file change (a product without downloadable
+files, a file to be replaced or removed that is gone or not ready, a product
+already holding as many files as it can) are worded in the page's language
+(`CHANGE_PROPOSAL_REFUSALS` in `core/domain/change-proposal-refusals.ts`); any
+other refusal of those operations shows the sentence without a reason, and the
+refusal of another operation still shows the server's wording. "Show more proposals" appends the next page
 to the same list (settled notices and open dialogs stay) and moves focus to the
 first new card. The full-page error appears only when nothing has loaded yet: a
 next page that fails keeps the list and shows an inline error with a Retry of
@@ -740,7 +761,11 @@ A decision note is at most 500 characters. The key's own rate limits (60
 requests a minute, 10,000 a day) apply as on every shop route. The images a
 key holds for approval have two limits of their own, checked when an upload
 is completed, in the same transaction that records it, and the uploads it
-starts a third, checked when an upload is started (see [Images](#images)):
+starts a third, checked when an upload is started (see [Images](#images)).
+The first two count every image of the key whose object the application has
+not deleted yet: a released image counts until its object is deleted and its
+row removed, so a storage that refuses deletes cannot grow a key's quarantine
+past them:
 
 | Limit | Value | `changeProposalCap` |
 |---|---|---|
@@ -1045,8 +1070,9 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 
 A propose-mode key can propose a new product cover and new branding images
 (logo, dark logo, favicon, share image). Nothing it uploads is publicly
-reachable until an owner approval of a proposal that attaches it writes the
-public copy, which happens just before that approval commits. The
+reachable until an owner approval of a proposal that attaches it commits; that
+approval writes the public copy just before its commit, and the public route
+does not serve the copy before then. The
 use-cases are in `core/server/usecases/change-proposal-images.ts`; the routes
 are the shop image routes a direct-mode key uses, which are of route class
 `direct` and branch on the key's mode.
@@ -1055,7 +1081,7 @@ are the shop image routes a direct-mode key uses, which are of route class
 |---|---|
 | The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
 | The owners | the proposed image through the owner preview while the proposal is pending (the quarantined copy, or the published copy when the address is one a live field already shows), then the public image once approved |
-| Everyone else | for a new image, nothing until an approval writes its public copy just before it commits; from that write the address answers with the bytes, and if that approval then does not end `applied`, until its withdrawal or the minute sweep deletes the copy again (below). An address a live field already shows is public already |
+| Everyone else | for a new image, nothing until the approval that writes its public copy commits: the public route serves a content-addressed address only while a live field of the workspace shows it or an applied proposal of the workspace set it in an image field, and answers `404` otherwise, also during that approval and after one that did not end `applied` (below). An address a live field already shows is public already |
 
 **Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
 `shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
@@ -1064,36 +1090,73 @@ submission capability of the family: `proposal:submit:catalog` for a product
 cover, `proposal:submit:settings` for a branding image. They presign a `PUT` to
 the private candidate prefix `image-asset-candidates/` like the live upload,
 but the signature also covers `content-length` with the declared `sizeBytes`
-(1 to 5 MiB), so the storage refuses a body of any other size, and answer
+(1 byte to 4 MiB, below the 5 MiB of a live upload, so the owner preview,
+which answers the whole image in one response, stays below the hosted
+response limit of 4.5 MB; a larger declared size answers `400` naming
+`sizeBytes`), so the storage refuses a body of any other size, and answer
 `servePath: null` with `quarantined: true`, because the address depends on the
-bytes. Before it answers, each such upload start is recorded in
+bytes, and `content-length` with the declared size among the `upload.headers`
+the client sends with the `PUT`. Before it answers, each such upload start is recorded in
 `change_proposal_image_uploads` (workspace, key, candidate key, creation
 time); a key that already started 60 uploads in the last 15 minutes, the
 lifetime of the presigned `PUT`, gets `409` with `key_image_uploads` (see
 [Limits](#limits)). The minute sweep deletes the candidate object of every
-record older than 20 minutes (the lifetime and a 5-minute margin) and then the
-record, whether the upload was completed or not, so neither an upload that is
-never completed nor a second `PUT` through a still valid URL stays in the
-bucket. Completing it (the matching `.../complete`
+record older than 20 minutes (the lifetime and a 5-minute margin), whether the
+upload was completed or not, keeps the record with the time of that delete
+(`first_deleted_at`), deletes the candidate once more 10 minutes later and only
+then removes the record. Neither an upload that is never completed, nor a
+second `PUT` through a still valid URL, nor a `PUT` the storage accepted before
+the URL expired that finishes after the first delete stays in the bucket; the
+last rests on the storage finishing or abandoning a write it accepted within
+those 10 minutes. Only the key whose upload start is recorded for a candidate key can
+complete it: another key of the workspace, whatever its mode, and an owner
+session completing it through the live route get `404 not_found`, so a
+candidate a propose-mode key started is never published without an approval
+and never taken over by another key. Completing it (the matching `.../complete`
 route) runs the live content checks (size and format; an upload
 that fails them is deleted and answers the same validation error), then copies
 the bytes to a private, content-addressed key of the key,
 `image-asset-quarantine/<workspace>/<key id>/<kind>/<sha256>.<ext>`, deletes the
 candidate and answers `{ url, quarantined: true }`, where `url` is the public
 address the image will have once approved,
-`/api/public/assets/<kind>/<sha256>.<ext>`. Nothing is written under the public
+`/api/public/assets/<kind>/<sha256>.<ext>`. Before it deletes the candidate it
+records the stored image (digest and extension) on the upload's record
+(`completed_digest`, `completed_extension`) unless one is recorded already,
+and answers the recorded image: two concurrent completions that read different
+bytes of the still writable candidate both answer the first recorded image,
+and the other image stays an ordinary quarantined image of the key. A repeated
+completion of the same candidate key by the same key, after an answer that was
+lost, gets the same answer without reading the candidate again, for as long as
+the sweep has not removed the record. Nothing is written under the public
 prefix `image-assets/`. The same bytes again give the same key; other bytes
 can never replace it, because the digest is the name. Each quarantined image
 is a row of `change_proposal_images` (workspace, key, kind, digest, extension,
 size, creation time, release time), so the limits, the references and the
 cleanup never depend on listing object storage. Under a lock of that key,
-completion counts the key's limits (above) over its unreleased rows, inserts
-the row (or revives a released row of the same image) and writes the
-quarantined object before the lock is released; when the write fails, the row
-is rolled back, the candidate is deleted and the storage error is answered. Two
-concurrent completions therefore cannot both take the last slot, and a
-quarantined object never exists without its counted row except while a
-completion or a release of it is in progress or recorded for the sweep.
+completion counts the key's limits (above) over all its rows, pending and
+released ones included, and commits the row as pending (`pending_since`), or revives a
+released row of the same image as pending; then it writes the quarantined
+object and, under the lock again, marks the row written. A pending row counts
+toward the limits but is invisible to the submit check, the approval and the
+owner preview, and another completion of the same image answers
+`503 unavailable` meanwhile. When the storage refuses the write (a `4xx`
+answer), the row is rolled back. When the write ends without a definite answer
+(no answer, a connection error, a server error), or the process dies before
+the second commit, the row stays pending, and the minute sweep deletes its
+object and the row once it has been pending for 10 minutes, on the assumption
+that the storage finishes or abandons a write within that time. Either way the
+candidate is deleted and the storage error is answered. A completion of bytes
+the key already holds in a written row asks the storage, under the same lock,
+whether the quarantined object is there with the recorded size (a metadata
+request), and writes it again only when it is missing or has another size; a
+failed metadata request answers its error and writes nothing. The row stays
+written during such a repair write, so a pending proposal that attaches it and
+an approval keep seeing it. Two concurrent
+completions therefore cannot both take the last slot, and every quarantined
+object a completion writes is accounted for by a counted row until the sweep
+or a release has removed it, with one exception: a repair write whose answer
+is lost can land after a release deleted the object and its row, and that
+late copy is then neither counted nor swept.
 
 **Attaching.** The key then proposes `product.update` with `coverUrl`,
 `product.create` with `coverUrl`, or `settings.update` with `logoUrl`,
@@ -1115,7 +1178,8 @@ holding the row, that each attached image is still quarantined for the key; one
 released meanwhile is refused with `400` and the live route's message, with a
 form error naming no field: "An image this key uploaded for approval is no
 longer available; upload it again". A released row counts as
-gone everywhere: for the submit check, the approval and the limits. An owner session and a
+gone for the submit check and the approval; toward the key's limits it counts
+until its object is deleted and the row removed. An owner session and a
 direct-mode key set any address the live validator accepts, exactly as before.
 
 **Owner preview.** `GET /api/change-proposals/:id/assets/:digest`
@@ -1123,11 +1187,15 @@ direct-mode key set any address the live validator accepts, exactly as before.
 with `proposal:read`, the quarantined bytes of an image that the pending
 proposal `:id` attaches. When the key holds no quarantined copy of it but a
 live field of the workspace shows its address (an earlier approval published
-it, and approval accepts it as it is), the route serves the published copy
+it, and approval accepts it once its bytes still hash to the digest), the route serves the published copy
 under `image-assets/` with the same checks instead. The server reads the bytes, checks their hash again
 and answers them with the image's content type, `x-content-type-options: nosniff` and `cache-control: private,
-no-store`; the disposition is `inline` for a raster image and always
-`attachment` for SVG, as the public asset route does. A key, an admin, an
+no-store`. The disposition is `inline` for a raster image and always
+`attachment` for SVG. The public asset route only asks the storage for
+`attachment` on an SVG through a signed response override, which a provider
+that ignores overrides does not apply; for that case every SVG under
+`image-assets/` is also stored with `content-disposition: attachment`
+([Storage](storage.md#image-prefixes)). A key, an admin, an
 unverified or impersonating owner, another workspace, a decided or expired
 proposal, an image the proposal does not attach, an image neither quarantined
 nor shown by a live field and one whose object the storage reports missing or whose bytes no
@@ -1138,14 +1206,23 @@ The [owner panel](#owner-panel) loads a pending proposal's proposed
 content-addressed image only from this route: a raster image is shown with a
 loading and a failed state, its format, a fingerprint (the first twelve
 characters of the digest), the address it will have and a note that only the
-owners of the workspace can see it and that it becomes public at this address
-when the proposal is approved. The address is shortened in the middle of the
+owners of the workspace can open this preview, that a new image becomes public
+at this address when the proposal is approved, and that an image published
+there before may already be public (the published copy the route serves for a
+reused address). The address is shortened in the middle of the
 digest (the fingerprint, an ellipsis, the last four characters, then the
 extension), with the full address as its title and for assistive technology.
 When the preview cannot be loaded, a warning takes the place of the picture:
 the image could not be loaded; if it no longer exists, approving changes
 nothing and the image has to be uploaded and proposed again; otherwise try
-again in a moment. The private note is not shown then. A proposed SVG is never
+again in a moment. The preview note is not shown then. The preview reads the
+key's quarantined copy whenever the key holds a written, unreleased row of it;
+a row still pending its completion or already released is not used, even when
+its object still exists. So the warning can be wrong: when the quarantined
+copy behind such a row is lost but a public copy of the same image passes the
+check before the transaction (below), the preview shows the warning, while
+approval can still reuse that public copy, provided the check under the lock
+and every other check of the approval pass. A proposed SVG is never
 rendered: the panel shows a labelled download link through the same route, the
 same facts and the reason. For a decided proposal the panel keeps the rule for every image
 address: it shows an image only for a same-origin public asset path, and it
@@ -1157,9 +1234,13 @@ uploads into the quarantine and proposes the `product.update`;
 `shop settings set` command that proposes it, or proposes it itself with
 `--attach`. Both accept `--group <id>` ([CLI](cli.md)).
 
-**Publication on approval.** Approval, single or of a group, takes each
-attached image's unreleased row with a share lock inside the approval
-transaction, reads its quarantined bytes and checks that they still hash to the
+**Publication on approval.** Approval, single or of a group, publishes only the
+images the stored effect sets, the effect the owner reviewed: an image field
+left unchanged is not in the effect, so an address the input repeats unchanged
+is never read, recorded or written, even when the key holds a quarantined copy
+of it. It takes each such image's unreleased row with a share lock inside the approval
+transaction. Unless its public copy already holds the digest (below), it reads
+the quarantined bytes and checks that they still hash to the
 digest in the address. A missing row, an object the storage reports missing or
 bytes that no longer match make the proposal (or the whole group) `stale` with
 the note "image_unavailable: The proposed image … is no longer available …"
@@ -1167,7 +1248,10 @@ on the `stale` event of the item that attaches it (its group siblings carry the
 usual note naming that item), and nothing is
 applied; only a failed storage request answers the error and leaves the
 proposal `pending`. An address with no row that a live field already shows is
-public already and needs nothing. Every storage request of an approval, of a
+public already: approval accepts it only when its public copy passed the check
+before the transaction and still passes the check under the lock
+(below); otherwise the proposal is `stale` with the same note, as the owner
+preview refuses it. Every storage request of an approval, of a
 publication withdrawal and of the owner's image preview (the read of the
 quarantined copy, the check and the write of the public copy, a delete) gives up
 after 5 seconds without an answer, the lookup of the storage endpoint included,
@@ -1175,68 +1259,183 @@ the bound a statement of an approval has, and counts as a failed storage request
 `503 integration_unavailable` and the proposal stays `pending`, so no storage
 request holds the workspace's approval lock longer.
 
-Before the approval transaction opens, the approval asks the storage, for each
-attached image, whether its public object
-`image-assets/<workspace>/<kind>/<sha256>.<ext>` exists. An existing object
-has the same bytes, because its name is their digest: it is neither written
-nor recorded, so an approval never deletes a public object an earlier approval
-published. A storage request that fails here answers its error, and nothing is
-recorded or changed. For every other image it commits a publication record of its attempt
+Before the approval transaction opens, the approval checks, for each image the
+effect sets, its public object
+`image-assets/<workspace>/<kind>/<sha256>.<ext>`: a read of its bytes, whose
+hash must be the digest, keeping their size and the entity tag of that same
+response when it is a strong one (a quoted string without `W/`). These checks run at most 4 at a
+time (`PROPOSAL_IMAGE_REUSE_CHECKS.concurrency`), each request within its 5
+seconds, and every request starts and ends within one wall-clock budget of 15
+seconds (`PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs`): a request that cannot start
+with at least 1 second of it left ends the checks with `503 unavailable`
+("retry the request", `Retry-After: 5`), nothing recorded or changed. The read
+of the storage configuration before these checks is awaited before that budget
+starts and is not counted in it, so a stalled configuration read alone can keep
+the approval longer than 15 seconds. Apart from that read, with the 25 seconds
+of the [file checks](#download-files), the checks before the transaction aim at
+40 seconds of the 60-second server function. An object that
+passes is neither written nor recorded and its bytes are not kept, so an
+approval never deletes a public object an earlier approval published; a missing
+object, or one whose bytes no longer match, is recorded and written again from
+the quarantined copy. An object that cannot be read as an image (empty, or
+larger than the image size limit), and a storage request that fails here,
+answer that error, and nothing is recorded or changed. Writing a copy again
+needs the key's quarantined copy: an address with no quarantined row whose
+public copy is missing or no longer matches is not written, and the proposal
+ends `stale` as above. For every image not passed it commits a publication record of its attempt
 in `change_proposal_image_publications` (workspace, attempt, kind, digest,
 extension, start time). This single insert runs on its own before the
 transaction, so the approval never waits for a second database connection while
-it holds one. When every item applied, the approval locks the records of the
+it holds one. Under the workspace's approval lock, each public copy that passed
+is checked again: one whose read carried a strong entity tag by a metadata
+request (`HEAD`) only, whose size and entity tag must be those of that read;
+one whose read carried no strong entity tag (none, a weak one, or a value
+that is not a quoted string) is read and hashed
+again within the 5 seconds of a read, since equal metadata say nothing about
+its bytes. Known limit: the 15-second budget and the concurrency of 4 apply
+only before the transaction; on a storage that sends no strong entity tag the
+reused copies are read again one by one under the lock, each with its own 5
+seconds and without a shared budget, so a large group can run past the server
+function limit and roll back. A copy that changed makes an address without a quarantined copy
+`stale`, and answers `503 unavailable` for one with a quarantined copy. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
-approval commits. A quarantined image it did not record must still have its
-public object at that moment, or the approval answers busy (a failed storage
-request answers its error); the workspace's approval lock it holds keeps the
-object there until the commit. Publishing before the commit means committed
-live state never points at an object that does not exist, also after a crash.
+approval commits. The public asset route signs a content-addressed address only
+on committed evidence of its workspace: a live product cover or branding field
+shows the address, or an applied proposal set it in an image field; otherwise
+it answers `404` without asking the storage. The approval's live change and
+status change commit together, so a copy written before the commit is served
+only once the approval that wrote it committed, never during that approval and
+never after one that did not end `applied`, whatever publication records exist;
+a signed link lasts an hour, so this is checked before signing rather than by
+any record a later attempt writes. A UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
+every address with an unresolved delete (below), keep each reused public copy
+there until the commit. Publishing before the commit, and checking every reused
+address under that lock, mean committed live state never points at an object
+that was missing at the commit, also after a crash; a reused copy is known to
+match by its hash before the transaction and, at the commit, by the strong
+entity tag of the response that was hashed or by hashing it again. Only a delete outside the
+application, a loss in the storage, or an application delete that the storage
+carries out more than 10 minutes after it was sent can remove a committed
+object later: an application delete of a public copy is sent only after its
+unresolved mark committed, the mark is cleared only once the storage confirmed
+or refused that delete, and a sweep that finds under the lock a mark newer than
+the record's 15 minutes, set after it listed the record, sends nothing.
 
 When the approval does not end `applied` (it ends `stale`, `failed` or
 expired, a write fails, a lock wait runs out, or the status change or the
 commit fails), it withdraws its attempt right after the transaction: each
-record is removed in a short transaction of its own under the workspace's
-approval lock, so no concurrent approval can publish the same address in
-between. An object the attempt tried to write is deleted first, except when a
-live field shows the address or an applied proposal carries it in its input; a
-record whose object the attempt never tried to write is only dropped. When the
+record is handled in short transactions of its own under the workspace's
+approval lock. An object the attempt tried to write is deleted first, except when a
+live field shows the address or an applied proposal sets it in one of the five
+image fields of its input (an address that appears only in another field, such
+as a description, does not count); a record whose object the attempt never tried to write is only dropped. Before
+the delete is sent, a first transaction marks the record with the time of the
+coming delete (`delete_unresolved_at`) and commits; the delete is sent after that
+commit, outside the lock, and a second transaction under the lock clears the mark
+and removes the record once the storage confirmed the delete, but only while the
+record still carries the mark this withdrawal or sweep wrote: one whose mark a
+later sweep replaced meanwhile changes nothing, so it never clears the mark of a
+delete still in flight. A withdrawal that finds a record already marked leaves
+it, and its object, to the sweep that marked it. While the mark
+exists, every approval whose effect sets the address answers `503 unavailable`
+and changes nothing, so a delete still in flight, or one that outlives a process
+or a database connection that died after sending it, never removes an image a
+later approval published. When the
 write of an image ended without a definite answer (no answer within its 5
 seconds, a connection error, a server error), the storage may still store it
 after this delete, so the withdrawal deletes the object but keeps its record,
-and the minute sweep deletes the object once more after the record's 10 minutes
+and the minute sweep deletes the object once more after the record's 15 minutes
 and only then removes the record; a write the storage refused (a `4xx` answer)
-is withdrawn like any other. This rests on the storage finishing or abandoning
-a write it accepted within those 10 minutes; the signed write itself expires 60
-seconds after it was signed. Once the withdrawal of an attempt without such a
+is withdrawn like any other. The record's 15 minutes then count from the end
+of that write, not from the start of the attempt. This rests on the storage
+finishing or abandoning a write it accepted within 10 minutes of receiving it;
+the signed write itself expires 60 seconds after it was signed. An approval
+checks before each write that it starts within 5 minutes of committing its
+publication records, or it answers `503 unavailable` and writes nothing more;
+the check is per write, so images of a group written before it ran out are
+withdrawn like those of any approval that did not end applied. A record is
+due for the sweep only 15 minutes after its start, those 5 minutes plus the 10
+of the storage, so a process that dies during a write, whose record no
+withdrawal restarts, still leaves the storage the full 10 minutes after the
+latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
+`4xx` answer other than `404`) cannot land later, so the mark is cleared and the
+record stays for the sweep. A `404` answer whose body is a complete S3 error
+document (an `Error` root closed at the end of the body, no comment or
+processing instruction in it, exactly one `Code` element directly under the
+root) with the code `NoSuchKey` counts as a confirmed delete: the code is read
+from the answer, not checked against the bucket. The record is then removed, except
+after a write without a definite answer (above), where the withdrawal keeps it
+and restarts its 15 minutes. Any other `404` (an empty body, or one that cannot
+be read within its size limit or deadline, a proxy page, a missing bucket
+`NoSuchBucket`, another code, a document cut off or carrying a comment)
+counts as a delete without a definite answer. When the delete ends without a definite answer (no
+answer, a connection error, a server error), or the process dies after sending
+it, the storage may still carry it out later, so the record keeps its mark; the
+minute sweep deletes the object again 15 minutes after the mark, under the same
+assumption, and only then removes the record, so a retry after that publishes
+the image again. Once the withdrawal of an attempt without such a
 write succeeds, the attempt has left neither a record nor a public copy behind.
 A record it cannot remove (the lock wait runs out, the storage
 configuration cannot be read, the delete fails, or the process died first)
-stays, and the minute sweep retries it: it removes every record older than 10
-minutes under the same lock, always deleting its object with the same
+stays, and the minute sweep retries it: it removes every record whose start,
+or whose last delete without a definite answer, is more than 15 minutes ago,
+under the same lock, where it checks again that the record is still due: a
+record another sweep marked after this one listed it is left as it is, with no
+storage request and no change to the record. It always deletes its object with the same
 exceptions, since it cannot know whether the attempt wrote it, 50 workspaces
 and 20 records per workspace per run, and leaves a record it again cannot
 remove for the next run, with the time of that attempt, so it moves behind the
-other records. Every public object written by an approval that did
-not end applied is therefore removed without anyone's help once the storage
-answers, unless a live field shows its address or an applied proposal carries
-it.
+other records. A public object written by an approval that did not end
+applied is therefore removed once the sweep reaches its record and that
+workspace's storage answers, unless a live field shows its address or an
+applied proposal sets it in an image field. A record names no bucket: when the
+workspace's storage connection changed in between, the delete goes to the
+current bucket, the record is removed and the copy in the earlier bucket
+stays until someone deletes it there.
 
 **Cleanup.** After a decision commits, the quarantined images of the decided
 proposals are released: under the workspace's proposal lock, their rows are
 marked released when no pending, unexpired proposal of the same key still
 attaches them. Then, for each image, a short transaction under the key's lock
-that completion takes deletes the object and then the row, if the row is still
-released; a completion that revived it meanwhile keeps both. A failed or busy
-object delete leaves the row released and invisible, and the sweep retries it.
+that completion takes marks the row with the time of the coming delete in
+`delete_unresolved_at`, if the row is still released, and commits; a completion
+that revived it meanwhile keeps the row and its object. The object delete is
+sent after that commit, outside any transaction, and a second short
+transaction under the key's lock removes the row once the storage confirmed
+the delete, or records the failed attempt, only while the row still carries the
+mark this step wrote; a step whose mark a later step replaced after the grace
+below changes nothing. While the mark exists, the sweep and another release leave the row
+alone and a completion of the same image by that key answers `503 unavailable`
+instead of reviving the row, so a delete in flight, or one that outlives the
+process that sent it, never removes a new quarantined copy. A delete the
+storage refuses (a `4xx` answer other than `404`, such as `AccessDenied`)
+clears the mark and leaves the row released and invisible, and the sweep
+retries it; a busy step leaves it the same way. A bucket policy that refuses
+deletes therefore leaves such rows counted toward the key's limits, and the
+refusal logged on every sweep run, until the storage permits the delete; it
+never blocks a completion of the same image. A `404` answer with a complete
+S3 error document whose one direct code is `NoSuchKey` (as above) counts as a
+confirmed delete, the code read from the answer
+and not checked against the bucket, so the row is removed; any other `404`,
+also one whose body cannot be read within its size limit or deadline, counts
+as a delete without a definite answer. A delete that ended without a definite answer, or whose process
+died, keeps the mark: for 10 minutes the sweep leaves the row alone, then
+deletes the object again and removes the row once that delete is confirmed,
+and the image can be uploaded again. The 10 minutes count from the time the
+step was given, read before it waited for its database connection and the
+key's lock, not from the moment the delete was sent, so a step that waited
+leaves the storage less than 10 minutes after its delete.
 The workspace's approval lock is never held across these storage requests. This
 follows an applied, stale or failed
 approval, a reject, a withdrawal, a recorded expiry, the revocation of a key
 (every image of that key) and a purge. An image held by an approval in progress
 is released only after that approval ends. The sweep
-(`sweepQuarantinedImages`) finishes every released image and releases every
+(`sweepQuarantinedImages`) finishes every released image, releases every row
+left pending for 10 minutes by a completion that did not finish (also when a
+pending proposal of its key repeats its address in an image field: no proposal
+can have attached a row that was never written), and releases every
 image older than 7 days that no pending, unexpired proposal of its key
 attaches, and every image of a revoked or deleted key, 50 workspaces and 200
 images per workspace at a time. Images a pending proposal attaches are left
@@ -1248,21 +1447,51 @@ records (see above). Workspaces, images, upload candidates and publication
 records are each taken longest waiting first, by the time of their last failed
 removal (recorded in `sweep_attempted_at`) or else their creation or start,
 so rows whose removal keeps failing move behind the others, inside a workspace
-and across workspaces. It runs on the existing minute tick
-(the `/api/internal/dispatch-email` cron route, after e-mail and refund
-dispatch, and the Node ticker, beside them), at most once every 50 seconds per
-server process, independently of the [download file
-sweep](storage.md#download-file-prefixes): each has its own failure and its own
-budget of 10 seconds, and on the cron route both end at the latest 50 seconds
-after the tick started, 10 seconds before the 60-second function limit. A step
+and across workspaces. A workspace whose storage configuration cannot be read,
+whether the lookup answers an error or rejects, records that time on every
+released image and upload record the step listed, in one write per step (for
+upload records only while the step's budget lasts; a rejection then counts as
+a failed workspace), so it cannot stay ahead of the healthy workspaces either. It runs on the existing minute tick,
+at most once every 50 seconds per server process, independently of the
+[download file sweep](storage.md#download-file-prefixes), each with its own
+failure and its own budget of 10 seconds: the `/api/internal/dispatch-email`
+cron route runs both after e-mail and refund dispatch, and the Node ticker
+starts both before the dispatch and awaits them beside it. On the cron route
+both aim to end 50 seconds after the tick started, 10 seconds before the
+60-second function limit, and neither starts when the dispatch before them
+already reached that end. These ends are scheduling targets, not a guaranteed
+return time: no step starts after them, but the wait for a pool connection is
+not counted, and statements each bounded on its own can together run past
+them (below). Within
+its budget the three kinds of work, in this order, quarantined images, upload
+candidates and publication records, each get an equal share of what is left
+among the kinds that have work at the start of the run, and what one kind
+leaves unspent goes to the kinds after it, so deletes that keep hanging in one
+workspace's quarantine cannot keep the sweep from the publication records of
+another. A step
 (a release, an image's removal, a publication record's withdrawal) starts only
 when what is left covers a lock wait of at least 250 milliseconds and 1 second
 for its storage delete; its lock waits get what is left minus that second, and
 its delete, the lookup of the storage endpoint included, gets at most 5 seconds
 and what is left, so the sweep's lock waits and storage requests end by its
 end, and the 10 seconds before the function limit are for its database
-statements and the answer. A failing sweep is logged and never stops the tick
-or the other sweep. The
+statements and the answer. Every statement that lists work or records an
+attempt, the first query for the workspaces included, runs with a statement
+timeout and a lock timeout of what is left, but at least 1 second; one that
+runs out, for example behind a migration that holds an image table, lists
+nothing or records nothing, so that part of the run ends and its rows wait for
+the next run. Each statement of a release (the proposal lock, the selection of
+the rows and their marking as released) runs with a statement timeout of what
+is left of that step's lock wait, set again before each of them, and none
+starts once it is spent: the release then changes nothing and its rows wait
+for the next run, so a slow release query cannot take the share of the kinds
+after it. That allowance starts only once the release holds its database
+connection: the wait for a connection from the pool is not counted in it, so
+after a long wait the release can still run its statements past the end the
+sweep gave that step. A failing sweep is logged and never stops the tick
+or the other sweep. A step whose database or storage call rejects is logged
+and counted, the sweep goes on with the other workspaces, and a run with any
+such failure answers its count, which the tick logs as a failed run. The
 storage orphan report counts a quarantined object whose row exists as
 `pending` and a published content-addressed image a live field shows as
 `referenced`.
@@ -1278,8 +1507,19 @@ transaction commits, a moment since nothing is scanned.
 
 Migration `0170_key_download_files` adds a nullable `sweep_attempted_at`
 column without a default to each of the three tables (constant time; each
-table's `ACCESS EXCLUSIVE` lock is held until the migration commits); a release
-before it ignores that column.
+table's `ACCESS EXCLUSIVE` lock is held until the migration commits), and a
+nullable `delete_unresolved_at` column with a timestamp format check to
+`change_proposal_images` and `change_proposal_image_publications` and a
+nullable `pending_since` column with the same check to
+`change_proposal_images`, and a nullable `first_deleted_at` column with the
+same check and the nullable `completed_digest` and `completed_extension`
+columns (a digest and an extension check, and a check that both are set or
+neither) to `change_proposal_image_uploads`; each check reads its table once
+under that lock, which `0169` created moments before or
+which holds only rows of unreleased proposals. A release before it ignores these
+columns: `8141fd15` has no schema, statement or query that names any of the
+three tables, so it never reads or writes these columns and never meets their
+checks.
 
 The release on production when proposed images were added, `8141fd15`,
 predates `0169`. What it does with what this release stores and answers is
@@ -1295,9 +1535,13 @@ holds literal copies of its schemas and parsing steps:
   before/after effect, the key receipt and the owner view parse as before. It
   publishes nothing, so approving such a proposal there sets the field to an
   address that has no public copy on either release, and after rolling
-  forward the sweep removes the quarantined bytes; the image then has to be
-  uploaded and proposed again. Reject such proposals or leave them pending
-  until rolling forward; do not approve them there.
+  forward the sweep removes the quarantined bytes. Uploading and proposing the
+  same image again does not repair the field: the same bytes get the same
+  address, the field already shows it, so the effect sets no image and the
+  approval writes no public copy. Repair it with an upload in the owner's
+  editor, which gives the image a new address, or clear the field first and
+  then propose the uploaded image again. Reject such proposals or leave them
+  pending until rolling forward; do not approve them there.
 - A `stale` event note `image_unavailable: …` reads like any other note within
   its 500 characters.
 - A product cover or a branding field (`logoUrl`, `logoDarkUrl`, `faviconUrl`,
@@ -1310,6 +1554,14 @@ holds literal copies of its schemas and parsing steps:
   logo image that does not load. The public copy stays in storage (that release deletes only avatar
   objects; its storage orphan report lists the copy as unreferenced, as a
   report only), and the address is served again after rolling forward.
+- It serves a public image the way this release does: a `302` to a presigned
+  link that asks the storage for `image/svg+xml` and `attachment` for an SVG.
+  An SVG this release stored with `content-disposition: attachment` under a
+  random-id name, a product cover, a branding image or a course cover, still
+  loads in an `img` element and downloads when its address is opened
+  directly, on both releases. An SVG uploaded on `8141fd15` during the rollback
+  is stored without that header, so a provider that ignores signed response
+  overrides serves it without `attachment`, also after rolling forward.
 - A `change-proposal` notification keeps the key name in `authorDisplay` and
   the group in `contextId` and `snippet`, as that release writes them; it drops
   the typed `changeProposal` field when it parses the row, so the bell names
@@ -1341,9 +1593,17 @@ select
   as count;
 ```
 
-When the first is not `0`, keep those proposals unapproved during the
-rollback, as above. When the second is not `0`, those images are missing on
-that release until rolling forward; nothing is deleted.
+Both are conservative candidate searches, not exact counts. The first
+matches such an address anywhere in the stored input, so a proposal whose
+description quotes one counts, and it counts a proposal still stored as
+`pending` whose expiry has passed. The second matches a branding field that
+contains such a path anywhere, so a foreign URL that contains one counts too.
+A count that is not `0` is a list to inspect, not a finding: read the
+matching fields of each candidate first. Keep unapproved during the rollback,
+as above, only the pending proposals whose expiry has not passed and whose
+image field holds such an address; report as missing on that release, until
+rolling forward, only the product covers and branding fields whose own value is
+such an address. Nothing is deleted.
 
 Before rolling back past `8141fd15`, delete the `change-proposal` notifications
 first: the step is at the end of [Download files](#download-files).
@@ -1410,20 +1670,27 @@ product editor completed, live or by another approval) makes the approval
 `stale`.
 
 Before the dry run, the submission checks read-only that the staged file is
-one this key staged and that no pending, unexpired proposal holds it; the
+one this key staged and that no proposal holds it other than one that ended
+`stale` or `failed`: a pending proposal holds it, and so does a rejected,
+withdrawn or expired one until the release after that decision (or the minute
+sweep) has discarded it, so that release always finds the file; the
 transaction that stores the proposal locks the staged row and checks again,
 then links the row to the new proposal. A file is therefore held by at most one
 pending proposal, and a group cannot attach it twice. A file of another key, a
-discarded, unknown or held file answers `400 validation` with the field error
+discarded, unknown or held file, also one an ended proposal has not released
+yet, answers `400 validation` with the field error
 `stagedFileId: Must be a file this key staged that no other pending proposal
-attaches`, and nothing is stored. The key may still discard a file a pending
+attaches`, and nothing is stored; a file the key discards while its own
+submission is running gets the same answer, since a dry run that finds no file
+checks the file again. The key may still discard a file a pending
 proposal holds; an approval of that proposal then ends `stale` (below).
 
 **Owner link.** `GET /api/change-proposals/:id/files/:fileId`
 (`getChangeProposalFileLink`) answers the verified owner in their own session,
 with `proposal:read`, a short-lived download of a staged file that the pending,
 unexpired proposal `:id` attaches and still holds: it asks the storage whether
-the object exists (5 seconds at most) and answers
+the object exists and has the recorded size (5 seconds at most), as the
+approval does, and answers
 `{ "download": { "url", "expiresAt", "fileName", "sizeBytes" } }` with
 `cache-control: private, no-store` and `referrer-policy: no-referrer`. `url` is
 a signed `GET` of the staged object, valid for 60 seconds, that asks the
@@ -1435,12 +1702,13 @@ bearer capability: whoever holds the address can fetch the file until it
 expires. The server never logs it and its answer is never cached. A key, an
 admin, an unverified owner and an owner viewing as a member get `401` or `403`;
 another workspace, a decided or expired proposal, a file the proposal does not
-attach or no longer holds, and an object the storage reports missing get
-`404`; a malformed id is `400`; any other storage failure is answered with its
+attach or no longer holds, and an object the storage reports missing or of
+another size than the recorded `sizeBytes` get `404`; a malformed id is `400`; any other storage failure is answered with its
 error. With the CLI, `proposals file <id> <file id> --out <path>` streams the
 file through this link, never printing the link, into a new temporary file next
-to `--out`, writes every byte, and moves it onto `--out` only when the bytes
-written are `sizeBytes`; it refuses an existing `--out` without `--force`, and a
+to `--out` that only the account running it can read (mode `0600`), writes every byte, and moves it onto `--out` only when the bytes
+written are `sizeBytes`, and stops reading without writing the chunk that would
+go past `sizeBytes`; it refuses an existing `--out` without `--force`, and a
 download that breaks off or has another size removes only the temporary file,
 so an existing `--out` is never truncated or removed. `proposals show <id>` and
 `proposals group show <id>` list the files a proposal or each item attaches and
@@ -1451,41 +1719,80 @@ staged file the proposal (or every item of the group) attaches and, when the
 proposal still holds it, asks the storage whether its object exists and has the
 recorded size. These file checks run at most 4 at a time
 (`CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.concurrency`), each storage request
-within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and all of them
-within one wall-clock budget of 25 seconds: a group holds at most as many file
-items as its key may have staged files (20), and 20 checks 4 at a time are 5
-rounds of at most 5 seconds. The other 35 seconds of the 60-second server
+within 5 seconds (`KEY_DOWNLOAD_STORAGE_DEADLINES.headMs`), and every storage
+request starts and ends within one wall-clock budget of 25 seconds. The
+approval waits for each database read of a staged row and for the read of the
+storage configuration only until that budget ends: a read that has not
+answered by then, or answers after it, ends the checks with `503 unavailable`
+as below, whatever it answers later, instead of counting the file as gone or
+answering a configuration error. The approval stops waiting, but the read itself
+is not cancelled: a stalled read keeps its database connection until the
+database answers it. A group holds at most 50 items of any
+operation. Only a `download.add` or `download.replace` item reads its staged
+row, and only one whose proposal still holds its file asks the storage; a
+`download.remove` makes no storage request. A key holds at most 20 staged
+files at a time and each is held by at most one pending proposal, so an
+approval asks the storage about at most 20 objects, and 20 requests 4 at a
+time are 5 rounds of at most 5 seconds. The other 35 seconds of the 60-second server
 function (`SERVER_FUNCTION_LIMIT_MS`, the `maxDuration` in `vercel.json`) are
-left to the transaction and the answer. None of these file checks runs under
+the target for the checks of the public image copies (at most 15 seconds,
+[Images](#images)), the transaction and the answer; they are not reserved, so
+an approval whose connection pool is held by such stalled reads can still wait
+longer for its transaction. None of these file checks runs under
 the workspace's approval lock; an image a proposal attaches, alone or in a
-mixed group, is still read and written under that lock, each storage request
+mixed group, has its public copy checked before the transaction too. When that
+public copy passes, the approval neither reads the quarantined copy nor writes
+a public one: under that lock it checks the public copy again, by its metadata
+when the earlier read carried a strong entity tag and by reading and hashing it
+otherwise. A storage failure of the check before the transaction answers its
+error before the transaction opens. When the public copy does not pass and the
+key holds no written, unreleased quarantined copy, the proposal ends `stale`
+under that lock without another storage request. Otherwise the approval reads
+the quarantined copy under that lock and checks its hash, and only when every
+item applied writes the public copy before the commit, each storage request
 within its own 5 seconds ([Images](#images)). A row that is gone or no longer
 held by the proposal, an object the storage reports missing and a different
 size count as gone. A check that cannot start with at least 1 second of the
-budget left, or a storage request the budget cut short that did not answer,
-ends the checks with `503 unavailable` and `Retry-After: 5`; any other storage
-failure, an answer that does not come within the 5 seconds included, is
-answered with its error, the first in the order of the items when several
-fail. Either way nothing is decided and the proposal or group stays
-`pending`. Inside the transaction, before any target lock, the
-approval locks each attached staged row of the proposing key and checks that
-it is the file the storage confirmed (id, key, object key, size, SHA-256, held
-by this proposal). A file that is gone makes the proposal `stale` with the note
+budget left, a check whose staged row or configuration read has not answered
+within the budget, or any
+storage failure other than a missing object on a request whose 5 seconds the
+budget shortened, ends the checks with `503 unavailable` and `Retry-After: 5`;
+any other storage failure of a request that had its full 5 seconds, a timeout
+included, is answered with its error, the first in the order of the items when
+several fail. Either way nothing is decided and the proposal or group stays
+`pending`. Inside the transaction, after the proposal or group lock, a group's
+course locks and the quarantined image rows of the proposal, and before the
+product lock of any item, the approval locks each attached staged row of the
+proposing key and checks that it is the row it read before the transaction
+(id, key, object key, size, SHA-256, held by this proposal). The storage
+confirmed only that the object exists with the recorded size; the SHA-256 is
+compared between the two database reads, not with the object. A key cannot
+write a staged object, since the server writes it by a copy under a file id of
+its own, but bytes replaced with others of the same length outside the
+application are not detected. The owner link and the approval each resolve the
+workspace's current storage connection, and a staged row names no bucket: when
+the owner changes the connection between the review and the approval, the
+approval checks, and attaches, the object at the same key in the new bucket.
+Both are outside this check. A file that is gone makes the proposal `stale` with the note
 `file_unavailable: The proposed file <staged file id> is no longer available,
 so the proposal cannot be applied; nothing was changed` on its `stale` event,
 and nothing is applied; in a group every file is checked before any item
 applies, and one gone file makes the whole group `stale`, with that note on
 the item that attaches it and the usual note on the others (the first such
 item in group order). The approval holds each staged row until it commits.
-The minute sweep locks a staged row and holds it until the storage answered
-its delete. The key's discard and the release after a decision lock the staged
-row, delete it and record an owed deletion of its object in one transaction,
-and delete the object after that commit while holding only the owed-deletion
-row. Every one of these paths must lock the staged row to remove it, so it
+The minute sweep, the key's discard and the release after a decision lock the
+staged row, delete it and record an owed deletion of its object in one
+transaction, and delete the object after that commit while holding only the
+owed-deletion row, so a delete whose answer is lost leaves no staged file to
+attach or propose. Every one of these paths must lock the staged row to remove it, so it
 waits for an approval that holds the row: after the approval commits the row
 is gone (attached) and there is nothing to discard or sweep, and a path that
 removed the row first leaves the approval nothing to lock, so it ends `stale`.
-The object therefore cannot disappear between the check and the attach. The
+Between the checks before the transaction and its row lock the key's discard
+can remove the row and then the object; the approval then finds no row to
+lock and ends `stale`. The sweep commits the removal of a staged row before it
+sends the delete, so a delete whose answer is lost never leaves that row
+proposable. The
 attach makes no
 storage request: the new product file points at the staged object, and the
 staged row is deleted in the same transaction. A removal's storage delete runs
@@ -1561,7 +1868,23 @@ approving does nothing." A group with a file item is approved like any other gro
 its confirmation repeats the sentence of each file item, with the copy source
 as above; a file added to a product an earlier item of the group creates reads
 "… will be added to “Field Guide (digital)”. Everyone who later gets access to
-this product can download the file." instead of naming current buyers. It adds the only-file sentence when an item's removal
+this product can download the file." instead of naming current buyers. An item
+whose file a later item of the group replaces, so that the file is in its
+product's file list after the last file item of the group but not as its
+current version, says buyers can download it only as a previous version, since
+a replaced version stays downloadable under the previous versions: "“field-guide.pdf”
+(PDF, …) will be attached to “Field Guide (digital)” by this step, but a later
+change in this group replaces it, so buyers can download it only as a previous
+version." An item whose file is not in that final list, or whose product a
+later item deletes, says "… but a later change in this group removes it or
+deletes the product, so no buyer gets this file." A removal item says buyers
+lose the file only when the file was in the product's list before the first
+file item of the group; a file an earlier item attached reads "“field-guide.pdf”
+version 1, which an earlier change in this group attaches to “Field Guide
+(digital)”, is removed again by this step, so no buyer gets it." A removal
+item names the version that becomes or stays current only when no later item
+changes the product's files, and compares it with the list before the group.
+It adds the only-file sentence when an item's removal
 leaves its product no ready file and no later item of the group changes that
 product's files, and "If the proposed file no longer exists, none of the
 changes is applied." when an item attaches one ("If one of the 2 proposed files
@@ -1578,8 +1901,13 @@ of its group keep the generic label.
 **Release on decisions.** After a decision commits, the files of the decided
 proposals are released, never failing the decision: a rejection, a
 withdrawal (by the key, or by revoking or purging it) and a recorded expiry
-discard the staged file (its deletion is owed and its object deleted, the
-sweep retrying a delete that fails); a `stale` or `failed` approval only lets
+discard the staged file in two steps. First one database transaction removes
+the staged row and records the owed deletion of its object; it needs no
+storage, and once it committed the file can no longer be attached or proposed.
+When it is busy or does not run, the file stays staged and linked to the ended
+proposal until the minute sweep removes it. Only then is the object deleted,
+which needs the workspace's storage configuration; a delete that cannot be
+sent or fails stays owed, and the sweep retries it. A `stale` or `failed` approval only lets
 go of the file, which stays staged for the key until it is discarded or its 7
 days pass, so the key can propose it again without uploading it again; an
 applied attach has made the file a product file. Revoking a propose-mode key
@@ -1590,8 +1918,9 @@ file still linked to a rejected, withdrawn or expired proposal, in case the
 release after that decision did not finish.
 
 **Rolling back.** The release on production when these operations were added,
-`8141fd15`, predates migrations `0168` to `0170`, so a rollback to it also
-retreats past `0170_key_download_files`; the tables and columns it then
+`8141fd15`, ends at migration `0167` (there is no `0168`; this release adds
+`0169` and `0170`), so a rollback to it also retreats past
+`0170_key_download_files`; the tables and columns it then
 ignores are listed under the [key rollback](shop-management-keys.md#rollback).
 What that release does with what this release stores is proven by
 `scripts/change-proposal-download-rollback-8141fd15.test.ts`, which holds
@@ -1616,13 +1945,25 @@ literal copies of that release's schemas and parsing steps:
   row linked to a proposal that is now `stale`. After rolling forward, the
   minute sweep of this release removes a file linked to a rejected, withdrawn
   or expired proposal, and any other staged file 7 days after staging or once
-  its key is revoked, expired or purged; a file linked to a proposal that ended
-  `stale` is free for its key to propose again until then.
+  its key is revoked, expired or purged, but never a file a pending, unexpired
+  proposal holds: a proposal left pending during the rollback keeps its file,
+  and the file's bytes count against the key's staging limits, until it is
+  decided or expires, also after those 7 days. A file linked to a proposal
+  that ended `stale` is free for its key to propose again until the sweep
+  removes it.
+- Its storage orphan report lists everything under
+  `<workspace>/product-downloads/` and has no inventory of the staging tables,
+  so it reports the key's staged files, upload objects under `key-uploads/` and
+  objects whose deletion is owed as unreferenced, as a report only; it does not
+  list the quarantined images under `image-asset-quarantine/`.
 - A `stale` event note `file_unavailable: …` reads as any note within its 500
   characters.
 - A product file an approval attached is a `ready` file row there, served and
   deleted by its stored object key like any other file; that release neither
-  selects nor parses the `sha256` column.
+  selects nor parses the `sha256` column. It serves the object with the row's
+  file name and type as signed response overrides, so the object's stored type
+  `application/octet-stream` shows only with a provider that ignores
+  overrides, the same on both releases.
 - The storage probe's `signedResponseOverrides` is part of an answer only and
   never stored; that release's diagnostic schema drops it.
 - This release adds no notification kind: a file proposal raises the
@@ -1662,8 +2003,10 @@ purchase does not copy that list. Access is resolved on every request from the
 current access items of every product the member holds an active grant for
 (`core/server/usecases/entitlements.ts`), so a changed list applies at once to
 everyone who already has access to the product, current buyers included: they
-get what the new list names and lose what it no longer names, unless another
-product they hold grants it. The download files of a product and the spaces
+get what the new list names and lose the access this product gave them to what
+it no longer names, unless another product they hold grants it; a preview
+lesson stays open to every signed-in member, and staff keep their access. The
+download files of a product and the spaces
 that name it are not part of this list.
 
 What an item grants (`core/server/usecases/access.ts`):
@@ -1692,29 +2035,65 @@ ordered by module creation time, then by the module's course order
 lesson opens when the member's items open it in any of these places
 (`locateAccessibleLesson`): the lesson player with its media, editions and
 attachments, completion, discussions, discussion search and the reach of
-lesson-thread notifications check every place. Where a member is sent or
+lesson-thread notifications check every place; a preview lesson still opens in
+the player, with its media, editions and attachments, to any signed-in member
+without that check, while completion and discussions of it still require a
+place their items open. Where a member is sent or
 progress is recorded follows a course that opens the lesson for them:
 
 - a lesson-thread notification (the e-mail link and the course of the in-app
-  notification) names, for each member, the first place their items open;
-  staff get the lesson's first course, so does a member it opens there;
+  notification) names, for each member, the first place their items open when
+  the notification is first stored; staff get the lesson's first course, so
+  does a member it opens there. A retried delivery of an already stored
+  notification links the e-mail into the first place their items open at the
+  retry, and for staff into the lesson's first course at the retry (the
+  lesson's own link when no course holds it then), while the in-app notification keeps the course stored
+  with it;
 - the next lesson (`GET /api/student/lessons/next` and the CLI's
   `student next`) is taken from the first course that opens the lesson for a
   member, or from the lesson's first course when none does; staff walk the
-  lesson's first course;
+  lesson's first course. It is the lesson that follows the place chosen, so
+  when one course holds the lesson in two modules, the walk goes on from the
+  module that opens it;
 - completion and un-completion take the course the member is viewing as an
   optional `courseId` (the lesson player sends the course it shows) and are
   recorded under it when it opens the lesson for the member (for staff, when
   it holds the lesson), otherwise under the first course that opens it; a
   request without `courseId`, as from the CLI or an older player, is recorded
-  under the first course that opens it. Un-completion also removes the lesson
-  from the member's own progress of the named course when that course holds
-  the lesson but no longer opens it for them, so a completion recorded there
-  while it was open does not come back; a named course that does not hold the
+  under the first course that opens it. Archived courses count only when no
+  active course opens the lesson: an archived viewed course, or an archived
+  first course, is passed over for the first active course that opens it,
+  because progress summaries and the navigation skip archived courses.
+  Un-completion also removes the lesson from the member's own progress of the
+  named course when that course holds the lesson but is not the course the
+  request is recorded under, so a completion recorded there
+  while it was open does not come back. The lesson leaves both rows in one
+  database transaction, so a failed request removes it from neither and a retry
+  finishes the job; the empty progress row of the course the request is
+  recorded under, when the member had none, is created before that transaction
+  and stays when the request then fails. A named course that does not hold the
   lesson, or that belongs to another workspace, is never written. Once the
   request settles, the player shows the progress the server holds: the course
   it shows, and the course the request was recorded under when that is
-  another one, each read again from the server;
+  another one, each read again from the server. After a completion from
+  **Mark as completed** recorded under another course, the player replaces its
+  address with that course's address of the lesson (no new history entry),
+  keeping its edition, thread and heading fragment, so a reload or a later
+  visit reads the completion there and can undo it. **Complete and continue**
+  moves to the next lesson without that replacement, so the history entry of
+  the completed lesson keeps the address the member opened;
+- the last-viewed position (`POST /api/student/progress/last-viewed` and the
+  CLI's `student last-viewed`) is recorded for a member only when the named
+  course opens the lesson for them, in the named module when one is sent;
+  otherwise it is refused as `forbidden` and nothing is written. Staff, and a
+  request without a lesson, are not checked. The lesson player sends it only
+  when the lesson is an open row of the course tree it shows, naming the module
+  and chapter of the first open row of the lesson when an earlier row of it is
+  locked (the breadcrumbs show that row too, and the previous and next lessons
+  and the continue action are read from that row, never naming the lesson
+  itself). It sends it once per course and
+  lesson it shows, and only once the tree has an open row of the lesson, so a
+  tree that reads after a failed read still records the position;
 - a lesson hit on the search page links only into a course of the member's
   navigation whose tree opens the lesson. While course trees are still
   loading, a hit that no loaded tree opens is held back; once loading ends, a
@@ -1731,10 +2110,12 @@ course are now a subset of what was pooled, and a lesson open in its first
 course is still open there, so no member loses a module or a lesson. Members
 gain:
 
-- (a) a module attached to two or more courses, excluded by a `course` item for
-  one of them, inside another of its courses that a `course` item of theirs
-  grants as a whole (without excluding it), from the same product or another
-  one;
+- (a) a module excluded by a `course` item for one course, inside another
+  course it is attached to that a `course` item of theirs grants as a whole
+  (without excluding it), from the same product or another one. This includes
+  a stale exclusion: a module moved entirely from course A to course B keeps
+  the stored exclusion for A, which closed it in B before and no longer does,
+  even when B is its only course;
 - (b) a lesson whose first course does not open it for them while another
   course that holds it does, for example a member who gets only the second
   course of a shared module;
@@ -1759,17 +2140,19 @@ join course_modules m on m.tenant_id = 'acme' and m.id = e.excluded_id
 where exists (select 1 from jsonb_array_elements_text(m.course_ids) other where other <> e.course_id);
 ```
 
-The query counts distinct excluded modules attached to another course and
-distinct products whose `course` items exclude them, not members: a member
-gains such a module only while they also hold a `course` item for another of
-its courses. It does not count cases (b) and (c).
+The query counts candidates, not member gains: distinct excluded modules now
+attached to a course other than the one the exclusion names (a module still
+attached to that course or moved away from it entirely alike), and distinct
+products whose `course` items exclude them. A member gains such a module only
+while they also hold a `course` item for another of its courses. It does not
+count cases (b) and (c).
 
 **One check.** `checkProductAccessItems`
 (`core/server/usecases/product-access-items.ts`) is the one check of an access
 list. The owner's access editor (`updateProductAccessItems`, also reached by an
 admin), product creation (`createProduct`, so a direct-mode key's
-`POST /api/m2m/shop/products` and a `product.create` proposal as well) and
-`product.set-access` run it:
+`POST /api/m2m/shop/products` as well) and the approval of a `product.create` or
+`product.set-access` proposal run it:
 
 - every course exists in the workspace and is not archived;
 - every module of a `modules` item, and every excluded module of a `course`
@@ -1777,22 +2160,41 @@ admin), product creation (`createProduct`, so a direct-mode key's
 - every lesson of a `lessons` item exists and sits in a chapter of a module
   attached to the item's course.
 
-A course, module or lesson of another workspace is never found. The check
-answers `400 validation` with one of the messages "Product access items may
+A course, module or lesson of another workspace is never found. For an owner
+or admin session the check answers `400 validation` with one of the messages "Product access items may
 only reference existing, active courses", "… existing modules", "… existing
 lessons", "Product access moduleIds must belong to the item courseId",
 "Product access excludedModuleIds must belong to the item courseId" or
 "Product access lessonIds must belong to the item courseId through its modules
-and chapters".
+and chapters". The courses of all items are checked first, so a course that
+does not exist or is archived in a later item answers the course message even
+when an earlier item names a module or lesson that fails; after that, the
+module and lesson messages are for the first item in the order of the list
+that fails. A shop management key gets one message for every reason the check,
+or the write's refusal of an archived course, refuses its list: "Product access
+items may only reference active courses of this workspace, and modules and
+lessons that belong to the item courseId". The
+check reads the courses and the modules of the whole list in one query each,
+the ids of the named lessons that exist in the workspace in one query that
+reads no lesson content, and the workspace's modules once when the list has a
+`lessons` item that names an existing lesson, whatever the number of items, so a
+long list costs the locks it runs under no more round trips than a short one,
+and its memory grows with the named ids and the workspace's modules, not with
+the content of the lessons it names.
 
-Stored lists are not rewritten. The owner's editor runs the check only when the
-list it is sent grants something other than the stored list (items and ids
-compared in any order, repeats ignored), so a save that resends the stored list,
-as the checkout consent save of the product editor does, succeeds for a product
-whose stored list the check would refuse, unless that list names an archived
-course, which the write itself refuses. Changing the list is refused until
-every item passes. A `product.create` proposal stored before the check existed
-is checked at its approval and ends `failed` when its list fails it.
+Stored lists are not rewritten. The owner's editor checks and writes the list
+only when the list it is sent differs from the stored list item by item (items
+and the ids within an item compared in any order, repeats ignored), not by what
+the items grant: a list that splits one `modules` item into two that open the
+same modules is checked again. A save that resends the stored list, as the
+checkout consent save of the product editor does, writes only the checkout
+consents and leaves the access list as it is stored when the write runs, so it
+succeeds for a product whose stored list the check would refuse, an archived
+course included, and never writes back a list it read after another editor
+changed it; with no consents either, it writes nothing. Changing the list is
+refused until every item passes. A `product.create` or `product.set-access` proposal is
+checked at its approval and ends `failed` when its list fails it, as does a
+`product.create` proposal stored before the check existed.
 
 The check is a point-in-time check. It reads the courses, modules and lessons
 when the list is written, and the write locks only the courses (`FOR UPDATE`)
@@ -1806,7 +2208,25 @@ item's course does not reach.
 Three paths write access items without the check: the content import
 (`core/server/usecases/m2m-import.ts`), the legacy importer
 (`adapters/db/importer.ts`), and lesson deletion (`deleteLesson`), which removes
-the deleted lesson from every `lessons` item. An import key with
+the deleted lesson from every `lessons` item. Lesson deletion deletes the lesson
+first and then writes each product that names it, up to 3 times when the
+product is busy. Only a busy write is reported: when the list left after the
+removal names an archived course, the repository refuses the write, the
+product keeps the id of the deleted lesson, and the lesson deletion still
+answers success without flagging that failure. Its answer is the lesson's
+references collected before the deletion, whose `products` name that product
+by id and title when it named the lesson then. Every attempt reads the product again and removes the lesson
+from the list stored at that moment, so a retry never writes back a list an
+editor replaced in the meantime; a write that is not busy is not compared with
+what was read, so an editor's change committed between that read and that write
+is still overwritten. A product that stays busy does not stop the cleanup of
+the other products: after all of them the request answers `503 unavailable`
+("The lesson was deleted, but products that granted it were busy and still
+name it in their access lists; remove it from their lists") with the ids of
+those products in `details.productIds`. Each of them keeps the id of the
+deleted lesson, which grants nothing, until a list without that id is saved:
+saving the unchanged list keeps it, and deleting the lesson again answers
+`404`, so the operator removes the id from each named product's list. An import key with
 `import:content-write` updates a product it imported only while that product is
 unpublished, but an unpublished product can still have members with active
 grants from earlier sales or owner grants. A re-import therefore changes what
@@ -1832,27 +2252,37 @@ holds only inside that course.
 
 The effect compares the product as `{ exists, accessItems }`, so it is
 `{ "accessItems": { "before": [...], "after": [...] } }`, each list as stored and
-as sent. Lists are compared by what they grant: items and ids in any order,
-repeats ignored. A list that grants the same as the live one would change
-nothing and is refused at submit with `400 validation` ("Invalid product access
+as sent. Lists are compared item by item: items in any order, ids within an
+item in any order, repeats ignored; two lists that grant the same through
+differently shaped items (a module list split into two items, intersecting
+exclusions) count as different, which can only make a proposal stale or let a
+change of nothing through to the owner, never treat a different grant as the
+same. A list equal to the live one in this comparison would change nothing and is refused at submit with `400 validation` ("Invalid product access
 payload: it would change nothing the owner can see"); the list is stored and
 applied in the order it was sent.
 The dry run runs the use-case with the identity of the owner who issued the
-key and rolls back; the approval runs it with the session of the approving
-owner.
+key and rolls back; it does not run the check, and it writes a list that names
+an archived course, so the submission of a `product.set-access`, or of a
+`product.create` that grants a list, alone or in a group, is accepted or refused
+for the same reasons whatever the courses, modules and lessons it names. The
+approval runs the use-case with the session of the approving owner, and with
+it the check.
 
 **Locks and outcomes.** The dry run and the approval lock the courses the new
 list names first (`FOR UPDATE`, in id order, as the live write of access items
 does), then the product row (`FOR NO KEY UPDATE`) and its stock row, as for a
-product update; the use-case then writes the list and refuses an archived
-course. In a [group](#groups), the dry run and the approval first lock the
-courses that every item names, once and in id order, before any item locks a
-product row. The owner's editor and the content import also lock the courses
+product update; the use-case then writes the list, and at the approval refuses
+an archived course. A `product.create` likewise locks the courses its list grants before it
+creates the product. In a [group](#groups), the dry run and the approval
+first lock, in one statement and in id order, the courses that the
+`product.set-access` items name and the `product.create` items grant, before
+any item locks a product row; each of those items requests its courses again
+when it runs, which takes nothing new. The owner's editor and the content import also lock the courses
 before they write the product. When Postgres aborts the editor's write as a
 deadlock victim, or a lock or statement wait runs out, the editor answers
 `503 unavailable` ("The product is busy; nothing was changed, retry the
 request") and nothing is written. The approval is `stale` when the product's
-list no longer grants the same as the "before" the owner saw, `failed` with the
+list no longer equals, in that comparison, the "before" the owner saw, `failed` with the
 `validation` error when the list no longer passes the check (a lesson moved out
 of its course, a course archived or deleted), and `applied` otherwise, with the
 product as `appliedResourceId`.
@@ -1860,52 +2290,97 @@ product as `appliedResourceId`.
 **Owner view and panel.** The owner view of a `product.set-access` carries
 [`accessLabels`](#owner-view), the titles of every course, module and lesson of
 both lists and, when one is, `archivedCourses`, the archived courses of either
-list, all read at read time for display only. A replaced list changes what
-its holders open only among the courses, modules and lessons that either list
-names; another product's items keep granting what they grant.
+list, all read at read time for display only. A page reads the titles of
+every access proposal on it together, in queries of at most 10,000 ids each
+(Postgres binds at most 65,535 parameters in one statement), so a page that
+names more ids than that still reads. A replaced list changes what
+its holders open only within what the items of either list reach: a whole
+course with every module and lesson attached to it, a module with its lessons
+in every course that uses it, a lesson in every course that uses it, so also
+in courses neither list names; another product's items keep granting what
+they grant.
 
 The panel shows one row, "Included access", with both lists in words: "the
 whole course “Intro course”", "the course “Intro course” without its module
 “Extras”", "the module “Basics” in every course that uses it (chosen from
 “Intro course”)", "the lessons “Welcome”, “Goodbye”, each in every course that
 uses it (chosen from “Intro course”)". An id that no longer exists reads
-"something that no longer exists" with the id, an archived course is followed
-by "(archived)", and an empty list reads "no course, module or lesson". In Polish the confirmation leads in with "after approval the product
+"something that no longer exists" with the id, a course, module or lesson
+title that another one of the same kind in either list also bears is followed
+by its id ("“Introduction”
+(lesson-2)"), so replacing one with another of the same title still reads as a
+change, an archived course is followed by "(archived)", and an empty list reads "no course, module or lesson". In Polish the confirmation leads in with "after approval the product
 will give access to the following content:", so the phrases that follow are in
 the nominative, and an empty list reads "no courses, modules or lessons".
 Course, module and lesson titles each sit in their own `<bdi>` element, and the
 phrases break anywhere.
 
 While the proposal is pending, the row adds a warning when the list after
-approval names an id that no longer exists or an archived course: the list no
-longer passes the shop's check and approving changes nothing. A decided
-proposal shows the row without the warning.
+approval names an id that no longer exists or an archived course: as the shop
+is now, the list does not pass the shop's check and approving would change
+nothing unless that changes before the owner approves. A decided proposal shows
+the row without the warning.
 
 The confirmation reads "Buyers of “Field guide” will get access to: the whole
-course “Intro course”. Everyone who already has access to this product, current
-buyers included, gets what this list names at once and loses what it no longer
-names, unless another of their products still opens it for them. Nothing else
-changes."; for an empty list it says that the product will no longer grant any
-course, module or lesson and that everyone who has access loses what it granted
-at once, unless another of their products still opens it for them. When the
-list no longer passes the check as the row's warning describes, the
-confirmation says only "The new list of what “Field guide” grants no longer
-passes the shop’s check, so approving changes nothing.". A group
-confirmation adds the access sentence for each access item; for a product an
+course “Intro course”. For everyone who already has access to this product,
+current buyers included, this product grants what this list names at once and
+stops granting what it no longer names; access that something else gives them,
+such as another product, a free preview lesson or a staff role, stays. Nothing
+else changes."; for an empty list it says that the product will no longer grant
+any course, module or lesson and that for everyone who has access this product
+stops granting what it granted at once, while access that something else gives
+them stays. When the
+list does not pass the check as the row's warning describes, the
+confirmation leads with "As the shop is now, the new list of what “Field guide”
+grants does not pass the shop’s check, so approving would change nothing; if it
+passes the check when you approve, it applies as follows." and then gives the
+sentence above: the approval checks the list again, so a course restored or a
+lesson moved back in the meantime lets it apply. A group
+confirmation adds one access sentence per product, for the list that the
+product's last access item in the group leaves, since every item applies in one
+transaction and no holder ever gets a list an earlier item sets; the cards of
+the group still show each item's lists before and after. The sentence compares
+the list before the product's first access item with the list its last item
+leaves: when the two name the same items (compared item by item in any order, repeats
+ignored) it says that the proposed list is the same as the list it started
+from (or that both grant nothing) and that approving makes no net change to that
+list, so nobody who has access gains or loses anything through it. It does not
+say what the product grants now: it compares the two stored lists. The
+product's list makes the approval stale only when its live list then differs, in the same
+comparison, from the list before the product's first access item; a list the
+owner reordered, or changed and restored, before the approval does not make it
+stale. Titles that share a name get their ids from the labels of all the
+product's access items, so a lesson replaced by another of the same title two
+items later still reads as a change. The warning comes from every access item
+of the product, each checked with its own list and labels, so an earlier item
+whose list names an archived course or an id that no longer exists warns even
+when the last list passes. For a product an
 earlier item of the group creates it reads "Everyone who later gets access to
 the new product “Starter Pack” will get access to: …" (or "The new product
-“Starter Pack” will not grant any course, module or lesson."), and a list that
-no longer passes the check reads "… so approving applies none of the changes.".
+“Starter Pack” will not grant any course, module or lesson."), and when any of
+the product's lists does not pass the check the sentence leads with "As the
+shop is now, a list of what “Starter Pack” grants that the group sets does not
+pass the shop’s check, so approving would apply none of the changes; only if
+every change of the group passes its checks when you approve does the group
+apply, with the list as follows.". This is what the dialog says, not all that
+approval checks: every item of the group must also pass its own validation,
+its stale checks and its replay, or nothing applies. For a draft that a later
+`product.delete-draft` of the group deletes, the confirmation makes no claim
+about what the product will grant; it keeps only the warning, without the list,
+when one of its lists does not pass the check.
 `proposals show` and `proposals group show` print the titles under `names:`,
 and "no longer exists" for an id that no longer exists; they do not mark an
 archived course.
 
 **What the key learns.** No shop route serves a key a course, module or lesson;
 the key sees their ids in the access items of the products it lists. A
-refusal of the check names no title, but it tells the key whether an id it
-sent is an active course of the workspace and whether a module or lesson
-belongs to the course it named; a direct-mode key's `product.create` already
-told it the first.
+submission is refused only for its shape, a repeated item or id, a physical
+product or a list equal to the live one, which the key reads; none of these
+depends on the courses, modules and lessons it names. The outcome of an
+approval, `failed` or `applied`, is on the key's receipt once an owner has
+chosen to approve. A direct-mode key that creates a product with access items
+learns whether its list passes the check as a whole, under one message for
+every reason.
 
 **Rolling back.** The release on production when this operation was added,
 `8141fd15`, does not know `product.set-access`; what it does with what this
@@ -1923,6 +2398,16 @@ release stores is proven by
 - That release has no `POST /api/m2m/shop/products/access`, and its product
   creation and owner editor do not check where a lesson sits, so after a
   rollback they accept the lists this release refuses.
+- That release applies a pending `product.create` without the course, module
+  and lesson checks, as it always did for the creates submitted to it: its
+  creation refuses only a course that does not exist in the workspace or is
+  archived. A pending create, alone or in a group, whose list would end
+  `failed` on this release, for a module or a lesson that does not exist or
+  is not part of its course, can therefore be applied there and stays live
+  after rolling forward. Keep the pending `product.create` proposals with access items, and
+  their groups, unapproved during the rollback. This is read from that
+  release's source (`createProduct` in `core/server/usecases/products.ts` and
+  the product repository's `create`), not tested.
 - A panel tab or a CLI of that release talking to this release's server fails
   to parse an owner view that carries `accessLabels` until it is reloaded or
   updated; after a rollback the server no longer sends it.
@@ -1934,13 +2419,34 @@ release stores is proven by
   lesson-thread notification and walks the next lesson in the lesson's first
   course, and drops the `courseId` a lesson player of this release sends with
   a completion, recording it under the lesson's first course. Completions this
-  release recorded under another course stay in that course's progress.
+  release recorded under another course stay in that course's progress, parse
+  there, and count in that course wherever its access rule opens the lesson
+  there; its un-completion looks only in the lesson's first course, so such a
+  completion cannot be cleared until rolling forward. A last-viewed write this
+  release refused stored nothing.
+- A lesson-question or thread-reply notification this release stored names,
+  in its `courseId`, the course through which that recipient reaches the
+  lesson, which can be another course than the lesson's first. That release
+  reads it as an ordinary string and links it to
+  `/my/courses/<courseId>/lessons/<lessonId>`; for the members of cases (b) and
+  (c) its access rule does not open the lesson in that course, so the link
+  opens a page they cannot see. Nothing fails to parse.
 
 Before the rollback, count the proposals it can no longer apply:
 
 ```sql
 select count(*) from change_proposals
 where status = 'pending' and operation = 'product.set-access';
+```
+
+the candidates among the pending creates it would apply without the checks
+(a candidate search: it counts every pending create with access items, also
+one whose list passes and one whose expiry has passed):
+
+```sql
+select count(*) from change_proposals
+where status = 'pending' and operation = 'product.create'
+  and jsonb_typeof(input->'accessItems') = 'array' and input->'accessItems' <> '[]'::jsonb;
 ```
 
 and the modules and products whose exclusions close again, with the query in

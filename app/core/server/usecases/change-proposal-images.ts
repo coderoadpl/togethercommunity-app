@@ -25,6 +25,8 @@ import {
   QUARANTINED_IMAGE_LIMITS,
   sameProposalImage,
   changeProposalImageCapExceeded,
+  changeProposalImageChecksOutOfTime,
+  PROPOSAL_IMAGE_REUSE_CHECKS,
   storageFailureIsDefinite,
   type AppError,
   type ChangeProposal,
@@ -43,6 +45,7 @@ import {
 import { authorizeTenant } from '../authorize.js';
 import { bothAuthorized, invalid, ownerSession, proposingKey, type ProposingKey } from '../change-proposal-access.js';
 import type { Ctx } from '../context.js';
+import { strongEntityTag } from '../entity-tag.js';
 import { serializeErrorChain } from '../log-safety.js';
 import type {
   ChangeProposalRepository,
@@ -51,6 +54,7 @@ import type {
   Clock,
   ContentHash,
   IdGenerator,
+  QuarantinedImageLocks,
   QuarantinedImageRelease,
   QuarantinedImageRepository,
   StorageProvider,
@@ -58,7 +62,7 @@ import type {
 } from '../ports.js';
 import { beginCandidateUpload, readCandidateImage, type ImageAssetDeps, type ImageAssetUploadStart } from './image-assets.js';
 import { resolveStorageConfiguration } from './storage-assets.js';
-import { sweepDeleteDeadline, sweepLockWait, UNBOUNDED, type SweepBudget } from './sweep-budget.js';
+import { sweepDeleteDeadline, sweepLockWait, sweepStageBudget, sweepStatementBound, UNBOUNDED, type StagingSweepOutcome, type SweepBudget } from './sweep-budget.js';
 
 type ProposedImageFamily = 'catalog' | 'settings';
 
@@ -74,7 +78,7 @@ const credentialsOf = (configuration: StorageConfiguration) => ({
 });
 
 export interface ChangeProposalImageReleaseDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   logger: { error(message: string): void };
@@ -89,6 +93,20 @@ const deleteDeadline = (budget: SweepBudget): number => sweepDeleteDeadline(budg
 
 const spent = (budget: SweepBudget): boolean => sweepLockWait(budget, 1) === null;
 
+/** A workspace whose lookup keeps failing, rejections included, must still move behind the others in the sweep. */
+const storageConfigurationOrMarked = async (
+  tenantId: string,
+  secretResolver: TenantSecretResolver,
+  markAttempted: () => Promise<void>,
+): Promise<Result<StorageConfiguration, AppError>> => {
+  const configuration = await resolveStorageConfiguration(tenantId, secretResolver).catch(async (cause: unknown) => {
+    await markAttempted();
+    throw cause;
+  });
+  if (!configuration.ok) await markAttempted();
+  return configuration;
+};
+
 const finishReleases = async (
   tenantId: string,
   assets: readonly QuarantinedImageAsset[],
@@ -96,7 +114,8 @@ const finishReleases = async (
   budget: SweepBudget,
 ): Promise<number> => {
   if (assets.length === 0) return 0;
-  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  const configuration = await storageConfigurationOrMarked(tenantId, deps.secretResolver, () =>
+    deps.quarantinedImages.markReleaseAttempted(tenantId, assets, deps.clock.nowIso(), sweepStatementBound(budget)));
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove released quarantined images', configuration.error.message);
     return 0;
@@ -111,12 +130,29 @@ const finishReleases = async (
         ...credentialsOf(configuration.value),
         deadlineMs: deleteDeadline(budget),
       });
-      if (!deleted.ok) logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
-      return deleted.ok;
+      if (deleted.ok) return 'deleted';
+      logImageFailure(deps, tenantId, 'could not remove a released quarantined image', deleted.error.message);
+      return storageFailureIsDefinite(deleted.error) ? 'failed' : 'unresolved';
     }, deps.clock.nowIso(), wait);
     if (finished === 'removed') removed += 1;
   }
   return removed;
+};
+
+const releaseImages = async (
+  tenantId: string,
+  selection: QuarantinedImageRelease,
+  deps: ChangeProposalImageReleaseDeps,
+  budget: SweepBudget = UNBOUNDED,
+): Promise<number> => {
+  const wait = sweepLockWait(budget, 1);
+  if (wait === null) return 0;
+  const released = await deps.quarantinedImages.release(tenantId, selection, deps.clock.nowIso(), wait);
+  if (released.kind === 'busy') {
+    logImageFailure(deps, tenantId, 'quarantined image release was busy', 'left for the scheduled sweep');
+    return 0;
+  }
+  return finishReleases(tenantId, released.value, deps, budget);
 };
 
 /**
@@ -127,20 +163,11 @@ export const releaseQuarantinedImages = async (
   tenantId: string,
   selection: QuarantinedImageRelease,
   deps: ChangeProposalImageReleaseDeps,
-  budget: SweepBudget = UNBOUNDED,
-): Promise<number> => {
+): Promise<void> => {
   try {
-    const wait = sweepLockWait(budget, 1);
-    if (wait === null) return 0;
-    const released = await deps.quarantinedImages.release(tenantId, selection, deps.clock.nowIso(), wait);
-    if (released.kind === 'busy') {
-      logImageFailure(deps, tenantId, 'quarantined image release was busy', 'left for the scheduled sweep');
-      return 0;
-    }
-    return await finishReleases(tenantId, released.value, deps, budget);
+    await releaseImages(tenantId, selection, deps);
   } catch (cause) {
     logImageFailure(deps, tenantId, 'quarantined image release failed', cause);
-    return 0;
   }
 };
 
@@ -177,6 +204,7 @@ const beginProposedImageUpload = async (
   const { keyId } = key.value;
   return beginCandidateUpload(key.value.tenantId, KINDS_BY_FAMILY[family], input, deps, {
     signContentLength: true,
+    maxBytes: QUARANTINED_IMAGE_LIMITS.imageMaxBytes,
     reserve: async (tenantId, objectKey) => {
       const createdAt = deps.clock.nowIso();
       const countedAfter = new Date(Date.parse(createdAt) - IMAGE_ASSET_UPLOAD_TTL_SECONDS * 1000).toISOString();
@@ -201,7 +229,7 @@ export const beginProposedBrandingAssetUpload = (ctx: Ctx, input: ImageAssetUplo
 );
 
 export interface ProposedImageCompleteDeps {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'insert'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'insert' | 'findUpload' | 'markUploadCompleted'>;
   storage: StorageProvider;
   secretResolver: TenantSecretResolver;
   contentHash: ContentHash;
@@ -221,6 +249,13 @@ const completeProposedImageUpload = async (
 ): Promise<Result<QuarantinedImageUpload, AppError>> => {
   if (!key.ok) return key;
   const { tenantId, keyId } = key.value;
+  const started = await deps.quarantinedImages.findUpload(tenantId, input.key);
+  if (started?.apiKeyId !== keyId) return err(notFound('Image asset not found'));
+  if (started.completed !== null) {
+    const completedKind = proposalImageKindSchema.safeParse(input.key.split('/')[2]);
+    if (!completedKind.success || !KINDS_BY_FAMILY[family].includes(completedKind.data)) return err(notFound('Image asset not found'));
+    return ok({ url: proposalImagePublicPath({ kind: completedKind.data, ...started.completed }), quarantined: true });
+  }
   const candidate = await readCandidateImage(tenantId, KINDS_BY_FAMILY[family], input, deps);
   if (!candidate.ok) return candidate;
   const { file, bytes, configuration, credentials, candidateUrl, contentType } = candidate.value;
@@ -228,26 +263,31 @@ const completeProposedImageUpload = async (
   const extension = proposalImageExtensionFor(file);
   if (!kind.success || extension === null) return err(notFound('Image asset not found'));
   const image: ProposalImageReference = { kind: kind.data, digest: deps.contentHash.sha256(bytes), extension };
+  const quarantinedUrl = deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString();
   const inserted = await deps.quarantinedImages.insert(tenantId, {
     tenantId,
     apiKeyId: keyId,
     ...image,
     sizeBytes: bytes.byteLength,
     createdAt: deps.clock.nowIso(),
-  }, () => deps.storage.putObject({
-    url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, keyId, image)).toString(),
-    ...credentials,
-    body: bytes,
-    contentType,
-  }));
+  }, {
+    present: async (existing) => {
+      const found = await deps.storage.head({ url: quarantinedUrl, ...credentials, deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
+      if (found.ok) return ok(found.value.sizeBytes === existing.sizeBytes);
+      return found.error.code === 'not_found' ? ok(false) : err(found.error);
+    },
+    store: () => deps.storage.putObject({ url: quarantinedUrl, ...credentials, body: bytes, contentType }),
+  });
+  if (inserted.kind === 'busy') return err(changeProposalsBusy());
   if (inserted.kind === 'cap_exceeded' || inserted.kind === 'store_failed') {
     const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
     if (!removed.ok) return removed;
     return err(inserted.kind === 'cap_exceeded' ? changeProposalImageCapExceeded(inserted.cap) : inserted.error);
   }
+  const recorded = await deps.quarantinedImages.markUploadCompleted(tenantId, input.key, { digest: image.digest, extension: image.extension });
   const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
   if (!removed.ok) return removed;
-  return ok({ url: proposalImagePublicPath(image), quarantined: true });
+  return ok({ url: proposalImagePublicPath({ kind: image.kind, ...(recorded ?? image) }), quarantined: true });
 };
 
 export const completeProposedProductCoverUpload = (ctx: Ctx, input: { key: string }, deps: ProposedImageCompleteDeps) => completeProposedImageUpload(
@@ -298,9 +338,10 @@ export const changeProposalImageGone = (invalidInputMessage: string): AppError =
   fieldErrors: {},
 });
 
+/** `bytes` is null for a reused public copy, which approval never writes. */
 interface PreparedImage {
   image: ProposalImageReference;
-  bytes: Uint8Array;
+  bytes: Uint8Array | null;
 }
 
 export type ApprovalImages =
@@ -313,39 +354,97 @@ export interface ChangeProposalImagePrepareDeps {
   contentHash: ContentHash;
 }
 
-/** An address that is no longer quarantined is fine only when a live field already shows it, so it is public already. */
+/** The images the stored effect sets, the effect the owner reviewed; an unchanged address the input repeats is not one of them. */
+const changedImagesOf = (proposals: readonly ChangeProposal[]): Array<{ proposal: ChangeProposal; image: ProposalImageReference }> => {
+  const changed: Array<{ proposal: ChangeProposal; image: ProposalImageReference }> = [];
+  for (const proposal of proposals) {
+    for (const change of changeProposalImageChanges(proposal.operation, proposal.effect)) {
+      const image = parseProposalImagePath(change.value);
+      if (image === null || image.kind !== change.kind || changed.some((known) => sameProposalImage(known.image, image))) continue;
+      changed.push({ proposal, image });
+    }
+  }
+  return changed;
+};
+
+const readVerified = async (
+  configuration: StorageConfiguration,
+  key: string,
+  image: ProposalImageReference,
+  deps: ChangeProposalImagePrepareDeps,
+): Promise<Result<Uint8Array | null, AppError>> => {
+  const read = await deps.storage.getObject({
+    url: deps.storage.objectUrl(configuration, key).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
+  }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+  if (!read.ok) return read.error.code === 'not_found' ? ok(null) : read;
+  return ok(deps.contentHash.sha256(read.value) === image.digest ? read.value : null);
+};
+
+/** `etag` is the strong entity tag of the read whose bytes hashed to the digest, null when that read carried none. */
+interface ReusedPublicCopy {
+  image: ProposalImageReference;
+  sizeBytes: number;
+  etag: string | null;
+}
+
+/** Without a strong entity tag, equal metadata says nothing about the bytes, so the copy is read and hashed again. */
+const stillTheReusedCopy = async (
+  tenantId: string,
+  configuration: StorageConfiguration,
+  copy: ReusedPublicCopy,
+  deps: ChangeProposalImagePrepareDeps,
+): Promise<Result<boolean, AppError>> => {
+  const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, copy.image)).toString();
+  if (copy.etag === null) {
+    const read = await deps.storage.getObject({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
+    if (!read.ok) return read.error.code === 'not_found' ? ok(false) : err(read.error);
+    return ok(deps.contentHash.sha256(read.value) === copy.image.digest);
+  }
+  const head = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
+  if (!head.ok) return head.error.code === 'not_found' ? ok(false) : err(head.error);
+  return ok(head.value.sizeBytes === copy.sizeBytes && head.value.etag === copy.etag);
+};
+
+/**
+ * An address that is no longer quarantined is fine only when a live field already shows it and its public copy hashed
+ * to the digest before the transaction, the copy the owner preview showed. A public copy that changed since that check
+ * makes an address without a quarantined copy stale and answers busy for one with a quarantined copy.
+ */
 export const prepareApprovalImages = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
+  publication: ApprovalPublication,
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalImagePrepareDeps,
 ): Promise<ApprovalImages> => {
   const images: PreparedImage[] = [];
-  const settled: ProposalImageReference[] = [];
   let configuration: StorageConfiguration | null = null;
-  for (const proposal of proposals) {
-    for (const image of changeProposalImageReferences(proposal.operation, proposal.input)) {
-      if (settled.some((known) => sameProposalImage(known, image))) continue;
-      settled.push(image);
-      const quarantined = await scope.repositories.quarantinedImages.lockForPublication(tenantId, proposal.proposedByKeyId, image);
-      if (quarantined === null) {
-        if (await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) continue;
-        return { kind: 'missing', proposal, image };
-      }
-      if (configuration === null) {
-        const resolved = await resolveStorageConfiguration(tenantId, scope.secretResolver);
-        if (!resolved.ok) return { kind: 'failed', error: resolved.error };
-        configuration = resolved.value;
-      }
-      const read = await deps.storage.getObject({
-        url: deps.storage.objectUrl(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image)).toString(),
-        ...credentialsOf(configuration),
-        deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs,
-      }, { maxBytes: IMAGE_ASSET_MAX_BYTES });
-      if (!read.ok) return read.error.code === 'not_found' ? { kind: 'missing', proposal, image } : { kind: 'failed', error: read.error };
-      if (deps.contentHash.sha256(read.value) !== image.digest) return { kind: 'missing', proposal, image };
-      images.push({ image, bytes: read.value });
+  for (const { proposal, image } of changedImagesOf(proposals)) {
+    const quarantined = await scope.repositories.quarantinedImages.lockForPublication(tenantId, proposal.proposedByKeyId, image);
+    const published = quarantined === null;
+    if (published && !await scope.repositories.quarantinedImages.inLiveUse(tenantId, proposalImagePublicPath(image))) {
+      return { kind: 'missing', proposal, image };
     }
+    if (configuration === null) {
+      const resolved = await resolveStorageConfiguration(tenantId, scope.secretResolver);
+      if (!resolved.ok) return { kind: 'failed', error: resolved.error };
+      configuration = resolved.value;
+    }
+    const reused = publication.reused.find((copy) => sameProposalImage(copy.image, image));
+    if (reused !== undefined) {
+      const same = await stillTheReusedCopy(tenantId, configuration, reused, deps);
+      if (!same.ok) return { kind: 'failed', error: same.error };
+      if (!same.value) return published ? { kind: 'missing', proposal, image } : { kind: 'failed', error: changeProposalsBusy() };
+      images.push({ image, bytes: null });
+      continue;
+    }
+    if (published) return { kind: 'missing', proposal, image };
+    const read = await readVerified(configuration, proposalImageQuarantineKey(tenantId, proposal.proposedByKeyId, image), image, deps);
+    if (!read.ok) return { kind: 'failed', error: read.error };
+    if (read.value === null) return { kind: 'missing', proposal, image };
+    images.push({ image, bytes: read.value });
   }
   return { kind: 'ready', images, configuration };
 };
@@ -353,6 +452,8 @@ export const prepareApprovalImages = async (
 export interface ApprovalPublication {
   attemptId: string;
   images: ProposalImageReference[];
+  startedAt: string;
+  reused: ReusedPublicCopy[];
 }
 
 export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepareDeps {
@@ -362,46 +463,77 @@ export interface ChangeProposalImagePublishDeps extends ChangeProposalImagePrepa
   clock: Clock;
 }
 
-const distinctImagesOf = (proposals: readonly ChangeProposal[]): ProposalImageReference[] => {
-  const images: ProposalImageReference[] = [];
-  for (const proposal of proposals) {
-    for (const image of changeProposalImageReferences(proposal.operation, proposal.input)) {
-      if (!images.some((known) => sameProposalImage(known, image))) images.push(image);
-    }
-  }
-  return images;
+const checkPublicCopy = async (
+  tenantId: string,
+  configuration: StorageConfiguration,
+  image: ProposalImageReference,
+  deps: ChangeProposalImagePublishDeps,
+  left: () => number,
+): Promise<Result<ReusedPublicCopy | null, AppError>> => {
+  const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
+  const deadline = (requestMs: number): number | null => {
+    const remaining = left();
+    return remaining < PROPOSAL_IMAGE_REUSE_CHECKS.minimumRequestMs ? null : Math.min(requestMs, remaining);
+  };
+  const getMs = deadline(PROPOSAL_IMAGE_STORAGE_DEADLINES.getMs);
+  if (getMs === null) return err(changeProposalImageChecksOutOfTime());
+  const request = { url, ...credentialsOf(configuration), deadlineMs: getMs };
+  const options = { maxBytes: IMAGE_ASSET_MAX_BYTES };
+  const read = deps.storage.getObjectVersion === undefined
+    ? await deps.storage.getObject(request, options).then((bytes) => bytes.ok ? ok({ bytes: bytes.value, etag: null }) : bytes)
+    : await deps.storage.getObjectVersion(request, options);
+  if (!read.ok) return read.error.code === 'not_found' ? ok(null) : err(read.error);
+  if (deps.contentHash.sha256(read.value.bytes) !== image.digest) return ok(null);
+  return ok({ image, sizeBytes: read.value.bytes.byteLength, etag: strongEntityTag(read.value.etag) });
 };
 
 /**
  * Runs before the approval transaction, so its single insert never waits for a second connection while the approval
- * holds one. It records, in a commit of its own, the attempt's intent to write each attached image whose public object
- * does not exist yet; an existing object has the same bytes, because its name is their digest, and is never written or
- * recorded. What a record leaves behind when the attempt does not end applied, the withdrawal or the sweep removes.
+ * holds one, and a public copy whose read carried a strong entity tag is not read again under the workspace's approval
+ * lock. It checks the public copy of
+ * each image the effect sets, `PROPOSAL_IMAGE_REUSE_CHECKS.concurrency` at a time within its budget, and records, in a
+ * commit of its own, the attempt's intent to write each image whose public object is missing or no longer hashes to
+ * the digest; an object that does is never written or recorded. What a record leaves behind when the attempt does not
+ * end applied, the withdrawal or the sweep removes.
  */
 export const recordApprovalPublications = async (
   tenantId: string,
   proposals: readonly ChangeProposal[],
   deps: ChangeProposalImagePublishDeps,
 ): Promise<Result<ApprovalPublication, AppError>> => {
-  const images = distinctImagesOf(proposals);
-  if (images.length === 0) return ok({ attemptId: '', images: [] });
+  const images = changedImagesOf(proposals).map(({ image }) => image);
+  const none = { attemptId: '', images: [], startedAt: '' };
+  if (images.length === 0) return ok({ ...none, reused: [] });
   const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
   if (!configuration.ok) return configuration;
+  const endsAt = Date.parse(deps.clock.nowIso()) + PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs;
+  const left = (): number => endsAt - Date.parse(deps.clock.nowIso());
+  const answers: Array<Result<ReusedPublicCopy | null, AppError> | undefined> = images.map(() => undefined);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let index = next; index < images.length; index = next) {
+      next += 1;
+      const image = images[index];
+      if (image === undefined) return;
+      const answer = await checkPublicCopy(tenantId, configuration.value, image, deps, left);
+      answers[index] = answer;
+      if (!answer.ok) next = images.length;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PROPOSAL_IMAGE_REUSE_CHECKS.concurrency, images.length) }, worker));
   const absent: ProposalImageReference[] = [];
-  for (const image of images) {
-    const found = await deps.storage.head({
-      url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
-      ...credentialsOf(configuration.value),
-      deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs,
-    });
-    if (found.ok) continue;
-    if (found.error.code !== 'not_found') return found;
-    absent.push(image);
+  const reused: ReusedPublicCopy[] = [];
+  for (const [index, image] of images.entries()) {
+    const answer = answers[index] ?? err(changeProposalImageChecksOutOfTime());
+    if (!answer.ok) return answer;
+    if (answer.value === null) absent.push(image);
+    else reused.push(answer.value);
   }
-  if (absent.length === 0) return ok({ attemptId: '', images: [] });
+  if (absent.length === 0) return ok({ ...none, reused });
   const attemptId = deps.ids.nextId();
-  await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, deps.clock.nowIso());
-  return ok({ attemptId, images: absent });
+  const startedAt = deps.clock.nowIso();
+  await deps.quarantinedImages.recordPublications(tenantId, attemptId, absent, startedAt);
+  return ok({ attemptId, images: absent, startedAt, reused });
 };
 
 export interface ApprovalImageWrites {
@@ -417,32 +549,43 @@ export const noApprovalImageWrites = (): ApprovalImageWrites => ({ written: [], 
  * never points at an object that does not exist and the records disappear exactly when the approval commits. Every
  * image it tries to write, a failed write included, is added to `writes.written`, and a write whose outcome is unknown
  * (no answer before the deadline, a connection error, a server error) also to `writes.unconfirmed`. An image not
- * recorded must still be public: the workspace lock this transaction holds keeps it there until the commit.
+ * recorded was checked under this transaction's lock by `prepareApprovalImages`; that lock, and the refusal of any
+ * address with an unresolved delete, keep it there until the commit.
+ * A write starts only within `publicationWriteWindowMs` of the intent record, or the approval answers busy; the sweep's
+ * age bound is that window plus `unresolvedDeleteGraceMs`, so a process that dies mid-write still leaves the storage the
+ * whole grace after the latest write it could have started.
  */
 export const publishApprovalImages = async (
   tenantId: string,
   prepared: Extract<ApprovalImages, { kind: 'ready' }>,
   publication: ApprovalPublication,
   scope: ChangeProposalTransactionScope,
-  deps: ChangeProposalImagePrepareDeps,
+  deps: ChangeProposalImagePrepareDeps & { clock: Clock },
   writes: ApprovalImageWrites,
 ): Promise<Result<void, AppError>> => {
   const images = scope.repositories.quarantinedImages;
   const recorded = (image: ProposalImageReference) => publication.images.some((known) => sameProposalImage(known, image));
-  const toWrite = prepared.images.filter(({ image }) => recorded(image)).map(({ image }) => image);
+  for (const image of [...publication.images, ...prepared.images.map((known) => known.image)]) {
+    if (await images.deleteUnresolved(tenantId, image)) return err(changeProposalsBusy());
+  }
+  const toWrite = prepared.images.filter(({ bytes }) => bytes !== null).map(({ image }) => image);
+  if (toWrite.some((image) => !recorded(image))) return err(changeProposalsBusy());
   if (toWrite.length > 0 && !await images.claimPublications(tenantId, publication.attemptId, toWrite)) return err(changeProposalsBusy());
   const { configuration } = prepared;
   if (configuration !== null) {
     for (const { image, bytes } of prepared.images) {
-      const url = deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString();
-      if (!recorded(image)) {
-        const present = await deps.storage.head({ url, ...credentialsOf(configuration), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.headMs });
-        if (present.ok) continue;
-        return err(present.error.code === 'not_found' ? changeProposalsBusy() : present.error);
+      if (bytes === null) continue;
+      if (Date.parse(deps.clock.nowIso()) - Date.parse(publication.startedAt) > QUARANTINED_IMAGE_LIMITS.publicationWriteWindowMs) {
+        return err(changeProposalsBusy());
       }
       writes.written.push(image);
       const stored = await deps.storage.putObject({
-        url, ...credentialsOf(configuration), body: bytes, contentType: proposalImageContentType(image.extension), deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
+        url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString(),
+        ...credentialsOf(configuration),
+        body: bytes,
+        contentType: proposalImageContentType(image.extension),
+        ...(image.extension === 'svg' ? { contentDisposition: 'attachment' } : {}),
+        deadlineMs: PROPOSAL_IMAGE_STORAGE_DEADLINES.putMs,
       });
       if (!stored.ok) {
         if (!storageFailureIsDefinite(stored.error)) writes.unconfirmed.push(image);
@@ -458,51 +601,75 @@ export interface ChangeProposalImageWithdrawDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   storage: StorageProvider;
   logger: { error(message: string): void };
+  clock: Clock;
 }
+
+type PublicationRemoval = 'removed' | 'kept' | 'stale';
+
+const PUBLICATION_REMOVAL_FAILURE = 'could not withdraw an image published by an approval that did not apply';
 
 /**
  * Holds the workspace's approval lock, so no approval can publish the same address between the check and the deletion.
- * When `written`, it deletes the public object first, except when a live field shows the address or an applied
- * proposal carries it: then an applied approval published it, and product history may still point at it. When
- * `keepRecord`, the record stays after the delete, so the sweep deletes the object once more after the record's age
- * bound: a write whose outcome was unknown may still land after this delete.
+ * When `written`, it deletes the public object, except when a live field shows the address or an applied proposal
+ * carries it: then an applied approval published it, and product history may still point at it. The delete is sent
+ * only after a commit has marked the record with an unresolved delete, which every approval of the address refuses, so
+ * a delete that outlives this process never removes an image a later approval published; a confirmed delete or a
+ * refused one clears the mark, and one without a definite answer leaves it for the sweep, which deletes the object
+ * again after the record's age bound counted from the mark. When `keepRecord`, the record stays after the delete, so
+ * the sweep deletes the object once more after the record's age bound: a write whose outcome was unknown may still land
+ * after this delete. With `dueBefore`, a record that is no longer due under the lock, because another sweep marked its
+ * delete after this one listed it, is `stale`: nothing is sent and nothing is written. Without it, a record that carries
+ * a mark is left as it is, since the delete of that mark may still be in flight. After its delete, a removal whose
+ * mark another removal has replaced meanwhile is `stale` too and changes nothing, so it never clears the fence of a
+ * delete still in flight.
  */
 const removePublication = async (
   tenantId: string,
   attemptId: string,
   image: ProposalImageReference,
-  written: { written: boolean; keepRecord: boolean },
+  written: { written: boolean; keepRecord: boolean; dueBefore?: string },
   deps: ChangeProposalImageWithdrawDeps,
   budget: SweepBudget = UNBOUNDED,
-): Promise<boolean> => {
-  const failure = 'could not withdraw an image published by an approval that did not apply';
+): Promise<PublicationRemoval> => {
   const lockWaitMs = sweepLockWait(budget, 1);
-  if (lockWaitMs === null) return false;
-  try {
-    const removed = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<boolean, AppError>> => {
-      const images = scope.repositories.quarantinedImages;
-      if (!await images.claimPublications(tenantId, attemptId, [image])) return ok(false);
-      const path = proposalImagePublicPath(image);
-      if (written.written && !await images.inLiveUse(tenantId, path) && !await images.inAppliedProposal(tenantId, path)) {
-        const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
-        if (!configuration.ok) return configuration;
-        const deleted = await deps.storage.delete({
-          url: deps.storage.objectUrl(configuration.value, proposalImagePublishedKey(tenantId, image)).toString(),
-          ...credentialsOf(configuration.value),
-          deadlineMs: deleteDeadline(budget),
-        });
-        if (!deleted.ok) return deleted;
-      }
-      if (written.keepRecord) return ok(false);
-      await images.deletePublication(tenantId, attemptId, image);
-      return ok(true);
-    }, lockWaitMs === undefined ? {} : { lockWaitMs });
-    if (!removed.ok) logImageFailure(deps, tenantId, failure, removed.error.message);
-    return removed.ok && removed.value;
-  } catch (cause) {
-    logImageFailure(deps, tenantId, failure, cause);
-    return false;
-  }
+  if (lockWaitMs === null) return 'kept';
+  const underLock = async <T>(work: (images: QuarantinedImageLocks, scope: ChangeProposalTransactionScope) => Promise<Result<T, AppError>>) => {
+    const done = await deps.changeProposalTransaction.run(tenantId, (scope) => work(scope.repositories.quarantinedImages, scope),
+      lockWaitMs === undefined ? {} : { lockWaitMs });
+    if (!done.ok) logImageFailure(deps, tenantId, PUBLICATION_REMOVAL_FAILURE, done.error.message);
+    return done;
+  };
+  const settle = (images: QuarantinedImageLocks): Promise<PublicationRemoval> => written.keepRecord
+    ? images.restartPublication(tenantId, attemptId, image, deps.clock.nowIso()).then(() => 'kept')
+    : images.deletePublication(tenantId, attemptId, image).then(() => 'removed');
+  const claimed = await underLock(async (images, scope): Promise<Result<PublicationRemoval | { configuration: StorageConfiguration; mark: string }, AppError>> => {
+    const record = await images.lockPublication(tenantId, attemptId, image, written.dueBefore);
+    if (record === null) return ok('stale');
+    if (written.dueBefore === undefined && record.deleteUnresolvedAt !== null) return ok('kept');
+    const path = proposalImagePublicPath(image);
+    if (!written.written || await images.inLiveUse(tenantId, path) || await images.inAppliedProposal(tenantId, path)) return ok(await settle(images));
+    const configuration = await resolveStorageConfiguration(tenantId, scope.secretResolver);
+    if (!configuration.ok) return configuration;
+    const mark = deps.clock.nowIso();
+    await images.markDeleteUnresolved(tenantId, attemptId, image, mark);
+    return ok({ configuration: configuration.value, mark });
+  });
+  if (!claimed.ok) return 'kept';
+  if (typeof claimed.value === 'string') return claimed.value;
+  const { configuration, mark } = claimed.value;
+  const deleted = await deps.storage.delete({
+    url: deps.storage.objectUrl(configuration, proposalImagePublishedKey(tenantId, image)).toString(),
+    ...credentialsOf(configuration),
+    deadlineMs: deleteDeadline(budget),
+  });
+  if (!deleted.ok) logImageFailure(deps, tenantId, PUBLICATION_REMOVAL_FAILURE, deleted.error.message);
+  if (!deleted.ok && !storageFailureIsDefinite(deleted.error)) return 'kept';
+  const settled = await underLock(async (images): Promise<Result<PublicationRemoval, AppError>> => {
+    if ((await images.lockPublication(tenantId, attemptId, image))?.deleteUnresolvedAt !== mark) return ok('stale');
+    await images.markDeleteUnresolved(tenantId, attemptId, image, null);
+    return ok(deleted.ok ? await settle(images) : 'kept');
+  });
+  return settled.ok ? settled.value : 'kept';
 };
 
 /** Runs after an approval that did not end applied; a record it cannot remove, or keeps after an unknown write, stays for the sweep. */
@@ -513,10 +680,14 @@ export const withdrawPublishedImages = async (
   deps: ChangeProposalImageWithdrawDeps,
 ): Promise<void> => {
   for (const image of publication.images) {
-    await removePublication(tenantId, publication.attemptId, image, {
-      written: writes.written.some((known) => sameProposalImage(known, image)),
-      keepRecord: writes.unconfirmed.some((known) => sameProposalImage(known, image)),
-    }, deps);
+    try {
+      await removePublication(tenantId, publication.attemptId, image, {
+        written: writes.written.some((known) => sameProposalImage(known, image)),
+        keepRecord: writes.unconfirmed.some((known) => sameProposalImage(known, image)),
+      }, deps);
+    } catch (cause) {
+      logImageFailure(deps, tenantId, PUBLICATION_REMOVAL_FAILURE, cause);
+    }
   }
 };
 
@@ -588,11 +759,13 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
     QuarantinedImageRepository,
     | 'release'
     | 'finishRelease'
+    | 'markReleaseAttempted'
     | 'listTenantIdsToSweep'
     | 'listTenantIdsWithUploadsBefore'
     | 'listUploadsBefore'
+    | 'markUploadDeleted'
     | 'deleteUpload'
-    | 'markUploadAttempted'
+    | 'markUploadsAttempted'
     | 'listTenantIdsWithPublicationsBefore'
     | 'listPublicationsBefore'
     | 'markPublicationAttempted'
@@ -608,10 +781,25 @@ export interface QuarantinedImageSweepDeps extends ChangeProposalImageReleaseDep
 
 const before = (now: string, ageMs: number): string => new Date(Date.parse(now) - ageMs).toISOString();
 
-const sweepUploads = async (tenantId: string, createdBefore: string, budget: SweepBudget, deps: QuarantinedImageSweepDeps): Promise<number> => {
-  const uploads = await deps.quarantinedImages.listUploadsBefore(tenantId, createdBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant);
+/**
+ * A write accepted before its presigned URL expired may still be streaming at the first delete, so the record stays and
+ * the candidate is deleted once more `uploadSecondDeleteAfterMs` later, on the assumption that the storage finishes or
+ * abandons a write it accepted by then.
+ */
+const sweepUploads = async (
+  tenantId: string,
+  due: { createdBefore: string; deletedBefore: string },
+  budget: SweepBudget,
+  deps: QuarantinedImageSweepDeps,
+): Promise<number> => {
+  const uploads = await deps.quarantinedImages.listUploadsBefore(
+    tenantId, due.createdBefore, due.deletedBefore, QUARANTINED_IMAGE_LIMITS.sweepUploadsPerTenant, sweepStatementBound(budget),
+  );
   if (uploads.length === 0) return 0;
-  const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
+  const configuration = await storageConfigurationOrMarked(tenantId, deps.secretResolver, async () => {
+    if (spent(budget)) return;
+    await deps.quarantinedImages.markUploadsAttempted(tenantId, uploads.map((upload) => upload.objectKey), deps.clock.nowIso(), sweepStatementBound(budget));
+  });
   if (!configuration.ok) {
     logImageFailure(deps, tenantId, 'could not remove expired image uploads', configuration.error.message);
     return 0;
@@ -626,10 +814,14 @@ const sweepUploads = async (tenantId: string, createdBefore: string, budget: Swe
     });
     if (!deleted.ok) {
       logImageFailure(deps, tenantId, 'could not remove an expired image upload', deleted.error.message);
-      await deps.quarantinedImages.markUploadAttempted(tenantId, upload.objectKey, deps.clock.nowIso());
+      await deps.quarantinedImages.markUploadsAttempted(tenantId, [upload.objectKey], deps.clock.nowIso(), sweepStatementBound(budget));
       continue;
     }
-    await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey);
+    if (upload.deletedOnce) {
+      await deps.quarantinedImages.deleteUpload(tenantId, upload.objectKey, sweepStatementBound(budget));
+      continue;
+    }
+    await deps.quarantinedImages.markUploadDeleted(tenantId, upload.objectKey, deps.clock.nowIso(), sweepStatementBound(budget));
     removed += 1;
   }
   return removed;
@@ -638,7 +830,7 @@ const sweepUploads = async (tenantId: string, createdBefore: string, budget: Swe
 /** Rows are served by the time of their last failed attempt or else their creation, so rows whose removal keeps failing move behind the others. */
 export const sweepQuarantinedImages = async (
   deps: QuarantinedImageSweepDeps,
-): Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+): Promise<Result<StagingSweepOutcome, AppError>> => {
   const now = deps.clock.nowIso();
   const endsAt = Math.min(Date.parse(now) + (deps.budgetMs ?? QUARANTINED_IMAGE_LIMITS.sweepBudgetMs), deps.deadlineAt ?? Number.POSITIVE_INFINITY);
   const budget: SweepBudget = () => endsAt - Date.parse(deps.clock.nowIso());
@@ -646,34 +838,56 @@ export const sweepQuarantinedImages = async (
   const limit = QUARANTINED_IMAGE_LIMITS.sweepTenantsPerRun;
   const tenants = new Set<string>();
   let removed = 0;
-  for (const tenantId of await deps.quarantinedImages.listTenantIdsToSweep(createdBefore, now, limit)) {
-    if (spent(budget)) break;
-    tenants.add(tenantId);
-    removed += await releaseQuarantinedImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps, budget);
-  }
-  const uploadsBefore = before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs);
-  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithUploadsBefore(uploadsBefore, limit)) {
-    if (spent(budget)) break;
-    tenants.add(tenantId);
-    try {
-      removed += await sweepUploads(tenantId, uploadsBefore, budget, deps);
-    } catch (cause) {
-      logImageFailure(deps, tenantId, 'expired image upload sweep failed', cause);
-    }
-  }
+  let failed = 0;
+  const failedWith = (tenantId: string, what: string) => (cause: unknown): number => {
+    logImageFailure(deps, tenantId, what, cause);
+    failed += 1;
+    return 0;
+  };
+  const uploadsDue = {
+    createdBefore: before(now, QUARANTINED_IMAGE_LIMITS.uploadSweepAfterMs),
+    deletedBefore: before(now, QUARANTINED_IMAGE_LIMITS.uploadSecondDeleteAfterMs),
+  };
   const publicationsBefore = before(now, QUARANTINED_IMAGE_LIMITS.publicationSweepAfterMs);
-  for (const tenantId of spent(budget) ? [] : await deps.quarantinedImages.listTenantIdsWithPublicationsBefore(publicationsBefore, limit)) {
-    if (spent(budget)) break;
+  const images = deps.quarantinedImages;
+  const releaseTenants = await images.listTenantIdsToSweep(createdBefore, now, limit, sweepStatementBound(budget));
+  const uploadTenants = spent(budget) ? [] : await images.listTenantIdsWithUploadsBefore(uploadsDue.createdBefore, uploadsDue.deletedBefore, limit, sweepStatementBound(budget));
+  const publicationTenants = spent(budget) ? [] : await images.listTenantIdsWithPublicationsBefore(publicationsBefore, limit, sweepStatementBound(budget));
+  const stagesFrom = (lists: ReadonlyArray<readonly string[]>): number => lists.filter((list) => list.length > 0).length;
+  const releases = sweepStageBudget(budget, stagesFrom([releaseTenants, uploadTenants, publicationTenants]));
+  for (const tenantId of releaseTenants) {
+    if (spent(releases)) break;
     tenants.add(tenantId);
-    const records = await deps.quarantinedImages.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant);
+    removed += await releaseImages(tenantId, { kind: 'sweep', createdBefore, limit: QUARANTINED_IMAGE_LIMITS.sweepAssetsPerTenant }, deps, releases)
+      .catch(failedWith(tenantId, 'quarantined image release failed'));
+  }
+  const uploads = sweepStageBudget(budget, stagesFrom([uploadTenants, publicationTenants]));
+  for (const tenantId of uploadTenants) {
+    if (spent(uploads)) break;
+    tenants.add(tenantId);
+    removed += await sweepUploads(tenantId, uploadsDue, uploads, deps).catch(failedWith(tenantId, 'expired image upload sweep failed'));
+  }
+  const sweepPublications = async (tenantId: string): Promise<number> => {
+    let withdrawn = 0;
+    const records = await images.listPublicationsBefore(tenantId, publicationsBefore, QUARANTINED_IMAGE_LIMITS.sweepPublicationsPerTenant, sweepStatementBound(budget));
     for (const record of records) {
       if (spent(budget)) break;
-      if (await removePublication(tenantId, record.attemptId, record.image, { written: true, keepRecord: false }, deps, budget)) {
-        removed += 1;
-      } else {
-        await deps.quarantinedImages.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso());
+      const removal = await removePublication(tenantId, record.attemptId, record.image, { written: true, keepRecord: false, dueBefore: publicationsBefore }, deps, budget)
+        .catch((cause: unknown): PublicationRemoval => {
+          failedWith(tenantId, PUBLICATION_REMOVAL_FAILURE)(cause);
+          return 'kept';
+        });
+      if (removal === 'removed') withdrawn += 1;
+      else if (removal === 'kept') {
+        await images.markPublicationAttempted(tenantId, record.attemptId, record.image, deps.clock.nowIso(), sweepStatementBound(budget));
       }
     }
+    return withdrawn;
+  };
+  for (const tenantId of publicationTenants) {
+    if (spent(budget)) break;
+    tenants.add(tenantId);
+    removed += await sweepPublications(tenantId).catch(failedWith(tenantId, PUBLICATION_REMOVAL_FAILURE));
   }
-  return ok({ tenants: tenants.size, removed });
+  return ok({ tenants: tenants.size, removed, failed });
 };

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS,
@@ -16,11 +16,11 @@ import {
   type Product,
 } from '#core/domain/index.js';
 
-import type { StorageProvider } from '../ports.js';
+import type { StorageProvider, TenantSecretResolver } from '../ports.js';
 import { createChangeProposalStoreFake, createChangeProposalTransactionFake, emptyCatalogState } from '../testing/change-proposal-fakes.js';
 import { fakeStorageSecrets } from '../testing/object-storage-fake.js';
 import { previewChangeProposal } from './change-proposal-apply.js';
-import { checkApprovalFiles, prepareApprovalFiles } from './change-proposal-files.js';
+import { checkApprovalFiles, getChangeProposalFileLink, prepareApprovalFiles } from './change-proposal-files.js';
 import { CHANGE_PROPOSAL_OPERATIONS } from './change-proposal-operations.js';
 
 const TENANT = 'tenant-acme';
@@ -72,7 +72,12 @@ const MAXIMUM_FILE_ITEMS = KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey;
 
 const fileIndex = (url: string): number => Number(/staged-(\d+)\//u.exec(url)?.[1]);
 
-const harness = (options: { headMs: (index: number) => number; findMs?: number; headAnswer?: (index: number) => 'present' | 'missing' | 'unavailable' }) => {
+const harness = (options: {
+  headMs: (index: number) => number;
+  findMs?: number;
+  rowsGone?: boolean;
+  headAnswer?: (index: number) => 'present' | 'missing' | 'unavailable';
+}) => {
   const time = virtualTime();
   const items = Array.from({ length: MAXIMUM_FILE_ITEMS }, (_unused, index) => fileItem(index + 1));
   let inFlight = 0;
@@ -99,7 +104,7 @@ const harness = (options: { headMs: (index: number) => number; findMs?: number; 
       findStaged: async (_tenantId: string, _apiKeyId: string, id: string) => {
         if (options.findMs !== undefined) await time.after(options.findMs);
         const index = Number(id.replace('staged-', ''));
-        return stagedFile(index, `proposal-${String(index)}`);
+        return options.rowsGone === true ? null : stagedFile(index, `proposal-${String(index)}`);
       },
     },
     storage: {
@@ -149,6 +154,58 @@ describe('the file checks before an approval', () => {
     expect(h.time.elapsed()).toBeLessThanOrEqual(CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs);
   });
 
+  it('answers a retry, not gone files, when the staged row lookups outlast the budget', async () => {
+    const { budgetMs, concurrency, minimumHeadMs } = CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS;
+    const rounds = Math.ceil(MAXIMUM_FILE_ITEMS / concurrency);
+    const findMs = (budgetMs - minimumHeadMs) / (rounds - 1);
+    expect((rounds - 1) * findMs).toBeLessThanOrEqual(budgetMs - minimumHeadMs);
+    expect(rounds * findMs).toBeGreaterThan(budgetMs);
+    const h = harness({ headMs: () => 100, findMs, rowsGone: true });
+    expect(await h.check()).toMatchObject({ ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } });
+    expect(h.heads).toEqual([]);
+  });
+
+  describe('with a lookup that has not answered when the budget ends', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: Date.parse(NOW) }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    const settlesBy = async <T>(work: Promise<T>, ms: number): Promise<T | 'pending'> => {
+      const seen: { outcome: { value: T } | null } = { outcome: null };
+      void work.then((value) => { seen.outcome = { value }; });
+      await vi.advanceTimersByTimeAsync(ms);
+      return seen.outcome === null ? 'pending' : seen.outcome.value;
+    };
+
+    const stalled = <T>(): Promise<T> => new Promise<T>(() => undefined);
+
+    const lateDeps = (overrides: { findStaged?: () => Promise<KeyDownloadStagedFile | null>; secretResolver?: TenantSecretResolver }) => ({
+      clock: { nowIso: () => new Date().toISOString() },
+      secretResolver: overrides.secretResolver ?? fakeStorageSecrets,
+      keyDownloadFiles: { findStaged: overrides.findStaged ?? (async () => stagedFile(1, 'proposal-1')) },
+      storage: { ...unusedStorage, objectUrl: (_configuration: unknown, key: string) => new URL(`https://storage.example.test/${key}`), head: async () => ok({ sizeBytes: 10 }) },
+    });
+
+    const outOfTime = { ok: false, error: { code: 'unavailable', details: { retryAfterSeconds: CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.retryAfterSeconds } } };
+
+    it('answers out of time when the budget ends while a staged row read stalls', async () => {
+      const checked = checkApprovalFiles(TENANT, [fileItem(1)], lateDeps({ findStaged: stalled }));
+      expect(await settlesBy(checked, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs)).toMatchObject(outOfTime);
+    });
+
+    it('answers out of time, not the configuration error, when the configuration read ends after the budget', async () => {
+      const secretResolver: TenantSecretResolver = {
+        resolve: async () => {
+          await new Promise((resolve) => { setTimeout(resolve, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs + 1_000); });
+          return err(integrationUnavailable('No storage configuration'));
+        },
+      };
+      const checked = checkApprovalFiles(TENANT, [fileItem(1)], lateDeps({ secretResolver }));
+      expect(await settlesBy(checked, CHANGE_PROPOSAL_APPROVAL_FILE_CHECKS.budgetMs)).toMatchObject(outOfTime);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await checked).toMatchObject(outOfTime);
+    });
+  });
+
   it('answers the storage failure of the first item in group order, whichever answered first', async () => {
     const h = harness({ headMs: (index) => index === 1 ? 4_000 : 100, headAnswer: (index) => index === 1 || index === 3 ? 'unavailable' : 'present' });
     expect(await h.check()).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: 'Storage failed for file 1' } });
@@ -174,6 +231,37 @@ const owner: Identity = {
   memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
 };
 
+describe('the owner link to a proposed file', () => {
+  const link = (storedSizeBytes: number) => {
+    const signed: string[] = [];
+    const deps = {
+      clock: { nowIso: () => NOW },
+      secretResolver: fakeStorageSecrets,
+      changeProposals: { findById: async () => fileItem(1) },
+      keyDownloadFiles: { findStaged: async () => stagedFile(1, 'proposal-1') },
+      storage: {
+        ...unusedStorage,
+        objectUrl: (_configuration, key) => new URL(`https://storage.example.test/${key}`),
+        head: async () => ok({ sizeBytes: storedSizeBytes }),
+        presignGet: (input) => { signed.push(input.url); return ok(`${input.url}&signature=fake`); },
+      } satisfies StorageProvider,
+    };
+    return { signed, answer: () => getChangeProposalFileLink({ identity: owner }, { id: 'proposal-1', fileId: 'staged-1' }, deps) };
+  };
+
+  it('signs a link to an object of the size the proposal announces', async () => {
+    const h = link(10);
+    expect(await h.answer()).toMatchObject({ ok: true, value: { download: { fileName: 'workbook.pdf', sizeBytes: 10 } } });
+    expect(h.signed).toHaveLength(1);
+  });
+
+  it('answers the missing file and signs nothing when the stored object has another size', async () => {
+    const h = link(11);
+    expect(await h.answer()).toMatchObject({ ok: false, error: { code: 'not_found', message: 'No proposed file awaiting approval under this address' } });
+    expect(h.signed).toEqual([]);
+  });
+});
+
 const workbook: Product = {
   id: 'product-workbook', tenantId: TENANT, type: 'digital_download', slug: 'workbook', title: 'Workbook', description: '', coverUrl: null,
   priceCents: 0, currency: 'EUR', published: false, visibility: 'listed', salesChannel: 'any', deliveryMethod: 'pickup',
@@ -189,7 +277,7 @@ describe('a proposal dry run that changes nothing', () => {
     const unchanged = { ...prepared.value, run: async () => ok(workbook.id) };
     const { dryRun } = createChangeProposalTransactionFake(state, createChangeProposalStoreFake());
     const deps = { clock: { nowIso: () => NOW }, ids: { nextId: () => 'id-1' }, storage: unusedStorage, logger: { error: () => undefined } };
-    return dryRun(TENANT, (scope) => previewChangeProposal(unchanged, TENANT, { identity: owner }, scope, deps, null, { keyId: KEY_ID }));
+    return dryRun(TENANT, (scope) => previewChangeProposal(unchanged, TENANT, { identity: owner }, scope, deps, null, { keyId: KEY_ID, stage: 'submission' }));
   };
 
   it('is refused at submission for a file operation, so no proposal with an empty effect is stored', async () => {

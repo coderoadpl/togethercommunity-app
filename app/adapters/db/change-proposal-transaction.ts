@@ -70,7 +70,7 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
       findByIds: (tenantId, ids) => modules.findByIds(tenantId, ids),
       list: (tenantId) => modules.list(tenantId),
     },
-    lessons: { findByIds: (tenantId, ids) => lessons.findByIds(tenantId, ids) },
+    lessons: { existingIds: (tenantId, ids) => lessons.existingIds(tenantId, ids) },
     stock: createStockRepository(tx),
     productDrafts: createProductDraftRepository(tx),
     salesLinks: createSalesLinkRepository(tx),

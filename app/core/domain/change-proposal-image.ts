@@ -18,7 +18,13 @@ export type ProposalImageExtension = z.output<typeof proposalImageExtensionSchem
 
 const proposalImageDigestSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
+const PUBLICATION_WRITE_WINDOW_MS = 5 * 60 * 1000;
+
+const UNRESOLVED_DELETE_GRACE_MS = 10 * 60 * 1000;
+
 export const QUARANTINED_IMAGE_LIMITS = {
+  /** The owner preview answers the whole image in one response, which must stay below the hosted 4.5 MB response limit. */
+  imageMaxBytes: 4 * 1024 * 1024,
   assetsPerKey: 100,
   bytesPerKey: 50 * 1024 * 1024,
   unattachedMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
@@ -26,8 +32,11 @@ export const QUARANTINED_IMAGE_LIMITS = {
   sweepAssetsPerTenant: 200,
   uploadsPerKey: 60,
   uploadSweepAfterMs: (IMAGE_ASSET_UPLOAD_TTL_SECONDS + 5 * 60) * 1000,
+  uploadSecondDeleteAfterMs: 10 * 60 * 1000,
   sweepUploadsPerTenant: 200,
-  publicationSweepAfterMs: 10 * 60 * 1000,
+  publicationSweepAfterMs: PUBLICATION_WRITE_WINDOW_MS + UNRESOLVED_DELETE_GRACE_MS,
+  publicationWriteWindowMs: PUBLICATION_WRITE_WINDOW_MS,
+  unresolvedDeleteGraceMs: UNRESOLVED_DELETE_GRACE_MS,
   sweepPublicationsPerTenant: 20,
   sweepBudgetMs: 10_000,
 } as const;
@@ -39,6 +48,19 @@ export const PROPOSAL_IMAGE_STORAGE_DEADLINES = {
   headMs: 5_000,
   deleteMs: 5_000,
 } as const;
+
+/** One budget for every reuse check, so the rest of the server function's time is left to the file checks, the transaction and the answer. */
+export const PROPOSAL_IMAGE_REUSE_CHECKS = {
+  concurrency: 4,
+  budgetMs: 15_000,
+  minimumRequestMs: 1_000,
+  retryAfterSeconds: 5,
+} as const;
+
+export const changeProposalImageChecksOutOfTime = (): AppError =>
+  appError('unavailable', 'The storage did not confirm every proposed image in time; nothing was decided, retry the request', {
+    retryAfterSeconds: PROPOSAL_IMAGE_REUSE_CHECKS.retryAfterSeconds,
+  });
 
 export const PROPOSAL_IMAGE_QUARANTINE_PREFIX = 'image-asset-quarantine';
 

@@ -147,6 +147,19 @@ describe('the change proposal people reader', () => {
   });
 });
 
+describe('the access title reader', () => {
+  it('reads the titles of more ids than one statement can bind', async () => {
+    await db.insert(schema.courses).values({ id: 'course-many-ids', tenantId: DIRECT, name: 'Intro course', description: '', createdAt: NOW });
+    const unknown = Array.from({ length: 70_000 }, (_unused, index) => `lesson-unknown-${String(index)}`);
+    const titles = await createChangeProposalTargetLabelReader(db).accessTitles(DIRECT, {
+      courseIds: [...Array.from({ length: 70_000 }, (_unused, index) => `course-unknown-${String(index)}`), 'course-many-ids'],
+      moduleIds: unknown.map((id) => id.replace('lesson', 'module')),
+      lessonIds: unknown,
+    });
+    expect(titles).toEqual({ courses: [{ id: 'course-many-ids', title: 'Intro course', archived: false }], modules: [], lessons: [] });
+  });
+});
+
 describe('a person whose grant is in another workspace', () => {
   it('has no grant and no e-mail on the owner view of this workspace', async () => {
     expect(await createChangeProposalPeopleReader(db).read(MANAGED, ['direct-owner', 'direct-admin'])).toEqual([]);

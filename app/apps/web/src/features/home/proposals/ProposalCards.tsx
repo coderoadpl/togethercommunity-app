@@ -7,6 +7,7 @@ import { ApiError } from '#core/client/index.js';
 import {
   CHANGE_PROPOSAL_LIMITS,
   changeProposalImageReferences,
+  changeProposalRefusalOf,
   changeProposalStagedFileId,
   isChangeProposalFileMissingNote,
   isChangeProposalImageMissingNote,
@@ -40,13 +41,32 @@ export type SettledStatus = 'stale' | 'failed' | 'expired';
 
 export type MissingAsset = 'image' | 'file';
 
+export type StaleCause = MissingAsset | 'unconfirmed';
+
+export interface Failure {
+  operation: string;
+  message: string;
+}
+
 export interface SettledOutcome {
   key: string;
   title: string;
   status: SettledStatus;
-  reason: string | null;
-  missing: MissingAsset | null;
+  failure: Failure | null;
+  missing: StaleCause | null;
 }
+
+export const failureOf = (proposal: Pick<ChangeProposalOwnerView, 'operation' | 'failureMessage'>): Failure | null =>
+  proposal.failureMessage === null ? null : { operation: proposal.operation, message: proposal.failureMessage };
+
+const UNWORDED_REFUSALS: ReadonlySet<string> = new Set(['product.set-access', 'download.add', 'download.replace', 'download.remove']);
+
+const failureReason = (t: Translations, failure: Failure | null): string | null => {
+  if (failure === null) return null;
+  const refusal = changeProposalRefusalOf(failure.message);
+  if (refusal !== null) return t.refusal[refusal];
+  return UNWORDED_REFUSALS.has(failure.operation) ? null : failure.message;
+};
 
 export interface DecisionCallbacks {
   onSettled: (outcome: SettledOutcome) => void;
@@ -60,14 +80,18 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-const staleExplanation = (t: Translations, missing: MissingAsset | null): string => {
+const staleExplanation = (t: Translations, missing: StaleCause | null): string => {
   if (missing === 'image') return t.outcomeImageUnavailable;
-  return missing === 'file' ? t.outcomeFileUnavailable : t.outcomeStale;
+  if (missing === 'file') return t.outcomeFileUnavailable;
+  return missing === 'unconfirmed' ? t.outcomeStaleUnconfirmed : t.outcomeStale;
 };
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null, missing: MissingAsset | null = null): string | null => {
+export const outcomeExplanation = (t: Translations, status: string, failure: Failure | null, missing: StaleCause | null = null): string | null => {
   if (status === 'stale') return staleExplanation(t, missing);
-  if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+  if (status === 'failed') {
+    const reason = failureReason(t, failure);
+    return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+  }
   if (status === 'expired') return t.outcomeExpired;
   return null;
 };
@@ -328,12 +352,13 @@ const useDecisionFeedback = () => {
     }
     toast.error(localizePanelError(error, t));
   };
-  const missingAsset = async (decided: readonly ChangeProposalOwnerView[]): Promise<MissingAsset | null> => {
+  const missingAsset = async (decided: ChangeProposalOwnerView): Promise<StaleCause | null> => {
+    if (!mayBeStaleForMissingAsset(decided)) return null;
     try {
-      const details = await Promise.all(decided.filter(mayBeStaleForMissingAsset).map((item) => queryClient.fetchQuery(actions.changeProposal(item.id))));
-      return details.map((detail) => staleForMissingAsset(detail.proposal.events)).find((missing) => missing !== null) ?? null;
+      const detail = await queryClient.fetchQuery(actions.changeProposal(decided.id));
+      return staleForMissingAsset(detail.proposal.events);
     } catch {
-      return null;
+      return 'unconfirmed';
     }
   };
   return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset };
@@ -391,10 +416,11 @@ export const SingleProposalCard = ({
         return;
       }
       if (isSettledStatus(decided.status)) {
-        const missing = await missingAsset([decided]);
-        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage, missing);
+        const missing = await missingAsset(decided);
+        const failure = failureOf(decided);
+        const explanation = outcomeExplanation(t.changeProposals, decided.status, failure, missing);
         if (explanation !== null) toast.info(explanation);
-        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage, missing });
+        onSettled({ key: decided.id, title, status: decided.status, failure, missing });
       }
     },
     onError: async (error) => {
@@ -458,7 +484,17 @@ const groupStatusLabel = (t: Translations, status: ChangeProposalGroupOwnerView[
 const orderedItems = (group: ChangeProposalGroupOwnerView) =>
   group.items.toSorted((left, right) => (left.groupPosition ?? 0) - (right.groupPosition ?? 0));
 
-const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerView; position: number; references: GroupReferences }) => {
+const GroupItem = ({
+  item,
+  position,
+  references,
+  live,
+}: {
+  item: ChangeProposalOwnerView;
+  position: number;
+  references: GroupReferences;
+  live: boolean;
+}) => {
   const t = useTranslations().changeProposals;
   return (
     <Stack useFlexGap spacing="0.5rem" component="li" data-testid={`proposal-group-item-${item.id}`} sx={{ listStyle: 'none' }}>
@@ -466,7 +502,7 @@ const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerVi
         {t.groupStep({ position, operation: operationTitle(t, item.operation) })}
       </Typography>
       <TargetLine proposal={item} references={references} />
-      <ProposalBody proposal={item} references={references} live labelComponent="h4" />
+      <ProposalBody proposal={item} references={references} live={live} labelComponent="h4" />
     </Stack>
   );
 };
@@ -481,7 +517,7 @@ export const GroupProposalCard = ({
   onSettled,
   onDecided,
 }: { groupId: string; itemCount: number } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
   const group = useQuery(actions.changeProposalGroup(groupId));
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const [changed, setChanged] = useState<GroupChange | null>(null);
@@ -532,11 +568,11 @@ export const GroupProposalCard = ({
       }
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
-      const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
-      const missing = status === 'stale' ? await missingAsset(decided.items) : null;
-      const explanation = outcomeExplanation(t.changeProposals, status, reason, missing);
+      const failure = status === 'failed' && offending !== undefined ? failureOf(offending) : null;
+      const missing = status === 'stale' ? staleForMissingAsset(decided.items.flatMap((item) => item.events)) : null;
+      const explanation = outcomeExplanation(t.changeProposals, status, failure, missing);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason, missing });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, failure, missing });
     },
     onError: groupFailed,
   });
@@ -592,7 +628,7 @@ export const GroupProposalCard = ({
           )}
           <Stack component="ol" useFlexGap spacing="1.25rem" sx={{ m: 0, p: 0 }}>
             {items.map((item, index) => (
-              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} />
+              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} live={open} />
             ))}
           </Stack>
         </>

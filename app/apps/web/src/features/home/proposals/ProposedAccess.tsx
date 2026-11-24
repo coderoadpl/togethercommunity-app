@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Alert, Stack } from '@mui/material';
 
-import type { AccessItem, ChangeProposalAccessChange, ChangeProposalAccessLabels } from '#core/domain/index.js';
+import { sameAccessItems, type AccessItem, type ChangeProposalAccessChange, type ChangeProposalAccessLabels } from '#core/domain/index.js';
 
 import { useTranslations } from '../../../i18n/index.js';
 import { WrapAnywhereText } from '../../../theme.js';
@@ -27,6 +27,9 @@ const namesGoneOrArchived = (items: readonly AccessItem[], labels: Labels): bool
   }
 });
 
+const titleShared = (labels: Labels, kind: NamedKind, id: string, title: string): boolean =>
+  labels !== undefined && labels[kind].some((entry) => entry.id !== id && entry.title === title);
+
 export const accessFacts = (change: ChangeProposalAccessChange, labels: Labels): { refused: boolean } => ({
   refused: namesGoneOrArchived(change.after, labels),
 });
@@ -37,7 +40,12 @@ const AccessName = ({ kind, id, labels }: { kind: NamedKind; id: string; labels:
     return <span data-testid="access-gone"><Isolated sentence={(slot) => t.accessGone({ id: slot })} value={id} /></span>;
   }
   const title = labels?.[kind].find((candidate) => candidate.id === id)?.title ?? id;
-  const name = kind === 'courses' && labels?.archivedCourses?.includes(id) === true ? t.accessArchived : t.accessName;
+  const archived = kind === 'courses' && labels?.archivedCourses?.includes(id) === true;
+  if (titleShared(labels, kind, id, title)) {
+    const named = archived ? t.accessArchivedWithId : t.accessNameWithId;
+    return <Sentence text={(name, idSlot) => named({ name, id: idSlot })} parts={[<bdi key="name">{title}</bdi>, <bdi key="id">{id}</bdi>]} />;
+  }
+  const name = archived ? t.accessArchived : t.accessName;
   return <Isolated sentence={(slot) => name({ name: slot })} value={title} />;
 };
 
@@ -140,22 +148,25 @@ export const AccessApprovalText = ({
   labels,
   newProduct,
   group,
+  refused,
 }: {
   target: string;
   change: ChangeProposalAccessChange;
   labels: Labels;
   newProduct: boolean;
   group: boolean;
+  refused: boolean;
 }) => {
   const t = useTranslations().changeProposals;
-  if (accessFacts(change, labels).refused) {
-    const refused = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
-    return <Isolated sentence={(slot) => refused({ target: slot })} value={target} />;
-  }
   const items = change.after;
-  const nothing = newProduct ? t.approveProductSetAccessNothingNewProduct : t.approveProductSetAccessNothing;
-  const grants = newProduct ? t.approveProductSetAccessNewProduct : t.approveProductSetAccess;
-  return items.length === 0 ? <Isolated sentence={(slot) => nothing({ target: slot })} value={target} /> : (
+  const unchanged = !newProduct && sameAccessItems(change.before, change.after);
+  const nothing = newProduct
+    ? t.approveProductSetAccessNothingNewProduct
+    : unchanged ? t.approveProductSetAccessUnchangedNothing : t.approveProductSetAccessNothing;
+  const grants = newProduct
+    ? t.approveProductSetAccessNewProduct
+    : unchanged ? t.approveProductSetAccessUnchanged : t.approveProductSetAccess;
+  const applied = items.length === 0 ? <Isolated sentence={(slot) => nothing({ target: slot })} value={target} /> : (
     <Sentence
       text={(name, access) => grants({ target: name, access })}
       parts={[
@@ -171,4 +182,7 @@ export const AccessApprovalText = ({
       ]}
     />
   );
+  if (!refused) return applied;
+  const warning = group ? t.approveGroupProductSetAccessRefused : t.approveProductSetAccessRefused;
+  return <><Isolated sentence={(slot) => warning({ target: slot })} value={target} />{' '}{applied}</>;
 };

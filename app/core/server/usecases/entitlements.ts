@@ -31,6 +31,8 @@ import {
   buildCourseStructure,
   coursesContainingLesson,
   fullCourseLookup,
+  isLessonAccessibleByLookup,
+  lessonLocations,
   linearizeCourse,
   locateAccessibleLesson,
   locateLesson,
@@ -135,16 +137,17 @@ export const isLessonAccessible = async (
     deps.courses.list(tenant.value),
     deps.modules.list(tenant.value),
   ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(notFound(`No lesson "${lessonId}" in this tenant`));
+  const locations = lessonLocations(lessonId, courses, modules);
+  if (locations.length === 0) return err(notFound(`No lesson "${lessonId}" in this tenant`));
 
   const lookup = await resolveMemberAccessLookup(
     { tenantId: tenant.value, memberId: ctx.identity.memberId },
     deps,
   );
-  return locateAccessibleLesson(lessonId, courses, modules, lookup) === null
-    ? err(forbidden('This lesson is not accessible'))
-    : ok(undefined);
+  return locations.some((location) =>
+    isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId }))
+    ? ok(undefined)
+    : err(forbidden('This lesson is not accessible'));
 };
 
 export const getAccessibleLesson = async (
@@ -271,7 +274,8 @@ export const getNextLesson = async (
     ) ?? first;
 
   const linear = linearizeCourse(location.course, modules, lessonMap(lessons));
-  const index = linear.findIndex((content) => content.lessonId === lessonId);
+  const index = linear.findIndex((content) =>
+    content.lessonId === lessonId && content.moduleId === location.moduleId && content.chapterId === location.chapterId);
   const next = index >= 0 ? linear[index + 1] : undefined;
   return ok(next ? { id: next.lessonId, name: next.name } : null);
 };

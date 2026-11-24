@@ -136,6 +136,7 @@ export const applyLockedProposal = async (
   scope: ChangeProposalTransactionScope,
   deps: ChangeProposalRunDeps,
   group: GroupContext | null = null,
+  stage: ChangeProposalProposer['stage'] = 'approval',
 ): Promise<ApprovalOutcome> => {
   const afterProposalLock = deps.clock.nowIso();
   if (changeProposalExpired(proposal, afterProposalLock)) return { status: 'expired', at: afterProposalLock };
@@ -152,7 +153,7 @@ export const applyLockedProposal = async (
   if (changeProposalTouchedFieldsMoved(proposal.effect, before, operation.comparable)) return { status: 'stale', note: null, at };
   const effectChanged = appError('conflict', 'The live state changed since this change was proposed');
   const applied = await scope.savepoint(async (nested) => {
-    const ran = await operation.run(ctx, nested, deps, { keyId: proposal.proposedByKeyId });
+    const ran = await operation.run(ctx, nested, deps, { keyId: proposal.proposedByKeyId, stage });
     if (!ran.ok) return ran;
     recordCreated(itemContext, ran.value);
     const after = storedForm(operation, itemContext, await operation.snapshot(nested.repositories, tenantId, ran.value ?? operation.target.id));

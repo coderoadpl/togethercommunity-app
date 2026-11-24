@@ -669,7 +669,7 @@ export const pl: Messages = {
     proposedImageLoading: 'Wczytywanie proponowanego obrazka…',
     proposedImageFailed: 'Nie udało się wczytać proponowanego obrazka. Jeśli go już nie ma, zatwierdzenie niczego nie zmieni, a obrazek trzeba będzie przesłać i zaproponować ponownie. W przeciwnym razie spróbuj ponownie za chwilę.',
     proposedImageFacts: ({ format, fingerprint }) => `Format ${format} · skrót pliku ${fingerprint}`,
-    proposedImagePrivate: 'Ten obrazek widzą tylko właściciele tej przestrzeni. Po zatwierdzeniu propozycji stanie się publiczny pod tym adresem.',
+    proposedImageOwnerPreview: 'Ten podgląd mogą otworzyć tylko właściciele tej platformy. Nowy obrazek stanie się publiczny pod tym adresem po zatwierdzeniu propozycji; obrazek opublikowany tam wcześniej może już być publiczny.',
     proposedImageSvgReason: 'Pliki SVG mogą zawierać skrypty, dlatego tego pliku tutaj nie pokazujemy.',
     proposedImageSvgDownload: 'Pobierz proponowany plik SVG',
     fileAdded: ({ name }) => format('Dodany plik: {name}', { name }),
@@ -791,15 +791,15 @@ export const pl: Messages = {
     ), { count }),
     approveImagesPublic: ({ count }) => format(plural(
       count,
-      'Po zatwierdzeniu proponowany obrazek stanie się publiczny pod pokazanym adresem. Jeśli go już nie ma, nic nie zostanie zmienione.',
-      'Po zatwierdzeniu {count} proponowane obrazki staną się publiczne pod pokazanymi adresami. Jeśli któregoś z nich już nie ma, nic nie zostanie zmienione.',
-      'Po zatwierdzeniu {count} proponowanych obrazków stanie się publicznych pod pokazanymi adresami. Jeśli któregoś z nich już nie ma, nic nie zostanie zmienione.',
+      'Po zatwierdzeniu proponowany obrazek stanie się publiczny pod pokazanym adresem, o ile już tam nie jest. Jeśli go już nie ma, nic nie zostanie zmienione.',
+      'Po zatwierdzeniu {count} proponowane obrazki staną się publiczne pod pokazanymi adresami, o ile już tam nie są. Jeśli któregoś z nich już nie ma, nic nie zostanie zmienione.',
+      'Po zatwierdzeniu {count} proponowanych obrazków stanie się publicznych pod pokazanymi adresami, o ile już tam nie są. Jeśli któregoś z nich już nie ma, nic nie zostanie zmienione.',
     ), { count }),
     approveGroupImagesPublic: ({ count }) => format(plural(
       count,
-      'Po zatwierdzeniu proponowany obrazek stanie się publiczny pod pokazanym adresem. Jeśli go już nie ma, żadna ze zmian nie zostanie wprowadzona.',
-      'Po zatwierdzeniu {count} proponowane obrazki staną się publiczne pod pokazanymi adresami. Jeśli któregoś z nich już nie ma, żadna ze zmian nie zostanie wprowadzona.',
-      'Po zatwierdzeniu {count} proponowanych obrazków stanie się publicznych pod pokazanymi adresami. Jeśli któregoś z nich już nie ma, żadna ze zmian nie zostanie wprowadzona.',
+      'Po zatwierdzeniu proponowany obrazek stanie się publiczny pod pokazanym adresem, o ile już tam nie jest. Jeśli go już nie ma, żadna ze zmian nie zostanie wprowadzona.',
+      'Po zatwierdzeniu {count} proponowane obrazki staną się publiczne pod pokazanymi adresami, o ile już tam nie są. Jeśli któregoś z nich już nie ma, żadna ze zmian nie zostanie wprowadzona.',
+      'Po zatwierdzeniu {count} proponowanych obrazków stanie się publicznych pod pokazanymi adresami, o ile już tam nie są. Jeśli któregoś z nich już nie ma, żadna ze zmian nie zostanie wprowadzona.',
     ), { count }),
     approveFileAdd: ({ file, facts, target }) => format(
       'Plik „{file}” ({facts}) zostanie dodany do produktu „{target}”. Każdy, kto ma dostęp do tego produktu, także obecni kupujący, będzie mógł go od razu pobrać.',
@@ -808,6 +808,18 @@ export const pl: Messages = {
     approveFileAddToNewProduct: ({ file, facts, target }) => format(
       'Plik „{file}” ({facts}) zostanie dodany do produktu „{target}”. Każdy, kto później otrzyma dostęp do tego produktu, będzie mógł pobrać plik.',
       { file, facts, target },
+    ),
+    approveGroupFileNotKept: ({ file, facts, target }) => format(
+      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go usunie albo usunie produkt, więc żaden kupujący nie dostanie tego pliku.',
+      { file, facts, target },
+    ),
+    approveGroupFileKeptAsPrevious: ({ file, facts, target }) => format(
+      'Plik „{file}” ({facts}) zostanie dołączony do produktu „{target}” w tym kroku, ale późniejsza zmiana w tej grupie go zastąpi, więc kupujący będą mogli go pobrać tylko jako poprzednią wersję.',
+      { file, facts, target },
+    ),
+    approveGroupFileRemoveUnreleased: ({ file, version, target }) => format(
+      'Plik „{file}” w wersji {version}, który wcześniejsza zmiana w tej grupie dołącza do produktu „{target}”, zostanie w tym kroku usunięty, więc żaden kupujący go nie dostanie.',
+      { file, version, target },
     ),
     approveFileCopiedFrom: ({ version, product }) => format('To kopia wersji {version} pliku z produktu „{product}”.', { version, product }),
     approveFileCopiedFromGone: ({ version }) => format('To kopia wersji {version} pliku z produktu, którego już nie ma.', { version }),
@@ -848,14 +860,16 @@ export const pl: Messages = {
     accessName: ({ name }) => format('„{name}”', { name }),
     accessGone: ({ id }) => format('coś, czego już nie ma ({id})', { id }),
     accessArchived: ({ name }) => format('„{name}” (zarchiwizowany)', { name }),
+    accessNameWithId: ({ name, id }) => format('„{name}” ({id})', { name, id }),
+    accessArchivedWithId: ({ name, id }) => format('„{name}” ({id}) (zarchiwizowany)', { name, id }),
     accessListRefused:
-      'Lista po zatwierdzeniu nie przechodzi już kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego nie zmieni.',
+      'Przy obecnym stanie sklepu lista po zatwierdzeniu nie przechodzi kontroli sklepu: czegoś z niej już nie ma albo któryś z jej kursów jest zarchiwizowany. Zatwierdzenie niczego by nie zmieniło, chyba że zmieni się to przed zatwierdzeniem.',
     approveProductSetAccess: ({ target, access }) => format(
-      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu zyska dostęp do tego, co jest na liście, i straci dostęp do tego, czego na niej nie ma, chyba że nadal daje mu go inny jego produkt.',
+      'Po zatwierdzeniu produkt „{target}” będzie dawał dostęp do następujących treści: {access}. Każdemu, kto ma już dostęp do tego produktu, także obecnym kupującym, produkt od razu zacznie dawać dostęp do tego, co jest na liście, i przestanie dawać dostęp do tego, czego na niej nie ma; dostęp, który daje im coś innego, na przykład inny produkt, bezpłatna lekcja próbna lub rola w zespole, zostaje.',
       { target, access },
     ),
     approveProductSetAccessNothing: ({ target }) => format(
-      'Produkt „{target}” nie będzie już dawał dostępu do żadnego kursu, modułu ani lekcji. Każdy, kto ma już dostęp do tego produktu, także obecni kupujący, od razu straci dostęp do tego, co produkt dawał, chyba że nadal daje mu go inny jego produkt.',
+      'Produkt „{target}” nie będzie już dawał dostępu do żadnego kursu, modułu ani lekcji. Każdemu, kto ma już dostęp do tego produktu, także obecnym kupującym, produkt od razu przestanie dawać dostęp do tego, co dawał; dostęp, który daje im coś innego, na przykład inny produkt, bezpłatna lekcja próbna lub rola w zespole, zostaje.',
       { target },
     ),
     approveProductSetAccessNewProduct: ({ target, access }) => format(
@@ -863,10 +877,24 @@ export const pl: Messages = {
       { target, access },
     ),
     approveProductSetAccessNothingNewProduct: ({ target }) => format('Nowy produkt „{target}” nie będzie dawał dostępu do żadnego kursu, modułu ani lekcji.', { target }),
-    approveProductSetAccessRefused: ({ target }) =>
-      format('Nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi już kontroli sklepu, więc zatwierdzenie niczego nie zmieni.', { target }),
+    approveProductSetAccessRefused: ({ target }) => format(
+      'Przy obecnym stanie sklepu nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc zatwierdzenie niczego by nie zmieniło; jeśli przejdzie ją w chwili zatwierdzenia, zostanie wprowadzona tak, jak opisano dalej.',
+      { target },
+    ),
     approveGroupProductSetAccessRefused: ({ target }) => format(
-      'Nowa lista tego, do czego daje dostęp produkt „{target}”, nie przechodzi już kontroli sklepu, więc po zatwierdzeniu nie zostanie wprowadzona żadna ze zmian.',
+      'Przy obecnym stanie sklepu jedna z ustawianych przez grupę list tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian; grupa zostanie wprowadzona tylko wtedy, gdy w chwili zatwierdzenia każda jej zmiana przejdzie swoje kontrole, a lista tak, jak opisano dalej.',
+      { target },
+    ),
+    approveGroupProductSetAccessRefusedDeleted: ({ target }) => format(
+      'Przy obecnym stanie sklepu jedna z ustawianych przez grupę list tego, do czego daje dostęp produkt „{target}”, nie przechodzi kontroli sklepu, więc po zatwierdzeniu nie zostałaby wprowadzona żadna ze zmian.',
+      { target },
+    ),
+    approveProductSetAccessUnchanged: ({ target, access }) => format(
+      'Proponowana lista tego, do czego daje dostęp produkt „{target}”, jest taka sama jak lista wyjściowa: {access}. Zatwierdzenie w sumie nie zmieni tej listy, więc nikt, kto ma dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
+      { target, access },
+    ),
+    approveProductSetAccessUnchangedNothing: ({ target }) => format(
+      'Proponowana lista tego, do czego daje dostęp produkt „{target}”, jest taka sama jak lista wyjściowa: żaden kurs, moduł ani lekcja. Zatwierdzenie w sumie nie zmieni tej listy, więc nikt, kto ma dostęp do tego produktu, nie zyska ani nie straci przez niego żadnego dostępu.',
       { target },
     ),
     approveConfirm: 'Zatwierdź',
@@ -884,8 +912,22 @@ export const pl: Messages = {
     outcomeGroupRejected: 'Grupa odrzucona. W sklepie nic się nie zmieniło.',
     outcomeStale: 'Od czasu tej propozycji sklep się zmienił, więc nic nie zostało wprowadzone. Nadawca może wysłać ją ponownie.',
     outcomeImageUnavailable: 'Proponowanego obrazka już nie ma, więc nic nie zostało zmienione. Trzeba go przesłać i zaproponować ponownie.',
+    outcomeStaleUnconfirmed: 'Nic nie zostało wprowadzone: sklep zmienił się od czasu tej propozycji albo proponowany obrazek lub plik nie jest już dostępny. Historia propozycji pokazuje, co się stało.',
     outcomeFileUnavailable: 'Proponowanego pliku już nie ma, więc nic nie zostało zmienione. Trzeba go ponownie przesłać lub skopiować i zaproponować.',
     outcomeFailed: ({ reason }) => format('Sklep nie przyjął tej zmiany, więc nic nie zostało wprowadzone: {reason}', { reason }),
+    refusal: {
+      accessCourseUnavailable: 'kurs z listy już nie istnieje lub jest zarchiwizowany',
+      accessModuleMissing: 'moduł z listy już nie istnieje',
+      accessModuleOutsideCourse: 'moduł z listy nie należy już do kursu podanego razem z nim',
+      accessExcludedModuleOutsideCourse: 'moduł pominięty na liście nie należy już do swojego kursu',
+      accessLessonMissing: 'lekcja z listy już nie istnieje',
+      accessLessonOutsideCourse: 'lekcja z listy nie należy już do kursu podanego razem z nią',
+      fileProductNotDigital: 'produkt nie udostępnia plików do pobrania',
+      fileReplacementMissing: 'plik, który miał zostać zastąpiony, już nie istnieje',
+      fileReplacementNotReady: 'plik, który miał zostać zastąpiony, nie jest gotowy',
+      fileRemovalNotReady: 'plik, który miał zostać usunięty, nie jest gotowy',
+      fileProductFull: 'produkt ma już tyle plików, ile może mieć',
+    },
     outcomeFailedUnknown: 'Sklep nie przyjął tej zmiany, więc nic nie zostało wprowadzone.',
     outcomeExpired: 'Ta propozycja wygasła przed Twoją decyzją, więc nic nie zostało wprowadzone.',
     dismiss: 'Zamknij',
@@ -2011,9 +2053,17 @@ export const pl: Messages = {
       'Together wyśle mały plik testowy, odczyta go bajt po bajcie, usunie i sprawdzi CORS dla przeglądarki. Na tym etapie nic nie zostanie zapisane.',
     storageProbeStart: 'Uruchom test na żywo',
     storageProbeSuccess: 'Zapis, odczyt i usunięcie powiodły się. Możesz teraz zapisać konfigurację.',
+    storageDownloadOverridesRefused:
+      'Zapis, odczyt i usunięcie powiodły się, ale magazyn plików odrzucił podpisany link do pobrania, który podaje typ i nazwę pliku. Linki do pobrania dla kupujących je zawierają, więc kupujący mogą nie móc pobrać plików. Nadal możesz zapisać tę konfigurację; najpierw sprawdź, czy dostawca obsługuje nadpisywanie odpowiedzi w podpisanych linkach.',
+    storageDownloadOverridesIgnored:
+      'Zapis, odczyt i usunięcie powiodły się, ale magazyn plików pomija typ i nazwę pliku, o które prosi podpisany link do pobrania. Kupujący dostają plik przesłany kluczem API jako zwykły plik do pobrania z nazwą obiektu w magazynie. Nadal możesz zapisać tę konfigurację.',
     storageSave: 'Zapisz zaszyfrowaną konfigurację',
     storageSaving: 'Testowanie i zapisywanie…',
     storageSaved: 'Zapisano konfigurację magazynu plików.',
+    storageSavedOverridesRefused:
+      'Zapisano konfigurację magazynu plików, ale magazyn plików odrzucił podpisany link do pobrania, który podaje typ i nazwę pliku. Linki do pobrania dla kupujących je zawierają, więc kupujący mogą nie móc pobrać plików; sprawdź, czy dostawca obsługuje nadpisywanie odpowiedzi w podpisanych linkach.',
+    storageSavedOverridesIgnored:
+      'Zapisano konfigurację magazynu plików, ale magazyn plików pomija typ i nazwę pliku, o które prosi podpisany link do pobrania. Kupujący dostają plik przesłany kluczem API jako zwykły plik do pobrania z nazwą obiektu w magazynie.',
     storageProbeWrongRegion: 'Użyj regionu i endpointu podanych dla tego bucketu przez dostawcę.',
     storageProbeCredentials:
       'Sprawdź klucz dostępu (access key), tajny klucz (secret key) oraz uprawnienia PutObject, GetObject i DeleteObject.',

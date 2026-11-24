@@ -102,16 +102,20 @@ const readAccessLabels = async (
     moduleIds: distinct(wanted.flatMap((ids) => ids.moduleIds)),
     lessonIds: distinct(wanted.flatMap((ids) => ids.lessonIds)),
   });
-  const labelled = (ids: readonly string[], found: ReadonlyArray<{ id: string; title: string }>) =>
-    ids.map((id) => ({ id, title: found.find((entry) => entry.id === id)?.title ?? null }));
+  const titleById = (found: ReadonlyArray<{ id: string; title: string }>) => new Map(found.map((entry) => [entry.id, entry.title]));
+  const courseTitles = titleById(titles?.courses ?? []);
+  const moduleTitles = titleById(titles?.modules ?? []);
+  const lessonTitles = titleById(titles?.lessons ?? []);
+  const archived = new Set((titles?.courses ?? []).filter((course) => course.archived).map((course) => course.id));
+  const labelled = (ids: readonly string[], found: ReadonlyMap<string, string>) => ids.map((id) => ({ id, title: found.get(id) ?? null }));
   return (proposal) => {
     const ids = accessIdsOf(proposal);
     if (ids === null || titles === null) return null;
-    const archivedCourses = titles.courses.filter((course) => course.archived && ids.courseIds.includes(course.id)).map((course) => course.id);
+    const archivedCourses = ids.courseIds.filter((id) => archived.has(id));
     return {
-      courses: labelled(ids.courseIds, titles.courses),
-      modules: labelled(ids.moduleIds, titles.modules),
-      lessons: labelled(ids.lessonIds, titles.lessons),
+      courses: labelled(ids.courseIds, courseTitles),
+      modules: labelled(ids.moduleIds, moduleTitles),
+      lessons: labelled(ids.lessonIds, lessonTitles),
       ...(archivedCourses.length === 0 ? {} : { archivedCourses }),
     };
   };

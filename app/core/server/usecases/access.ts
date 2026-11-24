@@ -173,6 +173,28 @@ export const locateAccessibleLesson = (
     isLessonAccessibleByLookup(lookup, { courseId: location.course.id, moduleId: location.moduleId, lessonId }),
   ) ?? null;
 
+export const lessonIdsOpenedByLookup = (
+  courses: Course[],
+  modules: CourseModule[],
+  lookup: AccessLookup,
+): Set<string> => {
+  const courseIds = new Set(courses.map((course) => course.id));
+  const opened = new Set<string>();
+  for (const module of modules) {
+    for (const courseId of module.courseIds) {
+      if (!courseIds.has(courseId)) continue;
+      for (const chapter of module.chapters) {
+        for (const content of chapter.contents) {
+          if (isLessonAccessibleByLookup(lookup, { courseId, moduleId: module.id, lessonId: content.lessonId })) {
+            opened.add(content.lessonId);
+          }
+        }
+      }
+    }
+  }
+  return opened;
+};
+
 /** Every course whose modules reference the lesson, not just the first match `locateLesson` picks. */
 export const coursesContainingLesson = (
   lessonId: string,

@@ -359,6 +359,29 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests.at(-1)?.redirect).toBe('error');
   });
 
+  it('answers the entity tag a HEAD response carries', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': '12', etag: '"5d41402abc4b2a76b9719d911017c592"' }),
+    });
+    expect(await storage.head(DOCS_EXAMPLE)).toEqual({ ok: true, value: { sizeBytes: 12, etag: '"5d41402abc4b2a76b9719d911017c592"' } });
+  });
+
+  it('answers the bytes of a GET together with the entity tag of that same response, or null without one', async () => {
+    const tagged = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, 'hello', { 'content-length': '5', etag: '"5d41402abc4b2a76b9719d911017c592"' }),
+    });
+    expect(await tagged.getObjectVersion?.(DOCS_EXAMPLE, { maxBytes: 10 }))
+      .toEqual({ ok: true, value: { bytes: new TextEncoder().encode('hello'), etag: '"5d41402abc4b2a76b9719d911017c592"' } });
+    const untagged = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, 'hello', { 'content-length': '5' }),
+    });
+    expect(await untagged.getObjectVersion?.(DOCS_EXAMPLE, { maxBytes: 10 })).toEqual({ ok: true, value: { bytes: new TextEncoder().encode('hello'), etag: null } });
+    expect(await untagged.getObject(DOCS_EXAMPLE, { maxBytes: 10 })).toEqual({ ok: true, value: new TextEncoder().encode('hello') });
+  });
+
   it('tells an object that does not exist apart from a failed request on HEAD and GET', async () => {
     const bucket = fakeBucket();
     const storage = createS3StorageProvider(resolver, { now: () => new Date('2026-08-03T12:00:00.000Z'), fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true });
@@ -942,6 +965,194 @@ describe('image publication storage operations', () => {
     });
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
   });
+
+  it('answers a delete of an object the storage reports missing with the NoSuchKey error code as deleted', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, '<?xml version="1.0" encoding="UTF-8"?>\n<Error><Code>NoSuchKey</Code><Key>candidate</Key></Error>'),
+    });
+    expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
+  });
+
+  it.each([
+    ['an empty body', ''],
+    ['a proxy page', '<html><body><h1>404 Not Found</h1><p>NoSuchKey</p></body></html>'],
+    ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
+    ['another error code', '<Error><Code>NoSuchUpload</Code></Error>'],
+    ['a code that only starts like the missing key', '<Error><Code>NoSuchKeyPolicy</Code></Error>'],
+    ['a comment naming the missing key before the real code', '<Error><!-- <Code>NoSuchKey</Code> --><Code>NoSuchBucket</Code></Error>'],
+    ['a document cut off after the code', '<Error><Code>NoSuchKey</Code><Message>The specified'],
+    ['two codes', '<Error><Code>NoSuchKey</Code><Code>NoSuchBucket</Code></Error>'],
+    ['the code nested below the root', '<Error><Details><Code>NoSuchKey</Code></Details></Error>'],
+    ['a processing instruction inside the root', '<Error><?note x?><Code>NoSuchKey</Code></Error>'],
+    ['content after the root', '<Error><Code>NoSuchKey</Code></Error><Error><Code>NoSuchBucket</Code></Error>'],
+  ])('answers a delete refused with 404 and %s as an unknown outcome', async (_label, body) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, body),
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
+  it('answers a delete refused with 404 and a body larger than the error body bound as an unknown outcome and cancels the body', async () => {
+    const streamed = streamedResponse(404, 16);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamed.response,
+    });
+    const deleted = await storage.delete({ ...credentials, deadlineMs: 50 });
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+    expect(streamed.cancel).toHaveBeenCalled();
+    expect(streamed.pulled()).toBeGreaterThan(0);
+    expect(streamed.pulled()).toBeLessThanOrEqual(9 * 1024);
+  });
+
+  it('answers a delete refused with 404 and a body that stalls after its first chunk as an unknown outcome at its deadline and cancels the body', async () => {
+    vi.useFakeTimers();
+    try {
+      const streamed = streamedResponse(404, 'endless');
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => streamed.response,
+      });
+      let settled = false;
+      const deleting = storage.delete({ ...credentials, deadlineMs: 50 }).finally(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(49);
+      expect(streamed.pulled()).toBe(8);
+      expect(settled).toBe(false);
+      expect(streamed.cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      const deleted = await deleting;
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+      expect(streamed.cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a read, a versioned read, a digest and a copy answered 404 with NoSuchBucket as a storage error, not as a missing object', async () => {
+    const answer = { body: '<Error><Code>NoSuchBucket</Code></Error>' };
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, answer.body),
+    });
+    const reads = async () => [
+      await storage.getObject(credentials, { maxBytes: 10 }),
+      await storage.getObjectVersion?.(credentials, { maxBytes: 10 }),
+      await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }),
+    ];
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 1_000,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(true);
+    answer.body = '<Error><Code>NoSuchKey</Code></Error>';
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    answer.body = '';
+    expect(await storage.head(credentials)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await storage.getObject(credentials, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it.each([16, 'endless'] as const)('reports a read answered 404 with an unreadable body (%s) as a storage error', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    expect(await storage.getObject({ ...credentials, deadlineMs: 50 }, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
+  it('reads the whole 404 body of a digest before it closes the connection, so a missing key split across chunks stays a missing key', async () => {
+    const events: string[] = [];
+    const closed: Array<() => boolean> = [];
+    const chunks = ['<Error><Code>NoSuch', 'Key</Code></Error>'].map((part) => new TextEncoder().encode(part));
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        const { dispatcher } = init;
+        if (typeof dispatcher !== 'object' || dispatcher === null || !('destroyed' in dispatcher)) throw new Error('Expected a pinned dispatcher');
+        const isClosed = () => dispatcher.destroyed === true;
+        closed.push(isClosed);
+        let index = 0;
+        return {
+          ok: false, status: 404, headers: { get: () => null }, text: async () => '',
+          body: {
+            cancel: async () => undefined,
+            getReader: () => ({
+              read: async () => {
+                await new Promise((resolve) => { setTimeout(resolve, 5); });
+                const value = chunks[index];
+                index += 1;
+                events.push(`${value === undefined ? 'end' : 'chunk'}${isClosed() ? ' after close' : ''}`);
+                return value === undefined ? { done: true } : { done: false, value };
+              },
+              cancel: async () => undefined,
+              releaseLock: () => undefined,
+            }),
+          },
+        };
+      },
+    });
+    expect(await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(events).toEqual(['chunk', 'chunk', 'end']);
+    expect(closed.map((isClosed) => isClosed())).toEqual([true]);
+  });
+
+  it.each([16, 'endless'] as const)('reports a copy answered 404 with an unreadable body (%s) as a storage error without a definite outcome', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 50,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(false);
+  });
+
+  it.each([[400, true], [403, true], [500, false], [503, false]] as const)(
+    'answers a delete refused with status %s as definite only for a refusal: %s',
+    async (status, definite) => {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => storageResponse(status, '<Error><Code>AccessDenied</Code></Error>'),
+      });
+      const deleted = await storage.delete(credentials);
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(definite);
+    },
+  );
+
+  it('answers a delete whose connection failed as an unknown outcome', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => { throw new Error('socket hang up'); },
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
+  it('stores the disposition it is given with the object', async () => {
+    const sent: Array<Record<string, string> | undefined> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        sent.push(init.headers);
+        return storageResponse(200, '');
+      },
+    });
+    const svg = new TextEncoder().encode('<svg/>');
+    expect((await storage.putObject({ ...credentials, body: svg, contentType: 'image/svg+xml', contentDisposition: 'attachment' })).ok).toBe(true);
+    expect(sent).toEqual([{ 'content-type': 'image/svg+xml', 'content-disposition': 'attachment' }]);
+  });
 });
 
 describe('download file storage operations', () => {
@@ -990,6 +1201,23 @@ describe('download file storage operations', () => {
       .reduce<Buffer | string>((current, part) => createHmac('sha256', current).update(part).digest(), `AWS4${DOCS_EXAMPLE.secretAccessKey}`);
     const signature = createHmac('sha256', key).update(stringToSign).digest('hex');
     expect(request.url).toBe(`https://examplebucket.s3.us-east-1.amazonaws.com${path}?${query}&X-Amz-Signature=${signature}`);
+  });
+
+  it('binds a copy to the entity tag of the checked source in a signed header, and answers a source changed since as a definite failure', async () => {
+    const sent: Array<{ url: string; headers: Record<string, string> | undefined }> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        sent.push({ url, headers: init.headers });
+        return storageResponse(412, '<Error><Code>PreconditionFailed</Code></Error>');
+      },
+    });
+    const copied = await storage.copyObject({ configuration: AWS, sourceKey: 'a', sourceEtag: '"3858f62230ac3c915f300c664312c11f"', key: 'b', deadlineMs: 1_000 });
+    if (copied.ok) throw new Error('the copy was accepted');
+    expect(storageFailureIsDefinite(copied.error)).toBe(true);
+    const [request] = sent;
+    expect(request?.headers?.['x-amz-copy-source-if-match']).toBe('"3858f62230ac3c915f300c664312c11f"');
+    expect(new URL(request?.url ?? 'https://missing.test').searchParams.get('X-Amz-SignedHeaders')?.split(';')).toContain('x-amz-copy-source-if-match');
   });
 
   it.each([

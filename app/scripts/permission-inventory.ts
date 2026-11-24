@@ -8,14 +8,17 @@ import {
   PRINCIPALS,
   ROLE_CAPABILITIES,
   SHOP_CATALOG_ROUTES,
+  SHOP_DOWNLOAD_ROUTES,
 } from '#core/contract/index.js';
 import {
   ORGANIZATION_PRINCIPALS,
   SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE,
+  changeProposalSubmitCapability,
   shopManagementCapabilities,
   shopManagementScopeSchema,
   type Capability,
   type Principal,
+  type RegisteredChangeProposalOperation,
   type ShopManagementKeyMode,
   type ShopManagementScope,
 } from '#core/domain/index.js';
@@ -362,9 +365,6 @@ const beforeForRoute = (
     }
     if (selfAuthenticatingEntry.mechanism === 'Shop management key') {
       if (path === '/api/m2m/shop/proposals' || path.startsWith('/api/m2m/shop/proposals/')) return proposeShopManagementKey;
-      if (path.startsWith('/api/m2m/shop/downloads/')) return directShopManagementKey;
-      // Its live handler is the owner's access editor use-case, whose capability no scope of any key carries.
-      if (path === SHOP_CATALOG_ROUTES.setProductAccess.path) return [];
       return method === 'GET' ? shopManagementKey : directShopManagementKey;
     }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
@@ -434,13 +434,91 @@ const reachableForRoute = (
   return tenantActors;
 };
 
+interface KeyModeRouteBranch {
+  capabilities: readonly Capability[];
+  effect: string;
+}
+
+export interface KeyModeRoute {
+  direct: KeyModeRouteBranch;
+  propose: KeyModeRouteBranch;
+}
+
+export const KEY_MODE_SUBJECT_SUFFIX = { direct: ' (direct-mode key)', propose: ' (propose-mode key)' } as const;
+
+const stagedFileBranches = (effect: string, extra: readonly Capability[] = []): KeyModeRoute => ({
+  direct: { capabilities: ['product:write', ...extra], effect: `${effect}; the key attaches a staged file live` },
+  propose: {
+    capabilities: ['proposal:asset:upload', 'proposal:submit:catalog', ...extra],
+    effect: `${effect}; a staged file reaches buyers only through an approved proposal`,
+  },
+});
+
+const imageBranches = (live: Capability, submission: Capability): KeyModeRoute => ({
+  direct: { capabilities: [live], effect: 'uploads an image that the key publishes live' },
+  propose: {
+    capabilities: ['proposal:asset:upload', submission],
+    effect: 'uploads into the private quarantine of the key; only the approval of a proposal that attaches the image publishes it',
+  },
+});
+
+const fileProposalBranches = (operation: RegisteredChangeProposalOperation, live: string): KeyModeRoute => ({
+  direct: { capabilities: ['product:write'], effect: live },
+  propose: {
+    capabilities: [changeProposalSubmitCapability(operation), 'product:read'],
+    effect: `stores a ${operation} proposal, which only an owner approval applies`,
+  },
+});
+
+export const KEY_MODE_ROUTES: Readonly<Record<string, KeyModeRoute>> = {
+  'POST /api/m2m/shop/downloads/upload': stagedFileBranches('starts a private upload of the key'),
+  'POST /api/m2m/shop/downloads/complete': stagedFileBranches('stages the uploaded file as a private file of the key'),
+  'POST /api/m2m/shop/downloads/copy': stagedFileBranches('stages a private copy of a product file for the key', ['product:read']),
+  'GET /api/m2m/shop/downloads/staged': stagedFileBranches('lists the files the key staged'),
+  'DELETE /api/m2m/shop/downloads/staged/:id': stagedFileBranches('discards a file the key staged'),
+  'POST /api/m2m/shop/image-assets/product-cover/upload': imageBranches('product:write', 'proposal:submit:catalog'),
+  'POST /api/m2m/shop/image-assets/product-cover/complete': imageBranches('product:write', 'proposal:submit:catalog'),
+  'POST /api/m2m/shop/image-assets/branding/upload': imageBranches('tenant:settings:write', 'proposal:submit:settings'),
+  'POST /api/m2m/shop/image-assets/branding/complete': imageBranches('tenant:settings:write', 'proposal:submit:settings'),
+  [`POST ${SHOP_CATALOG_ROUTES.setProductAccess.path}`]: {
+    direct: { capabilities: ['product:access:write'], effect: 'reaches the owner\'s access editor, whose capability no key scope grants, and is refused' },
+    propose: { capabilities: ['proposal:submit:catalog', 'product:read'], effect: 'stores a product.set-access proposal, which only an owner approval applies' },
+  },
+  [`POST ${SHOP_DOWNLOAD_ROUTES.addProductDownload.path}`]: fileProposalBranches('download.add', 'attaches a file the key staged to the product live'),
+  [`POST ${SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path}`]: fileProposalBranches('download.replace', 'replaces a product file live with a file the key staged'),
+  [`POST ${SHOP_DOWNLOAD_ROUTES.removeProductDownload.path}`]: fileProposalBranches('download.remove', 'removes a product file live'),
+};
+
+const keyModeRows = (
+  subject: string,
+  modes: Readonly<Record<keyof KeyModeRoute, { capabilities: readonly Capability[]; effect?: string }>>,
+  source: string,
+): PermissionRow[] => (['direct', 'propose'] as const).map((mode) => {
+  const capability = modes[mode].capabilities[0];
+  if (capability === undefined) throw new Error(`${subject} has no ${mode}-mode capability`);
+  const principal = mode === 'direct' ? directShopManagementKey : proposeShopManagementKey;
+  const before = modes[mode].capabilities.every((held) => shopManagementKeyHolds(held, mode)) ? principal : [];
+  return {
+    subject: `${subject}${KEY_MODE_SUBJECT_SUFFIX[mode]}`,
+    capability,
+    before,
+    after: effectiveAfter(principal, capability),
+    derivable: true,
+    evidence: `${source}, ${mode} mode: ${modes[mode].capabilities.join(' + ')}${modes[mode].effect === undefined ? '' : `; ${modes[mode].effect}`}`,
+  };
+});
+
 const routeRows = (): PermissionRow[] =>
   collectRuntimeRoutes()
-    .map((route) => {
+    .flatMap((route): PermissionRow[] => {
+      const keyModes = KEY_MODE_ROUTES[`${route.method} ${route.path}`];
+      if (keyModes !== undefined) {
+        return keyModeRows(`${route.method} ${route.path}`, keyModes, 'Shop management key');
+      }
       const capability = capabilityForRoute(route.method, route.path);
       const before = beforeForRoute(route.method, route.path);
       const reachable = reachableForRoute(route.method, route.path);
-      return {
+      return [{
         subject: `${route.method} ${route.path}`,
         capability,
         before,
@@ -455,14 +533,20 @@ const routeRows = (): PermissionRow[] =>
           : publicRouteManifestEntry(route) !== undefined
           ? 'public route manifest'
           : selfAuthenticatingRouteManifestEntry(route)?.mechanism ?? 'identity middleware + use-case guard',
-      };
+      }];
     });
+
+export interface KeyModeCapabilities {
+  direct: readonly Capability[];
+  propose: readonly Capability[];
+}
 
 export interface CollectedUseCase {
   name: string;
   file: string;
   capability: Capability;
   organizationContext?: true;
+  keyModes?: KeyModeCapabilities;
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
@@ -490,18 +574,15 @@ const authorizationCallNames = new Set([
 
 const capabilityArgumentIndex = (callName: string): number => callName === 'authorizeOrganization' ? 2 : 1;
 
-const sameFileGuardCapabilities: Readonly<Record<string, Capability>> = { stagingKey: 'product:write' };
+const sameFileKeyModeGuards: Readonly<Record<string, KeyModeCapabilities>> = {
+  stagingKey: { direct: ['product:write'], propose: ['proposal:asset:upload', 'proposal:submit:catalog'] },
+};
 
-const capabilityFromBody = (
-  body: ts.ConciseBody,
-  subject: string,
-): Capability => {
+const authorizationCapabilities = (node: ts.Node, subject: string): Capability[] => {
   const capabilities: Capability[] = [];
-  const visit = (node: ts.Node): void => {
-    const guarded = ts.isCallExpression(node) && ts.isIdentifier(node.expression) ? sameFileGuardCapabilities[node.expression.text] : undefined;
-    if (guarded !== undefined) capabilities.push(guarded);
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && authorizationCallNames.has(node.expression.text)) {
-      const argument = node.arguments[capabilityArgumentIndex(node.expression.text)];
+  const visit = (child: ts.Node): void => {
+    if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && authorizationCallNames.has(child.expression.text)) {
+      const argument = child.arguments[capabilityArgumentIndex(child.expression.text)];
       if (argument !== undefined && ts.isStringLiteral(argument)) {
         const capability = CAPABILITIES.find((candidate) => candidate === argument.text);
         if (capability === undefined) {
@@ -510,22 +591,117 @@ const capabilityFromBody = (
         capabilities.push(capability);
       }
     }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return capabilities;
+};
+
+const isKeyModeTest = (node: ts.Expression): boolean =>
+  ts.isBinaryExpression(node)
+  && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+  && ts.isPropertyAccessExpression(node.left)
+  && node.left.name.text === 'mode'
+  && ts.isStringLiteral(node.right)
+  && node.right.text === 'direct';
+
+const keyModeBranches = (body: ts.Node): ts.ConditionalExpression[] => {
+  const found: ts.ConditionalExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isConditionalExpression(node) && isKeyModeTest(node.condition)) found.push(node);
     ts.forEachChild(node, visit);
   };
   visit(body);
+  return found;
+};
+
+const sameCapabilities = (left: readonly Capability[], right: readonly Capability[]): boolean => left.join(',') === right.join(',');
+
+const keyModeGuardOf = (
+  name: string,
+  helpers: ReadonlyMap<string, ts.ConciseBody>,
+  subject: string,
+): KeyModeCapabilities => {
+  const expected = sameFileKeyModeGuards[name];
+  if (expected === undefined) throw new Error(`${subject} calls the unknown key mode guard ${name}`);
+  const body = helpers.get(name);
+  if (body === undefined) throw new Error(`${subject} calls ${name}, which its own file must declare`);
+  const branches = keyModeBranches(body);
+  const branch = branches[0];
+  const found = branches.length === 1 && branch !== undefined
+    ? { direct: authorizationCapabilities(branch.whenTrue, subject), propose: authorizationCapabilities(branch.whenFalse, subject) }
+    : null;
+  if (found === null || !sameCapabilities(found.direct, expected.direct) || !sameCapabilities(found.propose, expected.propose)) {
+    throw new Error(
+      `${subject}: ${name} must branch once on the key mode and authorize ${expected.direct.join(' + ')} for a direct-mode key `
+      + `and ${expected.propose.join(' + ')} for a propose-mode key; found ${found === null ? 'no single key mode branch' : `${found.direct.join(' + ') || 'none'} and ${found.propose.join(' + ') || 'none'}`}`,
+    );
+  }
+  return expected;
+};
+
+interface BodyAuthorization {
+  capability: Capability;
+  keyModes?: KeyModeCapabilities;
+}
+
+const capabilityFromBody = (
+  body: ts.ConciseBody,
+  subject: string,
+  helpers: ReadonlyMap<string, ts.ConciseBody> = new Map(),
+): BodyAuthorization => {
+  const guards: KeyModeCapabilities[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text in sameFileKeyModeGuards)) {
+      guards.push(keyModeGuardOf(node.expression.text, helpers, subject));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  const capabilities = authorizationCapabilities(body, subject);
+  const guard = guards[0];
+  if (guard !== undefined) {
+    const extra = subject === 'key-download-files.ts#copyKeyDownloadFile' && sameCapabilities(capabilities, ['product:read']) ? capabilities : [];
+    if (guards.length !== 1 || capabilities.length !== extra.length) {
+      throw new Error(`${subject} must authorize through exactly one key mode guard; found ${String(guards.length)} guards and ${capabilities.join(', ') || 'no other capability'}`);
+    }
+    const keyModes = { direct: [...guard.direct, ...extra], propose: [...guard.propose, ...extra] };
+    const capability = keyModes.direct[0];
+    if (capability === undefined) throw new Error(`${subject} has no authorization capability`);
+    return { capability, keyModes };
+  }
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
   const proposalFamilyChoice = ['change-proposals.ts#submitChangeProposal', 'change-proposal-groups.ts#submitGroupedChangeProposal'].includes(subject) && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
-  const proposalImageUpload = /^change-proposal-images\.ts#(?:begin|complete)Proposed(?:ProductCover|BrandingAsset)Upload$/u.test(subject)
-    && ['proposal:asset:upload,proposal:submit:catalog', 'proposal:asset:upload,proposal:submit:settings'].includes(capabilities.join(','));
-  const keyDownloadCopy = subject === 'key-download-files.ts#copyKeyDownloadFile' && capabilities.join(',') === 'product:write,product:read';
-  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice && !proposalImageUpload && !keyDownloadCopy) {
+  const imageFamily = /^change-proposal-images\.ts#(?:begin|complete)Proposed(ProductCover|BrandingAsset)Upload$/u.exec(subject)?.[1];
+  if (imageFamily !== undefined) {
+    const pair = `proposal:asset:upload,${imageFamily === 'ProductCover' ? 'proposal:submit:catalog' : 'proposal:submit:settings'}`;
+    if (capabilities.join(',') !== pair) {
+      throw new Error(`${subject} must authorize ${pair.replace(',', ' + ')}; found ${capabilities.join(', ') || 'none'}`);
+    }
+    return { capability: 'proposal:asset:upload' };
+  }
+  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );
   }
   const capability = capabilities[0];
   if (capability === undefined) throw new Error(`${subject} has no authorization capability`);
-  return capability;
+  return { capability };
+};
+
+const sameFileHelpers = (sourceFile: ts.SourceFile): Map<string, ts.ConciseBody> => {
+  const helpers = new Map<string, ts.ConciseBody>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement) || hasExportModifier(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const initializer = declaration.initializer;
+      if (ts.isIdentifier(declaration.name) && initializer !== undefined && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))) {
+        helpers.set(declaration.name.text, initializer.body);
+      }
+    }
+  }
+  return helpers;
 };
 
 const hasExportModifier = (node: ts.Node): boolean =>
@@ -572,6 +748,7 @@ export const collectUseCasesInSource = (
 ): CollectedUseCase[] => {
   const found: CollectedUseCase[] = [];
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const helpers = sameFileHelpers(sourceFile);
   sourceFile.statements.forEach((statement) => {
     if (ts.isFunctionDeclaration(statement) && hasExportModifier(statement) && statement.name !== undefined) {
       const subject = `${file}#${statement.name.text}`;
@@ -598,7 +775,7 @@ export const collectUseCasesInSource = (
         found.push({
           name: declaration.name.text,
           file,
-          capability: capabilityFromBody(initializer.body, subject),
+          capability: capabilityFromBody(initializer.body, subject).capability,
           organizationContext: true,
         });
         return;
@@ -614,10 +791,12 @@ export const collectUseCasesInSource = (
         }
         return;
       }
+      const authorization = capabilityFromBody(initializer.body, subject, helpers);
       found.push({
         name: declaration.name.text,
         file,
-        capability: capabilityFromBody(initializer.body, subject),
+        capability: authorization.capability,
+        ...(authorization.keyModes === undefined ? {} : { keyModes: authorization.keyModes }),
       });
     });
   });
@@ -658,7 +837,7 @@ const beforeForUseCase = (
   if (file === 'change-proposal-groups.ts') return ownerSideChangeProposalGroupUseCases.has(name) ? owner : proposeShopManagementKey;
   if (file === 'change-proposal-images.ts') return name === 'getChangeProposalImage' ? owner : proposeShopManagementKey;
   if (file === 'change-proposal-files.ts') return owner;
-  if (file === 'key-download-files.ts' || file === 'product-download-files.ts') return directShopManagementKey;
+  if (file === 'product-download-files.ts') return directShopManagementKey;
   if (['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file)) return principalsForCapability(capability);
   if (file === 'activity-reports.ts') return reportApiKey;
   if (file === 'marketing-email.ts') {
@@ -726,17 +905,21 @@ const beforeForUseCase = (
 };
 
 const useCaseRows = (): PermissionRow[] =>
-  collectCtxUseCases().map(({ file, name, capability, organizationContext }) => {
+  collectCtxUseCases().flatMap(({ file, name, capability, organizationContext, keyModes }): PermissionRow[] => {
+    if (keyModes !== undefined) {
+      const guarded = { direct: { capabilities: keyModes.direct }, propose: { capabilities: keyModes.propose } };
+      return keyModeRows(`${file}#${name}`, guarded, `${relative(appRoot, join(useCasesRoot, file))} key mode guard`);
+    }
     if (organizationContext === true) {
       const before = principalsForCapability(capability);
-      return {
+      return [{
         subject: `${file}#${name}`,
         capability,
         before,
         after: effectiveAfter(ORGANIZATION_PRINCIPALS, capability),
         derivable: true,
         evidence: `${relative(appRoot, join(useCasesRoot, file))} organization authorization call`,
-      };
+      }];
     }
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
@@ -751,14 +934,14 @@ const useCaseRows = (): PermissionRow[] =>
             : before === importUsersApiKey
               ? importUsersApiKey
               : tenantActors;
-    return {
+    return [{
       subject: `${file}#${name}`,
       capability,
       before,
       after: effectiveAfter(reachable, capability),
       derivable: true,
       evidence: `${relative(appRoot, join(useCasesRoot, file))} authorization call`,
-    };
+    }];
   });
 
 const collectSourceEvidence = (): AuthorizationEvidence[] => {
@@ -870,13 +1053,13 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
-    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\`, each with \`proposal:asset:upload\`, instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve. On the four \`/api/m2m/shop/image-assets\` routes it reaches the handler, which calls the upload use-cases of \`change-proposal-images.ts\` with \`proposal:asset:upload\` and keeps the image private until an approval; on the five \`/api/m2m/shop/downloads\` routes it reaches the handler too, which stages a private file of that key with \`proposal:asset:upload\` and \`proposal:submit:catalog\`, and a staged file reaches buyers only through an approved proposal. The \`/api/m2m/shop/proposals\` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.`,
+    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\`, each with \`proposal:asset:upload\`, instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve, so these rows list only the direct-mode key, whose live handler runs. On the four \`/api/m2m/shop/image-assets\` routes and the five \`/api/m2m/shop/downloads\` routes it reaches the handler, and \`POST /api/m2m/shop/products/access\` and the three product file routes (\`POST /api/m2m/shop/products/downloads\` and its \`replace\` and \`remove\` routes) it reaches only as a proposal; each of these routes has one row per key mode, its subject ending in \`(direct-mode key)\` or \`(propose-mode key)\`, whose evidence names every capability that mode needs and what the request does. Only a propose-mode key succeeds on the \`/api/m2m/shop/proposals\` routes, which refuse a direct-mode key, and on \`POST /api/m2m/shop/products/access\`, whose direct-mode row lists no principal.`,
     '',
     '`change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key\'s write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key. The four upload use-cases of `change-proposal-images.ts` authorize `proposal:asset:upload` with the submission capability of their family, `proposal:submit:catalog` for a product cover and `proposal:submit:settings` for a branding image; the table lists the first. They write only a private quarantined copy, which an owner approval publishes. `change-proposal-images.ts#getChangeProposalImage` needs `proposal:read` and applies the same owner-session guard, and so does `change-proposal-files.ts#getChangeProposalFileLink`, which answers a short-lived signed download of a file a pending proposal attaches.',
     '',
-    'The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key needs `proposal:asset:upload` with `proposal:submit:catalog`. The table lists the first and the direct-mode key, as it does for the `/api/m2m/shop/downloads` routes, which a propose-mode key reaches as well. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read`. The attach and removal use-cases of `product-download-files.ts` need `product:write`; they are reached through the direct-mode shop routes and through a `download.add`, `download.replace` or `download.remove` proposal, which runs them in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner. The attach refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which only those two runs of a proposal do, naming the key that made it; a removal of a proposal removes only a ready file.',
+    'The staging use-cases of `key-download-files.ts` authorize through the same-file guard `stagingKey`, which accepts only a shop management key and refuses a session and an impersonation: a direct-mode key needs `product:write`, and a propose-mode key needs `proposal:asset:upload` with `proposal:submit:catalog`. The table lists each mode in its own row. `key-download-files.ts#copyKeyDownloadFile` also needs `product:read` in both modes. The attach and removal use-cases of `product-download-files.ts` need `product:write`; they are reached through the direct-mode shop routes and through a `download.add`, `download.replace` or `download.remove` proposal, which runs them in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner. Their rows list the shop management key, the only caller that reaches them from a route; the owner session of an approval passes the same `product:write` guard. The attach refuses a caller that is not a shop management key unless the calling code names the key that staged the file, which only those two runs of a proposal do, naming the key that made it; a removal of a proposal removes only a ready file.',
     '',
-    '`POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key, and at its approval with the session of the approving owner.',
+    'The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

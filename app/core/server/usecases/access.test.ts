@@ -6,6 +6,7 @@ import {
   buildAccessLookup,
   fullCourseLookup,
   isLessonAccessibleByLookup,
+  lessonIdsOpenedByLookup,
   lessonLocations,
   locateAccessibleLesson,
   locateLesson,
@@ -183,7 +184,14 @@ const releasedFirstLocation = (lessonId: string, courses: Course[], modules: Cou
   return null;
 };
 
-describe('every combination the lookup can express opens at least what release 8141fd15 opened', () => {
+const expectedOpen = (items: AccessItem[], row: { courseId: string; moduleId: string; lessonId: string }): boolean =>
+  items.some((item) => {
+    if (item.level === 'course') return item.courseId === row.courseId && !(item.excludedModuleIds ?? []).includes(row.moduleId);
+    if (item.level === 'modules') return item.moduleIds.includes(row.moduleId);
+    return item.lessonIds.includes(row.lessonId);
+  });
+
+describe('every set of up to three items from a fixed pool opens exactly what its items name and at least what release 8141fd15 opened', () => {
   const courseRow = (id: string): Course => ({ ...course([]), id });
   const holding = (id: string, createdAt: string, courseIds: string[], lessonIds: string[]): CourseModule => ({
     ...module(id, createdAt, courseIds),
@@ -226,7 +234,7 @@ describe('every combination the lookup can express opens at least what release 8
   it.each([
     ['a course row', 'row'],
     ['a lesson request', 'lesson'],
-  ])('never closes %s the release opened', (_label, kind) => {
+  ])('opens %s exactly when its items name it and never closes one the release opened', (_label, kind) => {
     let gained = 0;
     for (const items of combinations) {
       const released = releasedLookup(items);
@@ -235,6 +243,7 @@ describe('every combination the lookup can express opens at least what release 8
         for (const row of rows) {
           const before = released(row);
           const after = isLessonAccessibleByLookup(lookup, row);
+          expect({ items, row, after }).toEqual({ items, row, after: expectedOpen(items, row) });
           expect({ items, row, after: before ? after : true }).toEqual({ items, row, after: true });
           if (after && !before) gained += 1;
         }
@@ -243,6 +252,8 @@ describe('every combination the lookup can express opens at least what release 8
           const first = releasedFirstLocation(lessonId, courses, modules);
           const before = first !== null && released(first);
           const after = locateAccessibleLesson(lessonId, courses, modules, lookup) !== null;
+          const expected = rows.some((row) => row.lessonId === lessonId && expectedOpen(items, row));
+          expect({ items, lessonId, after }).toEqual({ items, lessonId, after: expected });
           expect({ items, lessonId, after: before ? after : true }).toEqual({ items, lessonId, after: true });
           if (after && !before) gained += 1;
         }
@@ -250,5 +261,14 @@ describe('every combination the lookup can express opens at least what release 8
     }
     expect(combinations).toHaveLength(232);
     expect(gained).toBeGreaterThan(0);
+  });
+
+  it('collects in one walk exactly the lessons a lesson request opens', () => {
+    for (const items of combinations) {
+      const lookup = buildAccessLookup(items);
+      const expected = lessonIds.filter((lessonId) => locateAccessibleLesson(lessonId, courses, modules, lookup) !== null);
+      expect({ items, opened: [...lessonIdsOpenedByLookup(courses, modules, lookup)].sort() }).toEqual({ items, opened: expected.sort() });
+    }
+    expect(lessonIdsOpenedByLookup([courseRow('c2')], modules, buildAccessLookup([{ level: 'course', courseId: 'c1' }]))).toEqual(new Set());
   });
 });

@@ -2,6 +2,7 @@ import type {
   ChangeProposalDisplayStatus,
   ChangeProposalEventKind,
   ChangeProposalReferenceKind,
+  ChangeProposalRefusal,
   ChangeProposalTargetKind,
   ImportAuditAction,
   ImportAuditResourceType,
@@ -644,7 +645,7 @@ export interface Messages {
     proposedImageLoading: string;
     proposedImageFailed: string;
     proposedImageFacts: (params: { format: string; fingerprint: string }) => string;
-    proposedImagePrivate: string;
+    proposedImageOwnerPreview: string;
     proposedImageSvgReason: string;
     proposedImageSvgDownload: string;
     fileAdded: (params: { name: string }) => string;
@@ -716,6 +717,9 @@ export interface Messages {
     approveGroupImagesPublic: (params: { count: number }) => string;
     approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
     approveFileAddToNewProduct: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileNotKept: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileKeptAsPrevious: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileRemoveUnreleased: (params: { file: string; version: number; target: string }) => string;
     approveFileCopiedFrom: (params: { version: number; product: string }) => string;
     approveFileCopiedFromGone: (params: { version: number }) => string;
     approveFileNewVersion: (params: { file: string; facts: string; version: number; target: string }) => string;
@@ -732,6 +736,8 @@ export interface Messages {
     accessName: (params: { name: string }) => string;
     accessGone: (params: { id: string }) => string;
     accessArchived: (params: { name: string }) => string;
+    accessNameWithId: (params: { name: string; id: string }) => string;
+    accessArchivedWithId: (params: { name: string; id: string }) => string;
     accessListRefused: string;
     approveProductSetAccess: (params: { target: string; access: string }) => string;
     approveProductSetAccessNothing: (params: { target: string }) => string;
@@ -739,6 +745,9 @@ export interface Messages {
     approveProductSetAccessNothingNewProduct: (params: { target: string }) => string;
     approveProductSetAccessRefused: (params: { target: string }) => string;
     approveGroupProductSetAccessRefused: (params: { target: string }) => string;
+    approveGroupProductSetAccessRefusedDeleted: (params: { target: string }) => string;
+    approveProductSetAccessUnchanged: (params: { target: string; access: string }) => string;
+    approveProductSetAccessUnchangedNothing: (params: { target: string }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;
@@ -754,8 +763,10 @@ export interface Messages {
     outcomeGroupRejected: string;
     outcomeStale: string;
     outcomeImageUnavailable: string;
+    outcomeStaleUnconfirmed: string;
     outcomeFileUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
+    refusal: Record<ChangeProposalRefusal, string>;
     outcomeFailedUnknown: string;
     outcomeExpired: string;
     dismiss: string;
@@ -1735,9 +1746,13 @@ export interface Messages {
     storageProbeDescription: string;
     storageProbeStart: string;
     storageProbeSuccess: string;
+    storageDownloadOverridesRefused: string;
+    storageDownloadOverridesIgnored: string;
     storageSave: string;
     storageSaving: string;
     storageSaved: string;
+    storageSavedOverridesRefused: string;
+    storageSavedOverridesIgnored: string;
     storageProbeWrongRegion: string;
     storageProbeCredentials: string;
     storageProbeBucket: string;

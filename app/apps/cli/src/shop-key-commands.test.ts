@@ -1250,7 +1250,7 @@ describe('shop files CLI', () => {
     });
   });
 
-  it('names the staged file that stays behind when the attach is refused', async () => {
+  it('names the staged file and how to check its state when the attach is refused, without claiming it is still staged', async () => {
     await withPdf(async (file) => {
       h.fetchImpl = failingAt('/api/m2m/shop/products/downloads', 409, {
         code: 'conflict', message: 'This product already has 100 files', details: { changeProposalCap: 'product_files' },
@@ -1258,7 +1258,50 @@ describe('shop files CLI', () => {
       await run('shop', 'files', 'upload', 'product-1', file);
       const message = printedErrorMessage(soleJson());
       expect(message).toContain('remove a file of the product first');
-      expect(message).toContain('the file stays staged as staged-1');
+      expect(message).not.toContain('stays staged');
+      expect(message).toContain('staged-1');
+      expect(message).toContain('together shop files list product-1');
+      expect(message).toContain('together shop files staged');
+      expect(message).toContain('together shop proposals list');
+      expect(message).toContain('the sweep may remove it from 7 days after it was staged');
+    });
+  });
+
+  it('does not claim the file is still staged when the server answers that the staged file is gone', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/products/downloads', 404, { code: 'not_found', message: 'The staged file does not exist' });
+      await run('shop', 'files', 'upload', 'product-1', file);
+      const message = printedErrorMessage(soleJson());
+      expect(message).not.toContain('stays staged');
+      expect(message).not.toContain('until it is discarded');
+      expect(message).toContain('together shop files staged');
+    });
+  });
+
+  it('does not claim the file is still staged when the attach answer was lost after the server may have attached it', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = async (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        if (url.pathname !== '/api/m2m/shop/products/downloads') return fileFetch(input, init);
+        calls.push({ method: init?.method ?? 'GET', path: url.pathname, search: '', headers: new Headers(init?.headers), body: null });
+        throw new TypeError('socket hang up');
+      };
+      await run('shop', 'files', 'upload', 'product-1', file);
+      const message = printedErrorMessage(soleJson());
+      expect(message).not.toContain('stays staged');
+      expect(message).toContain('staged-1');
+      expect(message).toContain('together shop files list product-1');
+      expect(message).toContain('together shop files staged');
+    });
+  });
+
+  it('says that a file a pending proposal holds is not deleted after its 7 days', async () => {
+    await withPdf(async (file) => {
+      h.fetchImpl = failingAt('/api/m2m/shop/downloads/upload', 409, {
+        code: 'conflict', message: 'The workspace staging budget is full', details: { changeProposalCap: 'workspace_staged_bytes' },
+      });
+      await run('shop', 'files', 'upload', 'product-1', file);
+      expect(printedErrorMessage(soleJson())).toContain('a staged file that no pending proposal holds is deleted 7 days after it was staged');
     });
   });
 

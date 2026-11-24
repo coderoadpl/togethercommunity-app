@@ -1,5 +1,6 @@
 import {
   appError,
+  CHANGE_PROPOSAL_REFUSALS,
   err,
   forbidden,
   keyDownloadAttachInputSchema,
@@ -58,15 +59,15 @@ export const attachStagedProductDownload = async (
     case 'product_not_found':
       return err(notFound(`No product "${parsed.data.productId}" in this tenant`));
     case 'not_digital':
-      return err(validation('Files can only be attached to digital-download products'));
+      return err(validation(CHANGE_PROPOSAL_REFUSALS.fileProductNotDigital));
     case 'staged_not_found':
       return err(notFound(`No staged file "${parsed.data.stagedFileId}" of this key`));
     case 'applied_otherwise':
       return err(appError('conflict', 'This staged file was already attached with another replacement or version note; nothing was changed'));
     case 'replacement_not_found':
-      return err(notFound('Replacement file not found'));
+      return err(notFound(CHANGE_PROPOSAL_REFUSALS.fileReplacementMissing));
     case 'replacement_not_ready':
-      return err(validation('Only ready files can be replaced'));
+      return err(validation(CHANGE_PROPOSAL_REFUSALS.fileReplacementNotReady));
     case 'cap_exceeded':
       return err(keyDownloadFileCapExceeded(attached.cap));
   }
@@ -83,7 +84,10 @@ export interface ProductDownloadRemoveDeps {
   readyOnly?: boolean;
 }
 
-/** The deletion is owed in the removing transaction, so a storage delete that fails afterwards is retried by the sweep. */
+/**
+ * A key-staged object's deletion is owed in the removing transaction, so the sweep retries a storage delete that fails
+ * afterwards; an owner-uploaded object is deleted once, as the product editor deletes it.
+ */
 export const removeProductDownloadFile = async (
   ctx: Ctx,
   input: KeyDownloadRemoveInput,
@@ -97,7 +101,7 @@ export const removeProductDownloadFile = async (
   if (!configuration.ok) return configuration;
   const removed = await deps.keyDownloadAttach.remove(tenant.value, { ...parsed.data, readyOnly: deps.readyOnly === true, now: deps.clock.nowIso() });
   if (removed.kind === 'not_found') return err(notFound(`No download asset "${parsed.data.assetId}" on this product`));
-  if (removed.kind === 'not_ready') return err(validation('Only a ready file can be removed by a proposal'));
+  if (removed.kind === 'not_ready') return err(validation(CHANGE_PROPOSAL_REFUSALS.fileRemovalNotReady));
   if (removed.owedDeletion === null) {
     await deleteStoredProductDownload(tenant.value, removed.asset, deps);
   } else {

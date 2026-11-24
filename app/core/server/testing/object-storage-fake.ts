@@ -14,6 +14,7 @@ export const fakeStorageSecrets = {
 interface StoredObject {
   bytes: Uint8Array;
   contentType: string;
+  contentDisposition?: string;
 }
 
 export interface FakeObjectStorage {
@@ -28,6 +29,10 @@ export interface FakeObjectStorage {
   /** Runs before a copy writes its destination, so a test can interleave work with a copy in flight. */
   beforeCopy: (key: string) => Promise<void>;
   keysUnder(prefix: string): string[];
+  /** Answers a signed read the way a provider that ignores response overrides does: with the headers stored with the object. */
+  deliver(signedUrl: string): { status: 404 } | { status: 200; contentType: string; contentDisposition: string | null };
+  /** Takes a client's presigned write as sent, refusing it when the signature covers a length the request does not carry. */
+  receive(signedUrl: string, headers: Record<string, string>, bytes: Uint8Array): { status: 200 | 403 };
 }
 
 const placeholderDigest = (bytes: Uint8Array): string => {
@@ -37,6 +42,8 @@ const placeholderDigest = (bytes: Uint8Array): string => {
 };
 
 const keyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
+
+const entityTagOf = (bytes: Uint8Array): string => `"${placeholderDigest(bytes).slice(0, 32)}"`;
 
 export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) => string } = {}): FakeObjectStorage => {
   const digest = options.sha256 ?? placeholderDigest;
@@ -55,6 +62,17 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
     failCopies: () => false,
     beforeCopy: async () => undefined,
     keysUnder: (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)).sort(),
+    receive: (signedUrl, headers, bytes) => {
+      const key = keyOf(signedUrl);
+      const signed = fake.signedLengths.get(key);
+      if (signed !== undefined && (headers['content-length'] !== String(signed) || bytes.byteLength !== signed)) return { status: 403 };
+      objects.set(key, { bytes: bytes.slice(), contentType: headers['content-type'] ?? 'application/octet-stream' });
+      return { status: 200 };
+    },
+    deliver: (signedUrl) => {
+      const found = objects.get(keyOf(signedUrl));
+      return found === undefined ? { status: 404 } : { status: 200, contentType: found.contentType, contentDisposition: found.contentDisposition ?? null };
+    },
     storage: {
       objectUrl: (_configuration, key) => new URL(`${FAKE_STORAGE_ORIGIN}/${key}`),
       head: async (input) => {
@@ -62,7 +80,11 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         calls.push({ method: 'head', key });
         if (fake.failReads(key)) return unreachable(key);
         const found = objects.get(key);
-        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength });
+        return found === undefined ? missing(key) : ok({ sizeBytes: found.bytes.byteLength, etag: entityTagOf(found.bytes) });
+      },
+      getObjectVersion: async (input, options) => {
+        const read = await fake.storage.getObject(input, options);
+        return read.ok ? ok({ bytes: read.value, etag: entityTagOf(read.value) }) : read;
       },
       getObject: async (input, options) => {
         const key = keyOf(input.url);
@@ -77,7 +99,11 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         const key = keyOf(input.url);
         calls.push({ method: 'putObject', key });
         if (fake.failPuts(key)) return err(integrationUnavailable(`Storage refused the write of ${key}`));
-        objects.set(key, { bytes: input.body.slice(), contentType: input.contentType });
+        objects.set(key, {
+          bytes: input.body.slice(),
+          contentType: input.contentType,
+          ...(input.contentDisposition === undefined ? {} : { contentDisposition: input.contentDisposition }),
+        });
         return ok(undefined);
       },
       delete: async (input) => {
@@ -87,11 +113,12 @@ export const createObjectStorageFake = (options: { sha256?: (bytes: Uint8Array) 
         objects.delete(key);
         return ok({ deleted: true });
       },
-      copyObject: async ({ sourceKey, key }) => {
+      copyObject: async ({ sourceKey, sourceEtag, key }) => {
         calls.push({ method: 'copyObject', key });
         if (fake.failCopies(key)) return unreachable(key);
         const found = objects.get(sourceKey);
         if (found === undefined) return missing(sourceKey);
+        if (sourceEtag !== undefined && sourceEtag !== entityTagOf(found.bytes)) return err(storageDefiniteFailure(`The copy source ${sourceKey} changed`));
         await fake.beforeCopy(key);
         objects.set(key, { bytes: found.bytes.slice(), contentType: 'application/octet-stream' });
         return ok(undefined);

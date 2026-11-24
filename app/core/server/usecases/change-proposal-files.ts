@@ -61,6 +61,16 @@ export const checkProposedFiles = async (
   return ok([fileId]);
 };
 
+export const fileRefusalAfterDryRun = async <T>(
+  dryRun: Result<T, AppError>,
+  checked: readonly string[],
+  check: () => Promise<Result<string[], AppError>>,
+): Promise<Result<T, AppError>> => {
+  if (dryRun.ok || checked.length === 0 || dryRun.error.code !== 'not_found') return dryRun;
+  const again = await check();
+  return again.ok ? dryRun : err(again.error);
+};
+
 export interface ChangeProposalFileApprovalDeps {
   keyDownloadFiles: Pick<KeyDownloadFileRepository, 'findStaged'>;
   storage: StorageProvider;
@@ -75,6 +85,18 @@ export interface ApprovalFileChecks {
 const fileCheckKey = (proposalId: string, fileId: string): string => `${proposalId}/${fileId}`;
 
 type FileCheck = Result<KeyDownloadStagedFile | null, AppError>;
+
+const withinMs = async <T>(work: Promise<T>, ms: number): Promise<{ done: true; value: T } | { done: false }> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<{ done: false }>((resolve) => {
+    timer = setTimeout(() => resolve({ done: false }), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([work.then((value) => ({ done: true as const, value })), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 /**
  * Runs before the approval transaction, so none of these storage requests waits under the workspace's approval lock,
@@ -101,9 +123,13 @@ export const checkApprovalFiles = async (
   };
   const check = async (proposal: ChangeProposal, fileId: string): Promise<FileCheck> => {
     if (left() < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
-    const file = await deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId);
+    const found = await withinMs(deps.keyDownloadFiles.findStaged(tenantId, proposal.proposedByKeyId, fileId), left());
+    if (!found.done || left() <= 0) return err(changeProposalFileChecksOutOfTime());
+    const file = found.value;
     if (file?.proposalId !== proposal.id) return ok(null);
-    const resolved = await configured();
+    const configuration = await withinMs(configured(), left());
+    if (!configuration.done || left() <= 0) return err(changeProposalFileChecksOutOfTime());
+    const resolved = configuration.value;
     if (!resolved.ok) return resolved;
     const remaining = left();
     if (remaining < limits.minimumHeadMs) return err(changeProposalFileChecksOutOfTime());
@@ -147,10 +173,10 @@ const sameStagedFile = (left: KeyDownloadStagedFile, right: KeyDownloadStagedFil
 export type ApprovalFiles = { kind: 'ready' } | { kind: 'missing'; proposal: ChangeProposal; fileId: string };
 
 /**
- * Inside the approval transaction, before any target lock: locks each attached staged row of the proposing key and
- * checks it is the file the storage confirmed and that this proposal still holds it. Only rows of the proposing key are
- * locked, and a key that proposes never attaches live, so this order never meets a live attach's product-then-file order
- * on the same row.
+ * Inside the approval transaction, before any product lock: locks each attached staged row of the proposing key and
+ * checks it is the row read before the transaction, whose object the storage confirmed by size, and that this proposal
+ * still holds it. Only rows of the proposing key are locked, and a key that proposes never attaches live, so this order
+ * never meets a live attach's product-then-file order on the same row.
  */
 export const prepareApprovalFiles = async (
   tenantId: string,
@@ -259,6 +285,7 @@ export const getChangeProposalFileLink = async (
     deadlineMs: KEY_DOWNLOAD_STORAGE_DEADLINES.headMs,
   });
   if (!head.ok) return head.error.code === 'not_found' ? err(missing) : head;
+  if (head.value.sizeBytes !== file.sizeBytes) return err(missing);
   target.searchParams.set('response-content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
   target.searchParams.set('response-content-type', 'application/octet-stream');
   target.searchParams.set('response-cache-control', 'no-store');

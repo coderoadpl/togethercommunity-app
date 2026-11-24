@@ -36,6 +36,7 @@ import { updateProductAccessItems } from './course-management.js';
 import { attachStagedProductDownload, removeProductDownloadFile } from './product-download-files.js';
 import { createProductPrice, deactivateProductPrice } from './product-prices.js';
 import { deleteProductDraft } from './product-drafts.js';
+import type { ProductAccessCheck } from './product-access-items.js';
 import { createProduct, publishProduct, unpublishProduct, updateProduct } from './products.js';
 import { createSalesLink, deleteSalesLink, updateSalesLink } from './sales-links.js';
 import { updateShopSettings } from './shop-settings.js';
@@ -54,7 +55,10 @@ export interface ChangeProposalRunDeps {
 /** The key that made the proposal; an operation that attaches a staged file attaches only a file of this key. */
 export interface ChangeProposalProposer {
   keyId: string;
+  stage: 'submission' | 'approval';
 }
+
+const accessCheckOf = (proposer: ChangeProposalProposer): ProductAccessCheck => proposer.stage === 'submission' ? 'at-approval' : 'now';
 
 export interface PreparedChangeProposalOperation {
   input: ChangeProposalInput;
@@ -66,7 +70,6 @@ export interface PreparedChangeProposalOperation {
   canonical(snapshot: ChangeProposalSnapshot): ChangeProposalSnapshot;
   effect(before: ChangeProposalSnapshot, after: ChangeProposalSnapshot): ChangeProposalEffect;
   comparable: ChangeProposalComparable;
-  /** Set when a run that changes nothing can only mean the input names what the snapshot does not show. */
   refusesEmptyEffect: boolean;
   invalidInputMessage: string;
   run(ctx: Ctx, scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, proposer: ChangeProposalProposer): Promise<Result<string | null, AppError>>;
@@ -364,7 +367,7 @@ const define = <I>(definition: ChangeProposalOperationDefinition<I>) => (rawInpu
   });
 };
 
-const catalogDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps) => ({
+const catalogDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps, accessCheck: ProductAccessCheck = 'now') => ({
   tenants: scope.repositories.tenants,
   products: scope.repositories.products,
   prices: scope.repositories.prices,
@@ -376,6 +379,7 @@ const catalogDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposal
   lessons: scope.repositories.lessons,
   ids: deps.ids,
   clock: deps.clock,
+  accessCheck,
 });
 
 const salesLinkDeps = (scope: ChangeProposalTransactionScope, deps: ChangeProposalRunDeps) => ({
@@ -410,8 +414,9 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.create'],
     invalidInputMessage: 'Invalid product payload',
     target: () => ({ kind: 'product', id: null }),
+    lockedCourseIds: (input) => input.accessItems.map((item) => item.courseId),
     snapshot: (repositories, tenantId, _input, resourceId) => productSnapshot(repositories, tenantId, resourceId),
-    run: async (ctx, input, scope, deps) => resourceIdOf(await createProduct(ctx, input, catalogDeps(scope, deps))),
+    run: async (ctx, input, scope, deps, proposer) => resourceIdOf(await createProduct(ctx, input, catalogDeps(scope, deps, accessCheckOf(proposer)))),
   }),
   'product.update': entry('product.update', {
     schema: CHANGE_PROPOSAL_INPUT_SCHEMAS['product.update'],
@@ -520,13 +525,14 @@ export const CHANGE_PROPOSAL_OPERATIONS: Readonly<Record<RegisteredChangeProposa
     snapshot: (repositories, tenantId, input) => productAccessSnapshot(repositories, tenantId, input.id),
     comparable: (field, value) => field === 'accessItems' ? comparableAccessList(value) : value,
     refusesEmptyEffect: true,
-    run: async (ctx, input, scope, deps) => idOnSuccess(input.id, await updateProductAccessItems(ctx, { id: input.id, accessItems: input.accessItems }, {
+    run: async (ctx, input, scope, deps, proposer) => idOnSuccess(input.id, await updateProductAccessItems(ctx, { id: input.id, accessItems: input.accessItems }, {
       products: scope.repositories.products,
       courses: scope.repositories.courses,
       modules: scope.repositories.modules,
       lessons: scope.repositories.lessons,
       ids: deps.ids,
       clock: deps.clock,
+      accessCheck: accessCheckOf(proposer),
     })),
   }),
   'download.add': entry('download.add', {

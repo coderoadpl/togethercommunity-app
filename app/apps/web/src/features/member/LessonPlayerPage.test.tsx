@@ -1449,6 +1449,96 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
   });
 
+  it('moves to the address of the course the completion was recorded under, so a fresh visit reads it and can undo it', async () => {
+    const written = new Map<string, string[]>();
+    const uncompleted: unknown[] = [];
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(written.get(courseId) ?? []), courseId } } });
+      }),
+      http.post('/api/student/lessons/complete', () => {
+        written.set('course-other', ['l1']);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } });
+      }),
+      http.post('/api/student/lessons/uncomplete', async ({ request }) => {
+        const body = lessonCompleteInputSchema.parse(await request.json());
+        uncompleted.push(body);
+        written.set(body.courseId ?? '', []);
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), courseId: body.courseId ?? '' } } });
+      }),
+    );
+    const mount = async (path: string) => {
+      const rootRoute = createRootRoute();
+      const LessonRouteComponent = () => {
+        const params = useParams({ strict: false });
+        return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+      };
+      const router = createRouter({
+        routeTree: rootRoute.addChildren([createRoute({
+          getParentRoute: () => rootRoute,
+          path: '/my/courses/$courseId/lessons/$lessonId',
+          component: LessonRouteComponent,
+        })]),
+        history: createMemoryHistory({ initialEntries: [path] }),
+      });
+      await router.load();
+      return { router, ...renderWithProviders(<RouterProvider router={router} />) };
+    };
+
+    const user = userEvent.setup();
+    const first = await mount('/my/courses/course-1/lessons/l1');
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(first.router.state.location.pathname).toBe('/my/courses/course-other/lessons/l1'));
+    expect(first.router.history.length).toBe(1);
+    const recordedPath = first.router.state.location.pathname;
+    first.unmount();
+
+    await mount(recordedPath);
+    await user.click(await screen.findByTestId('unmark-complete'));
+
+    await waitFor(() => expect(uncompleted).toEqual([{ lessonId: 'l1', courseId: 'course-other' }]));
+    expect(await screen.findByTestId('mark-complete')).toBeEnabled();
+  });
+
+  it('keeps the heading fragment when it moves to the address of the course the completion was recorded under', async () => {
+    server.use(
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', ({ request }) => {
+        const courseId = new URL(request.url).searchParams.get('courseId') ?? '';
+        return HttpResponse.json({ ok: true, data: { progress: { ...progress([]), courseId } } });
+      }),
+      http.post('/api/student/lessons/complete', () =>
+        HttpResponse.json({ ok: true, data: { progress: { ...progress(['l1']), courseId: 'course-other' } } })),
+    );
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: LessonRouteComponent,
+      })]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1#section-two'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('mark-complete'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-other/lessons/l1'));
+    expect(router.state.location.hash).toBe('section-two');
+    expect(router.history.length).toBe(1);
+  });
+
   it('follows the recorded progress after settling instead of holding what it wrote', async () => {
     const written = new Map<string, string[]>([['course-1', ['l1']]]);
     let posts = 0;
@@ -1580,6 +1670,63 @@ describe('LessonPlayerPage', () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l2'));
     await waitFor(() => expect(screen.queryByTestId('complete-continue')).not.toBeInTheDocument());
+  });
+
+  it('continues from the open occurrence to a distinct next lesson when an earlier occurrence of the lesson is locked', async () => {
+    const lockedFirst = structureOf([entry('l1', 'Intro to Variables', false)]);
+    const tree: CourseStructureWithAccess = {
+      ...lockedFirst,
+      modules: [
+        ...lockedFirst.modules,
+        {
+          id: 'm2',
+          name: '02 - Practice',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'not-completed',
+          chapters: [{
+            id: 'c2',
+            name: 'Exercises',
+            accessStatus: 'fully-accessible',
+            completionStatus: 'not-completed',
+            lessons: [entry('l1', 'Intro to Variables'), entry('l3', 'Loops')],
+          }],
+        },
+      ],
+    };
+    server.use(
+      okStructureOf(tree),
+      okProgress(),
+      http.get('/api/student/lessons/:lessonId', ({ params }) => {
+        const id = String(params.lessonId);
+        return HttpResponse.json({
+          ok: true,
+          data: { lesson: { ...lesson([{ type: 'html', html: `<p>${id} body</p>` }]), id, name: id === 'l3' ? 'Loops' : 'Intro to Variables' }, authenticated: true },
+        });
+      }),
+      http.post('/api/student/lessons/complete', () => HttpResponse.json({ ok: true, data: { progress: progress(['l1']) } })),
+    );
+
+    const rootRoute = createRootRoute();
+    const LessonRouteComponent = () => {
+      const params = useParams({ strict: false });
+      return <LessonPlayerPage courseId={params.courseId ?? ''} lessonId={params.lessonId ?? ''} />;
+    };
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/my/courses/$courseId/lessons/$lessonId',
+        component: LessonRouteComponent,
+      })]),
+      history: createMemoryHistory({ initialEntries: ['/my/courses/course-1/lessons/l1'] }),
+    });
+    await router.load();
+    const user = userEvent.setup();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByTestId('complete-continue'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/my/courses/course-1/lessons/l3'));
+    expect(await screen.findByText('l3 body')).toBeInTheDocument();
   });
 
   it('completes the last lesson in place instead of navigating', async () => {
@@ -2106,6 +2253,91 @@ describe('LessonPlayerPage', () => {
         chapterId: 'c1',
       }),
     );
+  });
+
+  it.each([
+    ['is missing from the course tree', structureOf([entry('l2', 'Advanced Variables')])],
+    ['is locked in the course tree', structureOf([entry('l1', 'Intro to Variables', false), entry('l2', 'Advanced Variables')])],
+  ])('records no last-viewed position when the lesson %s', async (_label, tree) => {
+    let lastViewedCalls = 0;
+    server.use(
+      okLesson(allBlocks),
+      okStructureOf(tree),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', () => {
+        lastViewedCalls += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await screen.findByTestId('mark-complete');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lastViewedCalls).toBe(0);
+  });
+
+  it('records the last-viewed position at the open occurrence when an earlier occurrence of the lesson is locked', async () => {
+    const lockedFirst = structureOf([entry('l1', 'Intro to Variables', false)]);
+    const tree: CourseStructureWithAccess = {
+      ...lockedFirst,
+      modules: [
+        ...lockedFirst.modules,
+        {
+          id: 'm2',
+          name: '02 - Practice',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'not-completed',
+          chapters: [{
+            id: 'c2',
+            name: 'Exercises',
+            accessStatus: 'fully-accessible',
+            completionStatus: 'not-completed',
+            lessons: [entry('l1', 'Intro to Variables')],
+          }],
+        },
+      ],
+    };
+    const bodies: unknown[] = [];
+    server.use(
+      okLesson(allBlocks),
+      okStructureOf(tree),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await waitFor(() => expect(bodies).toEqual([{ courseId: 'course-1', lessonId: 'l1', moduleId: 'm2', chapterId: 'c2' }]));
+  });
+
+  it('records the last-viewed position once the course tree reads after a failed read', async () => {
+    let structureReads = 0;
+    const bodies: unknown[] = [];
+    server.use(
+      okLesson(allBlocks),
+      http.get('/api/student/courses/:courseId/structure', () => {
+        structureReads += 1;
+        return structureReads === 1
+          ? HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Structure unavailable' } }, { status: 500 })
+          : HttpResponse.json({ ok: true, data: { structure } });
+      }),
+      okProgress(),
+      http.post('/api/student/progress/last-viewed', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+    const view = await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video');
+    await waitFor(() => expect(view.queryClient.getQueryState(actions.courseStructure('course-1').queryKey)?.status).toBe('error'));
+    expect(bodies).toEqual([]);
+    await view.queryClient.refetchQueries({ queryKey: actions.courseStructure('course-1').queryKey });
+    await waitFor(() => expect(bodies).toEqual([{ courseId: 'course-1', lessonId: 'l1', moduleId: 'm1', chapterId: 'c1' }]));
   });
 
   it.each([403, 500])('keeps background %s failures off the lesson page', async (status) => {

@@ -162,14 +162,18 @@ export const PROPOSED_IMAGE_UPLOAD = {
 } as const satisfies ShopMachineProposeMode;
 
 export const imageUploadAnswer = (
-  started: { key: string; servePath: string; uploadUrl: string; expiresAt: string },
+  started: { key: string; servePath: string; uploadUrl: string; expiresAt: string; contentLength?: number },
   contentType: string,
   quarantined: boolean,
 ) => ({
   key: started.key,
   servePath: quarantined ? null : started.servePath,
   ...(quarantined ? { quarantined: true as const } : {}),
-  upload: { url: started.uploadUrl, headers: { 'content-type': contentType }, expiresAt: started.expiresAt },
+  upload: {
+    url: started.uploadUrl,
+    headers: { 'content-type': contentType, ...(started.contentLength === undefined ? {} : { 'content-length': String(started.contentLength) }) },
+    expiresAt: started.expiresAt,
+  },
 });
 
 const proposalGroupOf = (c: Context<AppVars>): Result<string | null, AppError> => {

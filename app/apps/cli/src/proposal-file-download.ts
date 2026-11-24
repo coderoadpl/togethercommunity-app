@@ -1,7 +1,8 @@
 import { access, link, open, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
-import { appError, err, notFound, ok, unavailable, type AppError, type Result } from '#core/domain/index.js';
+import { fetchProposedFile } from '#core/client/index.js';
+import { appError, err, ok, unavailable, type AppError, type Result } from '#core/domain/index.js';
 
 export interface ProposedFileLink {
   url: string;
@@ -24,16 +25,15 @@ interface ProposedFileHandle {
 export interface ProposedFileSystem {
   exists(path: string): Promise<boolean>;
   openExclusive(path: string): Promise<ProposedFileHandle>;
-  /** Fails with `EEXIST` when `to` exists, and never changes it then. */
-  linkNew(from: string, to: string): Promise<void>;
+  linkUnlessTaken(from: string, to: string): Promise<void>;
   replace(from: string, to: string): Promise<void>;
   remove(path: string): Promise<void>;
 }
 
 const nodeFileSystem: ProposedFileSystem = {
   exists: (path) => access(path).then(() => true, () => false),
-  openExclusive: (path) => open(path, 'wx'),
-  linkNew: (from, to) => link(from, to),
+  openExclusive: (path) => open(path, 'wx', 0o600),
+  linkUnlessTaken: (from, to) => link(from, to),
   replace: (from, to) => rename(from, to),
   remove: (path) => rm(path, { force: true }),
 };
@@ -42,15 +42,6 @@ const refusedOverwrite = (out: string): AppError =>
   appError('conflict', `${out} already exists; nothing was downloaded. Pass --force to overwrite it`);
 
 const errorCode = (cause: unknown): unknown => cause instanceof Error && 'code' in cause ? cause.code : undefined;
-
-// The link is a bearer capability, so no message below may carry it or a fetch error that could quote it.
-const fetchLink = async (url: string, fetchImpl: typeof fetch): Promise<Result<Response, AppError>> => {
-  try {
-    return ok(await fetchImpl(url, { redirect: 'error' }));
-  } catch {
-    return err(unavailable('The proposed file could not be downloaded from the storage; nothing was written'));
-  }
-};
 
 const interrupted = (out: string): AppError =>
   unavailable(`The download of the proposed file was interrupted; ${out} was not changed`);
@@ -65,13 +56,25 @@ const writeFully = async (handle: ProposedFileHandle, chunk: Uint8Array): Promis
   return offset;
 };
 
-const copyBody = async (body: ReadableStream<Uint8Array>, handle: ProposedFileHandle, out: string): Promise<Result<number, AppError>> => {
+const tooLong = (sizeBytes: number, out: string): AppError =>
+  unavailable(`The storage sent more than ${String(sizeBytes)} bytes; ${out} was not changed`);
+
+const copyBody = async (
+  body: ReadableStream<Uint8Array>,
+  handle: ProposedFileHandle,
+  sizeBytes: number,
+  out: string,
+): Promise<Result<number, AppError>> => {
   let written = 0;
   try {
     const reader = body.getReader();
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) return ok(written);
+      if (written + chunk.value.byteLength > sizeBytes) {
+        await reader.cancel();
+        return err(tooLong(sizeBytes, out));
+      }
       written += await writeFully(handle, chunk.value);
     }
   } catch {
@@ -87,7 +90,7 @@ const settle = async (temporary: string, out: string, force: boolean, files: Pro
       await files.replace(temporary, out);
       return ok(undefined);
     }
-    await files.linkNew(temporary, out);
+    await files.linkUnlessTaken(temporary, out);
     return ok(undefined);
   } catch (cause) {
     return err(errorCode(cause) === 'EEXIST' ? refusedOverwrite(out) : unavailable(`Could not move the download onto ${out}; it was not changed`));
@@ -107,12 +110,8 @@ export const saveProposedFile = async (
   files: ProposedFileSystem = nodeFileSystem,
 ): Promise<Result<SavedProposedFile, AppError>> => {
   if (!force && await files.exists(out)) return err(refusedOverwrite(out));
-  const response = await fetchLink(proposedLink.url, fetchImpl);
-  if (!response.ok) return response;
-  if (response.value.status === 404) return err(notFound('The proposed file is no longer available; approving the proposal changes nothing'));
-  if (!response.value.ok || response.value.body === null) {
-    return err(unavailable(`The storage answered ${String(response.value.status)} for the proposed file; nothing was written`));
-  }
+  const body = await fetchProposedFile(proposedLink.url, fetchImpl);
+  if (!body.ok) return body;
   const temporary = join(dirname(out), `.${basename(out)}.partial-${crypto.randomUUID()}`);
   let handle: ProposedFileHandle;
   try {
@@ -121,7 +120,7 @@ export const saveProposedFile = async (
     return err(unavailable(`Could not open a file next to ${out} for writing; nothing was downloaded`));
   }
   try {
-    const written = await copyBody(response.value.body, handle, out);
+    const written = await copyBody(body.value, handle, proposedLink.sizeBytes, out);
     if (!written.ok) return written;
     if (written.value !== proposedLink.sizeBytes) {
       return err(unavailable(`The storage sent ${String(written.value)} bytes instead of ${String(proposedLink.sizeBytes)}; ${out} was not changed`));

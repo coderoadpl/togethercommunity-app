@@ -205,7 +205,7 @@ describe('shop catalog routes with a shop management key', () => {
     expect(offered).toMatchObject({ title: 'Printed handbook', type: 'physical', prices: [expect.objectContaining({ id: price.id })] });
   });
 
-  it('checks what a new product grants with the shared access check and never lets the key change what an existing product grants', async () => {
+  it('checks what a new product grants with the shared access check, answers the key one refusal for every reason, and never lets the key change what an existing product grants', async () => {
     const chapter = (moduleId: string, lessonId: string) => [{ id: `${moduleId}-chapter`, name: 'Chapter', contents: [{ id: `${moduleId}-${lessonId}`, lessonId, name: 'Lesson' }] }];
     await database.db.insert(courses).values([
       { id: 'grant-course-a', tenantId: 'acme', name: 'Course A', description: '', createdAt: now },
@@ -225,16 +225,19 @@ describe('shop catalog routes with a shop management key', () => {
     const create = (slug: string, accessItems: unknown[]) =>
       keyed(secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: slug, slug, type: 'course', priceCents: 1000, accessItems });
 
-    const refusals: Array<[string, unknown[], string]> = [
-      ['lesson-elsewhere', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-b'] }], 'Product access lessonIds must belong to the item courseId through its modules and chapters'],
-      ['module-elsewhere', [{ level: 'modules', courseId: 'grant-course-a', moduleIds: ['grant-module-b'] }], 'Product access moduleIds must belong to the item courseId'],
-      ['studio-course', [{ level: 'course', courseId: 'grant-course-studio' }], 'Product access items may only reference existing, active courses'],
-      ['studio-lesson', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-studio'] }], 'Product access items may only reference existing lessons'],
+    const refusals: Array<[string, unknown[]]> = [
+      ['lesson-elsewhere', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-b'] }]],
+      ['lesson-missing', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-missing'] }]],
+      ['module-elsewhere', [{ level: 'modules', courseId: 'grant-course-a', moduleIds: ['grant-module-b'] }]],
+      ['module-missing', [{ level: 'modules', courseId: 'grant-course-a', moduleIds: ['grant-module-missing'] }]],
+      ['studio-course', [{ level: 'course', courseId: 'grant-course-studio' }]],
+      ['studio-lesson', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-studio'] }]],
     ];
-    for (const [slug, accessItems, message] of refusals) {
+    const keyRefusal = 'Product access items may only reference active courses of this workspace, and modules and lessons that belong to the item courseId';
+    for (const [slug, accessItems] of refusals) {
       const refused = await create(slug, accessItems);
       expect(refused.status, slug).toBe(400);
-      expect(await errorOf(refused), slug).toEqual({ code: 'validation', message });
+      expect(await errorOf(refused), slug).toEqual({ code: 'validation', message: keyRefusal });
     }
     const accepted = await create('lesson-in-course', [{ level: 'lessons', courseId: 'grant-course-a', lessonIds: ['grant-lesson-a'] }]);
     expect(accepted.status).toBe(200);

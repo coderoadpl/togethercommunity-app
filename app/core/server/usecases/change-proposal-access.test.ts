@@ -111,7 +111,7 @@ const harness = () => {
     product({ id: 'product-mug', slug: 'mug', title: 'Mug', type: 'physical', accessItems: [] }),
     product({ id: 'product-neighbour', tenantId: NEIGHBOUR, slug: 'neighbour', title: 'Neighbour guide' }),
   );
-  state.courses.push(course('course-intro', 'Intro course'), course('course-advanced', 'Advanced course'), course('course-neighbour', 'Neighbour course', NEIGHBOUR));
+  state.courses.push(course('course-intro', 'Intro course'), course('course-advanced', 'Advanced course'), course('course-extra', 'Extra course'), course('course-neighbour', 'Neighbour course', NEIGHBOUR));
   state.modules.push(
     module('module-basics', 'Basics', ['course-intro'], ['lesson-welcome']),
     module('module-deep', 'Deep dive', ['course-advanced'], ['lesson-deep']),
@@ -153,6 +153,19 @@ const accessOf = (h: Harness, id: string) => h.state.products.find((candidate) =
 
 const ADVANCED = [{ level: 'course' as const, courseId: 'course-advanced' }];
 
+const lockMarks = (h: Harness) => ({
+  targetLocks: h.transaction.locks.length,
+  courseLocks: h.transaction.courseLocks.length,
+  repositoryCourseLocks: h.transaction.repositoryCourseLocks.length,
+});
+
+const coursesFirstLockedAfterAProduct = (h: Harness, marks: ReturnType<typeof lockMarks>): string[] => {
+  const records = [...h.transaction.courseLocks.slice(marks.courseLocks), ...h.transaction.repositoryCourseLocks.slice(marks.repositoryCourseLocks)];
+  const courseIds = [...new Set(records.flatMap((record) => record.courseIds))];
+  return courseIds.filter((courseId) =>
+    Math.min(...records.filter((record) => record.courseIds.includes(courseId)).map((record) => record.targetLocksBefore)) > marks.targetLocks);
+};
+
 const setStored = (h: Harness, id: string, accessItems: Product['accessItems']) => {
   const stored = h.state.products.find((candidate) => candidate.id === id);
   if (stored === undefined) throw new Error(`No product ${id}`);
@@ -181,11 +194,6 @@ describe('proposing what a product grants', () => {
   });
 
   it.each([
-    ['a lesson of another course', { id: 'product-guide', accessItems: [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-deep'] }] }, 'validation'],
-    ['a module of another course', { id: 'product-guide', accessItems: [{ level: 'modules', courseId: 'course-intro', moduleIds: ['module-deep'] }] }, 'validation'],
-    ['another workspace\'s course', { id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-neighbour' }] }, 'validation'],
-    ['another workspace\'s module', { id: 'product-guide', accessItems: [{ level: 'modules', courseId: 'course-intro', moduleIds: ['module-neighbour'] }] }, 'validation'],
-    ['another workspace\'s lesson', { id: 'product-guide', accessItems: [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-neighbour'] }] }, 'validation'],
     ['another workspace\'s product', { id: 'product-neighbour', accessItems: ADVANCED }, 'not_found'],
     ['the list the product already grants', { id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro' }] }, 'validation'],
     ['checkout consent definitions', { id: 'product-guide', accessItems: ADVANCED, checkoutConsentDefinitionIds: ['consent-1'] }, 'validation'],
@@ -196,6 +204,56 @@ describe('proposing what a product grants', () => {
     const h = harness();
     expect(await h.submit(input)).toMatchObject({ ok: false, error: { code } });
     expect(h.store.proposals).toEqual([]);
+  });
+
+  it.each([
+    ['a repeated item', [...ADVANCED, { level: 'course', courseId: 'course-advanced', excludedModuleIds: [] }]],
+    ['a repeated id inside an item', [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-deep', 'lesson-deep'] }]],
+  ])('refuses a new product whose access list holds %s and stores nothing', async (_label, accessItems) => {
+    const h = harness();
+    const input = { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems };
+    expect(await submitChangeProposal(keyCtx(), { operation: 'product.create', input }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.store.proposals).toEqual([]);
+  });
+
+  const UNREADABLE_REFERENCES: Array<[string, Product['accessItems']]> = [
+    ['a lesson of another course', [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-deep'] }]],
+    ['a lesson that does not exist', [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-gone'] }]],
+    ['a module of another course', [{ level: 'modules', courseId: 'course-intro', moduleIds: ['module-deep'] }]],
+    ['a module that does not exist', [{ level: 'modules', courseId: 'course-intro', moduleIds: ['module-gone'] }]],
+    ['an exclusion of another course', [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-deep'] }]],
+    ['a course that does not exist', [{ level: 'course', courseId: 'course-gone' }]],
+    ['an archived course', [{ level: 'course', courseId: 'course-archived' }]],
+    ['another workspace\'s course', [{ level: 'course', courseId: 'course-neighbour' }]],
+    ['another workspace\'s module', [{ level: 'modules', courseId: 'course-intro', moduleIds: ['module-neighbour'] }]],
+    ['another workspace\'s lesson', [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-neighbour'] }]],
+  ];
+
+  it.each(UNREADABLE_REFERENCES)('accepts %s at submission, which tells the key nothing, and fails it at approval', async (_label, accessItems) => {
+    const h = harness();
+    h.state.courses.push({ ...course('course-archived', 'Archived course'), archivedAt: CREATED_AT });
+    const receipt = unwrap(await h.submit({ id: 'product-guide', accessItems }));
+    expect(receipt).toMatchObject({ status: 'pending' });
+    expect(h.store.proposals[0]?.effect).toEqual({ accessItems: { before: [{ level: 'course', courseId: 'course-intro' }], after: accessItems } });
+
+    expect(await approveChangeProposal(ownerSession, { id: receipt.id }, h.deps)).toMatchObject({ ok: true, value: { status: 'failed', failureCode: 'validation' } });
+    expect(accessOf(h, 'product-guide')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
+  });
+
+  it.each(UNREADABLE_REFERENCES)('accepts %s in a group, as a new product grants it or as an existing product is set to it, and fails the group at approval', async (_label, accessItems) => {
+    const h = harness();
+    h.state.courses.push({ ...course('course-archived', 'Archived course'), archivedAt: CREATED_AT });
+    const groupId = unwrap(await createChangeProposalGroup(keyCtx(), { title: 'Launch' }, h.deps)).id;
+    const submit = async (operation: 'product.create' | 'product.set-access', input: unknown) =>
+      unwrap(await submitGroupedChangeProposal(keyCtx(), { groupId, operation, input }, h.deps)).items.at(-1)?.id ?? '';
+    const created = await submit('product.create', { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems });
+    const access = await submit('product.set-access', { id: 'product-guide', accessItems });
+    expect(h.store.proposals.map((proposal) => proposal.status)).toEqual(['pending', 'pending']);
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [created, access] }, h.deps)).toMatchObject({ ok: true });
+    expect(h.store.proposals.map((proposal) => [proposal.status, proposal.failureCode])).toEqual([['failed', 'validation'], ['stale', null]]);
+    expect(h.state.products.some((candidate) => candidate.slug === 'starter-pack')).toBe(false);
+    expect(accessOf(h, 'product-guide')).toEqual([{ level: 'course', courseId: 'course-intro' }]);
   });
 
   it('refuses the list the product already grants in another order as a change of nothing', async () => {
@@ -348,15 +406,38 @@ describe('what a product grants in a group', () => {
     const submit = async (operation: 'product.create' | 'product.update' | 'product.set-access', input: unknown) =>
       unwrap(await submitGroupedChangeProposal(keyCtx(), { groupId, operation, input }, h.deps)).items.at(-1)?.id ?? '';
     const updated = await submit('product.update', { id: 'product-guide', title: 'Pocket guide' });
-    const created = await submit('product.create', { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR' });
+    const created = await submit('product.create', {
+      title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems: [{ level: 'course', courseId: 'course-extra' }],
+    });
     const access = await submit('product.set-access', {
       id: changeProposalReference(created), accessItems: [{ level: 'course', courseId: 'course-intro' }, { level: 'course', courseId: 'course-advanced' }],
     });
-    const targetLocksBefore = h.transaction.locks.length;
-    const courseLocksBefore = h.transaction.courseLocks.length;
+    const approval = lockMarks(h);
 
     expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [updated, created, access] }, h.deps))
       .toMatchObject({ ok: true, value: { status: 'applied' } });
-    expect(h.transaction.courseLocks[courseLocksBefore]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore });
+    expect(coursesFirstLockedAfterAProduct(h, approval)).toEqual([]);
+    expect([...h.transaction.courseLocks.slice(approval.courseLocks), ...h.transaction.repositoryCourseLocks.slice(approval.repositoryCourseLocks)]
+      .filter((record) => record.targetLocksBefore === approval.targetLocks))
+      .toEqual([{ courseIds: ['course-advanced', 'course-extra', 'course-intro'], targetLocksBefore: approval.targetLocks }]);
+  });
+
+  it('locks a course that only a product creation grants before an earlier item locks a product', async () => {
+    const h = harness();
+    const groupId = unwrap(await createChangeProposalGroup(keyCtx(), { title: 'Launch' }, h.deps)).id;
+    const access = unwrap(await submitGroupedChangeProposal(keyCtx(), {
+      groupId, operation: 'product.set-access', input: { id: 'product-guide', accessItems: [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-shared'] }] },
+    }, h.deps)).items.at(-1)?.id ?? '';
+    const dryRun = lockMarks(h);
+    const created = unwrap(await submitGroupedChangeProposal(keyCtx(), {
+      groupId, operation: 'product.create', input: { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems: ADVANCED },
+    }, h.deps)).items.at(-1)?.id ?? '';
+    expect(coursesFirstLockedAfterAProduct(h, dryRun)).toEqual([]);
+    const approval = lockMarks(h);
+
+    expect(await approveChangeProposalGroup(ownerSession, { id: groupId, itemIds: [access, created] }, h.deps))
+      .toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(coursesFirstLockedAfterAProduct(h, approval)).toEqual([]);
+    expect(h.transaction.courseLocks[approval.courseLocks]).toEqual({ courseIds: ['course-advanced', 'course-intro'], targetLocksBefore: approval.targetLocks });
   });
 });

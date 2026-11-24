@@ -165,7 +165,7 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
       if (current.items.length + 1 !== groupPosition || (first !== undefined && first.expiresAt !== parsed.expiresAt)) {
         return { kind: 'group_changed' };
       }
-      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, now)) return { kind: 'file_unavailable' };
+      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files)) return { kind: 'file_unavailable' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
       const created = await insertProposal(tx, tenantId, parsed, event);

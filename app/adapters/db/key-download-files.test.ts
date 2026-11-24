@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,6 +27,7 @@ import {
   shopManagementKeyCapabilities,
   sweepKeyDownloadFiles,
   type Ctx,
+  type KeyDownloadSweepCutoffs,
   type StorageProvider,
 } from '#core/server/index.js';
 import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
@@ -180,7 +181,8 @@ const stagedRows = async () => (await database.db.select().from(changeProposalDo
 
 const recordStates = async () => (await database.db.select().from(changeProposalDownloadUploads)).map((row) => row.state).sort();
 
-const owedRows = async () => (await database.db.select().from(changeProposalDownloadDeletions)).map((row) => row.objectKey).sort();
+const owedRows = async () => (await database.db.select().from(changeProposalDownloadDeletions)).map((row) => row.objectKey)
+  .filter((objectKey) => objectKey.includes('/product-downloads/key-files/')).sort();
 
 const at = (minutes: number): string => new Date(Date.parse(NOW) + minutes * 60_000).toISOString();
 
@@ -240,7 +242,7 @@ describe('staging a download file through an upload', () => {
     const late = await h.begin(PDF);
     h.clock.now = at(16);
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: late.id }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
-    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toHaveLength(1);
+    expect(h.objects.calls.filter((call) => call.method === 'head' || call.method === 'copyObject').map((call) => call.method)).toEqual(['head']);
     expect(await stagedRows()).toEqual([]);
   });
 
@@ -346,6 +348,20 @@ describe('copying a product file on the server', () => {
     expect(await recordStates()).toEqual(['settled']);
   });
 
+  it('stages a copy of an audio-only MP4 named .mp4 with its audio type, and refuses a video named .m4a', async () => {
+    const h = harness();
+    const audio = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 77, 52, 65, 32, 0, 0, 0, 0]);
+    const book = `${TENANT}/product-downloads/${PRODUCT}/asset-book/audiobook.mp4`;
+    h.objects.objects.set(book, { bytes: audio, contentType: 'audio/mp4' });
+    await database.db.insert(productDownloadAssets).values([
+      { id: 'asset-book', tenantId: TENANT, productId: PRODUCT, lineageId: 'asset-book', fileName: 'audiobook.mp4', contentType: 'audio/mp4', sizeBytes: audio.byteLength, storageKey: book, status: 'ready', createdAt: NOW },
+      { id: 'asset-film', tenantId: TENANT, productId: PRODUCT, lineageId: 'asset-film', fileName: 'film.m4a', contentType: 'video/mp4', sizeBytes: 10, storageKey: 'k5', status: 'ready', createdAt: NOW },
+    ]);
+    const copied = await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-book' }, h.deps);
+    expect(copied).toMatchObject({ ok: true, value: { file: { fileName: 'audiobook.mp4', contentType: 'audio/mp4' } } });
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-film' }, h.deps)).toEqual({ ok: false, error: keyDownloadCopyRefused() });
+  });
+
   it('refuses a file of another product, a pending file and a type keys cannot stage', async () => {
     const h = harness();
     await database.db.insert(productDownloadAssets).values([
@@ -355,6 +371,13 @@ describe('copying a product file on the server', () => {
     expect(await copyKeyDownloadFile(keyCtx(), { productId: 'mug', assetId: 'page' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'pending' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'page' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    await database.db.insert(productDownloadAssets).values([
+      { id: 'renamed', tenantId: TENANT, productId: PRODUCT, lineageId: 'renamed', fileName: 'guide.html', contentType: 'application/pdf', sizeBytes: 10, storageKey: 'k3', status: 'ready', createdAt: NOW },
+      { id: 'unnamed', tenantId: TENANT, productId: PRODUCT, lineageId: 'unnamed', fileName: 'guide', contentType: 'application/pdf', sizeBytes: 10, storageKey: 'k4', status: 'ready', createdAt: NOW },
+    ]);
+    for (const assetId of ['renamed', 'unnamed']) {
+      expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId }, h.deps)).toEqual({ ok: false, error: keyDownloadCopyRefused() });
+    }
     expect(await recordStates()).toEqual([]);
   });
 
@@ -372,10 +395,10 @@ describe('copying a product file on the server', () => {
     expect(copies).toHaveLength(1);
     expect(await recordStates()).toEqual(['completing']);
 
-    h.clock.now = at(15);
+    h.clock.now = at(29);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual(copies);
-    h.clock.now = at(21);
+    h.clock.now = at(31);
     expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);
@@ -427,6 +450,58 @@ describe('removing staged objects durably', () => {
     await sweepKeyDownloadFiles(h.deps);
     expect(await owedRows()).toEqual([]);
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
+  });
+
+  it('owes nothing for an owner file of a product whose id is key-files, so deleting a large owner file or its draft product commits', async () => {
+    const h = harness();
+    const session: Ctx = { identity: identity(TENANT) };
+    await database.db.insert(products).values({
+      id: 'key-files', tenantId: TENANT, slug: 'key-files', title: 'Imported', type: 'digital_download', description: '', priceCents: 0, currency: 'EUR', createdAt: NOW, everPublished: false,
+    });
+    const ownerFile = (id: string) => ({
+      id, tenantId: TENANT, productId: 'key-files', lineageId: id, fileName: 'video.pdf', contentType: 'application/pdf',
+      sizeBytes: 512 * MIB, storageKey: `${TENANT}/product-downloads/key-files/${id}/video.pdf`, status: 'ready' as const, createdAt: NOW,
+    });
+    await database.db.insert(productDownloadAssets).values([ownerFile('asset-removed'), ownerFile('asset-drafted')]);
+    expect(await deleteProductDownloadAsset(session, 'key-files', 'asset-removed', h.deps)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await deleteProductDraft(session, { productId: 'key-files' }, { ...h.deps, productDrafts: createProductDraftRepository(database.db) }))
+      .toEqual({ ok: true, value: { deleted: true } });
+    expect(await database.db.select().from(productDownloadAssets)).toEqual([]);
+    expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([]);
+  });
+
+  it('owes the deletion of a swept staged file in a commit before its delete is sent, so a deletion that fails after the delete leaves no file to attach or propose', async () => {
+    const h = harness();
+    const staged = await h.stage();
+    await database.db.update(changeProposalDownloadFiles).set({ createdAt: '2026-02-20T10:00:00.000Z' });
+    const objectKey = `${TENANT}/product-downloads/key-files/${KEY_ID}/${staged.id}/workbook.pdf`;
+    const observer = await connected();
+    const seenAtDelete: Array<{ owed: string[]; staged: string[] }> = [];
+    const failing: StorageProvider = {
+      ...h.objects.storage,
+      delete: async (input) => {
+        const owed = await observer.query<{ object_key: string }>('select object_key from change_proposal_download_deletions');
+        const rows = await observer.query<{ id: string }>('select id from change_proposal_download_files');
+        seenAtDelete.push({ owed: owed.rows.map((row) => row.object_key), staged: rows.rows.map((row) => row.id) });
+        await h.objects.storage.delete(input);
+        throw new Error('Connection terminated unexpectedly');
+      },
+    };
+    try {
+      expect(await sweepKeyDownloadFiles({ ...h.deps, storage: failing })).toMatchObject({ ok: true, value: { removed: 0 } });
+    } finally {
+      await observer.end();
+    }
+    expect(seenAtDelete).toEqual([{ owed: [objectKey], staged: [] }]);
+    expect(h.objects.keysUnder(objectKey)).toEqual([]);
+    expect(await stagedRows()).toEqual([]);
+    expect(await owedRows()).toEqual([objectKey]);
+    expect(await h.deps.keyDownloadFiles.proposable(TENANT, KEY_ID, [staged.id], NOW)).toBe(false);
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: staged.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await database.db.select().from(productDownloadAssets)).toEqual([]);
+    expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(await owedRows()).toEqual([]);
   });
 
   it.each(['commit', 'rollback'] as const)('never deletes a staged object an uncommitted attach takes over, and sweeps it when the attach ends in %s', async (outcome) => {
@@ -529,6 +604,32 @@ describe('the staging budget', () => {
     expect(await beginKeyDownloadUpload(keyCtx(), upload, h.deps)).toMatchObject({ ok: true });
   });
 
+  it('owes the upload object of a settled upload a second delete a day after its upload URL expired, so a PUT accepted before that expiry that finishes after the sweep does not stay', async () => {
+    const h = harness();
+    const { id, candidate } = await h.begin(PDF);
+    h.objects.objects.delete(candidate);
+    h.clock.now = at(21);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await recordStates()).toEqual(['settled']);
+    expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([expect.objectContaining({
+      objectKey: candidate, apiKeyId: KEY_ID, sizeBytes: PDF.byteLength, notBefore: '2026-03-02T10:15:00.000Z',
+    })]);
+    expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
+    await database.db.delete(changeProposalDownloadUploads).where(ne(changeProposalDownloadUploads.id, id));
+    h.clock.now = '2026-03-02T10:00:00.000Z';
+    await sweepKeyDownloadFiles(h.deps);
+    h.clock.now = '2026-03-02T10:05:00.000Z';
+    h.objects.objects.set(candidate, { bytes: PDF, contentType: 'application/pdf' });
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(candidate)).toEqual([candidate]);
+    expect(await owedRows()).toEqual([]);
+    expect(await database.db.select({ objectKey: changeProposalDownloadDeletions.objectKey }).from(changeProposalDownloadDeletions)).toEqual([{ objectKey: candidate }]);
+    h.clock.now = '2026-03-02T10:15:00.000Z';
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(candidate)).toEqual([]);
+    expect(await database.db.select().from(changeProposalDownloadDeletions)).toEqual([]);
+  });
+
   it('keeps counting the bytes started in 24 hours after the records were cleaned, and frees them only after the day', async () => {
     const h = harness();
     const daily = KEY_DOWNLOAD_FILE_LIMITS.declaredBytesPerKeyDaily;
@@ -620,9 +721,24 @@ describe('the order of the staged file sweep', () => {
     h.objects.failDeletes = (target) => target === failing;
     const deps = { ...h.deps, batch: { tenants: 1, rows: 1 } };
     await sweepKeyDownloadFiles(deps);
-    expect(await sweepKeyDownloadFiles(deps)).toMatchObject({ ok: true, value: { tenants: 1, removed: 1 } });
+    expect(await sweepKeyDownloadFiles(deps)).toMatchObject({ ok: true, value: { tenants: 1, removed: 1, failed: 0 } });
     expect(await owedRows()).toEqual([failing]);
     expect(neighbour).not.toBe(failing);
+  });
+
+  it('counts a workspace whose sweep rejected as a failure, logs it and still sweeps the other workspaces', async () => {
+    const h = harness();
+    await owe(TENANT, 'unreachable', '2026-03-01T09:00:00.000Z');
+    await owe(NEIGHBOUR, 'neighbour', '2026-03-01T09:30:00.000Z');
+    const files = h.deps.keyDownloadFiles;
+    const keyDownloadFiles = {
+      ...files,
+      purgeSettled: (tenantId: string, cutoffs: KeyDownloadSweepCutoffs, limit: number, lockWaitMs?: number) =>
+        tenantId === TENANT ? Promise.reject(new Error('connection reset')) : files.purgeSettled(tenantId, cutoffs, limit, lockWaitMs),
+    };
+    expect(await sweepKeyDownloadFiles({ ...h.deps, keyDownloadFiles })).toEqual({ ok: true, value: { tenants: 2, removed: 1, failed: 1 } });
+    expect(h.logger.error).toHaveBeenCalledWith(expect.stringContaining(`staged download file sweep failed tenant=${TENANT}`));
+    expect(await owedRows()).toEqual([`${TENANT}/product-downloads/key-files/${KEY_ID}/unreachable/f.pdf`]);
   });
 
   it('sweeps staged files of a revoked key and staged files past their age, and keeps younger ones of active keys', async () => {
@@ -789,18 +905,51 @@ describe('copies whose outcome the storage leaves unknown', () => {
       .toMatchObject({ ok: false, error: { details: { changeProposalCap: 'key_staged_files' } } });
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(record?.stagedKey ?? '-')).toHaveLength(1);
-    h.clock.now = at(21);
+    h.clock.now = at(29);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(record?.stagedKey ?? '-')).toHaveLength(1);
+    h.clock.now = at(31);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);
     expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
   });
 
+  it('keeps the record of an unconfirmed copy until 30 minutes after its attempt, so a copy the storage finishes after 20 minutes is still deleted', async () => {
+    const h = harness();
+    const original = `${TENANT}/product-downloads/${PRODUCT}/asset-owner/guide.pdf`;
+    h.objects.objects.set(original, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('asset-owner', PDF.byteLength, original));
+    let land: () => void = () => undefined;
+    const late: StorageProvider = {
+      ...h.objects.storage,
+      copyObject: async (input) => {
+        land = () => { h.objects.objects.set(input.key, { bytes: PDF, contentType: 'application/octet-stream' }); };
+        return err(integrationUnavailable('Could not copy the storage object: the storage request deadline passed'));
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'asset-owner' }, { ...h.deps, storage: late }))
+      .toEqual({ ok: false, error: keyDownloadCopyRefused() });
+    h.clock.now = at(21);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await recordStates()).toEqual(['interrupted']);
+    h.clock.now = at(25);
+    land();
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toHaveLength(1);
+    h.clock.now = at(29);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toHaveLength(1);
+    h.clock.now = at(31);
+    expect(await sweepKeyDownloadFiles(h.deps)).toMatchObject({ ok: true, value: { removed: 1 } });
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+    expect(await recordStates()).toEqual(['settled']);
+  });
+
   it('answers one key-safe refusal whatever the stored bytes of a source with the same metadata are, and logs one cause line per source', async () => {
     const h = harness();
     const sources = {
-      missing: { bytes: null, cause: 'copy of record' },
-      larger: { bytes: new Uint8Array([...PDF, 1, 2]), cause: 'digest of record' },
+      missing: { bytes: null, cause: 'head of record' },
+      larger: { bytes: new Uint8Array([...PDF, 1, 2]), cause: 'size_mismatch' },
       smaller: { bytes: PDF.slice(0, 6), cause: 'size_mismatch' },
       mismatched: { bytes: PNG.slice(0, PDF.byteLength), cause: 'type_mismatch' },
     };
@@ -817,6 +966,56 @@ describe('copies whose outcome the storage leaves unknown', () => {
     expect(keyDownloadCopyRefused()).toStrictEqual({ code: 'validation', message: 'This file cannot be copied by a key; nothing was staged' });
     expect(await stagedRows()).toEqual([]);
     expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+  });
+
+  it('refuses a source whose size differs from its product file row before any copy is sent', async () => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/grown/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: new Uint8Array([...PDF, ...new Uint8Array(4 * MIB)]), contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('grown', PDF.byteLength, objectKey));
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'grown' }, h.deps)).toStrictEqual({ ok: false, error: keyDownloadCopyRefused() });
+    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toEqual([]);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+    expect(await recordStates()).toEqual(['failed']);
+  });
+
+  it('copies only the source version whose size it checked, so a source replaced after the check is never staged', async () => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/replaced/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('replaced', PDF.byteLength, objectKey));
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      head: async (input) => {
+        const answered = await h.objects.storage.head(input);
+        h.objects.objects.set(objectKey, { bytes: new Uint8Array([...PDF.slice(0, -1), 7]), contentType: 'application/pdf' });
+        return answered;
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'replaced' }, { ...h.deps, storage })).toStrictEqual({ ok: false, error: keyDownloadCopyRefused() });
+    expect(await stagedRows()).toEqual([]);
+    expect(h.objects.keysUnder(`${TENANT}/product-downloads/key-files/`)).toEqual([]);
+  });
+
+  it.each(['W/"weak"', '', 'unquoted', '*'])('sends a copy without a source condition when the source carries %j, which is no strong entity tag', async (etag) => {
+    const h = harness();
+    const objectKey = `${TENANT}/product-downloads/${PRODUCT}/tagged/guide.pdf`;
+    h.objects.objects.set(objectKey, { bytes: PDF, contentType: 'application/pdf' });
+    await database.db.insert(productDownloadAssets).values(ownedAsset('tagged', PDF.byteLength, objectKey));
+    const conditions: Array<string | undefined> = [];
+    const storage: StorageProvider = {
+      ...h.objects.storage,
+      head: async (input) => {
+        const answered = await h.objects.storage.head(input);
+        return answered.ok ? { ok: true, value: { ...answered.value, etag } } : answered;
+      },
+      copyObject: async (input) => {
+        conditions.push(input.sourceEtag);
+        return h.objects.storage.copyObject(input);
+      },
+    };
+    expect(await copyKeyDownloadFile(keyCtx(), { productId: PRODUCT, assetId: 'tagged' }, { ...h.deps, storage })).toMatchObject({ ok: true });
+    expect(conditions).toEqual([undefined]);
   });
 });
 
@@ -856,7 +1055,7 @@ describe('a completion that cannot finish', () => {
   it('leaves an upload whose digest the storage did not answer completable by a new completion once the attempt\'s lease ended', async () => {
     const h = harness();
     const { id, candidate } = await h.begin(PDF);
-    h.objects.failReads = (target) => target.includes('/key-files/');
+    h.objects.failReads = (target) => target.includes('/product-downloads/key-files/');
     const first = await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps);
     expect(first).toMatchObject({ ok: false, error: { code: 'unavailable', message: expect.stringContaining(`after ${at(10)}`), details: { retryAfterSeconds: 600 } } });
     expect(await recordStates()).toEqual(['interrupted']);
@@ -877,14 +1076,17 @@ describe('a completion that cannot finish', () => {
     const h = harness();
     const { id } = await h.begin(PDF);
     h.clock.now = at(6);
-    h.objects.failReads = (target) => target.includes('/key-files/');
+    h.objects.failReads = (target) => target.includes('/product-downloads/key-files/');
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('Start a new upload') } });
     h.objects.failReads = () => false;
     h.clock.now = at(16);
     expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'conflict', message: expect.stringContaining('start a new upload') } });
-    h.clock.now = at(21);
+    h.clock.now = at(36);
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await recordStates()).toEqual(['interrupted']);
+    h.clock.now = at(37);
     await sweepKeyDownloadFiles(h.deps);
     expect(h.objects.keysUnder(`${TENANT}/`)).toEqual([]);
     expect(await recordStates()).toEqual(['settled']);
@@ -946,6 +1148,25 @@ describe('an attach retried after a lost answer', () => {
   });
 });
 
+describe('a replacement retried after its target was removed', () => {
+  it('answers the applied replacement to an exact retry, and a conflict to a retry that names another target', async () => {
+    const h = harness();
+    const first = await h.stage();
+    const second = await h.stage(new Uint8Array([...PDF, 1]));
+    const third = await h.stage(new Uint8Array([...PDF, 2]));
+    await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: first.id }, h.deps);
+    await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: third.id }, h.deps);
+    const replaced = await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: first.id }, h.deps);
+    expect(replaced).toMatchObject({ ok: true, value: { lineageId: first.id, versionNumber: 2 } });
+    expect(await removeProductDownloadFile(keyCtx(), { productId: PRODUCT, assetId: first.id }, h.deps)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: first.id }, h.deps)).toEqual(replaced);
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: 'never-there' }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await attachStagedProductDownload(keyCtx(), { productId: PRODUCT, stagedFileId: second.id, replacesAssetId: third.id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+});
+
 describe('the history of upload and copy records', () => {
   it('leaves neither the state change nor its event when the event of a change cannot be written', async () => {
     const h = harness();
@@ -986,6 +1207,27 @@ describe('the history of upload and copy records', () => {
     expect(await database.db.select().from(changeProposalDownloadUploadEvents)).toEqual([]);
   });
 
+  it('purges at most one batch of settled records and of expired events of a workspace per run, and the rest on later runs', async () => {
+    const h = harness();
+    const old = '2026-02-20T10:00:00.000Z';
+    await database.db.insert(changeProposalDownloadUploads).values([1, 2, 3].map((index) => ({
+      tenantId: TENANT, id: `settled-${String(index)}`, apiKeyId: KEY_ID, kind: 'upload' as const, state: 'settled' as const,
+      fileId: `settled-file-${String(index)}`, fileName: 'a.pdf', contentType: 'application/pdf' as const, declaredBytes: 10, createdAt: '2026-02-27T10:00:00.000Z',
+    })));
+    await database.db.insert(changeProposalDownloadUploadEvents).values([1, 2, 3].map((index) => ({
+      tenantId: TENANT, recordId: `gone-${String(index)}`, apiKeyId: KEY_ID, kind: 'purged' as const, reason: 'retention', at: '2026-01-01T10:00:00.000Z',
+    })));
+    const deps = { ...h.deps, batch: { tenants: 1, rows: 2 } };
+    const expiredEvents = async () => (await database.db.select().from(changeProposalDownloadUploadEvents)).filter((event) => event.at < old).length;
+    await sweepKeyDownloadFiles(deps);
+    expect(await database.db.select().from(changeProposalDownloadUploads)).toHaveLength(1);
+    expect(await expiredEvents()).toBe(1);
+    await sweepKeyDownloadFiles(deps);
+    expect(await database.db.select().from(changeProposalDownloadUploads)).toEqual([]);
+    expect(await expiredEvents()).toBe(0);
+    expect((await database.db.select().from(changeProposalDownloadUploadEvents)).filter((event) => event.kind === 'purged' && event.at === NOW)).toHaveLength(3);
+  });
+
   it('records the interruption of a copy whose storage answer is unknown with the attempt that made it', async () => {
     const h = harness();
     const original = `${TENANT}/product-downloads/${PRODUCT}/asset-owner/guide.pdf`;
@@ -1018,12 +1260,54 @@ describe('the time budget of the staged file sweep', () => {
         return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
       },
     };
-    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow })).toEqual({ ok: true, value: { tenants: 1, removed: 0 } });
+    expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow })).toEqual({ ok: true, value: { tenants: 1, removed: 0, failed: 0 } });
     expect(deadlines).toEqual([10_000, 6_000, 2_000]);
     expect(await sweepKeyDownloadFiles({ ...h.deps, storage: slow, deadlineAt: Date.parse(h.clock.now) + 5_000 })).toMatchObject({ ok: true });
     expect(deadlines.slice(3)).toEqual([5_000]);
     expect(await owedRows()).toHaveLength(10);
   });
+});
+
+describe('the database statements of the staged file sweep', () => {
+  const settled = {
+    tenantId: TENANT, id: 'settled-old', apiKeyId: KEY_ID, kind: 'upload' as const, state: 'settled' as const,
+    fileId: 'settled-old-file', fileName: 'a.pdf', contentType: 'application/pdf' as const, declaredBytes: 10, createdAt: '2026-02-27T10:00:00.000Z',
+  };
+
+  it('end the discovery of workspaces once a lock it waits on outlives the run budget', async () => {
+    const h = harness();
+    await database.db.insert(changeProposalDownloadUploads).values(settled);
+    const holder = await connected();
+    try {
+      await holder.query('begin');
+      await holder.query('lock table change_proposal_download_deletions in access exclusive mode');
+      const started = Date.now();
+      const released = new Promise((resolve) => { setTimeout(resolve, 5_000); }).then(() => holder.query('rollback'));
+      const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
+      const elapsed = Date.now() - started;
+      await released;
+      expect({ outcome, quick: elapsed < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 0, removed: 0, failed: 0 } }, quick: true });
+    } finally {
+      await holder.end();
+    }
+  }, 15_000);
+
+  it('end a retention purge that runs longer than the run budget, not only one that waits on a lock', async () => {
+    const h = harness();
+    await database.db.insert(changeProposalDownloadUploads).values(settled);
+    await database.db.execute(sql`create or replace function slow_download_purge() returns trigger language plpgsql as $$
+      begin perform pg_sleep(5); return old; end $$`);
+    await database.db.execute(sql`create trigger slow_download_purge before delete on change_proposal_download_uploads for each row execute function slow_download_purge()`);
+    try {
+      const started = Date.now();
+      const outcome = await sweepKeyDownloadFiles({ ...h.deps, budgetMs: 2_000 });
+      expect({ outcome, quick: Date.now() - started < 4_000 }).toEqual({ outcome: { ok: true, value: { tenants: 1, removed: 0, failed: 0 } }, quick: true });
+    } finally {
+      await database.db.execute(sql`drop trigger slow_download_purge on change_proposal_download_uploads`);
+      await database.db.execute(sql`drop function slow_download_purge()`);
+    }
+    expect(await database.db.select({ id: changeProposalDownloadUploads.id }).from(changeProposalDownloadUploads)).toEqual([{ id: 'settled-old' }]);
+  }, 15_000);
 });
 
 const late = (h: ReturnType<typeof harness>) => {
@@ -1045,7 +1329,7 @@ const late = (h: ReturnType<typeof harness>) => {
 describe('a completion that takes over an interrupted upload', () => {
   it('writes a destination of its own, so a late copy of the earlier attempt changes neither the staged bytes nor their hash, and the sweep deletes that copy after its not-before time', async () => {
     const h = harness();
-    await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 1, 10);
+    await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 2, 10);
     const { id, candidate } = await h.begin(PDF);
     const copy = late(h);
     const deps = { ...h.deps, storage: copy.storage };
@@ -1070,6 +1354,7 @@ describe('a completion that takes over an interrupted upload', () => {
     expect(asset?.sha256).toBe(createContentHash().sha256(second));
     const owed = await database.db.select().from(changeProposalDownloadDeletions);
     expect(owed).toEqual([expect.objectContaining({ objectKey: superseded, apiKeyId: KEY_ID, sizeBytes: PDF.byteLength, notBefore: at(30) })]);
+    await sizeFiller('after-takeover', 10);
 
     h.clock.now = at(29);
     await sweepKeyDownloadFiles(h.deps);
@@ -1083,6 +1368,60 @@ describe('a completion that takes over an interrupted upload', () => {
     expect(h.objects.keysUnder(superseded)).toEqual([]);
     expect(h.objects.objects.get(staged)?.bytes).toEqual(second);
     expect(await beginKeyDownloadUpload(keyCtx(), small, h.deps)).toMatchObject({ ok: true });
+  });
+
+  const interruptedAtTen = async (h: ReturnType<typeof harness>) => {
+    const { id } = await h.begin(PDF);
+    await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, { ...h.deps, storage: late(h).storage });
+    h.clock.now = at(10);
+    return id;
+  };
+
+  const sizeFiller = async (id: string, sizeBytes: number, apiKeyId = KEY_ID) => {
+    await database.db.insert(changeProposalDownloadFiles).values({
+      tenantId: TENANT, id, apiKeyId, fileName: 'f.pdf', contentType: 'application/pdf', sizeBytes,
+      sha256: 'f'.repeat(64), objectKey: `${TENANT}/product-downloads/key-files/${apiKeyId}/${id}/f.pdf`, createdAt: NOW,
+    });
+  };
+
+  it('refuses a takeover that would pass the key\'s file limit, changes nothing, and takes it over once a file was discarded', async () => {
+    const h = harness();
+    const fillers = await stagedFillers(KEY_DOWNLOAD_FILE_LIMITS.stagedFilesPerKey - 1, 10);
+    const id = await interruptedAtTen(h);
+    const copies = h.objects.calls.filter((call) => call.method === 'copyObject').length;
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_staged_files' } } });
+    expect(h.objects.calls.filter((call) => call.method === 'copyObject')).toHaveLength(copies);
+    expect(await owedRows()).toEqual([]);
+    expect(await recordStates()).toEqual(['interrupted']);
+    await discardKeyDownloadFile(keyCtx(), { id: fillers[0]?.id ?? '-' }, h.deps);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps)).toMatchObject({ ok: true });
+    expect(await owedRows()).toHaveLength(1);
+  });
+
+  it('takes an interrupted upload over at exactly the key\'s byte limit and refuses it one byte past', async () => {
+    const h = harness();
+    const fullFillers = KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerKey / KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 1;
+    await stagedFillers(fullFillers, KEY_DOWNLOAD_FILE_LIMITS.maxBytes);
+    await sizeFiller('gap', KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength + 1);
+    const id = await interruptedAtTen(h);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'key_staged_bytes' } } });
+    expect(await owedRows()).toEqual([]);
+    await database.db.update(changeProposalDownloadFiles).set({ sizeBytes: KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength })
+      .where(eq(changeProposalDownloadFiles.id, 'gap'));
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps)).toMatchObject({ ok: true });
+  });
+
+  it('refuses a takeover one byte past the workspace\'s byte limit', async () => {
+    const h = harness();
+    const fullFillers = KEY_DOWNLOAD_FILE_LIMITS.stagedBytesPerWorkspace / KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 1;
+    await stagedFillers(fullFillers, KEY_DOWNLOAD_FILE_LIMITS.maxBytes, OTHER_KEY_ID);
+    await sizeFiller('gap', KEY_DOWNLOAD_FILE_LIMITS.maxBytes - 3 * PDF.byteLength + 1, OTHER_KEY_ID);
+    const id = await interruptedAtTen(h);
+    expect(await completeKeyDownloadUpload(keyCtx(), { uploadId: id }, h.deps))
+      .toMatchObject({ ok: false, error: { code: 'conflict', details: { changeProposalCap: 'workspace_staged_bytes' } } });
+    expect(await owedRows()).toEqual([]);
   });
 
   it('deletes the superseded destination after its not-before time also when no copy ever landed there', async () => {

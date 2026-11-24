@@ -341,6 +341,42 @@ describe('a proposed download file', () => {
     expect((await database.db.select().from(changeProposals)).length).toBe(1);
   });
 
+  it('answers the same refusal for a file the key discards between the submission check and the dry run, alone or in a group', async () => {
+    const h = harness();
+    const refusalOf = async (submit: (deps: Harness['deps'], stagedFileId: string) => Promise<{ ok: boolean }>) => {
+      const file = await h.stage();
+      const proposable = h.deps.keyDownloadFiles.proposable;
+      let discarded = false;
+      const racing = {
+        ...h.deps,
+        keyDownloadFiles: {
+          ...h.deps.keyDownloadFiles,
+          proposable: async (...args: Parameters<typeof proposable>) => {
+            const answer = await proposable(...args);
+            if (!discarded) {
+              discarded = true;
+              expect(await discardKeyDownloadFile(keyCtx(), { id: file.id }, h.deps)).toMatchObject({ ok: true });
+            }
+            return answer;
+          },
+        },
+      };
+      return { file, refusal: await submit(racing, file.id) };
+    };
+    const alone = await refusalOf((deps, stagedFileId) => submitChangeProposal(keyCtx(), { operation: 'download.add', input: { productId: WORKBOOK, stagedFileId } }, deps));
+    const group = await createChangeProposalGroup(keyCtx(), { title: 'Tidy the workbook' }, h.deps);
+    if (!group.ok) throw new Error(group.error.message);
+    const grouped = await refusalOf((deps, stagedFileId) => submitGroupedChangeProposal(keyCtx(), {
+      groupId: group.value.id, operation: 'download.add', input: { productId: WORKBOOK, stagedFileId },
+    }, deps));
+    const before = await submitChangeProposal(keyCtx(), { operation: 'download.add', input: { productId: WORKBOOK, stagedFileId: alone.file.id } }, h.deps);
+
+    expect(before).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { stagedFileId: [expect.any(String)] } } } });
+    expect(JSON.stringify(alone.refusal)).toBe(JSON.stringify(before));
+    expect(JSON.stringify(grouped.refusal)).toBe(JSON.stringify(before));
+    expect(await database.db.select().from(changeProposals)).toEqual([]);
+  });
+
   it('lets only one of two concurrent proposals hold the same staged file', async () => {
     const h = harness();
     const file = await h.stage();
@@ -501,6 +537,27 @@ describe('releasing proposed files on decisions', () => {
     await sweepKeyDownloadFiles(h.deps);
     expect(await owedRows()).toEqual([]);
     expect(h.objects.objects.has(stagedKeyOf(file.id))).toBe(false);
+  });
+
+  it('refuses to propose again a file whose rejected or expired proposal has not released it yet, and the sweep discards it', async () => {
+    const h = harness();
+    const rejected = await h.stage();
+    const expiring = await h.stage();
+    const first = await h.propose('download.add', { productId: WORKBOOK, stagedFileId: rejected.id });
+    const second = await h.propose('download.add', { productId: GUIDE, stagedFileId: expiring.id });
+    await database.db.update(changeProposals).set({ status: 'rejected', decidedAt: NOW, decidedByUserId: 'user-owner' }).where(eq(changeProposals.id, first.id));
+    h.clock.now = second.expiresAt;
+
+    for (const file of [rejected, expiring]) {
+      expect(await submitChangeProposal(keyCtx(), { operation: 'download.add', input: { productId: WORKBOOK, stagedFileId: file.id } }, h.deps))
+        .toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { stagedFileId: [expect.any(String)] } } } });
+    }
+    expect((await stagedRow(rejected.id))?.proposalId).toBe(first.id);
+    expect((await stagedRow(expiring.id))?.proposalId).toBe(second.id);
+
+    await sweepKeyDownloadFiles(h.deps);
+    expect(await stagedRow(rejected.id)).toBeNull();
+    expect(await stagedRow(expiring.id)).toBeNull();
   });
 
   it('releases the file of a withdrawn proposal at once', async () => {

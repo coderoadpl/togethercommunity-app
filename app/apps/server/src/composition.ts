@@ -36,7 +36,7 @@ import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
 import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, sweepKeyDownloadFiles, sweepQuarantinedImages, withPickupPointLookupBudget, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, sweepKeyDownloadFiles, sweepQuarantinedImages, withPickupPointLookupBudget, type StagingSweepOutcome, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -275,6 +275,7 @@ import type {
   SecretCrypto,
   TenantSecretRepository,
   TenantSecretResolver,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   ProductDownloadAssetRepository,
@@ -486,7 +487,6 @@ interface ShipxIntegrationDeps {
   wait(milliseconds: number): Promise<void>;
 }
 
-/** An absolute end for one sweep run, in epoch milliseconds, which the sweep's own budget never exceeds. */
 interface SweepTick {
   deadlineAt?: number;
 }
@@ -514,7 +514,7 @@ export interface AppDeps {
   productDrafts: ProductDraftRepository;
   courses: CourseRepository & CourseArchiveRepository;
   modules: CourseModuleRepository;
-  lessons: CourseLessonRepository;
+  lessons: CourseLessonRepository & CourseLessonIdLookup;
   redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
@@ -700,8 +700,8 @@ export interface AppDeps {
   checkoutSnapshots?: CheckoutSnapshotRepository;
   stock: StockRepository;
   releaseExpiredStockReservations(): Promise<Result<{ released: number }, AppError>>;
-  sweepQuarantinedImages(tick?: SweepTick): Promise<Result<{ tenants: number; removed: number }, AppError>>;
-  sweepKeyDownloadFiles(tick?: SweepTick): Promise<Result<{ tenants: number; removed: number }, AppError>>;
+  sweepQuarantinedImages(tick?: SweepTick): Promise<Result<StagingSweepOutcome, AppError>>;
+  sweepKeyDownloadFiles(tick?: SweepTick): Promise<Result<StagingSweepOutcome, AppError>>;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -984,14 +984,14 @@ export const selectDeploymentIdentity = (
 const CHANGE_PROPOSAL_SWEEP_INTERVAL_MS = 50_000;
 
 /** The Node ticker fires every second; each sweep needs at most one run per minute tick. */
-const throttledSweep = <T extends { tenants: number; removed: number }>(
+const throttledSweep = (
   clock: Clock,
-  sweep: (tick: SweepTick) => Promise<Result<T, AppError>>,
-): (tick?: SweepTick) => Promise<Result<{ tenants: number; removed: number }, AppError>> => {
+  sweep: (tick: SweepTick) => Promise<Result<StagingSweepOutcome, AppError>>,
+): (tick?: SweepTick) => Promise<Result<StagingSweepOutcome, AppError>> => {
   let lastRunAt = Number.NEGATIVE_INFINITY;
   return async (tick = {}) => {
     const now = Date.parse(clock.nowIso());
-    if (now - lastRunAt < CHANGE_PROPOSAL_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0 });
+    if (now - lastRunAt < CHANGE_PROPOSAL_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0, failed: 0 });
     lastRunAt = now;
     return sweep(tick);
   };

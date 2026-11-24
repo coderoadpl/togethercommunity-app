@@ -32,12 +32,15 @@ export const lessonNeighbours = (
   linear: LinearLesson[],
   lessonId: string,
 ): LessonNeighbours | null => {
-  const index = linear.findIndex((entry) => entry.lessonId === lessonId);
+  const open = linear.findIndex((entry) => entry.lessonId === lessonId && !entry.locked);
+  const index = open === -1 ? linear.findIndex((entry) => entry.lessonId === lessonId) : open;
   if (index === -1) return null;
+  const other = (entry: LinearLesson): boolean => entry.lessonId !== lessonId;
+  const after = linear.slice(index + 1).filter(other);
   return {
-    previous: linear[index - 1] ?? null,
-    next: linear[index + 1] ?? null,
-    nextUnlocked: linear.slice(index + 1).find((entry) => !entry.locked) ?? null,
+    previous: linear.slice(0, index).findLast(other) ?? null,
+    next: after[0] ?? null,
+    nextUnlocked: after.find((entry) => !entry.locked) ?? null,
   };
 };
 
@@ -52,13 +55,18 @@ export const locateLesson = (
   structure: CourseStructureWithAccess,
   lessonId: string,
 ): LessonLocation => {
+  let firstLocked: LessonLocation | null = null;
   for (const module of structure.modules) {
     for (const chapter of module.chapters) {
-      const row = chapter.lessons.find((entry) => entry.lessonId === lessonId);
-      if (row !== undefined) return { courseName: structure.name, module, chapter, row };
+      for (const row of chapter.lessons) {
+        if (row.lessonId !== lessonId) continue;
+        const location = { courseName: structure.name, module, chapter, row };
+        if (row.accessStatus === 'fully-accessible') return location;
+        firstLocked ??= location;
+      }
     }
   }
-  return { courseName: structure.name, module: null, chapter: null, row: null };
+  return firstLocked ?? { courseName: structure.name, module: null, chapter: null, row: null };
 };
 
 export const lessonPath = (courseId: string, lessonId: string): string =>

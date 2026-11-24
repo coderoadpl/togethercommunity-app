@@ -118,16 +118,6 @@ export const notificationKindSchema = z.enum([
 /** Notification contexts outgrew post contexts: posts stay lesson|space. */
 const notificationContextKindSchema = z.enum(['lesson', 'space', 'dm', 'tenant']);
 
-/**
- * One payload shape for every notification kind so clients render without
- * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
- * name for space contexts and the sender display for direct messages, while
- * `domain` carries tenant contexts, which have no post, author or context row
- * (courseId stays null outside lessons). A change proposal names the proposing
- * key in `authorDisplay` and its group in `contextId` and `snippet`, and also
- * carries them as typed `changeProposal` facts; read them with
- * `changeProposalNotificationFacts`.
- */
 const changeProposalNotificationPayloadSchema = z.object({
   keyName: z.string().trim().min(1),
   groupId: z.string().min(1).nullable(),
@@ -136,6 +126,7 @@ const changeProposalNotificationPayloadSchema = z.object({
 
 export type ChangeProposalNotificationFacts = z.output<typeof changeProposalNotificationPayloadSchema>;
 
+/** One payload shape for every notification kind so clients render without narrowing. */
 const notificationPayloadSchema = z.object({
   // Defaults keep rows persisted before these fields existed parseable, and the
   // nullable ids carry the kinds that have no post, author or context of their own.

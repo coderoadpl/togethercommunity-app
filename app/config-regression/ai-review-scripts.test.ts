@@ -9,6 +9,10 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
+import {
+  AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT, AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds,
+} from '../scripts/generate-ai-review-workflow.js';
+
 const root = join(import.meta.dirname, '..', '..');
 const scripts = join(root, '.github', 'scripts');
 const validPass = JSON.stringify({
@@ -39,6 +43,10 @@ const writeExecutable = (path: string, body: string) => {
   writeFileSync(path, body);
   chmodSync(path, 0o755);
 };
+
+const attemptList = aiReviewAttemptIds.join(' ');
+const outcomeName = (id: string) => `O_${id.slice(3).toUpperCase()}`;
+const lastAttempt = aiReviewAttemptIds.at(-1) ?? '';
 
 const outputValue = (output: string, name: string) => output.match(new RegExp(`^${name}=(.*)$`, 'm'))?.[1];
 
@@ -192,7 +200,10 @@ describe('AI review classifiers', () => {
 describe('AI review gate and diagnostics', () => {
   const gate = (outcomes: NodeJS.ProcessEnv, preconditions: NodeJS.ProcessEnv = {}) => execute(
     'gate-review.sh',
-    { PREPARED: 'true', CURRENT: 'true', DRAFT: 'false', ...preconditions, ...outcomes },
+    {
+      PREPARED: 'true', CURRENT: 'true', DRAFT: 'false', AI_REVIEW_ATTEMPTS: attemptList,
+      ...preconditions, ...outcomes,
+    },
   );
 
   it('uses the constant pair order and accepts a later slot when slot 1 is absent', () => {
@@ -201,14 +212,39 @@ describe('AI review gate and diagnostics', () => {
     expect(gate({ O_1P: 'infra', O_1F: 'pass' }).status).toBe(0);
   });
 
-  it('accepts PASS and rejects FAIL at every literal ladder position', () => {
-    for (const name of [
-      'O_1P', 'O_1PR', 'O_1F', 'O_1FR', 'O_2P', 'O_2PR',
-      'O_2F', 'O_2FR', 'O_3P', 'O_3PR', 'O_3F', 'O_3FR',
-    ]) {
-      expect(gate({ [name]: 'pass' }).status, name).toBe(0);
-      expect(gate({ [name]: 'fail' }).status, name).toBe(1);
+  it('accepts PASS and rejects FAIL at every ladder position', () => {
+    expect(aiReviewAttemptIds).toHaveLength(AI_REVIEW_SLOT_COUNT * 4);
+    for (const id of aiReviewAttemptIds) {
+      expect(gate({ [outcomeName(id)]: 'pass' }).status, id).toBe(0);
+      expect(gate({ [outcomeName(id)]: 'fail' }).status, id).toBe(1);
     }
+  });
+
+  it('accepts a verdict from the last fallback cold-start retry after every earlier attempt failed', () => {
+    expect(lastAttempt).toBe(`try${String(AI_REVIEW_SLOT_COUNT)}fr`);
+    const outcomes: NodeJS.ProcessEnv = Object.fromEntries(
+      aiReviewAttemptIds.map((id) => [outcomeName(id), 'infra']),
+    );
+    expect(gate({ ...outcomes, [outcomeName(lastAttempt)]: 'pass' }).status).toBe(0);
+    expect(gate({ ...outcomes, [outcomeName(lastAttempt)]: 'fail' }).status).toBe(1);
+    expect(gate(outcomes).status).toBe(1);
+  });
+
+  it('takes the first verdict in execution order', () => {
+    expect(gate({ O_2P: 'pass', O_1F: 'fail' }).status).toBe(0);
+    expect(gate({ O_2P: 'fail', O_1F: 'pass' }).status).toBe(1);
+  });
+
+  it('fails closed without a well-formed attempt list even when a verdict passed', () => {
+    for (const attempts of [
+      undefined, '', ' ', 'try1p ', ' try1p', 'try1p  try1pr', 'try1p\ttry1pr', 'try1p\ntry1pr',
+      'try0p', 'try01p', 'try1x', 'try1p try1prr', 'O_1P', 'try1p;true', 'try1p try$(true)p', 'TRY1P',
+    ]) {
+      const result = gate({ O_1P: 'pass', O_1PR: 'pass' }, { AI_REVIEW_ATTEMPTS: attempts });
+      expect(result.status, JSON.stringify(attempts)).toBe(1);
+      expect(result.stdout).toContain('AI review produced no verdict. Merge remains blocked.');
+    }
+    expect(gate({ O_1P: 'pass' }, { AI_REVIEW_ATTEMPTS: 'try1p' }).status).toBe(0);
   });
 
   it('fails all-infra, all-skip, draft, stale, and unprepared runs', () => {
@@ -283,10 +319,10 @@ const ladderWorkflowSchema = z.object({
 const ladderWorkflow = ladderWorkflowSchema.parse(parse(
   readFileSync(join(root, '.github', 'workflows', 'ai-review.yml'), 'utf8'),
 ));
-const ladderIds = [
-  'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',
-  'try1f', 'try1fr', 'try2f', 'try2fr', 'try3f', 'try3fr',
-];
+const ladderIds = [...aiReviewAttemptIds];
+const slotNumbers = Array.from({ length: AI_REVIEW_SLOT_COUNT }, (_, index) => index + 1);
+const onlySlots = (...present: number[]) => slotNumbers.map((slot) => present.includes(slot));
+const allSlots = onlySlots(...slotNumbers);
 type StubResult = { outcome: 'pass' | 'fail' | 'infra'; coldStart?: boolean; reason?: string };
 type StepOutputs = Record<string, Record<string, string>>;
 
@@ -306,18 +342,20 @@ const evaluateAttempt = (expression: string, outputs: StepOutputs, cancelled: bo
 };
 
 const simulateLadder = (
-  slots: [boolean, boolean, boolean],
+  slots: boolean[],
   results: Partial<Record<string, StubResult>>,
   cancelAfter = '',
   primaryModel = 'primary',
   fallbackModel = 'fallback',
+  attemptList = 'true',
 ) => {
   const outputs: StepOutputs = {
+    trusted: { installed: 'true', attempt_list: attemptList },
     prepare: { prepared: 'true' },
     target: { draft: 'false', invoke: 'true' },
-    preflight: {
-      has_slot_1: String(slots[0]), has_slot_2: String(slots[1]), has_slot_3: String(slots[2]),
-    },
+    preflight: Object.fromEntries(slotNumbers.map((slot) => [
+      `has_slot_${String(slot)}`, String(slots[slot - 1] ?? false),
+    ])),
   };
   const calls: Array<{ id: string; model: string; reason: string }> = [];
   let cancelled = false;
@@ -347,7 +385,7 @@ const simulateLadder = (
 
 describe('AI review attempt ladder', () => {
   it.each(['usage_limit', 'model_unavailable'])('moves %s through primary slots before fallback', (reason) => {
-    const calls = simulateLadder([true, true, false], {
+    const calls = simulateLadder(onlySlots(1, 2), {
       try1p: { outcome: 'infra', reason },
       try1f: { outcome: 'pass' },
     });
@@ -355,7 +393,7 @@ describe('AI review attempt ladder', () => {
   });
 
   it('keeps auth distinct and never cold-retries it', () => {
-    const calls = simulateLadder([true, true, false], {
+    const calls = simulateLadder(onlySlots(1, 2), {
       try1p: { outcome: 'infra', reason: 'auth_rejected' },
       try1f: { outcome: 'pass' },
     });
@@ -367,7 +405,7 @@ describe('AI review attempt ladder', () => {
   });
 
   it('keeps turn-limit attempts on the fallback ladder', () => {
-    const calls = simulateLadder([true, true, false], {
+    const calls = simulateLadder(onlySlots(1, 2), {
       try1p: { outcome: 'infra', reason: 'turn_limit' },
       try1f: { outcome: 'pass' },
     });
@@ -379,7 +417,7 @@ describe('AI review attempt ladder', () => {
   });
 
   it('preserves the pair order when primary and fallback names are equal', () => {
-    const calls = simulateLadder([true, false, false], {
+    const calls = simulateLadder(onlySlots(1), {
       try1p: { outcome: 'infra', reason: 'usage_limit' },
       try1f: { outcome: 'fail' },
     }, '', 'claude-opus-5', 'claude-opus-5');
@@ -390,20 +428,39 @@ describe('AI review attempt ladder', () => {
   });
 
   it('keeps absent later slots silent and stops a known FAIL', () => {
-    expect(simulateLadder([false, false, false], {}).map(({ id }) => id)).toEqual([]);
-    expect(simulateLadder([true, false, false], {}).map(({ id }) => id)).toEqual(['try1p', 'try1f']);
-    expect(simulateLadder([false, true, false], { try2p: { outcome: 'pass' } }).map(({ id }) => id))
+    expect(simulateLadder(onlySlots(), {}).map(({ id }) => id)).toEqual([]);
+    expect(simulateLadder(onlySlots(1), {}).map(({ id }) => id)).toEqual(['try1p', 'try1f']);
+    expect(simulateLadder(onlySlots(2), { try2p: { outcome: 'pass' } }).map(({ id }) => id))
       .toEqual(['try2p']);
-    expect(simulateLadder([true, true, true], { try1p: { outcome: 'fail' } }).map(({ id }) => id))
+    expect(simulateLadder(allSlots, { try1p: { outcome: 'fail' } }).map(({ id }) => id))
       .toEqual(['try1p']);
   });
 
-  it('cold-retries every pair exactly once, including slots 2 and 3', () => {
+  it('visits the primary of every present slot before any fallback for each slot subset', () => {
+    expect(simulateLadder(onlySlots(5), {}).map(({ id }) => id)).toEqual(['try5p', 'try5f']);
+    expect(simulateLadder(allSlots, {}).map(({ id }) => id)).toEqual([
+      ...slotNumbers.map((slot) => `try${String(slot)}p`),
+      ...slotNumbers.map((slot) => `try${String(slot)}f`),
+    ]);
+    for (let mask = 0; mask < 2 ** AI_REVIEW_SLOT_COUNT; mask += 1) {
+      const present = slotNumbers.filter((slot) => Math.floor(mask / 2 ** (slot - 1)) % 2 === 1);
+      const calls = simulateLadder(onlySlots(...present), {});
+      expect(calls.map(({ id }) => id), present.join(',')).toEqual([
+        ...present.map((slot) => `try${String(slot)}p`),
+        ...present.map((slot) => `try${String(slot)}f`),
+      ]);
+      expect(calls.map(({ model }) => model)).toEqual([
+        ...present.map(() => 'primary'), ...present.map(() => 'fallback'),
+      ]);
+    }
+  });
+
+  it('cold-retries every pair exactly once on every slot', () => {
     const coldResults: Partial<Record<string, StubResult>> = {};
     for (const id of ladderIds) {
       coldResults[id] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
     }
-    expect(simulateLadder([true, true, true], coldResults).map(({ id }) => id)).toEqual(ladderIds);
+    expect(simulateLadder(allSlots, coldResults).map(({ id }) => id)).toEqual(ladderIds);
   });
 
   it.each(ladderIds)('stops after either valid verdict at %s', (id) => {
@@ -413,13 +470,57 @@ describe('AI review attempt ladder', () => {
         results[earlier] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
       }
       results[id] = { outcome };
-      expect(simulateLadder([true, true, true], results).map((call) => call.id))
+      expect(simulateLadder(allSlots, results).map((call) => call.id))
         .toEqual(ladderIds.slice(0, ladderIds.indexOf(id) + 1));
     }
   });
 
+  it('runs only the slots a pre-attempt-list base gate reads, primaries then fallbacks', () => {
+    const legacySlots = slotNumbers.filter((slot) => slot <= AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT);
+    expect(simulateLadder(allSlots, {}, '', 'primary', 'fallback', 'false').map(({ id }) => id)).toEqual([
+      ...legacySlots.map((slot) => `try${String(slot)}p`),
+      ...legacySlots.map((slot) => `try${String(slot)}f`),
+    ]);
+    const coldResults: Partial<Record<string, StubResult>> = {};
+    for (const id of ladderIds) {
+      coldResults[id] = { outcome: 'infra', coldStart: true, reason: 'cold_start' };
+    }
+    expect(simulateLadder(allSlots, coldResults, '', 'primary', 'fallback', 'false').map(({ id }) => id))
+      .toEqual(ladderIds.filter((id) => Number(/^try(\d+)/.exec(id)?.[1]) <= AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT));
+    expect(simulateLadder(allSlots, coldResults, '', 'primary', 'fallback', 'true').map(({ id }) => id))
+      .toEqual(ladderIds);
+    expect(ladderIds).toHaveLength(24);
+  });
+
+  it('reaches the slot 1 to 3 fallbacks after usage limits when the base gate predates the attempt list', () => {
+    const results: Partial<Record<string, StubResult>> = {
+      try1p: { outcome: 'infra', reason: 'usage_limit' },
+      try2p: { outcome: 'infra', reason: 'usage_limit' },
+      try3p: { outcome: 'infra', reason: 'usage_limit' },
+      try4p: { outcome: 'pass' },
+      try1f: { outcome: 'pass' },
+    };
+    expect(simulateLadder(allSlots, results, '', 'primary', 'fallback', 'false').map(({ id }) => id))
+      .toEqual(['try1p', 'try2p', 'try3p', 'try1f']);
+    expect(simulateLadder(allSlots, results).map(({ id }) => id))
+      .toEqual(['try1p', 'try2p', 'try3p', 'try4p']);
+    expect(simulateLadder(onlySlots(4, 5, 6), {}, '', 'primary', 'fallback', 'false')).toEqual([]);
+  });
+
+  it('parses every attempt condition as plain conjunction terms', () => {
+    const steps = ladderWorkflow.jobs['ai-review'].steps.filter((candidate) => candidate.id?.startsWith('try'));
+    expect(steps.map(({ id }) => id)).toEqual(ladderIds);
+    for (const step of steps) {
+      const body = (step.if ?? '').replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '');
+      expect(body, step.id).not.toContain('||');
+      for (const value of ['true', 'false']) {
+        expect(() => evaluateAttempt(step.if ?? '', { trusted: { attempt_list: value } }, false)).not.toThrow();
+      }
+    }
+  });
+
   it('schedules nothing after cancellation', () => {
-    expect(simulateLadder([true, true, true], {
+    expect(simulateLadder(allSlots, {
       try1p: { outcome: 'infra', coldStart: true, reason: 'cold_start' },
     }, 'try1p').map(({ id }) => id)).toEqual(['try1p']);
   });
@@ -531,6 +632,7 @@ const runPost = (environment: NodeJS.ProcessEnv, comments: string) => {
   const bin = makeGhStub(directory);
   const result = execute('post-review.sh', {
     PATH: `${bin}:${process.env.PATH ?? ''}`,
+    AI_REVIEW_ATTEMPTS: attemptList,
     GH_CALLS: calls,
     GH_COMMENTS: commentsFile,
     GH_BODY: body,
@@ -621,7 +723,7 @@ describe('AI review comment publication', () => {
     }, '[]');
     expect(result.status).not.toBe(0);
     const gate = execute('gate-review.sh', {
-      PREPARED: 'true', CURRENT: 'true', DRAFT: 'false', O_1P: 'pass',
+      PREPARED: 'true', CURRENT: 'true', DRAFT: 'false', AI_REVIEW_ATTEMPTS: attemptList, O_1P: 'pass',
     });
     expect(gate.status).toBe(0);
   });
@@ -690,6 +792,43 @@ describe('AI review comment publication', () => {
     expect(noVerdict.body).toContain('Producer: none');
   });
 
+  it('lists every attempt in execution order in a no-verdict comment', () => {
+    const result = runPost({ [`R_${lastAttempt.slice(3).toUpperCase()}`]: 'usage_limit' }, '[]');
+    expect(result.status).toBe(0);
+    expectOrder(result.body, [
+      '### Attempts',
+      ...aiReviewAttemptIds.map((id) => `- ${id}: `),
+      'Producer: none',
+    ]);
+    expect(result.body.match(/^- try\S+: /gm)).toHaveLength(aiReviewAttemptIds.length);
+    expect(result.body).toContain(`- ${lastAttempt}: usage_limit`);
+    expect(result.body).toContain('- try1p: not_attempted');
+  });
+
+  it('names the slot and attempt of a verdict from the last attempt', () => {
+    const key = lastAttempt.slice(3).toUpperCase();
+    const result = runPost({
+      [`O_${key}`]: 'pass', [`RAW_${key}`]: validPass, [`MODEL_${key}`]: 'requested-model',
+    }, '[]');
+    expect(result.status).toBe(0);
+    expect(result.body).toContain('## AI review: PASS');
+    expect(result.body).toContain(
+      `token slot ${String(AI_REVIEW_SLOT_COUNT)} · attempt \`${lastAttempt}\``,
+    );
+  });
+
+  it('renders no verdict when the attempt list is missing or malformed', () => {
+    for (const attempts of [undefined, '', 'try1p;true', 'try1p try1x']) {
+      const result = runPost({
+        AI_REVIEW_ATTEMPTS: attempts, O_1P: 'pass', RAW_1P: validPass, MODEL_1P: 'model',
+      }, '[]');
+      expect(result.status, JSON.stringify(attempts)).toBe(0);
+      expect(result.body).toContain('NO VERDICT — infrastructure failure');
+      expect(result.body).toContain('- AI_REVIEW_ATTEMPTS is missing or invalid');
+      expect(result.body).not.toContain('## AI review: PASS');
+    }
+  });
+
   it('renders base-moved and turn-limit no-verdict messages', () => {
     const baseMoved = runPost({
       CURRENT: 'false',
@@ -704,6 +843,12 @@ describe('AI review comment publication', () => {
     }, '[]');
     expect(turnLimit.status).toBe(0);
     expect(turnLimit.body).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
+
+    const lateTurnLimit = runPost({
+      [`R_${lastAttempt.slice(3).toUpperCase()}`]: 'turn_limit',
+      MAX_TURNS: '120',
+    }, '[]');
+    expect(lateTurnLimit.body).toContain('Reviewer exceeded AI_REVIEW_MAX_TURNS=120; raise the variable or split the pull request');
   });
 });
 
@@ -1108,12 +1253,14 @@ describe('AI review preparation', () => {
 });
 
 describe('AI review script wiring', () => {
-  it('keeps the exact literal order and marker-aware paginated comment update', () => {
+  it('reads attempts only from the validated list and keeps the marker-aware paginated comment update', () => {
     const gate = readFileSync(join(scripts, 'gate-review.sh'), 'utf8');
     const post = readFileSync(join(scripts, 'post-review.sh'), 'utf8');
-    const order = ['O_1P', 'O_1PR', 'O_1F', 'O_1FR', 'O_2P', 'O_2PR', 'O_2F', 'O_2FR', 'O_3P', 'O_3PR', 'O_3F', 'O_3FR'];
-    expect(order.map((name) => gate.indexOf(name)))
-      .toEqual([...order.map((name) => gate.indexOf(name))].sort((left, right) => left - right));
+    for (const script of [gate, post]) {
+      expect(script).toContain("attempt_list_pattern='^try[1-9][0-9]*(p|pr|f|fr)( try[1-9][0-9]*(p|pr|f|fr))*$'");
+      expect(script).toContain('read -r -a attempt_ids <<< "$AI_REVIEW_ATTEMPTS"');
+      expect(script).not.toMatch(/\b(O|R|RAW|LOG|MODEL)_[0-9]/);
+    }
     expect(post).toContain('gh api --paginate');
     expect(post).toContain('github-actions[bot]');
     expect(post).toContain('<!-- ai-review-gate -->');

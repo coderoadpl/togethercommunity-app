@@ -49,7 +49,7 @@ jobs:
           ok=$(echo "$body" | jq -r '.ok')
           database=$(echo "$body" | jq -r '.data.database')
           schema=$(echo "$body" | jq -r '.data.schemaCurrent')
-          fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch // "absent"')
+          fingerprint=$(echo "$body" | jq -r '.data.schemaFingerprintMatch | if . == null then "absent" else tostring end')
           if [ "$ok" != "true" ] || [ "$database" != "up" ] || [ "$schema" != "true" ] || [ "$fingerprint" = "false" ]; then
             report health "ok=$ok database=$database schemaCurrent=$schema fingerprintMatch=$fingerprint"
           fi

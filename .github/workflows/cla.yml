@@ -6,6 +6,8 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 concurrency:
   group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false

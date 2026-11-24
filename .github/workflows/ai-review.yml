@@ -1,5 +1,6 @@
 name: ai-review
 
+# Rendered by app/scripts/generate-ai-review-workflow.ts; edit the generator and re-run it, never this file.
 # Exhaust primary-model token slots before fallback-model token slots because
 # primary capacity is per account. The first valid PASS/FAIL ends the ladder;
 # only PASS is green. Missing capacity, malformed output, stale metadata, drafts,
@@ -82,6 +83,11 @@ jobs:
             echo "::error::bootstrap-not-installed: trusted AI review scripts are absent from the PR base"
             echo "installed=false" >> "$GITHUB_OUTPUT"
           fi
+          if grep -qF AI_REVIEW_ATTEMPTS .github/scripts/gate-review.sh 2>/dev/null && grep -qF AI_REVIEW_ATTEMPTS .github/scripts/post-review.sh 2>/dev/null; then
+            echo "attempt_list=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "attempt_list=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Prepare inert review inputs
         id: prepare
@@ -109,10 +115,16 @@ jobs:
           SLOT1: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_1 }}
           SLOT2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           SLOT3: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_3 }}
+          SLOT4: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_4 }}
+          SLOT5: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_5 }}
+          SLOT6: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_6 }}
         run: |
           [ -n "$SLOT1" ] && echo "has_slot_1=true" >> "$GITHUB_OUTPUT" || echo "has_slot_1=false" >> "$GITHUB_OUTPUT"
           [ -n "$SLOT2" ] && echo "has_slot_2=true" >> "$GITHUB_OUTPUT" || echo "has_slot_2=false" >> "$GITHUB_OUTPUT"
           [ -n "$SLOT3" ] && echo "has_slot_3=true" >> "$GITHUB_OUTPUT" || echo "has_slot_3=false" >> "$GITHUB_OUTPUT"
+          [ -n "$SLOT4" ] && echo "has_slot_4=true" >> "$GITHUB_OUTPUT" || echo "has_slot_4=false" >> "$GITHUB_OUTPUT"
+          [ -n "$SLOT5" ] && echo "has_slot_5=true" >> "$GITHUB_OUTPUT" || echo "has_slot_5=false" >> "$GITHUB_OUTPUT"
+          [ -n "$SLOT6" ] && echo "has_slot_6=true" >> "$GITHUB_OUTPUT" || echo "has_slot_6=false" >> "$GITHUB_OUTPUT"
 
       - name: Report draft
         if: ${{ steps.target.outputs.draft == 'true' }}
@@ -120,9 +132,9 @@ jobs:
           echo "::notice::AI review not run for a draft PR; merge remains blocked."
 
       - name: Report missing review capacity
-        if: ${{ steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && steps.preflight.outputs.has_slot_1 == 'false' && steps.preflight.outputs.has_slot_2 == 'false' && steps.preflight.outputs.has_slot_3 == 'false' }}
+        if: ${{ steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && steps.preflight.outputs.has_slot_1 == 'false' && steps.preflight.outputs.has_slot_2 == 'false' && steps.preflight.outputs.has_slot_3 == 'false' && steps.preflight.outputs.has_slot_4 == 'false' && steps.preflight.outputs.has_slot_5 == 'false' && steps.preflight.outputs.has_slot_6 == 'false' }}
         run: |
-          echo "::notice::AI review not run: no CLAUDE_CODE_OAUTH_TOKEN_1/2/3 is available; no verdict; merge remains blocked."
+          echo "::notice::AI review not run: no CLAUDE_CODE_OAUTH_TOKEN_1/2/3/4/5/6 is available; no verdict; merge remains blocked."
 
       - name: Clear the execution log
         if: ${{ steps.prepare.outputs.prepared == 'true' }}
@@ -596,9 +608,477 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
+      - name: AI review — slot 4 primary
+        id: try4p
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_4 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_4 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 4 primary
+        id: classify4p
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try4p.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try4p.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try4p.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try4p.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 4 primary
+        if: ${{ steps.classify4p.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify4p.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '4'
+          ATTEMPT: try4p
+          REASON: ${{ steps.classify4p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 4 primary cold-start retry
+        id: try4pr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_4 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4p.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_4 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 4 primary cold-start retry
+        id: classify4pr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try4pr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try4pr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try4pr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try4pr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 4 primary cold-start retry
+        if: ${{ steps.classify4pr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify4pr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '4'
+          ATTEMPT: try4pr
+          REASON: ${{ steps.classify4pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 5 primary
+        id: try5p
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_5 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_5 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 5 primary
+        id: classify5p
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try5p.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try5p.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try5p.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try5p.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 5 primary
+        if: ${{ steps.classify5p.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify5p.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '5'
+          ATTEMPT: try5p
+          REASON: ${{ steps.classify5p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 5 primary cold-start retry
+        id: try5pr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_5 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5p.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_5 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 5 primary cold-start retry
+        id: classify5pr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try5pr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try5pr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try5pr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try5pr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 5 primary cold-start retry
+        if: ${{ steps.classify5pr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify5pr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '5'
+          ATTEMPT: try5pr
+          REASON: ${{ steps.classify5pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 6 primary
+        id: try6p
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_6 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_6 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 6 primary
+        id: classify6p
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try6p.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try6p.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try6p.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try6p.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 6 primary
+        if: ${{ steps.classify6p.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify6p.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '6'
+          ATTEMPT: try6p
+          REASON: ${{ steps.classify6p.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 6 primary cold-start retry
+        id: try6pr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_6 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6p.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_6 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.primary_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 6 primary cold-start retry
+        id: classify6pr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try6pr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try6pr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try6pr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try6pr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 6 primary cold-start retry
+        if: ${{ steps.classify6pr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify6pr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.primary_model }}
+          SLOT: '6'
+          ATTEMPT: try6pr
+          REASON: ${{ steps.classify6pr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
       - name: AI review — slot 1 fallback
         id: try1f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -676,7 +1156,7 @@ jobs:
 
       - name: AI review — slot 1 fallback cold-start retry
         id: try1fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1f.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_1 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -754,7 +1234,7 @@ jobs:
 
       - name: AI review — slot 2 fallback
         id: try2f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -832,7 +1312,7 @@ jobs:
 
       - name: AI review — slot 2 fallback cold-start retry
         id: try2fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2f.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_2 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -910,7 +1390,7 @@ jobs:
 
       - name: AI review — slot 3 fallback
         id: try3f
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -988,7 +1468,7 @@ jobs:
 
       - name: AI review — slot 3 fallback cold-start retry
         id: try3fr
-        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3f.outputs.cold_start == 'true' }}
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_3 == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3f.outputs.cold_start == 'true' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
         uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
@@ -1064,6 +1544,474 @@ jobs:
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
 
+      - name: AI review — slot 4 fallback
+        id: try4f
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_4 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_4 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 4 fallback
+        id: classify4f
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try4f.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try4f.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try4f.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try4f.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 4 fallback
+        if: ${{ steps.classify4f.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify4f.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '4'
+          ATTEMPT: try4f
+          REASON: ${{ steps.classify4f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 4 fallback cold-start retry
+        id: try4fr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_4 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' && steps.classify4f.outputs.outcome != 'pass' && steps.classify4f.outputs.outcome != 'fail' && steps.classify4f.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_4 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 4 fallback cold-start retry
+        id: classify4fr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try4fr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try4fr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try4fr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try4fr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 4 fallback cold-start retry
+        if: ${{ steps.classify4fr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify4fr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '4'
+          ATTEMPT: try4fr
+          REASON: ${{ steps.classify4fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 5 fallback
+        id: try5f
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_5 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' && steps.classify4f.outputs.outcome != 'pass' && steps.classify4f.outputs.outcome != 'fail' && steps.classify4fr.outputs.outcome != 'pass' && steps.classify4fr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_5 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 5 fallback
+        id: classify5f
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try5f.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try5f.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try5f.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try5f.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 5 fallback
+        if: ${{ steps.classify5f.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify5f.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '5'
+          ATTEMPT: try5f
+          REASON: ${{ steps.classify5f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 5 fallback cold-start retry
+        id: try5fr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_5 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' && steps.classify4f.outputs.outcome != 'pass' && steps.classify4f.outputs.outcome != 'fail' && steps.classify4fr.outputs.outcome != 'pass' && steps.classify4fr.outputs.outcome != 'fail' && steps.classify5f.outputs.outcome != 'pass' && steps.classify5f.outputs.outcome != 'fail' && steps.classify5f.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_5 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 5 fallback cold-start retry
+        id: classify5fr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try5fr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try5fr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try5fr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try5fr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 5 fallback cold-start retry
+        if: ${{ steps.classify5fr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify5fr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '5'
+          ATTEMPT: try5fr
+          REASON: ${{ steps.classify5fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 6 fallback
+        id: try6f
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_6 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' && steps.classify4f.outputs.outcome != 'pass' && steps.classify4f.outputs.outcome != 'fail' && steps.classify4fr.outputs.outcome != 'pass' && steps.classify4fr.outputs.outcome != 'fail' && steps.classify5f.outputs.outcome != 'pass' && steps.classify5f.outputs.outcome != 'fail' && steps.classify5fr.outputs.outcome != 'pass' && steps.classify5fr.outputs.outcome != 'fail' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_6 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 6 fallback
+        id: classify6f
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try6f.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try6f.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try6f.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try6f.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 6 fallback
+        if: ${{ steps.classify6f.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify6f.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '6'
+          ATTEMPT: try6f
+          REASON: ${{ steps.classify6f.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
+      - name: AI review — slot 6 fallback cold-start retry
+        id: try6fr
+        if: ${{ steps.prepare.outputs.prepared == 'true' && steps.target.outputs.draft == 'false' && steps.target.outputs.invoke == 'true' && !cancelled() && steps.preflight.outputs.has_slot_6 == 'true' && steps.trusted.outputs.attempt_list == 'true' && steps.classify1p.outputs.outcome != 'pass' && steps.classify1p.outputs.outcome != 'fail' && steps.classify1pr.outputs.outcome != 'pass' && steps.classify1pr.outputs.outcome != 'fail' && steps.classify2p.outputs.outcome != 'pass' && steps.classify2p.outputs.outcome != 'fail' && steps.classify2pr.outputs.outcome != 'pass' && steps.classify2pr.outputs.outcome != 'fail' && steps.classify3p.outputs.outcome != 'pass' && steps.classify3p.outputs.outcome != 'fail' && steps.classify3pr.outputs.outcome != 'pass' && steps.classify3pr.outputs.outcome != 'fail' && steps.classify4p.outputs.outcome != 'pass' && steps.classify4p.outputs.outcome != 'fail' && steps.classify4pr.outputs.outcome != 'pass' && steps.classify4pr.outputs.outcome != 'fail' && steps.classify5p.outputs.outcome != 'pass' && steps.classify5p.outputs.outcome != 'fail' && steps.classify5pr.outputs.outcome != 'pass' && steps.classify5pr.outputs.outcome != 'fail' && steps.classify6p.outputs.outcome != 'pass' && steps.classify6p.outputs.outcome != 'fail' && steps.classify6pr.outputs.outcome != 'pass' && steps.classify6pr.outputs.outcome != 'fail' && steps.classify1f.outputs.outcome != 'pass' && steps.classify1f.outputs.outcome != 'fail' && steps.classify1fr.outputs.outcome != 'pass' && steps.classify1fr.outputs.outcome != 'fail' && steps.classify2f.outputs.outcome != 'pass' && steps.classify2f.outputs.outcome != 'fail' && steps.classify2fr.outputs.outcome != 'pass' && steps.classify2fr.outputs.outcome != 'fail' && steps.classify3f.outputs.outcome != 'pass' && steps.classify3f.outputs.outcome != 'fail' && steps.classify3fr.outputs.outcome != 'pass' && steps.classify3fr.outputs.outcome != 'fail' && steps.classify4f.outputs.outcome != 'pass' && steps.classify4f.outputs.outcome != 'fail' && steps.classify4fr.outputs.outcome != 'pass' && steps.classify4fr.outputs.outcome != 'fail' && steps.classify5f.outputs.outcome != 'pass' && steps.classify5f.outputs.outcome != 'fail' && steps.classify5fr.outputs.outcome != 'pass' && steps.classify5fr.outputs.outcome != 'fail' && steps.classify6f.outputs.outcome != 'pass' && steps.classify6f.outputs.outcome != 'fail' && steps.classify6f.outputs.cold_start == 'true' }}
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}
+        uses: anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        env:
+          CLAUDE_WORKING_DIR: ${{ runner.temp }}/ai-review-input
+          AI_REVIEW_INPUT_ROOT: ${{ runner.temp }}/ai-review-input
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_6 }}
+          prompt: ${{ steps.prepare.outputs.prompt }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          show_full_output: false
+          use_node_cache: false
+          plugins: ''
+          plugin_marketplaces: ''
+          claude_args: >-
+            --model ${{ steps.prepare.outputs.fallback_model }}
+            --max-turns ${{ steps.prepare.outputs.max_turns }}
+            --tools "Read,Grep,Glob"
+            --allowedTools "Read,Grep,Glob"
+            --setting-sources ""
+            --strict-mcp-config
+            --mcp-config '{"mcpServers":{}}'
+            --no-session-persistence
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"tldr":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"safe_to_merge":{"type":"boolean"},"blast_radius":{"type":"object","properties":{"scope":{"type":"string","enum":["isolated","contained","broad"]},"note":{"type":"string"}},"required":["scope","note"]}},"required":["verdict","summary","safe_to_merge","blast_radius"]}'
+
+      - name: Classify slot 6 fallback cold-start retry
+        id: classify6fr
+        if: ${{ always() }}
+        env:
+          RAW: ${{ steps.try6fr.outputs.structured_output }}
+          TRY_OUTCOME: ${{ steps.try6fr.outcome }}
+          OUTPUT_EXEC_FILE: ${{ steps.try6fr.outputs.execution_file }}
+          REVIEW_MODE: ${{ steps.prepare.outputs.review_mode }}
+          DEST_LOG: ${{ runner.temp }}/ai-review-try6fr.json
+        run: |
+          rm -f "$DEST_LOG"
+          source_file="$OUTPUT_EXEC_FILE"
+          if [ -z "$source_file" ] || [ ! -s "$source_file" ]; then
+            source_file="$RUNNER_TEMP/claude-execution-output.json"
+          fi
+          if [ -s "$source_file" ]; then
+            cp -- "$source_file" "$DEST_LOG"
+            echo "log=$DEST_LOG" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG="$DEST_LOG"
+          else
+            echo "log=" >> "$GITHUB_OUTPUT"
+            export EXEC_LOG=""
+          fi
+          rm -f "$RUNNER_TEMP/claude-execution-output.json"
+          if [ -z "${RAW//[[:space:]]/}" ] && [ -n "$EXEC_LOG" ]; then
+            RAW="$(jq -crs '
+              [ .[] | if type == "array" then .[] else . end ]
+              | last | select(type == "object")
+              | select(.type == "result" and .is_error != true
+                  and (.subtype == null or .subtype == "success"))
+              | .structured_output | select(type == "object")
+            ' "$EXEC_LOG" 2>/dev/null || true)"
+          fi
+          export RAW
+          bash "$GITHUB_WORKSPACE/.github/scripts/classify-review.sh"
+          raw_json="$(printf '%s' "$RAW" | jq -cse 'select(length == 1) | .[0]' 2>/dev/null || true)"
+          printf 'raw=%s\n' "$raw_json" >> "$GITHUB_OUTPUT"
+
+      - name: Diagnose slot 6 fallback cold-start retry
+        if: ${{ steps.classify6fr.outputs.outcome == 'infra' }}
+        continue-on-error: true
+        env:
+          EXEC_LOG: ${{ steps.classify6fr.outputs.log }}
+          MODEL: ${{ steps.prepare.outputs.fallback_model }}
+          SLOT: '6'
+          ATTEMPT: try6fr
+          REASON: ${{ steps.classify6fr.outputs.reason }}
+          MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/failure-reason.sh"
+
       - name: Revalidate the pinned target
         id: current
         if: ${{ always() && steps.prepare.outputs.prepared == 'true' && !cancelled() }}
@@ -1091,6 +2039,7 @@ jobs:
           HEAD_SHA: ${{ steps.prepare.outputs.head_sha || steps.target.outputs.head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           MAX_TURNS: ${{ steps.prepare.outputs.max_turns }}
+          AI_REVIEW_ATTEMPTS: try1p try1pr try2p try2pr try3p try3pr try4p try4pr try5p try5pr try6p try6pr try1f try1fr try2f try2fr try3f try3fr try4f try4fr try5f try5fr try6f try6fr
           O_1P: ${{ steps.classify1p.outputs.outcome }}
           R_1P: ${{ steps.classify1p.outputs.reason }}
           RAW_1P: ${{ steps.classify1p.outputs.raw }}
@@ -1151,6 +2100,66 @@ jobs:
           RAW_3FR: ${{ steps.classify3fr.outputs.raw }}
           LOG_3FR: ${{ steps.classify3fr.outputs.log }}
           MODEL_3FR: ${{ steps.prepare.outputs.fallback_model }}
+          O_4P: ${{ steps.classify4p.outputs.outcome }}
+          R_4P: ${{ steps.classify4p.outputs.reason }}
+          RAW_4P: ${{ steps.classify4p.outputs.raw }}
+          LOG_4P: ${{ steps.classify4p.outputs.log }}
+          MODEL_4P: ${{ steps.prepare.outputs.primary_model }}
+          O_4PR: ${{ steps.classify4pr.outputs.outcome }}
+          R_4PR: ${{ steps.classify4pr.outputs.reason }}
+          RAW_4PR: ${{ steps.classify4pr.outputs.raw }}
+          LOG_4PR: ${{ steps.classify4pr.outputs.log }}
+          MODEL_4PR: ${{ steps.prepare.outputs.primary_model }}
+          O_4F: ${{ steps.classify4f.outputs.outcome }}
+          R_4F: ${{ steps.classify4f.outputs.reason }}
+          RAW_4F: ${{ steps.classify4f.outputs.raw }}
+          LOG_4F: ${{ steps.classify4f.outputs.log }}
+          MODEL_4F: ${{ steps.prepare.outputs.fallback_model }}
+          O_4FR: ${{ steps.classify4fr.outputs.outcome }}
+          R_4FR: ${{ steps.classify4fr.outputs.reason }}
+          RAW_4FR: ${{ steps.classify4fr.outputs.raw }}
+          LOG_4FR: ${{ steps.classify4fr.outputs.log }}
+          MODEL_4FR: ${{ steps.prepare.outputs.fallback_model }}
+          O_5P: ${{ steps.classify5p.outputs.outcome }}
+          R_5P: ${{ steps.classify5p.outputs.reason }}
+          RAW_5P: ${{ steps.classify5p.outputs.raw }}
+          LOG_5P: ${{ steps.classify5p.outputs.log }}
+          MODEL_5P: ${{ steps.prepare.outputs.primary_model }}
+          O_5PR: ${{ steps.classify5pr.outputs.outcome }}
+          R_5PR: ${{ steps.classify5pr.outputs.reason }}
+          RAW_5PR: ${{ steps.classify5pr.outputs.raw }}
+          LOG_5PR: ${{ steps.classify5pr.outputs.log }}
+          MODEL_5PR: ${{ steps.prepare.outputs.primary_model }}
+          O_5F: ${{ steps.classify5f.outputs.outcome }}
+          R_5F: ${{ steps.classify5f.outputs.reason }}
+          RAW_5F: ${{ steps.classify5f.outputs.raw }}
+          LOG_5F: ${{ steps.classify5f.outputs.log }}
+          MODEL_5F: ${{ steps.prepare.outputs.fallback_model }}
+          O_5FR: ${{ steps.classify5fr.outputs.outcome }}
+          R_5FR: ${{ steps.classify5fr.outputs.reason }}
+          RAW_5FR: ${{ steps.classify5fr.outputs.raw }}
+          LOG_5FR: ${{ steps.classify5fr.outputs.log }}
+          MODEL_5FR: ${{ steps.prepare.outputs.fallback_model }}
+          O_6P: ${{ steps.classify6p.outputs.outcome }}
+          R_6P: ${{ steps.classify6p.outputs.reason }}
+          RAW_6P: ${{ steps.classify6p.outputs.raw }}
+          LOG_6P: ${{ steps.classify6p.outputs.log }}
+          MODEL_6P: ${{ steps.prepare.outputs.primary_model }}
+          O_6PR: ${{ steps.classify6pr.outputs.outcome }}
+          R_6PR: ${{ steps.classify6pr.outputs.reason }}
+          RAW_6PR: ${{ steps.classify6pr.outputs.raw }}
+          LOG_6PR: ${{ steps.classify6pr.outputs.log }}
+          MODEL_6PR: ${{ steps.prepare.outputs.primary_model }}
+          O_6F: ${{ steps.classify6f.outputs.outcome }}
+          R_6F: ${{ steps.classify6f.outputs.reason }}
+          RAW_6F: ${{ steps.classify6f.outputs.raw }}
+          LOG_6F: ${{ steps.classify6f.outputs.log }}
+          MODEL_6F: ${{ steps.prepare.outputs.fallback_model }}
+          O_6FR: ${{ steps.classify6fr.outputs.outcome }}
+          R_6FR: ${{ steps.classify6fr.outputs.reason }}
+          RAW_6FR: ${{ steps.classify6fr.outputs.raw }}
+          LOG_6FR: ${{ steps.classify6fr.outputs.log }}
+          MODEL_6FR: ${{ steps.prepare.outputs.fallback_model }}
         run: bash "$GITHUB_WORKSPACE/.github/scripts/post-review.sh"
 
       - name: Summarize dry run
@@ -1165,6 +2174,7 @@ jobs:
           PREPARE_REASON: ${{ steps.prepare.outputs.reason }}
           CURRENT: ${{ steps.current.outputs.current }}
           DRAFT: ${{ steps.target.outputs.draft }}
+          AI_REVIEW_ATTEMPTS: try1p try1pr try2p try2pr try3p try3pr try4p try4pr try5p try5pr try6p try6pr try1f try1fr try2f try2fr try3f try3fr try4f try4fr try5f try5fr try6f try6fr
           O_1P: ${{ steps.classify1p.outputs.outcome }}
           O_1PR: ${{ steps.classify1pr.outputs.outcome }}
           O_1F: ${{ steps.classify1f.outputs.outcome }}
@@ -1177,6 +2187,18 @@ jobs:
           O_3PR: ${{ steps.classify3pr.outputs.outcome }}
           O_3F: ${{ steps.classify3f.outputs.outcome }}
           O_3FR: ${{ steps.classify3fr.outputs.outcome }}
+          O_4P: ${{ steps.classify4p.outputs.outcome }}
+          O_4PR: ${{ steps.classify4pr.outputs.outcome }}
+          O_4F: ${{ steps.classify4f.outputs.outcome }}
+          O_4FR: ${{ steps.classify4fr.outputs.outcome }}
+          O_5P: ${{ steps.classify5p.outputs.outcome }}
+          O_5PR: ${{ steps.classify5pr.outputs.outcome }}
+          O_5F: ${{ steps.classify5f.outputs.outcome }}
+          O_5FR: ${{ steps.classify5fr.outputs.outcome }}
+          O_6P: ${{ steps.classify6p.outputs.outcome }}
+          O_6PR: ${{ steps.classify6pr.outputs.outcome }}
+          O_6F: ${{ steps.classify6f.outputs.outcome }}
+          O_6FR: ${{ steps.classify6fr.outputs.outcome }}
         run: |
           if [ "$PREPARE_REASON" = base_moved ]; then
             exec bash "$GITHUB_WORKSPACE/.github/scripts/gate-review.sh"

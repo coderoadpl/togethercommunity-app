@@ -6,10 +6,7 @@ on:
     branches: [main]
     types: [opened, reopened]
   workflow_dispatch:
-permissions:
-  contents: read
-  deployments: write
-  pull-requests: write
+permissions: {}
 concurrency:
   group: staging-links
   cancel-in-progress: true
@@ -19,6 +16,9 @@ env:
   VERCEL_DEPLOYMENTS_URL: ${{ vars.VERCEL_DEPLOYMENTS_URL || 'https://vercel.com/dashboard' }}
 jobs:
   publish:
+    permissions:
+      deployments: write
+      pull-requests: write
     if: github.event_name != 'pull_request' || github.head_ref == 'staging'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

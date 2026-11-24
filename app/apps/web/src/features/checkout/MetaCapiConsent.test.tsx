@@ -80,6 +80,23 @@ it('marks the scroll area only while content remains below', () => {
   expect(scrollArea).toHaveAttribute('data-more-below', 'false');
 });
 
+it('marks the scroll area only while content has scrolled away above', () => {
+  renderConsent();
+  const scrollArea = screen.getByRole('heading', { level: 2 }).closest<HTMLElement>('.MuiDialogContent-root');
+  if (!scrollArea) throw new Error('Missing scroll area');
+  Object.defineProperty(scrollArea, 'scrollHeight', { configurable: true, value: 900 });
+  Object.defineProperty(scrollArea, 'clientHeight', { configurable: true, value: 300 });
+  scrollArea.scrollTop = 0;
+  fireEvent.scroll(scrollArea);
+  expect(scrollArea).toHaveAttribute('data-more-above', 'false');
+  scrollArea.scrollTop = 600;
+  fireEvent.scroll(scrollArea);
+  expect(scrollArea).toHaveAttribute('data-more-above', 'true');
+  scrollArea.scrollTop = 0;
+  fireEvent.scroll(scrollArea);
+  expect(scrollArea).toHaveAttribute('data-more-above', 'false');
+});
+
 it.each(['granted', 'denied'] as const)('closes immediately for %s and sends the displayed version and browser cookie', async (choice) => {
   let finish: (response: Response) => void = () => undefined;
   const pending = new Promise<Response>((resolve) => { finish = resolve; });

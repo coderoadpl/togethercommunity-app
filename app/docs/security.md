@@ -912,7 +912,15 @@ scopes on every shop key.
   product at once. No shop route
   serves a course, module or lesson to a key, and the receipt carries only the
   ids the key sent. A direct-mode key that creates a product still learns
-  whether the list it sent passes the check as a whole, as any write does. The course, module and
+  whether the list it sent passes the check as a whole, as any write does.
+  Two timing differences remain, both on ids a key cannot list: a
+  propose-mode submission still locks the course rows its list names, so it
+  can wait on, or answer busy for, a course that is being edited at that
+  moment, which an id naming no course never does; and a direct-mode key gets
+  one refusal text, but the check does different database work for different
+  reasons (a course refusal skips the later queries, and a lesson that exists
+  outside its course reads the workspace's module list where a missing lesson
+  does not). The course, module and
   lesson titles of the owner view (`accessLabels`) and its `archivedCourses`
   are read at read time for display only and never take part in a decision. See
   [Product access](change-proposals.md#product-access).

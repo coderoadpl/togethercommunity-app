@@ -46,9 +46,10 @@ const contentsBlocks = (xml: string): string[] => {
   while (open !== -1) {
     const start = open + CONTENTS_OPEN.length;
     const close = xml.indexOf(CONTENTS_CLOSE, start);
-    if (close === -1) break;
+    const next = xml.indexOf(CONTENTS_OPEN, start);
+    if (close === -1 || (next !== -1 && next < close)) throw new Error('Unterminated or nested object block');
     blocks.push(xml.slice(start, close));
-    open = xml.indexOf(CONTENTS_OPEN, close + CONTENTS_CLOSE.length);
+    open = next;
   }
   return blocks;
 };

@@ -82,10 +82,12 @@ describe('S3 paginated object listing', () => {
     ]) expect(parseListObjectsPage(body)).toMatchObject({ ok: false });
   });
 
-  it('reads every object block as before, including unterminated ones', () => {
+  it('reads well-formed object blocks and rejects nested or unterminated ones even when the count matches', () => {
     const object = (name: string) => `<Contents><Key>${name}</Key><Size>1</Size><LastModified>2026-11-08T12:00:00.000Z</LastModified></Contents>`;
-    const body = listing(`${object('a')}<Contents>${object('b')}<Contents>`).replace('<KeyCount>1</KeyCount>', '<KeyCount>2</KeyCount>');
-    expect(parseListObjectsPage(body)).toMatchObject({ ok: true, value: { objects: [{ key: 'a' }, { key: 'b' }] } });
+    const withCount = (inner: string, count: number) => listing(inner).replace('<KeyCount>1</KeyCount>', `<KeyCount>${String(count)}</KeyCount>`);
+    expect(parseListObjectsPage(withCount(`${object('a')}${object('b')}`, 2))).toMatchObject({ ok: true, value: { objects: [{ key: 'a' }, { key: 'b' }] } });
+    expect(parseListObjectsPage(withCount(`${object('a')}<Contents>${object('b')}`, 2))).toMatchObject({ ok: false });
+    expect(parseListObjectsPage(withCount(`${object('a')}${object('b')}<Contents>`, 2))).toMatchObject({ ok: false });
   });
 
   it('bounds response bytes and refuses objects outside the requested prefix', async () => {

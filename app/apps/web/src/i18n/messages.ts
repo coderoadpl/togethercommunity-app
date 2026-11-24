@@ -7,6 +7,7 @@ import type {
   ImportAuditAction,
   ImportAuditResourceType,
   LessonBlockType,
+  MemberDownloadFailureCode,
   MemberEventType,
   OrderRefundJobView,
   ShipxRejectionError,
@@ -2338,7 +2339,6 @@ export interface Messages {
     productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
-    courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;
     grantActiveLabel: string;
@@ -2356,8 +2356,23 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadProductBody: string;
     downloadsHeading: string;
-    downloadFile: (params: { name: string }) => string;
-    downloadNoCopyIdentifier: string;
+    downloadButton: string;
+    downloadFileVersion: (params: { name: string; number: number }) => string;
+    downloadsGroupLabel: (params: { title: string }) => string;
+    downloadVersionShort: (params: { number: number }) => string;
+    openCourse: string;
+    viewCourses: string;
+    productsOtherEmailHint: string;
+    viewOffer: string;
+    availableOffers: string;
+    continueCourse: string;
+    downloadPreparing: string;
+    downloadFailures: Record<MemberDownloadFailureCode, string>;
+    productEyebrow: string;
+    loadingProduct: string;
+    productLoadFailed: string;
+    productNotFound: string;
+    productAccessExpired: (params: { date: string }) => string;
   };
   downloadCopies: {
     showMore: string;
@@ -2385,7 +2400,6 @@ export interface Messages {
     courseUnavailable: string;
     courseNotInLibrary: string;
     backToMyCourses: string;
-    searchLessons: string;
     filterPlaceholder: string;
     filterHint: string;
     noMatches: string;
@@ -2398,6 +2412,8 @@ export interface Messages {
     accessPartiallyUnlocked: string;
     completionComplete: string;
     completionPartial: string;
+    nextLesson: string;
+    renewInMyProducts: string;
   };
   courseOverview: {
     progressTitle: string;
@@ -2415,18 +2431,23 @@ export interface Messages {
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
+    aboutShowMore: string;
+    aboutShowLess: string;
   };
   lesson: {
     enlargeImage: string;
+    enlargeNamedImage: (params: { alt: string }) => string;
     editionLabel: (params: { number: string }) => string;
-    previousEditions: string;
-    editionMenu: string;
-    editionOlderWarning: string;
-    editionBackToCurrent: string;
+    editionsTitle: string;
+    editionCurrentVersion: string;
+    editionCurrentMark: string;
+    editionOlderNotice: (params: { number: string; date: string }) => string;
+    editionNotice: (params: { number: string }) => string;
+    editionGoToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
-    videoMissingLibrary: string;
-    videoSecretInvalid: string;
+    videoUnavailable: string;
+    videoUnavailableNoContact: string;
     mediaOpenExternal: string;
     loading: string;
     unavailable: string;
@@ -2436,16 +2457,16 @@ export interface Messages {
     videoPlaceholder: string;
     openPdf: string;
     contentLocked: string;
-    noAccessYet: string;
+    noAccess: string;
     lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
     markCompleted: string;
     completed: string;
     unmarkCompleted: string;
-    unmarkCompletedHint: string;
     completeContinue: string;
     completing: string;
+    completionFailed: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;
@@ -2472,6 +2493,14 @@ export interface Messages {
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;
+    lockedSkipped: (params: { count: number }) => string;
+    notForSaleTitle: string;
+    notForSaleBody: string;
+    notForSaleBodyNoContact: string;
+    contactCreator: string;
+    undoCompletion: string;
+    unlockNextLesson: string;
+    lockedSkippedNotForSale: (params: { count: number }) => string;
   };
   discussion: {
     heading: string;

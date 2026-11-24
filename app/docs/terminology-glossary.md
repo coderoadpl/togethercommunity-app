@@ -71,7 +71,7 @@ add it here before using it in either dictionary.
 | Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
 | Edition | wydanie | edition | An author-marked, numbered snapshot of lesson content that readers can open. Distinct from a file version (a downloadable file) and from change-history versions (every save, staff only). |
 | Edition note | notatka do wydania | edition note | Optional author note shown with an edition. |
-| Previous editions | poprzednie wydania | previous editions | Reader entry point listing a lesson's earlier editions. |
+| Lesson editions | wydania lekcji | lesson editions | Reader dialog, opened from the edition badge, listing the current lesson first and then its other editions. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure
@@ -85,7 +85,7 @@ add it here before using it in either dictionary.
 | Lesson building block | blok treści | content block | Short form: blok / block. |
 | Collapsible lesson reading preview | `lesson.showAll` / `lesson.collapseText` in the Polish dictionary | Show all / Collapse text | Reveals the full lesson text or returns to the clipped reading preview; distinct from collapsing an embedded editor. |
 | Embedded editor collapse action | `lesson.collapseEmbed` in the Polish dictionary | Collapse the editor | Applies only to the embedded editor, not the lesson reading preview. |
-| Course outline | program kursu | course curriculum | Eyebrow: course syllabus. |
+| Course outline | program kursu | course program | Member course page heading: Course program. Eyebrow: course syllabus. |
 | Connect or disconnect a module | podepnij / odepnij | attach / detach | Use the same pair throughout. Do not use podłącz / odłącz for this concept. |
 | Publication state | wersja robocza / opublikowany | draft / published | Use consistently for state labels. |
 | Archived course filter | `courses.archived` in the Polish dictionary | Archived | Use the established archived state term, including in the confirmation dialog. |

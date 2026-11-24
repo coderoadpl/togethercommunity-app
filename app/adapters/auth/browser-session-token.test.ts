@@ -407,6 +407,17 @@ describe('withoutBrowserSessionToken', () => {
     expect(await stripped.json()).toEqual({});
   });
 
+  it.each([
+    '__Secure-custom.session_token=; custom.session_token=v1',
+    'custom.session_token=v1; __Secure-custom.session_token=',
+    'custom.session_token=',
+  ])('treats a request carrying the session cookie name as a browser even when one value is empty: %s', async (cookie) => {
+    const stripped = await withoutBrowserSessionToken(cookieRequest(cookie), tokenResponse(), 'custom.session_token');
+
+    expect(stripped.headers.has('set-auth-token')).toBe(false);
+    expect(await stripped.json()).toEqual({});
+  });
+
   it('does not treat a cookie under another name as the session cookie', async () => {
     const stripped = await withoutBrowserSessionToken(
       cookieRequest('better-auth.session_token=v1'),

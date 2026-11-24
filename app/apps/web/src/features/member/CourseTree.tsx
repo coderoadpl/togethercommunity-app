@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useId, useMemo, useState, type Co
 import {
   Box,
   Chip,
-  OutlinedInput,
   Stack,
   Tooltip,
   Typography,
@@ -24,6 +23,7 @@ import type {
 
 import { actions } from '../../api.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
+import { SearchField } from '../../components/ui/SearchField.js';
 import { useTranslations } from '../../i18n/index.js';
 import {
   COURSE_TREE_SCROLL_PADDING_REM,
@@ -45,26 +45,48 @@ const TITLE_TOOLTIP_DELAY_MS = 500;
 
 type RowConfig = {
   title: string;
+  visibleTitle: string;
   testId: string;
   to?: string;
   ref?: (node: HTMLElement | null) => void;
   prefetch?: () => void;
 };
 
-const RowContext = createContext<RowConfig>({ title: '', testId: '' });
+const RowContext = createContext<RowConfig>({ title: '', visibleTitle: '', testId: '' });
+
+const isTitleCut = (content: HTMLElement | null): boolean => {
+  const title = content?.querySelector('[data-course-tree-row-title]');
+  return title instanceof HTMLElement
+    && (title.scrollWidth > title.clientWidth || title.scrollHeight > title.clientHeight);
+};
+
+const tooltipAddsSomething = (title: string, visibleTitle: string, content: HTMLElement | null) =>
+  title !== visibleTitle || isTitleCut(content);
 
 const RowContent = (props: ComponentProps<typeof CourseTreeItemContent> & Pick<UseTreeItemContentSlotOwnProps, 'data-focused'>) => {
   const row = useContext(RowContext);
-  const ref = useForkRef<HTMLDivElement>(props.ref, row.ref);
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
+  const ref = useForkRef<HTMLDivElement>(props.ref, row.ref, setContent);
   const focused = props['data-focused'] !== undefined;
-  const [tooltip, setTooltip] = useState({ focused, open: focused });
-  if (tooltip.focused !== focused) setTooltip({ focused, open: focused });
+  const [tooltip, setTooltip] = useState({ focused, open: false });
+  if (tooltip.focused !== focused) setTooltip({ focused, open: false });
+  const { title, visibleTitle } = row;
+
+  useEffect(() => {
+    if (!focused) return;
+    const timer = setTimeout(
+      () => setTooltip({ focused: true, open: tooltipAddsSomething(title, visibleTitle, content) }),
+      TITLE_TOOLTIP_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [focused, title, visibleTitle, content]);
+
   return (
     <Tooltip
       describeChild
-      title={row.title}
+      title={title}
       open={tooltip.open}
-      onOpen={() => setTooltip({ focused, open: true })}
+      onOpen={() => setTooltip({ focused, open: tooltipAddsSomething(title, visibleTitle, content) })}
       onClose={() => setTooltip({ focused, open: false })}
       enterDelay={TITLE_TOOLTIP_DELAY_MS}
       enterNextDelay={TITLE_TOOLTIP_DELAY_MS}
@@ -146,8 +168,8 @@ const ProgressMark = ({ lessons, guest }: { lessons: CourseStructureLesson[]; gu
   );
 };
 
-const matchesLesson = (lesson: CourseStructureLesson, needle: string) =>
-  needle === '' || lesson.name.toLowerCase().includes(needle);
+const matchesName = (name: string, needle: string) =>
+  needle === '' || name.toLowerCase().includes(needle);
 
 type VisibleChapter = CourseStructureChapter & { allLessons: CourseStructureLesson[] };
 type VisibleModule = Omit<CourseStructureModule, 'chapters'> & {
@@ -161,18 +183,25 @@ const filterModules = (
   needle: string,
 ): VisibleModule[] =>
   modules
-    .map((module) => ({
-      ...module,
-      singleChapter: module.chapters.length === 1,
-      allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
-      chapters: module.chapters
-        .map((chapter) => ({
-          ...chapter,
-          allLessons: chapter.lessons,
-          lessons: chapter.lessons.filter((lesson) => matchesLesson(lesson, needle)),
-        }))
-        .filter((chapter) => chapter.lessons.length > 0),
-    }))
+    .map((module) => {
+      const moduleMatches = needle !== '' && matchesName(module.name, needle);
+      const singleChapter = module.chapters.length === 1;
+      return {
+        ...module,
+        singleChapter,
+        allLessons: module.chapters.flatMap((chapter) => chapter.lessons),
+        chapters: module.chapters
+          .map((chapter) => {
+            const keepAll = moduleMatches || (!singleChapter && matchesName(chapter.name, needle));
+            return {
+              ...chapter,
+              allLessons: chapter.lessons,
+              lessons: keepAll ? chapter.lessons : chapter.lessons.filter((lesson) => matchesName(lesson.name, needle)),
+            };
+          })
+          .filter((chapter) => chapter.lessons.length > 0),
+      };
+    })
     .filter((module) => module.chapters.length > 0);
 
 const nearestTreeScroller = (node: HTMLElement): HTMLElement | null =>
@@ -219,12 +248,14 @@ const LessonRow = ({
   search,
   scrollIntoView,
   guest,
+  nextLessonId,
 }: {
   lesson: CourseStructureLesson;
   courseId: string;
   search: string;
   scrollIntoView: boolean;
   guest: boolean;
+  nextLessonId: string | null;
 }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -237,8 +268,8 @@ const LessonRow = ({
   const label = (
     <TreeLessonTitle
       component="span"
-      noWrap={!guest}
-      sx={{ display: 'block', minWidth: 0, flex: 1, ...(guest ? { overflowWrap: 'anywhere' } : {}) }}
+      data-course-tree-row-title=""
+      sx={{ minWidth: 0, flex: 1 }}
       data-testid={`lesson-name-${lesson.lessonId}`}
     >
       <Highlighted text={lesson.name} query={search} />
@@ -258,6 +289,10 @@ const LessonRow = ({
       {' '}
       {guest && lesson.isPreview ? <Chip size="small" label={t.anon.previewChip} color="primary" variant="outlined" /> : null}
       {' '}
+      {lesson.lessonId === nextLessonId ? (
+        <Chip size="small" label={t.courseTree.nextLesson} color="primary" data-testid={`lesson-next-${lesson.lessonId}`} />
+      ) : null}
+      {' '}
       <LessonCompletion status={lesson.completionStatus} />
       {' '}
       <AccessMark status={lesson.accessStatus} />
@@ -268,6 +303,7 @@ const LessonRow = ({
   return (
     <RowContext value={{
       title: locked ? t.courseTree.lockedLessonTooltip({ name: lesson.name }) : lesson.name,
+      visibleTitle: lesson.name,
       testId: `lesson-button-${lesson.lessonId}`,
       ...(locked ? {} : { to: `/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`, prefetch }),
       ref: rowRef,
@@ -306,12 +342,13 @@ type BranchProps = {
   onToggle: (id: string) => void;
   scrollLessonId: string | null;
   guest: boolean;
+  nextLessonId: string | null;
 };
 
 const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChapter }) => {
   const labelId = useId();
   return (
-    <RowContext value={{ title: chapter.name, testId: `chapter-toggle-${chapter.id}` }}>
+    <RowContext value={{ title: chapter.name, visibleTitle: chapter.name, testId: `chapter-toggle-${chapter.id}` }}>
       <CourseTreeItem
         itemId={chapter.id}
         kind="chapter"
@@ -322,8 +359,8 @@ const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChap
         onKeyDown={toggleWithKeyboard(() => props.onToggle(chapter.id))}
         label={
           <>
-            <CourseTreeChapterTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
-              {chapter.name}
+            <CourseTreeChapterTitle component="span" noWrap data-course-tree-row-title="" sx={{ flex: 1, minWidth: 0 }}>
+              <Highlighted text={chapter.name} query={props.search} />
             </CourseTreeChapterTitle>
             {' '}
             <ProgressMark lessons={chapter.allLessons} guest={props.guest} />
@@ -348,7 +385,7 @@ const ChapterNode = ({ chapter, ...props }: BranchProps & { chapter: VisibleChap
 const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule }) => {
   const labelId = useId();
   return (
-    <RowContext value={{ title: module.name, testId: `module-toggle-${module.id}` }}>
+    <RowContext value={{ title: module.name, visibleTitle: module.name, testId: `module-toggle-${module.id}` }}>
       <CourseTreeItem
         itemId={module.id}
         kind="module"
@@ -360,8 +397,8 @@ const ModuleNode = ({ module, ...props }: BranchProps & { module: VisibleModule 
         onKeyDown={toggleWithKeyboard(() => props.onToggle(module.id))}
         label={
           <>
-            <CourseTreeModuleTitle component="span" noWrap sx={{ flex: 1, minWidth: 0 }}>
-              {module.name}
+            <CourseTreeModuleTitle component="span" noWrap data-course-tree-row-title="" sx={{ flex: 1, minWidth: 0 }}>
+              <Highlighted text={module.name} query={props.search} />
             </CourseTreeModuleTitle>
             {' '}
             <ProgressMark lessons={module.allLessons} guest={props.guest} />
@@ -395,6 +432,8 @@ export const CourseTree = ({
   expandAll = false,
   guest = false,
   scrollFocusIntoView = false,
+  showFilter = true,
+  nextLessonId = null,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
@@ -403,10 +442,20 @@ export const CourseTree = ({
   expandAll?: boolean;
   guest?: boolean;
   scrollFocusIntoView?: boolean;
+  showFilter?: boolean;
+  nextLessonId?: string | null;
 }) => {
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
+  const [filterShown, setFilterShown] = useState(showFilter);
+  if (filterShown !== showFilter) {
+    setFilterShown(showFilter);
+    if (!showFilter) {
+      setRawSearch('');
+      setSearch('');
+    }
+  }
   const [flips, setFlips] = useState<{ focus: string | null; ids: ReadonlySet<string> }>(() => ({
     focus: focusLessonId,
     ids: NO_FLIPS,
@@ -436,35 +485,45 @@ export const CourseTree = ({
     });
 
   const modules = useMemo(() => filterModules(structure.modules, search), [structure.modules, search]);
+  const hasContent = structure.modules.some((module) => module.chapters.some((chapter) => chapter.lessons.length > 0));
   const scrollLessonId = scrollFocusIntoView ? focusLessonId : null;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
-      <OutlinedInput
-        fullWidth
-        size="small"
-        sx={{ mb: '0.75rem', flexShrink: 0 }}
-        value={rawSearch}
-        onChange={(event) => setRawSearch(event.target.value)}
-        placeholder={t.courseTree.filterPlaceholder}
-        inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
-      />
-      <Typography
-        variant="caption"
-        component="p"
-        color="text.secondary"
-        sx={{ mb: '0.75rem', flexShrink: 0 }}
-        data-testid="lesson-search-hint"
-      >
-        {t.courseTree.filterHint}
-      </Typography>
+      {showFilter && hasContent ? (
+        <>
+          <Box sx={{ mb: '0.75rem', flexShrink: 0 }}>
+            <SearchField
+              fullWidth
+              value={rawSearch}
+              onChange={setRawSearch}
+              placeholder={t.courseTree.filterPlaceholder}
+              label={t.courseTree.filterPlaceholder}
+              testId="lesson-search"
+            />
+          </Box>
+          <Typography
+            variant="caption"
+            component="p"
+            color="text.secondary"
+            sx={{ mb: '0.75rem', flexShrink: 0 }}
+            data-testid="lesson-search-hint"
+          >
+            {t.courseTree.filterHint}
+          </Typography>
+        </>
+      ) : null}
 
       <Box
         data-testid="course-tree-scroll"
         data-course-tree-scroll=""
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
       >
-        {modules.length === 0 ? (
+        {!hasContent ? (
+          <Typography variant="body2" component="p" color="text.secondary" sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-empty">
+            {t.courseTree.noPublishedContent}
+          </Typography>
+        ) : modules.length === 0 && searchActive ? (
           <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">
             <CourseTreeChapterTitle>{t.courseTree.noMatches}</CourseTreeChapterTitle>
             <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: '0.35rem' }}>
@@ -492,6 +551,7 @@ export const CourseTree = ({
                 search={searchActive ? search : ''}
                 onToggle={toggle}
                 scrollLessonId={scrollLessonId}
+                nextLessonId={currentLessonId === undefined ? nextLessonId : null}
               />
             ))}
           </CourseTreeRoot>

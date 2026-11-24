@@ -87,4 +87,16 @@ describe('renderPostContent', () => {
       'markdown',
     ).linkDestinations).toEqual(['https://example.com/a', 'https://example.com/a']);
   });
+
+  it.each([
+    ['see https://a.test/x(y)).', `see <a href="https://a.test/x(y)" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/x(y)</a>).`],
+    ['https://a.test/[x]]];', `<a href="https://a.test/[x]" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/[x]</a>]];`],
+    ['(https://a.test/x)', `(<a href="https://a.test/x" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/x</a>)`],
+    ['https://a.test/x.).)!', `<a href="https://a.test/x" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/x</a>.).)!`],
+    ['https://a.test/{a}}},', `<a href="https://a.test/%7Ba%7D" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/{a}</a>}},`],
+    ['www.a.test/(b)(c))))', `<a href="https://www.a.test/(b)(c)" ${REQUIRED_LINK_ATTRIBUTES}>www.a.test/(b)(c)</a>)))`],
+    ['https://a.test/a.b,c;:!?', `<a href="https://a.test/a.b,c" ${REQUIRED_LINK_ATTRIBUTES}>https://a.test/a.b,c</a>;:!?`],
+  ])('keeps trailing punctuation and unbalanced closers out of the link in %j', (body, html) => {
+    expect(renderPostContent(body, 'plain').html).toBe(html);
+  });
 });

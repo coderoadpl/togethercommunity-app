@@ -56,12 +56,11 @@ Production is promoted through a pull request from `staging` to `main`.
 
 The `promotion-guard` workflow rejects production promotion pull requests unless
 the head branch is `staging`, the head SHA still matches `origin/staging`, and
-`STAGING_FREEZE=true`. It also requires successful `ci.yml` and
-`staging-smoke.yml` runs of the `staging` branch for that exact SHA. Runs
-started by a `pull_request` or `pull_request_target` event never count, so the
-promotion pull request's own CI run is neither waited on nor taken as evidence;
-runs of every other event on the `staging` branch at that SHA count, in practice
-`push` and `workflow_dispatch` runs.
+`STAGING_FREEZE=true`. For `ci.yml` and `staging-smoke.yml`, only runs started
+by a `push` to `staging` count for that exact SHA, and the newest such run of
+each workflow must succeed. Runs started by hand, by a schedule, or by a pull
+request never count. A manual `staging-smoke` run cannot stand in for the push
+run.
 
 The guard runs when a promotion pull request is opened, reopened or receives a
 new head, and again when it leaves draft. A promotion kept as a draft while
@@ -69,18 +68,17 @@ new head, and again when it leaves draft. A promotion kept as a draft while
 ready: freeze `staging` first, then mark the pull request ready, and the guard
 re-evaluates without a manual re-run.
 
-When the source, tip and freeze checks pass but a required workflow has no
-successful run for the SHA yet, the guard waits and re-reads the runs every 30
-seconds instead of failing at once: up to 40 minutes while a run is still
-queued or in progress, and up to 3 minutes for a run that has not been created
-yet. A completed failing run is never waited on. After the wait it re-reads the
-staging tip and evaluates as before; the comment and the failure message say
-how long it waited and what was still unfinished. A failed read of the runs
-during the wait is logged and the next poll goes ahead while the bound has not
-passed; when the last read before the bound fails, the guard fails with a
-reason naming the API error and still updates its comment. A failed first read,
-before any wait, fails the guard as before. The job's 50-minute timeout covers
-the bound.
+When the source, tip and freeze checks pass, the guard re-reads the runs every
+30 seconds while waiting: up to 40 minutes if the newest push run of a required
+workflow is queued or in progress, and up to 3 minutes if no push run exists
+yet. The guard does not wait on a completed run, even if it failed. After the
+wait it re-reads the staging tip and evaluates as before; the comment and the
+failure message say how long it waited and what was still unfinished. A failed
+read of the runs during the wait is logged and the next poll goes ahead while
+the bound has not passed; when the last read before the bound fails, the guard
+fails with a reason naming the API error and still updates its comment. A failed
+first read, before any wait, fails the guard as before. The job's 50-minute
+timeout covers the bound.
 
 The guard comment inventories the merged pull requests between `main` and the
 promotion head, added migrations under `app/drizzle`, changed top-level areas,

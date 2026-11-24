@@ -45,9 +45,12 @@ shows no build status and the `staging-smoke` run fails its `deployment-alias`
 check because the alias still serves the previous commit. Nothing in the
 repository can start a staging deployment and agents hold no hosting access, so
 the owner redeploys the `staging` branch in the hosting provider's dashboard.
-Afterwards the smoke is re-run for that commit with
+After the redeploy, re-run the failed `staging-smoke` push run with
+`gh run rerun <run-id> --failed` so it checks again that the alias serves that
+commit. To probe by hand, use
 `gh workflow run staging-smoke.yml --ref staging -f expected_sha=<commit>`.
-A later push to `staging` also deploys and makes the stale commit moot.
+The promotion guard does not accept manual runs as evidence. A later push to
+`staging` also deploys and makes the stale commit moot.
 
 ## Promotion to Production
 

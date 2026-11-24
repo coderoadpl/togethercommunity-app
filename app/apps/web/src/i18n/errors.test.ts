@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import { en } from './en.js';
-import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError } from './errors.js';
+import { localizeError, localizeErrorCode, localizeErrorCodeForPanel, localizeInvoiceError, localizePanelError, formatRetryDelay, retryAfterSecondsOf } from './errors.js';
 import { pl } from './pl.js';
 
 describe('localizeError', () => {
@@ -127,5 +127,51 @@ describe('localizeError', () => {
       if (hinted.includes(code)) continue;
       expect(localizeErrorCodeForPanel(code, pl)).toBe(localizeErrorCode(code, pl));
     }
+  });
+});
+
+describe('retryAfterSecondsOf', () => {
+  it('reads only a positive whole retry delay from the error details', () => {
+    const withDelay = (retryAfterSeconds: unknown) => ({ appError: { code: 'rate_limited', details: { retryAfterSeconds } } });
+    expect(retryAfterSecondsOf(withDelay(42))).toBe(42);
+    expect(retryAfterSecondsOf(withDelay(600))).toBe(600);
+    expect([0, -3, 1.5, '42', null, 601, 1e21].map((value) => retryAfterSecondsOf(withDelay(value)))).toEqual([null, null, null, null, null, null, null]);
+    expect(retryAfterSecondsOf({ appError: { code: 'rate_limited' } })).toBeNull();
+    expect(retryAfterSecondsOf(null)).toBeNull();
+  });
+});
+
+describe('formatRetryDelay', () => {
+  it('states seconds under a minute and minutes with any remaining seconds from a minute', () => {
+    expect([1, 42, 59, 60, 61, 120, 583, 600].map(formatRetryDelay)).toEqual([
+      '1 s', '42 s', '59 s', '1 min', '1 min 1 s', '2 min', '9 min 43 s', '10 min',
+    ]);
+  });
+
+  it.each([
+    [42, 'Too many attempts. Try again in 42 s.', 'Send again (42 s)'],
+    [60, 'Too many attempts. Try again in 1 min.', 'Send again (1 min)'],
+    [583, 'Too many attempts. Try again in 9 min 43 s.', 'Send again (9 min 43 s)'],
+  ])('reads a %i s delay the same way in the English and Polish alerts and resend button', (seconds, enAlert, enResend) => {
+    const delay = formatRetryDelay(seconds);
+    expect([en.auth.signInRateLimitedRetryIn({ delay }), en.auth.magicLinkResendCooldown({ delay })]).toEqual([enAlert, enResend]);
+    for (const text of [pl.auth.signInRateLimitedRetryIn({ delay }), pl.auth.magicLinkResendCooldown({ delay })]) {
+      expect(text).toContain(delay);
+    }
+    expect(pl.auth.signInRateLimitedRetryIn({ delay })).not.toBe(enAlert);
+  });
+
+  it('keeps the rate-limit cause in the heading and only the wait in the lead', () => {
+    const delay = formatRetryDelay(583);
+    expect([
+      en.auth.signInRateLimitedTitle,
+      en.auth.signInRateLimitedLeadRetryIn({ delay }),
+      en.auth.signInRateLimitedRetryNow,
+      en.auth.signInRateLimitedLeadWait,
+    ]).toEqual(['Too many attempts', 'Try again in 9 min 43 s.', 'You can try again now.', 'Wait a moment, then try again.']);
+    expect(pl.auth.signInRateLimitedLeadRetryIn({ delay })).toContain(delay);
+    expect(pl.auth.signInRateLimitedRetryIn({ delay }).startsWith(pl.auth.signInRateLimitedTitle)).toBe(true);
+    const polish = [pl.auth.signInRateLimitedTitle, pl.auth.signInRateLimitedRetryNow, pl.auth.signInRateLimitedLeadWait];
+    expect(polish.filter((text, index) => text === [en.auth.signInRateLimitedTitle, en.auth.signInRateLimitedRetryNow, en.auth.signInRateLimitedLeadWait][index])).toEqual([]);
   });
 });

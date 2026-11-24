@@ -41,6 +41,22 @@ const stringDetailOf = (error: unknown, key: string): string | null => {
 
 export const providerCodeOf = (error: unknown): string | null => stringDetailOf(error, 'providerCode');
 
+const LONGEST_RATE_LIMIT_WINDOW_SECONDS = 600;
+
+export const retryAfterSecondsOf = (error: unknown): number | null => {
+  const value = errorDetailOf(error, 'retryAfterSeconds');
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= LONGEST_RATE_LIMIT_WINDOW_SECONDS
+    ? value
+    : null;
+};
+
+export const formatRetryDelay = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes === 0) return `${rest} s`;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+};
+
 const isAdoptionRefusal = (value: string): value is StripeAdoptionRefusal =>
   STRIPE_ADOPTION_REFUSALS.some((candidate) => candidate === value);
 

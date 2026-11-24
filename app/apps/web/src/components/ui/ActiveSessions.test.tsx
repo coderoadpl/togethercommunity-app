@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/index.js';
 import { en } from '../../i18n/en.js';
 import { ActiveSessions, type ActiveSessionsProps } from './ActiveSessions.js';
+import { ToastProvider } from './Toast.js';
 
 const idle = { pending: false, success: false, error: null };
 
@@ -34,11 +35,15 @@ const propsWith = (overrides: Partial<ActiveSessionsProps> = {}): ActiveSessions
   ...overrides,
 });
 
-const renderSessions = (props: ActiveSessionsProps) => render(
+const tree = (props: ActiveSessionsProps) => (
   <LanguageProvider>
-    <ActiveSessions {...props} />
-  </LanguageProvider>,
+    <ToastProvider>
+      <ActiveSessions {...props} />
+    </ToastProvider>
+  </LanguageProvider>
 );
+
+const renderSessions = (props: ActiveSessionsProps) => render(tree(props));
 
 describe('ActiveSessions', () => {
   it('keeps the studio panel session list expanded without nested cards', () => {
@@ -48,36 +53,74 @@ describe('ActiveSessions', () => {
     expect(view.container.querySelector('.MuiPaper-root')).toBeNull();
   });
 
-  it('starts collapsed, opens with the keyboard, and resets on a fresh mount', async () => {
-    const first = renderSessions(propsWith());
+  it('starts collapsed with only the current session, opens with the keyboard, and resets on a fresh mount', async () => {
+    const currentOnly = propsWith({ sessions: { data: [currentRow], pending: false, error: null, retry: vi.fn() } });
+    const first = renderSessions(currentOnly);
     const summary = screen.getByTestId('active-sessions-disclosure');
     expect(summary).toHaveAttribute('aria-expanded', 'false');
     expect(summary).toHaveTextContent(en.security.sessionsHeading);
-    expect(screen.getByLabelText(en.security.sessionsSummary({ count: 2 }))).toHaveTextContent('2');
+    expect(screen.getByLabelText(en.security.sessionsSummary({ count: 1 }))).toHaveTextContent('1');
     summary.focus();
     await userEvent.keyboard('{Enter}');
     expect(summary).toHaveAttribute('aria-expanded', 'true');
     first.unmount();
-    renderSessions(propsWith());
+    renderSessions(currentOnly);
     expect(screen.getByTestId('active-sessions-disclosure')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('starts expanded when other sessions exist and collapses on request', async () => {
+    const view = renderSessions(propsWith({ sessions: { data: undefined, pending: true, error: null, retry: vi.fn() } }));
+    expect(screen.getByTestId('active-sessions-disclosure')).toHaveAttribute('aria-expanded', 'false');
+    view.rerender(tree(propsWith()));
+    const summary = screen.getByTestId('active-sessions-disclosure');
+    expect(summary).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('session-session-phone')).toBeVisible();
+    await userEvent.click(summary);
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('marks only the row being signed out and reports success as a toast without a lasting caption', async () => {
+    const extra = { id: 'session-tablet', createdAt: '2026-08-03T10:00:00.000Z', lastActiveAt: '2026-08-04T10:00:00.000Z', userAgent: null, current: false };
+    const props = propsWith({ sessions: { data: [...rows, extra], pending: false, error: null, retry: vi.fn() } });
+    const view = renderSessions(props);
+    await userEvent.click(within(screen.getByTestId('session-session-phone')).getByRole('button', { name: en.security.sessionRevoke }));
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, pending: true } }));
+    expect(within(screen.getByTestId('session-session-phone')).getByText(en.security.sessionRevoking)).toBeInTheDocument();
+    expect(within(screen.getByTestId('session-session-tablet')).getByText(en.security.sessionRevoke)).toBeInTheDocument();
+    expect(within(screen.getByTestId('session-session-tablet')).queryByText(en.security.sessionRevoking)).not.toBeInTheDocument();
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, success: true } }));
+    expect(await screen.findByTestId(/^toast-success-/)).toHaveTextContent(en.security.sessionRevoked);
+    expect(screen.queryByTestId('session-revoked')).not.toBeInTheDocument();
+    view.rerender(tree({ ...props, sessions: { data: [currentRow], pending: false, error: null, retry: vi.fn() }, revokeSession: { ...props.revokeSession, success: true } }));
+    expect(screen.getByTestId('active-sessions-disclosure')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('reports signing out every other session as a toast', async () => {
+    const props = propsWith();
+    const view = renderSessions(props);
+    await userEvent.click(screen.getByTestId('revoke-other-sessions'));
+    await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
+    view.rerender(tree({ ...props, revokeOtherSessions: { ...props.revokeOtherSessions, pending: true } }));
+    view.rerender(tree({ ...props, revokeOtherSessions: { ...props.revokeOtherSessions, success: true } }));
+    expect(await screen.findByTestId(/^toast-success-/)).toHaveTextContent(en.security.sessionsOthersRevoked);
+    expect(screen.queryByTestId('other-sessions-revoked')).not.toBeInTheDocument();
   });
 
   it('places the current session first and returns focus to the disclosure on revocation', async () => {
     const props = propsWith({ sessions: { data: [...rows].reverse(), pending: false, error: null, retry: vi.fn() } });
     const view = renderSessions(props);
-    await userEvent.click(screen.getByTestId('active-sessions-disclosure'));
     const rendered = screen.getAllByTestId(/^session-session-/);
     expect(rendered[0]).toHaveAttribute('data-testid', 'session-session-current');
     await userEvent.click(screen.getByRole('button', { name: en.security.sessionRevoke }));
     await userEvent.click(screen.getByTestId('revoke-sessions-confirm-accept'));
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, pending: true }} /></LanguageProvider>);
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, success: true }} /></LanguageProvider>);
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, pending: true } }));
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, success: true } }));
     await waitFor(() => expect(screen.getByTestId('active-sessions-disclosure')).toHaveFocus());
   });
 
   it('badges the current session and offers no sign-out for it', async () => {
     renderSessions(propsWith());
-    await userEvent.click(screen.getByTestId('active-sessions-disclosure'));
 
     expect(screen.getByText(en.security.sessionCurrent)).toBeInTheDocument();
     expect(screen.getAllByText(/Chrome · macOS/)).toHaveLength(2);
@@ -90,8 +133,7 @@ describe('ActiveSessions', () => {
     const props = propsWith({ revokeSession: { ...idle, run } });
     const view = renderSessions(props);
 
-    expect(screen.getByTestId('active-sessions-disclosure')).toHaveAttribute('aria-expanded', 'false');
-    await userEvent.click(screen.getByTestId('active-sessions-disclosure'));
+    expect(screen.getByTestId('active-sessions-disclosure')).toHaveAttribute('aria-expanded', 'true');
     await userEvent.click(screen.getByRole('button', { name: en.security.sessionRevoke }));
 
     expect(run).not.toHaveBeenCalled();
@@ -102,11 +144,11 @@ describe('ActiveSessions', () => {
 
     expect(run).toHaveBeenCalledExactlyOnceWith({ sessionId: 'session-phone' });
     expect(screen.getByRole('dialog')).toBeVisible();
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, pending: true }} /></LanguageProvider>);
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, error: new Error('Failed') }} /></LanguageProvider>);
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, pending: true } }));
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, error: new Error('Failed') } }));
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, pending: true }} /></LanguageProvider>);
-    view.rerender(<LanguageProvider><ActiveSessions {...props} revokeSession={{ ...props.revokeSession, success: true }} /></LanguageProvider>);
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, pending: true } }));
+    view.rerender(tree({ ...props, revokeSession: { ...props.revokeSession, success: true } }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
@@ -114,7 +156,6 @@ describe('ActiveSessions', () => {
     const run = vi.fn();
     renderSessions(propsWith({ revokeOtherSessions: { ...idle, run } }));
 
-    await userEvent.click(screen.getByTestId('active-sessions-disclosure'));
     await userEvent.click(screen.getByTestId('revoke-other-sessions'));
 
     expect(run).not.toHaveBeenCalled();
@@ -138,7 +179,6 @@ describe('ActiveSessions', () => {
       revokeOtherSessions: { ...idle, run: revokeOthers },
     }));
 
-    await userEvent.click(screen.getByTestId('active-sessions-disclosure'));
     await userEvent.click(screen.getByTestId('revoke-other-sessions'));
     await userEvent.click(screen.getByTestId('revoke-sessions-confirm-cancel'));
 

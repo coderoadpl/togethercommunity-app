@@ -51,6 +51,10 @@ add it here before using it in either dictionary.
 | Internal bookkeeping document | dokument wewnętrzny (WEW) | internal document (WEW) | Prepared by the accountant from the sales summary; the summary is not a tax document. |
 | Consumer sales with no issued invoice | sprzedaż konsumencka bez faktury | uninvoiced consumer sales | Paid consumer orders without a NIP, excluding all refunds and issued, in-flight, accepted, or ambiguous invoices. |
 | Sales ledger entry | zamówienie | order | Statuses: paid, pending, failed, refunded; lowercase in tables. |
+| Money returned to the buyer by staff | zwrot | refund | Staff refund from Studio or the CLI; distinct from the automatic refund of a sold-out order. Verb: zwrócić pieniądze / refund. |
+| Refund of part of the paid amount | zwrot częściowy | partial refund | Below the remainder it changes no stock, packing list or access. |
+| Amount still refundable | pozostało do zwrotu | remaining | Shown with Paid / Refunded on the order page. |
+| Put a refunded order back to pack | wyślij mimo to | ship anyway | Only for an order taken off the packing list; takes back the units the refund returned to stock. |
 | Access entitlement | dostęp | grant | Long form: przyznany dostęp. Verb: przyznać / grant. States include active, expired, and perpetual. |
 | Withdraw an entitlement | cofnąć dostęp | revoke | Keep distinct from claiming free access. Do not use odbierz for revocation. |
 | Free checkout action | odbierz za darmo | get it for free | Checkout call to action. |
@@ -117,7 +121,7 @@ add it here before using it in either dictionary.
 | Login identity | konto | account | Shared authentication identity. |
 | Automatic lesson text expansion | `account.lessonTextAutoExpandLabel` in the Polish dictionary | Expand lesson text automatically | A member preference for the initial reading-preview state, independent of video autoplay policy. |
 | Browser-local preference help | `account.lessonTextAutoExpandHint` in the Polish dictionary | Remembered in this browser. | Applies to the current browser only, not every device signed in to the account. |
-| Passwordless login URL | magiczny link | magic link | Use the canonical localized word order. |
+| Passwordless login URL | link do logowania | sign-in link | The one term on sign-in screens in both languages; avoid magic link there. |
 | Passwordless credential | klucz dostępu | passkey | Keep distinct from an API key. |
 | Additional sign-in factor | uwierzytelnianie dwuskładnikowe | two-factor authentication | Spell it out in action labels. |
 | S3-compatible service | magazyn plików | file storage | Its container is a bucket in both languages. |

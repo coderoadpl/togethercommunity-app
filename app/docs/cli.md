@@ -89,6 +89,53 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
 
+## Staff refunds
+
+`order refund-preview <orderId>` prints the paid amount, the amount refunded
+as far as the platform sees it and the remainder that can still be refunded,
+whether they were read from Stripe, the stock a full refund can return and the
+packing, shipment, invoice and subscription consequences; for an order marked
+refunded whose observed refunds do not cover the payment (refunded outside the
+platform or disputed) it prints "not known here" instead of the refunded
+amount, and for an order with access or a running subscription it says that a
+partial refund may still end them once the payment ends fully refunded. An
+order marked refunded cannot be refunded here. `order refund <orderId>`
+refunds the whole remainder; `--amount <decimal>` refunds part of it in the
+order's currency (whole numbers for zero-decimal currencies) and always keeps
+stock and the packing list as they are. Every confirmed refund, partial and
+full, needs `--remainder <decimal>`, the remainder you confirm: without it, or
+without `--yes`, the command refuses, prints the preview and the exact command
+to confirm with, and never confirms a remainder it just read. The amount it
+warns about and the remainder in that command both come from the remainder it
+just read; when a given `--remainder` differs from it, the refusal starts with
+"The remainder changed from X to Y". The request
+carries that remainder, and when it changed in the meantime the server refuses
+with `conflict` naming the current remainder and nothing is refunded; the
+command then reads the preview again and prints it (with `--json`, under
+`error.details.preview`). It also carries the packing-list and label state of
+the preview the command read, and the server refuses with `conflict` when a
+label was bought or the order was packed since. `--reason <text>`
+keeps a staff-only note, `--no-restock` turns off the stock return of a full
+refund, and `--keep-on-packing-list` keeps the order on the packing list; it
+needs `--no-restock`, because returned goods cannot stay on the list.
+`--request-key <key>` makes a retry safe: the same key never refunds twice.
+With `--json` the command requires `--request-key` and refuses before any
+request without it, so automation keeps the key before it sends a refund.
+Without `--json` and without a key the CLI generates one and prints it on
+stderr before it sends the request; after a network error or a lost answer,
+re-run the command with `--request-key <key>` and it returns the refund the
+first run created instead of a second one. The refund cannot be undone, so the
+command refuses without `--yes`. `order ship-anyway <orderId>` puts a refunded
+order that was taken off the packing list back on it. Each command prints one
+envelope with `--json`; exit codes follow `EXIT_CODE_BY_ERROR_CODE`. The rules
+are in [the shop guide](shop.md#staff-refunds).
+
+```bash
+pnpm --silent run cli --tenant acme order refund-preview order-id
+pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --remainder 40.99 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme --json order refund order-id --remainder 40.99 --request-key refund-2026-11-23-1 --yes
+```
+
 ## CLI parity inventory
 
 Run `pnpm run cli-parity` to list every method in the `core/client` API client

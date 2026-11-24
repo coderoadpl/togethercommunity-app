@@ -215,6 +215,12 @@ describe('shop management route registration', () => {
     expect(() => assertShopMachineRouteCoverage([SHOP_CATALOG_ROUTES.listProducts])).not.toThrow();
   });
 
+  it('exposes no refund route to a shop management key', () => {
+    const shopRoutes = [...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)];
+    expect(shopRoutes.filter((route) => route.path.includes('refund') || (route.method === 'POST' && route.path.endsWith('/packing-list')))).toEqual([]);
+    expect(realApp.routes.filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX) && route.path.includes('refund'))).toEqual([]);
+  });
+
   it('registers only the catalog, order, settings, asset, download file, integration and proposal routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
@@ -364,10 +370,28 @@ describe('shop management keys on existing routes of the real app', () => {
     ['POST', API_PATHS.tenantSettingsUpdate, { name: 'Renamed by a key' }],
     ['POST', API_ROUTES.productsCreate.path, { title: 'Created by a key', type: 'course' }],
     ['GET', API_PATHS.orders, undefined],
+    ['GET', API_PATHS.orderRefundPreview.replace(':orderId', 'order-1'), undefined],
+    ['POST', API_PATHS.orderRefundCreate.replace(':orderId', 'order-1'), { requestKey: 'keyed-refund' }],
+    ['POST', API_PATHS.orderShipAnyway.replace(':orderId', 'order-1'), {}],
     ['POST', API_PATHS.operatorTenantProvision, { slug: 'minted', name: 'Minted' }],
   ] as const)('refuses %s %s', async (method, path, body) => {
     const response = await keyed(path, method, body);
     expect(response.status).toBe(401);
+  });
+
+  it.each(['legacy-null-secret', 'legacy-report:read-secret', 'legacy-enrollment-secret', 'legacy-transactional-secret', 'legacy-import:users-secret'])('refuses the refund routes to the API key %s', async (secret) => {
+    for (const [method, path, body] of [
+      ['GET', API_PATHS.orderRefundPreview.replace(':orderId', 'order-1'), undefined],
+      ['POST', API_PATHS.orderRefundCreate.replace(':orderId', 'order-1'), { requestKey: 'keyed-refund' }],
+      ['POST', API_PATHS.orderShipAnyway.replace(':orderId', 'order-1'), {}],
+    ] as const) {
+      const response = await realApp.request(`${baseUrl}${path}`, {
+        method,
+        headers: { host: acmeHost, 'x-api-key': secret, authorization: `Bearer ${secret}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      expect(response.status, `${method} ${path}`).toBe(401);
+    }
   });
 
   it('derives no Better Auth session from the key', async () => {

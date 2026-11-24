@@ -3491,7 +3491,7 @@ describe('email dispatch route', () => {
     const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
     expect([cron.status, manual.status]).toEqual([200, 200]);
     const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
-    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1, jobBudgetMs: 21_000 }], [{ deadlineAt }]]);
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });

@@ -1,4 +1,4 @@
-import type { ElementType } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import { Alert, Box, Button, ButtonBase, Link as MuiLink, OutlinedInput, Typography } from '@mui/material';
 import { alpha, styled, type CSSObject, type PaletteMode, type Theme } from '@mui/material/styles';
 
@@ -68,6 +68,8 @@ export const AuthBrandRow = styled(Box)<{ component?: ElementType; to?: string }
   minWidth: 0,
   color: 'inherit',
   textDecoration: 'none',
+  // The platform wordmark is an SVG with a viewBox and no width or height, so an auto-sized image collapses here.
+  '& img': { height: '2rem' },
 });
 
 export const AuthControls = styled(Box)({
@@ -106,6 +108,7 @@ export const AuthTitle = styled(Typography)<{ component?: ElementType }>(({ them
   lineHeight: 1.14,
   letterSpacing: '-0.03em',
   margin: 0,
+  '&[tabindex="-1"]:focus': { outline: 'none' },
   [theme.breakpoints.up('sm')]: { fontSize: '2.5rem' },
 }));
 
@@ -117,6 +120,12 @@ export const AuthLead = styled(Typography)<{ component?: ElementType }>(({ theme
 }));
 
 export const AuthHelp = styled(Typography)<{ component?: ElementType }>(({ theme }) => ({
+  fontSize: '0.875rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const AuthSecondaryAction = styled(Typography)<{ component?: ElementType }>(({ theme }) => ({
+  marginTop: '1.5rem',
   fontSize: '0.875rem',
   color: theme.palette.text.secondary,
 }));
@@ -196,6 +205,8 @@ export const AuthMethodCard = styled('li', {
   border: `1px solid ${featured === true ? authRing(theme) : theme.borderInput ?? theme.palette.divider}`,
 }));
 
+const METHOD_CHEVRON_CLASS = 'AuthMethod-chevron';
+
 const methodHead: CSSObject = {
   display: 'flex',
   alignItems: 'center',
@@ -214,9 +225,9 @@ export const AuthMethodHead = styled(Box)(methodHead);
 export const AuthMethodButton = styled(ButtonBase)(({ theme }) => ({
   ...methodHead,
   '&:hover': { backgroundColor: theme.palette.action.hover },
-  '&[aria-disabled="true"]': {
-    cursor: 'not-allowed',
-    '&:hover': { backgroundColor: 'transparent' },
+  '&.Mui-disabled': {
+    opacity: 0.6,
+    [`& .${METHOD_CHEVRON_CLASS}`]: { visibility: 'hidden' },
   },
 }));
 
@@ -234,12 +245,16 @@ export const AuthMethodIcon = styled('span')(({ theme }) => ({
 
 export const AuthMethodTitle = styled('span')({ display: 'block', fontWeight: 600 });
 
-export const AuthMethodChevron = styled('span')(({ theme }) => ({
+const MethodChevron = styled('span')(({ theme }) => ({
   display: 'inline-flex',
   marginLeft: 'auto',
   flex: 'none',
   color: theme.palette.text.disabled,
 }));
+
+export const AuthMethodChevron = ({ children }: { children: ReactNode }) => (
+  <MethodChevron className={METHOD_CHEVRON_CLASS}>{children}</MethodChevron>
+);
 
 export const AuthMethodBody = styled('span')(({ theme }) => ({
   display: 'block',
@@ -296,7 +311,17 @@ export const AuthPoweredByLogo = styled('img')({
   maxWidth: '100%',
 });
 
-export const AuthAccentLink = styled(MuiLink)<{ component?: ElementType; to?: string }>(({ theme }) => {
+const standaloneLinkTarget: CSSObject = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+  minWidth: 44,
+  fontSize: '0.875rem',
+};
+
+export const AuthAccentLink = styled(MuiLink, {
+  shouldForwardProp: (prop) => prop !== 'standalone',
+})<{ component?: ElementType; to?: string; standalone?: boolean }>(({ theme, standalone }) => {
   const ink = authInk(theme);
   return {
     color: ink,
@@ -304,6 +329,7 @@ export const AuthAccentLink = styled(MuiLink)<{ component?: ElementType; to?: st
     textDecorationColor: alpha(ink, 0.4),
     textUnderlineOffset: '0.15em',
     '&:hover': { textDecorationColor: 'currentColor' },
+    ...(standalone === true ? standaloneLinkTarget : {}),
   };
 });
 

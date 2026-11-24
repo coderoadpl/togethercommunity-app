@@ -32,6 +32,9 @@ interface Hoisted {
   verifyOrder: ReturnType<typeof vi.fn>;
   issueOrderLine: ReturnType<typeof vi.fn>;
   shipOrder: ReturnType<typeof vi.fn>;
+  orderRefundPreview: ReturnType<typeof vi.fn>;
+  createOrderRefund: ReturnType<typeof vi.fn>;
+  shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
@@ -139,6 +142,9 @@ const h = vi.hoisted(
     verifyOrder: vi.fn(),
     issueOrderLine: vi.fn(),
     shipOrder: vi.fn(),
+    orderRefundPreview: vi.fn(),
+    createOrderRefund: vi.fn(),
+    shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
     shipxShipment: vi.fn(),
@@ -294,6 +300,9 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     verifyOrder: h.verifyOrder,
     issueOrderLine: h.issueOrderLine,
     shipOrder: h.shipOrder,
+    orderRefundPreview: h.orderRefundPreview,
+    createOrderRefund: h.createOrderRefund,
+    shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
     shipxShipment: h.shipxShipment,
@@ -443,6 +452,14 @@ beforeEach(() => {
   h.verifyOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', status: 'paid' } }));
   h.issueOrderLine.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', lines: [{ productId: 'physical', issuedCount: 1 }] } }));
   h.shipOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'ABCD1234' } } }));
+  h.orderRefundPreview.mockReset().mockResolvedValue(ok({
+    orderId: 'order-number', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 0, remainderCents: 4099, currency: 'PLN',
+    mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
+    fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
+    waitingRefundId: null,
+  }));
+  h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
+  h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
@@ -2351,6 +2368,38 @@ describe('shipping CLI', () => {
     await run('--json', 'tenant', 'settings-set', '--shipping-rates', JSON.stringify(rates));
     expect(h.updateTenantSettings).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('staff refund CLI', () => {
+  it('parses the refund flags and sends a partial refund with stock and the packing list kept', async () => {
+    await run('order', 'refund', 'order-number', '--amount', '12.50', '--remainder', '40.99', '--reason', 'Damaged cover', '--request-key', 'retry-7', '--yes');
+    expect(h.orderRefundPreview).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({
+      orderId: 'order-number', requestKey: 'retry-7', amountCents: 1250, expectedRemainderCents: 4099, reason: 'Damaged cover', restock: false, removeFromPackingList: false,
+      expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false },
+    });
+    expect(logSpy).toHaveBeenCalledWith('refund refund-1: 12.50 PLN (partial), pending\nrequest key: retry-7 (repeat with --request-key retry-7 to retry without a second refund)');
+  });
+
+  it('leaves the full-refund defaults to the server and refuses without --yes', async () => {
+    await run('--json', 'orders', 'refund', 'order-number', '--request-key', 'auto-1');
+    expect(h.createOrderRefund).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Refunding 40.99 PLN of order order-number cannot be undone; to confirm, repeat it as: order refund order-number --remainder 40.99 --request-key auto-1 --yes', details: { command: 'order refund order-number --remainder 40.99 --request-key auto-1 --yes' } } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    process.exitCode = 0;
+    logSpy.mockClear();
+    await run('order', 'refund', 'order-number', '--yes', '--remainder', '40.99');
+    expect(h.createOrderRefund).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', requestKey: expect.stringMatching(/^cli-/), expectedAmountCents: 4099, expectedRemainderCents: 4099, expectedShipmentState: { onPackingList: true, hasShipmentOrLabel: false } });
+  });
+
+  it('prints the refund preview and puts an order back on the packing list', async () => {
+    await run('--json', 'order', 'refund-preview', 'order-number');
+    expect(soleJson()).toMatchObject({ ok: true, data: { orderId: 'order-number', remainderCents: 4099 } });
+    logSpy.mockClear();
+    await run('order', 'ship-anyway', 'order-number');
+    expect(h.shipOrderAnyway).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(logSpy).toHaveBeenCalledWith('back on the packing list: order-number');
   });
 });
 

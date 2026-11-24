@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 144. Route rows: 563. Exported `Ctx` use-case rows: 420.
+Closed capability count: 145. Route rows: 566. Exported `Ctx` use-case rows: 423.
 
 ## Human-readable diff
 
@@ -326,6 +326,9 @@ no changes
 | `GET /api/orders/packing-list` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/personalization` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/orders/:orderId/refund-preview` | order:refund | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/refunds` | order:refund | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/packing-list` | order:refund | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals/summary` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/change-proposals/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
@@ -987,6 +990,9 @@ no changes
 | `spaces.ts#markSpaceSeen` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
+| `staff-refunds.ts#previewStaffRefund` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
+| `staff-refunds.ts#createStaffRefund` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
+| `staff-refunds.ts#shipRefundedOrderAnyway` | order:refund | owner, admin | owner, admin | yes | core/server/usecases/staff-refunds.ts authorization call |
 | `stock.ts#getProductStock` | product:read | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |
 | `stock.ts#listProductStock` | product:read | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |
 | `stock.ts#enableProductStock` | product:write | owner, admin | owner, admin | yes | core/server/usecases/stock.ts authorization call |
@@ -1039,14 +1045,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 | Kind | Location | Expression |
 |---|---|---|
-| api-key | `apps/server/src/internal-app.ts:33` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:216` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1315` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1317` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1339` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1353` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1883` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1883` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:34` | `API_KEY_HEADER,` |
+| api-key | `apps/server/src/internal-app.ts:217` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1317` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1319` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1341` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1355` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1886` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1886` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:41` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:88` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

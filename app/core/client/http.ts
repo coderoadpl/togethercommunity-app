@@ -72,6 +72,7 @@ import {
   salesLinkContracts,
   orderVerificationContracts,
   orderFulfilmentContracts,
+  staffRefundContracts,
   orderChangeContracts,
   shipxContracts,
   looseEnvelopeSchema,
@@ -643,6 +644,9 @@ export const createApiClient = (options: ApiClientOptions) => ({
   shipxSettings: (signal?: AbortSignal) => request(options, 'GET', API_ROUTES.shipxSettings.path, shipxContracts.shipxSettings.output, undefined, signal),
   shipxConfigure: (input: z.input<typeof shipxContracts.shipxConfigure.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipxConfigure.path, shipxContracts.shipxConfigure.output, input, signal),
   shipOrder: (input: z.input<typeof orderFulfilmentContracts.shipOrder.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.shipOrder.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.shipOrder.output, input, signal),
+  orderRefundPreview: (input: z.input<typeof staffRefundContracts.orderRefundPreview.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.orderRefundPreview.path.replace(':orderId', encodeURIComponent(input.orderId)), staffRefundContracts.orderRefundPreview.output, undefined, signal),
+  createOrderRefund: ({ orderId, ...body }: z.input<typeof staffRefundContracts.orderRefundCreate.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.orderRefundCreate.path.replace(':orderId', encodeURIComponent(orderId)), staffRefundContracts.orderRefundCreate.output, body, signal),
+  shipOrderAnyway: (input: z.input<typeof staffRefundContracts.orderShipAnyway.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.orderShipAnyway.path.replace(':orderId', encodeURIComponent(input.orderId)), staffRefundContracts.orderShipAnyway.output, {}, signal),
   correctOrderPersonalization: (input: z.input<typeof orderFulfilmentContracts.correctOrderPersonalization.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.correctOrderPersonalization.path.replace(':orderId', encodeURIComponent(input.orderId)), orderFulfilmentContracts.correctOrderPersonalization.output, input, signal),
   ordersPackingList: (input: z.input<typeof orderFulfilmentContracts.ordersPackingList.input>, signal?: AbortSignal) => request(options, 'GET', `${API_ROUTES.ordersPackingList.path}?${new URLSearchParams({ format: input.format, ...(input.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: input.fulfilmentStatus }), ...(input.mode === undefined ? {} : { mode: input.mode }) }).toString()}`, orderFulfilmentContracts.ordersPackingList.output, undefined, signal),
   orderChanges: async (input: z.input<typeof orderChangeContracts.orderChanges.input> = {}, signal?: AbortSignal): Promise<ReadResult<OrderChangeFeed>> => {

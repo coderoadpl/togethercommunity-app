@@ -628,13 +628,37 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
 
+## Staff refunds
+
+Owners and admins refund a paid order from Studio or `order refund` with the
+workspace's restricted key of the order's mode; see
+[the shop guide](shop.md#staff-refunds). The key needs Charges and Refunds
+(write), which the permission check above confirms. Without it a staff refund
+waits as `blocked_permission`, staff get an alert e-mail and the dispatcher
+retries hourly for 72 hours, as for the sold-out refund; staff refund alerts
+have wording of their own and are stored pre-rendered like the buyer notice. Stripe
+refund metadata carries `tenantId`, `orderId`, `reason: staff` and
+`refundJobId`; never personal data or the staff note. A refund made in the
+Stripe Dashboard still reaches the platform through `charge.refunded`, counts
+against the refundable remainder and makes waiting staff refunds of that order
+due at once. The buyer's refund notice and the staff refund alerts are stored
+pre-rendered as `m2m-transactional` messages with source `staff-refunds` (see
+[the shop guide](shop.md#staff-refunds)). Refund failure messages lose Stripe
+API keys and webhook secrets before they are stored or e-mailed. The refund list is read page by page
+(`starting_after`, 100 refunds a page, at most 10 pages); the refund dispatcher
+gives the read a deadline, and a page that could not end before it is not
+started. Sold-out and staff refund jobs both need the whole list; a list cut
+short is retried like any list that could not be read (see
+[the shop guide](shop.md#automatic-refund-of-a-cancelled-order)).
+
 ## Order and subscription e-mail subjects
 
 Order e-mails to buyers lead with the outcome and the workspace and carry a short
 order reference, the first eight characters of the order id upper-cased with a
 `#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
 <workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
-<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+<workspace> (#AB12CD34)" (or "nothing charged") and "Refund of <amount> on its
+way — <workspace> (#AB12CD34)", with Polish equivalents. The
 body keeps the full order id on the order-number line so the seller can match
 it. The payment-failed, direct-message and community notification subjects end
 with " — <workspace>".

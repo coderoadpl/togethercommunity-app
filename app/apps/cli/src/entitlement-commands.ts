@@ -52,7 +52,7 @@ export const formatEntitlementCheck = (output: EntitlementCheckOutput): string =
     return [`${subjectLabel(result.subject)}${result.member === null ? '' : ` (${result.member.id})`}`, ...products].join('\n');
   }).join('\n');
 
-const applicationKeyState =(key: Pick<ApplicationKeyPublic, 'revokedAt' | 'expiresAt'>, nowMs: number): 'revoked' | 'expired' | 'active' => {
+const applicationKeyState = (key: Pick<ApplicationKeyPublic, 'revokedAt' | 'expiresAt'>, nowMs: number): 'revoked' | 'expired' | 'active' => {
   if (key.revokedAt !== null) return 'revoked';
   return Date.parse(key.expiresAt) <= nowMs ? 'expired' : 'active';
 };

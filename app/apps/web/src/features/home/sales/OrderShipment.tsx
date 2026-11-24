@@ -55,7 +55,7 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
   if (order.fulfilmentStatus !== 'to_pack' || !canShip) return null;
   return (
     <Stack useFlexGap spacing="0.75rem" data-testid="order-ship-form">
-      <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
+      <Stack useFlexGap spacing="0.75rem">
         <TextField
           select
           size="small"

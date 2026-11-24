@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeErrorMessage, safeLogMessage, serializeErrorChain } from './log-safety.js';
+import { safeErrorMessage, safeLogMessage, safeProviderLogMessage, serializeErrorChain } from './log-safety.js';
 
 describe('safeErrorMessage', () => {
   it('keeps the Drizzle SQL text while removing query parameters', () => {
@@ -94,5 +94,13 @@ describe('serializeErrorChain', () => {
       { name: 'Error', message: 'Cycle' }, { message: 'Circular error cause' },
     ]);
     expect(serializeErrorChain('private-value')).toBe('[{"message":"Unknown error"}]');
+  });
+});
+
+describe('safeProviderLogMessage', () => {
+  it('hides payment provider object ids and keys and keeps snake_case words and the platform ids', () => {
+    expect(safeProviderLogMessage(
+      "[order-refund] job=refund-1 status=blocked_permission error=No such payment_intent: 'pi_3PqRsTuVwXyZ1234'; charge ch_3PqRsTuVwXyZ1234, refund re_1PqRsTuVwXyZ, payout pyr_1AbCdEfGh, invoice in_1AbCdEfGhIj, customer cus_Q1w2e3r4t5, account acct_1AbCdEfGhIj, setup seti_1AbCdEfGh, source src_1AbCdEfGh, key rk_live_51AbCdEfGh in_transit\nparams: secret",
+    )).toBe("[order-refund] job=refund-1 status=blocked_permission error=No such payment_intent: '[provider id]'; charge [provider id], refund [provider id], payout [provider id], invoice [provider id], customer [provider id], account [provider id], setup [provider id], source [provider id], key [provider id] in_transit");
   });
 });

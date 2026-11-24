@@ -855,7 +855,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
     .insert(tenantDocumentVersions)
     .values({
       id: 'document-akademia-privacy-v1', tenantId: 'tenant-akademia', documentId: 'document-akademia-privacy', version: 1,
-      content: '# How we handle your data\n\nWe respect your privacy and use your data only to provide the services you choose.\n\n## Contact\n\nFor questions about your data, email [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- You can withdraw consent at any time.\n- Every change is recorded in your consent history.',
+      content: '# How we handle your data\n\nWe respect your privacy and use your data only to provide the services you choose.\n\n## Contact\n\nFor questions about your data, email [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- You can withdraw consent at any time.\n- Every change is recorded in your consent history.\n\n## Your rights\n\n1. You can ask for a copy of the data we hold about you.\n\n2. You can ask us to correct or delete it.\n\n3. You can object to processing based on our legitimate interest.',
       publishedAt: relativeIso(-30), createdAt: relativeIso(-30), createdBy: null,
     })
     .onConflictDoNothing();

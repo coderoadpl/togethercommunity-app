@@ -1,23 +1,37 @@
+import type { ReactNode } from 'react';
 import { Alert, Button, Chip, Stack } from '@mui/material';
 
 import { AccountWrappingText } from '../../theme.js';
 import { useTranslations } from '../../i18n/index.js';
 
-type VerificationOutcome = 'verified' | 'expired' | 'invalid' | 'providerError' | null;
+type VerificationOutcome = 'verified' | 'expired' | 'invalid' | 'providerError';
 
-const verificationOutcome = (): VerificationOutcome => {
-  const search = new URLSearchParams(window.location.search);
-  const error = search.get('error');
+export const emailVerificationOutcome = ({
+  error,
+  verification,
+}: {
+  error: string | null;
+  verification: string | null;
+}): VerificationOutcome | null => {
   if (error === 'TOKEN_EXPIRED') return 'expired';
-  if (error === 'INVALID_TOKEN') return 'invalid';
+  if (error === 'INVALID_TOKEN') return verification === 'verified' ? 'invalid' : null;
   if (error === 'USER_NOT_FOUND' || error === 'INVALID_USER') return 'providerError';
-  return search.get('verification') === 'verified' ? 'verified' : null;
+  return verification === 'verified' ? 'verified' : null;
 };
 
-export const EmailVerificationResult = () => {
+export const isFailedEmailVerification = (outcome: VerificationOutcome | null): boolean =>
+  outcome !== null && outcome !== 'verified';
+
+export const EmailVerificationResult = ({
+  outcome,
+  resendAction,
+}: {
+  outcome: VerificationOutcome | null;
+  resendAction: ReactNode;
+}) => {
   const t = useTranslations();
-  const outcome = verificationOutcome();
   if (outcome === null) return null;
+  const resendable = outcome === 'expired' || outcome === 'invalid';
   return (
     <Alert
       severity={outcome === 'verified' ? 'success' : 'error'}
@@ -25,6 +39,12 @@ export const EmailVerificationResult = () => {
       sx={{ mb: '1rem' }}
     >
       {t.emailVerification[outcome]}
+      {resendable ? (
+        <>
+          {' '}
+          {resendAction}
+        </>
+      ) : null}
     </Alert>
   );
 };
@@ -34,11 +54,13 @@ export const EmailVerificationStatus = ({
   emailVerified,
   resendPending,
   onResend,
+  audience = 'creator',
 }: {
   email: string;
   emailVerified: boolean;
   resendPending: boolean;
   onResend: () => void;
+  audience?: 'creator' | 'member';
 }) => {
   const t = useTranslations();
 
@@ -48,7 +70,9 @@ export const EmailVerificationStatus = ({
       <AccountWrappingText variant="body2" component="div" sx={{ minWidth: 0, flex: 1 }}>
         {emailVerified
           ? t.emailVerification.verifiedStatus
-          : t.emailVerification.pending({ email })}
+          : audience === 'member'
+            ? t.emailVerification.pendingMember({ email })
+            : t.emailVerification.pending({ email })}
       </AccountWrappingText>
       {!emailVerified ? (
         <Button

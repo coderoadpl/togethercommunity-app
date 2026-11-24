@@ -192,7 +192,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/login',
     fixtureName: 'login',
     viewports: ['mobile'],
-    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+    ready: (page) => page.getByTestId('sign-in-rate-limited').waitFor(visible),
   },
   {
     name: 'login-tenant',
@@ -275,7 +275,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     tenantSlug: 'akademia',
     path: '/',
     ready: async (page) => {
-      await page.getByRole('heading', { name: en.anon.homeTitle }).waitFor(visible);
+      await page.getByTestId('anon-offer').waitFor(visible);
       await page.getByTestId('tenant-logo').first().waitFor(visible);
     },
   },
@@ -317,7 +317,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     viewports: ['mobile'],
     ready: async (page) => {
       await page.getByTestId('anon-join-cta').waitFor(visible);
-      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-space-events').waitFor({ state: 'detached' });
       await page.getByTestId('public-post-body-post-community-hello').waitFor(visible);
     },
   },
@@ -567,9 +567,15 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Opening your workspace…' }).waitFor(visible),
+    ready: async (page) => {
+      const splash = page.getByTestId('tenant-gate-pending');
+      await splash.getByText('Loading…').waitFor(visible);
+      await splash.getByTestId('brand-loader-core').waitFor(visible);
+      await splash.getByTestId('brand-loader-ring').waitFor(visible);
+    },
     waitForNetworkIdle: false,
-    minBytes: 7 * 1024,
+    // The neutral splash compresses to about 6 KiB; the ready step and BrandLoader.test.tsx guard its content instead.
+    minBytes: 4 * 1024,
   },
   {
     name: 'panel-spaces',

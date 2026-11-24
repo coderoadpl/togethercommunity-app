@@ -13,7 +13,7 @@ import type {
   ShipxShipmentVersion,
 } from '#core/server/index.js';
 
-import { tenants } from './app-schema.js';
+import { orders, tenants } from './app-schema.js';
 import type { Db } from './client.js';
 import { orderShipmentEvents, orderShipments } from './shipx-schema.js';
 
@@ -121,6 +121,10 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       return row === undefined ? null : toShipment(row);
     },
     acquire: async (tenantId, input) => await db.transaction(async (tx): Promise<ShipxShipmentAcquisition> => {
+      const [order] = await tx.select({ status: orders.status, fulfilmentStatus: orders.fulfilmentStatus }).from(orders)
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId)))
+        .for('update');
+      if (!input.orderShippable(order ?? null)) return { kind: 'order_changed' };
       const claimed = (row: ShipmentRow, type: 'attempt_claimed' | 'lease_taken_over', details: ShipxShipmentEventDetails) =>
         record(tx, tenantId, input.orderId, [{
           type, providerShipmentId: row.providerShipmentId, actorUserId: input.actorUserId, operationToken: input.token, details, createdAt: input.now,

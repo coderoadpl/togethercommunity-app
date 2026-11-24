@@ -3,6 +3,7 @@ import { ok, type AppError, type Result, type ShipxEnvironment, type ShipxRemote
 import type {
   ShipxClient,
   ShipxCredentials,
+  ShipxLockedOrder,
   ShipxSettingsRepository,
   ShipxShipmentEvent,
   ShipxShipmentPatch,
@@ -44,6 +45,7 @@ const applyPatch = (row: ShipxShipmentRecord, patch: ShipxShipmentPatch): ShipxS
 
 export const createShipxShipmentRepositoryFake = () => {
   const rows = new Map<string, ShipxShipmentRecord>();
+  const lockedOrders = new Map<string, ShipxLockedOrder | null>();
   const events: Array<{ tenantId: string; event: ShipxShipmentEvent }> = [];
   const key = (tenantId: string, orderId: string) => `${tenantId}/${orderId}`;
   const free = (row: ShipxShipmentRecord, leaseExpiredBefore: string) =>
@@ -72,6 +74,9 @@ export const createShipxShipmentRepositoryFake = () => {
   const repository: ShipxShipmentRepository = {
     findByOrder: async (tenantId, orderId) => rows.get(key(tenantId, orderId)) ?? null,
     acquire: async (tenantId, input) => {
+      const orderKey = key(tenantId, input.orderId);
+      const locked = lockedOrders.has(orderKey) ? lockedOrders.get(orderKey) ?? null : { status: 'paid', fulfilmentStatus: 'to_pack' as const };
+      if (!input.orderShippable(locked)) return { kind: 'order_changed' };
       const existing = rows.get(key(tenantId, input.orderId));
       const claim = { actorUserId: input.actorUserId, operationToken: input.token, createdAt: input.now };
       if (existing === undefined) {
@@ -160,7 +165,7 @@ export const createShipxShipmentRepositoryFake = () => {
     listEvents: async (tenantId, orderId) =>
       events.filter((entry) => entry.tenantId === tenantId && entry.event.orderId === orderId).map((entry) => entry.event),
   };
-  return { repository, rows, events, key };
+  return { repository, rows, events, key, lockedOrders };
 };
 
 interface ShipxSettingsRow {

@@ -2,6 +2,7 @@ import { Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
+import { ApiError } from '#core/client/index.js';
 import { communitySpacePath } from '#core/contract/index.js';
 import type { PublicSpaceEvent } from '#core/domain/index.js';
 
@@ -9,10 +10,16 @@ import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { FinePrint, PostBody, PostMetaText } from '../../../theme.js';
+import { anonCrumbs } from '../anon-crumbs.js';
 import { MemberSurface } from '../MemberSurface.js';
 import { PublicThreadView } from '../PublicFeed.js';
+import { useLoginLinkWithReturn } from '../use-login-redirect.js';
+import { RouterButton, useVisitorJoin, VisitorContactLink, VisitorJoinButton } from '../visitor-actions.js';
 import { formatEventRange } from './event-time.js';
 import { EventMedia } from './EventMedia.js';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
 
 const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootPostId: string }) => {
   const t = useTranslations();
@@ -22,7 +29,20 @@ const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootP
   if (thread.isPending) {
     return <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />;
   }
-  if (thread.isError || root === undefined) {
+  if (thread.isError) {
+    return (
+      <StatusView
+        surface={false}
+        state={{
+          kind: 'error',
+          message: localizeError(thread.error, t),
+          retry: { label: t.common.retry, onRetry: () => void thread.refetch() },
+        }}
+        data-testid="public-event-discussion-error"
+      />
+    );
+  }
+  if (root === undefined) {
     return (
       <Typography variant="body2" color="text.secondary" data-testid="public-event-discussion-empty">
         {t.events.discussionEmpty}
@@ -35,9 +55,11 @@ const PublicEventDiscussion = ({ spaceId, rootPostId }: { spaceId: string; rootP
 const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceName: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const loginLink = useLoginLinkWithReturn();
+  const join = useVisitorJoin(event.spaceId);
 
   const rail = (
-    <SectionCard title={t.events.sectionTitle} data-testid="public-event-details">
+    <SectionCard title={t.events.detailsHeading} data-testid="public-event-details">
       <PostMetaText component="time" dateTime={event.startsAt}>
         {formatEventRange(event.startsAt, event.endsAt, language)}
       </PostMetaText>
@@ -55,11 +77,29 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
           {t.events.notGoingCount({ count: event.notGoingCount })}
         </FinePrint>
       </Stack>
-      <Box>
-        <Button component={Link} to="/login" variant="contained" data-testid="public-event-sign-in">
-          {t.events.signInToRsvp}
-        </Button>
-      </Box>
+      {join.target.kind === 'pending' ? (
+        <Box aria-hidden sx={{ visibility: 'hidden' }} data-testid="public-event-actions-pending">
+          <Button variant="outlined" disabled tabIndex={-1}>
+            {t.events.signInToRsvp}
+          </Button>
+        </Box>
+      ) : join.signedIn && join.target.kind === 'none' && join.supportUrl === null ? null : (
+        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+          <VisitorJoinButton target={join.target} testId="public-event-join" />
+          {join.signedIn ? null : (
+            <RouterButton
+              {...loginLink}
+              variant={join.target.kind === 'none' ? 'contained' : 'outlined'}
+              data-testid="public-event-sign-in"
+            >
+              {t.events.signInToRsvp}
+            </RouterButton>
+          )}
+          {join.target.kind === 'none' && join.supportUrl !== null ? (
+            <VisitorContactLink supportUrl={join.supportUrl} />
+          ) : null}
+        </Stack>
+      )}
     </SectionCard>
   );
 
@@ -70,7 +110,8 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
       width="wide"
       rail={rail}
       mobileRail="before"
-      breadcrumbs={[
+      breadcrumbs={anonCrumbs(
+        t,
         {
           label: spaceName,
           link: (
@@ -80,7 +121,7 @@ const PublicEventView = ({ event, spaceName }: { event: PublicSpaceEvent; spaceN
           ),
         },
         { label: event.title },
-      ]}
+      )}
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }} data-testid="public-event-page">
         <EventMedia event={event} />
@@ -109,6 +150,21 @@ export const PublicEventPage = ({ spaceId, eventId }: { spaceId: string; eventId
         eyebrow={t.anon.eyebrow}
         width="wide"
         state={{ kind: 'loading', label: t.events.loading }}
+      />
+    );
+  }
+
+  if (event.isError && !isNotFound(event.error)) {
+    return (
+      <MemberSurface
+        title={t.events.sectionTitle}
+        eyebrow={t.anon.eyebrow}
+        width="wide"
+        state={{
+          kind: 'error',
+          message: localizeError(event.error, t),
+          retry: { label: t.common.retry, onRetry: () => void event.refetch() },
+        }}
       />
     );
   }

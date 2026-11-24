@@ -44,6 +44,7 @@ import type {
   ProductPriceHistoryRepository,
   EmailOutboxRepository,
   OrderRefundJobRepository,
+  OrderStaffRefundRepository,
   PaymentProvider,
   PaymentTransactionPort,
   StripeWebhookOwnershipReader,
@@ -452,7 +453,10 @@ const shippingFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment
 const outOfStockFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment =>
   ({ ...(shipping === null ? {} : { shipping }), cancelReason: 'out_of_stock' });
 
-type CheckoutCompletionDeps = StripeWebhookDeps & { orderRefundJobs: OrderRefundJobRepository };
+type CheckoutCompletionDeps = StripeWebhookDeps & {
+  orderRefundJobs: OrderRefundJobRepository;
+  orderStaffRefunds?: Pick<OrderStaffRefundRepository, 'noteChargeRefunded'>;
+};
 
 const outOfStockProductIds = async (
   tenant: Tenant,
@@ -919,6 +923,15 @@ const revokeRefundedAccess = async (tenant: Tenant, order: Order, deps: StripeWe
   }
 };
 
+const noteStaffRefundsDue = async (tenant: Tenant, order: Order, event: PaymentWebhookEvent, deps: CheckoutCompletionDeps): Promise<boolean> => {
+  if (event.type !== 'charge.refunded' || deps.orderStaffRefunds === undefined) return false;
+  const due = await deps.orderStaffRefunds.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
+  for (const refund of due) {
+    deps.logger.warn(`[order-refund] staff refund due again after charge.refunded tenant=${tenant.id} order=${order.id} refund=${refund.id}`);
+  }
+  return due.length > 0;
+};
+
 const applyPaymentAdjustment = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
@@ -939,7 +952,8 @@ const applyPaymentAdjustment = async (
     if (order.status === 'paid') {
       await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id);
     }
-    return ok({ processed: true });
+    const staffRefundsDue = await noteStaffRefundsDue(tenant, order, event, deps);
+    return ok({ processed: true, ...(staffRefundsDue ? { refundQueued: true } : {}) });
   }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
@@ -976,6 +990,7 @@ const applyPaymentAdjustment = async (
   let refundQueued = false;
   if (order.cancelReason == null) {
     await revokeRefundedAccess(tenant, order, deps);
+    refundQueued = await noteStaffRefundsDue(tenant, order, event, deps);
   } else if (event.type === 'charge.refunded') {
     const noted = await deps.orderRefundJobs.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
     if (noted?.status === 'resolved_externally') {

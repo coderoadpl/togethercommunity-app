@@ -2,6 +2,8 @@ export { LanguageProvider, languageOptions, useLanguage, useTranslations } from 
 export {
   adoptionRefusalOf,
   errorCodeOf,
+  errorDetailsOf,
+  formatRetryDelay,
   localizeError,
   localizeErrorCode,
   localizeErrorCodeForPanel,
@@ -9,6 +11,7 @@ export {
   localizePanelError,
   providerCodeOf,
   rejectedCorsOriginOf,
+  retryAfterSecondsOf,
   serverMessageOf,
 } from './errors.js';
 export { localizeShipxError } from './shipx-errors.js';

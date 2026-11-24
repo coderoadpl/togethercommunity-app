@@ -10,7 +10,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'desktop' | 'mobile'): Story => ({
   parameters: { colorScheme }, globals: { viewport: { value: viewport } },
-  args: { dialog: true, showHeading: false, pending: state === 'Pending', success: state === 'Success', error: state === 'WrongCurrentPassword' || state === 'NoCredentialAccount' ? new ApiError({ code: 'unauthorized', message: 'Authentication failed', details: { providerCode: state === 'WrongCurrentPassword' ? 'INVALID_PASSWORD' : 'CREDENTIAL_ACCOUNT_NOT_FOUND' } }) : null, onSubmit: () => undefined },
+  args: { dialog: true, showHeading: false, revokeOtherSessionsByDefault: true, pending: state === 'Pending', success: state === 'Success', error: state === 'WrongCurrentPassword' || state === 'NoCredentialAccount' ? new ApiError({ code: 'unauthorized', message: 'Authentication failed', details: { providerCode: state === 'WrongCurrentPassword' ? 'INVALID_PASSWORD' : 'CREDENTIAL_ACCOUNT_NOT_FOUND' } }) : null, onSubmit: () => undefined },
   play: async ({ canvasElement }) => {
     if (state === 'Success') return;
     await userEvent.click(within(canvasElement).getByTestId('change-password-open'));

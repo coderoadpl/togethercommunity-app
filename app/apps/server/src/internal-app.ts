@@ -6,6 +6,7 @@ import { registerMetaCapiRoutes } from './meta-capi-routes.js';
 import { runMetaCapiDispatch } from './meta-capi-dispatch.js';
 import { registerOrderVerificationRoutes } from './order-verification-routes.js';
 import { registerOrderFulfilmentRoutes } from './order-fulfilment-routes.js';
+import { registerStaffRefundRoutes } from './staff-refund-routes.js';
 import { registerOrderChangeRoutes } from './order-change-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
@@ -475,6 +476,7 @@ import {
   validateCouponForCheckout,
   validateTermsConsent,
   ORDER_REFUND_CRON_TICK_MAX_JOBS,
+  ORDER_REFUND_JOB_WORST_CASE_MS,
   ORDER_REFUND_TICK_BUDGET_MS,
   type AuthenticatedUser,
   type Ctx,
@@ -826,7 +828,7 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
 const dispatchDueOrderRefunds = async (
   deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
   tickStartedAt: number,
-  limits: { maxJobs?: number } = {},
+  limits: { maxJobs?: number; jobBudgetMs?: number } = {},
 ): Promise<void> => {
   try {
     const result = await deps.dispatchOrderRefundJobs({ deadlineAt: tickStartedAt + ORDER_REFUND_TICK_BUDGET_MS, ...limits });
@@ -864,7 +866,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await deps.drainNotificationFanout();
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('cron');
-    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS });
+    await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS, jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
     return respond(emails);
   });
@@ -1408,6 +1410,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
   registerOrderFulfilmentRoutes(app, deps);
+  registerStaffRefundRoutes(app, deps);
   registerChangeProposalRoutes(app, deps);
   registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
@@ -2923,7 +2926,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
     };
-    const result = await listOrders(ctxOf(c), query, deps);
+    const result = await listOrders(ctxOf(c), query, { orders: deps.orders, ...(deps.orderStaffRefunds === undefined ? {} : { staffRefunds: deps.orderStaffRefunds }) });
     return respond(result);
   });
 
@@ -2959,7 +2962,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     };
     const parsed = ordersExportQuerySchema.safeParse(query);
     if (!parsed.success) return respond(err(validation('Invalid orders export query', parsed.error.flatten())));
-    return respond(await exportOrders(ctxOf(c), parsed.data, deps));
+    return respond(await exportOrders(ctxOf(c), parsed.data, { orders: deps.orders, ...(deps.orderStaffRefunds === undefined ? {} : { staffRefunds: deps.orderStaffRefunds }) }));
   });
 
   app.get(API_PATHS.order, async (c) => {
@@ -2968,7 +2971,12 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       await getOrder(
         ctxOf(c),
         c.req.param('orderId'),
-        { orders: deps.orderDetails, invoices: deps.invoices, ...(deps.orderRefundJobs === undefined ? {} : { refundJobs: deps.orderRefundJobs }) },
+        {
+          orders: deps.orderDetails,
+          invoices: deps.invoices,
+          ...(deps.orderRefundJobs === undefined ? {} : { refundJobs: deps.orderRefundJobs }),
+          ...(deps.orderStaffRefunds === undefined ? {} : { staffRefunds: deps.orderStaffRefunds }),
+        },
       ),
     );
   });

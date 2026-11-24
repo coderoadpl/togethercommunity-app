@@ -1,8 +1,11 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
-import { useState } from 'react';
+import { RefundStatusChip } from './OrderRefundJob.js';
+import { ChevronIcon } from './refund-icons.js';
+import { useState, type ReactNode } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Chip,
   Checkbox,
@@ -12,18 +15,19 @@ import {
   MenuItem,
   Select,
   Stack,
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TablePagination,
   TableRow,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { FulfilmentStatus, OrderExportFile, OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
+import type { FulfilmentStatus, OrderExportFile, OrderExportFormat, OrderListItem, OrderStatus, PriceKind } from '#core/domain/index.js';
 import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -31,6 +35,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { SalesCardAmount, SalesCardControl, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -49,6 +54,9 @@ export const SalesPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const { tenant } = usePanelContext();
+  const theme = useTheme();
+  const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
+  const narrow = useMediaQuery(theme.breakpoints.down('xl'), { noSsr: true });
   const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
   const [selected, setSelected] = useState<string[]>([]);
   const [sendingSelected, setSendingSelected] = useState(false);
@@ -146,8 +154,70 @@ export const SalesPanel = () => {
     partially_refunded: 'default',
   } as const;
 
+  const orderLink = (order: OrderListItem) => (
+    <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
+      {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
+    </MuiLink>
+  );
+  const memberLink = (order: OrderListItem) => (
+    <MuiLink component={Link} to={`/panel/members/${order.memberId}`}>{order.memberName ?? order.memberEmail}</MuiLink>
+  );
+  const orderSource = (order: OrderListItem) => [order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ');
+  const productCell = (order: OrderListItem) => (
+    <>
+      {order.lines?.map((line) => line.name).join(' · ') || order.productTitle}
+      {order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null}
+      {' '}
+      {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+      {order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}
+    </>
+  );
+  const staffRefundChipLabel = (order: OrderListItem, state: string) => order.staffRefundAmountCents === undefined
+    ? t.sales.staffRefund.stateChip({ state })
+    : t.sales.staffRefund.listChip({ amount: formatPrice(order.staffRefundAmountCents, order.currency, language), state });
+  const statusChips = (order: OrderListItem) => (
+    <>
+      <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
+      <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
+      {order.cancelReason != null || order.staffRefundStatus === undefined ? null : (
+        <RefundStatusChip
+          status={order.staffRefundStatus}
+          label={staffRefundChipLabel(order, t.sales.staffRefund.states[order.staffRefundStatus])}
+          data-testid="sales-staff-refund-chip"
+        />
+      )}
+    </>
+  );
+  const fulfilmentChip = (order: OrderListItem) => order.fulfilmentStatus == null ? null : (
+    <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
+      label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
+  );
+  const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
+    <SalesCardControl data-testid="sales-ksef-control">
+      <Checkbox checked={selected.includes(order.id)} disabled={sending}
+        slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
+        onChange={(event) => setSelected((current) => event.target.checked
+          ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+    </SalesCardControl>
+  ) : null;
+  const invoiceCell = (order: OrderListItem): ReactNode => order.invoice == null ? null : (
+    <Stack useFlexGap spacing="0.5rem">
+      <Typography variant="body2">{order.invoice.ksef == null
+        ? t.sales.invoiceStatuses[order.invoice.status]
+        : t.sales.ksefStates[order.invoice.ksef.state]}</Typography>
+      {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+      {canWriteInvoice && order.invoice.ksef?.state === 'held' ? (
+        <SalesCardControl data-testid="sales-ksef-control">
+          <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
+            {t.sales.sendToKsef}
+          </Button>
+        </SalesCardControl>
+      ) : null}
+    </Stack>
+  );
+
   return (
-    <PanelPage title={t.sections.sales} action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
+    <PanelPage title={t.sections.sales} width="detail" action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
       {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
       {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizePanelError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
@@ -182,7 +252,7 @@ export const SalesPanel = () => {
             />
           ),
           filters: (
-            <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem">
+            <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem" sx={{ flexWrap: { md: 'wrap' } }}>
               <FormControl size="small">
                 <InputLabel id="sales-mode-label">{t.sales.mode}</InputLabel>
                 <Select labelId="sales-mode-label" label={t.sales.mode} value={mode}
@@ -302,7 +372,7 @@ export const SalesPanel = () => {
             </Stack>
           ),
           actions: (
-            <Stack direction="row" useFlexGap spacing="0.5rem">
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               {canWriteInvoice ? (
                 <Button variant="contained" disabled={sending || selectedHeld.length === 0}
                   onClick={() => void sendSelected(selectedHeld)}>
@@ -310,7 +380,7 @@ export const SalesPanel = () => {
                 </Button>
               ) : null}
               {fulfilment === 'to_pack' ? (
-                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                   <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
                     {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
                   </Button>
@@ -332,6 +402,7 @@ export const SalesPanel = () => {
           orders.isSuccess && orders.data.total > 0 ? (
             <TablePagination
               component="div"
+              sx={phone ? { '& .MuiTablePagination-toolbar': { flexWrap: 'wrap', justifyContent: 'flex-end', px: '0.5rem' }, '& .MuiTablePagination-spacer': { display: 'none' } } : undefined}
               count={orders.data.total}
               page={page}
               rowsPerPage={pageSize}
@@ -364,80 +435,77 @@ export const SalesPanel = () => {
         ) : orders.isError ? (
           <StatusView state={{ kind: 'error', message: localizePanelError(orders.error, t), retry: { label: t.common.retry, onRetry: () => void orders.refetch() } }} />
         ) : (
-          <ResponsiveTable>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  {canWriteInvoice ? <TableCell>{t.sales.sendSelectedToKsef}</TableCell> : null}
-                  <TableCell>{t.sales.date}</TableCell>
-                  <TableCell>{t.sales.member}</TableCell>
-                  <TableCell>{t.sales.product}</TableCell>
-                  <TableCell>{t.sales.kind}</TableCell>
-                  <TableCell>{t.sales.amount}</TableCell>
-                  <TableCell>{t.sales.coupon}</TableCell>
-                  <TableCell>{t.sales.source}</TableCell>
-                  <TableCell>{t.sales.status}</TableCell>
-                  <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
-                  <TableCell>{t.sales.invoiceStatus}</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {orders.data.orders.map((order) => (
-                  <TableRow key={order.id} data-testid="sales-row">
-                    {canWriteInvoice ? <TableCell>
-                      {order.invoice?.ksef?.state === 'held' ? (
-                        <Checkbox checked={selected.includes(order.id)} disabled={sending}
-                          slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
-                          onChange={(event) => setSelected((current) => event.target.checked
-                            ? [...current, order.id] : current.filter((id) => id !== order.id))} />
-                      ) : null}
-                    </TableCell> : null}
-                    <TableCell>
-                      <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
-                        {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
-                      </MuiLink>
-                    </TableCell>
-                    <TableCell>
-                      <MuiLink
-                        component={Link}
-                        to={`/panel/members/${order.memberId}`}
-                      >
-                        {order.memberName ?? order.memberEmail}
-                      </MuiLink>
-                    </TableCell>
-                    <TableCell>{order.lines?.map((line) => line.name).join(' · ') || order.productTitle}{order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null} {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}{order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}</TableCell>
-                    <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
-                    <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
-                    <TableCell>{order.couponCode ?? '—'}</TableCell>
-                    <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>
-                    <TableCell>
-                      <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
-                      <OrderCancelledChip cancelReason={order.cancelReason} refundJobStatus={order.refundJobStatus} />
-                    </TableCell>
-                    <TableCell>
-                      {order.fulfilmentStatus == null ? '—' : (
-                        <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-                          label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {order.invoice == null ? null : <Stack useFlexGap spacing="0.5rem">
-                        <Typography variant="body2">{order.invoice.ksef == null
-                          ? t.sales.invoiceStatuses[order.invoice.status]
-                          : t.sales.ksefStates[order.invoice.ksef.state]}</Typography>
-                        {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
-                        {canWriteInvoice && order.invoice.ksef?.state === 'held' ? (
-                          <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
-                            {t.sales.sendToKsef}
-                          </Button>
-                        ) : null}
-                      </Stack>}
-                    </TableCell>
+          phone ? (
+            <SalesOrderCardList data-testid="sales-cards">
+              {orders.data.orders.map((order) => (
+                <SalesOrderCard key={order.id} data-testid="sales-row">
+                  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                      <SalesCardMemberLink component={Link} to={`/panel/members/${order.memberId}`} underline="always">{order.memberName ?? order.memberEmail}</SalesCardMemberLink>
+                    </Box>
+                    <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
+                  </Stack>
+                  <Typography variant="body2" component="div">{productCell(order)}</Typography>
+                  <SalesCardOrderLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} variant="body2" underline="none" data-testid="sales-card-order-link">
+                    {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
+                    <ChevronIcon />
+                  </SalesCardOrderLink>
+                  <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.15rem' }}>
+                    {statusChips(order)}
+                    {fulfilmentChip(order)}
+                  </Stack>
+                  {order.invoice == null ? null : (
+                    <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+                      {canWriteInvoice ? selectBox(order) : null}
+                      {invoiceCell(order)}
+                    </Stack>
+                  )}
+                </SalesOrderCard>
+              ))}
+            </SalesOrderCardList>
+          ) : (
+            <ResponsiveTable>
+              <SalesTable>
+                <TableHead>
+                  <TableRow>
+                    {canWriteInvoice ? <TableCell padding="checkbox" aria-label={t.sales.sendSelectedToKsef} /> : null}
+                    <TableCell>{t.sales.date}</TableCell>
+                    <TableCell>{t.sales.member}</TableCell>
+                    <TableCell>{t.sales.product}</TableCell>
+                    {narrow ? null : <TableCell>{t.sales.kind}</TableCell>}
+                    <TableCell>{t.sales.amount}</TableCell>
+                    {narrow ? null : <TableCell>{t.sales.coupon}</TableCell>}
+                    {narrow ? null : <TableCell>{t.sales.source}</TableCell>}
+                    <TableCell>{t.sales.status}</TableCell>
+                    <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
+                    <SalesNoWrapCell>{t.sales.invoiceStatus}</SalesNoWrapCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ResponsiveTable>
+                </TableHead>
+                <TableBody>
+                  {orders.data.orders.map((order) => (
+                    <TableRow key={order.id} data-testid="sales-row">
+                      {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
+                      <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
+                      <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
+                      <TableCell sx={{ minWidth: '14rem' }}>
+                        {productCell(order)}
+                        {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}
+                      </TableCell>
+                      {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
+                      <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
+                      {narrow ? null : <TableCell>{order.couponCode ?? '—'}</TableCell>}
+                      {narrow ? null : <TableCell>{orderSource(order) || '—'}</TableCell>}
+                      <TableCell>
+                        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem' }}>{statusChips(order)}</Stack>
+                      </TableCell>
+                      <TableCell>{fulfilmentChip(order) ?? '—'}</TableCell>
+                      <TableCell>{invoiceCell(order)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </SalesTable>
+            </ResponsiveTable>
+          )
         )}
       </ListSection>
       {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}

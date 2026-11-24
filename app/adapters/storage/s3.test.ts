@@ -980,6 +980,12 @@ describe('image publication storage operations', () => {
     ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
     ['another error code', '<Error><Code>NoSuchUpload</Code></Error>'],
     ['a code that only starts like the missing key', '<Error><Code>NoSuchKeyPolicy</Code></Error>'],
+    ['a comment naming the missing key before the real code', '<Error><!-- <Code>NoSuchKey</Code> --><Code>NoSuchBucket</Code></Error>'],
+    ['a document cut off after the code', '<Error><Code>NoSuchKey</Code><Message>The specified'],
+    ['two codes', '<Error><Code>NoSuchKey</Code><Code>NoSuchBucket</Code></Error>'],
+    ['the code nested below the root', '<Error><Details><Code>NoSuchKey</Code></Details></Error>'],
+    ['a processing instruction inside the root', '<Error><?note x?><Code>NoSuchKey</Code></Error>'],
+    ['content after the root', '<Error><Code>NoSuchKey</Code></Error><Error><Code>NoSuchBucket</Code></Error>'],
   ])('answers a delete refused with 404 and %s as an unknown outcome', async (_label, body) => {
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],

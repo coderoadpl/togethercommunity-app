@@ -188,6 +188,35 @@ const xmlRootName = (xml: string): string | null => {
 const s3ErrorCode = (xml: string): string | null =>
   xmlRootName(xml) === 'Error' ? /<Code>([^<]*)<\/Code>/u.exec(xml)?.[1] ?? null : null;
 
+const XML_TAG = /<(\/?)([A-Za-z_][\w.-]*)\s*(\/?)>/gu;
+
+const s3ErrorDocumentCodes = (xml: string): string[] | null => {
+  const inner = /^(?:<\?xml\s[^<>]*\?>)?\s*<Error>([\s\S]*)<\/Error>$/u.exec(xml.replace(/^\uFEFF/u, '').trim())?.[1];
+  if (inner === undefined || inner.replace(XML_TAG, '').includes('<')) return null;
+  const open: string[] = [];
+  const codes: string[] = [];
+  let codeStart = 0;
+  for (const tag of inner.matchAll(XML_TAG)) {
+    const [whole, closing, name, selfClosing] = tag;
+    if (closing === '/' && selfClosing === '/') return null;
+    if (closing === '/') {
+      if (open.pop() !== name) return null;
+      if (open.length === 0 && name === 'Code') codes.push(inner.slice(codeStart, tag.index));
+    } else if (selfClosing === '/') {
+      if (open.length === 0 && name === 'Code') codes.push('');
+    } else {
+      if (open.length === 0 && name === 'Code') codeStart = tag.index + whole.length;
+      open.push(name ?? '');
+    }
+  }
+  return open.length === 0 ? codes : null;
+};
+
+const confirmsMissingKey = (xml: string): boolean => {
+  const codes = s3ErrorDocumentCodes(xml);
+  return codes?.length === 1 && codes[0] === 'NoSuchKey';
+};
+
 const copySource = (bucket: string, key: string): string =>
   `/${rfc3986(bucket)}/${key.split('/').map(rfc3986).join('/')}`;
 
@@ -907,7 +936,7 @@ export const createS3StorageProvider = (
           return ok({ status: sent.status, ok: sent.ok, missingObject: false });
         }
         const body = await readProbeBody(sent, PROBE_ERROR_BODY_MAX_BYTES, signal);
-        return ok({ status: sent.status, ok: sent.ok, missingObject: body.ok && s3ErrorCode(body.value) === 'NoSuchKey' });
+        return ok({ status: sent.status, ok: sent.ok, missingObject: body.ok && confirmsMissingKey(body.value) });
       }, 'Could not reach S3.');
       if (!response.ok) return response;
       if (response.value.ok || response.value.missingObject) return ok({ deleted: true });

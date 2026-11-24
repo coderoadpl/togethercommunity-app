@@ -138,10 +138,13 @@ copy and the read of a completion or copy hold no row lock; they are fenced by
 the attempt id and by a destination of their own. A delete that takes effect
 while its transaction rolls back, or whose answer is lost, still leaves the row
 in place, and the sweep deletes the object again. A `404` answer to a delete
-whose body is an S3 error with the code `NoSuchKey` counts as a confirmed
-delete: the code is read from the answer, not checked against the bucket. Any
-other `404` (an empty body, or one that cannot be read within its size limit
-or deadline, a proxy page, a missing bucket `NoSuchBucket`) does not. A read, a digest
+whose body is a complete S3 error document (an `Error` root closed at the end
+of the body, no comment or processing instruction in it, exactly one `Code`
+element directly under the root) with the code `NoSuchKey` counts as a
+confirmed delete: the code is read from the answer, not checked against the
+bucket. Any other `404` (an empty body, or one that cannot be read within its
+size limit or deadline, a proxy page, a missing bucket `NoSuchBucket`, a
+document cut off or carrying a comment) does not. A read, a digest
 or a copy answered `404` with `NoSuchBucket`, or with a body that cannot be
 read, is a storage error, not a missing object. Removing a file version or deleting a draft product whose file
 object a key staged (`key-files/<key id>/<file>/<name>`; an owner file of a

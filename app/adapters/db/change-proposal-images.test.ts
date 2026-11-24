@@ -1126,6 +1126,8 @@ describe('a delete the storage answers with 404', () => {
     ['an empty body', ''],
     ['a proxy page', '<html><body>Not Found</body></html>'],
     ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
+    ['a comment naming the missing key before the real code', '<Error><!-- <Code>NoSuchKey</Code> --><Code>NoSuchBucket</Code></Error>'],
+    ['a document cut off after the code', '<Error><Code>NoSuchKey</Code>'],
   ])('keeps a released row and a publication record counted and marked when the 404 carries %s', async (_label, body) => {
     const { swept, repository } = await owedDeletes(body);
     expect(swept).toMatchObject({ ok: true, value: { removed: 0 } });

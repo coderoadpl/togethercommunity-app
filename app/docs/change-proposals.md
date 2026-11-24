@@ -1354,13 +1354,16 @@ of the storage, so a process that dies during a write, whose record no
 withdrawal restarts, still leaves the storage the full 10 minutes after the
 latest write it could have started before the sweep deletes the object. A delete the storage refuses (a
 `4xx` answer other than `404`) cannot land later, so the mark is cleared and the
-record stays for the sweep. A `404` answer whose body is an S3 error with the
-code `NoSuchKey` counts as a confirmed delete: the code is read from the
-answer, not checked against the bucket. The record is then removed, except
+record stays for the sweep. A `404` answer whose body is a complete S3 error
+document (an `Error` root closed at the end of the body, no comment or
+processing instruction in it, exactly one `Code` element directly under the
+root) with the code `NoSuchKey` counts as a confirmed delete: the code is read
+from the answer, not checked against the bucket. The record is then removed, except
 after a write without a definite answer (above), where the withdrawal keeps it
 and restarts its 15 minutes. Any other `404` (an empty body, or one that cannot
 be read within its size limit or deadline, a proxy page, a missing bucket
-`NoSuchBucket`, another code) counts as a delete without a definite answer. When the delete ends without a definite answer (no
+`NoSuchBucket`, another code, a document cut off or carrying a comment)
+counts as a delete without a definite answer. When the delete ends without a definite answer (no
 answer, a connection error, a server error), or the process dies after sending
 it, the storage may still carry it out later, so the record keeps its mark; the
 minute sweep deletes the object again 15 minutes after the mark, under the same
@@ -1405,8 +1408,9 @@ clears the mark and leaves the row released and invisible, and the sweep
 retries it; a busy step leaves it the same way. A bucket policy that refuses
 deletes therefore leaves such rows counted toward the key's limits, and the
 refusal logged on every sweep run, until the storage permits the delete; it
-never blocks a completion of the same image. A `404` answer with the S3 error
-code `NoSuchKey` counts as a confirmed delete, the code read from the answer
+never blocks a completion of the same image. A `404` answer with a complete
+S3 error document whose one direct code is `NoSuchKey` (as above) counts as a
+confirmed delete, the code read from the answer
 and not checked against the bucket, so the row is removed; any other `404`,
 also one whose body cannot be read within its size limit or deadline, counts
 as a delete without a definite answer. A delete that ended without a definite answer, or whose process

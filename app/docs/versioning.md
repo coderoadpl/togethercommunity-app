@@ -84,8 +84,11 @@ build could not see enough history — it does not mean the application is at
 The `release-tag` job in `.github/workflows/ci.yml` runs after the gates on a
 push to `main`. When that push is a promotion it creates the annotated tag
 `vX.Y.Z` through the GitHub API and publishes a release whose notes are the
-changelog. Tags are never moved: the job exits early when the tag already
-exists.
+changelog. Tags are never moved: an existing tag succeeds only when it resolves
+to the current `GITHUB_SHA`, dereferencing annotated tags through the GitHub
+`git/tags` API until it reaches a commit. A tag pointing elsewhere fails the job.
+Only an HTTP 404 from the initial ref lookup means the tag is missing; other API
+failures, including failures while resolving an annotated tag, fail the job.
 
 `app/scripts/changelog.ts` builds those notes from the pull request titles
 carried in the merge commit bodies since the previous `v*` tag, grouped by the

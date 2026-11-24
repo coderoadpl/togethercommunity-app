@@ -42,6 +42,7 @@ const chromaticWorkflowSchema = z.object({
 const pagesWorkflowSchema = z.object({
   jobs: z.object({
     build: z.object({
+      if: z.string(),
       strategy: z.object({
         matrix: z.object({
           include: z.array(z.object({
@@ -52,6 +53,8 @@ const pagesWorkflowSchema = z.object({
       }),
     }),
     publish: z.object({
+      if: z.string(),
+      needs: z.string(),
       steps: z.array(z.object({
         uses: z.string().optional(),
         with: z.record(z.string()).optional(),
@@ -241,6 +244,15 @@ describe('Chromatic pull request link comments', () => {
     expect(chromaticScript).toContain('--auto-accept-changes');
     expect(chromaticScript).toContain('--exit-once-uploaded');
     expect(chromaticScript).toContain('pnpm exec chromatic "$@"');
+  });
+
+  it('builds and publishes Pages only from the trusted branch refs', () => {
+    const pages = pagesWorkflowSchema.parse(parse(readWorkflow('storybook-pages.yml')));
+    const trustedRefs = "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'";
+
+    expect(pages.jobs.build.if).toBe(trustedRefs);
+    expect(pages.jobs.publish.if).toBe(trustedRefs);
+    expect(pages.jobs.publish.needs).toBe('build');
   });
 
   it('links to the permanently published Storybook paths from storybook-pages', () => {

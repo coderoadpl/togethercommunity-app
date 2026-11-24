@@ -1,4 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -6,6 +8,10 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
+
+import {
+  AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT, AI_REVIEW_SLOT_COUNT, aiReviewAttemptIds, renderAiReviewWorkflow,
+} from '../scripts/generate-ai-review-workflow.js';
 
 const stepSchema = z.object({
   name: z.string().optional(),
@@ -58,11 +64,18 @@ const stepByName = (name: string) => {
 
 const actionPin = 'anthropics/claude-code-action/base-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc';
 const checkoutPin = 'actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955';
-const attemptIds = [
-  'try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr',
-  'try1f', 'try1fr', 'try2f', 'try2fr', 'try3f', 'try3fr',
-];
-const primaryAttempts = new Set(['try1p', 'try1pr', 'try2p', 'try2pr', 'try3p', 'try3pr']);
+const slots = Array.from({ length: AI_REVIEW_SLOT_COUNT }, (_, index) => String(index + 1));
+const attemptIds = [...aiReviewAttemptIds];
+const primaryAttempts = new Set(attemptIds.filter((id) => /pr?$/.test(id)));
+const slotOf = (id: string) => {
+  const slot = /^try([1-9][0-9]*)(p|pr|f|fr)$/.exec(id)?.[1];
+  if (slot === undefined) throw new Error(`Malformed attempt id "${id}"`);
+  return slot;
+};
+const isAttemptStep = (step: { uses?: string | undefined }) => step.uses === actionPin;
+const tokenReferences = (value: unknown) => [
+  ...JSON.stringify(value).matchAll(/secrets\.(CLAUDE_CODE_OAUTH_TOKEN_\w+)/g),
+].map((match) => match[1]);
 
 const passVerdict = {
   verdict: 'PASS', summary: 'Reviewed.', blocking_issues: [], safe_to_merge: true,
@@ -117,6 +130,54 @@ const collectAttempt = (
   }
 };
 
+const preAttemptListGate = `#!/usr/bin/env bash
+set -euo pipefail
+for outcome in "\${O_1P:-}" "\${O_1PR:-}" "\${O_1F:-}" "\${O_1FR:-}" \\
+  "\${O_2P:-}" "\${O_2PR:-}" "\${O_2F:-}" "\${O_2FR:-}" \\
+  "\${O_3P:-}" "\${O_3PR:-}" "\${O_3F:-}" "\${O_3FR:-}"; do
+  case "$outcome" in pass) exit 0 ;; fail) exit 1 ;; esac
+done
+exit 1
+`;
+const preAttemptListPost = `#!/usr/bin/env bash
+set -euo pipefail
+producer=""
+for key in 1P 1PR 1F 1FR 2P 2PR 2F 2FR 3P 3PR 3F 3FR; do
+  outcome_name="O_$key"
+  [ -n "\${!outcome_name:-}" ] && producer="$key"
+done
+printf '%s\\n' "$producer"
+`;
+
+type TrustedScripts = Partial<Record<'prepare-review.sh' | 'gate-review.sh' | 'post-review.sh', string>>;
+
+const runTrustedStep = (scripts: TrustedScripts) => {
+  const directory = mkdtempSync(join(tmpdir(), 'ai-review-trusted-'));
+  try {
+    const scriptDirectory = join(directory, '.github', 'scripts');
+    mkdirSync(scriptDirectory, { recursive: true });
+    for (const [name, body] of Object.entries(scripts)) {
+      const destination = join(scriptDirectory, name);
+      writeFileSync(destination, body);
+      chmodSync(destination, 0o755);
+    }
+    const output = join(directory, 'output');
+    writeFileSync(output, '');
+    const result = spawnSync('bash', ['-e', '-c', stepById('trusted').run ?? ''], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_OUTPUT: output },
+      encoding: 'utf8',
+      timeout: 5_000,
+    });
+    return { status: result.status, stdout: result.stdout, outputs: readFileSync(output, 'utf8') };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+};
+
+const committedScript = (name: keyof TrustedScripts) =>
+  readFileSync(join(root, '.github', 'scripts', name), 'utf8');
+
 const schemaLiteral = {
   type: 'object',
   properties: {
@@ -138,6 +199,16 @@ const schemaLiteral = {
 };
 
 describe('AI review workflow', () => {
+  it('is committed exactly as the generator renders it', () => {
+    expect(source).toBe(renderAiReviewWorkflow());
+  });
+
+  it('orders every slot primary pair before every slot fallback pair', () => {
+    expect(attemptIds).toEqual(['p', 'f'].flatMap((model) => slots.flatMap((slot) => [
+      `try${slot}${model}`, `try${slot}${model}r`,
+    ])));
+  });
+
   it('emits one guarded check for staging and main pull requests plus diagnostic dispatch', () => {
     expect(workflow.name).toBe('ai-review');
     expect(workflow.on.pull_request).toEqual({
@@ -189,8 +260,9 @@ describe('AI review workflow', () => {
     expect(job['timeout-minutes']).toBe("${{ fromJSON(vars.AI_REVIEW_TIMEOUT_MINUTES || '90') }}");
   });
 
-  it('contains twelve explicit, sequential, timeout-bounded action positions', () => {
-    const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
+  it('contains four explicit, sequential, timeout-bounded action positions per slot', () => {
+    const attempts = job.steps.filter(isAttemptStep);
+    expect(attempts).toHaveLength(AI_REVIEW_SLOT_COUNT * 4);
     expect(attempts.map((candidate) => candidate.id)).toEqual(attemptIds);
     for (const attempt of attempts) {
       const index = job.steps.indexOf(attempt);
@@ -209,10 +281,10 @@ describe('AI review workflow', () => {
     }
   });
 
-  it('exhausts all six primary-model positions before the first fallback-model attempt', () => {
-    const attempts = job.steps.filter((candidate) => candidate.uses === actionPin);
+  it('exhausts every primary-model position before the first fallback-model attempt', () => {
+    const attempts = job.steps.filter(isAttemptStep);
     const firstFallback = attempts.findIndex((candidate) => candidate.id === 'try1f');
-    expect(firstFallback).toBe(6);
+    expect(firstFallback).toBe(AI_REVIEW_SLOT_COUNT * 2);
     expect(attempts.slice(0, firstFallback).map((candidate) => candidate.id))
       .toEqual([...primaryAttempts]);
     const condition = stepById('try1f').if ?? '';
@@ -312,7 +384,8 @@ describe('AI review workflow', () => {
       expect(condition).toContain("steps.target.outputs.draft == 'false'");
       expect(condition).toContain("steps.target.outputs.invoke == 'true'");
       expect(condition).toContain('!cancelled()');
-      expect(condition).toContain(`steps.preflight.outputs.has_slot_${id[3]} == 'true'`);
+      expect(condition).toContain(`steps.preflight.outputs.has_slot_${slotOf(id)} == 'true'`);
+      expect([...condition.matchAll(/has_slot_(\d+)/g)].map((match) => match[1])).toEqual([slotOf(id)]);
       for (const earlier of attemptIds.slice(0, index)) {
         const classifier = `classify${earlier.slice(3)}`;
         expect(condition).toContain(`steps.${classifier}.outputs.outcome != 'pass'`);
@@ -324,13 +397,71 @@ describe('AI review workflow', () => {
         ]));
       if (!id.endsWith('r')) expect(condition).not.toContain('cold_start');
     }
-    for (const retry of ['1pr', '1fr', '2pr', '2fr', '3pr', '3fr']) {
-      const normal = retry.slice(0, -1);
-      const condition = stepById(`try${retry}`).if ?? '';
-      expect(condition).toContain(`steps.classify${normal}.outputs.cold_start == 'true'`);
+    const retries = attemptIds.filter((id) => id.endsWith('r'));
+    expect(retries).toHaveLength(AI_REVIEW_SLOT_COUNT * 2);
+    for (const retry of retries) {
+      const normal = retry.slice(3, -1);
+      const condition = stepById(retry).if ?? '';
+      expect(attemptIds[attemptIds.indexOf(retry) - 1]).toBe(`try${normal}`);
+      expect(condition.endsWith(` && steps.classify${normal}.outputs.cold_start == 'true' }}`)).toBe(true);
+      expect(condition.match(/cold_start/g)).toHaveLength(1);
       expect(condition).toContain('!cancelled()');
     }
     expect(source).not.toContain('--fallback-model');
+  });
+
+  it('reports the attempt list only when both trusted base scripts read it', () => {
+    const prepare = '#!/usr/bin/env bash\nexit 0\n';
+    const current = runTrustedStep({
+      'prepare-review.sh': prepare,
+      'gate-review.sh': committedScript('gate-review.sh'),
+      'post-review.sh': committedScript('post-review.sh'),
+    });
+    expect(current.status).toBe(0);
+    expect(current.outputs).toBe('installed=true\nattempt_list=true\n');
+
+    const preAttemptList = runTrustedStep({
+      'prepare-review.sh': prepare,
+      'gate-review.sh': preAttemptListGate,
+      'post-review.sh': preAttemptListPost,
+    });
+    expect(preAttemptListGate).not.toContain('AI_REVIEW_ATTEMPTS');
+    expect(preAttemptListPost).not.toContain('AI_REVIEW_ATTEMPTS');
+    expect(preAttemptList.status).toBe(0);
+    expect(preAttemptList.outputs).toBe('installed=true\nattempt_list=false\n');
+
+    for (const mixed of [
+      { 'gate-review.sh': committedScript('gate-review.sh'), 'post-review.sh': preAttemptListPost },
+      { 'gate-review.sh': preAttemptListGate, 'post-review.sh': committedScript('post-review.sh') },
+      { 'gate-review.sh': committedScript('gate-review.sh') },
+    ]) {
+      const result = runTrustedStep({ 'prepare-review.sh': prepare, ...mixed });
+      expect(result.status).toBe(0);
+      expect(result.outputs).toBe('installed=true\nattempt_list=false\n');
+    }
+
+    const absent = runTrustedStep({});
+    expect(absent.status).toBe(0);
+    expect(absent.stdout).toContain('::error::bootstrap-not-installed: trusted AI review scripts are absent from the PR base');
+    expect(absent.outputs).toBe('installed=false\nattempt_list=false\n');
+  });
+
+  it('runs only the slots the trusted base scripts understand until they read the attempt list', () => {
+    const term = "steps.trusted.outputs.attempt_list == 'true'";
+    expect(AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT).toBe(3);
+    for (const id of attemptIds) {
+      const condition = stepById(id).if ?? '';
+      const slot = Number(slotOf(id));
+      if (slot > AI_REVIEW_PRE_ATTEMPT_LIST_SLOT_COUNT) {
+        expect(condition.match(/attempt_list/g), id).toHaveLength(1);
+        expect(condition, id).toContain(`steps.preflight.outputs.has_slot_${String(slot)} == 'true' && ${term} && `);
+      } else {
+        expect(condition, id).not.toContain('attempt_list');
+      }
+    }
+    for (const step of job.steps.filter((candidate) => !isAttemptStep(candidate))) {
+      expect(JSON.stringify(step), step.id ?? step.name).not.toContain('outputs.attempt_list');
+    }
   });
 
   it('passes workflow expressions through environments instead of shell interpolation', () => {
@@ -374,8 +505,12 @@ describe('AI review workflow', () => {
   });
 
   it('keeps drafts, no-token runs, stale runs, cancellations, and real no-verdict runs red', () => {
-    expect(stepByName('Report missing review capacity').run)
-      .toContain('no CLAUDE_CODE_OAUTH_TOKEN_1/2/3 is available');
+    const missing = stepByName('Report missing review capacity');
+    expect(missing.run).toContain(`no CLAUDE_CODE_OAUTH_TOKEN_${slots.join('/')} is available`);
+    expect(missing.if).toBe(`\${{ ${[
+      "steps.target.outputs.draft == 'false'", "steps.target.outputs.invoke == 'true'",
+      ...slots.map((slot) => `steps.preflight.outputs.has_slot_${slot} == 'false'`),
+    ].join(' && ')} }}`);
     expect(stepByName('Post the review verdict').if).toContain("steps.current.outputs.current == 'true'");
     expect(stepByName('Gate — fail-closed verdict').if).toContain('always()');
     expect(stepByName('Gate — fail-closed verdict').run).toContain('gate-review.sh');
@@ -398,6 +533,57 @@ describe('AI review workflow', () => {
     expect(headings.map((heading) => main.indexOf(heading)))
       .toEqual([...headings.map((heading) => main.indexOf(heading))].sort((left, right) => left - right));
     expect(main).toContain('LOW requires FAIL');
+  });
+
+  it('detects exactly one preflight slot per OAuth token secret', () => {
+    const preflight = stepById('preflight');
+    expect(preflight.env).toEqual(Object.fromEntries(slots.map((slot) => [
+      `SLOT${slot}`, `\${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_${slot} }}`,
+    ])));
+    expect(preflight.run?.trimEnd().split('\n')).toEqual(slots.map((slot) => (
+      `[ -n "$SLOT${slot}" ] && echo "has_slot_${slot}=true" >> "$GITHUB_OUTPUT" || echo "has_slot_${slot}=false" >> "$GITHUB_OUTPUT"`
+    )));
+  });
+
+  it('gives each attempt only its own slot token and keeps tokens out of every other step', () => {
+    for (const step of job.steps) {
+      const references = tokenReferences(step);
+      if (isAttemptStep(step)) {
+        const slot = slotOf(step.id ?? '');
+        expect(references, step.id).toEqual([`CLAUDE_CODE_OAUTH_TOKEN_${slot}`]);
+        expect(step.with?.claude_code_oauth_token).toBe(`\${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_${slot} }}`);
+        expect(JSON.stringify(step.env ?? {})).not.toContain('secrets.');
+      } else if (step.id === 'preflight') {
+        expect(references).toEqual(slots.map((slot) => `CLAUDE_CODE_OAUTH_TOKEN_${slot}`));
+      } else {
+        expect(references, step.id ?? step.name).toEqual([]);
+        expect(JSON.stringify(step), step.id ?? step.name).not.toContain('secrets.');
+      }
+    }
+    expect(source.match(/secrets\.CLAUDE_CODE_OAUTH_TOKEN_/g)).toHaveLength(AI_REVIEW_SLOT_COUNT * 5);
+  });
+
+  it('hands the post and gate scripts every attempt outcome and the ordered attempt list', () => {
+    const post = stepByName('Post the review verdict');
+    const gate = stepByName('Gate — fail-closed verdict');
+    expect(post.env?.AI_REVIEW_ATTEMPTS).toBe(attemptIds.join(' '));
+    expect(gate.env?.AI_REVIEW_ATTEMPTS).toBe(attemptIds.join(' '));
+    for (const id of attemptIds) {
+      const key = id.slice(3);
+      const name = key.toUpperCase();
+      const model = primaryAttempts.has(id) ? 'primary_model' : 'fallback_model';
+      expect(gate.env?.[`O_${name}`]).toBe(`\${{ steps.classify${key}.outputs.outcome }}`);
+      expect(post.env).toMatchObject({
+        [`O_${name}`]: `\${{ steps.classify${key}.outputs.outcome }}`,
+        [`R_${name}`]: `\${{ steps.classify${key}.outputs.reason }}`,
+        [`RAW_${name}`]: `\${{ steps.classify${key}.outputs.raw }}`,
+        [`LOG_${name}`]: `\${{ steps.classify${key}.outputs.log }}`,
+        [`MODEL_${name}`]: `\${{ steps.prepare.outputs.${model} }}`,
+      });
+    }
+    expect(Object.keys(gate.env ?? {}).filter((name) => name.startsWith('O_'))).toHaveLength(attemptIds.length);
+    expect(Object.keys(post.env ?? {}).filter((name) => /^(O|R|RAW|LOG|MODEL)_/.test(name)))
+      .toHaveLength(attemptIds.length * 5);
   });
 
   it('does not expose deployment, hosting, or unrelated operational credentials', () => {

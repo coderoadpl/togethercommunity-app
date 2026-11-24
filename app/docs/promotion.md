@@ -63,6 +63,12 @@ promotion pull request's own CI run is neither waited on nor taken as evidence;
 runs of every other event on the `staging` branch at that SHA count, in practice
 `push` and `workflow_dispatch` runs.
 
+The guard runs when a promotion pull request is opened, reopened or receives a
+new head, and again when it leaves draft. A promotion kept as a draft while
+`staging` still moves is therefore judged once more at the moment it is marked
+ready: freeze `staging` first, then mark the pull request ready, and the guard
+re-evaluates without a manual re-run.
+
 When the source, tip and freeze checks pass but a required workflow has no
 successful run for the SHA yet, the guard waits and re-reads the runs every 30
 seconds instead of failing at once: up to 40 minutes while a run is still

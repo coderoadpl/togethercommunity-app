@@ -48,8 +48,9 @@ const step = (name: string) => {
 };
 
 describe('promotion guard workflow', () => {
-  it('runs only for pull requests targeting main', () => {
-    expect(workflow.on.pull_request.types).toEqual(['opened', 'synchronize', 'reopened']);
+  it('runs only for pull requests targeting main, and again when one leaves draft', () => {
+    expect(workflow.on.pull_request.types)
+      .toEqual(['opened', 'synchronize', 'reopened', 'ready_for_review']);
     expect(workflow.on.pull_request.branches).toEqual(['main']);
   });
 

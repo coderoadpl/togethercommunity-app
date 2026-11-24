@@ -1,4 +1,4 @@
-import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
+import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams, trimTrailing } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
 import { isStripeTermsUrlMissing, publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
@@ -199,7 +199,7 @@ const authEmailLanguage = async (
 };
 
 const platformAuthBaseUrl = (hostHeader: string, deps: AppDeps): string | null => {
-  const host = (hostHeader.split(':')[0] ?? '').replace(/\.+$/u, '').toLowerCase();
+  const host = trimTrailing(hostHeader.split(':')[0] ?? '', '.').toLowerCase();
   if (deps.platformHost === null || host !== deps.platformHost.toLowerCase()) return null;
   const url = new URL(deps.appBaseUrl);
   url.hostname = deps.platformHost;

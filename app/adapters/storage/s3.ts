@@ -694,7 +694,10 @@ export const createS3StorageProvider = (
       try {
         const response = await abortable(fetchStorage(signed, { method: 'PUT', dispatcher, redirect: 'error', signal, headers }), signal);
         const body = await readProbeBody(response, PROBE_ERROR_BODY_MAX_BYTES, signal);
-        if (response.status === 404 && !(body.ok && s3ErrorCode(body.value) === 'NoSuchBucket')) return err(notFound('No storage object at the copy source'));
+        if (response.status === 404) {
+          if (!body.ok) return err(integrationUnavailable('S3 answered the copy request with 404 and a body that could not be read'));
+          if (s3ErrorCode(body.value) !== 'NoSuchBucket') return err(notFound('No storage object at the copy source'));
+        }
         if (response.status >= 400 && response.status < 500) {
           return err(storageDefiniteFailure(`S3 refused the copy request with status ${String(response.status)}`));
         }

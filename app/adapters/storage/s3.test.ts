@@ -1045,6 +1045,19 @@ describe('image publication storage operations', () => {
     expect(await storage.getObject({ ...credentials, deadlineMs: 50 }, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
   });
 
+  it.each([16, 'endless'] as const)('reports a copy answered 404 with an unreadable body (%s) as a storage error without a definite outcome', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 50,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(false);
+  });
+
   it.each([[400, true], [403, true], [500, false], [503, false]] as const)(
     'answers a delete refused with status %s as definite only for a refusal: %s',
     async (status, definite) => {

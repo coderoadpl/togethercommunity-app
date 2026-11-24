@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 
@@ -31,6 +31,7 @@ const TENANT = 'workspace';
 const MEMBER = 'member';
 const COURSE = 'course';
 const PROGRESS = 'progress';
+const OTHER_TENANT = 'other-workspace';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -55,14 +56,19 @@ const identity: Identity = {
 const ctx: Ctx = { identity };
 
 let idCounter = 0;
-const deps = (): ProgressDeps => ({
-  grants: createProductGrantRepository(database.db),
-  courses: createCourseRepository(database.db),
-  modules: createCourseModuleRepository(database.db),
-  progress: createMemberCourseProgressRepository(database.db),
-  ids: { nextId: () => `${PROGRESS}-${++idCounter}` },
-  clock: { nowIso: () => NOW },
-});
+let clockTick = 0;
+const nextInstant = () => new Date(Date.parse(NOW) + ++clockTick * 1000).toISOString();
+const deps = (): ProgressDeps => {
+  const now = nextInstant();
+  return {
+    grants: createProductGrantRepository(database.db),
+    courses: createCourseRepository(database.db),
+    modules: createCourseModuleRepository(database.db),
+    progress: createMemberCourseProgressRepository(database.db),
+    ids: { nextId: () => `${PROGRESS}-${++idCounter}` },
+    clock: { nowIso: () => now },
+  };
+};
 
 const storedProgress = async () => {
   const [row] = await database.db
@@ -80,8 +86,8 @@ const completionEvents = async () => {
   return rows.map((row) => row.payload);
 };
 
-const insertEmptyProgress = () => database.db.insert(memberCourseProgress).values({
-  id: PROGRESS, tenantId: TENANT, memberId: MEMBER, courseId: COURSE, completedLessonIds: [], updatedAt: NOW,
+const insertProgress = (completedLessonIds: string[] = []) => database.db.insert(memberCourseProgress).values({
+  id: PROGRESS, tenantId: TENANT, memberId: MEMBER, courseId: COURSE, completedLessonIds, updatedAt: NOW,
 });
 
 const countLockWaiters = async (): Promise<number> => {
@@ -105,21 +111,39 @@ const waitForLockWaiters = async (count: number): Promise<void> => {
   }
 };
 
-const overlapOnLockedRow = async <T>(writes: () => Promise<T>[]): Promise<T[]> => {
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+const settle = <T>(write: Promise<T>): Promise<Settled<T>> => write.then(
+  (value) => ({ ok: true as const, value }),
+  (error: unknown) => ({ ok: false as const, error }),
+);
+
+const overlapOnLockedRow = async <T>(writes: Array<() => Promise<T>>): Promise<T[]> => {
   const holder = new pg.Client({ connectionString: database.url });
   await holder.connect();
-  let pending: Promise<T>[] = [];
+  const pending: Array<Promise<Settled<T>>> = [];
   try {
     await holder.query('begin');
     await holder.query('select id from member_course_progress where tenant_id = $1 and id = $2 for update', [TENANT, PROGRESS]);
-    pending = writes();
-    await waitForLockWaiters(pending.length);
+    for (const write of writes) {
+      pending.push(settle(write()));
+      await waitForLockWaiters(pending.length);
+    }
   } finally {
     await holder.query('commit');
     await holder.end();
+    await Promise.all(pending);
   }
-  return Promise.all(pending);
+  const settled = await Promise.all(pending);
+  return settled.map((outcome) => {
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  });
 };
+
+const completedIn = (result: Result<MemberCourseProgress, AppError>) => (
+  result.ok ? [...result.value.completedLessonIds].sort() : result
+);
 
 beforeAll(async () => {
   database = await createTestDatabase('together_member_course_progress', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
@@ -127,6 +151,9 @@ beforeAll(async () => {
   await database.db.insert(user).values({ id: 'learner', email: 'learner@example.org', name: 'Learner' });
   await database.db.insert(members).values({ id: MEMBER, tenantId: TENANT, userId: 'learner', email: 'learner@example.org', createdAt: NOW });
   await database.db.insert(courses).values({ id: COURSE, tenantId: TENANT, name: 'Course', description: '', moduleOrder: ['module'], createdAt: NOW });
+  await database.db.insert(tenants).values({ id: OTHER_TENANT, slug: OTHER_TENANT, name: 'Other workspace', createdAt: NOW });
+  await database.db.insert(members).values({ id: MEMBER, tenantId: OTHER_TENANT, userId: 'learner', email: 'learner@example.org', createdAt: NOW });
+  await database.db.insert(courses).values({ id: COURSE, tenantId: OTHER_TENANT, name: 'Course', description: '', moduleOrder: [], createdAt: NOW });
   await createCourseModuleRepository(database.db).create(TENANT, {
     id: 'module',
     tenantId: TENANT,
@@ -150,15 +177,15 @@ beforeAll(async () => {
 afterAll(async () => { await database?.close(); });
 
 beforeEach(async () => {
-  await database.db.delete(memberEvents).where(eq(memberEvents.tenantId, TENANT));
-  await database.db.delete(memberCourseProgress).where(eq(memberCourseProgress.tenantId, TENANT));
+  await database.db.delete(memberEvents).where(inArray(memberEvents.tenantId, [TENANT, OTHER_TENANT]));
+  await database.db.delete(memberCourseProgress).where(inArray(memberCourseProgress.tenantId, [TENANT, OTHER_TENANT]));
 });
 
 it('keeps both completions when two completions of one member overlap on the same progress row', async () => {
-  await insertEmptyProgress();
-  const results = await overlapOnLockedRow(() => [
-    markLessonCompleted(ctx, 'lesson-1', deps()),
-    markLessonCompleted(ctx, 'lesson-2', deps()),
+  await insertProgress();
+  const results = await overlapOnLockedRow([
+    () => markLessonCompleted(ctx, 'lesson-1', deps()),
+    () => markLessonCompleted(ctx, 'lesson-2', deps()),
   ]);
   expect(results.every((result) => result.ok)).toBe(true);
   expect([...(await storedProgress())?.completedLessonIds ?? []].sort()).toEqual(['lesson-1', 'lesson-2']);
@@ -166,10 +193,10 @@ it('keeps both completions when two completions of one member overlap on the sam
 }, 60_000);
 
 it('keeps the completion and the last-viewed pointer when they overlap on the same progress row', async () => {
-  await insertEmptyProgress();
-  const results = await overlapOnLockedRow<Result<MemberCourseProgress, AppError>>(() => [
-    markLessonCompleted(ctx, 'lesson-1', deps()),
-    updateLastViewed(ctx, { courseId: COURSE, lessonId: 'lesson-2', moduleId: 'module' }, deps()),
+  await insertProgress();
+  const results = await overlapOnLockedRow<Result<MemberCourseProgress, AppError>>([
+    () => markLessonCompleted(ctx, 'lesson-1', deps()),
+    () => updateLastViewed(ctx, { courseId: COURSE, lessonId: 'lesson-2', moduleId: 'module' }, deps()),
   ]);
   expect(results.every((result) => result.ok)).toBe(true);
   expect(await storedProgress()).toMatchObject({
@@ -180,10 +207,10 @@ it('keeps the completion and the last-viewed pointer when they overlap on the sa
 }, 60_000);
 
 it('records one completion event when the same lesson is completed twice at once', async () => {
-  await insertEmptyProgress();
-  const results = await overlapOnLockedRow(() => [
-    markLessonCompleted(ctx, 'lesson-1', deps()),
-    markLessonCompleted(ctx, 'lesson-1', deps()),
+  await insertProgress();
+  const results = await overlapOnLockedRow([
+    () => markLessonCompleted(ctx, 'lesson-1', deps()),
+    () => markLessonCompleted(ctx, 'lesson-1', deps()),
   ]);
   expect(results.every((result) => result.ok)).toBe(true);
   expect((await storedProgress())?.completedLessonIds).toEqual(['lesson-1']);
@@ -238,4 +265,68 @@ it('moves only the given last-viewed pointers and keeps completions', async () =
     lastViewedChapterId: 'chapter',
   });
   expect(await completionEvents()).toHaveLength(1);
+}, 60_000);
+
+const mark = () => markLessonCompleted(ctx, 'lesson-1', deps());
+const unmark = () => unmarkLessonCompleted(ctx, 'lesson-1', deps());
+
+it.each([
+  { initial: [], order: 'mark then unmark', writes: [mark, unmark], responses: [['lesson-1'], []], stored: [], events: 1 },
+  { initial: [], order: 'unmark then mark', writes: [unmark, mark], responses: [[], ['lesson-1']], stored: ['lesson-1'], events: 1 },
+  { initial: ['lesson-1'], order: 'mark then unmark', writes: [mark, unmark], responses: [['lesson-1'], []], stored: [], events: 0 },
+  { initial: ['lesson-1'], order: 'unmark then mark', writes: [unmark, mark], responses: [[], ['lesson-1']], stored: ['lesson-1'], events: 1 },
+])('answers overlapping $order from $initial as if they ran one after the other', async ({ initial, writes, responses, stored, events }) => {
+  await insertProgress(initial);
+
+  const results = await overlapOnLockedRow(writes);
+
+  expect(results.map(completedIn)).toEqual(responses);
+  expect((await storedProgress())?.completedLessonIds).toEqual(stored);
+  expect(await completionEvents()).toHaveLength(events);
+}, 60_000);
+
+it('changes only the calling tenant when another tenant has the same member and course ids', async () => {
+  const progress = createMemberCourseProgressRepository(database.db);
+  const otherRow = {
+    id: PROGRESS,
+    tenantId: OTHER_TENANT,
+    memberId: MEMBER,
+    courseId: COURSE,
+    completedLessonIds: ['lesson-1'],
+    lastViewedLessonId: 'lesson-1',
+    lastViewedModuleId: 'module',
+    lastViewedChapterId: 'chapter',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+  await database.db.insert(memberCourseProgress).values(otherRow);
+  await database.db.insert(memberEvents).values({
+    id: 'other-completion',
+    tenantId: OTHER_TENANT,
+    memberId: MEMBER,
+    type: 'lesson-completion',
+    payload: { courseId: COURSE, lessonId: 'lesson-1' },
+    occurredAt: otherRow.updatedAt,
+  });
+  const otherEvents = () => database.db
+    .select({ id: memberEvents.id, payload: memberEvents.payload, occurredAt: memberEvents.occurredAt })
+    .from(memberEvents)
+    .where(eq(memberEvents.tenantId, OTHER_TENANT));
+  const otherProgress = () => database.db
+    .select()
+    .from(memberCourseProgress)
+    .where(eq(memberCourseProgress.tenantId, OTHER_TENANT));
+  const eventsBefore = await otherEvents();
+  const pair = { memberId: MEMBER, courseId: COURSE };
+
+  expect(await progress.removeCompletedLesson(TENANT, { ...pair, lessonId: 'lesson-1', now: nextInstant() })).toBeNull();
+  expect(await storedProgress()).toBeUndefined();
+  expect(await completionEvents()).toEqual([]);
+
+  await progress.addCompletedLesson(TENANT, { ...pair, id: 'own-progress', lessonId: 'lesson-2', now: nextInstant() });
+  await progress.setLastViewed(TENANT, { ...pair, id: 'own-pointer', lessonId: 'lesson-2', moduleId: 'module', chapterId: 'chapter', now: nextInstant() });
+  await progress.removeCompletedLesson(TENANT, { ...pair, lessonId: 'lesson-2', now: nextInstant() });
+
+  expect(await otherProgress()).toEqual([otherRow]);
+  expect(await otherEvents()).toEqual(eventsBefore);
+  expect(await storedProgress()).toMatchObject({ completedLessonIds: [], lastViewedLessonId: 'lesson-2' });
 }, 60_000);

@@ -1185,22 +1185,20 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         updatedAt: input.now,
       })
       .onConflictDoNothing({ target: progressPairTarget });
+    const [locked] = await tx
+      .select()
+      .from(memberCourseProgress)
+      .where(progressOfPair(tenantId, input))
+      .limit(1)
+      .for('update');
+    if (locked === undefined) throw new Error('Progress create/read failed inside repository');
+    if (locked.completedLessonIds.includes(input.lessonId)) return progressFromRow(locked);
     const [changed] = await tx
       .update(memberCourseProgress)
-      .set({
-        completedLessonIds: sql`${memberCourseProgress.completedLessonIds} || ${lessonIdArray(input.lessonId)}`,
-        updatedAt: input.now,
-      })
-      .where(and(
-        progressOfPair(tenantId, input),
-        sql`not (${memberCourseProgress.completedLessonIds} @> ${lessonIdArray(input.lessonId)})`,
-      ))
+      .set({ completedLessonIds: [...locked.completedLessonIds, input.lessonId], updatedAt: input.now })
+      .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, locked.id)))
       .returning();
-    if (changed === undefined) {
-      const current = await findProgressOfPair(tx, tenantId, input);
-      if (current === null) throw new Error('Progress create/read failed inside repository');
-      return current;
-    }
+    if (changed === undefined) throw new Error('Locked progress row vanished inside repository');
     await appendMemberEvent(tx, memberEventSchema.parse({
       id: `lesson-completion:${changed.id}:${input.lessonId}:${input.now}`,
       tenantId,
@@ -1212,18 +1210,15 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
     return progressFromRow(changed);
   }),
   removeCompletedLesson: async (tenantId, input) => {
-    const [changed] = await db
+    const [row] = await db
       .update(memberCourseProgress)
       .set({
         completedLessonIds: sql`${memberCourseProgress.completedLessonIds} - ${input.lessonId}::text`,
-        updatedAt: input.now,
+        updatedAt: sql`case when ${memberCourseProgress.completedLessonIds} @> ${lessonIdArray(input.lessonId)} then ${input.now} else ${memberCourseProgress.updatedAt} end`,
       })
-      .where(and(
-        progressOfPair(tenantId, input),
-        sql`${memberCourseProgress.completedLessonIds} @> ${lessonIdArray(input.lessonId)}`,
-      ))
+      .where(progressOfPair(tenantId, input))
       .returning();
-    return changed === undefined ? findProgressOfPair(db, tenantId, input) : progressFromRow(changed);
+    return row === undefined ? null : progressFromRow(row);
   },
   setLastViewed: async (tenantId, input) => {
     const pointers = {

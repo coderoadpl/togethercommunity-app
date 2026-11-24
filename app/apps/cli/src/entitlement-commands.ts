@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import { createApplicationClient, type ApplicationClient, type ApplicationClientOptions } from '#core/client/index.js';
-import { err, validation, type AppError, type EntitlementCheckOutput, type Result } from '#core/domain/index.js';
+import { err, validation, type AppError, type ApplicationKeyPublic, type EntitlementCheckOutput, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 import { readStdin } from './secret-input.js';
@@ -51,6 +51,18 @@ export const formatEntitlementCheck = (output: EntitlementCheckOutput): string =
       ].join('\t'));
     return [`${subjectLabel(result.subject)}${result.member === null ? '' : ` (${result.member.id})`}`, ...products].join('\n');
   }).join('\n');
+
+const applicationKeyState =(key: Pick<ApplicationKeyPublic, 'revokedAt' | 'expiresAt'>, nowMs: number): 'revoked' | 'expired' | 'active' => {
+  if (key.revokedAt !== null) return 'revoked';
+  return Date.parse(key.expiresAt) <= nowMs ? 'expired' : 'active';
+};
+
+export const formatApplicationKeys = (keys: readonly ApplicationKeyPublic[], nowMs: number): string =>
+  keys.length === 0
+    ? 'no application keys'
+    : keys
+      .map((key) => `${key.name}\t${applicationKeyState(key, nowMs)}\texpires ${key.expiresAt}\t${key.scopes.join(',')}\t${key.productIds === null ? 'all products' : key.productIds.join(',')}\t(${key.id})`)
+      .join('\n');
 
 export const runEntitlementCheck = async (
   rawOptions: unknown,

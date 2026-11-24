@@ -72,7 +72,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
-import { registerEntitlementCommands } from './entitlement-commands.js';
+import { formatApplicationKeys, registerEntitlementCommands } from './entitlement-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
@@ -4123,13 +4123,7 @@ applicationKey
 
 applicationKey.command('list').description('List application keys (no secrets)').action(
   withCtx(async (ctx) => {
-    emit(await ctx.api.listApplicationKeys(), ctx.json, (data) =>
-      data.apiKeys.length === 0
-        ? 'no application keys'
-        : data.apiKeys
-            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\texpires ${k.expiresAt}\t${k.scopes.join(',')}\t${k.productIds === null ? 'all products' : k.productIds.join(',')}\t(${k.id})`)
-            .join('\n'),
-    );
+    emit(await ctx.api.listApplicationKeys(), ctx.json, (data) => formatApplicationKeys(data.apiKeys, Date.now()));
   }),
 );
 
@@ -4201,16 +4195,16 @@ shopManagementKey
 
 shopManagementKey
   .command('purge')
-  .description('Delete every shop management key of the workspace, revoked or not')
+  .description('Delete every shop management key and every application key of the workspace, revoked or not')
   .option('--yes', 'confirm the permanent deletion')
   .action(
     withInput(z.tuple([z.object({ yes: z.boolean().optional() })]), async (ctx, [options]) => {
       if (options.yes !== true) {
-        emit(err(validation('Purging shop management keys requires --yes')), ctx.json, () => '');
+        emit(err(validation('Purging shop management keys and application keys requires --yes')), ctx.json, () => '');
         return;
       }
       emit(await ctx.api.purgeShopManagementKeys(), ctx.json, (data) =>
-        `purged ${String(data.purged)} shop management keys`,
+        `purged ${String(data.purged)} shop management keys and application keys`,
       );
     }),
   );

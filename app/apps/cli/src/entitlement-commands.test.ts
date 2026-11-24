@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApplicationClientOptions } from '#core/client/index.js';
 import { ok, type EntitlementCheckInput, type EntitlementCheckOutput } from '#core/domain/index.js';
 
-import { DEFAULT_APPLICATION_KEY_ENV, formatEntitlementCheck, parseSubjectLines, runEntitlementCheck } from './entitlement-commands.js';
+import { DEFAULT_APPLICATION_KEY_ENV, formatApplicationKeys, formatEntitlementCheck, parseSubjectLines, runEntitlementCheck } from './entitlement-commands.js';
 
 const output: EntitlementCheckOutput = {
   version: 1,
@@ -98,5 +98,26 @@ describe('entitlement check output', () => {
       'member m-none',
       '  no access',
     ].join('\n'));
+  });
+});
+
+describe('application key list output', () => {
+  const key = {
+    id: 'ek-1', tenantId: 'acme', name: 'Companion app', scopes: ['entitlements:check' as const], productIds: null,
+    issuedByUserId: 'owner-1', createdAt: '2026-11-01T00:00:00.000Z', expiresAt: '2026-12-01T00:00:00.000Z', revokedAt: null,
+  };
+
+  it('prints revoked, expired or active, an unrevoked key past its expiry being expired', () => {
+    const now = Date.parse('2026-11-20T12:00:00.000Z');
+    expect(formatApplicationKeys([
+      key,
+      { ...key, id: 'ek-2', expiresAt: '2026-11-20T12:00:00.000Z' },
+      { ...key, id: 'ek-3', expiresAt: '2026-11-01T00:00:00.000Z', revokedAt: '2026-11-02T00:00:00.000Z', productIds: ['prod-a', 'prod-b'] },
+    ], now).split('\n')).toEqual([
+      'Companion app\tactive\texpires 2026-12-01T00:00:00.000Z\tentitlements:check\tall products\t(ek-1)',
+      'Companion app\texpired\texpires 2026-11-20T12:00:00.000Z\tentitlements:check\tall products\t(ek-2)',
+      'Companion app\trevoked\texpires 2026-11-01T00:00:00.000Z\tentitlements:check\tprod-a,prod-b\t(ek-3)',
+    ]);
+    expect(formatApplicationKeys([], now)).toBe('no application keys');
   });
 });

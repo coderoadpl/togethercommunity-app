@@ -79,7 +79,11 @@ fonts before mounting to reproduce navigation within an already loaded panel.
 Course captures repaint their asynchronously settled notification badge, public
 sidebar icons and editor upload control before the screenshot: repeated runs of
 those screens alternated between two antialias states for the same geometry, and
-forcing a re-raster once the chrome is final made them byte-stable. Each repaint
+forcing a re-raster once the chrome is final made them byte-stable. The mobile
+lesson lightbox captures repaint the lesson footer bar behind the scrim for the
+same reason: the lesson image can finish loading after the overlay opens and move
+that bar, and repeated runs left its outlined previous-lesson button one pixel
+apart. On desktop the enlarged image covers that bar. Each repaint
 first waits for its target, so a selector that stops matching fails the capture
 instead of silently skipping the re-raster.
 The mobile long-curriculum capture moves the pointer off the program button and

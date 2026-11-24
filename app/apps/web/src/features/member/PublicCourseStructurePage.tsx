@@ -7,19 +7,13 @@ import { ApiError } from '#core/client/index.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import {
-  Eyebrow,
-  StatTile,
-  StatTileLabel,
-  StatTileValue,
-} from '../../theme.js';
-import { courseTotals, formatTotalDuration } from './CourseRail.js';
+import { Eyebrow } from '../../theme.js';
 import { CourseLoading } from './CourseLoading.js';
 import { CourseTree } from './CourseTree.js';
-import { GuestCourseOffer } from './GuestCourseOffer.js';
+import { GuestCourseOffer, GuestCourseOfferRepeat } from './GuestCourseOffer.js';
 import { MemberSurface } from './MemberSurface.js';
 import { anonCrumbs } from './anon-crumbs.js';
-import { EmptyCourseIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+import { EmptyCourseIcon } from './overview-icons.js';
 import { anonHomePath } from './shell/member-nav.js';
 
 const isNotFound = (error: Error | null) =>
@@ -44,7 +38,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
           ? {
               kind: 'not-found',
               title: t.courseTree.courseNotFound,
-              body: t.courseTree.courseNotInLibrary,
+              body: t.anon.courseNotFoundBody,
               action: <MuiLink component={Link} to={anonHomePath()}>{t.shell.start}</MuiLink>,
             }
           : {
@@ -57,7 +51,6 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
   }
 
   const course = structure.data.structure;
-  const totals = courseTotals(course);
   const hasModules = course.modules.length > 0;
 
   return (
@@ -77,34 +70,6 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
             <Typography variant="body1">{course.offer.description}</Typography>
           </Paper>
         ) : null}
-        <Box
-          sx={{
-            display: 'grid',
-            gap: '0.75rem',
-            gridTemplateColumns: { xs: '1fr', sm: totals.totalMinutes > 0 ? '1fr 1fr' : '1fr' },
-          }}
-        >
-          <StatTile data-testid="stat-tile-lessons">
-            <StatLessonsIcon />
-            <Box sx={{ minWidth: 0 }}>
-              <StatTileValue component="p">{String(totals.total)}</StatTileValue>
-              <StatTileLabel component="p">
-                {t.courseOverview.statLessons({ count: totals.total })}
-              </StatTileLabel>
-            </Box>
-          </StatTile>
-          {totals.totalMinutes > 0 ? (
-            <StatTile data-testid="stat-tile-duration">
-              <StatClockIcon />
-              <Box sx={{ minWidth: 0 }}>
-                <StatTileValue component="p">
-                  {formatTotalDuration(t, totals.totalMinutes)}
-                </StatTileValue>
-                <StatTileLabel component="p">{t.courseOverview.statDuration}</StatTileLabel>
-              </Box>
-            </StatTile>
-          ) : null}
-        </Box>
         {hasModules ? (
           <Box component="section" data-testid="anon-course-program">
             <Typography variant="h3" component="h2" sx={{ mb: '0.5rem' }}>
@@ -126,6 +91,7 @@ export const PublicCourseStructurePage = ({ courseId }: { courseId: string }) =>
             data-testid="course-empty-state"
           />
         )}
+        {hasModules ? <GuestCourseOfferRepeat course={course} /> : null}
       </Stack>
     </MemberSurface>
   );

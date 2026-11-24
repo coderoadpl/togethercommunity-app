@@ -911,7 +911,10 @@ and `PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES` defaults to 3. The
 email bucket uses a SHA-256 digest scoped to the tenant; the IP comes only from
 the trusted connection/proxy policy. Development defaults are 1000 and 100.
 Environment overrides follow the existing rate-limit convention, including
-zero to disable a bucket. Rejections carry `Retry-After`.
+zero to disable a bucket. Rejections carry `Retry-After`. HTML form posts
+over the per-IP limit get a minimal 429 page from the rate-limit middleware;
+over the per-address limit, the submit handler reads the limiter result before
+submitting and answers with the form page and its rate-limit error.
 
 Browser JSON requests and preflights require an exact origin in the form's
 allow-list. No credentials or wildcard origins are enabled. Ordinary HTML

@@ -1,18 +1,18 @@
 import type { Hono, Context, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 
-import { API_PATHS, marketingSignupContracts } from '#core/contract/index.js';
-import { err, internal, notFound, tenantNotFound, validation } from '#core/domain/index.js';
+import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, marketingSignupContracts } from '#core/contract/index.js';
+import { err, internal, marketingSignupSubmissionSchema, notFound, tenantNotFound, validation, type AppError, type MarketingSignupForm } from '#core/domain/index.js';
 import { resolveTenant, authLinkBaseUrl, createMarketingSignupForm, getMarketingSignupForm, listMarketingSignupForms, updateMarketingSignupForm, submitMarketingSignupForm } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { ctxOf } from './ctx-of.js';
 import { readJson } from './read-json.js';
-import { respond } from './respond.js';
+import { respond, retryAfterHeaders } from './respond.js';
 import { trustedClientIp } from './auth-network.js';
 import { isMarketingSignupSubmissionPath } from './body-limits.js';
-import { languageFromRequest, renderSignupFormPage } from './public-marketing-pages.js';
+import { languageFromRequest, renderSignupFormPage, renderSignupUnavailablePage, type SignupFormError } from './public-marketing-pages.js';
 
 export const registerSessionMarketingSignupRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
   app.get(API_PATHS.listMarketingSignupForms, async (c) => deps.marketingSignup === undefined ? respond(err(internal('Signup forms are unavailable'))) : respond(await listMarketingSignupForms(ctxOf(c), deps.marketingSignup)));
@@ -29,13 +29,45 @@ export const registerSessionMarketingSignupRoutes = (app: Hono<AppVars>, deps: A
     return respond(await updateMarketingSignupForm(ctxOf(c), parsed.data, deps.marketingSignup));
   });
 };
-const resolveForm = async (c: Context<AppVars>, deps: AppDeps) => {
+const resolveWorkspace = async (c: Context<AppVars>, deps: AppDeps) => {
   const resolved = await resolveTenant(c.req.header('host') ?? '', null, deps);
   if (!resolved.ok || resolved.value === null) return resolved.ok ? err(tenantNotFound()) : resolved;
-  const form = await deps.marketingSignup?.forms.findBySlug(resolved.value.tenant.id, c.req.param('slug') ?? '');
-  if (form === undefined || form === null || form.status !== 'active') return err(notFound('Signup form was not found'));
   const settings = await deps.tenants.findSettings(resolved.value.tenant.id);
-  return { ok: true, value: { resolved: resolved.value, form, brand: { tenant: resolved.value.tenant, settings }, language: languageFromRequest(c.req.raw, settings?.defaultLanguage) } } as const;
+  return { ok: true, value: { resolved: resolved.value, brand: { tenant: resolved.value.tenant, settings }, language: languageFromRequest(c.req.raw, settings?.defaultLanguage) } } as const;
+};
+type Workspace = Extract<Awaited<ReturnType<typeof resolveWorkspace>>, { ok: true }>['value'];
+const activeForm = async (deps: AppDeps, tenantId: string, slug: string): Promise<MarketingSignupForm | null> => {
+  const form = await deps.marketingSignup?.forms.findBySlug(tenantId, slug);
+  return form?.status === 'active' ? form : null;
+};
+const resolveForm = async (c: Context<AppVars>, deps: AppDeps) => {
+  const workspace = await resolveWorkspace(c, deps);
+  if (!workspace.ok) return workspace;
+  const form = await activeForm(deps, workspace.value.brand.tenant.id, c.req.param('slug') ?? '');
+  return form === null ? err(notFound('Signup form was not found')) : { ok: true, value: { ...workspace.value, form } } as const;
+};
+const activeConsentDefinition = async (deps: Pick<AppDeps, 'marketing'>, form: MarketingSignupForm) => {
+  const definition = await deps.marketing?.definitions.findById(form.tenantId, form.consentDefinitionId);
+  return definition?.status === 'active' ? definition : null;
+};
+export const signupFormAvailable = async (deps: Pick<AppDeps, 'marketing'>, form: MarketingSignupForm): Promise<boolean> =>
+  form.status === 'active' && form.consentVersion !== undefined && await activeConsentDefinition(deps, form) !== null;
+const formPageData = async (deps: AppDeps, form: MarketingSignupForm) => {
+  const definition = await activeConsentDefinition(deps, form);
+  if (definition === null || form.consentVersion === undefined) return null;
+  const reference = form.consentVersion.documentVersionRef;
+  const document = reference.mode === 'hosted'
+    ? await deps.marketing?.documents.findPublishedVersionById(form.tenantId, reference.documentVersionId) ?? null
+    : null;
+  return {
+    wording: form.consentVersion.label,
+    doubleOptIn: definition.doubleOptIn,
+    consentDocument: reference.mode === 'url'
+      ? { kind: 'external', url: reference.url } as const
+      : document === null
+        ? null
+        : { kind: 'hosted', title: document.document.title, href: `/legal/${encodeURIComponent(document.document.slug)}/v/${String(document.version.version)}` } as const,
+  };
 };
 const submissionSlug = (path: string): string => decodeURIComponent(path.split('/').at(-2) ?? '');
 const submissionOriginAllowed = async (c: Context<AppVars>, deps: AppDeps, origin: string): Promise<boolean> => {
@@ -55,16 +87,43 @@ export const marketingSignupCorsMiddleware = (deps: AppDeps): MiddlewareHandler<
   const vary = c.res.headers.get('vary');
   if (vary === null || !vary.toLowerCase().split(',').map((value) => value.trim()).includes('origin')) c.res.headers.append('vary', 'Origin');
 };
+const formPath = (slug: string): string => `/marketing/forms/${encodeURIComponent(slug)}`;
+const htmlResponse = (body: string, status: number, extraHeaders: HeadersInit = {}): Response => {
+  const headers = new Headers(extraHeaders);
+  headers.set('content-type', 'text/html; charset=UTF-8');
+  headers.set('cache-control', 'no-store');
+  headers.set('referrer-policy', 'no-referrer');
+  return new Response(body, { status, headers });
+};
+const typedValue = (value: unknown, maxLength: number): string => typeof value === 'string' ? value.slice(0, maxLength) : '';
+const signupFormError = (error: AppError, fields: Record<string, unknown>): SignupFormError => {
+  if (error.code === 'rate_limited') return 'rate_limited';
+  return error.code === 'validation' && !marketingSignupSubmissionSchema.shape.email.safeParse(fields['email']).success ? 'email' : 'generic';
+};
 export const registerPublicMarketingSignupRoutes = (app: Hono<AppVars>, deps: AppDeps): void => {
-  const page = async (c: Context<AppVars>, thanks: boolean) => {
-    const context = await resolveForm(c, deps);
-    if (!context.ok) return respond(context);
-    const { form, brand, language } = context.value;
+  const nonce = (c: Context<AppVars>): string => c.get('secureHeadersNonce') ?? '';
+  const unavailable = (c: Context<AppVars>, workspace: Workspace, slug: string): Response =>
+    htmlResponse(renderSignupUnavailablePage({ nonce: nonce(c), brand: workspace.brand, language: workspace.language, path: formPath(slug) }), HTTP_STATUS_BY_ERROR_CODE.not_found);
+  const rejectedFormPage = async (c: Context<AppVars>, workspace: Workspace, slug: string, error: AppError, fields: Record<string, unknown>): Promise<Response> => {
+    const form = error.code === 'not_found' ? null : await activeForm(deps, workspace.brand.tenant.id, slug);
+    const data = form === null ? null : await formPageData(deps, form);
+    if (form === null || data === null) return unavailable(c, workspace, slug);
     if (form.redirectUrl !== null) c.set('signupRedirectOrigin', new URL(form.redirectUrl).origin);
-    const definition = await deps.marketing?.definitions.findById(form.tenantId, form.consentDefinitionId);
-    const version = form.consentVersion;
-    if (definition === undefined || definition === null || definition.status !== 'active' || version === undefined) return respond(err(notFound('Signup form was not found')));
-    return c.html(renderSignupFormPage({ nonce: c.get('secureHeadersNonce') ?? '', brand, language, form, wording: version.label, doubleOptIn: definition.doubleOptIn, thanks }), 200, { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+    return htmlResponse(renderSignupFormPage({
+      nonce: nonce(c), brand: workspace.brand, language: workspace.language, form, ...data, thanks: false,
+      values: { email: typedValue(fields['email'], 254), displayName: typedValue(fields['displayName'], 120) },
+      error: signupFormError(error, fields),
+    }), HTTP_STATUS_BY_ERROR_CODE[error.code], retryAfterHeaders(error));
+  };
+  const page = async (c: Context<AppVars>, thanks: boolean) => {
+    const workspace = await resolveWorkspace(c, deps);
+    if (!workspace.ok) return respond(workspace);
+    const slug = c.req.param('slug') ?? '';
+    const form = await activeForm(deps, workspace.value.brand.tenant.id, slug);
+    const data = form === null ? null : await formPageData(deps, form);
+    if (form === null || data === null) return unavailable(c, workspace.value, slug);
+    if (form.redirectUrl !== null) c.set('signupRedirectOrigin', new URL(form.redirectUrl).origin);
+    return htmlResponse(renderSignupFormPage({ nonce: nonce(c), brand: workspace.value.brand, language: workspace.value.language, form, ...data, thanks }), 200);
   };
   app.get('/marketing/forms/:slug', (c) => page(c, false));
   app.get('/marketing/forms/:slug/thanks', (c) => page(c, true));
@@ -77,13 +136,23 @@ export const registerPublicMarketingSignupRoutes = (app: Hono<AppVars>, deps: Ap
   });
   app.post(API_PATHS.submitMarketingSignupForm, async (c) => {
     const started = performance.now();
-    const context = await resolveForm(c, deps);
-    if (!context.ok) return respond(context);
-    if (deps.marketingSignup === undefined) return respond(err(internal('Signup forms are unavailable')));
-    const { form, language, resolved } = context.value;
     const contentType = (c.req.header('content-type') ?? '').split(';')[0]?.trim().toLowerCase();
     const json = contentType === 'application/json';
-    if (!json && contentType !== 'application/x-www-form-urlencoded') return c.body(null, 415);
+    const formPost = contentType === 'application/x-www-form-urlencoded';
+    const workspace = await resolveWorkspace(c, deps);
+    if (!workspace.ok) return respond(workspace);
+    const slug = c.req.param('slug') ?? '';
+    const form = await activeForm(deps, workspace.value.brand.tenant.id, slug);
+    if (form === null) return formPost ? unavailable(c, workspace.value, slug) : respond(err(notFound('Signup form was not found')));
+    const rateLimit = c.get('signupRateLimit');
+    if (rateLimit !== undefined) {
+      return formPost
+        ? rejectedFormPage(c, workspace.value, slug, rateLimit, Object.fromEntries(new URLSearchParams(await c.req.text())))
+        : respond(err(rateLimit), { headers: retryAfterHeaders(rateLimit) });
+    }
+    if (deps.marketingSignup === undefined) return respond(err(internal('Signup forms are unavailable')));
+    const { resolved, language } = workspace.value;
+    if (!json && !formPost) return c.body(null, 415);
     const origin = c.req.header('origin');
     if (json && origin !== undefined && !form.allowedOrigins.includes(origin)) return c.body(null, 403);
     const input: unknown = json ? await readJson(c.req.raw) : Object.fromEntries(new URLSearchParams(await c.req.text()));
@@ -95,8 +164,8 @@ export const registerPublicMarketingSignupRoutes = (app: Hono<AppVars>, deps: Ap
       confirmationBaseUrl: `${await authLinkBaseUrl(resolved, deps)}/marketing/confirm`,
     }, deps.marketingSignup);
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, 500 - (performance.now() - started))));
-    if (!result.ok) return respond(result);
+    if (!result.ok) return formPost ? rejectedFormPage(c, workspace.value, slug, result.error, fields.data) : respond(result);
     if (json) return c.json({ status: result.value.status }, 200, { 'cache-control': 'no-store' });
-    return c.redirect(result.value.form.redirectUrl ?? `/marketing/forms/${encodeURIComponent(form.slug)}/thanks?lang=${language}`, 303);
+    return c.redirect(result.value.form.redirectUrl ?? `${formPath(form.slug)}/thanks?lang=${language}`, 303);
   });
 };

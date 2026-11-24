@@ -28,20 +28,32 @@ export const format = (template: string, params: MessageParams): string =>
 export interface Messages {
   metaCapi: {
     privacyPolicy: string;
+    newTabHint: string;
     fieldsToggle: string;
     fieldsPurchase: string;
     fieldsIdentity: string;
     fieldsBrowser: string;
     fieldsAttribution: string;
     decisionError: string;
+    textChanged: string;
+    withdrawError: string;
+    saving: string;
+    decide: string;
     granted: string;
     denied: string;
     undecided: string;
     withdrawn: string;
     withdraw: string;
+    withdrawShort: string;
+    withdrawing: string;
     withdrawHint: string;
+    rowGranted: string;
+    rowDenied: string;
+    rowWithdrawn: string;
+    withdrawnNotice: (params: { title: string }) => string;
     privacyHeading: string;
     order: (params: { id: string }) => string;
+    purchase: (params: { product: string; date: string }) => string;
     settingsHeading: string;
     enabled: string;
     settingsHelp: string;
@@ -368,12 +380,16 @@ export interface Messages {
     headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
+    bootEyebrow: string;
+    bootHeading: string;
+    backToStart: string;
     headingValidation: string;
     headingConflict: string;
     headingSlugReserved: string;
     headingSoldOut: string;
     detailGeneric: string;
     traceId: string;
+    traceIdHint: string;
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;
@@ -517,7 +533,6 @@ export interface Messages {
   tenant: {
     visitorNotice: (params: { email: string }) => string;
     visitorOwnCommunity: string;
-    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;
@@ -1389,9 +1404,11 @@ export interface Messages {
     nextPage: string;
   };
   tenantNotFound: {
+    eyebrow: string;
     title: string;
     body: string;
     hint: string;
+    startCta: string;
   };
   panel: {
     navigation: string;
@@ -2376,6 +2393,7 @@ export interface Messages {
   };
   shell: {
     navigationAria: string;
+    publicNavigationAria: string;
     start: string;
     searchEntry: string;
     downloadsSection: string;
@@ -2425,14 +2443,19 @@ export interface Messages {
     homeTitle: string;
     coursesSection: string;
     spacesSection: string;
+    offersSection: string;
+    offerBuyCta: string;
     guestHeading: string;
-    joinOfferCta: string;
     readOnlyBanner: string;
     emptyFeed: string;
     lockedCourseHint: string;
     unlockCta: string;
     emptyTitle: string;
     emptyBody: string;
+    courseNotFoundBody: string;
+    lockedSpaceBody: string;
+    courseNotOnSale: string;
+    courseHaveAccessSignIn: string;
   };
   search: {
     title: string;
@@ -2549,6 +2572,7 @@ export interface Messages {
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
+    lessonCount: (params: { count: number }) => string;
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
@@ -2698,7 +2722,9 @@ export interface Messages {
     emptyFeed: string;
     emptyFeedReadOnly: string;
     openThread: string;
+    openThreadAria: (params: { author: string; excerpt: string }) => string;
     reactAria: (params: { emoji: string }) => string;
+    reactionCountAria: (params: { emoji: string; count: number }) => string;
     addReaction: string;
     postMenu: string;
     copyLink: string;
@@ -2711,6 +2737,7 @@ export interface Messages {
     backToSpaces: string;
     backToFeed: string;
     pinnedHeading: string;
+    latestHeading: string;
     pinnedChip: string;
     announcementChip: string;
     pin: string;

@@ -7,6 +7,7 @@ import { MEMBER_BOTTOM_BAR_HEIGHT, PanelNavItem } from '../../../theme.js';
 export type ShellLinkProps = {
   component?: ElementType;
   to?: string;
+  hash?: string;
   activeOptions?: { exact?: boolean };
 };
 

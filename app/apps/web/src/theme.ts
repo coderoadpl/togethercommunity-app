@@ -21,6 +21,12 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
+export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
+export const SHELL_ANCHOR_TARGET_STYLE = {
+  scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
+  '&:focus': { outline: 'none' },
+} as const;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
@@ -3175,6 +3181,7 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
   color: theme.palette.text.secondary,
   ...theme.typography.body2,
   '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
+  '& a.MuiButton-root': { whiteSpace: 'normal' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -3402,16 +3409,6 @@ export const CountBadge = styled('span')(({ theme }) => ({
 /** Direct messages stay ink: the red badge is reserved for the notification count. */
 export const InkDotBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
-}));
-
-export const LockedSpaceMark = styled(Box)(({ theme }) => ({
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '8px',
-  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -4261,7 +4258,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
-    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
   },
   '& pre': {
     overflowX: 'auto',
@@ -4665,6 +4662,28 @@ export const AccountSessionDisclosure = styled(ButtonBase)(({ theme }) => ({
   '& > svg:last-of-type': { marginLeft: 'auto' },
   '&[aria-expanded=true] > svg:last-of-type': { transform: 'rotate(180deg)' },
   '&.Mui-focusVisible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+
+const consentScrollCue = (theme: Theme, towards: 'top' | 'bottom'): CSSObject => ({
+  content: '""',
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  height: 24,
+  zIndex: 1,
+  pointerEvents: 'none',
+  backgroundImage: `linear-gradient(to ${towards}, transparent, ${alpha(theme.palette.text.primary, 0.12)})`,
+});
+
+export const ConsentDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialog-paper:has(> .MuiDialogContent-root[data-more-above=true])::before': { ...consentScrollCue(theme, 'top'), top: 0 },
+  '& .MuiDialogContent-root[data-more-below=true] + .MuiDialogActions-root::before': { ...consentScrollCue(theme, 'bottom'), bottom: 'calc(100% + 1px)' },
+  '& .MuiDialogContent-root': { '@media (prefers-reduced-motion: no-preference)': { scrollBehavior: 'smooth' } },
+  '& .MuiDialogActions-root': { position: 'relative', borderTop: `1px solid ${theme.palette.divider}` },
+}));
+
+export const ConsentDialogHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: { fontSize: '1.0625rem', lineHeight: 1.45, fontWeight: 600 },
 }));
 
 export const AccountGlyph = styled(SvgIcon)({ fill: 'none' });

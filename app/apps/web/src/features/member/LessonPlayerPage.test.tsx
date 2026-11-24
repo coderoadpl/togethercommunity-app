@@ -906,7 +906,8 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
     expect(screen.getByTestId('foreign-tenant-notice')).toHaveTextContent('visitor@example.com');
     expect(screen.getByRole('link', { name: en.tenant.visitorOwnCommunity })).toHaveAttribute('href', expect.stringContaining('start.localhost'));
-    expect(screen.getByRole('button', { name: en.tenant.visitorSwitchAccount })).toBeInTheDocument();
+    expect(screen.getByTestId('anon-sign-out')).toHaveTextContent(en.tenant.signOut);
+    expect(within(screen.getByTestId('foreign-tenant-notice')).queryByRole('button')).not.toBeInTheDocument();
     expect(queryClient.getQueryData(actions.me.queryKey)).toEqual(identity);
   });
 

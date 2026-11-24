@@ -155,7 +155,7 @@ const LessonCompletion = ({ status }: { status: CompletionStatus }) => {
 
 const ProgressMark = ({ lessons, guest }: { lessons: CourseStructureLesson[]; guest: boolean }) => {
   const t = useTranslations();
-  if (guest) return <TreeProgressCount variant="caption" component="span">{`${lessons.length} ${t.courseOverview.statLessons({ count: lessons.length })}`}</TreeProgressCount>;
+  if (guest) return <TreeProgressCount variant="caption" component="span">{t.courseOverview.lessonCount({ count: lessons.length })}</TreeProgressCount>;
   const done = lessons.filter((lesson) => lesson.completionStatus === 'fully-completed').length;
   const total = lessons.length;
   if (done === total && total > 0) {
@@ -266,7 +266,12 @@ const LessonRow = ({
     void queryClient.prefetchQuery(actions.studentLesson(lesson.lessonId));
   };
   const label = (
-    <TreeLessonTitle component="span" data-course-tree-row-title="" sx={{ minWidth: 0, flex: 1 }}>
+    <TreeLessonTitle
+      component="span"
+      data-course-tree-row-title=""
+      sx={{ minWidth: 0, flex: 1 }}
+      data-testid={`lesson-name-${lesson.lessonId}`}
+    >
       <Highlighted text={lesson.name} query={search} />
     </TreeLessonTitle>
   );
@@ -274,7 +279,7 @@ const LessonRow = ({
     <Stack
       direction="row"
       useFlexGap
-      sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem', flexShrink: 0 }}
+      sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem', flexShrink: 0, ...(guest ? { alignSelf: 'flex-start' } : {}) }}
     >
       {lesson.durationMinutes !== undefined && (
         <LessonDurationText data-testid={`lesson-duration-${lesson.lessonId}`}>

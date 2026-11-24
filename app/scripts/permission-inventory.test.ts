@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectPermissionInventory,
+  APPLICATION_KEY_PRINCIPAL,
   collectUseCasesInSource,
   renderPermissionTable,
   SHOP_MANAGEMENT_KEY_PRINCIPAL,
@@ -15,8 +16,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(541);
-    expect(inventory.useCases).toHaveLength(405);
+    expect(inventory.routes).toHaveLength(545);
+    expect(inventory.useCases).toHaveLength(409);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/parcel-lockers/:code'))
@@ -251,6 +252,18 @@ describe('permission inventory', () => {
       expect(routes.find((row) => row.subject === `GET /api/reports/${path}`)).toMatchObject({
         capability: 'report:read', before: ['report-api-key'], after: ['report-api-key'], evidence: 'Tenant API key',
       });
+    }
+  });
+
+  it('gives the entitlement check only to the application key and its key routes only to the owner', () => {
+    const inventory = collectPermissionInventory();
+    const rows = [...inventory.routes, ...inventory.useCases];
+    const row = (subject: string) => rows.find((entry) => entry.subject === subject);
+    for (const subject of ['POST /api/m2m/entitlements/check', 'entitlement-check.ts#checkEntitlements']) {
+      expect(row(subject)).toMatchObject({ capability: 'entitlement:check', before: [APPLICATION_KEY_PRINCIPAL], after: [APPLICATION_KEY_PRINCIPAL] });
+    }
+    for (const subject of ['GET /api/api-keys/application', 'POST /api/api-keys/application', 'DELETE /api/api-keys/application/:id', 'application-keys.ts#createApplicationKey', 'application-keys.ts#listApplicationKeys', 'application-keys.ts#revokeApplicationKey']) {
+      expect(row(subject)).toMatchObject({ capability: 'api-key:write', before: ['owner'], after: ['owner'] });
     }
   });
 

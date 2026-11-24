@@ -4482,6 +4482,7 @@ const consentScrollCue = (theme: Theme, towards: 'top' | 'bottom'): CSSObject =>
 export const ConsentDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper:has(> .MuiDialogContent-root[data-more-above=true])::before': { ...consentScrollCue(theme, 'top'), top: 0 },
   '& .MuiDialogContent-root[data-more-below=true] + .MuiDialogActions-root::before': { ...consentScrollCue(theme, 'bottom'), bottom: 'calc(100% + 1px)' },
+  '& .MuiDialogContent-root': { '@media (prefers-reduced-motion: no-preference)': { scrollBehavior: 'smooth' } },
   '& .MuiDialogActions-root': { position: 'relative', borderTop: `1px solid ${theme.palette.divider}` },
 }));
 

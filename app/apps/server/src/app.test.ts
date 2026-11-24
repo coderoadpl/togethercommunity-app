@@ -5239,6 +5239,7 @@ describe('public tenant image asset route', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('https://storage.example.test/signed-private-image');
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.get('vary')).toBe(`Host, ${TENANT_HEADER}`);
   });
 
   it('returns only a not-found envelope when storage is unconfigured', async () => {

@@ -2,6 +2,7 @@ import {
   configureStripeInputSchema,
   err,
   integrationUnavailable,
+  isSmokeTenant,
   ok,
   stripeModeFromKey,
   validation,
@@ -49,7 +50,7 @@ export const configureStripe = async (
   const deleteWebhookEndpoint = deps.payment.deleteWebhookEndpoint;
   const webhookUrl =
     stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps) + (mode === 'test' ? '?mode=test' : '');
-  const testWebhookQuery = deps.testWebhookQuery ?? null;
+  const testWebhookQuery = isSmokeTenant(tenant.value) ? deps.testWebhookQuery ?? null : null;
   const configured = await deps.payment.configureWebhook({
     tenantId: tenant.value,
     restrictedKey: parsed.data.restrictedKey,

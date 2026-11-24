@@ -1157,3 +1157,20 @@ names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
 or `invalid_tenant`); dispatch failures log a fixed message without request or
 response data. Consent, retention and
 retry rules are described in [Meta Conversions API](integrations/meta-capi.md).
+
+## Staging test-mode webhook bypass
+
+A staging deployment behind deployment protection receives the payment
+provider's test-mode events only when the registered endpoint URL carries the
+project's automation bypass secret as a query parameter. With
+`STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS=true`, `APP_ENV=staging` and
+`VERCEL_AUTOMATION_BYPASS_SECRET` present, the payment configuration appends it
+to the test-slot endpoint of `tenant-acme` only
+(`apps/server/src/stripe-test-webhook-query.ts`,
+`core/server/usecases/configure-stripe.ts`). No other workspace, no live slot and
+no other `APP_ENV` gets it, and the URL returned to staff omits it. The secret is
+then stored in the endpoint configuration of the fixture's provider sandbox,
+which the owner controls; whoever can read that sandbox's webhook endpoints can
+pass the deployment protection of every deployment of the project until the
+secret is rotated in the hosting project settings. See
+[Purchase end-to-end on a deployed host](observability.md#purchase-end-to-end-on-a-deployed-host).

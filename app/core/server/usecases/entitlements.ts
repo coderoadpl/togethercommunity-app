@@ -11,6 +11,7 @@ import {
   type CourseStructureWithAccess,
   type NextLesson,
   type Product,
+  type ProductGrant,
   type Result,
 } from '#core/domain/index.js';
 
@@ -80,6 +81,12 @@ const previewOpenToAnonymous = async (
   return coursesContainingLesson(lessonId, courses, modules).some((course) => course.publiclyVisible && !course.archivedAt);
 };
 
+export const activeMemberGrants = async (
+  scope: MemberScope,
+  now: string,
+  deps: { grants: Pick<ProductGrantRepository, 'listActiveForMember'> },
+): Promise<ProductGrant[]> => deps.grants.listActiveForMember(scope.tenantId, scope.memberId, now);
+
 export const resolveMemberEntitlements = async (
   ctx: Ctx,
   deps: EntitlementsDeps,
@@ -87,12 +94,7 @@ export const resolveMemberEntitlements = async (
   const scope = requireMember(ctx, 'member:product:read');
   if (!scope.ok) return scope;
 
-  const now = deps.clock.nowIso();
-  const activeGrants = await deps.grants.listActiveForMember(
-    scope.value.tenantId,
-    scope.value.memberId,
-    now,
-  );
+  const activeGrants = await activeMemberGrants(scope.value, deps.clock.nowIso(), deps);
   if (activeGrants.length === 0) return ok([]);
 
   const activeProductIds = new Set(activeGrants.map((grant) => grant.productId));
@@ -108,8 +110,7 @@ export const resolveMemberAccessLookup = async (
   scope: MemberScope,
   deps: EntitlementsDeps,
 ): Promise<AccessLookup> => {
-  const now = deps.clock.nowIso();
-  const activeGrants = await deps.grants.listActiveForMember(scope.tenantId, scope.memberId, now);
+  const activeGrants = await activeMemberGrants(scope, deps.clock.nowIso(), deps);
   if (activeGrants.length === 0) return buildAccessLookup([]);
   const activeProductIds = new Set(activeGrants.map((grant) => grant.productId));
   const grantedProducts = await deps.grants.listGrantedProducts(scope.tenantId, scope.memberId);

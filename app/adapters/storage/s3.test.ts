@@ -997,11 +997,8 @@ describe('image publication storage operations', () => {
     expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
   });
 
-  it.each([
-    ['larger than the error body bound', 16],
-    ['that stalls after its first chunk', 'endless'],
-  ] as const)('answers a delete refused with 404 and a body %s as an unknown outcome and cancels the body', async (_label, chunks) => {
-    const streamed = streamedResponse(404, chunks);
+  it('answers a delete refused with 404 and a body larger than the error body bound as an unknown outcome and cancels the body', async () => {
+    const streamed = streamedResponse(404, 16);
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],
       fetchStorage: async () => streamed.response,
@@ -1009,8 +1006,33 @@ describe('image publication storage operations', () => {
     const deleted = await storage.delete({ ...credentials, deadlineMs: 50 });
     expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
     expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
-    if (chunks !== 'endless') expect(streamed.cancel).toHaveBeenCalled();
+    expect(streamed.cancel).toHaveBeenCalled();
+    expect(streamed.pulled()).toBeGreaterThan(0);
     expect(streamed.pulled()).toBeLessThanOrEqual(9 * 1024);
+  });
+
+  it('answers a delete refused with 404 and a body that stalls after its first chunk as an unknown outcome at its deadline and cancels the body', async () => {
+    vi.useFakeTimers();
+    try {
+      const streamed = streamedResponse(404, 'endless');
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => streamed.response,
+      });
+      let settled = false;
+      const deleting = storage.delete({ ...credentials, deadlineMs: 50 }).finally(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(49);
+      expect(streamed.pulled()).toBe(8);
+      expect(settled).toBe(false);
+      expect(streamed.cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      const deleted = await deleting;
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+      expect(streamed.cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports a read, a versioned read, a digest and a copy answered 404 with NoSuchBucket as a storage error, not as a missing object', async () => {

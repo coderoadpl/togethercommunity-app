@@ -5,12 +5,16 @@ const EXPOSE_HEADERS = 'access-control-expose-headers';
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
+export const acceptedSessionCookieNames = (sessionCookieName: string): readonly [string, string] => {
+  const name = stripSecureCookiePrefix(sessionCookieName);
+  return [`__Secure-${name}`, name];
+};
+
 const carriesSessionCookie = (request: Request, sessionCookieName: string): boolean => {
   const cookie = request.headers.get('cookie');
   if (cookie === null) return false;
   const cookies = parseCookies(cookie);
-  const name = stripSecureCookiePrefix(sessionCookieName);
-  return Boolean(cookies.get(`__Secure-${name}`) ?? cookies.get(name));
+  return acceptedSessionCookieNames(sessionCookieName).some((name) => cookies.has(name));
 };
 
 const isBrowserRequest = (request: Request, sessionCookieName: string): boolean =>
@@ -56,12 +60,12 @@ const withoutTokenBody = (text: string): string => {
 /**
  * Better Auth's bearer plugin and its JSON bodies hand the session token to the
  * caller, which turns the HttpOnly cookie into a portable credential for any script
- * on the page. Current browsers send `Sec-Fetch-Site` on HTTPS and localhost origins
- * and scripts cannot set or remove it; Safari before 16.4 does not, so a request
- * carrying the session cookie counts as a browser too. Those clients still receive
- * the token on a response that creates a session. The CLI and other
- * non-browser clients authenticate with a bearer token, never the session cookie,
- * and keep receiving it.
+ * on the page. Page scripts cannot set or remove `Sec-Fetch-Site`, but Chrome before
+ * 76, Firefox before 90, Safari before 16.4 and webviews on those engines never send
+ * it, so a request carrying the session cookie counts as a browser too; those
+ * browsers still receive the token on the response that creates a session.
+ * Non-browser clients are told apart by sending neither the header nor the session
+ * cookie, and keep receiving the token.
  */
 export const withoutBrowserSessionToken = async (
   request: Request,

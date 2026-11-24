@@ -266,6 +266,14 @@ a separate download link for each version. An expired grant or a non-member
 cannot download either current or previous files. Signed links retain the
 existing one-hour lifetime; storage URLs are never exposed in read models.
 
+A browser that opens a download link and the download fails is sent back with
+`303 See Other` to `/my/products` carrying one of three failure codes
+(`no_access`, `not_found` or `failed`) and the product and file references, and
+My products names the failure. A signed-out browser is sent to sign-in with a
+return to My products. Only a navigation whose `Accept` header ranks
+`text/html` above `application/json` is redirected; JSON clients, a missing
+`Accept` header and `*/*` keep the JSON error envelope and its status.
+
 Deleting a version removes only its row and its own storage object. Deleting
 the latest version promotes the newest remaining ready version atomically.
 Deleting the last ready file preserves existing behavior: the product remains
@@ -307,8 +315,9 @@ entry point hard-clamps the effective ceiling to 4 MiB, even when configuration
 requests more, to stay below the [4.5 MB Function response limit](https://vercel.com/docs/functions/limitations#request-body-size).
 The clamp applies to recorded size, storage reads and final personalised output,
 so oversized copies use the signed-link fallback before any response is committed.
-Download lists show a note when a file is above the configured ceiling and copies
-are therefore delivered without an embedded copy identifier.
+The staff product editor shows a note on a file above the configured ceiling,
+whose copies are therefore delivered without an embedded copy identifier;
+buyers' rows in My products show no such note.
 The recorded asset size and
 supported content type are checked before fetching. At most two personalisations
 run concurrently per composed server instance through an injected slot adapter;

@@ -36,6 +36,30 @@ describe('StatusView', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('puts an optional error action next to the retry button', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <StatusView
+        state={{
+          kind: 'error',
+          message: 'Something went wrong',
+          retry: { label: 'Try again', onRetry },
+          action: <a href="/my">My courses</a>,
+        }}
+        data-testid="error-state"
+      />,
+    );
+
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    const action = screen.getByRole('link', { name: 'My courses' });
+    expect(action).toHaveAttribute('href', '/my');
+    expect(retry.parentElement).toBe(action.parentElement);
+    expect(retry).not.toHaveClass('MuiButton-fullWidth');
+    await user.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the empty state with icon, title, body and action', () => {
     render(
       <StatusView

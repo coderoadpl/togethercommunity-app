@@ -1,8 +1,8 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
-import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
@@ -3736,6 +3736,11 @@ export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
 export const TreeLessonTitle = styled(Typography)<AsElement>({
   fontSize: '0.875rem',
   lineHeight: 1.45,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
 });
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
@@ -3812,7 +3817,7 @@ export const CourseCardRoot = styled(Box)<AsElement & { to?: string; href?: stri
   },
 }));
 
-export const VisuallyHidden = styled('span')({
+const VISUALLY_HIDDEN: CSSObject = {
   position: 'absolute',
   width: 1,
   height: 1,
@@ -3822,7 +3827,9 @@ export const VisuallyHidden = styled('span')({
   clip: 'rect(0 0 0 0)',
   whiteSpace: 'nowrap',
   border: 0,
-});
+};
+
+export const VisuallyHidden = styled('span')(VISUALLY_HIDDEN);
 
 export type CoverFrame = 'card' | 'standalone';
 
@@ -4054,6 +4061,17 @@ export const EllipsisTableCell = styled(TableCell)({
   textOverflow: 'ellipsis',
 });
 
+export const ContinueCtaLesson = styled('span')({
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  textAlign: 'center',
+  fontWeight: 400,
+});
+
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
   const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);
   return {
@@ -4073,7 +4091,7 @@ export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
   fontSize: '0.75rem',
-  color: theme.palette.text.disabled,
+  color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));
@@ -4165,11 +4183,59 @@ export const LessonMediaIframe = styled('iframe')({
   display: 'block',
 });
 
+const standardAlertTint = (theme: Theme, color: 'warning' | 'info'): CSSObject => {
+  const light = theme.palette.mode === 'light';
+  return {
+    padding: '6px 16px',
+    border: 'none',
+    backgroundColor: light ? lighten(theme.palette[color].light, 0.9) : darken(theme.palette[color].light, 0.9),
+    color: light ? darken(theme.palette[color].light, 0.6) : lighten(theme.palette[color].light, 0.6),
+    '& .MuiAlert-icon': { color: theme.palette[color].main },
+  };
+};
+
 export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
-  '&.MuiAlert-colorWarning': {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.warning.contrastText,
+  '&.MuiAlert-standard.MuiAlert-colorWarning': standardAlertTint(theme, 'warning'),
+  '&.MuiAlert-standard.MuiAlert-colorInfo': standardAlertTint(theme, 'info'),
+  alignItems: 'center',
+  '& .MuiAlert-message > .MuiTypography-root': { fontWeight: 700 },
+  '& .MuiAlert-action': { paddingTop: 0 },
+  '& .MuiAlert-action .MuiButton-root': { whiteSpace: 'nowrap' },
+  [theme.breakpoints.down('sm')]: {
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    '& .MuiAlert-message': { flex: '1 1 0', minWidth: 0 },
+    '& .MuiAlert-action': { flexBasis: '100%', margin: 0, padding: '0 0 0.5rem' },
+    '& .MuiAlert-icon ~ .MuiAlert-action': { paddingLeft: '2.125rem' },
   },
+}));
+
+export const LessonEditionTrigger = styled(Button)({
+  minHeight: TOUCH_TARGET_MIN,
+  whiteSpace: 'nowrap',
+});
+
+export const LessonEditionRows = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root, & .MuiListItem-root:first-of-type, & .MuiListItem-root:last-of-type, & .MuiListItem-root:hover': {
+    padding: 0,
+    margin: 0,
+    border: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    backgroundImage: 'none',
+    boxShadow: 'none',
+    transform: 'none',
+    transition: 'none',
+  },
+  '& .MuiListItem-root + .MuiListItem-root': { borderTop: `1px solid ${theme.palette.divider}` },
+  '& .MuiListItemButton-root': {
+    alignItems: 'center',
+    gap: '0.75rem',
+    minHeight: TOUCH_TARGET_MIN,
+    padding: '0.75rem 1.5rem',
+    borderRadius: 0,
+  },
+  '& .MuiListItemText-root': { margin: 0 },
 }));
 
 export const LessonPlaceholder = styled(Box)(({ theme }) => ({
@@ -4209,37 +4275,73 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   },
 }));
 
+export const LessonLightboxBackdrop = styled(Backdrop)(({ theme }) => ({
+  backgroundColor: alpha(theme.palette.common.black, 0.96),
+}));
+
 export const LessonImageLightbox = styled(Box)(({ theme }) => ({
-  position: 'absolute',
-  inset: '1rem',
-  margin: 'auto',
-  maxWidth: 'calc(100vw - 2rem)',
-  maxHeight: 'calc(100dvh - 2rem)',
-  padding: '1rem',
+  position: 'fixed',
+  inset: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: '1rem',
-  backgroundColor: theme.palette.background.paper,
-  color: theme.palette.text.primary,
-  borderRadius: theme.shape.borderRadius,
-  '& > .MuiButton-root': { alignSelf: 'flex-end', flexShrink: 0, minHeight: 44 },
+  paddingTop: `calc(${String(TOUCH_TARGET_MIN)}px + 1.5rem + env(safe-area-inset-top))`,
+  paddingBottom: 'env(safe-area-inset-bottom)',
+  color: theme.palette.common.white,
+  outline: 'none',
+  '& [data-slot="close"]': {
+    position: 'absolute',
+    top: 'calc(0.75rem + env(safe-area-inset-top))',
+    right: 'calc(0.75rem + env(safe-area-inset-right))',
+    zIndex: 1,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    backgroundColor: theme.palette.common.white,
+    color: theme.palette.common.black,
+    '&:hover': { backgroundColor: theme.palette.grey[200] },
+    '&:focus-visible': {
+      outline: `3px solid ${theme.palette.common.white}`,
+      outlineOffset: 3,
+      boxShadow: 'none',
+    },
+  },
+  '& [data-slot="stage"]': {
+    flex: '1 1 0',
+    minHeight: 0,
+    containerType: 'size',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   '& [data-slot="caption"]': {
     flexShrink: 0,
+    width: '100%',
+    maxWidth: '44rem',
     maxHeight: '20dvh',
+    padding: '0.75rem 1rem 1rem',
     overflowY: 'auto',
     overflowWrap: 'anywhere',
     textAlign: 'center',
+    color: alpha(theme.palette.common.white, 0.92),
+  },
+  [theme.breakpoints.up('sm')]: {
+    paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+    '& [data-slot="stage"]': { paddingInline: '2rem' },
   },
 }));
 
-export const LessonLightboxImage = styled('img')({
+const LIGHTBOX_IMAGE_ROOM = 'calc(100cqh - var(--lightbox-caption-height, 0px))';
+
+export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' && prop !== 'vector' })<{ vector: boolean; fillRatio: number | null }>(({ theme, vector, fillRatio }) => ({
   display: 'block',
-  width: '100%',
-  height: '100%',
-  flex: '1 1 0',
-  minHeight: 0,
+  flexShrink: 0,
+  width: fillRatio !== null ? `min(100cqw, calc(${LIGHTBOX_IMAGE_ROOM} * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
+  height: vector && fillRatio === null ? LIGHTBOX_IMAGE_ROOM : 'auto',
+  maxWidth: '100cqw',
+  maxHeight: LIGHTBOX_IMAGE_ROOM,
   objectFit: 'contain',
-});
+  backgroundColor: theme.palette.common.white,
+}));
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',
@@ -4252,11 +4354,15 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& .MuiAlert-root': { alignItems: 'center' },
+    '& .MuiAlert-action': { paddingTop: 0, alignItems: 'center' },
+    '& .MuiAlert-action .MuiButton-root': { minHeight: 0 },
   },
   [theme.breakpoints.down('md')]: {
     marginInline: '-1.25rem',
     padding: '0.5rem 0.75rem',
     '& .MuiButton-root': { width: 'auto', minHeight: 44 },
+    '& .MuiAlert-action .MuiIconButton-root': { width: 44, height: 44 },
     '& [data-slot="compact"]': { flex: '0 0 auto' },
     '& .MuiButton-root[data-slot="compact"], & [data-slot="compact"] > .MuiButton-root': {
       width: 44,
@@ -4269,13 +4375,54 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
       minWidth: 0,
       paddingInline: '0.75rem',
     },
+    '& [data-slot="wide"]': { flex: '1 1 0', minWidth: 0 },
+    '& [data-slot="wide"] ~ [data-slot="primary"]': { flexBasis: '100%' },
+    '& [data-slot="primary"] > svg': { flexShrink: 0, marginInlineStart: '0.25rem' },
+    '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
+}));
+
+export const LessonAlertDetail = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: VISUALLY_HIDDEN,
 }));
 
 export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.5rem',
   [theme.breakpoints.up('md')]: { display: 'none' },
+}));
+
+export const LessonCompletionStatus = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.375rem',
+  flex: '0 0 auto',
+  color: theme.palette.text.secondary,
+}));
+
+export const LessonLockIcon = styled(SvgIcon)({
+  fontSize: '1.15rem',
+  color: 'inherit',
+});
+
+export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.5rem',
+  color: theme.palette.text.primary,
+}));
+
+export const LockedLeadText = styled(Typography)<AsElement>({
+  '&.MuiTypography-subtitle1': { lineHeight: 1.4 },
+});
+
+export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  [theme.breakpoints.up('sm')]: { WebkitLineClamp: 2 },
 }));
 
 export const LessonNavLabel = styled('span')(({ theme }) => ({
@@ -4288,6 +4435,19 @@ export const LessonNavLabel = styled('span')(({ theme }) => ({
 export const LessonActionLabel = styled('span')(({ theme }) => ({
   [theme.breakpoints.down('md')]: {
     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+}));
+
+export const LessonDestinationLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    minWidth: 0,
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.25,
+    textAlign: 'center',
   },
 }));
 
@@ -4404,24 +4564,43 @@ export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const NotificationDot = styled('span', {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ theme, active }) => ({
-  display: 'inline-block',
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  backgroundColor:
-    active === true ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.25),
-  flexShrink: 0,
-}));
-
 export const PendingPostBox = styled(Box)({ opacity: 0.55 });
 
 export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.85rem',
   color: theme.palette.text.secondary,
   overflowWrap: 'anywhere',
+}));
+
+export const DiscussionHitCard = styled(Link)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  padding: '0.6rem 0.9rem',
+  minHeight: 44,
+  color: theme.palette.text.primary,
+  fontWeight: 400,
+  textDecoration: 'none',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  transition: theme.transitions.create(['background-color', 'border-color'], { duration: theme.transitions.duration.shortest }),
+  '&:hover': { backgroundColor: theme.palette.action.hover, borderColor: theme.palette.text.secondary },
+  '&:focus-visible': { borderColor: theme.palette.primary.main },
+}));
+
+export const DiscussionHitText = styled('span')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  flex: 1,
+  minWidth: 0,
+});
+
+export const DiscussionHitChevron = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.25rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const ThreadHeadline = styled('span')({

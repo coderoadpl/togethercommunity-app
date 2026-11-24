@@ -6,6 +6,7 @@ export const TEST_PICKUP_POINTS = {
   operating: 'WAW01M',
   notFound: 'MISSING1',
   notOperating: 'CLOSED01',
+  unknownStatus: 'BUSY01',
   wrongType: 'SENDONLY1',
   unavailable: 'OUTAGE01',
 } as const;
@@ -23,6 +24,7 @@ const locker = (change: Partial<InpostPoint> = {}): InpostPoint => ({
 const answers: Readonly<Record<string, PickupPointLookup>> = {
   [TEST_PICKUP_POINTS.operating]: { kind: 'found', point: locker() },
   [TEST_PICKUP_POINTS.notOperating]: { kind: 'found', point: locker({ name: TEST_PICKUP_POINTS.notOperating, status: 'NonOperating' }) },
+  [TEST_PICKUP_POINTS.unknownStatus]: { kind: 'found', point: locker({ name: TEST_PICKUP_POINTS.unknownStatus, status: 'Overloaded' }) },
   [TEST_PICKUP_POINTS.wrongType]: { kind: 'found', point: locker({ name: TEST_PICKUP_POINTS.wrongType, types: ['pop'], functions: ['parcel_send'] }) },
   [TEST_PICKUP_POINTS.unavailable]: { kind: 'unavailable' },
 };

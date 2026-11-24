@@ -1,0 +1,6 @@
+{
+  "status": 404,
+  "error": "routing_not_found",
+  "message": "Placeholder routing error message",
+  "details": {}
+}

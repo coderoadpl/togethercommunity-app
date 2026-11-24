@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
-import { Alert, Box, Button, Paper, Typography } from '@mui/material';
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 
 import { CardTitle, EmptyStateContent, EmptyStateIcon } from '../../theme.js';
 
 export type PageState =
   | { kind: 'ready' }
   | { kind: 'loading'; label: ReactNode }
-  | { kind: 'error'; message: ReactNode; retry: { label: ReactNode; onRetry: () => void } }
+  | { kind: 'error'; message: ReactNode; retry: { label: ReactNode; onRetry: () => void }; action?: ReactNode }
   | { kind: 'empty'; icon?: ReactNode; title: ReactNode; body?: ReactNode; action?: ReactNode }
   | { kind: 'not-found'; icon?: ReactNode; title: ReactNode; heading?: 'h1' | 'h2'; align?: 'center' | 'start'; body?: ReactNode; action?: ReactNode };
 
@@ -37,11 +37,20 @@ export const StatusView = ({ state, surface = true, 'data-testid': testId }: Sta
       return (
         <Box data-testid={testId} sx={{ width: '100%' }}>
           <Alert severity="error">{state.message}</Alert>
-          <Box sx={{ mt: '0.75rem' }}>
-            <Button variant="outlined" fullWidth onClick={state.retry.onRetry}>
-              {state.retry.label}
-            </Button>
-          </Box>
+          {state.action === undefined ? (
+            <Box sx={{ mt: '0.75rem' }}>
+              <Button variant="outlined" fullWidth onClick={state.retry.onRetry}>
+                {state.retry.label}
+              </Button>
+            </Box>
+          ) : (
+            <Stack direction="row" useFlexGap sx={{ mt: '0.75rem', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <Button variant="outlined" onClick={state.retry.onRetry} sx={{ flex: '1 1 auto' }}>
+                {state.retry.label}
+              </Button>
+              {state.action}
+            </Stack>
+          )}
         </Box>
       );
     case 'empty': {

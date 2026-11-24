@@ -109,11 +109,17 @@ export const inpostGeowidgetPointSchema = z.object({
   address: z.object({ line1: z.string().nullish(), line2: z.string().nullish() }).nullish(),
 });
 
+const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
+
+export const storableText = (value: string): boolean => !value.includes('\u0000') && !UNPAIRED_SURROGATE.test(value);
+
+const storableOrDropped = (value: string): string | undefined => (storableText(value) ? value : undefined);
+
 const checkoutPickupPointSchema = z.object({
   provider: z.literal('inpost'),
   code: pickupPointCodeSchema,
-  name: z.string().trim().min(1).max(200).optional(),
-  address: z.string().trim().min(1).max(300).optional(),
+  name: z.string().trim().min(1).max(200).transform(storableOrDropped).optional(),
+  address: z.string().trim().min(1).max(300).transform(storableOrDropped).optional(),
 });
 
 export const checkoutShippingInputSchema = z.object({
@@ -269,6 +275,7 @@ export type PickupPointLookup =
   | { kind: 'unavailable' };
 
 const INPOST_OPERATING_STATUS = 'Operating';
+const INPOST_REFUSED_STATUSES: ReadonlySet<string> = new Set(['NonOperating', 'Disabled', 'Removed']);
 const INPOST_COLLECT_FUNCTION = 'parcel_collect';
 const INPOST_LOCKER_TYPE = 'parcel_locker';
 
@@ -278,6 +285,11 @@ export const inpostPointRejection = (
   if (point.status !== INPOST_OPERATING_STATUS) return 'not_operating';
   return point.types.includes(INPOST_LOCKER_TYPE) && point.functions.includes(INPOST_COLLECT_FUNCTION) ? null : 'not_usable';
 };
+
+const withKnownPointStatus = (lookup: PickupPointLookup): PickupPointLookup =>
+  lookup.kind === 'found' && lookup.point.status !== INPOST_OPERATING_STATUS && !INPOST_REFUSED_STATUSES.has(lookup.point.status)
+    ? { kind: 'unavailable' }
+    : lookup;
 
 const PICKUP_POINT_NAME_MAX_LENGTH = 200;
 const PICKUP_POINT_ADDRESS_MAX_LENGTH = 300;
@@ -312,15 +324,16 @@ export const applyPickupPointLookup = (
 ): Result<CheckoutShippingSelection, AppError> => {
   const requested = selection.pickupPoint;
   if (requested === null) return ok(selection);
-  switch (lookup.kind) {
+  const known = withKnownPointStatus(lookup);
+  switch (known.kind) {
     case 'not_found':
       return err(pickupPointRejected('not_found'));
     case 'unavailable':
       return ok({ ...selection, pickupPoint: { ...requested, verified: false } });
     case 'found': {
-      const rejection = inpostPointRejection(lookup.point);
+      const rejection = inpostPointRejection(known.point);
       if (rejection !== null) return err(pickupPointRejected(rejection));
-      return ok({ ...selection, pickupPoint: { provider: 'inpost', ...pickupPointDetails(lookup.point) } });
+      return ok({ ...selection, pickupPoint: { provider: 'inpost', ...pickupPointDetails(known.point) } });
     }
   }
 };
@@ -341,9 +354,10 @@ export const parcelLockerLookupSchema = z.discriminatedUnion('status', [
 export type ParcelLockerLookup = z.infer<typeof parcelLockerLookupSchema>;
 
 export const parcelLockerLookupView = (lookup: PickupPointLookup): ParcelLockerLookup => {
-  if (lookup.kind !== 'found') return { status: lookup.kind };
-  const reason = inpostPointRejection(lookup.point);
-  return { status: 'found', ...pickupPointDetails(lookup.point), usable: reason === null, reason };
+  const known = withKnownPointStatus(lookup);
+  if (known.kind !== 'found') return { status: known.kind };
+  const reason = inpostPointRejection(known.point);
+  return { status: 'found', ...pickupPointDetails(known.point), usable: reason === null, reason };
 };
 
 export const hasActiveParcelLockerRate = (rates: ShippingRate[] | null | undefined): boolean =>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { normalizePickupPointCode, pickupPointCodeValid, type PickupPointLookup } from '#core/domain/index.js';
+import { normalizePickupPointCode, pickupPointCodeValid, storableText, type PickupPointLookup } from '#core/domain/index.js';
 import type { PickupPointDirectory } from '#core/server/index.js';
 
 const INPOST_POINTS_URL = 'https://api-shipx-pl.easypack24.net/v1/points/';
@@ -43,7 +43,7 @@ const readBoundedText = async (response: Response): Promise<string | null> => {
   }
   if (response.body === null) return '';
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let size = 0;
   let text = '';
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
@@ -57,8 +57,16 @@ const readBoundedText = async (response: Response): Promise<string | null> => {
   return text + decoder.decode();
 };
 
+const storableJson = (value: unknown): boolean => {
+  if (typeof value === 'string') return storableText(value);
+  if (Array.isArray(value)) return value.every(storableJson);
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).every(([key, entry]) => storableText(key) && storableJson(entry));
+  }
+  return true;
+};
+
 const readPoint = (code: string, body: unknown): PickupPointLookup => {
-  if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
   const point = wirePointSchema.safeParse(body);
   if (!point.success || normalizePickupPointCode(point.data.name) !== code) return UNAVAILABLE;
   return {
@@ -90,17 +98,18 @@ export const createInpostPointsDirectory = (options: InpostPointsDirectoryOption
           redirect: 'error',
           signal: controller.signal,
         });
-        if (response.status === 404) {
-          await response.body?.cancel();
-          return NOT_FOUND;
-        }
-        if (response.status !== 200) {
+        if (response.status !== 200 && response.status !== 404) {
           await response.body?.cancel();
           return UNAVAILABLE;
         }
         const text = await readBoundedText(response);
-        return text === null ? UNAVAILABLE : readPoint(code, parseJson(text));
+        if (text === null) return UNAVAILABLE;
+        const body = parseJson(text);
+        if (!storableJson(body)) return UNAVAILABLE;
+        if (wireNotFoundSchema.safeParse(body).success) return NOT_FOUND;
+        return response.status === 200 ? readPoint(code, body) : UNAVAILABLE;
       } catch {
+        controller.abort();
         return UNAVAILABLE;
       } finally {
         clearTimeout(timer);

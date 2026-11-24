@@ -25,6 +25,7 @@ import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ThemeModeProvider } from '../../../theme-mode.js';
+import { CourseStructurePage } from '../CourseStructurePage.js';
 import { PostComposer } from '../ThreadDiscussion.js';
 import { memberHomePath, memberSearchPath } from './member-nav.js';
 import { MemberShell } from './MemberShell.js';
@@ -510,6 +511,70 @@ describe('MemberShell', () => {
 
     await screen.findByTestId('course-sidebar');
     expect(screen.queryByTestId('member-breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('gives the desktop course overview one lesson filter, in the main-column program', async () => {
+    stubMatchingViewport('min-width');
+    server.use(
+      okMe(),
+      okNavigation(),
+      okStructure(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/progress', () =>
+        HttpResponse.json({ ok: true, data: { progress: { courseId: 'c1', completedLessonIds: [] } } })),
+      http.get('/api/student/courses', () => HttpResponse.json({ ok: true, data: { courses: [] } })),
+    );
+
+    await renderShell('/my/courses/c1', page(en.redirects.targetLesson), () => <CourseStructurePage courseId="c1" />);
+
+    const program = await screen.findByTestId('course-tree-inline');
+    const sidebar = screen.getByTestId('course-sidebar');
+    expect(program.closest('main')).not.toBeNull();
+    expect(within(program).getByTestId('course-tree')).toBeInTheDocument();
+    expect(within(sidebar).getByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.getAllByTestId('lesson-search')).toHaveLength(1);
+    expect(within(program).getByTestId('lesson-search')).toBeInTheDocument();
+    expect(within(sidebar).queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+  });
+
+  it('keeps the lesson filter in the desktop sidebar on a lesson page', async () => {
+    stubMatchingViewport('min-width');
+    server.use(okMe(), okNavigation(), okStructure(), okOffer(), noNotifications());
+
+    await renderShell('/my/courses/c1/lessons/l1');
+
+    const sidebar = await screen.findByTestId('course-sidebar');
+    expect(await within(sidebar).findByTestId('course-tree')).toBeInTheDocument();
+    expect(screen.getAllByTestId('lesson-search')).toHaveLength(1);
+    expect(within(sidebar).getByTestId('lesson-search')).toBeInTheDocument();
+  });
+
+  it('shows the full desktop sidebar program on the overview after a lesson-page filter', async () => {
+    stubMatchingViewport('min-width');
+    const user = userEvent.setup();
+    server.use(
+      okMe(),
+      okNavigation(),
+      okStructure(),
+      okOffer(),
+      noNotifications(),
+      http.get('/api/student/progress', () =>
+        HttpResponse.json({ ok: true, data: { progress: { courseId: 'c1', completedLessonIds: [] } } })),
+    );
+
+    const { router } = await renderShell('/my/courses/c1/lessons/l1');
+
+    const sidebar = await screen.findByTestId('course-sidebar');
+    await user.type(await within(sidebar).findByTestId('lesson-search'), 'nonexistent');
+    expect(await within(sidebar).findByTestId('tree-no-results')).toBeInTheDocument();
+
+    await act(() => router.navigate({ to: '/my/courses/$courseId', params: { courseId: 'c1' } }));
+
+    expect(screen.getByTestId('course-sidebar')).toBe(sidebar);
+    expect(within(sidebar).queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(within(sidebar).queryByTestId('tree-no-results')).not.toBeInTheDocument();
+    expect(within(sidebar).getByTestId('course-tree')).toBeInTheDocument();
   });
 
   it('uses the member shell navigation for a definite missing course', async () => {

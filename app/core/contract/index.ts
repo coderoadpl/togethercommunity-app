@@ -39,3 +39,4 @@ export * from './shop-integrations.js';
 export * from './shop-assets.js';
 export * from './shop-downloads.js';
 export * from './change-proposals.js';
+export * from './member-download-navigation.js';

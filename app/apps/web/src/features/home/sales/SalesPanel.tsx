@@ -162,6 +162,7 @@ export const SalesPanel = () => {
   const memberLink = (order: OrderListItem) => (
     <MuiLink component={Link} to={`/panel/members/${order.memberId}`}>{order.memberName ?? order.memberEmail}</MuiLink>
   );
+  const orderSource = (order: OrderListItem) => [order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ');
   const productCell = (order: OrderListItem) => (
     <>
       {order.lines?.map((line) => line.name).join(' · ') || order.productTitle}
@@ -486,11 +487,14 @@ export const SalesPanel = () => {
                       {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
                       <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
                       <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
-                      <TableCell sx={{ minWidth: '14rem' }}>{productCell(order)}</TableCell>
+                      <TableCell sx={{ minWidth: '14rem' }}>
+                        {productCell(order)}
+                        {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}
+                      </TableCell>
                       {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
                       <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
                       {narrow ? null : <TableCell>{order.couponCode ?? '—'}</TableCell>}
-                      {narrow ? null : <TableCell>{[order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ') || '—'}</TableCell>}
+                      {narrow ? null : <TableCell>{orderSource(order) || '—'}</TableCell>}
                       <TableCell>
                         <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem' }}>{statusChips(order)}</Stack>
                       </TableCell>

@@ -564,6 +564,31 @@ describe('controlled KSeF submission', () => {
     await waitFor(() => expect(sent).toEqual(['o1', 'o3', 'o2']));
   });
 
+  it('keeps the campaign source in the product cell of a table row while the source column is hidden below the widest screens', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('max-width') && !query.includes('599'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
+      addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
+    }));
+    server.use(
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/coupons/options', () => HttpResponse.json({ ok: true, data: { coupons: [] } })),
+      http.get('/api/orders/reconciliation', () => HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-07-28T10:00:00.000Z' } })),
+      http.get('/api/orders', () => HttpResponse.json({ ok: true, data: { orders: [{ ...heldOrder('o1'), attribution: { utmSource: 'meta', utmMedium: 'paid', capturedAt: '2026-10-13T22:37:00.000Z' } }], total: 1, page: 1, pageSize: 25 } })),
+    );
+    try {
+      const rootRoute = createRootRoute();
+      const salesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/sales', component: SalesPanel });
+      const router = createRouter({ routeTree: rootRoute.addChildren([salesRoute]), history: createMemoryHistory({ initialEntries: ['/panel/sales'] }) });
+      await router.load();
+      renderWithProviders(<PanelContextProvider value={{ tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true }}><RouterProvider router={router} /></PanelContextProvider>);
+      const row = await screen.findByRole('row', { name: /meta \/ paid/u });
+      expect(within(row).getByTestId('sales-row-source')).toHaveTextContent(`${en.sales.source}: meta / paid`);
+      expect(screen.queryByRole('columnheader', { name: en.sales.source })).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the disabled KSeF controls of a phone order card above the order link while a send is in flight', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('max-width'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,

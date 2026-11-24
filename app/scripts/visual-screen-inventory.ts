@@ -533,6 +533,12 @@ export const SCREENS: readonly ScreenSpec[] = [
         if (image instanceof HTMLImageElement) await image.decode();
       });
     },
+    settled: async (page) => {
+      // The lesson image can finish loading after the overlay opens and move the footer bar under the scrim; only the mobile captures showed it.
+      if ((page.viewportSize()?.width ?? 0) < 900) {
+        await repaintLocator(page, page.locator('footer').filter({ has: page.getByTestId('prev-lesson') }));
+      }
+    },
   })),
   {
     name: 'community',

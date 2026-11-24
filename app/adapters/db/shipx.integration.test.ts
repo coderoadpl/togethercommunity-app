@@ -5,7 +5,7 @@ import { configureShipx, createInpostShipment, type CreateInpostShipmentDeps, ty
 import { createScriptedShipxClient, remoteShipment } from '#core/server/testing/shipx-fakes.js';
 import { createInMemoryTenantDomainRepository } from '#core/server/testing/tenant-domain-fakes.js';
 import { createProductRepository, createTenantSecretRepository } from './repositories.js';
-import { products, tenantSecrets, tenants } from './schema.js';
+import { members, orders, products, tenantSecrets, tenants, user } from './schema.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from './shipx.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -20,7 +20,7 @@ const sender: ShipxSender = {
   street: 'Factory Street', buildingNumber: '7', city: 'Warsaw', postCode: '00-001',
 };
 
-const context = { environment: 'production', organizationId: '1234', actorUserId: 'staff' } as const;
+const context = { environment: 'production', organizationId: '1234', actorUserId: 'staff', orderShippable: () => true } as const;
 const synced = { actorUserId: 'staff', event: null };
 const audit = { actorUserId: 'staff', at: now };
 const finished = { ...audit, outcome: 'pending' } as const;
@@ -323,6 +323,15 @@ describe('InPost shipment use-case on the database', () => {
     },
   });
 
+  beforeAll(async () => {
+    await database.db.insert(user).values({ id: 'shipx-buyer', email: 'shipx-buyer@example.org', name: 'Jane Buyer' });
+    await database.db.insert(members).values({ id: 'member-1', tenantId: 'workspace', userId: 'shipx-buyer', email: 'buyer@example.org', displayName: 'Jane Buyer', createdAt: now });
+    await database.db.insert(orders).values(['order-buy', 'order-twin', 'order-relay', 'order-refunded'].map((id) => ({
+      id, tenantId: 'workspace', memberId: 'member-1', productId: 'stand', kind: 'one_time' as const, status: 'paid' as const, amountCents: 7398,
+      currency: 'PLN', provider: 'stripe' as const, createdAt: '2026-11-04T09:00:00.000Z', fulfilmentStatus: id === 'order-refunded' ? null : 'to_pack' as const,
+    })));
+  });
+
   const depsFor = (orderId: string, client: ReturnType<typeof createScriptedShipxClient>['client']): CreateInpostShipmentDeps => {
     const stored = order(orderId);
     const findById = async (tenantId: string, id: string) => (tenantId === 'workspace' && id === orderId ? stored : null);
@@ -366,6 +375,15 @@ describe('InPost shipment use-case on the database', () => {
   };
 
   const unpaid = (id: string) => ok(remoteShipment(id, { status: 'offers_prepared', offers: [{ id: '55', status: 'available', service: 'inpost_locker_standard' }] }));
+
+  it('re-reads the order under its lock and creates nothing at ShipX once a staff refund took it off the packing list after it was read', async () => {
+    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
+    const client = createScriptedShipxClient();
+
+    expect(await createInpostShipment(write, { orderId: 'order-refunded' }, depsFor('order-refunded', client.client))).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(client.calls.create).toEqual([]);
+    expect(await createShipxShipmentRepository(database.db).findByOrder('workspace', 'order-refunded')).toBeNull();
+  });
 
   it('buys once when a second click arrives while the first one is paying', async () => {
     await createShipxSettingsRepository(database.db).saveSender('workspace', sender);

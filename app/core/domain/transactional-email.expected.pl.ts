@@ -81,6 +81,16 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     html: '<p>Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
     text: 'Automatyczny zwrot 40,99\u00a0zł za anulowane zamówienie order-<1> nie mógł zostać zrealizowany i nie będzie już ponawiany. Zwróć płatność ręcznie w panelu Stripe.\nOstatni błąd: The provided key does not have the required <permissions>\nhttps://acme.example.com/panel/sales/order-1',
   },
+  staffRefundFailedAlertEmail: {
+    subject: '[Acme] Zwrot zlecony przez zespół nie powiódł się, nic nie zwrócono: order-<1>',
+    html: '<p>Osoba z zespołu zleciła zwrot 40,99\u00a0zł za zamówienie order-&lt;1&gt;.</p><p>Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. Zleć ponownie zwrot 40,99\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć ręcznie w panelu Stripe najwyżej 40,99\u00a0zł.</p><p>Towar przywrócony do magazynu i zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostają bez zmian. Jeśli zamówienie ma jednak zostać wysłane, przywróć je do pakowania na stronie zamówienia.</p><p>Ostatni błąd: Stripe rejected the refund: &lt;declined&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Osoba z zespołu zleciła zwrot 40,99\u00a0zł za zamówienie order-<1>.\nZwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. Zleć ponownie zwrot 40,99\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć ręcznie w panelu Stripe najwyżej 40,99\u00a0zł.\nTowar przywrócony do magazynu i zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostają bez zmian. Jeśli zamówienie ma jednak zostać wysłane, przywróć je do pakowania na stronie zamówienia.\nOstatni błąd: Stripe rejected the refund: <declined>\nhttps://acme.example.com/panel/sales/order-1',
+  },
+  staffRefundFailedAfterSubmissionAlertEmail: {
+    subject: '[Acme] Zwrot zlecony przez zespół nie powiódł się po zleceniu: order-<1>',
+    html: '<p>Osoba z zespołu zleciła zwrot 40,99\u00a0zł za zamówienie order-&lt;1&gt;.</p><p>Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć ponownie zwrot 40,99\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć pieniądze w inny sposób.</p><p>Zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostaje poza nią. Jeśli zamówienie ma jednak zostać wysłane, przywróć je do pakowania na stronie zamówienia.</p><p>Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.</p><p>Ostatni błąd: Stripe rejected the refund: &lt;declined&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
+    text: 'Osoba z zespołu zleciła zwrot 40,99\u00a0zł za zamówienie order-<1>.\nStripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć ponownie zwrot 40,99\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć pieniądze w inny sposób.\nZamówienie zdjęte z listy do spakowania przy tym zwrocie pozostaje poza nią. Jeśli zamówienie ma jednak zostać wysłane, przywróć je do pakowania na stronie zamówienia.\nJeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.\nOstatni błąd: Stripe rejected the refund: <declined>\nhttps://acme.example.com/panel/sales/order-1',
+  },
   orderRefundBlockedAlertEmail: {
     subject: '[Acme] Automatyczny zwrot zablokowany przez brak uprawnienia w Stripe: order-<1>',
     html: '<p>Zwrot 40,99\u00a0zł za anulowane zamówienie order-&lt;1&gt; nie został zlecony, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis). Dodaj to uprawnienie do klucza w panelu Stripe; oczekujące zwroty zostaną wtedy wypłacone przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.</p><p>Ostatni błąd: The provided key does not have the required &lt;permissions&gt;</p><p><a href="https://acme.example.com/panel/sales/order-1">Otwórz zamówienie</a></p>',
@@ -100,6 +110,11 @@ export const expectedTransactionalEmailPl: Record<string, EmailMessage> = {
     subject: 'Zamówienie anulowane, zwracamy całą kwotę — Acme <Shop> (#ORDER-<1)',
     html: '<p>Cześć!</p><p>Płatność za zamówienie #ORDER-&lt;1 na platformie Acme &lt;Shop&gt; wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.</p><p>Numer zamówienia: order-&lt;1&gt;<br>Wyprzedane: Printed &lt;poster&gt;, Mug</p><p>Automatycznie zleciliśmy zwrot całej kwoty 40,99\u00a0zł na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul><li>Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.</li><li>BLIK: zwrot trwa około 120 minut.</li><li>Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.</li><li>Inne metody płatności: czas zależy od operatora płatności.</li></ul><p>Przepraszamy za kłopot.</p><p><a href="https://acme.example.com/">Przejdź do sklepu</a></p>',
     text: 'Cześć!\n\nPłatność za zamówienie #ORDER-<1 na platformie Acme <Shop> wpłynęła, gdy towar był już wyprzedany, więc całe zamówienie zostało anulowane i nic nie zostanie wysłane.\n\nNumer zamówienia: order-<1>\nWyprzedane: Printed <poster>, Mug\n\nAutomatycznie zleciliśmy zwrot całej kwoty 40,99\u00a0zł na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n- Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych.\n- BLIK: zwrot trwa około 120 minut.\n- Przelewy24: zwrot wpływa jako osobny przelew w ciągu 3 dni roboczych.\n- Inne metody płatności: czas zależy od operatora płatności.\n\nPrzepraszamy za kłopot.\n\nPrzejdź do sklepu: https://acme.example.com/',
+  },
+  orderRefundIssuedEmail: {
+    subject: 'Zwrot 15,00\u00a0zł w drodze — Acme <Shop> (#ORDER-<1)',
+    html: '<p>Cześć!</p><p>Zwrot 15,00\u00a0zł za zamówienie #ORDER-&lt;1 na platformie Acme &lt;Shop&gt; został zlecony na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul><li>Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie zwykle pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych, zależnie od banku.</li><li>Inne metody płatności: czas zwykle zależy od metody płatności i banku.</li></ul><p><a href="https://acme.example.com/">Przejdź do sklepu</a></p>',
+    text: 'Cześć!\n\nZwrot 15,00\u00a0zł za zamówienie #ORDER-<1 na platformie Acme <Shop> został zlecony na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n- Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie zwykle pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych, zależnie od banku.\n- Inne metody płatności: czas zwykle zależy od metody płatności i banku.\n\nPrzejdź do sklepu: https://acme.example.com/',
   },
   emailTransportTest: {
     subject: 'Together — wiadomość testowa (resend)',
@@ -128,4 +143,38 @@ export const expectedPurchasePersonalizationPl = {
   plainHtml: '<p><strong>Personalizacja: Card</strong><br>Hi</p>',
   conditionText: '\n\nPersonalizacja: Printed <book>\nFor "Alex" & Sam\nZaakceptowany warunek: I understand a personalised item is made to my order.',
   plainText: '\n\nPersonalizacja: Card\nHi',
+};
+
+export const expectedStaffRefundAlertPl = {
+  retryingSubject: 'Zwrot zlecony przez zespół jeszcze niezrealizowany, ponawiamy',
+  retrying: 'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
+  retryingOutcomeUnknownSubject: 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
+  retryingOutcomeUnknown: 'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
+  paidAmount: '40,99\u00a0zł',
+  partialAmount: '10,00\u00a0zł',
+  checkInDashboard: (amount: string) => `Sprawdź ten zwrot ${amount} w panelu Stripe. Jeśli ma status Succeeded, nic więcej nie trzeba robić. Jeśli ma status Pending, nie zlecaj go ponownie: nie jest już sprawdzany automatycznie, więc śledź go tam, aż będzie miał status Succeeded lub Failed. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty ${amount} zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.`,
+  dashboardSteps: [
+    'Jeśli ma status Succeeded, nic więcej nie trzeba robić.',
+    'Jeśli ma status Pending, nie zlecaj go ponownie',
+    'Jeśli ma status Requires action, dokończ go tam.',
+    'Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty',
+  ],
+  listedMeansDone: 'jest tam widoczny, nic więcej',
+  pendingMeansDone: 'Succeeded lub Pending, nic więcej',
+  refundAgainFromPage: 'na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę',
+  partialFailedAfterSubmission: 'Zleć ponownie zwrot 10,00\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę',
+  partialByHand: 'Zleć ponownie zwrot 10,00\u00a0zł na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć ręcznie w panelu Stripe najwyżej 10,00\u00a0zł.',
+  refundOrderAgain: 'Zleć zwrot ponownie na stronie zamówienia',
+  access: 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.',
+  grantAgain: 'nadaj go ponownie',
+  partialCap: 'zwróć tam tylko niewypłaconą część kwoty 10,00\u00a0zł zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności',
+  failedAfterOrderRefunded: 'Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie.',
+  unconfirmedBecause: {
+    create_outcome_unknown: 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.',
+    awaiting_provider: 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.',
+    refunded_outside: 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić, więc nie wiadomo, czy ten zwrot został wypłacony.',
+    not_confirmed: 'Stripe nie potwierdził zwrotu, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.',
+  },
+  refusalState: 'Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło.',
+  lastErrorLabel: 'Ostatni błąd',
 };

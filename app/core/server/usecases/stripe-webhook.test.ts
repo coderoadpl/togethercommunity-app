@@ -9,6 +9,7 @@ import {
   checkoutShippingFromStripe,
   err,
   internal,
+  newOrderStaffRefund,
   ok,
   renderEmailOutboxPayload,
   stockCheckoutExpiry,
@@ -18,6 +19,7 @@ import {
   type TermsConsent,
   type MemberSubscription,
   type Order,
+  type OrderStaffRefund,
   type ProcessedPaymentEvent,
   type Product,
   type ProductGrant,
@@ -206,6 +208,9 @@ const harness = (
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
   const refundJobs = createOrderRefundJobFake();
+  const staffRefundNotes: string[] = [];
+  const waitingStaffRefunds: OrderStaffRefund[] = [];
+  let refundKicks = 0;
   const consents: TermsConsent[] = [];
   const consentJobs: CheckoutConsentJob[] = [];
   const marketingConsents = new InMemoryMarketingConsentRepository();
@@ -494,6 +499,12 @@ const harness = (
             complete: async () => undefined,
           },
           orderRefundJobs: refundJobs.repository,
+          orderStaffRefunds: {
+            noteChargeRefunded: async (tenantId, orderId, at) => {
+              staffRefundNotes.push(`${tenantId}:${orderId}:${at}`);
+              return waitingStaffRefunds.filter((refund) => refund.tenantId === tenantId && refund.orderId === orderId);
+            },
+          },
           consents: {
             record: async (_tenantId, consent) => { consents.push(consent); },
             listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
@@ -565,6 +576,7 @@ const harness = (
       markFailed: async () => ok(undefined),
     },
     dispatchEmail: () => undefined,
+    dispatchOrderRefunds: () => { refundKicks += 1; },
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
     consentTokens: { nextToken: () => `confirmation-${++sequence}` },
@@ -602,6 +614,9 @@ const harness = (
     providerCancellations,
     warnings,
     refundTransitions: () => refundTransitions,
+    staffRefundNotes,
+    waitingStaffRefunds,
+    refundKicks: () => refundKicks,
     setNow: (iso: string) => {
       clockNow = iso;
     },
@@ -2669,6 +2684,39 @@ describe('fulfillStripeWebhook', () => {
       expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
     },
   );
+});
+
+describe('staff refunds on charge.refunded', () => {
+  it.each([
+    ['a partial', { full: false, amountRefundedCents: 1000, amountCents: 4900 }, 'partially_refunded'],
+    ['a full', { full: true, amountRefundedCents: 4900, amountCents: 4900 }, 'refunded'],
+  ] as const)('makes the waiting staff refunds of the order due after %s refund and kicks the dispatcher', async (_label, refund, status) => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent({ paymentIntentId: 'pi-staff' }), h.deps);
+    const order = h.orders[0];
+    if (order === undefined) throw new Error('Order missing');
+    h.waitingStaffRefunds.push(newOrderStaffRefund({
+      id: 'refund-1', tenantId: tenantA.id, orderId: order.id, paymentIntentId: 'pi-staff', currency: 'PLN', kind: 'amount', amountCents: 1000,
+      requestKey: 'req-1', requestedByUserId: 'owner', requestedByEmail: 'owner@example.com', note: null, restocked: false, removedFromPackingList: false, now,
+    }));
+
+    expect(await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: `evt-${status}`, paymentIntentId: 'pi-staff', refund }), h.deps)).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders[0]?.status).toBe(status);
+    expect(h.staffRefundNotes).toStrictEqual([`${tenantA.id}:${order.id}:${now}`]);
+    expect(h.refundKicks()).toBe(1);
+    expect(h.warnings).toContain(`[order-refund] staff refund due again after charge.refunded tenant=${tenantA.id} order=${order.id} refund=refund-1`);
+    expect(h.warnings.filter((warning) => warning.includes('evt-'))).toStrictEqual([]);
+  });
+
+  it('notes no staff refund for a dispute and does not kick the dispatcher without a waiting refund', async () => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent({ paymentIntentId: 'pi-staff' }), h.deps);
+    await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: 'evt-dispute', type: 'charge.dispute.created', paymentIntentId: 'pi-staff' }), h.deps);
+    expect(h.staffRefundNotes).toStrictEqual([]);
+    await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: 'evt-partial', paymentIntentId: 'pi-staff', refund: { full: false, amountRefundedCents: 100, amountCents: 4900 } }), h.deps);
+    expect(h.staffRefundNotes).toHaveLength(1);
+    expect(h.refundKicks()).toBe(0);
+  });
 });
 
 describe('simulated subscription lifecycle', () => {

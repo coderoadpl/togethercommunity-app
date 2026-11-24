@@ -235,6 +235,16 @@ describe('create InPost shipment', () => {
     expect(h.row()).toMatchObject({ organizationId: '1234', environment: 'production', operationStartedAt: null });
   });
 
+  it('calls ShipX for nothing and takes no claim when the locked order is no longer waiting to be packed', async () => {
+    const h = harness();
+    h.shipments.lockedOrders.set(h.shipments.key('workspace', 'order-1'), { status: 'paid', fulfilmentStatus: null });
+
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(h.real.calls.create).toEqual([]);
+    expect(h.row()).toBeUndefined();
+    expect(await h.eventTypes()).toEqual([]);
+  });
+
   it('reuses the stored ShipX shipment on retry instead of creating a second one', async () => {
     const h = harness({
       real: createScriptedShipxClient({ polls: [(id) => ok(remoteShipment(id, { status: 'created' }))] }),

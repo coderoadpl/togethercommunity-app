@@ -1,4 +1,5 @@
 import {
+  appError,
   buildShipxShipmentRequest,
   configureShipxInputSchema,
   DEFAULT_PARCEL_TEMPLATE,
@@ -602,7 +603,11 @@ export const createInpostShipment = async (
     now: startedAt,
     leaseExpiredBefore: leaseExpiredBefore(startedAt),
     actorUserId: ctx.identity.userId,
+    orderShippable: (locked) => locked !== null && orderShipmentAllowed(locked).ok,
   });
+  if (acquired.kind === 'order_changed') {
+    return err(appError('conflict', 'The order is no longer waiting to be packed, for example because a staff refund took it off the packing list; refresh the order'));
+  }
   if (acquired.kind === 'in_progress') {
     return err(shipxStateError('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }));
   }

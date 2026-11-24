@@ -6,6 +6,7 @@ import {
   orderListItemSchema,
   outOfStockRefundJob,
   refundFailure,
+  REFUND_REQUEST_WORST_CASE_MS,
   type OrderListItem,
   type ProviderRefund,
 } from '#core/domain/index.js';
@@ -14,7 +15,7 @@ import { createOrderRefundJobFake } from '../testing/order-refund-job-fake.js';
 import { createRefundProviderFake, type RefundProviderStep } from '../testing/refund-provider-fake.js';
 import { createInMemoryTenantDomainRepository } from '../testing/tenant-domain-fakes.js';
 import {
-  dispatchOrderRefundJobs, ORDER_REFUND_CRON_TICK_MAX_JOBS, ORDER_REFUND_DISPATCH_BUDGET_MS, ORDER_REFUND_JOB_WORST_CASE_MS, type DispatchOrderRefundJobsOptions,
+  dispatchOrderRefundJobs, ORDER_REFUND_CRON_TICK_MAX_JOBS, ORDER_REFUND_DISPATCH_BUDGET_MS, ORDER_REFUND_JOB_WORST_CASE_MS, ORDER_REFUND_TICK_BUDGET_MS, type DispatchOrderRefundJobsOptions,
 } from './dispatch-order-refund-jobs.js';
 
 const createdAt = '2026-11-15T10:42:00.000Z';
@@ -39,6 +40,7 @@ const harness = (input: {
   steps?: RefundProviderStep[];
   refundedByHand?: ProviderRefund[];
   staleRefundList?: boolean;
+  pageSize?: number;
 } = {}) => {
   let now = createdAt;
   let failingRecipientLookups = 0;
@@ -46,11 +48,15 @@ const harness = (input: {
   const fake = createOrderRefundJobFake();
   const provider = createRefundProviderFake({
     chargeAmountCents: order.amountCents,
+    ...(input.pageSize === undefined ? {} : {
+      paging: { pageSize: input.pageSize, nowMs: () => Date.parse(now), readPage: () => { now = new Date(Date.parse(now) + 300).toISOString(); } },
+    }),
     ...(input.steps === undefined ? {} : { steps: input.steps }),
     ...(input.refundedByHand === undefined ? {} : { refundedByHand: input.refundedByHand }),
   });
   const alerts = fake.alerts;
   const errors: string[] = [];
+  const warnings: string[] = [];
   const deps = {
     refundJobs: fake.repository,
     orderDetails: { findById: async (tenantId: string, orderId: string) => (tenantId === order.tenantId && orderId === order.id ? order : null) },
@@ -70,7 +76,7 @@ const harness = (input: {
     },
     tenantDomains: createInMemoryTenantDomainRepository(),
     clock: { nowIso: () => now },
-    logger: { warn: () => undefined, error: (message: string) => { errors.push(message); } },
+    logger: { warn: (message: string) => { warnings.push(message); }, error: (message: string) => { errors.push(message); } },
     dispatchEmail: () => undefined,
     appBaseUrl: 'https://togethercommunity.app',
     baseDomain: 'togethercommunity.app',
@@ -79,9 +85,9 @@ const harness = (input: {
   const queue = async () => {
     await fake.repository.enqueue('tenant-a', outOfStockRefundJob(order, { id: 'job-1', now: createdAt }));
   };
-  const tick = async (time: string) => {
+  const tick = async (time: string, options: Parameters<typeof dispatchOrderRefundJobs>[1] = {}) => {
     now = time;
-    const result = await dispatchOrderRefundJobs(deps);
+    const result = await dispatchOrderRefundJobs(deps, options);
     if (!result.ok) throw new Error(result.error.message);
     return result.value;
   };
@@ -98,7 +104,7 @@ const harness = (input: {
     return fake.repository.noteChargeRefunded(order.tenantId, order.id, now);
   };
   return {
-    deps, queue, tick, job, refundCalls: provider.calls, listCalls: provider.listCalls, created: provider.created, alerts, alertKinds, keys, errors,
+    deps, queue, tick, job, refundCalls: provider.calls, listCalls: provider.listCalls, created: provider.created, alerts, alertKinds, keys, errors, warnings,
     failAlertWrites: fake.failAlertWrites, failRecipientLookups, chargeRefunded, refundByHand: provider.refundByHand, failRefund: provider.failRefund,
     setRefundStatus: provider.setRefundStatus, failLists: provider.failLists,
   };
@@ -326,6 +332,22 @@ describe('order refund dispatcher', () => {
     expect(h.refundCalls).toStrictEqual([expect.objectContaining({ amountCents: 2099, idempotencyKey: 'oos-refund-order-1' })]);
     expect(h.job()).toMatchObject({ status: 'succeeded', providerRefundId: 're_1' });
     expect(h.alerts).toStrictEqual([]);
+  });
+
+  it('keeps needing the whole refund list for a sold-out job: a cron tick that can read only the newest page refunds nothing, a longer run refunds the rest', async () => {
+    const h = harness({
+      order: cancelledOrder({ status: 'partially_refunded' }), pageSize: 100,
+      refundedByHand: Array.from({ length: 150 }, (_value, index) => handRefund(`re_hand_${String(index)}`, 1, 'succeeded')),
+    });
+    await h.queue();
+
+    const cron = { deadlineAt: Date.parse(createdAt) + ORDER_REFUND_TICK_BUDGET_MS, maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS, jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS };
+    expect(await h.tick(createdAt, cron)).toStrictEqual({ processedCount: 1, outcomes: { retrying: 1 } });
+    expect(h.refundCalls).toStrictEqual([]);
+    expect(h.job()).toMatchObject({ status: 'pending', lastError: 'The refund list of the payment could not be read in full before the run deadline' });
+
+    expect(await h.tick(at(hours(1)))).toStrictEqual({ processedCount: 1, outcomes: { refunded: 1 } });
+    expect(h.refundCalls).toStrictEqual([expect.objectContaining({ amountCents: 3949 })]);
   });
 
   it('watches and then skips without a refund call when staff already refunded the whole payment by hand in parts', async () => {
@@ -673,6 +695,17 @@ describe('order refund dispatcher', () => {
     expect(h.alertKinds()).toStrictEqual(['failed']);
   });
 
+  it('keeps the provider message for staff but logs it without provider object ids', async () => {
+    const message = "No such payment_intent: 'pi_3PqRsTuVwXyZ1234'";
+    const h = harness({ steps: [{ outcome: 'error', error: refundFailure('not_found', message, 'resource_missing') }] });
+    await h.queue();
+
+    await h.tick(createdAt);
+    expect(h.job()).toMatchObject({ status: 'failed', lastError: message });
+    expect(h.warnings).toStrictEqual([`[order-refund] tenant=tenant-a order=order-1 job=job-1 attempt=1 status=failed next=none error=No such payment_intent: '[provider id]'`]);
+    expect(h.warnings.join('\n')).not.toContain('pi_3PqRsTuVwXyZ1234');
+  });
+
   it('re-reads a refund at 24 hours and 7 days and stops checking once both confirm it', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     await h.queue();
@@ -848,6 +881,23 @@ describe('order refund dispatcher', () => {
     expect(claimed).toStrictEqual(['job-1', 'job-2', 'job-3']);
     expect(untouched).toBe(3);
     expect(warnings).toStrictEqual(['[order-refund] run stopped by deadline, 3 due refund jobs left for the next run']);
+  });
+
+  it.each([
+    ['the run deadline', {}, Date.parse(createdAt) + 30_000],
+    ['the job budget of the cron tick', { jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS }, Date.parse(createdAt) + ORDER_REFUND_JOB_WORST_CASE_MS],
+  ] as const)('reads the refunds only until %s, keeping time for the refund request, and at a status check until its run deadline', async (_name, budget, jobDeadline) => {
+    const h = harness();
+    const deadlines: Array<number | undefined> = [];
+    const { createRefund, listRefunds } = h.deps.payment;
+    if (createRefund === undefined || listRefunds === undefined) throw new Error('Refund methods missing');
+    h.deps.payment = { createRefund, listRefunds: async (call) => { deadlines.push(call.deadlineAt); return listRefunds(call); } };
+    await h.queue();
+
+    expect(await dispatchOrderRefundJobs(h.deps, { deadlineAt: Date.parse(createdAt) + 30_000, ...budget })).toStrictEqual(ok({ processedCount: 1, outcomes: { refunded: 1 } }));
+    expect(await h.tick(at(hours(24)))).toMatchObject({ processedCount: 1 });
+
+    expect(deadlines).toStrictEqual([jobDeadline - REFUND_REQUEST_WORST_CASE_MS, Date.parse(at(hours(24))) + ORDER_REFUND_DISPATCH_BUDGET_MS]);
   });
 
   it('claims one job on the cron tick although the deadline leaves time for more, and names the cap in the warning', async () => {

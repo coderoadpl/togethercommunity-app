@@ -266,6 +266,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/orders/packing-list` | authenticated | read | orders packing list |
 | `POST /api/orders/:orderId/ship` | authenticated | mutating | ship order |
 | `POST /api/orders/:orderId/personalization` | authenticated | mutating | correct order personalization |
+| `GET /api/orders/:orderId/refund-preview` | authenticated | read | order refund preview |
+| `POST /api/orders/:orderId/refunds` | authenticated | mutating | order refund create |
+| `POST /api/orders/:orderId/packing-list` | authenticated | mutating | order ship anyway |
 | `GET /api/change-proposals` | authenticated | read | change proposals |
 | `GET /api/change-proposals/summary` | authenticated | read | change proposal summary |
 | `GET /api/change-proposals/:id` | authenticated | read | change proposal |

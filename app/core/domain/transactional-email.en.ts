@@ -226,6 +226,67 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       };
     },
   },
+  orderRefundIssuedEmail: {
+    shopLabel: 'Visit the shop',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, amount, amountHtml, shopUrl, shopLink }) => {
+      const timing = [
+        'Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it usually appears as a separate credit after about 5–10 business days, depending on your bank.',
+        'Other payment methods: the time usually depends on the payment method and your bank.',
+      ];
+      return {
+        subject: `Refund of ${amount} on its way — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Hello!</p><p>A refund of ${amountHtml} for order ${orderReferenceHtml} on ${tenantNameHtml} has been issued to the payment method you used. You do not need to do anything.</p><p>When the money comes back:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Hello!\n\nA refund of ${amount} for order ${orderReference} on ${tenantName} has been issued to the payment method you used. You do not need to do anything.\n\nWhen the money comes back:\n${timing.map((line) => `- ${line}`).join('\n')}\n\nVisit the shop: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
+  staffRefundAlertEmail: {
+    subjects: {
+      retrying: 'Staff refund not issued yet, retrying',
+      blocked_permission: 'Staff refund blocked by a missing Stripe permission',
+      blocked_permission_failed: 'Staff refund still blocked after 72 hours, not issued',
+      failed: 'Staff refund failed, nothing refunded',
+      failed_after_submission: 'Staff refund failed after it was issued',
+      unconfirmed: 'Staff refund not confirmed by Stripe, check it',
+    },
+    retryingOutcomeUnknownSubject: 'Staff refund outcome not known yet, retrying',
+    lastErrorLabel: 'Last error',
+    openOrder: 'Open the order',
+    paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
+      const checkInDashboard = `Check this refund of ${amount} in the Stripe Dashboard. If it is Succeeded, nothing more is needed. If it is Pending, do not refund it again: it is no longer checked automatically, so follow it there until it is Succeeded or Failed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund there only the unpaid part of the ${amount} requested here, and never more than Stripe shows as left to refund on the payment; the order is updated once Stripe reports the refund.`;
+      const refundAgainFromPage = `Refund ${amount} again from the order page by entering that amount as a partial refund, not the whole remainder`;
+      const refundAgainOrByHand = `${refundAgainFromPage}, or refund at most ${amount} by hand in the Stripe Dashboard.`;
+      const unconfirmedBecause = reason === 'create_outcome_unknown'
+        ? 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'
+        : reason === 'awaiting_provider'
+          ? 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.'
+          : reason === 'refunded_outside'
+            ? 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.'
+            : 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.';
+      const states = {
+        retrying: mayHaveRefunded
+          ? 'Stripe may already have received this refund request, but its answer was lost. The same request is repeated automatically for 7 days, so the order is never refunded twice; you get another message if it still fails.'
+          : 'The refund has not reached Stripe yet, so nothing has been refunded yet. It is retried automatically for 7 days; you get another message if it still fails.',
+        blocked_permission: 'Stripe refused it because the workspace\'s restricted Stripe key lacks the Charges and Refunds (write) permission, so nothing has been refunded yet. Add the permission to the key in the Stripe Dashboard; the refund is then paid by the next hourly attempt. Attempts continue every hour for 72 hours.',
+        blocked_permission_failed: `The refund was still blocked by the missing Charges and Refunds (write) permission after 72 hours of hourly attempts and is no longer retried. Nothing was refunded. Add the permission to the key first. ${refundAgainOrByHand}`,
+        failed: `The refund failed and is no longer retried. Nothing was refunded by this request. ${refundAgainOrByHand}`,
+        failed_after_submission: reason === 'failed_after_order_refunded'
+          ? `Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. The order is already marked refunded, so it cannot be refunded again from its page. ${checkInDashboard}`
+          : `Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. ${refundAgainFromPage}, or return the money another way.`,
+        unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
+      } as const;
+      const settled = alert !== 'retrying' && alert !== 'blocked_permission';
+      const backToPacking = 'To send the order after all, put it back on the packing list from its page.';
+      const kept = !settled ? null
+        : restocked && removedFromPackingList ? `The goods returned to stock and the order taken off the packing list with this refund stay that way. ${backToPacking}`
+          : restocked ? 'The goods returned to stock with this refund stay in stock.'
+            : removedFromPackingList ? `The order taken off the packing list with this refund stays off it. ${backToPacking}` : null;
+      const access = alert === 'failed_after_submission'
+        ? 'If Stripe reported the refund before it failed, a full refund may have ended the access the order gave, and that is not undone automatically. Check the member\'s access on the member page and restore it only if it was revoked and should be restored: a partial refund never ends access, and another purchase may have kept it.'
+        : null;
+      return [`A staff member asked to refund ${amount} of order ${orderId}.`, states[alert], ...(kept === null ? [] : [kept]), ...(access === null ? [] : [access])];
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

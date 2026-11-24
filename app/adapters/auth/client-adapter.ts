@@ -108,12 +108,55 @@ const authErrorSchema = z.object({
   message: z.string().optional(),
 });
 
+const rateLimitEnvelopeSchema = z.object({
+  error: z.object({ details: z.object({ retryAfterSeconds: z.number().int().positive() }) }),
+});
+
+const retryAfterSecondsOf = (error: object): number | null => {
+  const parsed = rateLimitEnvelopeSchema.safeParse(error);
+  return parsed.success ? parsed.data.error.details.retryAfterSeconds : null;
+};
+
+const retryAfterHeaderSchema = z.string().regex(/^\d+$/u).transform(Number).pipe(z.number().int().positive());
+
+const recordOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...value } : {};
+
+const parseJsonBody = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const withHeaderRetryAfter = async ({ response }: { response: Response }): Promise<Response | undefined> => {
+  if (response.status !== 429) return undefined;
+  const header = retryAfterHeaderSchema.safeParse(response.headers.get('x-retry-after'));
+  if (!header.success) return undefined;
+  const body = recordOf(parseJsonBody(await response.clone().text()));
+  if (retryAfterSecondsOf(body) !== null) return undefined;
+  const error = recordOf(body.error);
+  return new Response(
+    JSON.stringify({
+      ...body,
+      error: { ...error, details: { ...recordOf(error.details), retryAfterSeconds: header.data } },
+    }),
+    { status: response.status, statusText: response.statusText, headers: response.headers },
+  );
+};
+
 const toResult = <T>(
   value: T,
   error: { code?: string | undefined; message?: string | undefined; status: number } | null,
   unauthorizedCode: 'unauthorized' | 'invalid_credentials' = 'unauthorized',
 ): Result<T, AppError> => {
   if (!error) return ok(value);
+  const retryAfterSeconds = error.status === 429 ? retryAfterSecondsOf(error) : null;
+  const details = {
+    ...(error.code === undefined ? {} : { providerCode: error.code }),
+    ...(retryAfterSeconds === null ? {} : { retryAfterSeconds }),
+  };
   const code =
     error.status === 401
       ? unauthorizedCode
@@ -127,7 +170,7 @@ const toResult = <T>(
   return err(appError(
     code,
     error.message ?? 'Authentication failed',
-    error.code === undefined ? undefined : { providerCode: error.code },
+    Object.keys(details).length === 0 ? undefined : details,
   ));
 };
 
@@ -226,7 +269,7 @@ const postBrowserSignUp = async (
 export const createBetterAuthClientAdapter = (baseUrl: string, headers?: Record<string, string>): AuthClientPort => {
   const client = createAuthClient({
     baseURL: baseUrl === '' ? undefined : baseUrl,
-    ...(headers === undefined ? {} : { fetchOptions: { headers } }),
+    fetchOptions: { onResponse: withHeaderRetryAfter, ...(headers === undefined ? {} : { headers }) },
     plugins: [magicLinkClient(), passkeyClient(), twoFactorClient()],
   });
 

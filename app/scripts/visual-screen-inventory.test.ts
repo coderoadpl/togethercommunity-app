@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
+import { retapDisclosureOnPhone } from './storybook-component-screens.js';
 import { pageScreens } from './storybook-page-screens.js';
 import { includesViewport, repaintForStableAntialiasing, VIEWPORTS, type AntialiasRepaint, type ScreenSpec } from './visual-screen-inventory.js';
 
@@ -77,5 +78,30 @@ describe('antialias repaint', () => {
     expect(anonSidebar).toContain('data-testid="anon-sidebar"');
     expect(lessonPlayer).toMatch(/<LessonFooterBar\b[^>]*\bcomponent="footer"/);
     expect(lessonPlayer).toContain('data-testid="prev-lesson"');
+  });
+});
+
+describe('meta-capi-expanded capture', () => {
+  const disclosurePage = (width: number) => {
+    const taps: boolean[] = [];
+    return {
+      taps,
+      page: {
+        viewportSize: () => ({ width }),
+        getByRole: () => ({ getByRole: (_role: 'button', options: { expanded: boolean }) => ({ click: async () => { taps.push(options.expanded); } }) }),
+      },
+    };
+  };
+
+  it('opens the field list on a phone with a real tap after collapsing the preset list', async () => {
+    const probe = disclosurePage(390);
+    await retapDisclosureOnPhone(probe.page);
+    expect(probe.taps).toEqual([true, false]);
+  });
+
+  it('keeps the desktop capture on the preset list', async () => {
+    const probe = disclosurePage(1440);
+    await retapDisclosureOnPhone(probe.page);
+    expect(probe.taps).toEqual([]);
   });
 });

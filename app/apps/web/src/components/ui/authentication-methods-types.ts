@@ -14,6 +14,7 @@ interface PasskeyRow {
 
 export interface AuthenticationMethodsProps {
   twoFactorEnabled?: boolean;
+  hasPassword?: boolean;
   onSecurityRefresh?(): void;
   passwordCard?: ReactNode;
   sessionsCard?: ReactNode;

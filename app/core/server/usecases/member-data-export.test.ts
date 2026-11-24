@@ -134,7 +134,11 @@ const deps = (
   progress: {
     findByMemberAndCourse: async () => null,
     listByMember: async () => [],
-    findOrCreate: async () => {
+    addCompletedLesson: async () => {
+      throw new Error('not used');
+    },
+    removeCompletedLesson: async () => null,
+    setLastViewed: async () => {
       throw new Error('not used');
     },
     update: async () => null,

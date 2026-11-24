@@ -1,6 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
 
-import { Agent } from 'undici';
 import { describe, expect, it, vi } from 'vitest';
 
 import { err, notFound, ok, storageFailureIsDefinite, type StorageConfiguration } from '#core/domain/index.js';
@@ -1070,14 +1069,15 @@ describe('image publication storage operations', () => {
 
   it('reads the whole 404 body of a digest before it closes the connection, so a missing key split across chunks stays a missing key', async () => {
     const events: string[] = [];
-    const connections: Agent[] = [];
+    const closed: Array<() => boolean> = [];
     const chunks = ['<Error><Code>NoSuch', 'Key</Code></Error>'].map((part) => new TextEncoder().encode(part));
     const storage = createS3StorageProvider(resolver, {
       lookupAddresses: async () => ['93.184.216.34'],
       fetchStorage: async (_url, init) => {
         const { dispatcher } = init;
-        if (!(dispatcher instanceof Agent)) throw new Error('Expected a pinned dispatcher');
-        connections.push(dispatcher);
+        if (typeof dispatcher !== 'object' || dispatcher === null || !('destroyed' in dispatcher)) throw new Error('Expected a pinned dispatcher');
+        const isClosed = () => dispatcher.destroyed === true;
+        closed.push(isClosed);
         let index = 0;
         return {
           ok: false, status: 404, headers: { get: () => null }, text: async () => '',
@@ -1088,7 +1088,7 @@ describe('image publication storage operations', () => {
                 await new Promise((resolve) => { setTimeout(resolve, 5); });
                 const value = chunks[index];
                 index += 1;
-                events.push(`${value === undefined ? 'end' : 'chunk'}${dispatcher.destroyed ? ' after close' : ''}`);
+                events.push(`${value === undefined ? 'end' : 'chunk'}${isClosed() ? ' after close' : ''}`);
                 return value === undefined ? { done: true } : { done: false, value };
               },
               cancel: async () => undefined,
@@ -1101,7 +1101,7 @@ describe('image publication storage operations', () => {
     expect(await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(events).toEqual(['chunk', 'chunk', 'end']);
-    expect(connections.map((connection) => connection.destroyed)).toEqual([true]);
+    expect(closed.map((isClosed) => isClosed())).toEqual([true]);
   });
 
   it.each([16, 'endless'] as const)('reports a copy answered 404 with an unreadable body (%s) as a storage error without a definite outcome', async (chunks) => {

@@ -130,6 +130,14 @@ const harness = (world: Partial<World> = {}) => {
   return { deps, reader };
 };
 
+const READER_METHODS = ['findAccountByEmail', 'findAccountById', 'findMemberByUser', 'findMemberById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const satisfies readonly (keyof EntitlementSubjectReader)[];
+
+const lookupSequence = (reader: EntitlementSubjectReader): string[] =>
+  READER_METHODS
+    .flatMap((method) => vi.mocked(reader[method]).mock.invocationCallOrder.map((order) => ({ order, method })))
+    .toSorted((left, right) => left.order - right.order)
+    .map(({ method }) => method);
+
 const ADA = { email: 'ada@example.test', userId: 'user-ada', emailVerified: true };
 
 const checkOne = async (
@@ -216,25 +224,23 @@ describe('checkEntitlements', () => {
     expect(withoutProducts.map((answer) => answer.products)).toEqual([[], []]);
   });
 
-  it('runs the same lookups for a person who does not exist as for one who does', async () => {
-    const known = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)] });
+  it('runs the same lookups in the same order for a person who does not exist as for one who does', async () => {
+    const known = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)], grants: [grant('m-ada', 'prod-pro')] });
     const unknown = harness();
-    await checkOne(known, { email: ADA.email });
-    await checkOne(unknown, { email: 'nobody@example.test' });
-    for (const method of ['findAccountByEmail', 'findAccountById', 'findMemberByUser', 'findMemberById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
-      expect(vi.mocked(unknown.reader[method]).mock.calls.length).toBe(vi.mocked(known.reader[method]).mock.calls.length);
-    }
+    expect((await checkOne(known, { email: ADA.email })).products[0]?.access).toBe(true);
+    expect((await checkOne(unknown, { email: 'nobody@example.test' })).products).toEqual([NO_ACCESS]);
+    expect(lookupSequence(known.reader)).toEqual(['findAccountByEmail', 'findMemberByUser', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions']);
+    expect(lookupSequence(unknown.reader)).toEqual(lookupSequence(known.reader));
   });
 
-  it('runs the same lookups for a member id that matches nobody as for one that matches', async () => {
+  it('runs the same lookups in the same order for a member id that matches nobody as for one that matches', async () => {
     const membersKey = keyCtx(['entitlement:check', 'entitlement:member:read']);
     const known = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)] });
     const unknown = harness();
     expect((await checkOne(known, { memberId: 'm-ada' }, ['prod-pro'], membersKey)).member).toEqual({ id: 'm-ada' });
     expect((await checkOne(unknown, { memberId: 'm-nobody' }, ['prod-pro'], membersKey)).member).toBeNull();
-    for (const method of ['findAccountByEmail', 'findAccountById', 'findMemberByUser', 'findMemberById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions'] as const) {
-      expect(vi.mocked(unknown.reader[method]).mock.calls.length).toBe(vi.mocked(known.reader[method]).mock.calls.length);
-    }
+    expect(lookupSequence(known.reader)).toEqual(['findMemberById', 'findAccountById', 'hasSignedIn', 'listActiveGrants', 'listSubscriptions']);
+    expect(lookupSequence(unknown.reader)).toEqual(lookupSequence(known.reader));
   });
 
   it('matches a member id only while the member\'s account has a verified e-mail address', async () => {
@@ -295,7 +301,11 @@ describe('checkEntitlements', () => {
 
   it('never matches an erased member, whose user id is a tombstone, by member id', async () => {
     const tombstone = memberTombstone('m-gone');
-    const h = harness({ members: [member('m-gone', tombstone.userId, { email: tombstone.email })], grants: [grant('m-gone', 'prod-pro')] });
+    const h = harness({
+      accounts: [{ email: tombstone.email, userId: tombstone.userId, emailVerified: true }],
+      members: [member('m-gone', tombstone.userId, { email: tombstone.email })],
+      grants: [grant('m-gone', 'prod-pro')],
+    });
     const answer = await checkOne(h, { memberId: 'm-gone' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
     expect(answer.products).toEqual([NO_ACCESS]);
     expect(answer.member).toBeNull();
@@ -358,7 +368,7 @@ describe('checkEntitlements', () => {
     expect((await checkOne(h, { email: ADA.email })).products).toEqual([{ productId: 'prod-pro', access: true, source: 'purchase', subscription: null, checkedAt: NOW }]);
   });
 
-  it('does not name a subscription whose paid period ended as the source of a finite grant given another way', async () => {
+  it('reports the origin recorded on a finite grant and no subscription when the newest subscription is neither current nor paid through the check time', async () => {
     const h = harness({
       accounts: [ADA],
       members: [member('m-ada', ADA.userId)],
@@ -426,7 +436,7 @@ describe('checkEntitlements', () => {
 
   it('refuses a member id subject unless the key holds entitlements:members:read', async () => {
     const h = harness({ accounts: [ADA], members: [member('m-ada', ADA.userId)], grants: [grant('m-ada', 'prod-pro')] });
-    const refused =await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null }, h.deps);
+    const refused = await checkEntitlements(keyCtx(), { subjects: [{ memberId: 'm-ada' }] }, { productIds: null }, h.deps);
     expect(refused).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     const allowed = await checkOne(h, { memberId: 'm-ada' }, ['prod-pro'], keyCtx(['entitlement:check', 'entitlement:member:read']));
     expect(allowed.products[0]?.access).toBe(true);

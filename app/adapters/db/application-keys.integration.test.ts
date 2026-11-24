@@ -167,9 +167,12 @@ describe('entitlement subject reader', () => {
   });
 
   it('reads the verified flag of the account a member row names', async () => {
-    await database.db.insert(dbSchema.user).values({ id: 'user-eve', name: 'Eve', email: 'eve@example.test', emailVerified: false });
+    await database.db.insert(dbSchema.user).values([
+      { id: 'user-ivy', name: 'Ivy', email: 'ivy@example.test', emailVerified: true },
+      { id: 'user-eve', name: 'Eve', email: 'eve@example.test', emailVerified: false },
+    ]);
     const reader = createEntitlementSubjectReader(database.db);
-    expect(await reader.findAccountById('user-ada')).toEqual({ userId: 'user-ada', emailVerified: true });
+    expect(await reader.findAccountById('user-ivy')).toEqual({ userId: 'user-ivy', emailVerified: true });
     expect(await reader.findAccountById('user-eve')).toEqual({ userId: 'user-eve', emailVerified: false });
     expect(await reader.findAccountById('user-nobody')).toBeNull();
   });

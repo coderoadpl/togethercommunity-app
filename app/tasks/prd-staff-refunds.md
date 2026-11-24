@@ -218,9 +218,12 @@ workspace's restricted key and what to do about it.
   staff member, time, reason, state badge reusing `OrderRefundJob`), totals Paid / Refunded /
   Remaining (from the preview whenever it loaded, read from the provider's list or from the
   platform's records with a note saying so, and from the order detail only when the preview
-  failed; refunded counts observed refunds only and a refund only requested is listed apart;
-  an order marked refunded whose observed refunds do not cover the payment shows "not known
-  here" instead of an amount, D22'), "Ship anyway" when the order was taken off the packing list. The dialog
+  failed; refunded counts observed refunds only and a refund only requested is listed apart,
+  matched to the provider's list by refund id or `refundJobId` (D27); an order marked refunded is
+  previewed read-only (D28); an order marked refunded whose observed refunds do not cover the
+  payment shows "not known here" instead of an amount, D22'; with neither preview nor detail
+  totals the card shows the paid amount and says the totals are not available, D31), "Ship
+  anyway" when the order was taken off the packing list. The dialog
   says access ends unless another purchase keeps it and names a subscription a full refund
   cancels; after a packing or label conflict it reloads the preview and resets the stock and
   packing choices to the new defaults. A partial request from
@@ -232,7 +235,8 @@ workspace's restricted key and what to do about it.
   the order feed stay unchanged.
 - FR-14: Exports: the orders CSV gains a trailing `refunded_amount` column and the JSON export a
   `refundedCents` field: the staff and sold-out refunds the platform saw reach the provider
-  (`submitted`, `succeeded`, `unconfirmed`), never inferred from a `refunded` status (D22'). The packing list excludes orders without fulfilment status (unchanged query).
+  (`submitted`, `succeeded`, `unconfirmed` with a provider refund of their own, D22''), never
+  inferred from a `refunded` status (D22'). The packing list excludes orders without fulfilment status (unchanged query).
   The shop integration order feed is unchanged in this PR (it already carries the status).
 - FR-15: Buyer refund notice (see US-005), outbox id `order-refund-issued:<refundId>`, rendered
   at enqueue time from the `order-refund-issued` template (language as the sold-out refund
@@ -502,3 +506,42 @@ guard against refunding more than the charge.
   carries `grantsAccess`. Why: the webhook ends access and cancels the subscription for any
   charge that ends fully refunded, which no lock can prevent. Revert: "undo D26 → partial says
   access stays".
+- D22''. A platform refund counts as refunded (preview fallback, detail totals, CSV and JSON
+  export) only with a provider refund id of its own in `submitted`, `succeeded` or
+  `unconfirmed`, for staff and sold-out refunds alike; one without it (a worker lost before the
+  provider call, a refund watching an `already_refunded` refusal, a sold-out job covered by
+  refunds made outside the platform) stays reserved against a second refund but is not reported
+  as refunded. Sharpens D22'. Why: a worker lost before the call ends `unconfirmed` with no
+  payout, and its whole amount was exported as refunded. Revert: "undo D22'' → refunded by
+  status alone".
+- D23''. The staff guidance names the amount the refund requested: `Succeeded` needs nothing,
+  `Pending` is not refunded again and is followed in the dashboard to a final status because
+  automatic checks stopped, `Requires action` is completed there, and `Failed`, `Canceled` or not
+  listed means refunding there only the unpaid part of that amount, never more than the provider
+  shows as left on the payment. A refund that failed after submission on an order not marked
+  refunded is refunded again from the order page as a partial refund of that amount, not the
+  whole remainder. E-mails and Studio, both languages. Sharpens D23'. Why: "refund the remaining
+  amount" on a 10.00 request against a 100.00 payment could pay out 100.00. Revert: "undo D23''
+  → refund the remaining amount".
+- D27. The preview returns which staff refunds the provider's list shows
+  (`providerListedRefundIds`, matched by provider refund id or the `refundJobId` metadata). With
+  the provider's totals the Payment card lists as requested only staff refunds the list does not
+  show, and one whose request may have reached the provider is labelled "may already be at
+  Stripe", never "not sent". Why: after a lost create response the card counted the same refund
+  as refunded and as not sent. Revert: "undo D27 → requested by status alone".
+- D28. Studio loads the preview read-only for owners and admins on any provider-paid order,
+  `refunded` included, to show the amount the provider lists; the Refund action stays hidden
+  while the order is blocked. Why: a full dashboard refund was shown as an unknown amount while
+  the provider's list could tell it. Revert: "undo D28 → no preview for refunded orders".
+- D29. The CLI dry run warns about and offers to confirm the same remainder, the one it just
+  read; when a given `--remainder` differs, it says "the remainder changed from X to Y", and a
+  `--yes` run with the old value is still refused by the server. Why: the warning took the stale
+  flag while the printed command confirmed the fresh remainder. Revert: "undo D29 → warning from
+  the given remainder".
+- D30. The alert of a staff refund that failed after submission reads the order status at
+  settlement, after the provider call, to decide whether the order is already marked refunded.
+  Why: a `charge.refunded` landing during the call made the e-mail send staff to the order page,
+  which then refused the refund. Revert: "undo D30 → order status at claim time".
+- D31. With neither the preview nor the order detail totals, the Payment card shows the paid
+  amount and "refund totals are not available" instead of a remaining 0. Why: a remaining 0
+  read as nothing left to refund. Revert: "undo D31 → remaining 0 without totals".

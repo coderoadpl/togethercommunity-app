@@ -1972,12 +1972,19 @@ to refund the payment in the Stripe Dashboard.
   may have reached Stripe but its refunds could not be read, Stripe still had
   the refund in progress at the last check, a full refund made outside the
   platform the key could not confirm, or no confirmation) and tells staff to
-  check the refund in the Stripe Dashboard and act on the status shown there:
-  `Succeeded` or `Pending` needs nothing more, `Requires action` is completed
-  there, and `Failed`, `Canceled` or a refund that is not listed means
-  refunding the remaining amount there; the order is updated once Stripe
-  reports the refund. The `failed_after_submission` alert of an order already
-  marked refunded gives the same guidance. The explanation of a staff refund
+  check the refund of the requested amount in the Stripe Dashboard and act on
+  the status shown there: `Succeeded` needs nothing more; `Pending` must not be
+  refunded again and is followed there to a final status, since automatic
+  checks have stopped; `Requires action` is completed there; and `Failed`,
+  `Canceled` or a refund that is not listed means refunding there only the
+  unpaid part of the amount this refund requested, never more than Stripe shows
+  as left to refund on the payment; the order is updated once Stripe reports
+  the refund. The `failed_after_submission` alert of an order already marked
+  refunded gives the same guidance; the one of any other order tells staff to
+  refund the requested amount again from the order page as a partial refund,
+  not the whole remainder. Whether the order is already marked refunded is read
+  when the alert is written, after the call to Stripe, so a `charge.refunded`
+  that lands during the call is taken into account. The explanation of a staff refund
   in the alerts and in Studio's refund history is derived in the reader's
   language from the refund's status and flags (`create_outcome_unknown`,
   `provider_refund_status`, `permission_blocked_at`) and from the order's
@@ -2011,7 +2018,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds that reached Stripe: `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting |
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
 | `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
@@ -2027,24 +2034,36 @@ sold-out refund job, and the shop key order list and the order feed carry no
 staff refund state. The orders export gains a
 trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
 the staff and sold-out refunds the platform saw reach Stripe (`submitted`,
-`succeeded` or `unconfirmed`), never inferred from a `refunded` status; refunds
-made outside the platform, disputes and refunds only requested (`pending`,
-`running`, `blocked_permission`) are not in it. The
+`succeeded` or `unconfirmed` with a Stripe refund of their own), never inferred
+from a `refunded` status; refunds made outside the platform, disputes, refunds
+only requested (`pending`, `running`, `blocked_permission`) and refunds with no
+Stripe refund of their own (a worker lost before it called Stripe, or a refund
+only watching a refusal as already refunded) are not in it, although the last
+ones stay reserved against a second refund. The
 shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
 In Studio the order detail shows a **Payment** card with the paid, refunded and
 remaining amounts. Refunded counts only observed refunds (refunds not yet
-confirmed by Stripe are counted and named); a refund waiting for the refund
-permission or not yet sent to Stripe is listed apart as a requested refund,
-with a warning when it waits for the permission. Whenever the refund preview
-loaded, the card takes its amounts from the preview (Stripe's list, or the
-platform's records with a note saying Stripe's list could not be read), so a
-refund made in the Stripe Dashboard shows as Stripe holds it; only when the
-preview itself failed does it show the order detail's totals and say so. An
-order marked refunded whose observed refunds do not cover the payment (refunded
-outside the platform or disputed) shows "not known here" instead of a refunded
-amount, with a note that nothing more can be refunded there,
+confirmed by Stripe are counted and named); with Stripe's totals a staff
+refund counts in them only when the preview says Stripe's list shows it, and
+with the platform's only when it has a Stripe refund of its own. Any other
+refund still waiting, or one whose request may have reached Stripe without an
+answer, is listed apart as a requested refund: "may already be at Stripe" when
+its request may have reached Stripe, "waiting for the permission" with a
+warning when it waits for the permission, otherwise "not sent to Stripe yet".
+Whenever the refund preview loaded, the card takes its amounts from the
+preview (Stripe's list, or the platform's records with a note saying Stripe's
+list could not be read), so a refund made in the Stripe Dashboard shows as
+Stripe holds it; only when the preview itself failed does it show the order
+detail's totals and say so, and when neither is available it shows the paid
+amount and says the refund totals are not available instead of a remainder.
+The preview is loaded for an order marked refunded too, so a full refund made
+in the Stripe Dashboard shows the amount Stripe lists; the Refund action stays
+hidden there. An order marked refunded whose observed refunds do not cover the
+payment (refunded outside the platform or disputed) shows "not known here"
+instead of a refunded amount, with a note that nothing more can be refunded
+there,
 a **Refund history** with each refund's amount, requester, time, staff-only
 reason and state (a refund waiting for the refund permission also names its
 attempts, the next attempt and the last possible one, 72 hours after the first

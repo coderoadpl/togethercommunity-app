@@ -105,7 +105,10 @@ order's currency (whole numbers for zero-decimal currencies) and always keeps
 stock and the packing list as they are. Every confirmed refund, partial and
 full, needs `--remainder <decimal>`, the remainder you confirm: without it, or
 without `--yes`, the command refuses, prints the preview and the exact command
-to confirm with, and never confirms a remainder it just read. The request
+to confirm with, and never confirms a remainder it just read. The amount it
+warns about and the remainder in that command both come from the remainder it
+just read; when a given `--remainder` differs from it, the refusal starts with
+"The remainder changed from X to Y". The request
 carries that remainder, and when it changed in the meantime the server refuses
 with `conflict` naming the current remainder and nothing is refunded; the
 command then reads the preview again and prints it (with `--json`, under

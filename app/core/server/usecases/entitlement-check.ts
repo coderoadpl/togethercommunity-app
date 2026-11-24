@@ -72,7 +72,7 @@ const findCandidateByEmail = async (tenantId: string, email: string, deps: Entit
 const findCandidate = (tenantId: string, subject: EntitlementSubject, deps: EntitlementCheckDeps): Promise<Member | null> =>
   'memberId' in subject ? findCandidateById(tenantId, subject.memberId, deps) : findCandidateByEmail(tenantId, subject.email, deps);
 
-// An import sets the account's verified flag without the person, so only a sign-in to this workspace proves the address is theirs.
+// An import sets the account's verified flag without the person, so a match also needs a sign-in recorded for the member in this workspace.
 const findSubjectMember = async (tenantId: string, subject: EntitlementSubject, deps: EntitlementCheckDeps): Promise<Member | null> => {
   const candidate = await findCandidate(tenantId, subject, deps);
   const signedIn = await deps.entitlementSubjects.hasSignedIn(tenantId, candidate?.id ?? NO_MEMBER_ID);

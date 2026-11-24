@@ -82,6 +82,12 @@ describe('S3 paginated object listing', () => {
     ]) expect(parseListObjectsPage(body)).toMatchObject({ ok: false });
   });
 
+  it('reads every object block as before, including unterminated ones', () => {
+    const object = (name: string) => `<Contents><Key>${name}</Key><Size>1</Size><LastModified>2026-11-08T12:00:00.000Z</LastModified></Contents>`;
+    const body = listing(`${object('a')}<Contents>${object('b')}<Contents>`).replace('<KeyCount>1</KeyCount>', '<KeyCount>2</KeyCount>');
+    expect(parseListObjectsPage(body)).toMatchObject({ ok: true, value: { objects: [{ key: 'a' }, { key: 'b' }] } });
+  });
+
   it('bounds response bytes and refuses objects outside the requested prefix', async () => {
     const oversized = fixture('x'.repeat(2 * 1024 * 1024 + 1));
     expect(await oversized.storage.list({ configuration, prefix, continuationToken: null, limit: 1 })).toMatchObject({ ok: false });

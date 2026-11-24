@@ -3,8 +3,15 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { shopManagementKeyEventSchema, type ApplicationKey, type ShopManagementKey, type ShopManagementKeyEvent, type Tenant } from '#core/domain/index.js';
-import { applicationKeyHash, authenticateApplicationKey, type ApplicationKeyAuthDeps } from '#core/server/index.js';
+import { shopManagementKeyEventSchema, type ApplicationKey, type Identity, type ShopManagementKey, type ShopManagementKeyEvent, type Tenant } from '#core/domain/index.js';
+import {
+  applicationKeyHash,
+  authenticateApplicationKey,
+  listApplicationKeys,
+  purgeShopManagementKeys,
+  revokeApplicationKey,
+  type ApplicationKeyAuthDeps,
+} from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createApplicationKeyRateLimitRepository, createApplicationKeyRepository } from './application-keys.js';
@@ -120,6 +127,35 @@ describe('application key repository', () => {
     expect(purged).toBe(1);
     expect(await createApplicationKeyRepository(database.db).listByTenant(purgeTenant)).toEqual([]);
     expect(await createApplicationKeyRepository(database.db).listByTenant(TENANT)).not.toEqual([]);
+  });
+});
+
+describe('the purge as the stop action for every verified owner', () => {
+  const STOP_TENANT = 'tenant-entitlements-stop';
+  const organizationOwner: Identity = {
+    userId: 'user-organization-owner', email: 'organization-owner@example.test', name: 'Organization owner', emailVerified: true, image: null,
+    tenantAccess: 'staff', tenantId: STOP_TENANT, tenantSlug: 'entitlements-stop', tenantName: 'stop', staffRole: 'owner', staffGrantSource: 'organization',
+    memberId: null, memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: null,
+  };
+
+  it('lets an owner whose role comes from an organization delete both key kinds, while listing and revoking application keys stay direct-owner only', async () => {
+    await database.db.insert(dbSchema.tenants).values({ id: STOP_TENANT, slug: 'entitlements-stop', name: 'stop', createdAt: NOW });
+    await createShopManagementKeyRepository(database.db).create(STOP_TENANT, { ...shopKey, id: 'shop-stop', tenantId: STOP_TENANT, keyHash: 'hash-shop-stop' }, event('shop-stop', { tenantId: STOP_TENANT }));
+    await createApplicationKeyRepository(database.db).create(STOP_TENANT, applicationKey({ id: 'ek-stop', tenantId: STOP_TENANT, keyHash: 'hash-stop' }), event('ek-stop', { tenantId: STOP_TENANT }));
+    let next = 0;
+    const deps = {
+      applicationKeys: createApplicationKeyRepository(database.db),
+      shopManagementKeys: createShopManagementKeyRepository(database.db),
+      ids: { nextId: () => `stop-${String((next += 1))}` },
+      clock: { nowIso: () => NOW },
+    };
+    const ctx = { identity: organizationOwner };
+    expect(await listApplicationKeys(ctx, deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await revokeApplicationKey(ctx, { id: 'ek-stop' }, deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    expect(await purgeShopManagementKeys(ctx, deps)).toEqual({ ok: true, value: { purged: 2 } });
+    expect(await createShopManagementKeyRepository(database.db).listByTenant(STOP_TENANT)).toEqual([]);
+    expect(await createApplicationKeyRepository(database.db).listByTenant(STOP_TENANT)).toEqual([]);
   });
 });
 

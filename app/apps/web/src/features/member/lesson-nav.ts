@@ -9,12 +9,15 @@ export interface LinearLesson {
   lessonId: string;
   name: string;
   locked: boolean;
+  unlockable: boolean;
 }
 
 export interface LessonNeighbours {
   previous: LinearLesson | null;
   next: LinearLesson | null;
   nextUnlocked: LinearLesson | null;
+  lockedSkipped: number;
+  firstUnlockableSkipped: LinearLesson | null;
 }
 
 export const linearizeCourse = (structure: CourseStructureWithAccess): LinearLesson[] =>
@@ -24,6 +27,7 @@ export const linearizeCourse = (structure: CourseStructureWithAccess): LinearLes
         lessonId: lesson.lessonId,
         name: lesson.name,
         locked: lesson.accessStatus !== 'fully-accessible',
+        unlockable: lesson.unlockProductId !== undefined,
       })),
     ),
   );
@@ -34,10 +38,15 @@ export const lessonNeighbours = (
 ): LessonNeighbours | null => {
   const index = linear.findIndex((entry) => entry.lessonId === lessonId);
   if (index === -1) return null;
+  const ahead = linear.slice(index + 1);
+  const unlockedOffset = ahead.findIndex((entry) => !entry.locked);
+  const skipped = ahead.slice(0, Math.max(unlockedOffset, 0));
   return {
     previous: linear[index - 1] ?? null,
-    next: linear[index + 1] ?? null,
-    nextUnlocked: linear.slice(index + 1).find((entry) => !entry.locked) ?? null,
+    next: ahead[0] ?? null,
+    nextUnlocked: ahead[unlockedOffset] ?? null,
+    lockedSkipped: skipped.length,
+    firstUnlockableSkipped: skipped.find((entry) => entry.unlockable) ?? null,
   };
 };
 

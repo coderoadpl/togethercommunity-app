@@ -40,6 +40,10 @@ describe('lesson edition persistence', () => {
     expect(await editions.find(TENANT, lesson.id, 'ordinary')).toBeNull();
     expect(await editions.mark(TENANT, version('ordinary'), { number: '2' }, NOW, null)).toMatchObject({ number: '2' });
     expect(await editions.mark(TENANT, version('duplicate'), { number: '2' }, NOW, null)).toBe('conflict');
+    expect(await editions.list(TENANT, lesson.id)).toEqual([expect.objectContaining({
+      versionId: 'ordinary', number: '2', version: expect.objectContaining({ id: 'ordinary', payload: version('ordinary').payload }),
+    })]);
+    expect(await editions.list('other-tenant', lesson.id)).toEqual([]);
     expect(await editions.find('other-tenant', lesson.id, '2')).toBeNull();
     expect(await editions.unmark('other-tenant', lesson.id, '2')).toBe(false);
     expect(await editions.unmark(TENANT, lesson.id, '2')).toBe(true);
@@ -158,7 +162,8 @@ describe('lesson edition persistence', () => {
     expect(await importer.commit(TENANT, mutation('import-v1', 'created', 'First note'))).toBe('saved');
     expect(await importer.commit(TENANT, mutation('import-v2', 'updated', 'Updated note'))).toBe('saved');
     const editions = createLessonEditionRepository(db);
-    expect(await editions.list(TENANT, resource.id)).toEqual([{ versionId: 'import-v1', number: '1', note: 'Updated note', markedAt: NOW }]);
+    expect(await editions.list(TENANT, resource.id)).toEqual([{ versionId: 'import-v1', number: '1', note: 'Updated note', markedAt: NOW,
+      version: expect.objectContaining({ id: 'import-v1', payload: expect.objectContaining({ name: 'Chapter 3' }) }) }]);
     expect((await editions.find(TENANT, resource.id, '1'))?.payload).toMatchObject({ name: 'Chapter 3' });
   });
 

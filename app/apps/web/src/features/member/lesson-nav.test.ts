@@ -4,12 +4,13 @@ import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { lessonNeighbours, lessonPath, linearizeCourse } from './lesson-nav.js';
 
-const lesson = (lessonId: string, accessible = true) => ({
+const lesson = (lessonId: string, accessible = true, unlockProductId?: string) => ({
   contentId: `ct-${lessonId}`,
   lessonId,
   name: `Lesson ${lessonId}`,
   accessStatus: accessible ? ('fully-accessible' as const) : ('not-accessible' as const),
   completionStatus: 'not-completed' as const,
+  ...(unlockProductId === undefined ? {} : { unlockProductId }),
 });
 
 const course = (
@@ -55,9 +56,15 @@ describe('linearizeCourse', () => {
     const structure = course([[{ id: 'c1', lessons: [lesson('l1'), lesson('l2', false)] }]]);
 
     expect(linearizeCourse(structure)).toEqual([
-      { lessonId: 'l1', name: 'Lesson l1', locked: false },
-      { lessonId: 'l2', name: 'Lesson l2', locked: true },
+      { lessonId: 'l1', name: 'Lesson l1', locked: false, unlockable: false },
+      { lessonId: 'l2', name: 'Lesson l2', locked: true, unlockable: false },
     ]);
+  });
+
+  it('flags a lesson as unlockable when a product can unlock it', () => {
+    const structure = course([[{ id: 'c1', lessons: [lesson('l1', false, 'prod-1'), lesson('l2', false)] }]]);
+
+    expect(linearizeCourse(structure).map((entry) => entry.unlockable)).toEqual([true, false]);
   });
 
   it('returns an empty list for a course without content', () => {
@@ -93,6 +100,15 @@ describe('lessonNeighbours', () => {
     const first = lessonNeighbours(linear, 'l1');
     expect(first?.next?.lessonId).toBe('l2');
     expect(first?.nextUnlocked?.lessonId).toBe('l3');
+    expect(first?.lockedSkipped).toBe(1);
+  });
+
+  it('counts no skipped lessons when the next lesson is open or nothing open is left', () => {
+    expect(lessonNeighbours(linear, 'l3')?.lockedSkipped).toBe(0);
+    const tail = linearizeCourse(
+      course([[{ id: 'c1', lessons: [lesson('l1'), lesson('l2', false)] }]]),
+    );
+    expect(lessonNeighbours(tail, 'l1')?.lockedSkipped).toBe(0);
   });
 
   it('reports a locked previous lesson so it can be shown as disabled', () => {
@@ -100,7 +116,25 @@ describe('lessonNeighbours', () => {
       lessonId: 'l2',
       name: 'Lesson l2',
       locked: true,
+      unlockable: false,
     });
+  });
+
+  it('points at the first skipped lesson a product can unlock', () => {
+    const skipping = linearizeCourse(
+      course([[{ id: 'c1', lessons: [lesson('l1'), lesson('l2', false), lesson('l3', false, 'prod-1'), lesson('l4'), lesson('l5', false, 'prod-2')] }]]),
+    );
+    const neighbours = lessonNeighbours(skipping, 'l1');
+    expect(neighbours?.lockedSkipped).toBe(2);
+    expect(neighbours?.firstUnlockableSkipped?.lessonId).toBe('l3');
+  });
+
+  it('has no unlockable skipped lesson when no product sells the skipped ones', () => {
+    expect(lessonNeighbours(linear, 'l1')?.firstUnlockableSkipped).toBeNull();
+    const tail = linearizeCourse(
+      course([[{ id: 'c1', lessons: [lesson('l1'), lesson('l2', false, 'prod-1')] }]]),
+    );
+    expect(lessonNeighbours(tail, 'l1')?.firstUnlockableSkipped).toBeNull();
   });
 
   it('has no unlocked next when every remaining lesson is locked', () => {

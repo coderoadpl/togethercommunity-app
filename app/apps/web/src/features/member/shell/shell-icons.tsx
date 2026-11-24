@@ -65,6 +65,18 @@ export const CloseIcon = () => (
   </SvgIcon>
 );
 
+export const ChevronDownIcon = () => (
+  <SvgIcon stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden viewBox="0 0 24 24" fontSize="small">
+    <path d="m6 9 6 6 6-6" />
+  </SvgIcon>
+);
+
+export const CheckIcon = () => (
+  <SvgIcon stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden viewBox="0 0 24 24" fontSize="small">
+    <path d="M20 6 9 17l-5-5" />
+  </SvgIcon>
+);
+
 export const MessagesIcon = () => (
   <SvgIcon stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden viewBox="0 0 24 24">
     <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" />

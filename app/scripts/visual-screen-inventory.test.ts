@@ -66,13 +66,16 @@ describe('antialias repaint', () => {
   });
 
   it('keeps the repainted testids in sync with the components that render them', async () => {
-    const [imageField, courseDetail, anonSidebar] = await Promise.all([
+    const [imageField, courseDetail, anonSidebar, lessonPlayer] = await Promise.all([
       readFile('apps/web/src/components/ui/ImageAssetField.tsx', 'utf8'),
       readFile('apps/web/src/features/home/courses/CourseDetail.tsx', 'utf8'),
       readFile('apps/web/src/features/member/shell/AnonSidebar.tsx', 'utf8'),
+      readFile('apps/web/src/features/member/LessonPlayerPage.tsx', 'utf8'),
     ]);
     expect(imageField).toContain('data-testid={`${testId}-upload`}');
     expect(courseDetail).toContain('testId="course-image"');
     expect(anonSidebar).toContain('data-testid="anon-sidebar"');
+    expect(lessonPlayer).toMatch(/<LessonFooterBar\b[^>]*\bcomponent="footer"/);
+    expect(lessonPlayer).toContain('data-testid="prev-lesson"');
   });
 });

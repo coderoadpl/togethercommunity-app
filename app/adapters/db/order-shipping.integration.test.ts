@@ -47,6 +47,22 @@ describe('order shipping persistence', () => {
     expect(await snapshots.findById('other', 'snapshot-shipping')).toBeNull();
   });
 
+  it('round-trips a pickup point with ordinary non-ASCII text and refuses the text the lookup guard keeps out', async () => {
+    const snapshots = createCheckoutSnapshotRepository(database.db);
+    const snapshotShipping = (pickupPointName: string) => ({
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const,
+      pickupPoint: { provider: 'inpost' as const, code: 'WAW01M', name: pickupPointName, address: 'Straße 5, 00-001 Zürich', verified: false as const },
+      allowedCountries: ['PL'],
+    });
+    const snapshot = (id: string, pickupPointName: string) => ({
+      id, tenantId: 'workspace', salesLinkId: null, lines: [productLine, shippingLine], shipping: snapshotShipping(pickupPointName), currency: 'PLN', createdAt: now,
+    });
+    await snapshots.create('workspace', snapshot('snapshot-non-ascii', 'By the café 📦'));
+    expect((await snapshots.findById('workspace', 'snapshot-non-ascii'))?.shipping).toEqual(snapshotShipping('By the café 📦'));
+    await expect(snapshots.create('workspace', snapshot('snapshot-nul', `Kiosk${String.fromCharCode(0)}`))).rejects.toMatchObject({ cause: { code: '22P05' } });
+    await expect(snapshots.create('workspace', snapshot('snapshot-surrogate', `Kiosk ${String.fromCharCode(0xd800)}`))).rejects.toMatchObject({ cause: { code: '22P02' } });
+  });
+
   it('stores the delivery data and fulfilment status on paid orders and filters orders to pack', async () => {
     const repository = createOrderRepository(database.db);
     expect(await repository.findById('workspace', 'shipped')).toMatchObject({ shipping, fulfilmentStatus: 'to_pack', lines: [productLine, shippingLine] });

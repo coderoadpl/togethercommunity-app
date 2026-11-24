@@ -29,10 +29,27 @@ import {
 const PRODUCTION_FINGERPRINT = 'b1bfbb98b4f7';
 const STAGING_FINGERPRINT = 'a71c3d05e9f2';
 
-const testKeys = {
-  STRIPE_TEST_RESTRICTED_KEY: 'rk_test_example',
-  STRIPE_TEST_PUBLISHABLE_KEY: 'pk_test_example',
+const stagingEnv = {
+  STRIPE_TEST_RESTRICTED_KEY_STAGING: 'rk_test_staging',
+  STRIPE_TEST_PUBLISHABLE_KEY_STAGING: 'pk_test_staging',
+  VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass',
   PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+  PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
+  PURCHASE_E2E_ENVIRONMENT: 'staging',
+};
+
+const stagingOnly = {
+  PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
+  PURCHASE_E2E_ENVIRONMENT: 'staging',
+};
+
+const productionEnv = {
+  STRIPE_TEST_RESTRICTED_KEY_PRODUCTION: 'rk_test_production',
+  STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION: 'pk_test_production',
+  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'fixture-owner-password',
+  PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+  PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
+  PURCHASE_E2E_ENVIRONMENT: 'production',
 };
 
 const health = (environment: string, production: boolean, databaseFingerprint = production ? PRODUCTION_FINGERPRINT : STAGING_FINGERPRINT) => ({
@@ -107,73 +124,88 @@ const session = (overrides: Partial<ProviderCheckoutSession> = {}): ProviderChec
 });
 
 describe('purchaseE2eOptionsFromEnv', () => {
-  it('defaults the staging staff account, the locker and the cap', () => {
-    const parsed = purchaseE2eOptionsFromEnv({
-      ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
-      PURCHASE_E2E_ENVIRONMENT: 'staging',
-      PURCHASE_E2E_RUN_ID: 'run-7',
-    });
-    expect(parsed).toMatchObject({
+  it('reads only the staging values and defaults the seeded staff account, the locker and the cap', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv, ...stagingOnly, PURCHASE_E2E_RUN_ID: 'run-7' })).toMatchObject({
       options: {
+        environment: 'staging',
+        keys: { restricted: 'rk_test_staging', publishable: 'pk_test_staging' },
         staff: { email: SMOKE_TENANT_CREATOR_EMAIL, password: DEMO_SEED_PASSWORD },
         lockerCode: 'WAW01M',
         runId: 'run-7',
-        bypassSecret: null,
+        bypassSecret: 'bypass',
         testOrderCap: 300,
         databaseFingerprint: { expected: null, production: PRODUCTION_FINGERPRINT },
       },
     });
   });
 
-  it('never falls back to the demo password on production', () => {
+  it('reads only the production values, never sends the bypass and pins the production database', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv })).toMatchObject({
+      options: {
+        environment: 'production',
+        keys: { restricted: 'rk_test_production', publishable: 'pk_test_production' },
+        staff: { password: 'fixture-owner-password' },
+        bypassSecret: null,
+        databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
+      },
+    });
+  });
+
+  it('refuses production without its own values even when the staging ones are set', () => {
     expect(purchaseE2eOptionsFromEnv({
-      ...testKeys,
+      ...stagingEnv,
       PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'production',
-    })).toEqual({ problems: ['PURCHASE_E2E_STAFF_PASSWORD is not configured'] });
+    })).toEqual({
+      problems: [
+        'STRIPE_TEST_RESTRICTED_KEY_PRODUCTION is not configured',
+        'STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION is not configured',
+        'PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION is not configured',
+      ],
+    });
+  });
+
+  it('refuses staging without its own keys or the bypass even when the production ones are set', () => {
+    expect(purchaseE2eOptionsFromEnv({
+      ...productionEnv,
+      PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
+      PURCHASE_E2E_ENVIRONMENT: 'staging',
+    })).toEqual({
+      problems: [
+        'STRIPE_TEST_RESTRICTED_KEY_STAGING is not configured',
+        'STRIPE_TEST_PUBLISHABLE_KEY_STAGING is not configured',
+        'VERCEL_AUTOMATION_BYPASS_SECRET is not configured',
+      ],
+    });
+  });
+
+  it('refuses one sandbox key shared by both environments', () => {
+    expect(purchaseE2eOptionsFromEnv({
+      ...productionEnv,
+      STRIPE_TEST_RESTRICTED_KEY_STAGING: 'rk_test_production',
+    })).toEqual({
+      problems: ['STRIPE_TEST_RESTRICTED_KEY_PRODUCTION equals STRIPE_TEST_RESTRICTED_KEY_STAGING; each environment needs its own sandbox'],
+    });
   });
 
   it.each([
-    ['rk_live_example', 'pk_test_example', 'STRIPE_TEST_RESTRICTED_KEY must be a test-mode key starting with rk_test_'],
-    ['sk_test_example', 'pk_test_example', 'STRIPE_TEST_RESTRICTED_KEY must be a test-mode key starting with rk_test_'],
-    ['rk_test_example', 'pk_live_example', 'STRIPE_TEST_PUBLISHABLE_KEY must be a test-mode key starting with pk_test_'],
+    ['rk_live_example', 'pk_test_example', 'STRIPE_TEST_RESTRICTED_KEY_STAGING must be a test-mode key starting with rk_test_'],
+    ['sk_test_example', 'pk_test_example', 'STRIPE_TEST_RESTRICTED_KEY_STAGING must be a test-mode key starting with rk_test_'],
+    ['rk_test_example', 'pk_live_example', 'STRIPE_TEST_PUBLISHABLE_KEY_STAGING must be a test-mode key starting with pk_test_'],
   ])('refuses %s with %s', (restricted, publishable, problem) => {
     expect(purchaseE2eOptionsFromEnv({
-      STRIPE_TEST_RESTRICTED_KEY: restricted,
-      STRIPE_TEST_PUBLISHABLE_KEY: publishable,
-      PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
-      PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
-      PURCHASE_E2E_ENVIRONMENT: 'staging',
+      ...stagingEnv,
+      STRIPE_TEST_RESTRICTED_KEY_STAGING: restricted,
+      STRIPE_TEST_PUBLISHABLE_KEY_STAGING: publishable,
     })).toEqual({ problems: [problem] });
   });
 
-  it('refuses a host that is not the fixture workspace', () => {
-    expect(purchaseE2eOptionsFromEnv({
-      ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://studio.staging.togethercommunity.app',
-      PURCHASE_E2E_ENVIRONMENT: 'staging',
-    })).toEqual({ problems: [HOST_PROBLEM] });
-  });
-
   it.each([
+    'https://studio.staging.togethercommunity.app',
     'http://acme.staging.togethercommunity.app',
     'https://acme.staging.example.net',
   ])('refuses %s', (baseUrl) => {
-    expect(purchaseE2eOptionsFromEnv({
-      ...testKeys,
-      PURCHASE_E2E_BASE_URL: baseUrl,
-      PURCHASE_E2E_ENVIRONMENT: 'staging',
-    })).toEqual({ problems: [HOST_PROBLEM] });
-  });
-
-  it('pins production to the production database', () => {
-    expect(purchaseE2eOptionsFromEnv({
-      ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
-      PURCHASE_E2E_ENVIRONMENT: 'production',
-      PURCHASE_E2E_STAFF_PASSWORD: 'fixture-owner-password',
-    })).toMatchObject({ options: { databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT } } });
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, PURCHASE_E2E_BASE_URL: baseUrl })).toEqual({ problems: [HOST_PROBLEM] });
   });
 
   it('names every missing input', () => {
@@ -181,9 +213,6 @@ describe('purchaseE2eOptionsFromEnv', () => {
       problems: [
         'PURCHASE_E2E_BASE_URL is not configured',
         'PURCHASE_E2E_ENVIRONMENT must be staging or production',
-        'STRIPE_TEST_RESTRICTED_KEY is not configured',
-        'STRIPE_TEST_PUBLISHABLE_KEY is not configured',
-        'PURCHASE_E2E_STAFF_PASSWORD is not configured',
         'PRODUCTION_DATABASE_FINGERPRINT is not configured',
       ],
     });

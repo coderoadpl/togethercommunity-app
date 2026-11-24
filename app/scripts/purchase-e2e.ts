@@ -579,6 +579,48 @@ const fixtureOrigin = (baseUrl: string, platformDomain: string): boolean => {
 };
 const DEFAULT_TEST_ORDER_CAP = 300;
 
+const ENVIRONMENT_SUFFIX: Record<PurchaseE2eEnvironment, string> = { staging: 'STAGING', production: 'PRODUCTION' };
+
+const OTHER_ENVIRONMENT: Record<PurchaseE2eEnvironment, PurchaseE2eEnvironment> = { staging: 'production', production: 'staging' };
+
+interface EnvironmentValues {
+  keys: { restricted: string; publishable: string };
+  password: string;
+  bypassSecret: string | null;
+}
+
+/**
+ * Each environment reads only its own suffixed names, so an empty production
+ * secret can never be filled with the staging sandbox's key or the reverse.
+ */
+export const environmentValues = (
+  env: Environment,
+  target: PurchaseE2eEnvironment,
+): { values: EnvironmentValues | null; problems: string[] } => {
+  const suffix = ENVIRONMENT_SUFFIX[target];
+  const otherSuffix = ENVIRONMENT_SUFFIX[OTHER_ENVIRONMENT[target]];
+  const problems: string[] = [];
+  const keyOf = (kind: 'RESTRICTED' | 'PUBLISHABLE', problemKind: 'restricted' | 'publishable'): string | null => {
+    const name = `STRIPE_TEST_${kind}_KEY_${suffix}`;
+    const value = provided(env, name);
+    const problem = testModeKeyProblem(name, problemKind, value);
+    if (problem !== null) problems.push(problem);
+    else if (value !== null && value === provided(env, `STRIPE_TEST_${kind}_KEY_${otherSuffix}`)) {
+      problems.push(`${name} equals STRIPE_TEST_${kind}_KEY_${otherSuffix}; each environment needs its own sandbox`);
+    }
+    return problem === null ? value : null;
+  };
+  const restricted = keyOf('RESTRICTED', 'restricted');
+  const publishable = keyOf('PUBLISHABLE', 'publishable');
+  const passwordName = `PURCHASE_E2E_STAFF_PASSWORD_${suffix}`;
+  const password = provided(env, passwordName) ?? (target === 'staging' ? DEMO_SEED_PASSWORD : null);
+  if (password === null) problems.push(`${passwordName} is not configured`);
+  const bypassSecret = target === 'staging' ? provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET') : null;
+  if (target === 'staging' && bypassSecret === null) problems.push('VERCEL_AUTOMATION_BYPASS_SECRET is not configured');
+  if (problems.length > 0 || restricted === null || publishable === null || password === null) return { values: null, problems };
+  return { values: { keys: { restricted, publishable }, password, bypassSecret }, problems };
+};
+
 export const purchaseE2eOptionsFromEnv = (env: Environment): { options: PurchaseE2eOptions } | { problems: string[] } => {
   const problems: string[] = [];
   const baseUrl = provided(env, 'PURCHASE_E2E_BASE_URL');
@@ -588,14 +630,9 @@ export const purchaseE2eOptionsFromEnv = (env: Environment): { options: Purchase
   }
   const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
   if (environment !== 'staging' && environment !== 'production') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging or production');
-  const restricted = provided(env, 'STRIPE_TEST_RESTRICTED_KEY');
-  const publishable = provided(env, 'STRIPE_TEST_PUBLISHABLE_KEY');
-  for (const problem of [
-    testModeKeyProblem('STRIPE_TEST_RESTRICTED_KEY', 'restricted', restricted),
-    testModeKeyProblem('STRIPE_TEST_PUBLISHABLE_KEY', 'publishable', publishable),
-  ]) if (problem !== null) problems.push(problem);
-  const password = provided(env, 'PURCHASE_E2E_STAFF_PASSWORD') ?? (environment === 'staging' ? DEMO_SEED_PASSWORD : null);
-  if (password === null) problems.push('PURCHASE_E2E_STAFF_PASSWORD is not configured');
+  const target = environment === 'staging' || environment === 'production' ? environment : null;
+  const own = target === null ? null : environmentValues(env, target);
+  if (own !== null) problems.push(...own.problems);
   const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
   if (productionFingerprint === null) problems.push('PRODUCTION_DATABASE_FINGERPRINT is not configured');
   const expectedFingerprint = environment === 'production'
@@ -603,17 +640,17 @@ export const purchaseE2eOptionsFromEnv = (env: Environment): { options: Purchase
     : provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT');
   const cap = Number(provided(env, 'PURCHASE_E2E_TEST_ORDER_CAP') ?? DEFAULT_TEST_ORDER_CAP);
   if (!Number.isInteger(cap) || cap <= 0) problems.push('PURCHASE_E2E_TEST_ORDER_CAP must be a positive integer');
-  if (problems.length > 0 || baseUrl === null || restricted === null || publishable === null || password === null
-    || (environment !== 'staging' && environment !== 'production')) {
+  const values = own?.values ?? null;
+  if (problems.length > 0 || baseUrl === null || target === null || values === null) {
     return { problems };
   }
   return {
     options: {
       baseUrl,
-      environment,
-      bypassSecret: provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET'),
-      staff: { email: provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL, password },
-      keys: { restricted, publishable },
+      environment: target,
+      bypassSecret: values.bypassSecret,
+      staff: { email: provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL, password: values.password },
+      keys: values.keys,
       lockerCode: provided(env, 'PURCHASE_E2E_LOCKER_CODE') ?? DEFAULT_LOCKER_CODE,
       runId: provided(env, 'PURCHASE_E2E_RUN_ID') ?? String(Date.now()),
       testOrderCap: cap,

@@ -576,14 +576,22 @@ need their own provider sandbox: a test-slot configuration deletes every
 endpoint of the workspace and slot in its sandbox, and both hosts use
 `tenant-acme`.
 
-Repository secrets: `STRIPE_TEST_RESTRICTED_KEY_STAGING`,
-`STRIPE_TEST_PUBLISHABLE_KEY_STAGING`, `STRIPE_TEST_RESTRICTED_KEY_PRODUCTION`,
-`STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION`, `SMOKE_CREATOR_PASSWORD` (production
-only; staging uses the seeded demo password) and the existing
-`VERCEL_AUTOMATION_BYPASS_SECRET`. A missing secret skips that environment with
-a notice. The restricted key needs the permissions the test-mode card lists for
-the live integration, including Charges and Refunds (write); the run also reads
-Checkout Sessions and Refunds with it.
+The script reads only the names of the environment it targets and refuses to
+start when one of them is missing; it never fills a production value from a
+staging one or the reverse, and it refuses one sandbox key set for both:
+
+| Environment | Variables the script reads |
+| --- | --- |
+| staging | `STRIPE_TEST_RESTRICTED_KEY_STAGING`, `STRIPE_TEST_PUBLISHABLE_KEY_STAGING`, `VERCEL_AUTOMATION_BYPASS_SECRET`, optional `PURCHASE_E2E_STAFF_PASSWORD_STAGING` (default: the seeded demo password) and optional `PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT` |
+| production | `STRIPE_TEST_RESTRICTED_KEY_PRODUCTION`, `STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION`, `PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION`; the bypass secret is never sent |
+| both | `PURCHASE_E2E_BASE_URL`, `PURCHASE_E2E_ENVIRONMENT`, `PRODUCTION_DATABASE_FINGERPRINT` |
+
+The workflow maps the repository secrets of the same names, and the production
+smoke creator password, onto these variables for the environment it runs, and
+skips an environment whose secrets are absent with a notice. The restricted key
+needs the permissions the test-mode card lists for the live integration,
+including Charges and Refunds (write); the run also reads Checkout Sessions and
+Refunds with it.
 
 ## The smoke tenant
 

@@ -15,6 +15,7 @@ interface PanelPageProps {
   /** Primary action, top-right; wraps under the title on narrow viewports. */
   action?: ReactNode;
   backTo?: ReactNode;
+  width?: 'panel' | 'detail';
   state?: PageState;
   children?: ReactNode;
   'data-testid'?: string;
@@ -26,6 +27,7 @@ export const PanelPage = ({
   description,
   action,
   backTo,
+  width = 'panel',
   state,
   children,
   'data-testid': testId,
@@ -34,7 +36,7 @@ export const PanelPage = ({
   const statusOnly = state !== undefined && state.kind !== 'ready';
 
   return (
-    <Box data-testid={testId} sx={{ maxWidth: PAGE_WIDTH.panel, mx: 'auto' }}>
+    <Box data-testid={testId} sx={{ maxWidth: PAGE_WIDTH[width], mx: 'auto' }}>
       <LedgerHeader component="header" sx={{ pb: '1rem', mb: '1.5rem' }}>
         {backTo !== undefined && <Box sx={{ mb: '0.75rem' }}>{backTo}</Box>}
         <Stack

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ListItemButton, ThemeProvider } from '@mui/material';
 import {
   createMemoryHistory,
@@ -9,11 +9,12 @@ import {
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createThemeForMode } from '../../theme.js';
@@ -132,6 +133,17 @@ const renderFocusedTree = async (focusLessonId: string | null) =>
 
 const renderCollapsedTree = async () =>
   renderNode(<CourseTree courseId="course-1" structure={structure} focusLessonId="l1" />);
+
+const cutTitles = (...titles: string[]) =>
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute('data-course-tree-row-title') && titles.includes(this.textContent ?? '') ? 400 : 0;
+  });
+
+const pastTooltipDelay = () => new Promise((resolve) => setTimeout(resolve, 700));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const treeItem = (testId: string) => {
   const item = screen.getByTestId(testId).closest('[role="treeitem"]');
@@ -467,6 +479,55 @@ describe('CourseTree', () => {
     expect(mark?.textContent).toBe('Scope');
   });
 
+  it('keeps every lesson of a module whose own title matches and highlights the module title', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'Fundamentals');
+
+    await waitFor(() => expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument());
+    for (const id of ['l1', 'l2', 'l3']) expect(screen.getByTestId(`lesson-button-${id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('module-toggle-m1')).getByText('Fundamentals').tagName).toBe('MARK');
+  });
+
+  it('keeps every lesson of a chapter whose own title matches and highlights the chapter title', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'getting');
+
+    await waitFor(() => expect(screen.queryByText('Scope Basics')).not.toBeInTheDocument());
+    expect(screen.getByTestId('lesson-button-l1')).toBeInTheDocument();
+    expect(screen.getByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('module-toggle-m2')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('chapter-toggle-c1')).getByText('Getting').tagName).toBe('MARK');
+  });
+
+  it('skips the hidden chapter title of a single-chapter module, so every kept lesson shows its match', async () => {
+    const user = userEvent.setup();
+    await renderTree();
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'chapter');
+
+    await waitFor(() => expect(screen.queryByTestId('module-toggle-m2')).not.toBeInTheDocument());
+    expect(screen.queryByText('Closures Deep Dive')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(within(screen.getByTestId('chapter-toggle-c2')).getByText('chapter').tagName).toBe('MARK');
+  });
+
+  it('uses the shared search field with a placeholder that matches the hint', async () => {
+    await renderTree();
+
+    const input = await screen.findByTestId('lesson-search');
+    expect(input).toHaveAttribute('type', 'search');
+    expect(input).toHaveAccessibleName(en.courseTree.filterPlaceholder);
+    expect(input).toHaveAttribute('placeholder', en.courseTree.filterPlaceholder);
+  });
+
   it('explains the filter plainly and saves the word-stem tip for an empty result', async () => {
     const user = userEvent.setup();
     await renderTree();
@@ -480,6 +541,87 @@ describe('CourseTree', () => {
     const empty = await screen.findByTestId('tree-no-results');
     expect(empty).toHaveTextContent(en.courseTree.noMatches);
     expect(empty).toHaveTextContent(en.search.stemHint);
+  });
+
+  it('marks the next lesson with a chip that is part of the row name', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll nextLessonId="l2" />);
+
+    const chip = await screen.findByTestId('lesson-next-l2');
+    expect(chip).toHaveTextContent(en.courseTree.nextLesson);
+    expect(within(screen.getByTestId('lesson-button-l2')).getByTestId('lesson-next-l2')).toBe(chip);
+    expect(treeItem('lesson-button-l2')).toHaveAccessibleName(expect.stringContaining(en.courseTree.nextLesson));
+    expect(treeItem('lesson-button-l1')).not.toHaveAccessibleName(expect.stringContaining(en.courseTree.nextLesson));
+  });
+
+  it('drops the next-lesson mark once a lesson is open', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll currentLessonId="l1" nextLessonId="l2" />);
+
+    expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
+  });
+
+  it('shows the no-content message without a filter or a no-match tip for an empty course', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={{ ...structure, modules: [] }} />);
+
+    expect(await screen.findByTestId('tree-empty')).toHaveTextContent(en.courseTree.noPublishedContent);
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.search.stemHint)).not.toBeInTheDocument();
+  });
+
+  it('treats modules without any lesson as an empty course', async () => {
+    const hollow: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+      })),
+    };
+    await renderNode(<CourseTree courseId="course-1" structure={hollow} />);
+
+    expect(await screen.findByTestId('tree-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+  });
+
+  it('renders no filter when the caller leaves filtering to another tree', async () => {
+    await renderNode(<CourseTree courseId="course-1" structure={structure} expandAll showFilter={false} />);
+
+    expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tree-no-results')).not.toBeInTheDocument();
+  });
+
+  it('drops a typed filter once the caller hides the field', async () => {
+    const user = userEvent.setup();
+    const Harness = () => {
+      const [showFilter, setShowFilter] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setShowFilter(!showFilter)}>toggle filter</button>
+          <CourseTree courseId="course-1" structure={structure} expandAll showFilter={showFilter} />
+        </>
+      );
+    };
+    await renderNode(<Harness />);
+
+    await screen.findByText('Intro to Variables');
+    await user.type(screen.getByTestId('lesson-search'), 'Scope');
+    await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'toggle filter' }));
+
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.getByText('Intro to Variables')).toBeInTheDocument();
+    expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
+    expect(document.querySelector('mark')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'toggle filter' }));
+
+    expect(screen.getByTestId('lesson-search')).toHaveValue('');
+    expect(screen.getByText('Intro to Variables')).toBeInTheDocument();
   });
 
   it('keeps module and chapter counts on the full structure while filtering', async () => {
@@ -499,6 +641,24 @@ describe('CourseTree', () => {
     const chapter = screen.getByTestId('chapter-toggle-c1');
     expect(within(chapter).getByText('1/2')).toBeInTheDocument();
     expect(within(chapter).queryByTestId('completion-mark')).not.toBeInTheDocument();
+  });
+
+  it.each(['light', 'dark'] as const)('prints lesson durations in the readable secondary text colour in %s mode', async (scheme) => {
+    const theme = createThemeForMode('shadcn', undefined, scheme, 'member');
+    const cssColor = (value: string) => {
+      const probe = document.createElement('span');
+      probe.style.color = value;
+      return probe.style.color;
+    };
+    await renderNode(
+      <ThemeProvider theme={theme}>
+        <CourseTree courseId="course-1" structure={structure} expandAll />
+      </ThemeProvider>,
+    );
+
+    const duration = getComputedStyle(await screen.findByTestId('lesson-duration-l1')).color;
+    expect(duration).toBe(cssColor(theme.palette.text.secondary));
+    expect(duration).not.toBe(cssColor(theme.palette.text.disabled));
   });
 
   it('shows per-lesson durations only when present', async () => {
@@ -648,6 +808,7 @@ describe('CourseTree', () => {
         HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'x' } }, { status: 404 }),
       ),
     );
+    cutTitles('Intro to Variables');
     await renderTree();
 
     await user.hover(await screen.findByTestId('lesson-button-l1'));
@@ -655,8 +816,52 @@ describe('CourseTree', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Intro to Variables');
   });
 
+  it('keeps the tooltip closed on hover when the title fits', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'x' } }, { status: 404 }),
+      ),
+    );
+    await renderTree();
+
+    await user.hover(await screen.findByTestId('lesson-button-l2'));
+    await pastTooltipDelay();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('keeps the tooltip closed on keyboard focus when the title fits', async () => {
+    await renderTree();
+    treeItem('module-toggle-m1').focus();
+    await pastTooltipDelay();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('waits the hover delay before opening a cut title tooltip on keyboard focus', async () => {
+    cutTitles('01 - Fundamentals');
+    await renderTree();
+    treeItem('module-toggle-m1').focus();
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(await screen.findByRole('tooltip', {}, { timeout: 1500 })).toHaveTextContent('01 - Fundamentals');
+  });
+
+  it('wraps lesson titles to two clamped lines instead of a single cut line', async () => {
+    await renderTree();
+
+    const title = (await screen.findByTestId('lesson-button-l1')).querySelector('[data-course-tree-row-title]');
+    if (title === null) throw new Error('Missing lesson title');
+    for (const width of [390, 1440]) {
+      expect(stylesAt(title, width)['white-space']).not.toBe('nowrap');
+      expect(stylesAt(title, width)['-webkit-line-clamp']).toBe('2');
+    }
+  });
+
   it('shows only the focused row tooltip and dismisses it with Escape or blur', async () => {
     const user = userEvent.setup();
+    cutTitles('01 - Fundamentals', 'Getting started', 'Intro to Variables');
     await renderTree();
     treeItem('module-toggle-m1').focus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent('01 - Fundamentals');

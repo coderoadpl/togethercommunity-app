@@ -427,6 +427,7 @@ import { schedulerContext, snsWebhookContext } from './marketing-worker-context.
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
 import { selectPublicRateLimitPolicies, wiresRealPickupPointDirectory, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { lookupBudgetSpentOnError } from './parcel-locker-budget.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
@@ -1641,7 +1642,7 @@ export const createDeps = (
     },
     pickupPoints: withPickupPointLookupBudget(
       wiresRealPickupPointDirectory(env) ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
-      { buckets: publicRateLimitBuckets, clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
+      { buckets: lookupBudgetSpentOnError(publicRateLimitBuckets, logger), clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
     ),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),

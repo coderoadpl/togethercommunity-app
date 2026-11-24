@@ -20,6 +20,7 @@ import {
   PUBLIC_ROUTE_MANIFEST,
 } from './public-route-manifest.js';
 import { marketingSignupCorsMiddleware } from './marketing-signup-routes.js';
+import { memberDownloadNavigation } from './member-download-navigation.js';
 import { registerPublicRoutes } from './public-app.js';
 import { signInTimingMiddleware } from './sign-in-timing.js';
 import { publicRateLimitMiddleware } from './public-rate-limit.js';
@@ -141,6 +142,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     await next();
   });
+  app.use(API_PATHS.memberProductDownload, memberDownloadNavigation);
   app.use('/api/*', requestOriginGuard(deps));
   app.use(API_PATHS.operatorTenantProvision, operatorTenantSecretGuard(deps.operatorSecret));
   app.use(API_PATHS.operatorTenantReadiness, operatorTenantSecretGuard(deps.operatorSecret));

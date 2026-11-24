@@ -46,14 +46,14 @@ export const CollapsedInteractive: Story = {
     const canvas = within(canvasElement);
     const page = within(document.body);
     const preview = canvas.getByTestId('lesson-reading-preview');
-    const image = canvas.getByRole('button', { name: en.lesson.enlargeImage });
+    const image = canvas.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Lesson diagram' }) });
     await expect(preview).toHaveAttribute('data-collapsed', 'true');
     await expect(preview.querySelector('[hidden], [inert], [aria-hidden="true"]')).toBeNull();
     await userEvent.tab();
     await expect(image).toHaveFocus();
     await expect(preview).toHaveAttribute('data-collapsed', 'false');
     await userEvent.keyboard('{Enter}');
-    await expect(await page.findByRole('dialog')).toHaveAccessibleDescription('Complete diagram caption.');
+    await expect(await page.findByRole('dialog', { name: 'Lesson diagram' })).toHaveAccessibleDescription('Complete diagram caption.');
     await userEvent.keyboard('{Escape}');
     await userEvent.click(canvas.getByRole('button', { name: en.lesson.collapseText }));
     await expect(preview).toHaveAttribute('data-collapsed', 'true');

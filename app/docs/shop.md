@@ -302,31 +302,48 @@ documentation:
 [Points 1.23.0](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/28639230/1.23.0+Points)
 and [the points field reference](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/18153470);
 the newer token-gated `api.inpost.pl` points gateways are not used. The adapter
-parses the answer strictly: an HTTP 200 body
-`{"status":404,"key":"point_not_found"}` and a real HTTP 404 mean not found; any
-other status, a timeout, a network error, a body that does not parse or an
-answer for another point mean the carrier is unavailable. Recorded answers live
-in `adapters/shipx/fixtures/point-*.json`: `point-operating.json` and
-`point-not-found.json` keep the recorded shape of real answers with every
-human-language value (address, location description, display name) replaced by
-an English placeholder, and the `*.derived.json` files change only `status`,
-`type` or `functions`.
+parses the answer strictly: only a body `{"status":404,"key":"point_not_found"}`
+means not found, whether it comes with HTTP 200 (what the carrier sends for an
+unknown code) or HTTP 404. Any other HTTP 404, such as the
+`{"status":404,"error":"routing_not_found"}` answer the host gives for a path it
+does not route, any other status, a timeout, a network error, a body that is
+not valid UTF-8 or does not parse, a body with a key or text value PostgreSQL
+cannot store in `jsonb` (U+0000 or an unpaired surrogate half, in any field,
+checked before the body is read as not found) or an answer for another point
+mean the carrier is unavailable.
+Recorded answers live in `adapters/shipx/fixtures/`: `point-operating.json`,
+`point-not-found.json` and `routing-not-found.json` keep the recorded shape of real answers with every
+human-language value (address, location description, display name, error
+message) replaced by an English placeholder, and the `point-*.derived.json`
+files change only `status`, `type` or `functions`.
 
-A point is usable only when `status` is exactly `Operating` (`NonOperating`,
-`Disabled`, `Removed` and any other value refuse it), its `type` includes
+A point is usable only when `status` is `Operating`, its `type` includes
 `parcel_locker` and its `functions` include `parcel_collect`
-(`inpostPointRejection` in `core/domain/shipping.ts`). This is what the map
-offers with `config="parcelCollect"`, so InPost partner pickup points that hold
-parcels for collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
-are accepted as on the map; the shipment still requests `inpost_locker_standard`,
-and InPost switches a partner pickup point target to
-`inpost_locker_customer_service_point` on its side. A usable point replaces what
+(`inpostPointRejection` in `core/domain/shipping.ts`). These three rules match
+what the map offers with `config="parcelCollect"`. Only the statuses known to
+be negative refuse the sale with `not_operating`: `NonOperating` and
+`Disabled`, which the field reference lists, and `Removed`, which the field
+reference does not list and which is refused as before. Any other status is read
+as if the carrier could not be asked (`withKnownPointStatus`): the page answers
+`unavailable`, the sale goes on with `verified: false`, and the status string
+itself is never stored. InPost partner pickup points that hold parcels for
+collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
+would pass these three rules. They cannot be chosen today, though: every partner
+pickup point is named like `POP-ABC1`, which the code pattern `^[A-Z0-9]{4,12}$`
+refuses, so a map choice of one is ignored (`parseGeowidgetPoint`) and a typed
+one is refused as malformed before the carrier is asked. If they are allowed
+later, the shipment still requests `inpost_locker_standard`, and InPost switches
+a partner pickup point target to `inpost_locker_customer_service_point` on its
+side. A usable point replaces what
 the client sent with the carrier's canonical code, the location description as
 the name and `address.line1, address.line2` as the address, built by
 `pickupPointDetails`, the same function that reads a map choice.
 
 When the carrier cannot be asked, the sale is not blocked: the code is kept as
-the buyer typed it and the stored pickup point gains `verified: false`, which
+the buyer typed it, with the map's name and address when the page sent them (a
+name or address with U+0000 or an unpaired surrogate half is dropped by
+`checkoutShippingInputSchema`, so it can never fail the snapshot write), and
+the stored pickup point gains `verified: false`, which
 Studio shows as **Locker not verified**. There is no staff e-mail for new
 orders, so the note appears only in Studio. Alternative considered: block
 payment when the locker cannot be verified.

@@ -1,21 +1,61 @@
-import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Box, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { createLink } from '@tanstack/react-router';
 
 import { translateDeletedContent } from '../../i18n/deleted-content.js';
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { DiscussionHitSnippet, DiscussionThread, PostAuthorName } from '../../theme.js';
+import { DiscussionHitCard, DiscussionHitChevron, DiscussionHitSnippet, DiscussionHitText, PostAuthorName } from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { ThreadDiscussion } from './ThreadDiscussion.js';
 
 const MIN_SEARCH_LENGTH = 2;
 
-const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
+const HitCardLink = createLink(DiscussionHitCard);
+
+const HitChevron = () => (
+  <DiscussionHitChevron aria-hidden data-testid="search-hit-chevron" viewBox="0 0 24 24"><path d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z" /></DiscussionHitChevron>
+);
+
+interface LessonPlace {
+  courseId: string;
+  lessonId: string;
+  editionNumber?: string | undefined;
+}
+
+const ThreadHitLink = ({ place, rootPostId, testId, label, children }: { place: LessonPlace; rootPostId: string; testId: string; label: string; children: ReactNode }) => {
+  const { courseId, lessonId, editionNumber } = place;
+  return editionNumber === undefined ? (
+    <HitCardLink
+      to="/my/courses/$courseId/lessons/$lessonId"
+      params={{ courseId, lessonId }}
+      search={{ thread: rootPostId }}
+      underline="none"
+      aria-label={label}
+      data-testid={testId}
+    >
+      {children}
+    </HitCardLink>
+  ) : (
+    <HitCardLink
+      to="/my/courses/$courseId/lessons/$lessonId/editions/$number"
+      params={{ courseId, lessonId, number: editionNumber }}
+      search={{ thread: rootPostId }}
+      underline="none"
+      aria-label={label}
+      data-testid={testId}
+    >
+      {children}
+    </HitCardLink>
+  );
+};
+
+const LessonDiscussionSearch = ({ place, term, onTermChange }: { place: LessonPlace; term: string; onTermChange: (term: string) => void }) => {
+  const { lessonId } = place;
   const t = useTranslations();
-  const [term, setTerm] = useState('');
   const debounced = useDebouncedValue(term).trim();
   const enabled = debounced.length >= MIN_SEARCH_LENGTH;
   const search = useQuery({
@@ -30,12 +70,9 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
         size="small"
         label={t.discussion.searchLabel}
         value={term}
-        onChange={(event) => setTerm(event.target.value)}
+        onChange={(event) => onTermChange(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': 'discussion-search-input' } }}
       />
-      <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
-        {t.discussion.searchHint}
-      </Typography>
       {enabled && (
         <Box data-testid="discussion-search-results">
           {search.isPending ? (
@@ -45,20 +82,28 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
           ) : search.data.hits.length === 0 ? (
             <Stack useFlexGap sx={{ rowGap: '0.35rem' }} data-testid="discussion-search-empty">
               <Typography variant="body2">{t.discussion.searchEmpty}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {t.search.stemHint}
+              <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
+                {t.discussion.searchHint} {t.search.stemHint}
               </Typography>
             </Stack>
           ) : (
-            <Stack useFlexGap sx={{ rowGap: '0.5rem' }}>
-              {search.data.hits.map((hit) => (
-                <DiscussionThread key={hit.post.id} sx={{ p: '0.6rem 0.9rem' }} data-testid={`search-hit-${hit.post.id}`}>
-                  <PostAuthorName component="span">{translateDeletedContent(hit.post.authorDisplay, t)}</PostAuthorName>
-                  <DiscussionHitSnippet variant="body2" component="p">
-                    <Highlighted text={hit.snippet} query={debounced} />
-                  </DiscussionHitSnippet>
-                </DiscussionThread>
-              ))}
+            <Stack component="ul" useFlexGap sx={{ rowGap: '0.5rem', m: 0, p: 0, listStyle: 'none' }}>
+              {search.data.hits.map((hit) => {
+                const author = translateDeletedContent(hit.post.authorDisplay, t);
+                return (
+                  <li key={hit.post.id} data-testid={`search-hit-${hit.post.id}`}>
+                    <ThreadHitLink place={place} rootPostId={hit.post.rootPostId} testId={`search-hit-link-${hit.post.id}`} label={`${author} ${hit.snippet}`}>
+                      <DiscussionHitText>
+                        <PostAuthorName component="span">{author}</PostAuthorName>
+                        <DiscussionHitSnippet variant="body2" component="span">
+                          <Highlighted text={hit.snippet} query={debounced} />
+                        </DiscussionHitSnippet>
+                      </DiscussionHitText>
+                      <HitChevron />
+                    </ThreadHitLink>
+                  </li>
+                );
+              })}
             </Stack>
           )}
         </Box>
@@ -68,10 +113,18 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
 };
 
 export const DiscussionSection = ({
+  courseId,
   lessonId,
+  editionNumber,
+  searchTerm,
+  onSearchTermChange,
   focusThread,
 }: {
+  courseId: string;
   lessonId: string;
+  editionNumber?: string | undefined;
+  searchTerm: string;
+  onSearchTermChange: (term: string) => void;
   focusThread?: { rootPostId: string; onExit: () => void };
 }) => {
   const t = useTranslations();
@@ -80,7 +133,7 @@ export const DiscussionSection = ({
       context={{ contextKind: 'lesson', contextId: lessonId }}
       heading={t.discussion.heading}
       eyebrow={t.discussion.eyebrow}
-      search={<LessonDiscussionSearch lessonId={lessonId} />}
+      search={<LessonDiscussionSearch place={{ courseId, lessonId, editionNumber }} term={searchTerm} onTermChange={onSearchTermChange} />}
       {...(focusThread === undefined
         ? {}
         : { focus: { ...focusThread, exitLabel: t.discussion.backToAll } })}

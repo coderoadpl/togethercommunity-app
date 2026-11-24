@@ -2,16 +2,18 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
-import { readLessonTextAutoExpand } from './lesson-reading-preference.js';
+import { readLessonTextAutoExpand, writeLessonTextAutoExpand } from './lesson-reading-preference.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
 
 export const LESSON_TEXT_REVEAL_EVENT = 'lesson-text:reveal';
 
-export const LessonReadingContent = ({ html }: { html: string }) => {
+export const LESSON_READING_COLUMN_SX = { maxWidth: '44rem', mx: 'auto' } as const;
+
+export const LessonReadingContent = ({ html, startExpanded = false }: { html: string; startExpanded?: boolean }) => {
   const t = useTranslations();
   const contentId = useId();
   const content = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(readLessonTextAutoExpand);
+  const [expanded, setExpanded] = useState(() => startExpanded || readLessonTextAutoExpand());
   const [preview, setPreview] = useState({ long: false, height: 0, fadeEnd: 0, fadeStart: 0 });
   const body = useMemo(() => <RichTextContent centered html={html} data-testid="lesson-html" />, [html]);
   const collapsed = preview.long && !expanded;
@@ -51,7 +53,7 @@ export const LessonReadingContent = ({ html }: { html: string }) => {
   }, [html]);
 
   return (
-    <Box sx={{ maxWidth: '44rem', mx: 'auto' }}>
+    <Box sx={LESSON_READING_COLUMN_SX}>
       <Box
         id={contentId}
         data-testid="lesson-reading-preview"
@@ -73,7 +75,10 @@ export const LessonReadingContent = ({ html }: { html: string }) => {
             variant="outlined"
             aria-controls={contentId}
             aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => {
+              setExpanded(!expanded);
+              writeLessonTextAutoExpand(!expanded);
+            }}
           >
             {expanded ? t.lesson.collapseText : t.lesson.showAll}
           </Button>

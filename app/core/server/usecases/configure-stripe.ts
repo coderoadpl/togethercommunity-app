@@ -19,6 +19,7 @@ import { buildTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './te
 
 export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
   payment: PaymentProvider;
+  testWebhookQuery?: string | null | undefined;
 }
 
 export interface ConfigureStripeResult {
@@ -48,10 +49,11 @@ export const configureStripe = async (
   const deleteWebhookEndpoint = deps.payment.deleteWebhookEndpoint;
   const webhookUrl =
     stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps) + (mode === 'test' ? '?mode=test' : '');
+  const testWebhookQuery = deps.testWebhookQuery ?? null;
   const configured = await deps.payment.configureWebhook({
     tenantId: tenant.value,
     restrictedKey: parsed.data.restrictedKey,
-    webhookUrl,
+    webhookUrl: mode === 'test' && testWebhookQuery !== null ? `${webhookUrl}&${testWebhookQuery}` : webhookUrl,
   });
   if (!configured.ok) return configured;
   const cleanup = async (): Promise<void> => {

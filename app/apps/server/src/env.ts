@@ -89,6 +89,11 @@ export const envSchema = z
     DOMAIN_PROVISIONER_GIT_BRANCH: optionalNonEmptyString,
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,
+    VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
+    STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
     SHOP_MANAGEMENT_KEYS: shopManagementKeysSwitchSchema.default('enabled'),

@@ -149,6 +149,24 @@ describe('configureStripe', () => {
     }]);
   });
 
+  it('registers the test endpoint with the deployment query while staff see the plain URL', async () => {
+    const urls: string[] = [];
+    const h = harness(payment(async (input) => {
+      urls.push(input.webhookUrl);
+      return ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' });
+    }));
+    h.deps.testWebhookQuery = 'x-vercel-protection-bypass=bypass-value';
+
+    await expect(configureStripe({ identity: identity('owner') }, { restrictedKey: 'rk_test_private', mode: 'test' }, h.deps))
+      .resolves.toMatchObject({ ok: true, value: { webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1?mode=test' } });
+    await expect(configureStripe({ identity: identity('owner') }, { restrictedKey: 'rk_live_private' }, h.deps))
+      .resolves.toMatchObject({ ok: true, value: { webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-1' } });
+    expect(urls).toEqual([
+      'https://acme.example.test/api/webhooks/stripe/tenant-1?mode=test&x-vercel-protection-bypass=bypass-value',
+      'https://acme.example.test/api/webhooks/stripe/tenant-1',
+    ]);
+  });
+
   it('does not persist partial configuration when Stripe rejects webhook registration', async () => {
     const h = harness(payment(async () => err(integrationUnavailable('Stripe unavailable'))));
 

@@ -2768,6 +2768,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        testWebhookQuery: deps.stripeTestWebhookQuery,
       },
     ));
   });

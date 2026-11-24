@@ -82,6 +82,9 @@ const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): bool
 export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
   refunds.filter(isCommittedProviderRefund).reduce((sum, refund) => sum + refund.amountCents, 0);
 
+export const notFinalProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
+  refunds.filter((refund) => refund.status === 'pending' || refund.status === 'requires_action').reduce((sum, refund) => sum + refund.amountCents, 0);
+
 export const staffRefundsListedByProvider = (
   staffRefunds: readonly Pick<OrderStaffRefund, 'id' | 'providerRefundId'>[],
   providerRefunds: readonly Pick<ProviderRefund, 'refundId' | 'refundJobId' | 'status'>[],
@@ -233,6 +236,7 @@ export const staffRefundPreviewSchema = z.object({
   fullRefundOptions: staffRefundFulfilmentOptionsSchema,
   waitingRefundId: z.string().nullable(),
   providerListedRefundIds: z.array(z.string().min(1)).default([]),
+  providerNotFinalCents: z.number().int().nonnegative().default(0),
 });
 
 export type StaffRefundPreview = z.output<typeof staffRefundPreviewSchema>;

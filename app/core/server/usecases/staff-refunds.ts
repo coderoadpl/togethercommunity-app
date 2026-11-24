@@ -5,6 +5,7 @@ import {
   err,
   forbidden,
   newOrderStaffRefund,
+  notFinalProviderRefundCents,
   notFound,
   ok,
   orderRefundTotals,
@@ -167,6 +168,7 @@ export const previewStaffRefund = async (
     fullRefundOptions: staffRefundFulfilmentOptions(order, { coversRemainder: true, hasLabel }),
     waitingRefundId: waiting?.id ?? null,
     providerListedRefundIds: staffRefundsListedByProvider(refunds, provider.refunds),
+    providerNotFinalCents: Math.min(refundedCents, notFinalProviderRefundCents(provider.refunds)),
   });
 };
 

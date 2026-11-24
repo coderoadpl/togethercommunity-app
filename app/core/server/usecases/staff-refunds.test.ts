@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { memberSubscriptionSchema, ok, orderListItemSchema, type Identity, type MemberSubscription, type Order, type OrderListItem } from '#core/domain/index.js';
+import { memberSubscriptionSchema, ok, orderListItemSchema, type Identity, type MemberSubscription, type Order, type OrderListItem, type ProviderRefund } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { OrderStaffRefundRepository } from '../ports.js';
@@ -37,11 +37,11 @@ const staffRefunds: Pick<OrderStaffRefundRepository, 'platformCommittedCents' | 
   listByOrder: async () => [],
 };
 
-const preview = async (order: OrderListItem, input: { latest?: Order | null; current?: MemberSubscription | null } = {}) => {
+const preview = async (order: OrderListItem, input: { latest?: Order | null; current?: MemberSubscription | null; listed?: ProviderRefund[] } = {}) => {
   const result = await previewStaffRefund(owner, order.id, {
     orderDetails: { findById: async (tenantId, orderId) => (tenantId === order.tenantId && orderId === order.id ? order : null) },
     staffRefunds: { ...staffRefunds, create: async () => { throw new Error('Not used'); }, refundedCentsByOrder: async () => new Map(), activeRefundByOrder: async () => new Map(), noteChargeRefunded: async () => [], shipAnyway: async () => { throw new Error('Not used'); } },
-    payment: { listRefunds: async () => ok([]) },
+    payment: { listRefunds: async () => ok(input.listed ?? []) },
     subscriptionOrders: { findLatestSubscriptionOrder: async () => (input.latest === undefined ? order : input.latest) },
     subscriptions: { findByProviderSubscriptionId: async () => (input.current === undefined ? subscription() : input.current) },
   });
@@ -62,5 +62,16 @@ describe('staff refund preview', () => {
     ['a subscription of the other payment mode', recurringOrder(), { current: subscription({ mode: 'test' }) }],
   ] as const)('says nothing about the subscription for %s', async (_name, order, input) => {
     expect(await preview(order, input)).toMatchObject({ cancelsSubscription: false });
+  });
+
+  it.each([
+    ['pending', 4900],
+    ['requires_action', 4900],
+    ['succeeded', 0],
+  ] as const)('returns the amount of a full dashboard refund with no staff refund that Stripe lists as %s and has not finished', async (status, notFinalCents) => {
+    const dashboardRefund: ProviderRefund = { refundId: 're_dashboard', paymentIntentId: 'pi_2', amountCents: 4900, status, failureReason: null, orderId: null, reason: null };
+    expect(await preview(recurringOrder({ kind: 'one_time', status: 'refunded' }), { listed: [dashboardRefund] })).toMatchObject({
+      remainderSource: 'provider', refundedCents: 4900, remainderCents: 0, providerListedRefundIds: [], providerNotFinalCents: notFinalCents,
+    });
   });
 });

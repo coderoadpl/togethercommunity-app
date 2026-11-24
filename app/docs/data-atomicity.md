@@ -141,16 +141,25 @@ at all.
   `KeyDownloadFileRepository.finishCompletion`,
   `KeyDownloadFileRepository.interruptAttempt` and
   `KeyDownloadFileRepository.releaseRecord` lock the record row and write its
-  state, attempt, staged file row, owed deletions and append-only
-  `change_proposal_download_upload_events` row together; `releaseRecord` and
-  `KeyDownloadFileRepository.finishDeletion` hold the owning row until the
-  storage answers the delete and remove the row only when it confirms.
-  `KeyDownloadFileRepository.discard`, `KeyDownloadFileRepository.sweepStaged`
-  and `KeyDownloadFileRepository.release` move a staged file to the owed
-  deletions in the commit that deletes its row, before any storage delete.
+  state, attempt, staged file row and append-only
+  `change_proposal_download_upload_events` row together.
+  `releaseRecord` holds the record row until the storage answers the delete of
+  what the record still owns and keeps the record: an attempt clears its
+  destination and marks a completing record `failed` with its event; a sweep
+  inserts the owed second delete of the upload object, when the record has one,
+  and settles the record with its `settled` event in the same commit; a failed
+  delete keeps the keys. The retention purge deletes settled records later.
+  `KeyDownloadFileRepository.finishDeletion` holds an owed deletion's row until
+  the storage answers and deletes that row only when the storage confirms.
+  `KeyDownloadFileRepository.discard` and `KeyDownloadFileRepository.sweepStaged`
+  move a staged file to the owed deletions in the commit that deletes its row,
+  before any storage delete; `KeyDownloadFileRepository.release` does the same
+  for the files it releases and only clears the hold of a decided proposal
+  whose decision keeps its files proposable.
   `KeyDownloadAttachRepository.attach` turns a staged row into a product file
-  version and `KeyDownloadAttachRepository.remove` deletes a file version with
-  its owed deletion, each in one commit. The protocol is in
+  version and `KeyDownloadAttachRepository.remove` deletes a file version, each
+  in one commit; removal owes the deletion of the object only for a file a key
+  staged, never for an owner-uploaded file. The protocol is in
   [Download file prefixes](storage.md#download-file-prefixes) and
   [Download files](shop-management-keys.md#download-files).
 

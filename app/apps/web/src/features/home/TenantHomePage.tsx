@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Container,
   FormControl,
   FormLabel,
   List,
@@ -19,12 +18,13 @@ import { ApiError } from '#core/client/index.js';
 import { slugify } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { BootErrorCard } from '../../components/layout/BootErrorCard.js';
 import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { useToast } from '../../components/ui/Toast.js';
-import { localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizeError, localizePanelError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { hasConfiguredBaseDomain, isTenantHost, tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 import { PlatformDataReset } from './PlatformDataReset.js';
@@ -40,7 +40,10 @@ export const TenantHomePage = ({
 }: { renderAnonymousHome?: (visitorEmail: string | null) => ReactNode; hostname?: string; openTenant?: (url: string) => void } = {}) => {
   const navigate = useNavigate();
   const t = useTranslations();
-  const me = useQuery(actions.me);
+  const onTenantHost = isTenantHost(hostname);
+  // On a tenant host TenantGate already holds the first session answer; an anonymous
+  // 401 must not refetch on mount, or the home would flash a second splash.
+  const me = useQuery({ ...actions.me, retryOnMount: !onTenantHost });
 
   const unauthorized = me.error instanceof ApiError && me.error.appError.code === 'unauthorized';
   const tenant = me.data?.tenant ?? null;
@@ -49,7 +52,7 @@ export const TenantHomePage = ({
   const visitorEmail = me.data?.tenantAccess === 'none' ? me.data.email : null;
   const anonymousTenantHome =
     (unauthorized || visitorEmail !== null)
-    && tenant === null && renderAnonymousHome !== undefined && isTenantHost(hostname);
+    && tenant === null && renderAnonymousHome !== undefined && onTenantHost;
 
   useEffect(() => {
     if (unauthorized && !anonymousTenantHome) void navigate({ to: '/login' });
@@ -57,7 +60,7 @@ export const TenantHomePage = ({
   }, [unauthorized, anonymousTenantHome, tenant, navigate]);
 
   if (me.isPending) {
-    return <BrandLoader caption={t.tenant.openingWorkspace} />;
+    return <BrandLoader caption={t.common.loading} surface={onTenantHost ? 'member' : 'theme'} />;
   }
   if (anonymousTenantHome && renderAnonymousHome !== undefined) {
     return <>{renderAnonymousHome(visitorEmail)}</>;
@@ -65,10 +68,13 @@ export const TenantHomePage = ({
   if (unauthorized || staff || memberOnly) return null;
   if (me.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem' }}>
-        <Alert severity="error" sx={{ mt: 4 }}>{localizePanelError(me.error, t)}</Alert>
-        <Button variant="outlined" sx={{ mt: 2 }} onClick={() => void me.refetch()}>{t.common.retry}</Button>
-      </Container>
+      <BootErrorCard
+        eyebrow={t.errors.bootEyebrow}
+        title={t.errors.bootHeading}
+        message={localizeError(me.error, t)}
+        retry={{ label: t.common.retry, onRetry: () => void me.refetch() }}
+        data-testid="tenant-home-error"
+      />
     );
   }
 

@@ -11,6 +11,8 @@ import {
   type AppError,
   type OrderListItem,
   type OrderRefundJobView,
+  type OrderRefundTotals,
+  type OrderStaffRefundView,
   type OrderExportFile,
   type Result,
   type SalesSummary,
@@ -24,8 +26,10 @@ import type {
   OrderDetailRepository,
   OrderRefundJobRepository,
   OrderRepository,
+  OrderStaffRefundRepository,
   InvoiceRepository,
 } from '../ports.js';
+import { orderStaffRefundSummary } from './staff-refunds.js';
 
 export interface OrdersDeps {
   orders: OrderRepository;
@@ -41,10 +45,22 @@ export interface OrdersPage {
   pageSize: number;
 }
 
+const withStaffRefundStatus = async (
+  tenantId: string,
+  orders: OrderListItem[],
+  staffRefunds: Pick<OrderStaffRefundRepository, 'activeRefundByOrder'>,
+): Promise<OrderListItem[]> => {
+  const active = await staffRefunds.activeRefundByOrder(tenantId, orders.flatMap((order) => (order.cancelReason == null ? [order.id] : [])));
+  return orders.map((order) => {
+    const refund = active.get(order.id);
+    return refund === undefined ? order : { ...order, staffRefundStatus: refund.status, staffRefundAmountCents: refund.amountCents };
+  });
+};
+
 export const listOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'>,
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'activeRefundByOrder'> },
 ): Promise<Result<OrdersPage, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
@@ -65,17 +81,25 @@ export const listOrders = async (
     ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
     ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
   });
-  return ok({ orders, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
+  const listed = deps.staffRefunds === undefined || ctx.machineActor !== undefined ? orders : await withStaffRefundStatus(tenant.value, orders, deps.staffRefunds);
+  return ok({ orders: listed, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
 };
 
 export const getOrder = async (
   ctx: Ctx,
   id: string,
-  deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository; refundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'> },
+  deps: {
+    orders: OrderDetailRepository;
+    invoices?: InvoiceRepository;
+    refundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
+    staffRefunds?: Pick<OrderStaffRefundRepository, 'listByOrder'>;
+  },
 ): Promise<Result<{
   order: OrderListItem;
   invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>>;
   refundJob: OrderRefundJobView | null;
+  staffRefunds?: OrderStaffRefundView[];
+  refundTotals?: OrderRefundTotals;
 }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
@@ -85,7 +109,8 @@ export const getOrder = async (
     ? null
     : await deps.invoices.findCurrentByOrder(tenant.value, order.id);
   const refundJob = await deps.refundJobs?.findByOrderId(tenant.value, order.id) ?? null;
-  return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob) });
+  const staff = deps.staffRefunds === undefined ? {} : await orderStaffRefundSummary(tenant.value, order, refundJob, deps.staffRefunds);
+  return ok({ order, invoice, refundJob: refundJob === null ? null : orderRefundJobView(refundJob), ...staff });
 };
 
 const neutralizeFormula = (value: string): string =>
@@ -131,7 +156,10 @@ const SHIPPING_COLUMN_NAMES = [
   'fulfilment_status',
 ];
 
-const ordersToCsv = (orders: OrderListItem[]): string =>
+const refundedCentsOf = (order: OrderListItem, refundedCents: ReadonlyMap<string, number>): number =>
+  Math.min(refundedCents.get(order.id) ?? 0, order.amountCents);
+
+const ordersToCsv = (orders: OrderListItem[], refundedCents: ReadonlyMap<string, number>): string =>
   [
     [
       'date',
@@ -161,6 +189,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'client_reference',
       'personalization',
       'cancel_reason',
+      'refunded_amount',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -185,6 +214,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.clientReference ?? '',
         orderPersonalizationSummary(order.lines ?? []),
         order.cancelReason ?? '',
+        String(refundedCentsOf(order, refundedCents)),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -194,7 +224,7 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
 export const exportOrders = async (
   ctx: Ctx,
   query: unknown,
-  deps: Pick<OrdersDeps, 'orders'>,
+  deps: Pick<OrdersDeps, 'orders'> & { staffRefunds?: Pick<OrderStaffRefundRepository, 'refundedCentsByOrder'> },
 ): Promise<Result<OrderExportFile, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:export');
   if (!tenant.ok) return tenant;
@@ -235,12 +265,15 @@ export const exportOrders = async (
     ),
   );
   const orders = [...first.orders, ...remaining.flatMap((page) => page.orders)];
+  const refundedCents = deps.staffRefunds === undefined
+    ? new Map<string, number>()
+    : await deps.staffRefunds.refundedCentsByOrder(tenant.value, orders.map((order) => order.id));
   const filename = `sales-${ctx.identity.tenantSlug ?? tenant.value}.${parsed.data.format}`;
 
   return ok(
     parsed.data.format === 'csv'
-      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders) }
-      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []) }))) },
+      ? { filename, mimeType: 'text/csv; charset=utf-8', content: ordersToCsv(orders, refundedCents) }
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(orders.map((order) => ({ ...order, ...attributionColumns(order), ...shippingColumns(order), personalization: orderPersonalizationSummary(order.lines ?? []), refundedCents: refundedCentsOf(order, refundedCents) }))) },
   );
 };
 

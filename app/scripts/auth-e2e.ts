@@ -5,7 +5,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type Page, type Response } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page, type Response, type Route } from 'playwright-core';
 import { z } from 'zod';
 
 import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
@@ -125,6 +125,8 @@ const devEmailSchema = z.object({
   data: z.object({ email: z.object({ text: z.string() }).nullable() }),
 });
 
+const searchKeys = (url: URL): string => [...url.searchParams.keys()].sort().join(',');
+
 const runPasswordResetPath = async (
   transport: AuthE2eTransport,
   webBaseUrl: string,
@@ -132,6 +134,7 @@ const runPasswordResetPath = async (
   const email = 'password-reset-e2e@together.dev';
   const oldPassword = passwordFixture('old-password');
   const newPassword = passwordFixture('new-password');
+  const returnTo = '/my/courses/course-acme/lessons/lesson-acme-intro?tab=notes&page=2';
   const auth = createAuthE2eClient(transport);
   const signUp = await auth.signUpEmail({ name: 'Password Reset E2E', email, password: oldPassword });
   assert(signUp.status < 400, `reset sign-up failed (HTTP ${signUp.status}): ${JSON.stringify(signUp.json)}`);
@@ -148,7 +151,7 @@ const runPasswordResetPath = async (
     const context = await browser.newContext();
     await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
-    await page.goto(`${webBaseUrl}/forgot-password`, { waitUntil: 'networkidle' });
+    await page.goto(`${webBaseUrl}/forgot-password?${new URLSearchParams({ returnTo }).toString()}`, { waitUntil: 'networkidle' });
     await page.getByTestId('forgot-password-email').fill(email);
     await page.getByTestId('forgot-password-submit').click();
     await page.getByTestId('forgot-password-success').waitFor({ state: 'visible', timeout: 15000 });
@@ -171,12 +174,48 @@ const runPasswordResetPath = async (
     }
     assert(actionUrl !== '', 'reset email did not reach the dev sink');
     assert(new URL(actionUrl).host === new URL(webBaseUrl).host, 'reset provider callback used the wrong host');
+    const emailedToken = new URL(actionUrl).pathname.split('/').at(-1) ?? '';
+    const emailedCallback = new URL(actionUrl).searchParams.get('callbackURL');
+    assert(emailedCallback !== null, 'reset email link carried no callbackURL');
+    const callbackTarget = new URL(emailedCallback, webBaseUrl);
+    assert(
+      callbackTarget.origin === new URL(webBaseUrl).origin && callbackTarget.pathname === '/reset-password',
+      `reset callback pointed at ${callbackTarget.origin}${callbackTarget.pathname}`,
+    );
+    assert(
+      searchKeys(callbackTarget) === 'returnTo' && callbackTarget.searchParams.get('returnTo') === returnTo,
+      `reset callback returnTo was ${callbackTarget.searchParams.getAll('returnTo').join(' | ')} (params: ${searchKeys(callbackTarget)})`,
+    );
 
     await page.goto(actionUrl, { waitUntil: 'networkidle' });
+    const landing = new URL(page.url());
+    assert(landing.pathname === '/reset-password', `reset link landed on ${landing.pathname}`);
+    assert(searchKeys(landing) === 'returnTo,token', `reset landing carried params ${searchKeys(landing)}`);
+    assert(
+      landing.searchParams.getAll('token').length === 1 && landing.searchParams.get('token') === emailedToken,
+      'reset landing token differs from the emailed token',
+    );
+    assert(
+      landing.searchParams.get('returnTo') === returnTo,
+      `reset landing returnTo was ${landing.searchParams.getAll('returnTo').join(' | ')}`,
+    );
     await page.getByTestId('reset-password').fill(newPassword);
     await page.getByTestId('reset-password-confirm').fill(newPassword);
     await page.getByTestId('reset-submit').click();
     await page.getByTestId('reset-success').waitFor({ state: 'visible', timeout: 15000 });
+    const signInLink = page.getByTestId('reset-success').getByRole('link');
+    const signInHref = await signInLink.getAttribute('href');
+    assert(signInHref !== null, 'reset success state had no sign-in link');
+    const signInTarget = new URL(signInHref, webBaseUrl);
+    assert(
+      signInTarget.pathname === '/login' && searchKeys(signInTarget) === 'returnTo' && signInTarget.searchParams.get('returnTo') === returnTo,
+      `reset success sign-in link was ${signInTarget.pathname} with params ${searchKeys(signInTarget)}`,
+    );
+    await signInLink.click();
+    await page.waitForURL(
+      (url) => url.pathname === '/login' && url.searchParams.get('returnTo') === returnTo,
+      { timeout: 15000 },
+    );
     await context.close();
   } finally {
     if (browser) await browser.close();
@@ -274,20 +313,19 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
-    const step = async (email: string): Promise<'password' | 'magic-link'> => {
+    const step = async (email: string): Promise<'uniform' | 'differs'> => {
       await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
       await continueWithIdentifier(page, email);
-      const passwordField = page.getByTestId('login-password');
-      const sendMagicLink = page.getByTestId('send-magic-link');
-      await passwordField.or(sendMagicLink).first().waitFor({ state: 'visible', timeout: 15000 });
-      return (await passwordField.isVisible()) ? 'password' : 'magic-link';
+      await page.getByTestId('send-magic-link').waitFor({ state: 'visible', timeout: 15000 });
+      await page.getByTestId('use-password').waitFor({ state: 'visible', timeout: 15000 });
+      return (await page.getByTestId('login-password').isVisible()) ? 'differs' : 'uniform';
     };
 
-    assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'password', 'the acme owner was not offered the password step');
-    assert(await step('student2@together.dev') === 'password', 'a passwordless member did not receive the uniform options');
-    assert(await step('nobody@together.dev') === 'password', 'an unknown address did not receive the uniform options');
+    assert(await step(SMOKE_TENANT_CREATOR_EMAIL) === 'uniform', 'the acme owner did not receive the uniform options');
+    assert(await step('student2@together.dev') === 'uniform', 'a passwordless member did not receive the uniform options');
+    assert(await step('nobody@together.dev') === 'uniform', 'an unknown address did not receive the uniform options');
     assert(
-      await step('creator@together.dev') === 'password',
+      await step('creator@together.dev') === 'uniform',
       'a different tenant account did not receive the uniform options',
     );
 
@@ -299,6 +337,38 @@ const runIdentifierFirstPath = async (webBaseUrl: string): Promise<void> => {
       'changing the e-mail did not keep the typed address',
     );
     console.log('auth-e2e: identifier-first path OK');
+
+    let limitedSignIns = 0;
+    const isPasswordSignIn = (url: URL): boolean => url.pathname.endsWith('/sign-in/email');
+    const answerRateLimited = async (route: Route): Promise<void> => {
+      limitedSignIns += 1;
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        headers: { 'X-Retry-After': '583' },
+        body: JSON.stringify({ message: 'Too many requests. Please try again later.' }),
+      });
+    };
+    await page.clock.setFixedTime(Date.now());
+    await page.route(isPasswordSignIn, answerRateLimited);
+    await page.goto(`${webBaseUrl}/login`, { waitUntil: 'domcontentloaded' });
+    await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, 'demo-password-15');
+    const countdown = page.getByTestId('rate-limit-countdown');
+    await countdown.waitFor({ state: 'visible', timeout: 15000 });
+    assert(limitedSignIns === 1, `the password sign-in reached the rate-limit route ${limitedSignIns} times`);
+    const countdownText = await countdown.textContent();
+    assert(
+      countdownText === en.auth.signInRateLimitedRetryIn({ delay: '9 min 43 s' }),
+      `the rate-limited sign-in showed "${String(countdownText)}" instead of the header countdown`,
+    );
+    assert(await page.getByTestId('signin-submit').isDisabled(), 'the rate-limited sign-in left the submit enabled');
+    const limitedAlert = await page.getByTestId('signin-error').textContent();
+    assert(
+      limitedAlert !== null && !limitedAlert.includes(en.errors.messageRateLimited),
+      'the rate-limited sign-in fell back to the generic rate-limit text',
+    );
+    await page.unroute(isPasswordSignIn, answerRateLimited);
+    console.log('auth-e2e: password rate-limit countdown path OK');
   } finally {
     if (browser) await browser.close();
   }
@@ -399,7 +469,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
     await continueWithIdentifier(page, SMOKE_TENANT_CREATOR_EMAIL);
-    await page.getByTestId('login-password').waitFor({ state: 'visible', timeout: 15000 });
+    await page.getByTestId('use-password').waitFor({ state: 'visible', timeout: 15000 });
     const passkeyResponse = authResponse(page, '/passkey/verify-authentication');
     await page.getByTestId('signin-passkey').click();
     await assertNoBrowserSessionToken(await passkeyResponse, 'browser passkey sign-in');
@@ -417,6 +487,80 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
     await assertNoBrowserSessionToken(await discoverablePasskeyResponse, 'browser discoverable passkey sign-in');
     await page.waitForURL('**/start', { timeout: 15000 });
     console.log('auth-e2e: identifier and discoverable passkey paths OK');
+  } finally {
+    if (browser) await browser.close();
+  }
+};
+
+const runPasswordChangeSessionsPath = async (webBaseUrl: string): Promise<void> => {
+  const password = 'demo-password-15';
+  const newPassword = passwordFixture('changed-password');
+  const protectedLessonPath = '/my/courses/course-acme/lessons/lesson-acme-intro';
+  let browser: Browser | null = null;
+  try {
+    const launched = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    browser = launched;
+    const openSecurityTab = async (page: Page): Promise<void> => {
+      await page.goto(`${webBaseUrl}/account`, { waitUntil: 'networkidle' });
+      await page.getByRole('tab', { name: en.account.tabs.security }).click();
+      await page.getByTestId('active-sessions').waitFor({ state: 'attached', timeout: 15000 });
+    };
+    const signIn = async (): Promise<{ context: BrowserContext; page: Page }> => {
+      const context = await launched.newContext();
+      await restrictBrowserToLocalRequests(context);
+      await context.addInitScript(() => window.localStorage.setItem('together-language', 'en'));
+      const page = await context.newPage();
+      await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
+      await signInWithPassword(page, SMOKE_TENANT_MEMBER_EMAIL, password);
+      await page.waitForURL((url) => url.pathname !== '/login', { timeout: 15000 });
+      return { context, page };
+    };
+    const first = await signIn();
+    const second = await signIn();
+
+    await openSecurityTab(second.page);
+    const secondSessionRow = second.page.locator('[data-testid^="session-"][data-current="true"]');
+    await secondSessionRow.waitFor({ state: 'visible', timeout: 15000 });
+    const secondSessionTestId = await secondSessionRow.getAttribute('data-testid');
+    assert(secondSessionTestId !== null, 'the second context did not show its own session');
+
+    await openSecurityTab(first.page);
+    const secondSessionInFirst = first.page.getByTestId(secondSessionTestId);
+    await secondSessionInFirst.waitFor({ state: 'visible', timeout: 15000 });
+    await first.page.getByTestId('change-password-open').click();
+    const revokeOthers = first.page.getByTestId('change-revoke-sessions');
+    await revokeOthers.waitFor({ state: 'visible', timeout: 15000 });
+    assert(await revokeOthers.isChecked(), 'signing out other sessions was not ticked by default');
+    await first.page.getByTestId('change-current-password').fill(password);
+    await first.page.getByTestId('change-new-password').fill(newPassword);
+    await first.page.getByTestId('change-confirm-password').fill(newPassword);
+    await first.page.getByTestId('change-password-submit').click();
+    await first.page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 15000 });
+    await secondSessionInFirst.waitFor({ state: 'detached', timeout: 15000 });
+    const disclosure = first.page.getByTestId('active-sessions-disclosure');
+    if (await disclosure.getAttribute('aria-expanded') === 'false') await disclosure.click();
+    const remainingRows = first.page.locator('[data-testid^="session-"]');
+    await remainingRows.first().waitFor({ state: 'visible', timeout: 15000 });
+    assert(await remainingRows.count() === 1, `the first context still listed ${await remainingRows.count()} sessions after the change`);
+    assert(await remainingRows.first().getAttribute('data-current') === 'true', 'the remaining session was not the current one');
+
+    await first.page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+    assert(new URL(first.page.url()).pathname === protectedLessonPath, `the first context lost its session (${first.page.url()})`);
+    await openSecurityTab(first.page);
+    assert(new URL(first.page.url()).pathname === '/account', 'the first context could not reopen the account page');
+
+    const secondMe = await second.context.request.get(`${webBaseUrl}${API_PATHS.me}`);
+    assert(secondMe.status() === 401, `the second context was not denied (HTTP ${secondMe.status()})`);
+    await second.page.goto(`${webBaseUrl}${protectedLessonPath}`, { waitUntil: 'networkidle' });
+    await second.page.waitForURL((url) => url.pathname === '/login', { timeout: 15000 });
+
+    await first.context.close();
+    await second.context.close();
+    console.log('auth-e2e: password change signs out other sessions OK');
   } finally {
     if (browser) await browser.close();
   }
@@ -461,6 +605,7 @@ try {
   await runSignedOutDownloadReturn(studioBaseUrl);
   await runCheckoutAnalyticsNavigation(studioBaseUrl);
   await runPasskeyPath(webBaseUrl);
+  await runPasswordChangeSessionsPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof E2eFailure ? error.message : String(error);

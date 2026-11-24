@@ -4,6 +4,8 @@ import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
@@ -2477,9 +2479,32 @@ describe('marketing HTTP surfaces', () => {
     const nonce = /(?:^|; )script-src [^;]*'nonce-([^']+)'/.exec(contentSecurityPolicy ?? '')?.[1];
     const body = await response.text();
     expect(body).toContain('Immutable terms');
+    expect(body).toContain('<p class="document-version"><a href="/legal/terms/v/1">Version 1 · published July 22, 1998</a></p>');
+    expect(body).not.toContain('class="languages"');
     expect(nonce).toBeDefined();
     expect(body).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(body).not.toContain('together-theme-mode');
+  });
+
+  it('serves a permanent legal version in the workspace language with a link to the newer current one', async () => {
+    const marketing = marketingDeps();
+    const document = { id: 'document-1', tenantId: 't-acme', slug: 'terms', title: 'Terms', status: 'published' as const, createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z' };
+    const version = (number: number, publishedAt: string) => ({
+      id: `version-${String(number)}`, tenantId: 't-acme', documentId: 'document-1', version: number,
+      content: `Terms version ${String(number)}`, publishedAt, createdAt: publishedAt, createdBy: 'staff',
+    });
+    marketing.documents = {
+      ...marketing.documents,
+      findLatestPublished: async () => ({ document, version: version(2, '1998-08-01T00:00:00.000Z') }),
+      findPublishedVersion: async (_tenantId, _slug, number) => number === 1 ? { document, version: version(1, '1998-07-22T00:00:00.000Z') } : null,
+    };
+    const response = await marketingApp(marketing).request('/legal/terms/v/1?lang=pl', { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('lang="en"');
+    expect(body).toContain('Terms version 1');
+    expect(body).toContain('<p class="notice">Version 1, published July 22, 1998. This version will not change. <a href="/legal/terms">View the current version</a></p>');
+    expect(body).not.toContain('class="languages"');
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
@@ -2542,15 +2567,15 @@ describe('marketing HTTP surfaces', () => {
     const success = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await success.text()).toContain('Email address confirmed');
+    expect(await success.text()).toContain('You are subscribed');
     const repeated = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await repeated.text()).toContain('Email address confirmed');
+    expect(await repeated.text()).toContain('You are subscribed');
     const confirmedGet = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
-    expect(await confirmedGet.text()).toContain('Email address confirmed');
+    expect(await confirmedGet.text()).toContain('You are subscribed');
     const expired = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
@@ -2559,6 +2584,213 @@ describe('marketing HTTP surfaces', () => {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
     expect(await expiredPost.text()).toContain('This link is no longer active');
+  });
+
+  it('answers an unknown unsubscribe token with a branded page on every human route', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const headers = { host: 'acme.localhost:48730' };
+    const responses = [
+      await app.request('/u/missing_token_1234567890123456?lang=en', { headers }),
+      await app.request('/u/missing_token_1234567890123456/confirm?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/all?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/preferences?lang=en', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'present-consent': 'definition-news' }),
+      }),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('data-testid="marketing-link-invalid"');
+      expect(page).toContain('This link does not work');
+      expect(page).toContain('Open the link from the newest email, or contact the sender.');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
+    }
+    const polish = await app.request('/u/missing_token_1234567890123456?lang=pl', { headers });
+    const polishPage = await polish.text();
+    expect(polishPage).toContain('lang="pl"');
+    expect(polishPage).toContain('data-testid="marketing-link-invalid"');
+    expect(polishPage).not.toContain('This link does not work');
+  });
+
+  it('keeps the one-click unsubscribe answer for mail clients unchanged', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const unknown = await app.request('/u/missing_token_1234567890123456', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get('content-type')).toBe('application/json');
+    expect(await unknown.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const known = await app.request('/u/unsubscribe_token_123456789012345', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(known.status).toBe(200);
+    expect(await known.text()).toBe('');
+  });
+
+  const suppress = async (marketing: MarketingAppDeps, reason: 'manual' | 'hard_bounce' | 'unsubscribe_global') => {
+    await marketing.suppressions.record('t-acme', {
+      id: `suppression-member-${reason}`, tenantId: 't-acme', email: 'member@example.test',
+      emailHmac: marketing.hmac.compute('t-acme', 'member@example.test'), reason,
+      sourceRef: 'unsubscribe-news', meta: null, createdAt: '1998-07-02T00:00:00.000Z', liftedAt: null, liftedBy: null,
+    });
+  };
+  const postPreferences = (app: ReturnType<typeof marketingApp>, fields: Array<[string, string]>) =>
+    app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(fields),
+    });
+  const preferencePage = async (app: ReturnType<typeof marketingApp>, path = '/u/unsubscribe_token_123456789012345?lang=en') =>
+    (await app.request(path, { headers: { host: 'acme.localhost:48730' } })).text();
+
+  it.each(['manual', 'hard_bounce'] as const)('lets a %s-suppressed address withdraw a consent that is still active', async (reason) => {
+    const marketing = await memberSurfaceMarketing();
+    await suppress(marketing, reason);
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('You are unsubscribed from all marketing emails from Acme.');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('name="consent" value="definition-news" checked');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+    const kept = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(kept.status).toBe(200);
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed']);
+    const withdrawn = await postPreferences(app, [['present-consent', 'definition-news']]);
+    expect(withdrawn.status).toBe(200);
+    expect(await withdrawn.text()).toContain('Preferences saved');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+    const after = await preferencePage(app);
+    expect(after).toContain('data-state="unsubscribed-all"');
+    expect(after).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
+  });
+
+  it('sends a refused re-subscription back to a page that still offers every withdrawal', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'], ['consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+  });
+
+  it('withdraws the unticked consent of a suppressed address and tells it the new one was not added', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const before = await preferencePage(app);
+    expect(before).toContain('name="consent" value="definition-news" checked>');
+    expect(before).toContain('name="consent" value="definition-events" disabled>');
+    expect(before).not.toContain('data-state="subscriptions-refused"');
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
+    expect(post.status).toBe(303);
+    const location = post.headers.get('location') ?? '';
+    expect(location).toBe('/u/unsubscribe_token_123456789012345?lang=en&notice=subscriptions-refused');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test'))
+      .map((row) => [row.definitionId, row.status])).toEqual([['definition-news', 'confirmed'], ['definition-news', 'withdrawn']]);
+    const html = await preferencePage(app, location);
+    expect(html).toContain('<p class="notice" role="status" data-state="subscriptions-refused">Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.</p>');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
+  });
+
+  it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.marketingConsents.record('t-acme', {
+      id: 'consent-news-withdrawn', tenantId: 't-acme', memberId: null, email: 'member@example.test',
+      definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+      documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'withdrawn',
+      previousId: 'consent-news', source: 'preference_page', evidence: { collectedAt: '1998-07-02T00:00:00.000Z' },
+      occurredAt: '1998-07-02T00:00:00.000Z',
+    });
+    await suppress(marketing, 'unsubscribe_global');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
+    expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
+  });
+
+  it('lets a suppressed address withdraw the linked consent after its definition was archived', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const definition = await marketing.definitions.findById('t-acme', 'definition-news');
+    if (definition === null) throw new Error('Missing consent definition');
+    await marketing.definitions.update('t-acme', { ...definition, status: 'archived', updatedAt: '1998-07-02T00:00:00.000Z' });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('data-state="consent-link"');
+    expect(html).toContain('<p class="fine">You will stop receiving messages from this list.</p><form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).not.toContain('definition-news');
+    const confirm = await app.request('/u/unsubscribe_token_123456789012345/confirm?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(confirm.status).toBe(200);
+    expect(await confirm.text()).toContain('Unsubscribe confirmed');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test', 'definition-news'))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+  });
+
+  it('answers a missing hosted document or version with a branded page in the workspace language', async () => {
+    const app = marketingApp();
+    const headers = { host: 'acme.localhost:48730' };
+    const cases = [
+      { path: '/legal/missing?lang=pl', status: 404 },
+      { path: '/legal/terms/v/7?lang=pl', status: 404 },
+      { path: '/legal/terms/v/latest?lang=pl', status: 400 },
+    ];
+    for (const { path, status } of cases) {
+      const response = await app.request(path, { headers });
+      expect(response.status).toBe(status);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('lang="en"');
+      expect(page).toContain('data-testid="hosted-legal-not-found"');
+      expect(page).toContain('Document not found');
+      expect(page).toContain('This document does not exist or has been withdrawn.');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
+      expect(page).not.toContain('class="languages"');
+    }
   });
 
   it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {
@@ -3206,6 +3438,103 @@ describe('public rate limiting', () => {
     purgeExpired: async () => 0,
   };
 
+  it('answers a per-IP over-limit sign-up form post with a static page that links back to the form and needs no workspace lookup', async () => {
+    const configured = deps({
+      rateLimitBuckets: { claim: async (input) => input.scope !== 'signup:ip', purgeExpired: async () => 0 },
+    });
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const app = buildApp(configured);
+    const submit = (contentType: string, body: string, slug = 'newsletter') => app.request(`/api/public/marketing/forms/${slug}/submit?lang=pl`, {
+      method: 'POST', headers: { host: 'acme.localhost:48730', 'content-type': contentType }, body,
+    });
+    const formBody = new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString();
+    const formPost = await submit('application/x-www-form-urlencoded', formBody);
+    expect(formPost.status).toBe(429);
+    expect(Number(formPost.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(formPost.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(formPost.headers.get('cache-control')).toBe('no-store');
+    const html = await formPost.text();
+    expect(html).toContain('<html lang="pl" style=');
+    expect(html).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupBackToForm}</a></div>`);
+    expect(html).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupRateLimitedTitle}</title>`);
+    expect(html).toContain('status-cue--error');
+    expect(html).not.toContain('reader@example.org');
+    expect(html).not.toContain('class="brand"');
+    for (const slug of ['News%20Letter', '%E0%A4%A', 'news%2F..%2Fother']) {
+      const unknownForm = await (await submit('application/x-www-form-urlencoded', formBody, slug)).text();
+      expect(unknownForm).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p></div>`);
+      expect(unknownForm).not.toContain('class="button-link');
+    }
+    for (const lookup of lookups) expect(lookup).not.toHaveBeenCalled();
+    for (const [contentType, body] of [['application/json', JSON.stringify({ email: 'reader@example.org' })], ['text/plain', '{}']] as const) {
+      const rejected = await submit(contentType, body);
+      expect(rejected.status).toBe(429);
+      expect(rejected.headers.get('content-type')).toBe('application/json');
+      expect(await rejected.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    }
+  });
+
+  it('adds no workspace lookup to the per-IP over-limit page when the sign-up CORS check read the workspace first', async () => {
+    const configured = deps();
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const lookupCount = () => lookups.reduce((total, lookup) => total + lookup.mock.calls.length, 0);
+    const forms = new InMemoryMarketingSignupFormRepository();
+    forms.forms.push({
+      id: 'form-1', tenantId: acme.id, slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'newsletter',
+      consentVersion: { id: 'newsletter-v1', tenantId: acme.id, definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.example.org/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
+      listId: null, tags: [], collectName: false, successText: { en: 'Thank you', pl: 'Thank you' },
+      redirectUrl: null, allowedOrigins: ['https://studio.example.org'], token: 'form_token_1234567890123456', status: 'active', revision: 1,
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    });
+    const formLookup = vi.spyOn(forms, 'findBySlug');
+    configured.marketingSignup = {
+      dispatchEmail: () => undefined,
+      forms,
+      transaction: { run: async () => { throw new Error('An over-limit submission must not open a transaction'); } },
+      clock: { nowIso: () => '2026-07-01T00:00:00.000Z' },
+      ids: { nextId: () => 'id-1' },
+      tokens: { nextToken: () => 'token-1' },
+      hmac: { compute: () => 'hash' },
+    };
+    let lookupsBeforeLimiter: number | null = null;
+    let formLookupsBeforeLimiter: number | null = null;
+    configured.rateLimitBuckets = {
+      claim: async (input) => {
+        lookupsBeforeLimiter ??= lookupCount();
+        formLookupsBeforeLimiter ??= formLookup.mock.calls.length;
+        return input.scope !== 'signup:ip';
+      },
+      purgeExpired: async () => 0,
+    };
+    const app = buildApp(configured);
+    const response = await app.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', origin: 'https://studio.example.org', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString(),
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://studio.example.org');
+    expect(await response.text()).toContain(`<p class="lede" role="alert">${publicMarketingMessagesEn.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">${publicMarketingMessagesEn.signupBackToForm}</a></div>`);
+    expect(lookupsBeforeLimiter).toBeGreaterThan(0);
+    expect(lookupCount()).toBe(lookupsBeforeLimiter);
+    expect(formLookupsBeforeLimiter).toBe(1);
+    expect(formLookup).toHaveBeenCalledOnce();
+    expect(formLookup).toHaveBeenCalledWith(acme.id, 'newsletter');
+  });
+
   it('answers a throttled checkout with 429 and Retry-After', async () => {
     const app = buildApp(deps({ rateLimitBuckets: exhausted }));
 
@@ -3473,7 +3802,7 @@ describe('email dispatch route', () => {
     const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
     expect([cron.status, manual.status]).toEqual([200, 200]);
     const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
-    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1, jobBudgetMs: 21_000 }], [{ deadlineAt }]]);
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });

@@ -8,4 +8,5 @@ export const PAGE_WIDTH = {
   prose: '44rem',
   panel: '60rem',
   wide: '72rem',
+  detail: '100rem',
 } as const;

@@ -5,7 +5,7 @@ import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
 import { currencySchema } from './product.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, orderShipped, orderShippedEmailDetailsSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, orderOutOfStockEmail, orderRefundAlertEmail, orderSoldOutRefundEmail, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, type EmailMessage, orderShipped, orderShippedEmailDetailsSchema, purchaseEmailDetailsSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, orderOutOfStockEmail, orderRefundAlertEmail, orderSoldOutRefundEmail, stockLowEmail, verifyEmail, welcomeSignIn, welcomeSignInProductTypeSchema, threadReply, directMessage, lessonQuestion, spaceEvent, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -13,9 +13,11 @@ const brandingSchema = z.object({
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
 });
 
+const M2M_SUBJECT_MAX_LENGTH = 200;
+
 const m2mTransactionalMessageFields = {
   to: z.string().email(),
-  subject: z.string().trim().min(1).max(200),
+  subject: z.string().trim().min(1).max(M2M_SUBJECT_MAX_LENGTH),
   html: z.string().min(1).max(1_000_000).optional(),
   text: z.string().min(1).max(500_000).optional(),
   replyTo: z.string().email().optional(),
@@ -36,6 +38,14 @@ const m2mTransactionalPayloadSchema = z.object({
   text: m2mTransactionalMessageFields.text,
   replyTo: m2mTransactionalMessageFields.replyTo,
 }).strict();
+
+// A message rendered when it is queued, stored in the shape every release already renders and lists.
+export const prerenderedTransactionalPayload = (message: EmailMessage): EmailOutboxPayload => m2mTransactionalPayloadSchema.parse({
+  kind: 'm2m-transactional',
+  subject: message.subject.length > M2M_SUBJECT_MAX_LENGTH ? `${message.subject.slice(0, M2M_SUBJECT_MAX_LENGTH - 1)}…` : message.subject,
+  html: message.html,
+  text: message.text,
+});
 
 const redactedAuthEmailKindSchema = z.enum([
   'auth-magic-link',

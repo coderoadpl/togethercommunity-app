@@ -456,7 +456,6 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
             purchase={paymentStatus.data?.status === 'paid' ? paymentStatus.data.analytics : undefined}
             testMode={testEnabled || sessionId?.startsWith('cs_test_') === true || new URLSearchParams(window.location.search).get('test_purchase') === '1'}
           /> : null}
-          {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
           {testPurchase ? <Alert severity="info">{t.checkout.testPurchase}</Alert> : null}
           <Stack useFlexGap spacing="1rem" role="status" aria-live="polite" aria-atomic="true" data-testid="checkout-return-status">
             <CardTitle variant="h1" ref={returnTitle} tabIndex={-1}>{title}</CardTitle>
@@ -481,6 +480,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               {t.checkout.goToLogin}
             </Button>
           )}
+          {sessionId && paymentStatus.data?.status === 'paid' && paymentStatus.data.metaCapi && !testEnabled && !testPurchase ? <MetaCapiConsent key={sessionId} sessionId={sessionId} config={paymentStatus.data.metaCapi} /> : null}
         </Stack>
       </FocusCard>
     );

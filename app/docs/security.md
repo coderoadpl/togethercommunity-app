@@ -417,6 +417,43 @@ session cookie is valid on every workspace subdomain. Every other document
 keeps the same-origin script policy, except the checkout form documents, which
 also list the InPost parcel locker map origin as described above.
 
+## Staff refunds
+
+Refunding money is the `order:refund` capability, held by the workspace
+`owner` and `admin` only and only with a verified e-mail address. It is not an
+impersonation read capability, so every refund route, the preview included, is
+refused while staff view the workspace as a member, and no tenant API key or
+shop management key scope grants it: a shop key never refunds and a
+propose-mode key never refunds (the use-cases also refuse a machine actor
+explicitly). The three routes (`GET /api/orders/:orderId/refund-preview`,
+`POST /api/orders/:orderId/refunds`, `POST /api/orders/:orderId/packing-list`)
+take session credentials only, are classified `session` in the origin policy
+and answer `404 not_found` for an order of another workspace. They are
+rate-limited per staff member and per workspace with the shared rate buckets.
+
+Money guards: the request locks the order row, re-reads the committed refunds,
+refuses an amount above the remainder or a full refund confirmed for a
+remainder that changed, and allows one refund waiting to reach Stripe per
+order; each refund issues exactly its stored amount once; the request key and the Stripe idempotency key generations
+make retries and lost responses safe, and Stripe refuses an amount above the
+charge. The dispatcher saves a create attempt and its key generation under the
+job's lease before every create call, so a worker lost after Stripe accepted a
+refund leaves it recorded; a create call whose outcome is unknown (no answer, a
+request still executing or a Stripe server error) keeps its key, no failed
+refund list after such an attempt counts as Stripe refusing the refund, and a
+refund that never saw its own Stripe refund ends `unconfirmed` rather than
+`failed`. A request confirmed for a packing-list or label state that changed
+since its preview is refused, so no goods return to stock behind a bought
+label. The CLI refuses
+any refund without the confirmed `--remainder` and, with `--json`, any
+refund without `--request-key`. Each refund row keeps the requesting user's id and e-mail address
+after the account is removed, as audit evidence of who moved money. The staff
+note refuses control characters other than line breaks and tabs, and the
+dispatcher's log lines replace Stripe object ids and keys in provider messages
+with `[provider id]`. Every refund failure message has Stripe API keys and
+webhook secrets replaced with `[credential]` before it is stored on the
+refund, returned in the order detail or copied into a staff alert e-mail.
+
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` blocks merges through `check` only
@@ -874,7 +911,10 @@ and `PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES` defaults to 3. The
 email bucket uses a SHA-256 digest scoped to the tenant; the IP comes only from
 the trusted connection/proxy policy. Development defaults are 1000 and 100.
 Environment overrides follow the existing rate-limit convention, including
-zero to disable a bucket. Rejections carry `Retry-After`.
+zero to disable a bucket. Rejections carry `Retry-After`. HTML form posts
+over the per-IP limit get a minimal 429 page from the rate-limit middleware;
+over the per-address limit, the submit handler reads the limiter result before
+submitting and answers with the form page and its rate-limit error.
 
 Browser JSON requests and preflights require an exact origin in the form's
 allow-list. No credentials or wildcard origins are enabled. Ordinary HTML

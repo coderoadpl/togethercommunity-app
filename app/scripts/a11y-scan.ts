@@ -90,6 +90,7 @@ const SCREENS: ScreenSpec[] = [
     viewports: memberViewports,
     ready: async (page) => {
       await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
+      await page.getByTestId('use-password').click();
       await page.getByTestId('login-password').waitFor(visible);
     },
   },
@@ -104,7 +105,7 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
-    name: 'login-resolve-unavailable',
+    name: 'login-rate-limited',
     auth: 'public',
     path: '/login',
     viewports: memberViewports,
@@ -117,7 +118,7 @@ const SCREENS: ScreenSpec[] = [
         }),
       );
       await continueWithIdentifier(page, PASSWORD_OWNER_EMAIL);
-      await page.getByTestId('sign-in-methods-unavailable').waitFor(visible);
+      await page.getByTestId('sign-in-rate-limited').waitFor(visible);
       await page.unroute(AUTH_RESOLVE_PATTERN);
     },
   },

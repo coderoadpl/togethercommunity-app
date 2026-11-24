@@ -167,7 +167,7 @@ export const MemberPage = ({
                 <Stack
                   useFlexGap
                   data-testid="member-rail-trailing"
-                  sx={{ minWidth: 0, rowGap: '1.5rem', order: { xs: 3 } }}
+                  sx={{ minWidth: 0, rowGap: '1.5rem', order: { xs: 3 }, '&:empty': { display: 'none' } }}
                 >
                   {rail}
                 </Stack>

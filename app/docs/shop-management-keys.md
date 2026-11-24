@@ -483,8 +483,9 @@ about the courses, modules and lessons it named; a list that fails the check
 ends its proposal `failed` at the approval. A direct-mode key that creates a
 product gets one message for every reason the check refuses its list. The
 content import, the legacy importer and lesson deletion write access items
-without it ([Product access](change-proposals.md#product-access)). A
-`product.set-access` proposal may not repeat an item or an id. No shop route
+without it ([Product access](change-proposals.md#product-access)). The access
+list of a `product.create` or `product.set-access` proposal may not repeat an
+item or an id. No shop route
 serves a course, module or lesson; a key sees their ids in the access items of
 the products it lists.
 

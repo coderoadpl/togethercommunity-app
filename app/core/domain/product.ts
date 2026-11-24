@@ -251,7 +251,9 @@ export const updateProductAccessItemsInputSchema = z.object({
 
 export type UpdateProductAccessItemsInput = z.input<typeof updateProductAccessItemsInputSchema>;
 
+export const uniqueAccessItemsSchema = z.array(accessItemSchema).superRefine(refuseRepeatedAccess);
+
 export const setProductAccessInputSchema = z.object({
   id: z.string().min(1),
-  accessItems: z.array(accessItemSchema).superRefine(refuseRepeatedAccess),
+  accessItems: uniqueAccessItemsSchema,
 });

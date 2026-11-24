@@ -8,7 +8,14 @@ import {
 } from './change-proposal.js';
 import { keyDownloadAddInputSchema, keyDownloadRemoveInputSchema, keyDownloadReplaceInputSchema } from './change-proposal-download.js';
 import { newProductPriceSchema } from './commerce.js';
-import { accessItemSchema, newProductSchema, setProductAccessInputSchema, updateProductInputSchema, type AccessItem } from './product.js';
+import {
+  accessItemSchema,
+  newProductSchema,
+  setProductAccessInputSchema,
+  uniqueAccessItemsSchema,
+  updateProductInputSchema,
+  type AccessItem,
+} from './product.js';
 import { salesLinkDeleteInputSchema, salesLinkInputSchema, salesLinkUpdateSchema } from './sales-link.js';
 import { shopSettingsPatchSchema } from './shop-settings.js';
 import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdInputSchema } from './stock.js';
@@ -26,7 +33,7 @@ export const strictSalesLinkUpdateInputSchema = strictInput(salesLinkUpdateSchem
 export const strictShopSettingsPatchInputSchema = strictInput(shopSettingsPatchSchema);
 
 export const CHANGE_PROPOSAL_INPUT_SCHEMAS = {
-  'product.create': strictNewProductInputSchema,
+  'product.create': strictInput(newProductSchema.extend({ accessItems: uniqueAccessItemsSchema.default([]) })),
   'product.update': strictUpdateProductInputSchema,
   'product.publish': strictInput(changeProposalIdInputSchema),
   'product.unpublish': strictInput(changeProposalIdInputSchema),

@@ -206,6 +206,16 @@ describe('proposing what a product grants', () => {
     expect(h.store.proposals).toEqual([]);
   });
 
+  it.each([
+    ['a repeated item', [...ADVANCED, { level: 'course', courseId: 'course-advanced', excludedModuleIds: [] }]],
+    ['a repeated id inside an item', [{ level: 'lessons', courseId: 'course-advanced', lessonIds: ['lesson-deep', 'lesson-deep'] }]],
+  ])('refuses a new product whose access list holds %s and stores nothing', async (_label, accessItems) => {
+    const h = harness();
+    const input = { title: 'Starter pack', slug: 'starter-pack', type: 'digital_download', priceCents: 0, currency: 'EUR', accessItems };
+    expect(await submitChangeProposal(keyCtx(), { operation: 'product.create', input }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.store.proposals).toEqual([]);
+  });
+
   const UNREADABLE_REFERENCES: Array<[string, Product['accessItems']]> = [
     ['a lesson of another course', [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-deep'] }]],
     ['a lesson that does not exist', [{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-gone'] }]],

@@ -269,10 +269,10 @@ const completeProposedImageUpload = async (
     if (!removed.ok) return removed;
     return err(inserted.kind === 'cap_exceeded' ? changeProposalImageCapExceeded(inserted.cap) : inserted.error);
   }
-  await deps.quarantinedImages.markUploadCompleted(tenantId, input.key, { digest: image.digest, extension: image.extension });
+  const recorded = await deps.quarantinedImages.markUploadCompleted(tenantId, input.key, { digest: image.digest, extension: image.extension });
   const removed = await deps.storage.delete({ url: candidateUrl, ...credentials });
   if (!removed.ok) return removed;
-  return ok({ url: proposalImagePublicPath(image), quarantined: true });
+  return ok({ url: proposalImagePublicPath({ kind: image.kind, ...(recorded ?? image) }), quarantined: true });
 };
 
 export const completeProposedProductCoverUpload = (ctx: Ctx, input: { key: string }, deps: ProposedImageCompleteDeps) => completeProposedImageUpload(

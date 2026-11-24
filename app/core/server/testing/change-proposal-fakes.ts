@@ -760,9 +760,10 @@ export const createQuarantinedImagesFake = (
       return found === undefined ? null : { apiKeyId: found.apiKeyId, objectKey: found.objectKey, createdAt: found.createdAt, completed: found.completed ?? null };
     },
     markUploadCompleted: async (tenantId, objectKey, completed) => {
-      for (const row of store.imageUploads) {
-        if (row.tenantId === tenantId && row.objectKey === objectKey) row.completed = { ...completed };
-      }
+      const row = store.imageUploads.find((candidate) => candidate.tenantId === tenantId && candidate.objectKey === objectKey);
+      if (row === undefined) return null;
+      row.completed ??= { ...completed };
+      return { ...row.completed };
     },
     listTenantIdsWithUploadsBefore: async (createdBefore, deletedBefore, limit) =>
       [...new Set(store.imageUploads.filter(uploadDue(createdBefore, deletedBefore)).map((row) => row.tenantId))].sort().slice(0, limit),

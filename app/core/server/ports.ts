@@ -3367,7 +3367,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * completion stored, null before one did; null for a live upload.
    */
   findUpload(tenantId: string, objectKey: string): Promise<(QuarantinedImageUpload & { completed: QuarantinedImageUploadResult | null }) | null>;
-  markUploadCompleted(tenantId: string, objectKey: string, completed: QuarantinedImageUploadResult): Promise<void>;
+  /** Concurrent completions can read different candidate bytes, so only the first result is kept and every caller answers it. */
+  markUploadCompleted(tenantId: string, objectKey: string, completed: QuarantinedImageUploadResult): Promise<QuarantinedImageUploadResult | null>;
   /**
    * Ordered like `listTenantIdsToSweep`; so are the uploads and publications listed for one workspace. An upload is due
    * for its first delete once created before `createdBefore`, and for its second once that first delete succeeded before

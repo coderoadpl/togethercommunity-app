@@ -391,8 +391,12 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       return row === undefined ? null : { ...parseUpload(row), completed: completedUpload(row) };
     },
     markUploadCompleted: async (tenantId, objectKey, completed) => {
-      await db.update(changeProposalImageUploads).set({ completedDigest: completed.digest, completedExtension: completed.extension })
-        .where(and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey)));
+      const upload = and(eq(changeProposalImageUploads.tenantId, tenantId), eq(changeProposalImageUploads.objectKey, objectKey));
+      const [recorded] = await db.update(changeProposalImageUploads).set({ completedDigest: completed.digest, completedExtension: completed.extension })
+        .where(and(upload, isNull(changeProposalImageUploads.completedDigest))).returning();
+      if (recorded !== undefined) return completedUpload(recorded);
+      const [earlier] = await db.select().from(changeProposalImageUploads).where(upload).limit(1);
+      return earlier === undefined ? null : completedUpload(earlier);
     },
     listTenantIdsWithUploadsBefore: (createdBefore, deletedBefore, limit, boundMs) => within(boundMs, async (executor) =>
       (await executor.select({ tenantId: changeProposalImageUploads.tenantId }).from(changeProposalImageUploads)

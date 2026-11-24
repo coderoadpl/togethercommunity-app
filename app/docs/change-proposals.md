@@ -1118,10 +1118,13 @@ candidate and answers `{ url, quarantined: true }`, where `url` is the public
 address the image will have once approved,
 `/api/public/assets/<kind>/<sha256>.<ext>`. Before it deletes the candidate it
 records the stored image (digest and extension) on the upload's record
-(`completed_digest`, `completed_extension`), so a repeated completion of the
-same candidate key by the same key, after an answer that was lost, gets the
-same answer without reading the candidate again, for as long as the sweep has
-not removed the record. Nothing is written under the public
+(`completed_digest`, `completed_extension`) unless one is recorded already,
+and answers the recorded image: two concurrent completions that read different
+bytes of the still writable candidate both answer the first recorded image,
+and the other image stays an ordinary quarantined image of the key. A repeated
+completion of the same candidate key by the same key, after an answer that was
+lost, gets the same answer without reading the candidate again, for as long as
+the sweep has not removed the record. Nothing is written under the public
 prefix `image-assets/`. The same bytes again give the same key; other bytes
 can never replace it, because the digest is the name. Each quarantined image
 is a row of `change_proposal_images` (workspace, key, kind, digest, extension,

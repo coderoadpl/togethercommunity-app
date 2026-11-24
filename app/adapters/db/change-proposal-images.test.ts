@@ -420,6 +420,29 @@ describe('a proposed product cover end to end on the database', () => {
     await deps.quarantinedImages.markUploadCompleted(NEIGHBOUR, started.value.key, { digest: digestOf(9), extension: 'png' });
     expect(await deps.quarantinedImages.findUpload(TENANT, started.value.key)).toMatchObject({ completed: { digest, extension: 'png' } });
   });
+
+  it('answers every one of two concurrent completions of one upload with the receipt the first recorded', async () => {
+    const { objects, deps } = endToEnd();
+    const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: PNG_BYTES.byteLength }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+    const replaced = new Uint8Array([...PNG_BYTES.slice(0, -1), 43]);
+    objects.objects.set(started.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
+    const getObject = objects.storage.getObject;
+    let second: Awaited<ReturnType<typeof completeProposedProductCoverUpload>> | null = null;
+    objects.storage.getObject = async (input, options) => {
+      const read = await getObject(input, options);
+      objects.storage.getObject = getObject;
+      objects.objects.set(started.value.key, { bytes: replaced, contentType: 'image/png' });
+      second = await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps);
+      return read;
+    };
+    const first = await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps);
+    const winner = { url: `/api/public/assets/product-cover/${createContentHash().sha256(replaced)}.png`, quarantined: true };
+    expect(second).toEqual({ ok: true, value: winner });
+    expect(first).toEqual({ ok: true, value: winner });
+    expect(await completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, deps)).toEqual({ ok: true, value: winner });
+    expect(await rows()).toHaveLength(2);
+  });
 });
 
 const publications = async () => (await database.db.select().from(changeProposalImagePublications)).map((row) => row.digest.replace(/^0+/u, ''));

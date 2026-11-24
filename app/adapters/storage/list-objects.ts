@@ -37,6 +37,23 @@ const field = (xml: string, name: string): string => {
   return decodeXmlText(value);
 };
 
+const CONTENTS_OPEN = '<Contents>';
+const CONTENTS_CLOSE = '</Contents>';
+
+const contentsBlocks = (xml: string): string[] => {
+  const blocks: string[] = [];
+  let open = xml.indexOf(CONTENTS_OPEN);
+  while (open !== -1) {
+    const start = open + CONTENTS_OPEN.length;
+    const close = xml.indexOf(CONTENTS_CLOSE, start);
+    const next = xml.indexOf(CONTENTS_OPEN, start);
+    if (close === -1 || (next !== -1 && next < close)) throw new Error('Unterminated or nested object block');
+    blocks.push(xml.slice(start, close));
+    open = next;
+  }
+  return blocks;
+};
+
 export const parseListObjectsPage = (xml: string): Result<StorageListPage, AppError> => {
   try {
     if (/<!|&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);)/i.test(xml)
@@ -44,8 +61,7 @@ export const parseListObjectsPage = (xml: string): Result<StorageListPage, AppEr
       throw new Error('Invalid listing envelope');
     }
     if (field(xml, 'EncodingType') !== 'url') throw new Error('Unsupported key encoding');
-    const objects = [...xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map((match) => {
-      const contents = match[1] ?? '';
+    const objects = contentsBlocks(xml).map((contents) => {
       const size = field(contents, 'Size');
       if (!/^\d+$/.test(size)) throw new Error('Invalid object size');
       return {

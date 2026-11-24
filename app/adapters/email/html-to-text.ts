@@ -1,5 +1,6 @@
 import { parse, type DefaultTreeAdapterTypes } from 'parse5';
 
+import { trimSpacesBeforeLineBreaks } from '#core/domain/index.js';
 import type { HtmlToText } from '#core/server/marketing-delivery-ports.js';
 
 const excluded = new Set(['script', 'style', 'head', 'template', 'noscript']);
@@ -27,7 +28,7 @@ const render = (node: DefaultTreeAdapterTypes.Node): string => {
 export const createHtmlToText = (): HtmlToText => ({
   convert: (html) => {
     if (html.length > 1_000_000) throw new Error('HTML exceeds the conversion limit');
-    const text = render(parse(html)).replace(/[ \t]+\n/gu, '\n').replace(/\n[ \t]+/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim();
+    const text = trimSpacesBeforeLineBreaks(render(parse(html))).replace(/\n[ \t]+/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim();
     if (text.length > 1_000_000) throw new Error('Plaintext exceeds the conversion limit');
     return text;
   },

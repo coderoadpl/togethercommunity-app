@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ok, type Capability } from '../core/domain/index.js';
 import { authorizeTenant } from '../core/server/index.js';
 import { schedulerContext, snsWebhookContext } from '../apps/server/src/marketing-worker-context.js';
-import { collectPermissionInventory } from '../scripts/permission-inventory.js';
+import { KEY_MODE_SUBJECT_SUFFIX, collectPermissionInventory } from '../scripts/permission-inventory.js';
 import { collectRuntimeRoutes } from '../scripts/generate-route-table.mjs';
 import {
   TENANT_SCOPE_EXCEPTIONS,
@@ -126,17 +126,32 @@ const calledPortMethods = (portMethods: ReadonlyMap<string, readonly string[]>):
   return called;
 };
 
+// A route or use-case that a key reaches differently by mode has a direct-mode row followed by a propose-mode row;
+// only that adjacent pair stands for its subject, so a lone or stray mode row never matches a real subject.
+const subjectsOfRows = (rows: readonly { subject: string }[]): string[] => {
+  const subjects: string[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const subject = rows[index]?.subject ?? '';
+    const base = subject.slice(0, -KEY_MODE_SUBJECT_SUFFIX.direct.length);
+    const pairedByMode = subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.direct)
+      && rows[index + 1]?.subject === `${base}${KEY_MODE_SUBJECT_SUFFIX.propose}`;
+    subjects.push(pairedByMode ? base : subject);
+    if (pairedByMode) index += 1;
+  }
+  return subjects;
+};
+
 describe('authorization fail-closed probes', () => {
   it('declares a closed capability for every real route and exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
     const runtimeRoutes = collectRuntimeRoutes().map(
       (route) => `${route.method} ${route.path}`,
     );
-    expect(inventory.routes.map((row) => row.subject)).toEqual(runtimeRoutes);
+    expect(subjectsOfRows(inventory.routes)).toEqual(runtimeRoutes);
     expect(inventory.routes.every((row) => row.capability !== null)).toBe(true);
 
     const useCases = collectUseCaseSources();
-    expect(inventory.useCases.map((row) => row.subject).sort()).toEqual(
+    expect(subjectsOfRows(inventory.useCases).sort()).toEqual(
       useCases
         .filter((useCase) => !(useCase.subject in AUTH_ONLY))
         .map((useCase) => useCase.subject)
@@ -146,9 +161,7 @@ describe('authorization fail-closed probes', () => {
   });
 
   it('requires one declared authorization capability for every exported Ctx use-case', () => {
-    const inventory = new Map(
-      collectPermissionInventory().useCases.map((row) => [row.subject, row.capability]),
-    );
+    const inventory = new Set(subjectsOfRows(collectPermissionInventory().useCases));
     const offenders = collectUseCaseSources()
       .filter((useCase) => !(useCase.subject in AUTH_ONLY) && !inventory.has(useCase.subject))
       .map((useCase) => useCase.subject);

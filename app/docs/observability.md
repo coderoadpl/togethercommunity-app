@@ -459,10 +459,15 @@ the copy here.
 refunds on a deployed host against the payment provider's **test mode**. The
 smokes above and every local e2e leg use the fake provider; this run is the one
 that receives the provider's real webhook payloads. It runs only on the `acme`
-fixture workspace: the host must be `acme.<domain>`, `/api/me` must resolve
+fixture workspace: the target must be the `https://acme.` origin on the platform
+domain (`PURCHASE_E2E_PLATFORM_DOMAIN`, default `togethercommunity.app`), every
+request refuses redirects, `/api/health` must report the targeted environment and
+database (production: `PRODUCTION_DATABASE_FINGERPRINT`; staging: never that one,
+and `STAGING_DATABASE_FINGERPRINT` when pinned), `/api/me` must resolve
 `tenant-acme` for the signed-in staff account, and every key must be a test-mode
-key (`rk_test_`, `pk_test_`); the run never calls a live-mode provider API and
-stops on any provider object that reports `livemode: true`.
+key (`rk_test_`, `pk_test_`). The run never calls a live-mode provider API, stops
+on any provider object that reports `livemode: true`, and stops before any
+checkout when the workspace's live payment slot holds a key.
 
 ### How a test payment completes without a person
 
@@ -486,9 +491,9 @@ provider calls.
 1. `target-identity` — `/api/health` reports the environment the run targets.
 2. `staff-sign-in` — the fixture owner signs in and resolves `tenant-acme` as owner or admin.
 3. `test-order-cap` — fewer test orders than `PURCHASE_E2E_TEST_ORDER_CAP` (default 300) exist; otherwise nothing is written.
-4. `test-slot-configure` — saves the restricted test key in the test slot, which registers a fresh `?mode=test` webhook endpoint. The prod-smoke reseed wipes the workspace's secrets, so every run configures it again.
-5. `fixtures` — ensures the `purchase-e2e-locker` delivery rate (12.99 PLN, parcel locker), the `purchase-e2e-parcel` physical product with stock tracking, the `purchase-e2e-bundle` sales link (parcel and `Acme Course`) and the terms and privacy URLs the sales-link checkout needs.
-6. `coupon-refused-in-test-mode` — a coupon in a test checkout is refused with `validation`.
+4. `test-slot-configure` — saves the restricted test key in the test slot, which registers a fresh `?mode=test` webhook endpoint, and confirms the live slot is empty. The prod-smoke reseed wipes the workspace's secrets, so every run configures it again.
+5. `fixtures` — ensures the `purchase-e2e-locker` delivery rate (12.99 PLN, parcel locker), the `purchase-e2e-parcel` physical product (25.00 PLN, one active one-time price, stock tracking), a 23% VAT rate on `Acme Course`, the `purchase-e2e-bundle` sales link (parcel and `Acme Course`) and the terms and privacy URLs the sales-link checkout needs.
+6. `coupon-refused-in-test-mode` — a coupon in a test checkout is refused with the test-mode refusal (`Test checkout requires a paid price without a coupon`), not with any other validation error.
 7. `digital-purchase` — `Acme Course` without delivery.
 8. `locker-purchase` — the parcel product to a parcel locker (`PURCHASE_E2E_LOCKER_CODE`, default `WAW01M`, an operating locker in both the fake and the carrier directory).
 9. `sales-link-purchase` — the bundle sales link with the parcel-locker line.
@@ -498,17 +503,23 @@ provider calls.
 13. `full-refund` — a staff refund of the whole digital order: the order reads `refunded` and the provider lists exactly one refund of that amount whose metadata names the staff refund.
 14. `partial-refund` — a 5.00 PLN staff refund of the parcel order: the order reads `partially_refunded` and the provider lists exactly one refund of 5.00 PLN.
 
-Each purchase waits up to two minutes for its order to leave `pending`, which
-only the accepted webhook does, and asserts the mode, the amount, the product
-lines, the single `shipping:purchase-e2e-locker` line, the locker code, the
-delivery country and the sales link. Refunds wait up to ten minutes for the
-refund dispatcher's minute tick.
+Each checkout collects the terms on the page (`termsOnPage`), so a provider
+account without a terms URL behaves like one with it. Before paying, the session
+total must equal the fixture prices (99.00, 37.99 and 136.99 PLN). Each purchase
+then waits up to two minutes for its order to leave `pending`, which only the
+accepted webhook does, and asserts the mode, the amount, the product lines, the
+single `shipping:purchase-e2e-locker` line, the locker code, the delivery country
+and the sales link. Refunds wait up to ten minutes, for the refund dispatcher's
+minute tick and for `charge.refunded` to update the order, and the provider
+refund must be `succeeded`. The replay runs whenever the parcel-locker payment
+was confirmed, even when its order never left `pending`.
 
 The release that refused every shipped order on 2026-11-22 fails check 12: run
 against the adapter and domain parse of that release, the replay of the recorded
 `2020-03-02` sessions reports `shipping cost null` and `delivery country null`.
 On that release endpoints followed the account default version, so checks 8 and
-9 would fail there too, their orders never leaving `pending`. Endpoints are now
+9 would fail there too, their orders never leaving `pending`, and check 12 still
+runs because their payments were confirmed. Endpoints are now
 pinned to the library version, so the replay is what keeps covering the
 account-default shape.
 
@@ -518,17 +529,19 @@ Test mode differs from a live purchase on purpose (see
 [Test mode for staff](payments.md#test-mode-for-staff)), so the run asserts the
 test-mode behaviour and leaves these to the fake-provider legs (`pnpm run smoke`,
 `e2e:poc`, `e2e:coupon`): coupon redemption, stock commits, purchase and
-magic-link e-mail, consent capture of a single-product checkout, member grants
-and invoicing. A live-mode purchase is never automated.
+magic-link e-mail, consent capture of a single-product checkout and invoicing.
+Test-mode grants are written (see below) but not asserted, and they never unlock
+member access. A live-mode purchase is never automated.
 
 ### What it writes
 
 On both hosts, in `tenant-acme` only, per run: three test-mode orders and their
-checkout snapshots (the refused coupon attempt stores nothing), a member row for
-the fixture owner
-(once), one consent capture of the sales-link checkout, two staff refunds with
-their provider refunds, the fixture rate, product, stock row and sales link
-(once), and a new test-slot webhook endpoint replacing the previous one. Every
+checkout snapshots (the refused coupon attempt stores nothing), a test-mode
+`Acme Course` grant for the fixture owner (created or renewed), a member row for
+the fixture owner (once), one consent capture of the sales-link checkout, two
+staff refunds with their provider refunds, the fixture rate, product, price,
+stock row, course VAT rate and sales link (once), and a new test-slot webhook
+endpoint replacing the previous one. Every
 order carries `mode=test` and the client reference `purchase-e2e:<run id>`; test
 rows stay out of revenue, exports and reconciliation. Test-mode purchases send
 no Together e-mail to members, and any transactional e-mail of the fixture
@@ -540,18 +553,25 @@ the workspace holds 300 test orders.
 
 ### Where it runs
 
-`purchase-e2e.yml` runs after every successful `staging-smoke` (staging) and
-`prod-smoke` (production; after the reseed), daily on staging, and on dispatch.
+`purchase-e2e.yml` runs after every successful `staging-smoke` of a push to
+`staging` (staging, on the smoked commit) and every successful `prod-smoke` of a
+production deployment (production, on `main`; after the reseed), daily on
+staging, and on dispatch. Runs against one environment never overlap. A run
+whose purchase step produced no result counts as failing (`unreachable`), so a
+broken install never records a green state.
 It starts observe-only on each environment and pages only through
 `.github/actions/alert-gate`, like every other monitor. Staging sits behind
 deployment protection, so the provider can reach its webhook only when the
 staging deployment sets `STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS=true`: the test
-slot's endpoint URL then carries the deployment's own
-`VERCEL_AUTOMATION_BYPASS_SECRET` as the query parameter the platform documents
-for third-party webhooks
+slot's endpoint URL of `tenant-acme`, and of no other workspace, then carries the
+deployment's own `VERCEL_AUTOMATION_BYPASS_SECRET` as the query parameter the
+platform documents for third-party webhooks
 ([Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)).
-The setting is ignored when `APP_ENV` is `production`, the live slot never
-carries it and the URL shown in Studio omits it. Staging and production each
+It applies only when `APP_ENV` is exactly `staging`; the live slot never carries
+it and the URL shown in Studio omits it. The secret then sits in the endpoint
+configuration of the fixture's provider sandbox, which only the owner's provider
+account can read; anyone who reads it there can pass the deployment protection of
+every deployment of the project until the secret is rotated. Staging and production each
 need their own provider sandbox: a test-slot configuration deletes every
 endpoint of the workspace and slot in its sandbox, and both hosts use
 `tenant-acme`.

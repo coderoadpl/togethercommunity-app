@@ -6,6 +6,7 @@ import oldApiAddressPaid from '#adapters/payment/fixtures/checkout-completed-202
 import oldApiLockerFree from '#adapters/payment/fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
 import cloverAddressPaid from '#adapters/payment/fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
 import cloverLockerFree from '#adapters/payment/fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
+import { healthOutputSchema } from '#core/contract/index.js';
 import { DEMO_SEED_PASSWORD, SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import {
@@ -25,12 +26,16 @@ import {
   type ProviderCheckoutSession,
 } from './purchase-e2e-provider.js';
 
+const PRODUCTION_FINGERPRINT = 'b1bfbb98b4f7';
+const STAGING_FINGERPRINT = 'a71c3d05e9f2';
+
 const testKeys = {
   STRIPE_TEST_RESTRICTED_KEY: 'rk_test_example',
   STRIPE_TEST_PUBLISHABLE_KEY: 'pk_test_example',
+  PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
 };
 
-const health = (environment: string, production: boolean) => ({
+const health = (environment: string, production: boolean, databaseFingerprint = production ? PRODUCTION_FINGERPRINT : STAGING_FINGERPRINT) => ({
   status: 'ok',
   database: 'up',
   version: '0.1.0',
@@ -38,7 +43,7 @@ const health = (environment: string, production: boolean) => ({
   environment,
   production,
   commit: 'a'.repeat(40),
-  databaseFingerprint: 'b1bfbb98b4f7',
+  databaseFingerprint,
   expectedMigrations: 82,
   appliedMigrations: 82,
   schemaCurrent: true,
@@ -56,16 +61,18 @@ const meData = {
 };
 
 const options: PurchaseE2eOptions = {
-  baseUrl: 'https://acme.staging.example.test',
+  baseUrl: 'https://acme.staging.togethercommunity.app',
   environment: 'staging',
   bypassSecret: 'bypass',
   staff: { email: SMOKE_TENANT_CREATOR_EMAIL, password: DEMO_SEED_PASSWORD },
   keys: { restricted: 'rk_test_example', publishable: 'pk_test_example' },
   lockerCode: 'WAW01M',
   runId: 'run-1',
-  artifactDir: null,
   testOrderCap: 3,
+  databaseFingerprint: { expected: STAGING_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
 };
+
+const HOST_PROBLEM = 'PURCHASE_E2E_BASE_URL must be the https origin of the acme fixture workspace on the platform domain';
 
 const lockerOrder: OrderView = {
   id: 'order-1',
@@ -103,7 +110,7 @@ describe('purchaseE2eOptionsFromEnv', () => {
   it('defaults the staging staff account, the locker and the cap', () => {
     const parsed = purchaseE2eOptionsFromEnv({
       ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://acme.staging.example.test',
+      PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'staging',
       PURCHASE_E2E_RUN_ID: 'run-7',
     });
@@ -114,6 +121,7 @@ describe('purchaseE2eOptionsFromEnv', () => {
         runId: 'run-7',
         bypassSecret: null,
         testOrderCap: 300,
+        databaseFingerprint: { expected: null, production: PRODUCTION_FINGERPRINT },
       },
     });
   });
@@ -121,7 +129,7 @@ describe('purchaseE2eOptionsFromEnv', () => {
   it('never falls back to the demo password on production', () => {
     expect(purchaseE2eOptionsFromEnv({
       ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://acme.example.test',
+      PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'production',
     })).toEqual({ problems: ['PURCHASE_E2E_STAFF_PASSWORD is not configured'] });
   });
@@ -134,7 +142,8 @@ describe('purchaseE2eOptionsFromEnv', () => {
     expect(purchaseE2eOptionsFromEnv({
       STRIPE_TEST_RESTRICTED_KEY: restricted,
       STRIPE_TEST_PUBLISHABLE_KEY: publishable,
-      PURCHASE_E2E_BASE_URL: 'https://acme.staging.example.test',
+      PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+      PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'staging',
     })).toEqual({ problems: [problem] });
   });
@@ -142,9 +151,29 @@ describe('purchaseE2eOptionsFromEnv', () => {
   it('refuses a host that is not the fixture workspace', () => {
     expect(purchaseE2eOptionsFromEnv({
       ...testKeys,
-      PURCHASE_E2E_BASE_URL: 'https://studio.staging.example.test',
+      PURCHASE_E2E_BASE_URL: 'https://studio.staging.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'staging',
-    })).toEqual({ problems: ['PURCHASE_E2E_BASE_URL must be the acme fixture workspace host'] });
+    })).toEqual({ problems: [HOST_PROBLEM] });
+  });
+
+  it.each([
+    'http://acme.staging.togethercommunity.app',
+    'https://acme.staging.example.net',
+  ])('refuses %s', (baseUrl) => {
+    expect(purchaseE2eOptionsFromEnv({
+      ...testKeys,
+      PURCHASE_E2E_BASE_URL: baseUrl,
+      PURCHASE_E2E_ENVIRONMENT: 'staging',
+    })).toEqual({ problems: [HOST_PROBLEM] });
+  });
+
+  it('pins production to the production database', () => {
+    expect(purchaseE2eOptionsFromEnv({
+      ...testKeys,
+      PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
+      PURCHASE_E2E_ENVIRONMENT: 'production',
+      PURCHASE_E2E_STAFF_PASSWORD: 'fixture-owner-password',
+    })).toMatchObject({ options: { databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT } } });
   });
 
   it('names every missing input', () => {
@@ -155,6 +184,7 @@ describe('purchaseE2eOptionsFromEnv', () => {
         'STRIPE_TEST_RESTRICTED_KEY is not configured',
         'STRIPE_TEST_PUBLISHABLE_KEY is not configured',
         'PURCHASE_E2E_STAFF_PASSWORD is not configured',
+        'PRODUCTION_DATABASE_FINGERPRINT is not configured',
       ],
     });
   });
@@ -167,7 +197,9 @@ describe('checkoutSessionIdFromUrl', () => {
 
   it.each([
     'https://checkout.stripe.com/c/pay/cs_live_a1B2c3',
-    'https://acme.example.test/checkout/fake?session=fake_123',
+    'https://acme.togethercommunity.app/checkout/fake?session=fake_123',
+    'https://checkout.example.net/c/pay/cs_test_a1B2c3',
+    'https://acme.togethercommunity.app/offer/x?status=success&session_id=cs_test_a1B2c3',
   ])('refuses %s', (url) => {
     expect(() => checkoutSessionIdFromUrl(url)).toThrow('not a test-mode payment page');
   });
@@ -193,6 +225,7 @@ describe('confirmParams', () => {
       'shipping[address][city]': TEST_BUYER_ADDRESS.city,
       'shipping[address][postal_code]': TEST_BUYER_ADDRESS.postalCode,
       'shipping[address][country]': 'PL',
+      'shipping[phone]': TEST_BUYER_ADDRESS.phone,
       shipping_rate: 'shr_1',
       'consent[terms_of_service]': 'accepted',
     });
@@ -200,12 +233,24 @@ describe('confirmParams', () => {
 });
 
 describe('assertTargetIdentity', () => {
-  it('accepts the environment the run targets', () => {
-    expect(() => { assertTargetIdentity(health('staging', false), 'staging'); }).not.toThrow();
+  const fingerprints = { expected: STAGING_FINGERPRINT, production: PRODUCTION_FINGERPRINT };
+
+  it('accepts the environment and the database the run targets', () => {
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('staging', false)), 'staging', fingerprints); }).not.toThrow();
   });
 
   it('refuses production when the run targets staging', () => {
-    expect(() => { assertTargetIdentity(health('production', true), 'staging'); }).toThrow('health reports environment "production"');
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('production', true)), 'staging', fingerprints); }).toThrow('health reports environment "production"');
+  });
+
+  it('refuses a staging deployment on the production database', () => {
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('staging', false, PRODUCTION_FINGERPRINT)), 'staging', { expected: null, production: PRODUCTION_FINGERPRINT }); })
+      .toThrow('staging answers from the production database');
+  });
+
+  it('refuses a database other than the pinned one', () => {
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('staging', false, 'c0ffee000000')), 'staging', fingerprints); })
+      .toThrow(`expected database fingerprint ${STAGING_FINGERPRINT}, received c0ffee000000`);
   });
 });
 
@@ -269,10 +314,10 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' }, ...init });
 
 const recordingFetch = (answer: (url: URL, init: RequestInit | undefined) => Response) => {
-  const calls: Array<{ method: string; url: URL }> = [];
+  const calls: Array<{ method: string; url: URL; redirect: RequestRedirect | undefined }> = [];
   const request: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-    calls.push({ method: init?.method ?? 'GET', url });
+    calls.push({ method: init?.method ?? 'GET', url, redirect: init?.redirect });
     return answer(url, init);
   };
   return { calls, request };
@@ -303,5 +348,6 @@ describe('runPurchaseE2e', () => {
     ]);
     expect(calls.filter((call) => call.method === 'POST').map((call) => call.url.pathname)).toEqual([BETTER_AUTH_PASSWORD_SIGN_IN_PATH]);
     expect(calls.every((call) => call.url.origin !== 'https://api.stripe.com')).toBe(true);
+    expect(calls.every((call) => call.redirect === 'error')).toBe(true);
   });
 });

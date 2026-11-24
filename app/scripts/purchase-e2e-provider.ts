@@ -31,13 +31,16 @@ export const testModeKeyProblem = (name: string, kind: ProviderKeyKind, value: s
 
 export const TEST_CHECKOUT_SESSION_PATTERN = /cs_test_[A-Za-z0-9]+/;
 
+const HOSTED_CHECKOUT_ORIGIN = 'https://checkout.stripe.com';
+const HOSTED_CHECKOUT_PATH = /^\/c\/pay\/(cs_test_[A-Za-z0-9]+)$/;
+
 export const checkoutSessionIdFromUrl = (url: string): string => {
   const parsed = new URL(url);
-  const match = TEST_CHECKOUT_SESSION_PATTERN.exec(`${parsed.pathname}${parsed.search}`);
-  if (match === null) {
+  const match = parsed.origin === HOSTED_CHECKOUT_ORIGIN ? HOSTED_CHECKOUT_PATH.exec(parsed.pathname) : null;
+  if (match?.[1] === undefined) {
     throw new Error(`checkout answered ${parsed.origin}${parsed.pathname}, which is not a test-mode payment page`);
   }
-  return match[0];
+  return match[1];
 };
 
 interface ProviderRequest {
@@ -104,6 +107,7 @@ export const paymentIntentOf = (session: ProviderCheckoutSession): string | null
 export interface TestBuyerAddress {
   name: string;
   email: string;
+  phone: string;
   line1: string;
   city: string;
   postalCode: string;
@@ -112,6 +116,7 @@ export interface TestBuyerAddress {
 
 export const TEST_BUYER_ADDRESS: Omit<TestBuyerAddress, 'email'> = {
   name: 'Purchase Test Buyer',
+  phone: '+48500100200',
   line1: 'Test Street 1',
   city: 'Warsaw',
   postalCode: '00-001',
@@ -134,6 +139,7 @@ export const confirmParams = (
       'shipping[address][city]': buyer.city,
       'shipping[address][postal_code]': buyer.postalCode,
       'shipping[address][country]': buyer.country,
+      'shipping[phone]': buyer.phone,
     }),
     ...(shippingRate === null ? {} : { shipping_rate: shippingRate }),
     ...(session.consent_collection?.terms_of_service === 'required' ? { 'consent[terms_of_service]': 'accepted' } : {}),
@@ -167,8 +173,12 @@ export const completeTestCheckout = async (
   keys: { restricted: string; publishable: string },
   sessionId: string,
   buyer: TestBuyerAddress,
+  expectedAmountCents: number,
 ): Promise<ProviderCheckoutSession> => {
   const { parsed: session } = await retrieveCheckoutSession(request, keys.restricted, sessionId);
+  if (session.amount_total !== expectedAmountCents) {
+    throw new Error(`checkout session ${sessionId} charges ${String(session.amount_total)}, the fixture prices add up to ${String(expectedAmountCents)}`);
+  }
   const paymentMethod = paymentMethodSchema.parse(await providerCall(request, {
     key: keys.publishable,
     method: 'POST',
@@ -227,11 +237,7 @@ export interface ReplayExpectation {
   shippingCountry: string | null;
 }
 
-/**
- * Runs a provider-rendered Checkout Session through the same adapter parse the
- * webhook route uses, without the network: a delivery the parse cannot read
- * is what refused every shipped order on 2026-11-22.
- */
+/** A delivery the webhook parse cannot read is what refused every shipped order on 2026-11-22. */
 export const replayCheckoutSession = async (
   session: unknown,
   apiVersion: string,

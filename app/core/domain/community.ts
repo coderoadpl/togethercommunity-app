@@ -126,13 +126,7 @@ const changeProposalNotificationPayloadSchema = z.object({
 
 export type ChangeProposalNotificationFacts = z.output<typeof changeProposalNotificationPayloadSchema>;
 
-/**
- * One payload shape for every notification kind so clients render without
- * narrowing: `lessonName` holds the lesson name for lesson contexts, the space
- * name for space contexts and the sender display for direct messages, while
- * `domain` carries tenant contexts, which have no post, author or context row
- * (courseId stays null outside lessons).
- */
+/** One payload shape for every notification kind so clients render without narrowing. */
 const notificationPayloadSchema = z.object({
   // Defaults keep rows persisted before these fields existed parseable, and the
   // nullable ids carry the kinds that have no post, author or context of their own.

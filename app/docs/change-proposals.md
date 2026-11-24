@@ -1260,7 +1260,7 @@ Before the approval transaction opens, the approval checks, for each image the
 effect sets, its public object
 `image-assets/<workspace>/<kind>/<sha256>.<ext>`: a read of its bytes, whose
 hash must be the digest, keeping their size and the entity tag of that same
-response when it is a strong one (not `W/…`). These checks run at most 4 at a
+response when it is a strong one (a quoted string without `W/`). These checks run at most 4 at a
 time (`PROPOSAL_IMAGE_REUSE_CHECKS.concurrency`), each request within its 5
 seconds, and every request starts and ends within one wall-clock budget of 15
 seconds (`PROPOSAL_IMAGE_REUSE_CHECKS.budgetMs`): a request that cannot start
@@ -1289,7 +1289,11 @@ request (`HEAD`) only, whose size and entity tag must be those of that read;
 one whose read carried no strong entity tag (none, a weak one, or a value
 that is not a quoted string) is read and hashed
 again within the 5 seconds of a read, since equal metadata say nothing about
-its bytes. A copy that changed makes an address without a quarantined copy
+its bytes. Known limit: the 15-second budget and the concurrency of 4 apply
+only before the transaction; on a storage that sends no strong entity tag the
+reused copies are read again one by one under the lock, each with its own 5
+seconds and without a shared budget, so a large group can run past the server
+function limit and roll back. A copy that changed makes an address without a quarantined copy
 `stale`, and answers `503 unavailable` for one with a quarantined copy. When every item applied, the approval locks the records of the
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and

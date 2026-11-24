@@ -43,9 +43,12 @@ preserving coverage of both settings surfaces and their headings.
 Lesson lightbox captures are page variants declared in
 `scripts/visual-screen-inventory.ts` and mapped in
 `scripts/storybook-page-screens.ts`. They reuse the recorded lesson fixture with
-local image content and open the overlay through a story interaction. Desktop
-and mobile goldens cover a captioned SVG in light mode and a raster image with
-alternative text in dark mode, including the lesson shell behind the overlay.
+local image content. The light desktop variant opens the overlay with a real
+pointer click in the capture's readiness step, so its close button shows no
+focus ring; the others open it through a story interaction. The goldens cover a
+small captioned raster (light desktop), a captioned transparent SVG in Polish
+(light mobile) and in the dark theme (dark desktop), and a raster with
+alternative text only (dark mobile), including the lesson shell behind the overlay.
 Each variant uses an isolated browser context and the normal fixture readiness
 handshake; no new recording scenario or database is required.
 
@@ -76,7 +79,12 @@ fonts before mounting to reproduce navigation within an already loaded panel.
 Course captures repaint their asynchronously settled notification badge, public
 sidebar icons and editor upload control before the screenshot: repeated runs of
 those screens alternated between two antialias states for the same geometry, and
-forcing a re-raster once the chrome is final made them byte-stable. Each repaint
+forcing a re-raster once the chrome is final made them byte-stable. The mobile
+lesson lightbox captures repaint the lesson footer bar behind the scrim for the
+same reason: the lesson image can finish loading after the overlay opens and move
+that bar, and repeated runs left its outlined previous-lesson button one pixel
+apart. The differences were seen only in the mobile captures, so the repaint runs
+below 900 px. Each repaint
 first waits for its target, so a selector that stops matching fails the capture
 instead of silently skipping the re-raster.
 The mobile long-curriculum capture moves the pointer off the program button and

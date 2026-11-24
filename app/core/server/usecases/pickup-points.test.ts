@@ -55,6 +55,7 @@ describe('parcel locker lookup', () => {
     [TEST_PICKUP_POINTS.notFound, { status: 'not_found' }],
     [TEST_PICKUP_POINTS.unavailable, { status: 'unavailable' }],
     [TEST_PICKUP_POINTS.notOperating, { status: 'found', usable: false, reason: 'not_operating' }],
+    [TEST_PICKUP_POINTS.unknownStatus, { status: 'unavailable' }],
     [TEST_PICKUP_POINTS.wrongType, { status: 'found', usable: false, reason: 'not_usable' }],
   ])('describes %s', async (code, expected) => {
     expect(await lookupParcelLocker('tenant-a', { code }, harness().deps)).toMatchObject({ ok: true, value: expected });

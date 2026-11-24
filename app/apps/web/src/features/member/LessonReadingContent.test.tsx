@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { en } from '../../i18n/en.js';
 import { stylesAt } from '../../lib/stylesheet.js';
 import { LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
-import { writeLessonTextAutoExpand } from './lesson-reading-preference.js';
+import { readLessonTextAutoExpand, writeLessonTextAutoExpand } from './lesson-reading-preference.js';
 
 describe('LessonReadingContent', () => {
   let contentHeight = 100;
@@ -108,6 +108,39 @@ describe('LessonReadingContent', () => {
     expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'true');
   });
 
+  it('remembers Show all and collapse as the reading preference', async () => {
+    contentHeight = 1200;
+    const user = userEvent.setup();
+    const first = render(<LessonReadingContent html="<p>Long text.</p>" />);
+    await user.click(screen.getByRole('button', { name: en.lesson.showAll }));
+    expect(readLessonTextAutoExpand()).toBe(true);
+    first.unmount();
+
+    render(<LessonReadingContent html="<p>Long text.</p>" />);
+    const collapse = screen.getByRole('button', { name: en.lesson.collapseText });
+    await user.click(collapse);
+    expect(readLessonTextAutoExpand()).toBe(false);
+  });
+
+  it('starts expanded when asked to without changing the saved preference', async () => {
+    contentHeight = 1200;
+    render(<LessonReadingContent html="<p>Long text.</p>" startExpanded />);
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
+    expect(readLessonTextAutoExpand()).toBe(false);
+    await userEvent.setup().click(screen.getByRole('button', { name: en.lesson.collapseText }));
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'true');
+  });
+
+  it('does not save a preference when focus or a heading link reveals the text', () => {
+    contentHeight = 1200;
+    render(<LessonReadingContent html="<h2 id='section'>Section</h2><p>Long text.</p>" />);
+    const heading = document.getElementById('section');
+    if (heading === null) throw new Error('Expected heading');
+    fireEvent(heading, new Event(LESSON_TEXT_REVEAL_EVENT, { bubbles: true }));
+    expect(screen.getByTestId('lesson-reading-preview')).toHaveAttribute('data-collapsed', 'false');
+    expect(readLessonTextAutoExpand()).toBe(false);
+  });
+
   it('finishes the visual fade before a caption crossing the preview boundary', () => {
     contentHeight = 1200;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -173,7 +206,7 @@ describe('LessonReadingContent', () => {
     const user = userEvent.setup();
     render(<LessonReadingContent html="<figure><img src='/diagram.svg' alt='Diagram'><figcaption>Complete caption.</figcaption></figure><p>Long text.</p>" />);
     const preview = screen.getByTestId('lesson-reading-preview');
-    const image = screen.getByRole('button', { name: en.lesson.enlargeImage });
+    const image = screen.getByRole('button', { name: en.lesson.enlargeNamedImage({ alt: 'Diagram' }) });
     expect(preview).toHaveAttribute('data-collapsed', 'true');
 
     if (activation === 'click') await user.click(image);
@@ -184,7 +217,7 @@ describe('LessonReadingContent', () => {
       await user.keyboard(activation === 'Enter' ? '{Enter}' : ' ');
     }
 
-    const dialog = screen.getByRole('dialog', { name: en.lesson.enlargeImage });
+    const dialog = screen.getByRole('dialog', { name: 'Diagram' });
     expect(dialog).toHaveAccessibleDescription('Complete caption.');
     expect(within(dialog).getByRole('img', { name: 'Diagram' })).toBeVisible();
     await user.keyboard('{Escape}');

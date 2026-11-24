@@ -63,27 +63,39 @@ const lessonImageRendered = (canvasElement: HTMLElement, abortSignal: AbortSigna
   observer.observe(canvasElement, { childList: true, subtree: true });
   abortSignal.addEventListener('abort', () => observer.disconnect(), { once: true });
 });
+const openLightbox: Story['play'] = async ({ canvasElement, abortSignal }) => {
+  await lessonImageRendered(canvasElement, abortSignal);
+  const image = canvasElement.querySelector('[data-testid="lesson-html"] img[role="button"]');
+  if (!(image instanceof HTMLImageElement)) return;
+  await userEvent.click(image);
+  await within(document.body).findByRole('dialog');
+};
+const vectorFigure = '<h3>Image reference</h3><p>Select the figure to inspect it at a larger size.</p><figure><img src="/brand/together-horizontal-light.svg" alt="Together wordmark"><figcaption>A vector image fills the viewer and keeps a white backing behind its transparent areas.</figcaption></figure>';
 export const LightboxLightDesktop: Story = {
   parameters: {
-    fixture: lightboxFixture('<h3>Image reference</h3><p>Select the figure to inspect it at a larger size.</p><figure><img src="/brand/together-horizontal-light.svg" alt="Together wordmark"><figcaption>A vector image stays sharp when enlarged.</figcaption></figure>'),
+    fixture: lightboxFixture('<h3>Image reference</h3><p>Select the icon to inspect it at a larger size.</p><figure><img src="/icons/pwa-192.png" alt="Together app icon"><figcaption>A small raster image is shown at most at its natural size.</figcaption></figure>'),
     colorScheme: 'light',
   },
   globals: { viewport: { value: 'desktop' } },
-  play: async ({ canvasElement, abortSignal }) => {
-    await lessonImageRendered(canvasElement, abortSignal);
-    await userEvent.click(await within(canvasElement).findByRole('button', { name: en.lesson.enlargeImage }));
-    await within(document.body).findByRole('dialog', { name: en.lesson.enlargeImage });
-  },
 };
-export const LightboxLightMobile: Story = { ...LightboxLightDesktop, globals: { viewport: { value: 'mobile' } } };
+export const LightboxLightMobile: Story = {
+  parameters: { fixture: lightboxFixture(vectorFigure), colorScheme: 'light', locale: 'pl' },
+  globals: { viewport: { value: 'mobile' } },
+  play: openLightbox,
+};
 export const LightboxDarkDesktop: Story = {
-  ...LightboxLightDesktop,
+  parameters: { fixture: lightboxFixture(vectorFigure), colorScheme: 'dark' },
+  globals: { viewport: { value: 'desktop' } },
+  play: openLightbox,
+};
+export const LightboxDarkMobile: Story = {
   parameters: {
     fixture: lightboxFixture('<h3>Image reference</h3><p>Select the image to inspect it at a larger size.</p><img src="/brand/og-image-1200x630.png" alt="Together community illustration">'),
     colorScheme: 'dark',
   },
+  globals: { viewport: { value: 'mobile' } },
+  play: openLightbox,
 };
-export const LightboxDarkMobile: Story = { ...LightboxDarkDesktop, globals: { viewport: { value: 'mobile' } } };
 const actionFixture = (completed: boolean, next: 'unlocked' | 'locked' | 'none') => ({
   ...fixture,
   calls: {

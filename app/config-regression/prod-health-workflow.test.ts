@@ -23,10 +23,11 @@ const workflow = workflowSchema.parse(parse(readFileSync(
   join(import.meta.dirname, '..', '..', '.github', 'workflows', 'prod-health.yml'),
   'utf8',
 )));
-const script = workflow.jobs.probe.steps.find(
+const probeStep = workflow.jobs.probe.steps.find(
   (step) => step.id === 'probe' && step.name === 'Probe production health',
-)?.run;
-if (script === undefined) throw new Error('Probe production health step is missing');
+);
+if (probeStep?.run === undefined) throw new Error('Probe production health step is missing');
+const script = probeStep.run;
 
 const curlStub = `#!/bin/bash
 outfile=""

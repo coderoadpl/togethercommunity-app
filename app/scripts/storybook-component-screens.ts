@@ -1,3 +1,4 @@
+import type { Page } from 'playwright-core';
 import { visible, type ScreenSpec } from './visual-screen-inventory.js';
 
 const storyByScreen: ReadonlyMap<string, string> = new Map([
@@ -145,6 +146,14 @@ export const retapDisclosureOnPhone = async (page: DisclosurePage): Promise<void
   await dialog.getByRole('button', { expanded: false }).click();
 };
 
+// The autosized field can measure its height before the web font arrives and stay one wrap short on a phone; a window resize makes it measure again.
+const fitAutosizedTextarea = async (page: Page): Promise<void> => {
+  const field = page.getByTestId('meta-capi-settings-preview').locator('textarea:not([aria-hidden="true"])').first();
+  await field.waitFor(visible);
+  await page.evaluate(() => { window.dispatchEvent(new Event('resize')); });
+  await page.waitForFunction((element) => element !== null && element.scrollHeight <= element.clientHeight, await field.elementHandle(), { timeout: 5000 });
+};
+
 export const componentScreens: readonly ScreenSpec[] = [
   { name: 'meta-capi-consent', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByRole('dialog').waitFor(visible); } },
   { name: 'meta-capi-expanded', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => {
@@ -152,7 +161,7 @@ export const componentScreens: readonly ScreenSpec[] = [
     await page.getByRole('listitem').first().waitFor(visible);
   } },
   { name: 'meta-capi-decided', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('meta-capi-preview').getByRole('status').waitFor(visible); } },
-  { name: 'meta-capi-settings', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('meta-capi-settings-preview').waitFor(visible); } },
+  { name: 'meta-capi-settings', auth: 'public', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('meta-capi-settings-preview').waitFor(visible); }, settled: fitAutosizedTextarea },
   { name: 'order-verification-dark-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
   { name: 'order-verification-dark-desktop', auth: 'public', path: '', viewports: ['desktop'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },
   { name: 'order-verification-light-mobile', auth: 'public', path: '', viewports: ['mobile'], minBytes: 4 * 1024, fullPage: true, ready: async (page) => { await page.getByTestId('order-verification').waitFor(visible); } },

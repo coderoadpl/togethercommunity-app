@@ -92,6 +92,10 @@ blurs the trigger after dismissing its sheet, then asserts that it is neither
 hovered nor focused, so prior interactions cannot change its captured background.
 The email integration story preserves the initial font-loading sequence used
 by its recorded tab-underline measurement through `preloadFonts: false`.
+The Meta settings capture fires a window resize and waits until the autosized
+consent text field fits its content: on a phone the field could measure its
+height before the web font arrived and stay one wrap short, which changed the
+page height between runs.
 The lesson-attachment scenario explicitly scrolls its HTML
 field to the recorded end position. DNS fixtures open settings without an initial
 hash jump; the harness scrolls to the domain section after fonts settle so the

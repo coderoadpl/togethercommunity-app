@@ -765,12 +765,10 @@ export interface MemberCourseProgressRepository {
     input: { memberId: string; courseId: string },
   ): Promise<MemberCourseProgress | null>;
   listByMember(tenantId: string, memberId: string): Promise<MemberCourseProgress[]>;
-  /** Creates the row when missing; records the completion event only when the lesson was not yet completed. */
   addCompletedLesson(
     tenantId: string,
     input: { id: string; memberId: string; courseId: string; lessonId: string; now: string },
   ): Promise<MemberCourseProgress>;
-  /** Never creates a row: `null` when the member has no progress in the course. */
   removeCompletedLesson(
     tenantId: string,
     input: { memberId: string; courseId: string; lessonId: string; now: string },

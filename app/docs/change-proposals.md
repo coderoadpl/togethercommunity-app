@@ -2398,6 +2398,16 @@ release stores is proven by
 - That release has no `POST /api/m2m/shop/products/access`, and its product
   creation and owner editor do not check where a lesson sits, so after a
   rollback they accept the lists this release refuses.
+- That release applies a pending `product.create` without the course, module
+  and lesson checks, as it always did for the creates submitted to it: its
+  creation refuses only a course that does not exist in the workspace or is
+  archived. A pending create, alone or in a group, whose list would end
+  `failed` on this release, for a module or a lesson that does not exist or
+  is not part of its course, can therefore be applied there and stays live
+  after rolling forward. Keep the pending `product.create` proposals with access items, and
+  their groups, unapproved during the rollback. This is read from that
+  release's source (`createProduct` in `core/server/usecases/products.ts` and
+  the product repository's `create`), not tested.
 - A panel tab or a CLI of that release talking to this release's server fails
   to parse an owner view that carries `accessLabels` until it is reloaded or
   updated; after a rollback the server no longer sends it.
@@ -2427,6 +2437,16 @@ Before the rollback, count the proposals it can no longer apply:
 ```sql
 select count(*) from change_proposals
 where status = 'pending' and operation = 'product.set-access';
+```
+
+the candidates among the pending creates it would apply without the checks
+(a candidate search: it counts every pending create with access items, also
+one whose list passes and one whose expiry has passed):
+
+```sql
+select count(*) from change_proposals
+where status = 'pending' and operation = 'product.create'
+  and jsonb_typeof(input->'accessItems') = 'array' and input->'accessItems' <> '[]'::jsonb;
 ```
 
 and the modules and products whose exclusions close again, with the query in

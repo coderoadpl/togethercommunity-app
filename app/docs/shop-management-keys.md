@@ -1878,6 +1878,17 @@ delete its `change-proposal` notifications, as
 [Rolling back](change-proposals.md#download-files) under Download files
 shows.
 
+That release also applies a pending `product.create` without the course,
+module and lesson checks this release runs at approval, as it always did for
+the creates submitted to it: its creation refuses only a course that does not
+exist in the workspace or is archived. A pending create, alone or in a group,
+whose access list would end `failed` here can therefore be applied there and
+stays live after rolling forward. Keep the pending `product.create` proposals
+with access items, and their groups, unapproved during the retreat; the
+candidate count is under Rolling back in
+[Product access](change-proposals.md#product-access). This is read from that
+release's source, not tested.
+
 A retreat to a release that predates migration `0163_change_proposals` needs
 no purge either, although that release reads `shop_management_keys` and
 ignores its `mode` column. A propose-mode key is stored under the hash of its

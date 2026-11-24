@@ -253,6 +253,59 @@ describe('renderEmailOutboxPayload', () => {
   });
 });
 
+const previousTextFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
+
+const textPartFromHtml = (html: string): string => {
+  const rendered = renderEmailOutboxPayload({ kind: 'm2m-transactional', subject: 'Notice', html });
+  if (!rendered.success) throw new Error('the m2m-transactional payload did not render');
+  return rendered.data.text;
+};
+
+const seededRandom = (seed: number) => {
+  let state = seed;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296;
+  };
+};
+
+describe('the text part derived from API-submitted html', () => {
+  it.each([
+    ['<p>Hello <b>world</b></p>', 'Hello world'],
+    ['plain text', 'plain text'],
+    ['<p>unterminated <b', 'unterminated <b'],
+    ['a < b and c', 'a < b and c'],
+    ['a > b', 'a > b'],
+    ['<a<b>>', '>'],
+    ['x <a<b>> y', 'x > y'],
+    ['<p>Fish &amp; chips&nbsp;&lt;3</p>', 'Fish &amp; chips&nbsp;&lt;3'],
+    ['  <p>\n\tline one</p>\r\n<p>line\u00a0\u2028two</p>\u3000\ufeff ', 'line one line two'],
+    ['one\u200btwo', 'one\u200btwo'],
+    ['<br><hr/>', '<br><hr/>'],
+    [' \n\t ', ' \n\t '],
+    ['<p></p>x<', 'x<'],
+    ['<<<>', '<<<>'],
+  ])('derives the same text as before from %j', (html, expected) => {
+    expect(previousTextFromHtml(html)).toBe(expected);
+    expect(textPartFromHtml(html)).toBe(expected);
+  });
+
+  it('derives the same text as before for seeded random short markup', () => {
+    const alphabet = ['<', '>', '<', '>', 'a', 'b', '/', '&', ';', ' ', '\n', '\t', '\r', '\v', '\f', '\u00a0', '\u1680', '\u2000', '\u200a', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff', '\u200b', '\u180e', 'é', '\u{1f600}'];
+    const random = seededRandom(20_261_124);
+    for (let sample = 0; sample < 5_000; sample += 1) {
+      const length = 1 + Math.floor(random() * 24);
+      let html = '';
+      for (let position = 0; position < length; position += 1) {
+        html += alphabet[Math.floor(random() * alphabet.length)] ?? '';
+      }
+      expect(textPartFromHtml(html), JSON.stringify(html)).toBe(previousTextFromHtml(html));
+    }
+  });
+});
+
 describe('isAuthBearingEmailPayload', () => {
   it.each(emailOutboxPayloadSchema.options.map((option) => ({ kind: option.shape.kind.value })))(
     'classifies $kind for global auth bearer isolation',

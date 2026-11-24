@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'node:crypto';
 
+import { Agent } from 'undici';
 import { describe, expect, it, vi } from 'vitest';
 
 import { err, notFound, ok, storageFailureIsDefinite, type StorageConfiguration } from '#core/domain/index.js';
@@ -1043,6 +1044,42 @@ describe('image publication storage operations', () => {
       fetchStorage: async () => streamedResponse(404, chunks).response,
     });
     expect(await storage.getObject({ ...credentials, deadlineMs: 50 }, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
+  it('reads the whole 404 body of a digest before it closes the connection, so a missing key split across chunks stays a missing key', async () => {
+    const events: string[] = [];
+    let connection: Agent | null = null;
+    const chunks = ['<Error><Code>NoSuch', 'Key</Code></Error>'].map((part) => new TextEncoder().encode(part));
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        const { dispatcher } = init;
+        if (!(dispatcher instanceof Agent)) throw new Error('Expected a pinned dispatcher');
+        connection = dispatcher;
+        let index = 0;
+        return {
+          ok: false, status: 404, headers: { get: () => null }, text: async () => '',
+          body: {
+            cancel: async () => undefined,
+            getReader: () => ({
+              read: async () => {
+                await new Promise((resolve) => { setTimeout(resolve, 5); });
+                const value = chunks[index];
+                index += 1;
+                events.push(`${value === undefined ? 'end' : 'chunk'}${dispatcher.destroyed ? ' after close' : ''}`);
+                return value === undefined ? { done: true } : { done: false, value };
+              },
+              cancel: async () => undefined,
+              releaseLock: () => undefined,
+            }),
+          },
+        };
+      },
+    });
+    expect(await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(events).toEqual(['chunk', 'chunk', 'end']);
+    expect(connection?.destroyed).toBe(true);
   });
 
   it.each([16, 'endless'] as const)('reports a copy answered 404 with an unreadable body (%s) as a storage error without a definite outcome', async (chunks) => {

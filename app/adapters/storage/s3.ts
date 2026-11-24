@@ -725,7 +725,7 @@ export const createS3StorageProvider = (
         const response = await abortable(fetchStorage(signed.value, {
           method: 'GET', dispatcher, redirect: 'error', signal, headers: { 'Accept-Encoding': 'identity' },
         }), signal);
-        if (response.status === 404) return missingObjectOrBucket(response, signal);
+        if (response.status === 404) return await missingObjectOrBucket(response, signal);
         const length = response.headers.get('content-length');
         const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
         if (response.ok && Number.isSafeInteger(size) && (size < 1 || size > maxBytes)) {

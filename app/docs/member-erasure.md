@@ -130,6 +130,17 @@ member, and these rows are addressed to staff: the support message
 (`payload.memberEmail`) and the staff e-mail about an order cancelled out of
 stock (`payload.buyerEmail`).
 
+Staff refunds (`order_staff_refunds`) are staff records and stay with the order
+after its buyer is erased: the requester's user id and e-mail address belong
+to the staff member, not the buyer, and the reason note is staff-only free text
+that is never sent to the buyer or the payment provider. Like
+`post_reports.note`, the transaction does not rewrite that note, so a note in
+which staff named the buyer keeps that text; the rows go only with the order
+or the workspace (both foreign keys cascade). The pre-rendered buyer refund
+notice and staff refund alerts (`m2m-transactional`, source `staff-refunds`)
+carry the workspace name, the order reference and the amount, and no buyer
+name, address or staff note.
+
 The staff member-detail surface preserves learning, grant, and e-mail history.
 It hides granting and renewal controls for a tombstoned member, while keeping
 Revoke as a reducing corrective action. This is deliberately a UI-only guard:

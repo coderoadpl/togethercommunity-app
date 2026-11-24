@@ -6,6 +6,7 @@ import { createCouponRedemptionRepository } from './coupon-repositories.js';
 import { createCheckoutConsentJobRepository } from './checkout-consent-jobs.js';
 import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createOrderRefundJobRepository } from './order-refund-jobs.js';
+import { createOrderStaffRefundRepository } from './order-staff-refunds.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { createStockRepository } from './stock.js';
 import {
@@ -64,6 +65,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           emailOutbox,
           autoInvoiceJobs: createAutoInvoiceJobRepository(tx),
           orderRefundJobs: createOrderRefundJobRepository(tx),
+          orderStaffRefunds: createOrderStaffRefundRepository(tx),
           checkoutConsentJobs: createCheckoutConsentJobRepository(tx),
           consentTransaction: createPaymentTransactionPort(tx),
           consents: createTermsConsentRepository(tx),

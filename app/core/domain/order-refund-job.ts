@@ -82,6 +82,9 @@ export const orderRefundPermissionRetryAt = (blockedAt: string, now: string): st
     ? null
     : new Date(Date.parse(now) + ORDER_REFUND_PERMISSION_RETRY_MS).toISOString();
 
+export const orderRefundPermissionDeadline = (blockedAt: string): string =>
+  new Date(Date.parse(blockedAt) + ORDER_REFUND_PERMISSION_WINDOW_MS).toISOString();
+
 export const orderRefundStatusCheckAt = (submittedAt: string, completedChecks: number): string | null => {
   const after = ORDER_REFUND_STATUS_CHECKS_AFTER_MS[completedChecks];
   return after === undefined ? null : new Date(Date.parse(submittedAt) + after).toISOString();

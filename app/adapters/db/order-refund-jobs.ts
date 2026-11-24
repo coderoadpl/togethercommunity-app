@@ -7,13 +7,13 @@ import type { Db } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
 
-const isoOrNull = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
+export const isoOrNull = (value: string | null): string | null => value === null ? null : new Date(value).toISOString();
 
-const DUE_STATUSES = ['pending', 'blocked_permission', 'submitted', 'succeeded'] as const;
+export const DUE_STATUSES = ['pending', 'blocked_permission', 'submitted', 'succeeded'] as const;
 
 const isDue = (now: string) => and(inArray(orderRefundJobs.status, [...DUE_STATUSES]), lte(orderRefundJobs.nextAttemptAt, now));
 
-const toJob = (row: typeof orderRefundJobs.$inferSelect): OrderRefundJob => orderRefundJobSchema.parse({
+export const toJob = (row: typeof orderRefundJobs.$inferSelect): OrderRefundJob => orderRefundJobSchema.parse({
   ...row,
   nextAttemptAt: isoOrNull(row.nextAttemptAt),
   lockedAt: isoOrNull(row.lockedAt),

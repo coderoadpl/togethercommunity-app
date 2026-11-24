@@ -6,7 +6,6 @@ import type { Command } from 'commander';
 import { z } from 'zod';
 
 import {
-  apiFailureSource,
   changeProposalCreatedKind,
   createShopManagementClient,
   isProposedChange,
@@ -245,15 +244,16 @@ const FILE_CAP_HINTS = {
 
 const capDetailsSchema = z.object({ changeProposalCap: z.string() });
 
-const stagedFileState = (error: AppError, attach: { stagedId: string; productId: string }): string =>
-  apiFailureSource(error) === 'server'
-    ? `; the file stays staged as ${attach.stagedId} until it is discarded, or until 7 days after it was staged once no pending proposal holds it ("together shop files discard ${attach.stagedId}")`
-    : `; the answer to the attach was lost, so it is not known whether the staged file ${attach.stagedId} was attached or proposed: check "together shop files list ${attach.productId}", "together shop files staged" and "together shop proposals list"`;
+const stagedFileState = (attach: { stagedId: string; productId: string }): string =>
+  `; check whether the staged file ${attach.stagedId} was attached, proposed or is still staged with `
+  + `"together shop files list ${attach.productId}", "together shop files staged" and "together shop proposals list"; `
+  + `if it is still staged and no pending proposal holds it, the sweep may remove it from 7 days after it was staged, `
+  + `and "together shop files discard ${attach.stagedId}" removes it at once`;
 
 const withFileHint = (error: AppError, attach?: { stagedId: string; productId: string }): AppError => {
   const cap = capDetailsSchema.safeParse(error.details);
   const hint = cap.success ? Object.entries(FILE_CAP_HINTS).find(([known]) => known === cap.data.changeProposalCap)?.[1] : undefined;
-  const state = attach === undefined ? '' : stagedFileState(error, attach);
+  const state = attach === undefined ? '' : stagedFileState(attach);
   return { ...error, message: `${error.message}${hint === undefined ? '' : ` (${hint})`}${state}` };
 };
 

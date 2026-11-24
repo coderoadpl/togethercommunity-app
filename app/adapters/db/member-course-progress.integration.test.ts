@@ -122,6 +122,7 @@ const overlapOnLockedRow = async <T>(writes: Array<() => Promise<T>>): Promise<T
   const holder = new pg.Client({ connectionString: database.url });
   await holder.connect();
   const pending: Array<Promise<Settled<T>>> = [];
+  let settled: Array<Settled<T>> = [];
   try {
     await holder.query('begin');
     await holder.query('select id from member_course_progress where tenant_id = $1 and id = $2 for update', [TENANT, PROGRESS]);
@@ -132,8 +133,8 @@ const overlapOnLockedRow = async <T>(writes: Array<() => Promise<T>>): Promise<T
   } finally {
     await holder.query('commit');
     await holder.end();
+    settled = await Promise.all(pending);
   }
-  const settled = await Promise.all(pending);
   return settled.map((outcome) => {
     if (!outcome.ok) throw outcome.error;
     return outcome.value;
@@ -224,6 +225,17 @@ it('records a repeated completion once, with a single completion event', async (
   expect(repeated).toMatchObject({ ok: true, value: { completedLessonIds: ['lesson-1'] } });
   expect((await storedProgress())?.completedLessonIds).toEqual(['lesson-1']);
   expect(await completionEvents()).toEqual([{ courseId: COURSE, lessonId: 'lesson-1' }]);
+}, 60_000);
+
+it('records the completion event of a lesson with a very long id', async () => {
+  const longLessonId = 'l'.repeat(1000);
+
+  const stored = await createMemberCourseProgressRepository(database.db).addCompletedLesson(TENANT, {
+    memberId: MEMBER, courseId: COURSE, id: 'long-lesson-request', lessonId: longLessonId, now: nextInstant(),
+  });
+
+  expect(stored.completedLessonIds).toEqual([longLessonId]);
+  expect(await completionEvents()).toEqual([{ courseId: COURSE, lessonId: longLessonId }]);
 }, 60_000);
 
 it('removes only the un-completed lesson and keeps the pointers', async () => {

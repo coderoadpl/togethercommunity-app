@@ -1934,10 +1934,12 @@ to refund the payment in the Stripe Dashboard.
   refund. The handler also
   makes the order's waiting staff refunds due at once, so Studio shows the
   outcome within a minute. Access revoked that way is not given back when the
-  refund fails later: the `failed_after_submission` alert of a staff refund
-  tells staff to grant it again on the member page and, because an order
-  marked refunded cannot be refunded again here, to refund the payment in the
-  Stripe Dashboard. A partial refund keeps access and the subscription, but
+  refund fails later: the `failed_after_submission` alert of a staff refund and
+  Studio's refund history tell staff to check the member's access and restore
+  it only if it was revoked and should be restored (a partial refund never ends
+  access, and another purchase may have kept it) and, because an order marked
+  refunded cannot be refunded again here, to refund the payment in the Stripe
+  Dashboard. A partial refund keeps access and the subscription, but
   the dialog and the CLI preview say that when the payment ends fully refunded
   (for example through another refund, also one made in the Stripe Dashboard)
   access may end and the subscription stops, as for a full refund.
@@ -1963,8 +1965,12 @@ to refund the payment in the Stripe Dashboard.
   rules, but with wording of its own: a staff member asked to refund the amount
   of the order, what state it is in, whether anything was refunded, the stock
   and packing changes that stay for a refund that is no longer tried, the
-  access guidance for a refund that failed after it was issued (grant access
-  again on the member page) and the last error. A retry whose request got an
+  access guidance for a refund that failed after it was issued (check the
+  member's access and restore it only if it was revoked and should be
+  restored) and the last error. The `failed` alert and the one still blocked
+  after 72 hours, where nothing was refunded, tell staff to refund the requested
+  amount again from the order page as a partial refund, not the whole
+  remainder, or at most that amount by hand in the Stripe Dashboard. A retry whose request got an
   answer says the refund has not reached Stripe yet; a retry after an unknown
   outcome has a subject of its own ("outcome not known yet") and says Stripe
   may already have received the request, which the retries repeat, so the
@@ -2018,7 +2024,7 @@ Routes (session only, `order:refund`, see [the route table](route-table.md)):
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), the part of Stripe's committed refunds that is not final yet (`providerNotFinalCents`: refunds Stripe lists as `pending` or `requires_action`, dashboard refunds included; 0 when the list could not be read), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
 | `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
 | `POST /api/orders/:orderId/packing-list` | Ship anyway |
 
@@ -2039,19 +2045,32 @@ from a `refunded` status; refunds made outside the platform, disputes, refunds
 only requested (`pending`, `running`, `blocked_permission`) and refunds with no
 Stripe refund of their own (a worker lost before it called Stripe, or a refund
 only watching a refusal as already refunded) are not in it, although the last
-ones stay reserved against a second refund. The
+ones stay reserved against a second refund. For an order cancelled because its
+goods sold out, the sold-out job counts with its target, the whole payment it
+refunds, also when refunds made outside the platform already paid part of it
+and the job's own Stripe refund paid only the shortfall: the job and those
+refunds together returned the payment, so the column says how much of the
+order was refunded, not how much the job's own refund paid. The order detail
+totals and the preview without Stripe's list count it the same way. The
 shop integration order feed is unchanged. An invoiced order gets no automatic
 correcting invoice; the preview says the order has one.
 
 In Studio the order detail shows a **Payment** card with the paid, refunded and
-remaining amounts. Refunded counts only observed refunds (refunds not yet
-confirmed by Stripe are counted and named); with Stripe's totals a staff
-refund counts in them only when the preview says Stripe's list shows it, and
-with the platform's only when it has a Stripe refund of its own. Any other
-refund still waiting, or one whose request may have reached Stripe without an
-answer, is listed apart as a requested refund: "may already be at Stripe" when
-its request may have reached Stripe, "waiting for the permission" with a
-warning when it waits for the permission, otherwise "not sent to Stripe yet".
+remaining amounts. Refunded counts only observed refunds; with Stripe's totals
+it names the part Stripe has not finished ("of which X not final at Stripe",
+from `providerNotFinalCents`, also for a dashboard refund no staff refund
+belongs to), and with the platform's records the staff refunds Stripe has not
+confirmed yet; "The whole amount was refunded" appears only when none of it is
+left unfinished. With Stripe's totals a staff refund counts in them only when
+the preview says Stripe's list shows it, and with the platform's only when it
+has a Stripe refund of its own. Any other refund still waiting, one whose
+request may have reached Stripe without an answer, or one only watching other
+refunds after Stripe answered that the charge is already refunded, is listed
+apart as a requested refund, one line per state: "may already be at Stripe"
+when its request may have reached Stripe, "being sent to Stripe now" while the
+dispatcher is calling Stripe, "not sent to Stripe yet", "waiting for the
+permission" with a warning, and "held until other refunds at Stripe settle"
+for a watching refund, which is reserved and so appears on the card too.
 Whenever the refund preview loaded, the card takes its amounts from the
 preview (Stripe's list, or the platform's records with a note saying Stripe's
 list could not be read), so a refund made in the Stripe Dashboard shows as

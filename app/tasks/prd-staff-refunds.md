@@ -148,9 +148,10 @@ workspace's restricted key and what to do about it.
   (a sold-out order is refunded by its own job); and the refundable remainder is above zero. An
   order marked `refunded` is never refundable here, whether it was refunded in full, outside the
   platform or disputed (D-Q4'); the refusal says so. Access the webhook revoked is not restored
-  automatically; the staff alert of a refund that failed after submission says to grant it
-  again on the member page and, for an order already marked refunded, to refund the payment in
-  the provider's dashboard.
+  automatically; the staff alert and the Studio help of a refund that failed after submission
+  say to check the member's access and restore it only if it was revoked and should be restored
+  (D34) and, for an order already marked refunded, to refund the payment in the provider's
+  dashboard.
   Anything else is refused with `conflict` or `validation` and a sentence naming the reason.
 - FR-4: Refundable remainder = paid amount − max(committed refunds listed by the provider at
   request time, committed refunds the platform recorded). Committed = not `failed` and not
@@ -219,7 +220,8 @@ workspace's restricted key and what to do about it.
   Remaining (from the preview whenever it loaded, read from the provider's list or from the
   platform's records with a note saying so, and from the order detail only when the preview
   failed; refunded counts observed refunds only and a refund only requested is listed apart,
-  matched to the provider's list by refund id or `refundJobId` (D27); an order marked refunded is
+  one line per state (D35), matched to the provider's list by refund id or `refundJobId` (D27);
+  the refunded total names the part the provider has not finished (D33); an order marked refunded is
   previewed read-only (D28); an order marked refunded whose observed refunds do not cover the
   payment shows "not known here" instead of an amount, D22'; with neither preview nor detail
   totals the card shows the paid amount and says the totals are not available, D31), "Ship
@@ -236,7 +238,7 @@ workspace's restricted key and what to do about it.
 - FR-14: Exports: the orders CSV gains a trailing `refunded_amount` column and the JSON export a
   `refundedCents` field: the staff and sold-out refunds the platform saw reach the provider
   (`submitted`, `succeeded`, `unconfirmed` with a provider refund of their own, D22''), never
-  inferred from a `refunded` status (D22'). The packing list excludes orders without fulfilment status (unchanged query).
+  inferred from a `refunded` status (D22'); a sold-out job counts with its target amount (D36). The packing list excludes orders without fulfilment status (unchanged query).
   The shop integration order feed is unchanged in this PR (it already carries the status).
 - FR-15: Buyer refund notice (see US-005), outbox id `order-refund-issued:<refundId>`, rendered
   at enqueue time from the `order-refund-issued` template (language as the sold-out refund
@@ -545,3 +547,33 @@ guard against refunding more than the charge.
 - D31. With neither the preview nor the order detail totals, the Payment card shows the paid
   amount and "refund totals are not available" instead of a remaining 0. Why: a remaining 0
   read as nothing left to refund. Revert: "undo D31 → remaining 0 without totals".
+- D32. The `failed` and still-blocked-after-72-hours staff alerts and the Studio help for a
+  refund that was never issued name the requested amount: refund that amount again from the
+  order page as a partial refund, not the whole remainder, or at most that amount by hand in the
+  provider's dashboard. E-mails and Studio, both languages. Completes D23''. Why: "refund the
+  order again" opened a dialog that defaults to the whole remainder, so a failed 10.00 request
+  on a 100.00 payment could be re-issued as 100.00. Revert: "undo D32 → refund the order again".
+- D33. The preview returns the provider-listed refunded amount that is not final yet
+  (`providerNotFinalCents`: refunds the provider lists as `pending` or `requires_action`,
+  dashboard refunds without a staff row included). With the provider's totals the Payment card
+  qualifies the refunded total with it ("of which X not final at Stripe") and never says the
+  whole amount was refunded while any of it is not final; with the platform's records it keeps
+  naming the staff refunds not yet confirmed. Why: a full dashboard refund still pending was
+  shown as completed. Revert: "undo D33 → qualifier from staff rows only".
+- D34. After a staff refund that failed after submission, the alert and the Studio help say to
+  check the member's access and restore it only if it was revoked and should be restored: a
+  partial refund never ends access, and another purchase may have kept it. Why: the alert told
+  staff to grant access again after a partial refund that never revoked it. Revert: "undo D34 →
+  grant access again".
+- D35. The Payment card lists requested refunds one line per state: may already be at Stripe
+  (create outcome unknown), being sent to Stripe now (`running`), not sent to Stripe yet
+  (`pending`), waiting for the permission, and held until other refunds at Stripe settle (a
+  `submitted` refund with no provider refund of its own, watching an `already_refunded`
+  refusal). Why: one note for the whole sum mislabelled mixed rows, and the watching refund was
+  on no line, so paid − refunded − remaining left a gap. Revert: "undo D35 → one requested line".
+- D36. The exported `refunded_amount` of an order cancelled because its goods sold out counts
+  the sold-out job's target, the whole payment it refunds, also when refunds made outside the
+  platform already paid part of it and the job's own provider refund paid only the shortfall.
+  Documented in `shop.md`. Why: the job refunds the payment in full together with those
+  refunds, and the export answers how much of the order was refunded. Revert: "undo astra-3
+  acceptance → store the job's own refunded amount".

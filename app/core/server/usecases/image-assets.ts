@@ -476,8 +476,10 @@ export interface PublicImageAssetDeps extends Pick<ImageAssetDeps, 'secretResolv
 }
 
 /**
- * An approval writes the content-addressed copy before its commit and a signed link outlives any later check, so the
- * address is signed only on committed evidence: a live field of the workspace shows it or an applied proposal set it.
+ * An approval writes the content-addressed copy before its commit and a signed link outlives any later check, so such an
+ * address is signed only on committed evidence for it: a live field of the workspace shows it, or the input of an
+ * applied proposal names it in an image field of its kind. Only proposals publish content-addressed copies, so a digest
+ * name outside the proposal image kinds is never signed.
  */
 export const getPublicImageAssetUrl = async (
   tenantId: string,

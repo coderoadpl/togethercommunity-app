@@ -805,10 +805,18 @@ scopes on every shop key.
   commit failed, until its withdrawal or the minute sweep deletes it. The
   public asset route signs a link for a content-addressed address only on
   committed evidence of the same workspace, a live field showing the address or
-  an applied proposal that set it in an image field, and answers `404`
-  otherwise, so a copy written before a commit is served only once that
-  approval committed, and never after one that did not end applied unless the
-  address was public already. A
+  an applied proposal whose input names it in an image field of its kind (an
+  unchanged address the input repeats counts too), and answers `404`
+  otherwise, also for a content-addressed name outside the proposal image
+  kinds. The evidence is for an address, not for one write: a copy written
+  before a commit at an address without other evidence is served only once
+  that approval committed, and never after one that did not end applied, while
+  a copy written again at an address that already has committed evidence (a
+  repair, a second proposal of identical bytes) is served at once. The
+  quarantined upload itself is never public. A refused request for a proposal
+  image address reads the workspace's product covers, its branding row and its
+  applied proposals without an index on the image value, and the refusal is not
+  cached (`no-store`). A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
@@ -862,9 +870,11 @@ scopes on every shop key.
   proposal pending. Non-database effects of an applied change run only after
   the commit, except the public copies of proposed images, which the approval
   writes before its commit and which a rollback does not undo: such a copy
-  stays in storage, answered `404` by the public asset route since no live
-  field shows it and no applied proposal set it, until the withdrawal or the
-  minute sweep deletes it (above). The database checks only the shape of a stored operation name; a
+  stays in storage until the withdrawal or the minute sweep deletes it
+  (above), and the public asset route answers `404` for it meanwhile. The
+  rollback undoes only that approval's own changes: when other committed
+  evidence names the same address, the route serves it and the cleanup keeps
+  it. The database checks only the shape of a stored operation name; a
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers

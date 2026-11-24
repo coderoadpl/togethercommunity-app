@@ -1069,10 +1069,12 @@ the 2-second statement bound also ends a row lock wait before the 5-second
 ## Images
 
 A propose-mode key can propose a new product cover and new branding images
-(logo, dark logo, favicon, share image). Nothing it uploads is publicly
-reachable until an owner approval of a proposal that attaches it commits; that
-approval writes the public copy just before its commit, and the public route
-does not serve the copy before then. The
+(logo, dark logo, favicon, share image). The quarantined upload itself is
+never public. Its public copy is served only on committed evidence for its
+address, normally the owner approval of a proposal that attaches it, which
+writes the copy just before its commit; identical bytes at an address that
+already has committed evidence are public already, and an approval can reuse
+that copy instead of writing it. The
 use-cases are in `core/server/usecases/change-proposal-images.ts`; the routes
 are the shop image routes a direct-mode key uses, which are of route class
 `direct` and branch on the key's mode.
@@ -1081,7 +1083,7 @@ are the shop image routes a direct-mode key uses, which are of route class
 |---|---|
 | The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
 | The owners | the proposed image through the owner preview while the proposal is pending (the quarantined copy, or the published copy when the address is one a live field already shows), then the public image once approved |
-| Everyone else | for a new image, nothing until the approval that writes its public copy commits: the public route serves a content-addressed address only while a live field of the workspace shows it or an applied proposal of the workspace set it in an image field, and answers `404` otherwise, also during that approval and after one that did not end `applied` (below). An address a live field already shows is public already |
+| Everyone else | for a new image, nothing until the approval that writes its public copy commits: the public route serves a content-addressed address only while a live field of the workspace shows it or the input of an applied proposal of the workspace names it in an image field of its kind, and answers `404` otherwise, also during that approval and after one that did not end `applied` (below). An address that already has such evidence is public already |
 
 **Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
 `shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
@@ -1303,13 +1305,18 @@ their bytes after the live change and before the status change and the commit, a
 deletes its records in the same transaction, so they disappear exactly when the
 approval commits. The public asset route signs a content-addressed address only
 on committed evidence of its workspace: a live product cover or branding field
-shows the address, or an applied proposal set it in an image field; otherwise
-it answers `404` without asking the storage. The approval's live change and
-status change commit together, so a copy written before the commit is served
-only once the approval that wrote it committed, never during that approval and
-never after one that did not end `applied`, whatever publication records exist;
-a signed link lasts an hour, so this is checked before signing rather than by
-any record a later attempt writes. A UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
+shows the address, or the input of an applied proposal names it in an image
+field of its kind, an unchanged address the input repeats included; otherwise,
+and for a content-addressed name outside the proposal image kinds, it answers
+`404` without asking the storage. The evidence is for an address, not for one
+write. The approval's live change and status change commit together, so a copy
+written before the commit at an address without other evidence is served only
+once the approval that wrote it committed, never during that approval and never
+after one that did not end `applied`, whatever publication records exist; a
+copy written again at an address that already has committed evidence (a
+repair, a second proposal of identical bytes) is served at once. A signed link
+lasts an hour, so this is checked before signing rather than by any record a
+later attempt writes. A UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
 every address with an unresolved delete (below), keep each reused public copy
 there until the commit. Publishing before the commit, and checking every reused
 address under that lock, mean committed live state never points at an object

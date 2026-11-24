@@ -134,7 +134,7 @@ at all.
   the progress projection and its `lesson-completion` member event in one
   commit. It locks the member's progress row for the course with `FOR UPDATE`,
   so completions of one member and course are serialized, and writes the event
-  only when the conditional append changed the row.
+  only when the locked row did not already contain the lesson.
 - Telemetry outbox: `EmailEventRepository.append` and
   `MemberEventRepository.append` write the event, the per-tenant telemetry
   accounting row and the outbox row in one commit, so the outbox sequence

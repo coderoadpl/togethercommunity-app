@@ -1200,7 +1200,7 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       .returning();
     if (changed === undefined) throw new Error('Locked progress row vanished inside repository');
     await appendMemberEvent(tx, memberEventSchema.parse({
-      id: `lesson-completion:${changed.id}:${input.lessonId}:${input.now}`,
+      id: `lesson-completion:${changed.id}:${input.lessonId}:${input.now}:${input.id}`,
       tenantId,
       memberId: changed.memberId,
       type: 'lesson-completion',

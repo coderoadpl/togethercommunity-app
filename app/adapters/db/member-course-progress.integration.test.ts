@@ -132,7 +132,6 @@ const overlapOnLockedRow = async <T>(writes: Array<() => Promise<T>>): Promise<T
   } finally {
     await holder.query('commit');
     await holder.end();
-    await Promise.all(pending);
   }
   const settled = await Promise.all(pending);
   return settled.map((outcome) => {
@@ -267,6 +266,28 @@ it('moves only the given last-viewed pointers and keeps completions', async () =
   expect(await completionEvents()).toHaveLength(1);
 }, 60_000);
 
+const sameInstant = (): ProgressDeps => ({ ...deps(), clock: { nowIso: () => NOW } });
+
+it('records a completion event for each completion transition that shares one clock reading', async () => {
+  await markLessonCompleted(ctx, 'lesson-1', sameInstant());
+  await unmarkLessonCompleted(ctx, 'lesson-1', sameInstant());
+  await markLessonCompleted(ctx, 'lesson-1', sameInstant());
+  await markLessonCompleted(ctx, 'lesson-1', sameInstant());
+
+  expect((await storedProgress())?.completedLessonIds).toEqual(['lesson-1']);
+  expect(await completionEvents()).toEqual([
+    { courseId: COURSE, lessonId: 'lesson-1' },
+    { courseId: COURSE, lessonId: 'lesson-1' },
+  ]);
+}, 60_000);
+
+it('records a repeated completion that shares one clock reading once', async () => {
+  await markLessonCompleted(ctx, 'lesson-1', sameInstant());
+  await markLessonCompleted(ctx, 'lesson-1', sameInstant());
+
+  expect(await completionEvents()).toHaveLength(1);
+}, 60_000);
+
 const mark = () => markLessonCompleted(ctx, 'lesson-1', deps());
 const unmark = () => unmarkLessonCompleted(ctx, 'lesson-1', deps());
 
@@ -322,7 +343,7 @@ it('changes only the calling tenant when another tenant has the same member and 
   expect(await storedProgress()).toBeUndefined();
   expect(await completionEvents()).toEqual([]);
 
-  await progress.addCompletedLesson(TENANT, { ...pair, id: 'own-progress', lessonId: 'lesson-2', now: nextInstant() });
+  await progress.addCompletedLesson(TENANT, { ...pair, id: PROGRESS, lessonId: 'lesson-2', now: nextInstant() });
   await progress.setLastViewed(TENANT, { ...pair, id: 'own-pointer', lessonId: 'lesson-2', moduleId: 'module', chapterId: 'chapter', now: nextInstant() });
   await progress.removeCompletedLesson(TENANT, { ...pair, lessonId: 'lesson-2', now: nextInstant() });
 

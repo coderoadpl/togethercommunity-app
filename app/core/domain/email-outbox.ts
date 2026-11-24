@@ -120,7 +120,30 @@ const AUTH_BEARING_EMAIL_KINDS = {
 export const isAuthBearingEmailPayload = (payload: Pick<EmailOutboxPayload, 'kind'>): boolean =>
   AUTH_BEARING_EMAIL_KINDS[payload.kind];
 
-const textFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
+const WHITESPACE = /\s/;
+
+const textFromHtml = (html: string): string => {
+  const lastTagEnd = html.lastIndexOf('>');
+  let text = '';
+  let gap = false;
+  let index = 0;
+  while (index < html.length) {
+    const character = html.charAt(index);
+    if (character === '<' && index < lastTagEnd) {
+      gap = true;
+      index = html.indexOf('>', index + 1) + 1;
+    } else if (WHITESPACE.test(character)) {
+      gap = true;
+      index += 1;
+    } else {
+      if (gap && text !== '') text += ' ';
+      gap = false;
+      text += character;
+      index += 1;
+    }
+  }
+  return text || html;
+};
 
 const htmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;',

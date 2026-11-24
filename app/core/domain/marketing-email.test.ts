@@ -229,6 +229,76 @@ describe('U5 sandboxed renderer', () => {
   });
 });
 
+const previousTemplatePath = '[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*';
+const previousTemplateSlot = new RegExp(`\\{\\{\\{\\s*(${previousTemplatePath})(?:\\s*\\?\\?\\s*([^{}]*?))?\\s*\\}\\}\\}|\\{\\{\\s*(${previousTemplatePath})(?:\\s*\\?\\?\\s*([^{}]*?))?\\s*\\}\\}`, 'g');
+const templateData: Record<string, unknown> = { a: 'A<', b: { c: "C'" } };
+
+const previousRender = (template: string): { ok: boolean; value?: string } => {
+  const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+  const lookup = (path: string): unknown => path.split('.').reduce<unknown>((current, part) => (
+    isRecord(current) && Object.prototype.hasOwnProperty.call(current, part) ? current[part] : undefined
+  ), templateData);
+  const fallbackOf = (fallback: unknown): string => {
+    if (typeof fallback !== 'string') return '';
+    const trimmed = fallback.trim();
+    return (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")) ? trimmed.slice(1, -1) : trimmed;
+  };
+  const escape = (value: string): string => value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character] ?? character);
+  const rendered = template.replace(previousTemplateSlot, (_match, rawPath: unknown, rawFallback: unknown, escapedPath: unknown, escapedFallback: unknown) => {
+    const raw = typeof rawPath === 'string';
+    const found = lookup(raw ? rawPath : String(escapedPath));
+    const value = found ?? fallbackOf(raw ? rawFallback : escapedFallback);
+    const output = typeof value === 'string' ? value : '';
+    return raw ? output : escape(output);
+  });
+  return rendered.includes('{{') || rendered.includes('}}') ? { ok: false } : { ok: true, value: rendered };
+};
+
+const seededRandom = (seed: number) => {
+  let state = seed;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296;
+  };
+};
+
+describe('template slot parsing', () => {
+  it.each([
+    '{{a}}',
+    '{{ a ?? x }}',
+    '{{missing ?? "  quoted  " }}',
+    "{{{missing ??\t' raw '\n}}}",
+    '{{missing ??}}',
+    '{{missing ?? \u00a0x\u3000}}',
+    '{{{a ?? x}}',
+    '{{a ?? {x}}}',
+    '{{b.c}}|{{{b.c}}}|{{b}}',
+  ])('renders %j as before', (template) => {
+    const result = renderMarketingTemplate(template, templateData);
+    const previous = previousRender(template);
+    expect(result.ok).toBe(previous.ok);
+    if (result.ok) expect(result.value).toBe(previous.value);
+  });
+
+  it('renders seeded random templates as before', () => {
+    const alphabet = ['{', '}', '{{', '}}', 'a', 'b', 'c', '.', '?', '??', ' ', '\t', '\n', '\u00a0', '"', "'", 'x'];
+    const random = seededRandom(20_261_124);
+    for (let sample = 0; sample < 5_000; sample += 1) {
+      let template = '';
+      const length = 1 + Math.floor(random() * 14);
+      for (let position = 0; position < length; position += 1) template += alphabet[Math.floor(random() * alphabet.length)] ?? '';
+      const result = renderMarketingTemplate(template, templateData);
+      const previous = previousRender(template);
+      expect(result.ok, JSON.stringify(template)).toBe(previous.ok);
+      if (result.ok) expect(result.value, JSON.stringify(template)).toBe(previous.value);
+    }
+  });
+});
+
 describe('U7 header builder', () => {
   it('adds the RFC 8058 pair and bulk trio only to marketing mail', () => {
     expect(buildEmailHeaders({ kind: 'marketing', unsubscribeUrl: 'https://tenant.test/u/token' }))

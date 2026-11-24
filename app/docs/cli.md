@@ -164,8 +164,9 @@ each write scope of such a key needs its read scope (`shop:catalog:write` with
 is the default. `api-keys shop-management list` (the mode is its last column) and
 `api-keys shop-management revoke <id>` list and revoke them; `api-keys list`,
 `create` and `revoke` handle only the other keys.
-`api-keys shop-management purge --yes` deletes every shop management key of the
-workspace, revoked or not, and prints the count; it refuses without `--yes`.
+`api-keys shop-management purge --yes` deletes every shop management key and
+every application key of the workspace, revoked or not, and prints the count of
+both; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
@@ -175,7 +176,8 @@ check who has access; the scope defaults to `entitlements:check`, adding
 `entitlements:members:read` returns member ids and allows member id lookups,
 `--product` limits the key to those products, and the expiry is at most 90 days
 ahead. `api-keys application list` and `api-keys application revoke <id>` list
-and revoke them; the shop management purge also deletes them.
+and revoke them; the list shows each key as `revoked`, `expired` or `active`,
+and the shop management purge also deletes them.
 `entitlement check [--subjects-file <path|->] [--email <address...>] [--member-id <id...>] [--product <id...>]`
 asks with such a key from the environment variable named by `--api-key-env`
 (default `TOGETHER_APPLICATION_KEY`); the subjects file holds one e-mail

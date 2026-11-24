@@ -791,7 +791,11 @@ scopes on every shop key.
 - **Purge.** `POST /api/api-keys/shop-management/purge` is the owner's kill
   switch for one workspace: it deletes every shop key and every application key
   of the workspace, revoked or not, with their rate-limit buckets, in one
-  transaction. The legacy keys are untouched.
+  transaction. The legacy keys are untouched. It needs a verified owner in
+  their own session, and an owner whose role comes from an organization may
+  run it too: it is the stop action, so it deliberately does not require the
+  direct workspace grant that creating, listing and revoking application keys
+  require.
 - **Rollback.** Migration 0159 only adds the three shop tables and leaves
   `tenant_api_keys` untouched, and the previous release never reads the new
   tables, so a retreat to it needs no purge; the off switch and the purge stay
@@ -913,7 +917,10 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   older release meets a new value).
 - **Binding and revalidation.** A key belongs to one workspace. Only a verified
   owner in their own session with a direct workspace grant (no member view, no
-  key, no organization-derived role) creates, lists or revokes keys. Every
+  key, no organization-derived role) creates, lists or revokes keys one by
+  one. The purge, the stop action, stays open to every verified owner in their
+  own session, an organization-derived owner included, and deletes application
+  keys with the shop keys. Every
   check re-reads the key and the issuer: unrevoked, unexpired, issuer verified
   and still a direct owner. A missing key answers `401 Missing API key`; every
   other failure answers the same `401 Invalid API key`.
@@ -935,6 +942,9 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   match. A member id is accepted only from a key holding
   `entitlements:members:read`, the scope that hands member ids out; imported
   member ids can be chosen by the importer, so they are not treated as secret.
+  A member found by id must belong to an existing account with a verified
+  e-mail address, the same rule as for an e-mail lookup, and a lookup that
+  matches nobody runs the same sequence of queries as one that matches.
   Either way the member must also have at least one `sign-in` event in
   `member_events` of the answering workspace. The account's verified flag
   alone is not proof: an import by any workspace owner sets it for an address
@@ -953,7 +963,15 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   `verified` only when the answer already reveals the match (access to an
   answered product, or a key with `entitlements:members:read`), otherwise
   `null`. Never a name, an address, an order, an amount, a coupon or a
-  provider id.
+  provider id. The answer echoes the selector that was sent and returns no
+  other address. A subscription is named as the source of the access, and
+  shown to a key without `entitlements:members:read`, only when the grant has
+  an expiry and the newest subscription for the product is active or past due
+  or paid through the check time.
+- **What `entitlements:members:read` reveals.** With this scope the answer
+  tells whether the person is a signed-in member of the workspace at all,
+  independent of product access, and returns the member id; it also shows a
+  lapsed subscription.
 - **Scopes a later release adds.** Reading a stored key (listing,
   authentication, revocation) drops scope values this release does not know,
   so such a key only lacks their capabilities and never breaks the list;
@@ -963,7 +981,9 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
 - **Rate limits.** Per key, weighted by the number of people in the request
   (at most 25): 300 a minute and 20,000 a day, in
   `application_key_rate_limit_buckets`, with `Retry-After`. The key is
-  authenticated before the body is read; an unreadable body costs one unit.
+  authenticated before the body is parsed. A request refused before parsing
+  (wrong media type, over the size limit) is not counted against the key and
+  writes no history row; a body that is not valid JSON costs one unit.
 - **History without the identifier.** Each check that passed authentication
   and the rate limit writes one `request` row to `shop_management_key_events`
   (route, method, key id, issuer) before it reads anything, and answers `503`
@@ -975,8 +995,25 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   the `POST` body, never in a URL. Every query of the check runs behind an
   adapter boundary that replaces a database error, whose message carries the
   bound parameters, with `Entitlement check database query failed` and the
-  SQLSTATE. Validation errors carry field paths and messages, not values.
-  Telemetry records the route, the status and the key attribution only.
+  SQLSTATE. Validation errors of the check carry field paths and issue codes
+  only, never request text. Telemetry records the route, the status, the key
+  attribution and, exactly as on the shop management key routes, the identity
+  of the owner who issued the key; never the person checked.
+- **Known limitation: sign-in proof belongs to the member row.** The
+  operator's bulk import, a database-level tool, can move an existing member
+  to another account; such a member then matches at the new address without a
+  new sign-in. The keyed import route refuses to change an imported member's
+  e-mail address.
+- **Known limitation: rate-limit release at a window boundary.** A claim that
+  lands just after a window boundary is not given back by a later release of
+  that request; the error is at most one request's weight and always in the
+  limiting direction.
+- **Rollback.** Migration 0169 only adds `application_keys` and
+  `application_key_rate_limit_buckets`, and the previous release never reads
+  them. Its purge, however, does not delete application keys, and it has no
+  route that revokes them. After a retreat to it, purge or revoke the
+  application keys again as soon as this release is back; a key known to have
+  leaked is revoked before the retreat.
 
 Whoever holds an application key learns, within its products, whether a person
 of their choice is a customer with access, at the rate limit, until the key

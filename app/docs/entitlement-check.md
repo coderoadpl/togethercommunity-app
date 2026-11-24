@@ -15,9 +15,10 @@ workspace owner who issues the key. The security model is in
 | Application keys: owner-session creation, listing and revocation (`/api/api-keys/application`, CLI `api-key application`) | Available |
 | Typed client `createApplicationClient` and CLI `entitlement check` | Available |
 | Product allow-list per key and the `entitlements:members:read` scope | Available |
-| Change feed or signed webhook for access changes | Designed, not built (below) |
-| An external identifier the other application sets per person | Designed, not built (below) |
 | Studio screen for application keys | Not built; use the CLI |
+
+A change feed and identifiers chosen by the application are not available in
+this release.
 
 ## 1. A workspace for the new application
 
@@ -49,12 +50,18 @@ credentials) and create the products. Gaps are listed at the end of this page.
 
 ## 2. Issue an application key (owner)
 
-The owner, signed in to the workspace with the CLI, creates a key. The secret
-is shown once; store it in the other application's secret store.
+The owner signs in with the CLI and creates a key. The secret is shown once;
+store it in the other application's secret store. The CLI keeps sessions per
+API origin, so both commands name the same `--api-url`. The password comes
+from a shell variable the owner fills from their password manager
+(`TOGETHER_OWNER_PASSWORD` here; the CLI reads no password variable of its
+own), never from a literal in the command.
 
 ```bash
-pnpm --silent run cli login --email owner@example.test
-pnpm --silent run cli --tenant acme api-key application create Companion app \
+pnpm --silent run cli --api-url https://togethercommunity.app \
+  login --email owner@example.test --password "$TOGETHER_OWNER_PASSWORD"
+pnpm --silent run cli --api-url https://togethercommunity.app --tenant acme \
+  api-key application create Companion app \
   --expires-at 2027-01-31T00:00:00Z --product prod-pro
 ```
 
@@ -133,8 +140,11 @@ Answer rules:
 - `source`: `purchase` (a one-time payment), `subscription` (a payment kept up
   by a subscription), `grant` (given by staff) or `import` (migrated from a
   previous platform); `null` without access.
-- `subscription`: the newest subscription for that product, reported only with
-  access (or, with `entitlements:members:read`, also when it lapsed).
+- `subscription`: the newest subscription for that product. It is reported
+  only when the access has an end date and that subscription is `active` or
+  `past_due` or paid through the check time, and a paid access reported this
+  way has `source` `subscription`; with `entitlements:members:read` the
+  subscription is reported in every case, a lapsed one included.
 - Without `productIds`: a key with an allow-list answers every allow-listed
   product; a key without one lists only the products the person has access
   to, so an empty list means no access.
@@ -146,6 +156,13 @@ Answer rules:
 - `member`: `{ "id": … }` for a matched person with `entitlements:members:read`,
   otherwise `null`. Store it to keep the link when the person changes e-mail
   address, and check by `memberId` afterwards.
+- A `memberId` matches only when that member's current account exists and has
+  a verified e-mail address and the member has signed in to this workspace:
+  the same rule as for an e-mail address. Otherwise the answer is the one for
+  a person who matches nobody.
+- With `entitlements:members:read` the answer also tells whether the person is
+  a signed-in member of the workspace at all, independent of product access.
+  The answer echoes the selector you sent and returns no other address.
 - An unknown person, an unverified address, a person who never signed in to
   this workspace and a known person without access give the same answer
   unless the key holds `entitlements:members:read`.
@@ -196,6 +213,18 @@ const answer = await together.checkEntitlements({ subjects: [{ email }], product
 `--email` exists for quick manual checks; addresses passed as arguments land in
 shell history, so prefer `--subjects-file`.
 
+## What your application must do itself
+
+The check answers for the selector it is given; it does not know who is using
+your application. Your application must:
+
+- take the e-mail address only from its own authenticated user whose mailbox
+  it has verified, never from a form field;
+- bind a returned member id to that same user on its server, and check by that
+  stored id afterwards;
+- never treat a selector typed by a visitor (an address or a member id) as
+  proof of who they are.
+
 ## Freshness
 
 The answer is read from the database at request time; nothing is cached. After
@@ -209,19 +238,21 @@ A person matches only when their account has a verified e-mail address and
 they have signed in to this workspace at least once. Neither happens on the
 checkout itself:
 
-1. The payment webhook creates the buyer's account unverified
-   (`app/adapters/auth/create-auth.ts:1094-1110`) and queues the purchase
-   e-mail. That e-mail carries a one-time sign-in link
-   (`app/core/server/usecases/fulfill-enrollment.ts:127-142`), valid for one hour
-   (`MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS`, `app/adapters/auth/create-auth.ts:97`).
-2. The success page only polls the payment status
-   (`app/apps/web/src/features/checkout/CheckoutPage.tsx:369-384`, served by
-   `app/core/server/usecases/checkout-session-status.ts`). It creates no session
-   and writes no `sign-in` event.
+1. The payment webhook creates the buyer's account unverified (`ensureUser`
+   in `app/adapters/auth/create-auth.ts`) and queues the purchase e-mail. That
+   e-mail carries a one-time sign-in link (`queueEnrollmentWelcome` in
+   `app/core/server/usecases/fulfill-enrollment.ts`), valid for one hour
+   (`MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS` in `app/core/domain/identity.ts`).
+2. The success page only polls the payment status (the `paymentStatus` query
+   in `app/apps/web/src/features/checkout/CheckoutPage.tsx`, served by
+   `getCheckoutSessionStatus` in
+   `app/core/server/usecases/checkout-session-status.ts`). It creates no
+   session and writes no `sign-in` event.
 3. When the buyer opens that link (or asks for a new one on the sign-in page),
    the account is verified, a session is created and a `sign-in` event is
-   written for this workspace (`app/adapters/auth/create-auth.ts:984`, recorded
-   by `app/apps/server/src/composition.ts:1477-1492`). From then on the check
+   written for this workspace (the sign-in hook in
+   `app/adapters/auth/create-auth.ts` calls `recordSignIn`, which
+   `app/apps/server/src/composition.ts` provides). From then on the check
    answers `access: true`.
 
 So every new buyer reads as no access until they open the purchase e-mail.
@@ -233,26 +264,8 @@ Recommended handling in the other application:
   within the rate limit.
 - Never grant access on your side because of the payment alone.
 
-The change feed or webhook below, once built, would replace the re-checks.
-
-To learn about changes later without polling everyone (designed, not built): a
-cursor-paginated feed `GET /api/m2m/entitlements/changes?cursor=…`, readable with
-`entitlements:members:read`, listing `{ memberId, productId, changedAt }` for
-grant window changes of the key's products, following the order change feed;
-the application re-checks the listed people. A signed webhook to a URL stored
-with the key is the later alternative.
-
-## An identifier of your own (designed, not built)
-
-So that an e-mail change does not break the link, each key could store one
-identifier per person chosen by the other application: a table of
-(workspace, key, external id, member id), unique per key on both the external
-id and the member, set through `PUT /api/m2m/entitlements/links` with
-`{ externalId, email }` (verified addresses only) under a new write scope
-`entitlements:links:write`, and looked up with `{ "externalId": … }`. Links are
-namespaced per key, so two applications never read or overwrite each other's.
-Until then, the member id returned under `entitlements:members:read` is the
-stable link.
+The member id returned under `entitlements:members:read` is the stable link to
+a person when their e-mail address changes.
 
 ## Gaps found for new applications
 

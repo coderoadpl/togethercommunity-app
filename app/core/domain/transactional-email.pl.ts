@@ -282,7 +282,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
           : restocked ? 'Towar przywrócony do magazynu przy tym zwrocie pozostaje w magazynie.'
             : removedFromPackingList ? `Zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostaje poza nią. ${backToPacking}` : null;
       const access = alert === 'failed_after_submission'
-        ? 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został odebrany i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.'
+        ? 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.'
         : null;
       return [`Osoba z zespołu zleciła zwrot ${amount} za zamówienie ${orderId}.`, states[alert], ...(kept === null ? [] : [kept]), ...(access === null ? [] : [access])];
     },

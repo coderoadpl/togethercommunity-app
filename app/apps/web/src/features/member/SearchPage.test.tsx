@@ -24,7 +24,7 @@ const post = (input: {
   parentPostId: input.rootPostId === undefined ? null : input.rootPostId,
   rootPostId: input.rootPostId ?? input.id,
   isOwn: false,
-  authorDisplay: `Autor ${input.id}`,
+  authorDisplay: `Author ${input.id}`,
   authorIsStaff: false,
   authorAvatarUrl: null,
   body: 'Engine and build-out',

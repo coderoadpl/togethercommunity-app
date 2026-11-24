@@ -389,6 +389,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <OrderPaymentCard
               order={order}
               totals={detail.data.refundTotals}
+              soldOutRefund={detail.data.refundJob}
               staffRefunds={staffRefunds}
               chips={paymentChips}
               action={refundAction}

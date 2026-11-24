@@ -1328,6 +1328,7 @@ export const en: Messages = {
       mayBeAtProvider: 'may already be at Stripe',
       beingSent: 'being sent to Stripe now',
       watchingOtherRefunds: 'held until other refunds at Stripe settle',
+      heldNotDeducted: ({ amount }) => format('A requested refund of {amount} is held until other refunds at Stripe settle; the refunded amount above already includes what Stripe lists, so it is not deducted again.', { amount }),
       totalsUnavailable: 'Refund totals are not available here; check the payment in the Stripe Dashboard.',
       waitingBlocksAction: 'The previous refund of this order is waiting for confirmation from Stripe. The next refund is possible once Stripe confirms or rejects it.',
       notPaidOut: 'The refund has not been paid out yet. Details are in the refund history.',

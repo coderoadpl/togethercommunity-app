@@ -1200,6 +1200,7 @@ export interface Messages {
       mayBeAtProvider: string;
       beingSent: string;
       watchingOtherRefunds: string;
+      heldNotDeducted: (params: { amount: string }) => string;
       totalsUnavailable: string;
       waitingBlocksAction: string;
       notPaidOut: string;

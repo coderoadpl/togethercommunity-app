@@ -9,6 +9,7 @@ import {
   SALES_LINK_TIME_ZONE,
   staffRefundReason,
   type OrderListItem,
+  type OrderRefundJobView,
   type OrderRefundTotals,
   type OrderStaffRefundView,
   type StaffRefundPreview,
@@ -77,13 +78,14 @@ export type RefundActionState =
 interface OrderPaymentCardProps {
   order: OrderListItem;
   totals: OrderRefundTotals | null;
+  soldOutRefund: Pick<OrderRefundJobView, 'status' | 'amountCents' | 'providerRefundId'> | null;
   staffRefunds: readonly OrderStaffRefundView[];
   chips: ReactNode;
   action: RefundActionState;
   onRefund: () => void;
 }
 
-export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, onRefund }: OrderPaymentCardProps) => {
+export const OrderPaymentCard = ({ order, totals, soldOutRefund, staffRefunds, chips, action, onRefund }: OrderPaymentCardProps) => {
   const t = useTranslations();
   const messages = t.sales.staffRefund;
   const { language } = useLanguage();
@@ -98,14 +100,20 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const remainingCents = preview?.remainderCents ?? totals?.remainingCents ?? 0;
   const unknown = totalsAvailable && refundedAmountUnknown(order, refundedCents);
   const counted = refundCountedIn(preview);
+  const providerTotals = preview?.remainderSource === 'provider';
+  const uncounted = staffRefunds.filter((refund) => !counted(refund));
+  const heldCents = providerTotals ? sumOf(uncounted.filter((refund) => requestedNoteOf(refund) === 'watchingOtherRefunds')) : 0;
   const requested = REQUESTED_NOTES
-    .map((note) => ({ note, cents: sumOf(staffRefunds.filter((refund) => !counted(refund) && requestedNoteOf(refund) === note)) }))
+    .filter((note) => !providerTotals || note !== 'watchingOtherRefunds')
+    .map((note) => ({ note, cents: sumOf(uncounted.filter((refund) => requestedNoteOf(refund) === note)) }))
     .filter((group) => group.cents > 0);
   const requestedCents = requested.reduce((sum, group) => sum + group.cents, 0);
-  const notFinal = preview?.remainderSource === 'provider'
+  const soldOutUnconfirmed = soldOutRefund !== null && soldOutRefund.status !== 'succeeded';
+  const soldOutUnconfirmedCents = soldOutUnconfirmed && isObservedPlatformRefund(soldOutRefund) ? soldOutRefund.amountCents : 0;
+  const notFinal = providerTotals
     ? { cents: preview.providerNotFinalCents, note: messages.notFinalAtProvider }
     : {
-      cents: Math.min(refundedCents, sumOf(staffRefunds.filter((refund) =>
+      cents: Math.min(refundedCents, soldOutUnconfirmedCents + sumOf(staffRefunds.filter((refund) =>
         counted(refund) && refund.status !== 'succeeded' && PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status)))),
       note: messages.inProgress,
     };
@@ -139,6 +147,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
         )}
+        {heldCents === 0 ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-held">{messages.heldNotDeducted({ amount: money(heldCents) })}</Typography>}
         {totalsNote === null ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{totalsNote}</Typography>}
       </Stack>
       {unknown ? (
@@ -152,7 +161,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
           <WarningIcon />
           <Typography variant="body2">{messages.notPaidOut}</Typography>
         </RefundWarningRow>
-      ) : !unknown && refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && notFinal.cents === 0 ? (
+      ) : !unknown && !soldOutUnconfirmed && refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && notFinal.cents === 0 ? (
         <RefundMutedRow direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
           <CheckCircleIcon />
           <Typography variant="body2">{messages.fullyRefunded}</Typography>

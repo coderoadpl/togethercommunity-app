@@ -7,7 +7,7 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, type OrderListItem, type OrderRefundJobView, type OrderStaffRefundView, type StaffRefundPreview } from '#core/domain/index.js';
 
 import { LanguageProvider } from '../../../i18n/index.js';
 import { en } from '../../../i18n/en.js';
@@ -73,7 +73,7 @@ const requestBodySchema = z.object({
   expectedShipmentState: z.object({ onPackingList: z.boolean(), hasShipmentOrLabel: z.boolean() }).strict(),
 }).strict();
 
-type Detail = { order: OrderListItem; staffRefunds?: OrderStaffRefundView[]; refundTotals?: { paidCents: number; refundedCents: number; remainingCents: number; currency: string } | null };
+type Detail = { order: OrderListItem; refundJob?: OrderRefundJobView | null; staffRefunds?: OrderStaffRefundView[]; refundTotals?: { paidCents: number; refundedCents: number; remainingCents: number; currency: string } | null };
 
 const serve = (detail: Detail, refundPreview: StaffRefundPreview = preview) => {
   const refunds: z.infer<typeof requestBodySchema>[] = [];
@@ -206,6 +206,7 @@ describe('payment card totals', () => {
   it.each([
     { status: 'pending', notFinalCents: 24900 },
     { status: 'succeeded', notFinalCents: 0 },
+    { status: null, notFinalCents: 24900 },
   ])('qualifies a full refund made in the Stripe Dashboard with no staff refund by the amount Stripe has not finished ($status) and says the whole amount was refunded only when none is left', async ({ notFinalCents }) => {
     serve(
       { order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 0, currency: 'PLN' } },
@@ -216,6 +217,27 @@ describe('payment card totals', () => {
     expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
     expect(within(payment).queryByText(messages.notFinalAtProvider({ amount: pln(24900) })) !== null).toBe(notFinalCents > 0);
     expect(within(payment).queryByText(messages.fullyRefunded) !== null).toBe(notFinalCents === 0);
+  });
+
+  it.each([
+    { status: 'submitted', confirmed: false },
+    { status: 'succeeded', confirmed: true },
+  ] as const)('says the whole amount of a sold-out order was refunded only once its sold-out refund succeeded ($status), with the exported refunded amount unchanged', async ({ status, confirmed }) => {
+    const calls = serve({
+      order: { ...paidOrder, status: 'refunded', cancelReason: 'out_of_stock', fulfilmentStatus: null },
+      refundJob: {
+        status, attempts: 1, nextAttemptAt: null, lastError: null, amountCents: 24900, currency: 'PLN', idempotencyKey: 'oos-refund-o1',
+        providerRefundId: 're_sold_out', providerRefundStatus: confirmed ? 'succeeded' : 'pending', submittedAt: '2026-11-19T15:40:00.000Z',
+        createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
+      },
+      refundTotals: { paidCents: 24900, refundedCents: 24900, remainingCents: 0, currency: 'PLN' },
+    });
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
+    expect(within(payment).queryByText(messages.fullyRefunded) !== null).toBe(confirmed);
+    expect(within(payment).queryByText(messages.inProgress({ amount: pln(24900) })) !== null).toBe(!confirmed);
+    expect(calls.preview).toBe(0);
   });
 
   it('shows the paid amount and says the refund totals are not available instead of a remainder when neither the preview nor the detail has them', async () => {
@@ -288,6 +310,23 @@ describe('payment card totals', () => {
     expect(amountBeside(payment, messages.watchingOtherRefunds).getByText(`−${pln(3000)}`)).toBeVisible();
     expect(within(payment).getByText(`−${pln(5000)}`)).toBeVisible();
     expect(within(payment).queryByText(messages.notSentYet)).toBeNull();
+  });
+
+  it('notes a refund watching another refund Stripe already lists in the refunded total without deducting it again from what is left', async () => {
+    serve(
+      {
+        order: { ...paidOrder, status: 'refunded' },
+        staffRefunds: [staffRefund({ id: 'r-watching', status: 'submitted', amountCents: 1000, providerRefundId: null, providerRefundStatus: null, lastError: 'waiting_for_other_refund' })],
+      },
+      { ...preview, ...refundedBlocked, refundedCents: 24900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
+    expect(within(payment).getByTestId('order-payment-held')).toHaveTextContent(messages.heldNotDeducted({ amount: pln(1000) }));
+    expect(within(payment).queryByText(`−${pln(1000)}`)).toBeNull();
+    expect(within(payment).queryByText(messages.requestedRefund)).toBeNull();
+    expect(within(payment).getByText(pln(0))).toBeVisible();
   });
 
   it('says a refund the dispatcher is sending and Stripe does not list yet is being sent, never not sent', async () => {

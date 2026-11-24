@@ -19,7 +19,7 @@ const refundStaffRefundAgain = (amount: string): string =>
 const refundStaffRefundAgainOrByHand = (amount: string): string =>
   format('{again}, albo zwróć ręcznie w panelu Stripe najwyżej {amount}.', { again: refundStaffRefundAgain(amount), amount });
 
-const checkAccessAfterFailedStaffRefund = 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika i przywróć go tylko wtedy, gdy został odebrany i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.';
+const checkAccessAfterFailedStaffRefund = 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.';
 
 export const pl: Messages = {
   metaCapi: {
@@ -1366,6 +1366,7 @@ export const pl: Messages = {
       mayBeAtProvider: 'mógł już dotrzeć do Stripe',
       beingSent: 'właśnie wysyłany do Stripe',
       watchingOtherRefunds: 'wstrzymany, aż rozliczą się inne zwroty w Stripe',
+      heldNotDeducted: ({ amount }) => format('Zlecony zwrot {amount} jest wstrzymany, aż rozliczą się inne zwroty w Stripe; kwota zwrócona powyżej obejmuje już to, co pokazuje Stripe, więc nie jest odejmowany ponownie.', { amount }),
       totalsUnavailable: 'Sumy zwrotów nie są tutaj dostępne; sprawdź płatność w panelu Stripe.',
       waitingBlocksAction: 'Poprzedni zwrot tego zamówienia czeka na potwierdzenie ze Stripe. Kolejny będzie możliwy, gdy Stripe go potwierdzi albo odrzuci.',
       notPaidOut: 'Zwrot nie został jeszcze wypłacony. Szczegóły w historii zwrotów.',

@@ -29,7 +29,9 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AccountSecurityReader.read': 'Authentication security state belongs to the platform user identity, not to a tenant membership.',
-  'AccountIdentityReader.findById': 'Called only by shop management key authentication with the issuer user id stored on the key row the presented secret matched in the resolved workspace; the identity is then used only with an owner grant in that workspace.',
+  'EntitlementSubjectReader.findAccountByEmail': 'An e-mail address names one platform account; the entitlement check then reads only that account\'s member row in the workspace resolved for the application key (findMemberByUser takes tenantId), and the account itself is never returned.',
+  'EntitlementSubjectReader.findAccountById': 'Reads only the verified flag of the account that a member row of the workspace resolved for the application key names (findMemberById takes tenantId), or reads the placeholder id of a lookup that matches nobody and discards the result, so a member id lookup follows the same verified-account rule as an e-mail lookup; the account itself is never returned.',
+  'AccountIdentityReader.findById': 'Called only by shop management key and application key authentication with the issuer user id stored on the key row the presented secret matched in the resolved workspace; the identity is then used only with an owner grant in that workspace (a direct owner grant for an application key).',
   'TelemetryTenantDirectory.listTenantIds': 'The platform telemetry worker discovers connected tenants before tenant-scoped outbox delivery.',
   'MarketingOutboxRepository.listTenantIds': 'The platform delivery worker discovers tenant queues before tenant-scoped dispatch.',
   'MarketingSnsInboxRepository.listTenantIds': 'The platform inbox worker discovers tenant queues before tenant-scoped application.',

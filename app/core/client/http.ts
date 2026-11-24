@@ -1,4 +1,12 @@
 import type { Language, OrderChangeFeed } from '#core/domain/index.js';
+import {
+  apiKeysApplicationCreateOutputSchema,
+  apiKeysApplicationListOutputSchema,
+  apiKeysApplicationRevokeOutputSchema,
+  entitlementContracts,
+  type ApiKeysApplicationCreateInput,
+} from '#core/contract/index.js';
+import type { EntitlementCheckInput } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
 import { SALES_LINK_VARIANT_PARAM, type AddTenantAdminInput, type RemoveTenantAdminInput } from '#core/domain/index.js';
@@ -2690,6 +2698,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listApplicationKeys: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysApplication.method,
+      API_ROUTES.apiKeysApplication.path,
+      apiKeysApplicationListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createApplicationKey: (input: ApiKeysApplicationCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysApplicationCreate.method,
+      API_ROUTES.apiKeysApplicationCreate.path,
+      apiKeysApplicationCreateOutputSchema,
+      input,
+      signal,
+    ),
+  revokeApplicationKey: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysApplicationRevoke.method,
+      API_ROUTES.apiKeysApplicationRevoke.path.replace(':id', encodeURIComponent(input.id)),
+      apiKeysApplicationRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
   purgeShopManagementKeys: (signal?: AbortSignal) =>
     request(
       options,
@@ -3228,6 +3263,38 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
     ...shopProposalMethods(options),
   };
 };
+
+export interface ApplicationClientOptions {
+  baseUrl: string;
+  apiKey: string;
+  tenant?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export const createApplicationClient = (applicationOptions: ApplicationClientOptions) => {
+  const options: ApiClientOptions = {
+    baseUrl: applicationOptions.baseUrl,
+    ...(applicationOptions.fetchImpl === undefined ? {} : { fetchImpl: applicationOptions.fetchImpl }),
+    refuseRedirects: { label: 'Entitlement check' },
+    headers: () => ({
+      [API_KEY_HEADER]: applicationOptions.apiKey,
+      ...(applicationOptions.tenant === undefined ? {} : { [TENANT_HEADER]: applicationOptions.tenant }),
+    }),
+  };
+  return {
+    checkEntitlements: (input: EntitlementCheckInput, signal?: AbortSignal) =>
+      request(
+        options,
+        API_ROUTES.m2mEntitlementCheck.method,
+        API_ROUTES.m2mEntitlementCheck.path,
+        entitlementContracts.checkEntitlements.output,
+        input,
+        signal,
+      ),
+  };
+};
+
+export type ApplicationClient = ReturnType<typeof createApplicationClient>;
 
 export const isProposedChange = (value: { outcome: string }): value is ChangeProposalProposedOutput =>
   value.outcome === 'proposed';

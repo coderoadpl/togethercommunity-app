@@ -1600,14 +1600,16 @@ describe('activity report CLI parsing', () => {
     h.purgeShopManagementKeys.mockReset();
     await run('--json', 'api-key', 'shop-management', 'purge');
     expect(h.purgeShopManagementKeys).not.toHaveBeenCalled();
-    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Purging shop management keys requires --yes' } });
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Purging shop management keys and application keys requires --yes' } });
     expect(process.exitCode).toBe(2);
   });
-  it('purges the shop management keys with --yes and reports the count', async () => {
+  it('purges the shop management keys and application keys with --yes and reports the count', async () => {
     h.purgeShopManagementKeys.mockReset().mockResolvedValue(ok({ purged: 3 }));
     await run('--json', 'api-key', 'shop-management', 'purge', '--yes');
     expect(h.purgeShopManagementKeys).toHaveBeenCalledOnce();
     expect(soleJson()).toEqual({ ok: true, data: { purged: 3 } });
+    await run('api-key', 'shop-management', 'purge', '--yes');
+    expect(logSpy).toHaveBeenCalledWith('purged 3 shop management keys and application keys');
   });
   it('lists the shop management key history for one key with paging options', async () => {
     const event = {

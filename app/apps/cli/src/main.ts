@@ -1,4 +1,4 @@
-import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, deliveryMethodSchema, applicationKeyScopeSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -72,6 +72,7 @@ import {
   type CliProfile,
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
+import { formatApplicationKeys, registerEntitlementCommands } from './entitlement-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
@@ -802,6 +803,7 @@ registerOrganizationCommands(program, cliCtx);
 registerOperatorCommands(program, cliCtx);
 (await import('./shop-manifest/commands.js')).registerShopManifestCommands(program, cliCtx);
 registerShopKeyCommands(program, cliCtx);
+registerEntitlementCommands(program, cliCtx);
 
 const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
   saveConfig(
@@ -4088,6 +4090,54 @@ apiKey
     }),
   );
 
+const applicationKey = apiKey
+  .command('application')
+  .description('Application keys for another application of the workspace owner, for example to check who has access (verified owner session only)');
+
+const applicationKeyCreateOptionsSchema = z.object({
+  scope: z.array(applicationKeyScopeSchema).min(1).default(['entitlements:check']),
+  expiresAt: z.string().datetime(),
+  product: z.array(z.string().min(1)).min(1).optional(),
+});
+
+applicationKey
+  .command('create <name...>')
+  .description('Create an application key; the secret is shown once')
+  .option('--scope <scope...>', 'entitlements:check (default) and optionally entitlements:members:read, which adds member ids, member id lookups and lapsed subscriptions')
+  .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 90 days ahead')
+  .option('--product <id...>', 'Products the key may check; without it the key covers every product of the workspace')
+  .action(
+    withInput(z.tuple([z.array(z.string().min(1)).min(1), applicationKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
+      emit(
+        await ctx.api.createApplicationKey({
+          name: nameWords.join(' '),
+          scopes: options.scope,
+          expiresAt: options.expiresAt,
+          ...(options.product === undefined ? {} : { productIds: options.product }),
+        }),
+        ctx.json,
+        (data) => `created application key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+      );
+    }),
+  );
+
+applicationKey.command('list').description('List application keys (no secrets)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listApplicationKeys(), ctx.json, (data) => formatApplicationKeys(data.apiKeys, Date.now()));
+  }),
+);
+
+applicationKey
+  .command('revoke <id>')
+  .description('Revoke an application key')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.revokeApplicationKey({ id }), ctx.json, (data) =>
+        `revoked application key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
 const shopManagementKey = apiKey
   .command('shop-management')
   .description('Shop management keys (verified owner session only)');
@@ -4145,16 +4195,16 @@ shopManagementKey
 
 shopManagementKey
   .command('purge')
-  .description('Delete every shop management key of the workspace, revoked or not')
+  .description('Delete every shop management key and every application key of the workspace, revoked or not')
   .option('--yes', 'confirm the permanent deletion')
   .action(
     withInput(z.tuple([z.object({ yes: z.boolean().optional() })]), async (ctx, [options]) => {
       if (options.yes !== true) {
-        emit(err(validation('Purging shop management keys requires --yes')), ctx.json, () => '');
+        emit(err(validation('Purging shop management keys and application keys requires --yes')), ctx.json, () => '');
         return;
       }
       emit(await ctx.api.purgeShopManagementKeys(), ctx.json, (data) =>
-        `purged ${String(data.purged)} shop management keys`,
+        `purged ${String(data.purged)} shop management keys and application keys`,
       );
     }),
   );

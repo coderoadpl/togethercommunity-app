@@ -1334,6 +1334,9 @@ default) or `disabled`; any other value stops the server from booting. With
   (`DELETE /api/api-keys/shop-management/:id`) and purgeable (below) through the
   owner session.
 - Legacy keys behave exactly as with `enabled`.
+- The switch covers [application keys](entitlement-check.md) too: every request
+  under `/api/m2m/entitlements` answers `404` the same way, and creating an
+  application key is refused.
 
 The switch is read at boot: change it and redeploy (or restart) the server.
 
@@ -1341,14 +1344,19 @@ The switch is read at boot: change it and redeploy (or restart) the server.
 
 `POST /api/api-keys/shop-management/purge` (CLI
 `api-key shop-management purge --yes`) is the owner's kill switch for one
-workspace: it deletes every shop management key of the workspace, revoked or
-not, in one transaction with one `purged` key event per deleted key, and answers
-`{"purged": <count>}`. It needs the same verified owner session as
+workspace: it deletes every shop management key and every
+[application key](entitlement-check.md) of the workspace, revoked or not, in one
+transaction with one `purged` key event per deleted key, and answers
+`{"purged": <count>}` with the count of both kinds. It needs the same verified owner session as
 creation, refuses an admin, an unverified owner, an owner viewing as a member
-and any API key, and works with the switch in either state. Legacy keys and
+and any API key, and works with the switch in either state. An owner whose
+role comes from an organization may purge as well, and the purge deletes the
+application keys too, although only an owner with a direct workspace grant
+creates, lists or revokes application keys one by one: the purge is the stop
+action and stays available to every verified owner. Legacy keys and
 other workspaces' keys are untouched, and the keys' rate-limit buckets go with
-them. A workspace without shop management keys answers `{"purged": 0}` and gets
-no event. The key history, including the creation and revocation events of the
+them. A workspace with neither shop management keys nor application keys
+answers `{"purged": 0}` and gets no event. The key history, including the creation and revocation events of the
 deleted keys, stays.
 
 ## Rollback
@@ -1398,5 +1406,12 @@ The off switch (`SHOP_MANAGEMENT_KEYS=disabled`) and the purge remain owner
 controls, not rollback steps: the switch stops every shop route on a
 deployment, and the purge deletes a workspace's shop management keys, for
 example when a key may have leaked.
+
+A retreat from the release that adds [application keys](entitlement-check.md)
+to the one before it leaves the application keys in their own tables, unread.
+That earlier release's purge does not delete them and it has no route that
+revokes them, so purge or revoke the application keys again as soon as the
+newer release is back; a key known to have leaked is revoked before the
+retreat.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).

@@ -1,6 +1,6 @@
 {
-  "hash": "c88464e340bcf0e0b8618faad2606c1d05b9a2ef07f2217908d40635079a0496",
-  "shortId": "c88464e340bc",
+  "hash": "3e09805ae2a6c8658d29b688c3b928a58efcc452ca22800dfa3297ae00266f26",
+  "shortId": "3e09805ae2a6",
   "schema": {
     "constraints": [
       {
@@ -84,6 +84,11 @@
         "table": "shop_management_keys"
       },
       {
+        "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes ? 'entitlements:check'::text) AND (scopes <@ '[\"entitlements:check\", \"entitlements:members:read\"]'::jsonb)))",
+        "name": "application_keys_scopes_check",
+        "table": "application_keys"
+      },
+      {
         "definition": "CHECK (((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 50)))",
         "name": "marketing_contacts_tags_check",
         "table": "marketing_contacts"
@@ -107,6 +112,11 @@
         "definition": "CHECK (((mode <> 'propose'::text) OR (NOT (scopes ?| ARRAY['shop:fulfilment:write'::text, 'shop:integrations:write'::text]))))",
         "name": "shop_management_keys_propose_scopes_check",
         "table": "shop_management_keys"
+      },
+      {
+        "definition": "CHECK (((product_ids IS NULL) OR ((jsonb_typeof(product_ids) = 'array'::text) AND ((jsonb_array_length(product_ids) >= 1) AND (jsonb_array_length(product_ids) <= 50)))))",
+        "name": "application_keys_product_ids_check",
+        "table": "application_keys"
       },
       {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
@@ -370,6 +380,11 @@
       },
       {
         "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
+        "name": "application_key_rate_limit_buckets_period_check",
+        "table": "application_key_rate_limit_buckets"
+      },
+      {
+        "definition": "CHECK ((period = ANY (ARRAY['minute'::text, 'day'::text])))",
         "name": "shop_management_key_rate_limit_buckets_period_check",
         "table": "shop_management_key_rate_limit_buckets"
       },
@@ -567,6 +582,11 @@
         "definition": "CHECK (singleton)",
         "name": "order_feed_epoch_singleton_check",
         "table": "order_feed_epoch"
+      },
+      {
+        "definition": "FOREIGN KEY (api_key_id) REFERENCES application_keys(id) ON DELETE CASCADE",
+        "name": "application_key_rate_limit_buckets_api_key_id_fkey",
+        "table": "application_key_rate_limit_buckets"
       },
       {
         "definition": "FOREIGN KEY (api_key_id) REFERENCES shop_management_keys(id) ON DELETE CASCADE",
@@ -852,6 +872,11 @@
         "definition": "FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE",
         "name": "space_subscriptions_space_id_spaces_id_fk",
         "table": "space_subscriptions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "application_keys_tenant_id_fkey",
+        "table": "application_keys"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -1735,6 +1760,11 @@
       },
       {
         "definition": "PRIMARY KEY (api_key_id, period)",
+        "name": "application_key_rate_limit_buckets_api_key_id_period_pk",
+        "table": "application_key_rate_limit_buckets"
+      },
+      {
+        "definition": "PRIMARY KEY (api_key_id, period)",
         "name": "shop_management_key_rate_limit_buckets_api_key_id_period_pk",
         "table": "shop_management_key_rate_limit_buckets"
       },
@@ -1747,6 +1777,11 @@
         "definition": "PRIMARY KEY (id)",
         "name": "account_pkey",
         "table": "account"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "application_keys_pkey",
+        "table": "application_keys"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2618,6 +2653,11 @@
         "table": "two_factor"
       },
       {
+        "definition": "CREATE INDEX application_keys_tenant_id_idx ON application_keys USING btree (tenant_id)",
+        "name": "application_keys_tenant_id_idx",
+        "table": "application_keys"
+      },
+      {
         "definition": "CREATE INDEX auto_invoice_jobs_dispatch_idx ON auto_invoice_jobs USING btree (status, next_attempt_at)",
         "name": "auto_invoice_jobs_dispatch_idx",
         "table": "auto_invoice_jobs"
@@ -3256,6 +3296,11 @@
         "definition": "CREATE INDEX verification_identifier_idx ON verification USING btree (identifier)",
         "name": "verification_identifier_idx",
         "table": "verification"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX application_keys_key_hash_uidx ON application_keys USING btree (key_hash)",
+        "name": "application_keys_key_hash_uidx",
+        "table": "application_keys"
       },
       {
         "definition": "CREATE UNIQUE INDEX auto_invoice_jobs_webhook_event_uidx ON auto_invoice_jobs USING btree (webhook_event_id)",
@@ -11716,6 +11761,43 @@
             "type": "timestamp with time zone"
           }
         ],
+        "name": "application_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "count",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "period",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "window_started_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
         "name": "shop_management_key_rate_limit_buckets"
       },
       {
@@ -15388,6 +15470,91 @@
           }
         ],
         "name": "tenant_api_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "expires_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "issued_by_user_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "key_hash",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "product_ids",
+            "notNull": false,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "revoked_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scopes",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "application_keys"
       },
       {
         "columns": [

@@ -142,6 +142,7 @@ import type {
   InvoicePosition,
   ImpersonationSession,
   TenantAuditEventInput,
+  ApplicationKey,
   ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
@@ -943,6 +944,39 @@ export interface ShopManagementKeyRepository {
     event: (apiKeyId: string) => ShopManagementKeyEvent,
     withdrawal: ChangeProposalWithdrawal,
   ): Promise<number>;
+}
+
+export interface ApplicationKeyRepository {
+  listByTenant(tenantId: string): Promise<ApplicationKey[]>;
+  create(tenantId: string, key: ApplicationKey, event: ShopManagementKeyEvent): Promise<void>;
+  findByHash(tenantId: string, keyHash: string): Promise<ApplicationKey | null>;
+  revoke(tenantId: string, id: string, revokedAt: string, event: ShopManagementKeyEvent): Promise<ApplicationKey | null>;
+}
+
+export interface EntitlementSubjectReader {
+  findAccountByEmail(email: string): Promise<{ userId: string; emailVerified: boolean } | null>;
+  findAccountById(userId: string): Promise<{ userId: string; emailVerified: boolean } | null>;
+  findMemberByUser(tenantId: string, userId: string): Promise<Member | null>;
+  findMemberById(tenantId: string, memberId: string): Promise<Member | null>;
+  hasSignedIn(tenantId: string, memberId: string): Promise<boolean>;
+  listActiveGrants(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
+  listSubscriptions(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
+}
+
+export interface ApplicationKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+    weight: number;
+  }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    weight: number;
+  }): Promise<void>;
 }
 
 export interface ShopManagementKeyRateLimitRepository {

@@ -2,12 +2,13 @@ import { asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { checkoutSessionInputSchema, err, ok, publicStockLookup, refundFailure, type CheckoutSessionInput, type ProviderRefund } from '#core/domain/index.js';
-import { dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, simulatePurchase, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
+import { checkoutSessionInputSchema, err, ok, publicStockLookup, refundFailure, type CheckoutSessionInput, type Identity, type ProviderRefund } from '#core/domain/index.js';
+import { checkEntitlements, dispatchOrderRefundJobs, fulfillStripeWebhook, releaseExpiredStockReservations, simulatePurchase, startCheckoutSession, validateCheckoutSelection, type PaymentProvider, type PaymentWebhookEvent } from '#core/server/index.js';
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
+import { createEntitlementSubjectReader } from './entitlement-subjects.js';
 import { waitForSettledOrderChanges } from './order-change-feed-test-helpers.js';
 import { createOrderChangeRepository } from './order-changes.js';
 import { createOrderRefundJobRepository } from './order-refund-jobs.js';
@@ -46,6 +47,12 @@ const harness = () => {
     tenantAccess: { listStaffForTenant: async () => [{ userId: 'owner', email: 'owner@example.com', staffRole: 'owner', language: 'en' }] },
   });
   return h;
+};
+
+const keyIssuer: Identity = {
+  userId: 'owner', email: 'owner@example.com', name: 'Owner', emailVerified: true, image: null, tenantAccess: 'staff',
+  tenantId: legacyTenant.id, tenantSlug: legacyTenant.slug, tenantName: legacyTenant.name, staffRole: 'owner', memberId: null,
+  memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: null,
 };
 
 const track = async (productId: string, onHand: number) => {
@@ -197,6 +204,24 @@ describe('payment for goods that sold out after the hold ended', () => {
     ]);
     expect(await database.db.select({ orderId: checkoutConsentJobs.orderId }).from(checkoutConsentJobs).where(eq(checkoutConsentJobs.tenantId, legacyTenant.id))).toStrictEqual([]);
     expect(h.errors).toStrictEqual([]);
+
+    const [buyer] = await database.db.select({ id: members.id, userId: members.userId }).from(members).where(eq(members.tenantId, legacyTenant.id));
+    if (buyer === undefined) throw new Error('The sold-out payment left no member');
+    await database.db.insert(memberEvents).values({ id: 'sign-in:buyer', tenantId: legacyTenant.id, memberId: buyer.id, type: 'sign-in', payload: {}, occurredAt: '2026-11-15T10:42:30.000Z' });
+    const subjects = { ...createEntitlementSubjectReader(database.db), findAccountByEmail: async () => ({ userId: buyer.userId, emailVerified: true }) };
+    const check = (productIds?: string[]) => checkEntitlements(
+      { identity: keyIssuer, capabilities: ['entitlement:check'], machineActor: { kind: 'application_key', apiKeyId: 'ek-oos' } },
+      { subjects: [{ email: 'buyer@example.com' }], ...(productIds === undefined ? {} : { productIds }) },
+      { productIds: null },
+      { entitlementSubjects: subjects, clock: { nowIso: () => '2026-11-15T10:43:00.000Z' } },
+    );
+    expect(await check(['printed-1'])).toMatchObject(ok({ results: [{ products: [{ productId: 'printed-1', access: false, source: null, subscription: null }] }] }));
+    expect(await check()).toMatchObject(ok({ results: [{ products: [] }] }));
+    await database.db.insert(productGrants).values({
+      id: 'grant-control', tenantId: legacyTenant.id, memberId: buyer.id, productId: 'course-1', source: 'manual', mode: 'live',
+      startsAt: '2026-11-01T09:00:00.000Z', createdAt: '2026-11-01T09:00:00.000Z',
+    });
+    expect(await check(['printed-1', 'course-1'])).toMatchObject(ok({ results: [{ products: [{ access: false }, { productId: 'course-1', access: true, source: 'grant' }] }] }));
   });
 
   it('cancels a two-line order when one line is short and decrements neither line nor grants the other one', async () => {

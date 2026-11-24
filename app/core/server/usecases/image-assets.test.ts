@@ -546,6 +546,18 @@ describe('image assets', () => {
     expect(signed).toEqual([]);
   });
 
+  it.each([['course-cover', 'png'], ['course-cover', 'webp'], ['avatar', 'webp']])(
+    'does not sign a content-addressed %s.%s name, which no proposal publishes, whatever evidence the workspace holds',
+    async (kind, extension) => {
+      const { deps, signed } = testDeps();
+      deps.quarantinedImages = { findUpload: async () => null, inLiveUse: async () => true, inAppliedProposal: async () => true };
+      expect(await getPublicImageAssetUrl(TENANT_ID, { kind, file: `${'a'.repeat(64)}.${extension}` }, deps))
+        .toMatchObject({ ok: false, error: { code: 'not_found' } });
+      expect(await getPublicImageAssetUrl(TENANT_ID, { kind, file: `${ASSET_ID}.${extension}` }, deps)).toMatchObject({ ok: true });
+      expect(signed).toEqual([expect.objectContaining({ url: expect.stringContaining(`image-assets/${TENANT_ID}/${kind}/${ASSET_ID}.${extension}`) })]);
+    },
+  );
+
   it('normalizes storage configuration and signing failures to not found', async () => {
     const { deps } = testDeps();
     deps.secretResolver = { resolve: async () => err(notFound('private bucket detail')) };

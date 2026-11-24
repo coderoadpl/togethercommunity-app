@@ -45,6 +45,7 @@ export const IMAGE_ASSET_GET_TTL_SECONDS = 60 * 60;
 
 const imageAssetFilePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|svg|ico)$/;
 const publicImageAssetFilePattern = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})\.(png|jpg|webp|svg|ico)$/;
+const contentAddressedFilePattern = /^[0-9a-f]{64}\./;
 const avatarServePathPattern = /^\/api\/public\/assets\/avatar\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.webp)$/iu;
 
 const servePath = (kind: ImageAssetKind, file: string): string =>
@@ -492,8 +493,10 @@ export const getPublicImageAssetUrl = async (
     return err(notFound('Image asset not found'));
   }
   const path = servePath(kind.data, input.file);
-  if (parseProposalImagePath(path) !== null && !await deps.quarantinedImages.inLiveUse(tenantId, path)
-    && !await deps.quarantinedImages.inAppliedProposal(tenantId, path)) return err(notFound('Image asset not found'));
+  if (contentAddressedFilePattern.test(input.file) && (parseProposalImagePath(path) === null
+    || (!await deps.quarantinedImages.inLiveUse(tenantId, path) && !await deps.quarantinedImages.inAppliedProposal(tenantId, path)))) {
+    return err(notFound('Image asset not found'));
+  }
   try {
     const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
     if (!configuration.ok) return err(notFound('Image asset not found'));

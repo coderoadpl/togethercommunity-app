@@ -1334,6 +1334,9 @@ default) or `disabled`; any other value stops the server from booting. With
   (`DELETE /api/api-keys/shop-management/:id`) and purgeable (below) through the
   owner session.
 - Legacy keys behave exactly as with `enabled`.
+- The switch covers [application keys](entitlement-check.md) too: every request
+  under `/api/m2m/entitlements` answers `404` the same way, and creating an
+  application key is refused.
 
 The switch is read at boot: change it and redeploy (or restart) the server.
 
@@ -1341,9 +1344,10 @@ The switch is read at boot: change it and redeploy (or restart) the server.
 
 `POST /api/api-keys/shop-management/purge` (CLI
 `api-key shop-management purge --yes`) is the owner's kill switch for one
-workspace: it deletes every shop management key of the workspace, revoked or
-not, in one transaction with one `purged` key event per deleted key, and answers
-`{"purged": <count>}`. It needs the same verified owner session as
+workspace: it deletes every shop management key and every
+[application key](entitlement-check.md) of the workspace, revoked or not, in one
+transaction with one `purged` key event per deleted key, and answers
+`{"purged": <count>}` with the count of both kinds. It needs the same verified owner session as
 creation, refuses an admin, an unverified owner, an owner viewing as a member
 and any API key, and works with the switch in either state. Legacy keys and
 other workspaces' keys are untouched, and the keys' rate-limit buckets go with

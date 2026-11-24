@@ -2714,7 +2714,7 @@ describe('owner change proposal commands', () => {
       h.getChangeProposalFileLink.mockReset().mockResolvedValue(ok({ download: { url, expiresAt: '1998-08-01T00:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: bytes.byteLength } }));
       await run('proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
       expect(h.getChangeProposalFileLink).toHaveBeenCalledWith({ id: 'proposal-1', fileId: 'staged-1' });
-      expect(fetchSpy).toHaveBeenCalledWith(url, { redirect: 'error' });
+      expect(fetchSpy).toHaveBeenCalledWith(url, { redirect: 'error', credentials: 'omit' });
       expect(new Uint8Array(await readFile(out))).toEqual(bytes);
       expect(logSpy).toHaveBeenCalledWith(`wrote workbook.pdf (${String(bytes.byteLength)} bytes) to ${out}`);
       expect(JSON.stringify(logSpy.mock.calls)).not.toContain('secret-signature');

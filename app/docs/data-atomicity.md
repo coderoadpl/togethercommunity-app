@@ -130,6 +130,11 @@ at all.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.
+- Course progress: `MemberCourseProgressRepository.addCompletedLesson` writes
+  the progress projection and its `lesson-completion` member event in one
+  commit. It locks the member's progress row for the course with `FOR UPDATE`,
+  so completions of one member and course are serialized, and writes the event
+  only when the conditional append changed the row.
 - Telemetry outbox: `EmailEventRepository.append` and
   `MemberEventRepository.append` write the event, the per-tenant telemetry
   accounting row and the outbox row in one commit, so the outbox sequence

@@ -109,11 +109,10 @@ export const OrderPaymentCard = ({ order, totals, soldOutRefund, staffRefunds, c
     .filter((group) => group.cents > 0);
   const requestedCents = requested.reduce((sum, group) => sum + group.cents, 0);
   const soldOutUnconfirmed = soldOutRefund !== null && soldOutRefund.status !== 'succeeded';
-  const soldOutUnconfirmedCents = soldOutUnconfirmed && isObservedPlatformRefund(soldOutRefund) ? soldOutRefund.amountCents : 0;
   const notFinal = providerTotals
     ? { cents: preview.providerNotFinalCents, note: messages.notFinalAtProvider }
     : {
-      cents: Math.min(refundedCents, soldOutUnconfirmedCents + sumOf(staffRefunds.filter((refund) =>
+      cents: Math.min(refundedCents, sumOf(staffRefunds.filter((refund) =>
         counted(refund) && refund.status !== 'succeeded' && PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status)))),
       note: messages.inProgress,
     };
@@ -123,7 +122,7 @@ export const OrderPaymentCard = ({ order, totals, soldOutRefund, staffRefunds, c
   return (
     <SectionCard title={messages.paymentTitle} headerActions={chips} data-testid="order-payment">
       <Stack useFlexGap spacing="0.6rem">
-        {!totalsAvailable || (refundedCents === 0 && requestedCents === 0 && !unknown) ? (
+        {!totalsAvailable || (refundedCents === 0 && requestedCents === 0 && heldCents === 0 && !unknown) ? (
           <>
             <AmountRow label={messages.productsSubtotal}>{money(paidCents - shippingCents + order.discountCents)}</AmountRow>
             {order.shipping == null ? null : <AmountRow label={messages.deliverySubtotal}>{money(shippingCents)}</AmountRow>}
@@ -147,6 +146,7 @@ export const OrderPaymentCard = ({ order, totals, soldOutRefund, staffRefunds, c
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
         )}
+        {soldOutUnconfirmed ? <Typography variant="body2" color="textSecondary" data-testid="order-payment-sold-out-unconfirmed">{messages.soldOutNotConfirmed}</Typography> : null}
         {heldCents === 0 ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-held">{messages.heldNotDeducted({ amount: money(heldCents) })}</Typography>}
         {totalsNote === null ? null : <Typography variant="body2" color="textSecondary" data-testid="order-payment-platform-totals">{totalsNote}</Typography>}
       </Stack>

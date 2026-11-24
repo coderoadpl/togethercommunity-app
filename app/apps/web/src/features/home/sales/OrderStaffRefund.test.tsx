@@ -236,7 +236,8 @@ describe('payment card totals', () => {
     const payment = await screen.findByTestId('order-payment');
     expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
     expect(within(payment).queryByText(messages.fullyRefunded) !== null).toBe(confirmed);
-    expect(within(payment).queryByText(messages.inProgress({ amount: pln(24900) })) !== null).toBe(!confirmed);
+    expect(within(payment).queryByText(messages.inProgress({ amount: pln(24900) }))).toBeNull();
+    expect(within(payment).queryByTestId('order-payment-sold-out-unconfirmed') !== null).toBe(!confirmed);
     expect(calls.preview).toBe(0);
   });
 
@@ -327,6 +328,22 @@ describe('payment card totals', () => {
     expect(within(payment).queryByText(`−${pln(1000)}`)).toBeNull();
     expect(within(payment).queryByText(messages.requestedRefund)).toBeNull();
     expect(within(payment).getByText(pln(0))).toBeVisible();
+  });
+
+  it('keeps the balance visible when Stripe lists no refund and a watching request is held', async () => {
+    serve(
+      {
+        order: { ...paidOrder, status: 'paid' },
+        staffRefunds: [staffRefund({ id: 'r-watching', status: 'submitted', amountCents: 1000, providerRefundId: null, providerRefundStatus: null, lastError: 'waiting_for_other_refund' })],
+      },
+      { ...preview, refundable: false, waitingRefundId: null, refundedCents: 0, remainderCents: 23900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByTestId('order-payment-held')).toHaveTextContent(messages.heldNotDeducted({ amount: pln(1000) }));
+    expect(within(payment).getByText(messages.remaining)).toBeVisible();
+    expect(within(payment).getByText(pln(23900))).toBeVisible();
+    expect(within(payment).queryByText(messages.productsSubtotal)).toBeNull();
   });
 
   it('says a refund the dispatcher is sending and Stripe does not list yet is being sent, never not sent', async () => {

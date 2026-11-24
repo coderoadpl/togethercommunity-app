@@ -1201,6 +1201,7 @@ export interface Messages {
       beingSent: string;
       watchingOtherRefunds: string;
       heldNotDeducted: (params: { amount: string }) => string;
+      soldOutNotConfirmed: string;
       totalsUnavailable: string;
       waitingBlocksAction: string;
       notPaidOut: string;

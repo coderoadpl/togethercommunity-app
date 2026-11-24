@@ -706,12 +706,16 @@ scopes on every shop key.
   write the staged object, which only the server writes by a copy, and the row
   stays locked until the commit; the storage is asked only for the object's
   length, and the SHA-256 is compared between the two reads of the row, not
-  with the bytes. Known limit: bytes replaced outside the application with
-  others of the same length, or a storage connection the workspace owner
-  changes between the review and the approval (each resolves the current
-  connection, and a staged row names no bucket), are not detected, so the
-  approval can attach other bytes than the owner downloaded, or an object the
-  new bucket does not hold. The
+  with the bytes. Each request resolves the current storage connection, and a
+  staged row names no bucket. Known limits, by when they happen: an object
+  that is missing or has another length when the approval asks the storage,
+  also after the workspace owner switched the connection to a bucket that
+  lacks it, ends the proposal `stale` and nothing is attached; bytes replaced
+  outside the application with others of the same length pass that check, in
+  the current bucket or in one switched to before it, so the approval can
+  attach other bytes than the owner downloaded; and a connection change or a
+  loss of the object after that check, before the commit, is not detected, so
+  the approval can attach an object the storage no longer holds. The
   owner downloads them through `GET /api/change-proposals/:id/files/:fileId`
   (verified owner session, `proposal:read`, a file the pending proposal holds
   whose object the storage reports with the recorded size, else `404`):

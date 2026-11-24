@@ -55,6 +55,7 @@ import {
   changeProposals,
   products,
   shopManagementKeys,
+  tenantSecrets,
   tenants,
 } from './schema.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
@@ -138,18 +139,22 @@ const untilWaiting = async (observer: pg.Client, what: string): Promise<void> =>
   }
 };
 
+const configureStorage = async (tenantId: string, id: string): Promise<void> => {
+  await createTenantSecretRepository(database.db).upsert(tenantId, {
+    id, tenantId, key: 's3.configuration', maskedPreview: 'configured', updatedAt: NOW,
+    ...secretCrypto.encrypt(JSON.stringify({
+      provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'assets', accessKeyId: 'a', secretAccessKey: 's',
+    })),
+  });
+};
+
 beforeAll(async () => {
   database = await createTestDatabase('together_change_proposal_images', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
   await database.db.insert(tenants).values([
     { id: TENANT, slug: 'images', name: 'Images', createdAt: NOW },
     { id: NEIGHBOUR, slug: 'images-neighbour', name: 'Neighbour', createdAt: NOW },
   ]);
-  await createTenantSecretRepository(database.db).upsert(TENANT, {
-    id: 'storage-configuration', tenantId: TENANT, key: 's3.configuration', maskedPreview: 'configured', updatedAt: NOW,
-    ...secretCrypto.encrypt(JSON.stringify({
-      provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'auto', bucket: 'assets', accessKeyId: 'a', secretAccessKey: 's',
-    })),
-  });
+  await configureStorage(TENANT, 'storage-configuration');
 });
 
 afterAll(async () => { await database?.close(); });
@@ -509,24 +514,32 @@ describe('public copies of an approval that did not end applied', () => {
     expect(cover?.coverUrl).toBe(url);
   });
 
-  it('serves a content-addressed address only while a live field of its workspace shows it or an applied proposal set it', async () => {
+  it('serves a content-addressed address only while a live field of its workspace shows it or an applied proposal of it names it', async () => {
     const harness = endToEnd();
     const reference = image(1);
     const file = `${reference.digest}.png`;
     harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${file}`, { bytes: PNG_BYTES, contentType: 'image/png' });
     const read = (tenantId: string) => getPublicImageAssetUrl(tenantId, { kind: 'product-cover', file }, harness.deps);
-    expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await configureStorage(NEIGHBOUR, 'storage-configuration-neighbour');
+    try {
+      expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
-    await database.db.update(products).set({ coverUrl: pathOf(reference) }).where(eq(products.id, 'mug'));
-    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-other', [reference], NOW);
-    expect(await read(TENANT)).toMatchObject({ ok: true, value: expect.stringContaining(`image-assets/${TENANT}/product-cover/${file}`) });
-    expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      await database.db.update(products).set({ coverUrl: pathOf(reference) }).where(eq(products.id, 'mug'));
+      await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-other', [reference], NOW);
+      expect(await read(TENANT)).toMatchObject({ ok: true, value: expect.stringContaining(`image-assets/${TENANT}/product-cover/${file}`) });
+      expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
 
-    await database.db.update(products).set({ coverUrl: null }).where(eq(products.id, 'mug'));
-    expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    await pendingProposal('p-applied-cover', { coverUrl: pathOf(reference) }, { status: 'applied' });
-    expect(await read(TENANT)).toMatchObject({ ok: true });
-    expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      await database.db.update(products).set({ coverUrl: null }).where(eq(products.id, 'mug'));
+      expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      await pendingProposal('p-applied-cover', { coverUrl: pathOf(reference) }, { status: 'applied' });
+      expect(await read(TENANT)).toMatchObject({ ok: true });
+      expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+      await pendingProposal('p-neighbour-cover', { coverUrl: pathOf(reference) }, { status: 'applied', tenantId: NEIGHBOUR, keyId: 'key-neighbour' });
+      expect(await read(NEIGHBOUR)).toMatchObject({ ok: true, value: expect.stringContaining(`image-assets/${NEIGHBOUR}/product-cover/${file}`) });
+    } finally {
+      await database.db.delete(tenantSecrets).where(eq(tenantSecrets.tenantId, NEIGHBOUR));
+    }
   });
 
   it('keeps a recorded address that a live field shows or an applied proposal carries, and drops only the record', async () => {

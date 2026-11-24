@@ -106,7 +106,7 @@ import {
   tenantRedirectUpdateInputSchema,
   contentVersionRestoreSchema,
   lessonEditionSchema,
-  readerLessonEditionSchema,
+  readerLessonEditionsSchema,
   markLessonEditionInputSchema,
   unmarkLessonEditionInputSchema,
   courseHistoryEntrySchema,
@@ -200,6 +200,7 @@ import {
   publicProductVariantSchema,
   checkoutShippingInputSchema,
   publicShippingRateSchema,
+  parcelLockerLookupSchema,
   progressViewSchema,
   searchPostsInputSchema,
   sendSupportMessageInputSchema,
@@ -493,6 +494,8 @@ export const publicCheckoutSessionStatusOutputSchema = z.object({
   analytics: checkoutPurchaseAnalyticsSchema.optional(),
   metaCapi: metaCapiConfigSchema.optional(),
 }).strict();
+
+export const publicParcelLockerOutputSchema = parcelLockerLookupSchema;
 
 export const publicPaymentConfigOutputSchema = z.object({
   analytics: checkoutAnalyticsConfigSchema.nullable().optional(),
@@ -1103,7 +1106,7 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
-export const lessonEditionsOutputSchema = z.object({ editions: z.array(readerLessonEditionSchema) });
+export const lessonEditionsOutputSchema = readerLessonEditionsSchema;
 export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
 export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
 export { markLessonEditionInputSchema, unmarkLessonEditionInputSchema };
@@ -2054,6 +2057,7 @@ export const API_ROUTES = {
   publicImageAsset: { method: 'GET', path: '/api/public/assets/:kind/:file' },
   publicCheckoutSessionStatus: { method: 'GET', path: '/api/public/checkout/session-status' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
+  publicParcelLocker: { method: 'GET', path: '/api/public/parcel-lockers/:code' },
   stripeTestRemove: { method: 'POST', path: '/api/integrations/stripe/test-mode/remove' },
   stripeTestSession: { method: 'POST', path: '/api/checkout/stripe-test-session' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -2482,6 +2486,7 @@ export const API_PATHS = {
   publicImageAsset: API_ROUTES.publicImageAsset.path,
   publicCheckoutSessionStatus: API_ROUTES.publicCheckoutSessionStatus.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
+  publicParcelLocker: API_ROUTES.publicParcelLocker.path,
   stripeTestRemove: API_ROUTES.stripeTestRemove.path,
   stripeTestSession: API_ROUTES.stripeTestSession.path,
   checkoutSession: API_ROUTES.checkoutSession.path,

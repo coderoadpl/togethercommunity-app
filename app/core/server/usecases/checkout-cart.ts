@@ -15,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Clock, CouponRedemptionRepository, CouponRepository, PaymentProvider, ProductPriceHistoryRepository, ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveCartPrices, resolveCheckoutReturnAddresses, selectionLineQuantity, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
@@ -25,6 +26,7 @@ interface CartSelectionDeps {
   prices: Pick<ProductPriceRepository, 'listActiveByProducts'>;
   tenants?: Pick<TenantRepository, 'findSettings'> | undefined;
   stock?: StockRepository | undefined;
+  pickupPoints?: PickupPointDirectory | undefined;
 }
 
 const selectCartProducts = async (

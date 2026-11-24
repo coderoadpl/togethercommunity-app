@@ -111,6 +111,7 @@ import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
 import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
 import { registerDirectSalesLinkRoutes } from './direct-sales-link-routes.js';
+import { registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
 import { directSalesLinkCopy } from './direct-sales-link-page.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
@@ -642,7 +643,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (mode === 'list') {
       const editions = await listLessonEditions(ctx, lessonId, deps);
       if (!editions.ok) return respondPublic(!authenticated && editions.error.code === 'forbidden' ? err(unauthorized()) : editions);
-      return respondPublic(ok(lessonEditionsOutputSchema.parse({ editions: editions.value })));
+      return respondPublic(ok(lessonEditionsOutputSchema.parse(editions.value)));
     }
     const result = await getPlayableLesson(ctx, lessonId, deps, mode === 'edition' ? c.req.param('number') : undefined);
     if (!result.ok) {
@@ -704,6 +705,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         : config,
     );
   });
+
+  registerPublicParcelLockerRoutes(app, deps);
 
   const checkoutRequestSelection = async (tenantId: string, body: unknown) => {
     if (!isCheckoutCartRequest(body)) {

@@ -136,3 +136,28 @@ describe('request origins with real session credentials', () => {
     expect((await updateProfile({ authorization: 'Bearer invalid.signature' })).status).toBe(401);
   });
 });
+
+describe('session tokens through the server', () => {
+  const signInFrom = (headers: Record<string, string>) => app.request(`${baseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl, ...headers },
+    body: JSON.stringify({ email, password }),
+  });
+
+  it('answers a browser sign-in with the session cookie and no readable token', async () => {
+    const response = await signInFrom({ 'sec-fetch-site': 'same-origin' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-auth-token')).toBeNull();
+    expect(response.headers.get('access-control-expose-headers') ?? '').not.toContain('set-auth-token');
+    expect(response.headers.getSetCookie().some((entry) => entry.includes('session_token='))).toBe(true);
+    expect(await response.json()).not.toHaveProperty('token');
+  });
+
+  it('keeps answering the CLI sign-in with its bearer token', async () => {
+    const response = await signInFrom({});
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-auth-token')).not.toBeNull();
+    expect(await response.json()).toHaveProperty('token');
+  });
+});

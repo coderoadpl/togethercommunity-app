@@ -47,6 +47,7 @@ import type {
   TenantRepository,
 } from '../ports.js';
 import type { CheckoutSnapshotRepository } from '../checkout-snapshot-ports.js';
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutPersonalizations, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
@@ -71,6 +72,7 @@ export interface CheckoutDeps {
   clock?: Clock;
   stock?: StockRepository;
   logger?: CheckoutStockDeps['logger'];
+  pickupPoints?: PickupPointDirectory;
 }
 
 export type { CheckoutSelection } from './checkout-selection.js';
@@ -176,7 +178,7 @@ const selectCheckoutProducts = async (
 export const validateCheckoutSelection = async (
   tenantId: string,
   input: Pick<CheckoutSessionInput, 'productId' | 'priceId' | 'salesLinkId' | 'salesLinkSlug' | 'variantSelections' | 'shipping' | 'returnUrl' | 'cancelUrl' | 'personalizations'>,
-  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices' | 'salesLinks' | 'clock' | 'tenants' | 'pickupPoints'>,
   options: { shipping: 'resolve' | 'ignore' } = { shipping: 'resolve' },
 ): Promise<Result<CheckoutSelection, AppError>> => {
   const returns = await resolveCheckoutReturnAddresses(tenantId, input, deps);

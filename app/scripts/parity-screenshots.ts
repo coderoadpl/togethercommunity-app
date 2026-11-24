@@ -521,7 +521,9 @@ const captureStudentJourney = async (
   await page.goto(`${studioBaseUrl}/my/courses/${fixture.courseId}/lessons/${fixture.lockedLessonId}`, {
     waitUntil: 'load',
   });
-  await page.getByTestId('locked-lesson-upsell').getByText('Content locked').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page
+    .locator('[data-testid="locked-lesson-upsell"]:is([data-state="for-sale"], [data-state="not-for-sale"])')
+    .waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '11-lesson-locked.png');
 
   await page.close();

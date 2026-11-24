@@ -83,6 +83,8 @@ export interface StripePaymentProviderConfig {
 
 export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readonly Stripe.WebhookEndpointCreateParams.EnabledEvent[];
 
+export const STRIPE_WEBHOOK_API_VERSION: Stripe.LatestApiVersion = '2025-09-30.clover';
+
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
@@ -623,6 +625,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         );
         for (const endpoint of stale) await webhookEndpoints.del(endpoint.id);
         const endpoint = await webhookEndpoints.create({
+          api_version: STRIPE_WEBHOOK_API_VERSION,
           url: input.webhookUrl,
           enabled_events: [...STRIPE_WEBHOOK_EVENTS],
           description: 'Together payment fulfillment',

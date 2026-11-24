@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
-import { createAuthE2eClient, type AuthE2eTransport } from './e2e-http.js';
+import {
+  createAuthE2eClient,
+  emptySecureSessionCookieHeader,
+  sessionCookieOf,
+  type AuthE2eTransport,
+} from './e2e-http.js';
 
 const PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
@@ -85,5 +90,24 @@ describe('createAuthE2eClient', () => {
     const result = await client.getSession('tok-1');
 
     expect(result).toEqual({ status: 500, token: null, json: null });
+  });
+
+  it('finds the session cookie carrying the set-auth-token and puts an empty secure-prefixed copy before it', async () => {
+    const signed = 'sess-token.signature/+=';
+    vi.stubGlobal('fetch', (async () => {
+      const headers = new Headers({ 'set-auth-token': signed });
+      headers.append('set-cookie', 'better-auth.dont_remember=true; Path=/');
+      headers.append('set-cookie', `better-auth.session_token=${encodeURIComponent(signed)}; Max-Age=604800; Path=/; HttpOnly`);
+      return new Response('{}', { status: 200, headers });
+    }) satisfies typeof fetch);
+
+    const response = await createAuthE2eClient(transport).signInEmailResponse({ email: 'ada@together.dev', password: PASSWORD });
+    const cookie = sessionCookieOf(response);
+
+    expect(cookie).toEqual({ name: 'better-auth.session_token', value: encodeURIComponent(signed) });
+    expect(cookie === null ? null : emptySecureSessionCookieHeader(cookie)).toBe(
+      `__Secure-better-auth.session_token=; better-auth.session_token=${encodeURIComponent(signed)}`,
+    );
+    expect(sessionCookieOf({ ...response, token: null })).toBeNull();
   });
 });

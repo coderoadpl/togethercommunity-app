@@ -45,6 +45,16 @@ export const MapPinIcon = () => (<Glyph><path d="M20 10c0 4.993-5.539 10.193-7.3
 
 export const ChevronDownIcon = () => (<Glyph><path d="m6 9 6 6 6-6" /></Glyph>);
 
+export const ChevronRightIcon = () => (<Glyph><path d="m9 18 6-6-6-6" /></Glyph>);
+
+export const DownloadIcon = () => (<Glyph><path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" /></Glyph>);
+
+export const ExternalLinkIcon = () => (<Glyph><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></Glyph>);
+
 export const PlusIcon = () => (<Glyph><path d="M12 5v14" />
   <path d="M5 12h14" /></Glyph>);
 
@@ -53,3 +63,7 @@ export const MinusIcon = () => (<Glyph><path d="M5 12h14" /></Glyph>);
 export const TriangleAlertIcon = () => (<Glyph><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
   <path d="M12 9v4" />
   <path d="M12 17h.01" /></Glyph>);
+
+export const CircleAlertIcon = () => (<Glyph><circle cx="12" cy="12" r="10" />
+  <path d="M12 8v4" />
+  <path d="M12 16h.01" /></Glyph>);

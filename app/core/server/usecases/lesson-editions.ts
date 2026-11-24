@@ -1,12 +1,12 @@
 import {
-  appError, buildSnapshot, currentSnapshotParsers, err, lessonEditionNumberSchema,
+  appError, buildSnapshot, compareLessonEditionNumbers, currentSnapshotParsers, err, lessonEditionNumberSchema,
   markLessonEditionInputSchema, notFound, ok, readSnapshot, snapshotPayloadsEqual, unmarkLessonEditionInputSchema, validation,
-  type AppError, type CourseLesson, type LessonEdition, type ReaderLessonEdition, type Result,
+  type AppError, type CourseLesson, type LessonEdition, type ReaderLessonEditions, type Result,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { Clock, EntityVersionRecord, IdGenerator, LessonEditionRepositories, LessonEditionRepository, LessonEditionTransaction } from '../ports.js';
+import type { Clock, EntityVersionRecord, IdGenerator, LessonEditionRepositories, LessonEditionRepository, LessonEditionTransaction, LessonEditionVersion } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface LessonEditionReadDeps extends CourseAccessDeps {
@@ -20,13 +20,32 @@ export interface LessonEditionWriteDeps extends LessonEditionRepositories {
 
 export const listLessonEditions = async (
   ctx: Ctx, lessonId: string, deps: LessonEditionReadDeps,
-): Promise<Result<ReaderLessonEdition[], AppError>> => {
+): Promise<Result<ReaderLessonEditions, AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   const lesson = await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
   const editions = await deps.lessonEditions.list(tenant.value, lessonId);
-  return ok(editions.map(({ number, note, markedAt }) => ({ number, note, markedAt })));
+  const matching = liveMatches(lesson.value, editions);
+  return ok({
+    editions: editions.map(({ number, note, markedAt }) => ({ number, note, markedAt, matchesLive: matching.has(number) })),
+    currentEdition: [...matching].sort(compareLessonEditionNumbers).at(-1) ?? null,
+  });
+};
+
+const readerContent = (payload: unknown) => {
+  const { name, contents, durationMinutes } = currentSnapshotParsers.course_lesson(payload);
+  return { name, contents, durationMinutes };
+};
+
+const liveMatches = (lesson: CourseLesson, editions: readonly LessonEditionVersion[]): ReadonlySet<string> => {
+  const live = buildSnapshot('course_lesson', lesson);
+  if (!live.ok) return new Set();
+  const liveContent = readerContent(live.value.payload);
+  return new Set(editions.filter(({ version }) => {
+    const snapshot = readSnapshot('course_lesson', version);
+    return snapshot.ok && snapshotPayloadsEqual(readerContent(snapshot.value.payload), liveContent);
+  }).map(({ number }) => number));
 };
 
 export const getLessonEdition = async (

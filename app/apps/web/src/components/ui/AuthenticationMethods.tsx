@@ -34,6 +34,7 @@ export const AuthenticationMethods = ({
   sessionsCard,
   Card = AccountSection,
   twoFactorEnabled = false,
+  hasPassword = true,
   onSecurityRefresh = ignoreSecurityRefresh,
   passkeys,
   registerPasskey,
@@ -52,6 +53,7 @@ export const AuthenticationMethods = ({
   const [twoFactorPassword, setTwoFactorPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [confirmingPasskeyId, setConfirmingPasskeyId] = useState<string | null>(null);
+  const [passwordSetupOrigin, setPasswordSetupOrigin] = useState<'twoFactor' | 'passkey' | null>(null);
 
   useEffect(() => {
     if (registerPasskey.success) {
@@ -95,12 +97,29 @@ export const AuthenticationMethods = ({
     ? []
     : regenerateBackupCodes.data ?? enableTwoFactor.data?.backupCodes ?? [];
 
+  const requestPasswordSetupFrom = (origin: 'twoFactor' | 'passkey') => {
+    setPasswordSetupOrigin(origin);
+    requestPasswordSetup.run();
+  };
+  const passwordSetupErrorFor = (origin: 'twoFactor' | 'passkey') =>
+    passwordSetupOrigin === origin ? requestPasswordSetup.error : null;
+  const passwordSetupSentFor = (origin: 'twoFactor' | 'passkey') =>
+    passwordSetupOrigin === origin && requestPasswordSetup.success;
+  const passkeyPasswordSetupError = presentation === 'account' ? passwordSetupErrorFor('passkey') : null;
+  const passwordSetupLabel = (idle: string) => requestPasswordSetup.pending ? t.security.resetSending : idle;
+  const closeAddPasskey = () => {
+    setAdding(false);
+    setProofPassword('');
+    if (passwordSetupOrigin === 'passkey') setPasswordSetupOrigin(null);
+  };
+
   const passkeyForm = (
 <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <FormControl fullWidth>
             <FormLabel htmlFor="passkey-name">{t.security.passkeyNameLabel}</FormLabel>
             <OutlinedInput
               id="passkey-name"
+              autoFocus={presentation === 'account'}
               value={passkeyName}
               onChange={(event) => setPasskeyName(event.target.value)}
               inputProps={{ 'data-testid': 'passkey-name' }}
@@ -134,10 +153,8 @@ export const AuthenticationMethods = ({
           {registerPasskey.error ? <Alert severity="error">{localizeError(registerPasskey.error, t)}</Alert> : null}
         </Box>
   );
-  const passkeyHelp = (
-<AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
-          <Typography variant="body2">{t.security.passkeyIntro}</Typography>
-        <Box sx={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }}>
+  const passwordlessHint = (
+        <Box sx={{ display: 'grid', gap: '0.4rem', justifyItems: 'start' }} data-testid="passkey-passwordless">
           <Typography variant="caption">{t.security.passkeyPasswordlessHint}</Typography>
           <Button
             type="button"
@@ -145,14 +162,34 @@ export const AuthenticationMethods = ({
             variant="text"
             data-testid="passkey-set-password"
             disabled={requestPasswordSetup.pending}
-            onClick={() => requestPasswordSetup.run()}
+            onClick={() => requestPasswordSetupFrom('passkey')}
           >
-            {requestPasswordSetup.pending
-              ? t.security.resetSending
-              : t.security.passkeySetPassword}
+            {passwordSetupLabel(t.security.passkeySetPassword)}
           </Button>
+          {passkeyPasswordSetupError ? <Alert severity="error" data-testid="passkey-set-password-error">{localizeError(passkeyPasswordSetupError, t)}</Alert> : null}
         </Box>
+  );
+  const passkeyHelp = (
+<AccountHelp inline={presentation === 'embedded'} title={t.security.passkeyHelp} testId="passkey-help">
+          <Typography variant="body2">{t.security.passkeyIntro}</Typography>
+        {presentation === 'embedded' ? passwordlessHint : null}
         </AccountHelp>
+  );
+  const passwordlessDialogBody = (
+    <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'flex-start' }} data-testid="passkey-passwordless">
+      <Typography variant="body2">{t.security.passkeyPasswordlessHint}</Typography>
+      {passwordSetupSentFor('passkey') ? <Typography variant="body2" role="status" data-testid="passkey-set-password-sent">{t.security.resetSent}</Typography> : <Button
+        type="button"
+        variant="contained"
+        autoFocus
+        data-testid="passkey-set-password"
+        disabled={requestPasswordSetup.pending}
+        onClick={() => requestPasswordSetupFrom('passkey')}
+      >
+        {passwordSetupLabel(t.security.setOrResetPassword)}
+      </Button>}
+      {passkeyPasswordSetupError ? <Alert severity="error" data-testid="passkey-set-password-error">{localizeError(passkeyPasswordSetupError, t)}</Alert> : null}
+    </Stack>
   );
 
   const passkeyCard = (
@@ -205,11 +242,8 @@ export const AuthenticationMethods = ({
         ) : null}
         {presentation === 'account' ? <>
           <Box><Button variant="contained" data-testid="add-passkey-open" onClick={() => { setProofPassword(''); setAdding(true); }}>{t.security.addPasskey}</Button></Box>
-          <AccountDialog open={adding} title={t.security.addPasskey} pending={registerPasskey.pending || requestPasswordSetup.pending} onClose={() => { setAdding(false); setProofPassword(''); }}>
-            {passkeyForm}
-            {passkeyHelp}
-
-            {requestPasswordSetup.error ? <Alert severity="error">{localizeError(requestPasswordSetup.error, t)}</Alert> : null}
+          <AccountDialog open={adding} title={t.security.addPasskey} pending={registerPasskey.pending || requestPasswordSetup.pending} onClose={closeAddPasskey}>
+            {hasPassword ? <>{passkeyForm}{passkeyHelp}</> : passwordlessDialogBody}
           </AccountDialog>
         </> : <>{passkeyHelp}{passkeyForm}</>}
         <ConfirmDialog open={confirmingPasskeyId !== null} title={t.security.confirmRemovePasskey} confirmLabel={t.security.confirmRemovePasskey} cancelLabel={t.common.cancel}
@@ -251,7 +285,7 @@ export const AuthenticationMethods = ({
         enrollTwoFactor={enrollTwoFactor}
         submitTotp={submitTotp}
         backupCodes={backupCodes}
-      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} onSecurityRefresh={onSecurityRefresh} />;
+      />) : <TwoFactorCard Card={Card} enableTwoFactor={enableTwoFactor} verifyTotp={verifyTotp} disableTwoFactor={disableTwoFactor} regenerateBackupCodes={regenerateBackupCodes} requestPasswordSetup={{ ...requestPasswordSetup, success: passwordSetupSentFor('twoFactor'), error: passwordSetupErrorFor('twoFactor'), run: () => requestPasswordSetupFrom('twoFactor') }} backupCodes={backupCodes} twoFactorEnabled={twoFactorEnabled} hasPassword={hasPassword} onSecurityRefresh={onSecurityRefresh} />;
   return <Box sx={{ display: 'grid', gap: '1rem', alignItems: 'start', '@media (min-width: 1024px)': { gridTemplateColumns: presentation === 'account' ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: '1.5rem' } }}>
     {presentation === 'account' ? <>
       <Stack spacing="1rem" sx={{ minWidth: 0 }}>{passwordCard}{twoFactorCard}</Stack>

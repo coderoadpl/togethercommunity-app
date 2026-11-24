@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -21,6 +21,12 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
+export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
+export const SHELL_ANCHOR_TARGET_STYLE = {
+  scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
+  '&:focus': { outline: 'none' },
+} as const;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
@@ -3175,6 +3181,7 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
   color: theme.palette.text.secondary,
   ...theme.typography.body2,
   '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
+  '& a.MuiButton-root': { whiteSpace: 'normal' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -3402,16 +3409,6 @@ export const CountBadge = styled('span')(({ theme }) => ({
 /** Direct messages stay ink: the red badge is reserved for the notification count. */
 export const InkDotBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
-}));
-
-export const LockedSpaceMark = styled(Box)(({ theme }) => ({
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '8px',
-  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -4261,7 +4258,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
-    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
   },
   '& pre': {
     overflowX: 'auto',
@@ -4628,11 +4625,18 @@ export const AccountTabs = styled(Tabs)(({ theme }) => {
   const accent = accentOnSurface(theme.brandAccent ?? theme.emberCta?.main ?? '#E8682A', theme.palette.background.default, 4.5);
   return {
     '& .MuiTab-root': { minHeight: 48, gap: 8, color: theme.palette.text.secondary, '&:hover': { color: theme.palette.text.primary } },
-    '& .MuiTab-icon': { margin: 0 },
+    '& .MuiTab-root > .MuiTab-icon': { margin: 0 },
     '& .MuiTab-root.Mui-selected': { color: accent, fontWeight: 600 },
     '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
     '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },
     '& .MuiTabScrollButton-root.Mui-disabled': { display: 'none' },
+    [theme.breakpoints.down('sm')]: {
+      '& .MuiTab-root': { minWidth: 0, paddingLeft: 10, paddingRight: 10 },
+      '& .MuiTab-icon': { display: 'none' },
+      '& .MuiTabScrollButton-root': { width: 24, position: 'relative', zIndex: 1, opacity: 1, '& svg': { display: 'none' } },
+      '& .MuiTabScrollButton-root:first-of-type': { marginRight: -24, background: `linear-gradient(to left, transparent, ${theme.palette.background.default})` },
+      '& .MuiTabScrollButton-root:last-of-type': { marginLeft: -24, background: `linear-gradient(to right, transparent, ${theme.palette.background.default})` },
+    },
   };
 });
 
@@ -4658,6 +4662,28 @@ export const AccountSessionDisclosure = styled(ButtonBase)(({ theme }) => ({
   '& > svg:last-of-type': { marginLeft: 'auto' },
   '&[aria-expanded=true] > svg:last-of-type': { transform: 'rotate(180deg)' },
   '&.Mui-focusVisible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+
+const consentScrollCue = (theme: Theme, towards: 'top' | 'bottom'): CSSObject => ({
+  content: '""',
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  height: 24,
+  zIndex: 1,
+  pointerEvents: 'none',
+  backgroundImage: `linear-gradient(to ${towards}, transparent, ${alpha(theme.palette.text.primary, 0.12)})`,
+});
+
+export const ConsentDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialog-paper:has(> .MuiDialogContent-root[data-more-above=true])::before': { ...consentScrollCue(theme, 'top'), top: 0 },
+  '& .MuiDialogContent-root[data-more-below=true] + .MuiDialogActions-root::before': { ...consentScrollCue(theme, 'bottom'), bottom: 'calc(100% + 1px)' },
+  '& .MuiDialogContent-root': { '@media (prefers-reduced-motion: no-preference)': { scrollBehavior: 'smooth' } },
+  '& .MuiDialogActions-root': { position: 'relative', borderTop: `1px solid ${theme.palette.divider}` },
+}));
+
+export const ConsentDialogHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: { fontSize: '1.0625rem', lineHeight: 1.45, fontWeight: 600 },
 }));
 
 export const AccountGlyph = styled(SvgIcon)({ fill: 'none' });
@@ -4721,3 +4747,146 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
   } : {}),
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
+
+export const SalesOrderCardList = styled('ul')(({ theme }) => ({
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 12,
+}));
+export const SalesTable = styled(Table)(({ theme }) => ({
+  [theme.breakpoints.down('xl')]: {
+    '& .MuiTableCell-root:not(.MuiTableCell-paddingCheckbox)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+  },
+}));
+export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
+export const SalesMemberCell = styled(TableCell)({ whiteSpace: 'nowrap', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis' });
+export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
+export const SalesOrderCard = styled('li')(({ theme }) => ({
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  padding: '0.875rem 1rem',
+  minWidth: 0,
+  '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
+}));
+export const SalesCardControl = styled('span')({ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' });
+export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
+export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+  color: theme.palette.text.secondary,
+  '&::after': { content: '""', position: 'absolute', inset: 0 },
+}));
+export const RefundStrokeIcon = styled(SvgIcon)({ fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' });
+export const RefundAmountLabel = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ theme, total }) => ({
+  color: total ? theme.palette.text.primary : theme.palette.text.secondary,
+  fontWeight: total ? 600 : undefined,
+}));
+export const RefundAmountValue = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ total }) => (
+  total ? { fontSize: '1.5rem', fontWeight: 700, lineHeight: 1.2 } : {}
+));
+export const RefundMutedRow = styled(Stack)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const RefundHistoryItem = styled('li')({ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+export const RefundHistoryCard = styled(Box, { shouldForwardProp: (prop) => prop !== 'attention' })<{ attention: boolean }>(({ theme, attention }) => ({
+  padding: '1rem',
+  border: `1px solid ${attention ? theme.palette.warning.main : theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+export const RefundWarningRow = styled(Stack)(({ theme }) => ({
+  color: theme.palette.mode === 'light' ? theme.palette.warning.dark : theme.palette.warning.light,
+  '& svg': { flexShrink: 0, marginTop: '0.1rem' },
+}));
+export const RefundNote = styled(Stack)(({ theme }) => ({
+  padding: '0.75rem 1rem',
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+  border: `1px solid ${theme.palette.divider}`,
+  '& svg': { flexShrink: 0, marginTop: '0.1rem', color: theme.palette.text.secondary },
+}));
+export const RefundHistoryAmount = styled(Typography)({ fontSize: '1.125rem', fontWeight: 700 });
+export const RefundPlainList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
+export const RefundConsequenceGroup = styled(RefundPlainList)(({ theme }) => ({ borderBottom: `1px solid ${theme.palette.divider}` }));
+export const RefundConsequenceItem = styled('li')(({ theme }) => ({
+  display: 'flex',
+  gap: '0.75rem',
+  padding: '0.75rem 0',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  '&:last-of-type': { borderBottom: 0 },
+}));
+export const RefundConsequenceIcon = styled(Box)(({ theme }) => ({ display: 'flex', paddingTop: '0.1rem', color: theme.palette.text.secondary }));
+export const RefundConsequenceText = styled(Typography, { shouldForwardProp: (prop) => prop !== 'strong' })<{ strong: boolean }>(({ strong }) => ({
+  fontWeight: strong ? 600 : undefined,
+}));
+export const RefundConsequencesPanel = styled(Box)(({ theme }) => ({
+  padding: '1.5rem',
+  backgroundColor: theme.palette.action.hover,
+  borderTop: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.up('md')]: { borderTop: 0, borderLeft: `1px solid ${theme.palette.divider}` },
+}));
+export const RefundSheetDialog = styled(Dialog)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiDialog-container': { alignItems: 'flex-end' },
+    '& .MuiDialog-paper': {
+      margin: 0,
+      width: '100%',
+      maxWidth: '100%',
+      maxHeight: '92dvh',
+      borderRadius: '1rem 1rem 0 0',
+      borderBottom: 0,
+    },
+  },
+}));
+export const RefundSheetHandle = styled('div')(({ theme }) => ({
+  display: 'none',
+  [theme.breakpoints.down('sm')]: {
+    display: 'block',
+    flexShrink: 0,
+    width: '2.5rem',
+    height: '0.25rem',
+    margin: '0.5rem auto 0',
+    borderRadius: '0.125rem',
+    backgroundColor: theme.palette.divider,
+  },
+}));
+export const RefundDialogTitle = styled(DialogTitle)<AsElement>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '1rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.down('sm')]: { flexDirection: 'column', gap: '0.5rem', padding: '0.75rem 1rem 1rem' },
+}));
+export const RefundDialogActions = styled(DialogActions)(({ theme }) => ({
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  padding: '1rem 1.5rem',
+  borderTop: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.down('sm')]: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+    padding: '0.75rem 1rem',
+    '& > .MuiButton-root': { width: '100%' },
+  },
+}));
+export const RefundFinalNote = styled(Stack)(({ theme }) => ({
+  alignItems: 'center',
+  color: theme.palette.text.secondary,
+  marginRight: 'auto',
+  [theme.breakpoints.down('sm')]: { justifyContent: 'center', marginRight: 0 },
+}));
+export const RefundAmountField = styled(TextField, { shouldForwardProp: (prop) => prop !== 'locked' })<{ locked: boolean }>(({ theme, locked }) => (
+  locked ? { '& .MuiOutlinedInput-root': { backgroundColor: theme.palette.action.hover } } : {}
+));
+export const RefundFieldset = styled('fieldset')(({ theme }) => ({
+  margin: 0,
+  padding: '0.75rem 1rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));

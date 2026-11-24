@@ -902,9 +902,9 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const [exportHeader, ...exportRows] = csvExport.content.split('\n');
   assert(
-    exportHeader?.endsWith(',personalization,cancel_reason') === true
-      && exportRows.some((row) => row.includes('"engraving@together.dev"') && row.endsWith(`,"${engravingSummary}",""`)),
-    `order export should end with the personalisation and cancel reason columns: ${csvExport.content}`,
+    exportHeader?.endsWith(',personalization,cancel_reason,refunded_amount') === true
+      && exportRows.some((row) => row.includes('"engraving@together.dev"') && row.endsWith(`,"${engravingSummary}","","0"`)),
+    `order export should end with the personalisation, cancel reason and refunded amount columns: ${csvExport.content}`,
   );
   const jsonExport = expectOk(
     await cli(['--tenant', 'alfa', 'orders', 'export', '--format', 'json'], alfaHome),

@@ -378,9 +378,9 @@ describe('shop order routes with a shop management key', () => {
     expect(personalizationOf(envelope(shopOrderContracts.getOrder.output).parse(await detail.json()).data.order.lines)).toEqual(personalization);
     const exported = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.exportOrders.path}?format=csv&fulfilmentStatus=to_pack`);
     const exportRows = envelope(shopOrderContracts.exportOrders.output).parse(await exported.json()).data.content.split('\n');
-    expect(exportRows[0]).toMatch(/,personalization,cancel_reason$/);
-    expect(exportRows.filter((row) => row.endsWith(',"Printed handbook: For Alex",""'))).toHaveLength(1);
-    expect(exportRows.slice(1).every((row) => row.endsWith(',"",""') || row.endsWith(',"Printed handbook: For Alex",""'))).toBe(true);
+    expect(exportRows[0]).toMatch(/,personalization,cancel_reason,refunded_amount$/);
+    expect(exportRows.filter((row) => row.endsWith(',"Printed handbook: For Alex","","0"'))).toHaveLength(1);
+    expect(exportRows.slice(1).every((row) => row.endsWith(',"","","0"') || row.endsWith(',"Printed handbook: For Alex","","0"'))).toBe(true);
     const packing = await keyed(secret, 'GET', `${SHOP_ORDER_ROUTES.ordersPackingList.path}?format=csv`);
     const packingRows = envelope(shopOrderContracts.ordersPackingList.output).parse(await packing.json()).data.content.split('\n');
     expect(packingRows.find((row) => row.startsWith(`"${orderId}"`))).toMatch(/,"1","Printed handbook: For Alex"$/);
@@ -453,7 +453,7 @@ describe('shop order routes with a shop management key', () => {
     const shipments = createShipxShipmentRepository(database.db);
     const held = await shipments.acquire('akademia', {
       id: 'held-lease', orderId: leased, token: 'held-token', environment: 'production', organizationId: '1234',
-      now, leaseExpiredBefore: '2026-11-15T09:58:30.000Z', actorUserId: 'another-request',
+      now, leaseExpiredBefore: '2026-11-15T09:58:30.000Z', actorUserId: 'another-request', orderShippable: () => true,
     });
     expect(held.kind).toBe('acquired');
     const busy = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path, leased), undefined, akademiaHost);

@@ -5,6 +5,21 @@ import { SectionCard } from '../../../components/layout/index.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 
+type RefundStatus = OrderRefundJobView['status'];
+
+const refundStatusColor = (status: RefundStatus): 'error' | 'warning' | 'info' | 'success' | 'default' => {
+  if (status === 'failed' || status === 'unconfirmed') return 'error';
+  if (status === 'blocked_permission') return 'warning';
+  if (status === 'running' || status === 'submitted') return 'info';
+  if (status === 'succeeded' || status === 'skipped_refunded' || status === 'resolved_externally') return 'success';
+  return 'default';
+};
+
+export const RefundStatusChip = ({ status, label, 'data-testid': testId }: { status: RefundStatus; label: string; 'data-testid'?: string }) => {
+  const color = refundStatusColor(status);
+  return <Chip size="small" color={color} variant={color === 'warning' || color === 'default' ? 'filled' : 'outlined'} label={label} data-testid={testId} />;
+};
+
 export const OrderRefundJob = ({ job }: { job: OrderRefundJobView }) => {
   const t = useTranslations();
   const { language } = useLanguage();

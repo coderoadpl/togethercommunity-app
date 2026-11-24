@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { z } from 'zod';
 import { tenantSchema, tenantSettingsSchema } from '#core/domain/index.js';
 import fixture from '../../web/src/stories/fixtures/marketing-preferences.json';
-import { renderPreferenceResultPage } from './public-marketing-pages.js';
+import { renderHostedErrorPage, renderPreferenceResultPage } from './public-marketing-pages.js';
 
 const input = z.object({ nonce: z.string(), brand: z.object({ tenant: tenantSchema, settings: tenantSettingsSchema.nullable() }), language: z.enum(['pl', 'en']), token: z.string(), scopeLabel: z.string().nullable() }).parse(fixture);
 const resultSchema = z.object({ result: z.enum(['saved', 'scope_unsubscribed', 'all_unsubscribed']), pendingConfirmations: z.number().int().nonnegative() });
@@ -22,3 +22,4 @@ export const SavedDesktop: Story = { args: { result: 'saved', pendingConfirmatio
 export const SavedMobile: Story = { args: { result: 'saved', pendingConfirmations: 0 }, globals: { viewport: { value: 'mobile' } } };
 export const PendingConfirmationDesktop: Story = { args: { result: 'saved', pendingConfirmations: 1 }, globals: { viewport: { value: 'desktop' } } };
 export const PendingConfirmationMobile: Story = { args: { result: 'saved', pendingConfirmations: 1 }, globals: { viewport: { value: 'mobile' } } };
+export const InvalidLinkMobile: Story = { render: () => <iframe title="Marketing link invalid" srcDoc={renderHostedErrorPage({ ...input, path: `/u/${input.token}`, kind: 'link_invalid' })} style={{ display: 'block', border: 0, width: '100vw', height: '100vh' }} />, globals: { viewport: { value: 'mobile' } } };

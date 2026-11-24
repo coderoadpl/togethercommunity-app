@@ -3300,6 +3300,8 @@ export type QuarantinedImageUploadRecord =
 export interface QuarantinedImageLiveUse {
   /** Whether a live product cover or branding field of the workspace holds exactly this address. */
   inLiveUse(tenantId: string, path: string): Promise<boolean>;
+  /** Whether an applied proposal of the workspace carries this address in its input. */
+  inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
 }
 
 /**
@@ -3378,11 +3380,6 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
   deleteUpload(tenantId: string, objectKey: string, boundMs?: number): Promise<void>;
   /** Records a failed removal, so the upload moves behind the others. */
   markUploadAttempted(tenantId: string, objectKey: string, now: string, boundMs?: number): Promise<void>;
-  /**
-   * Whether an approval attempt of the workspace holds a publication record of this image; the public route does not
-   * serve the image while one does, so a copy an approval wrote becomes public only once that approval committed.
-   */
-  publicationPending(tenantId: string, image: ProposalImageReference): Promise<boolean>;
   /** Commits, on its own, the intent of an approval attempt to write the public copies of these images. */
   recordPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[], startedAt: string): Promise<void>;
   /** Records whose last unresolved delete, or else whose start, lies before `startedBefore`. */
@@ -3395,8 +3392,6 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
 export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
   /** Locks the key's unreleased row against release until the surrounding transaction ends; null when there is none. */
   lockForPublication(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
-  /** Whether an applied proposal of the workspace carries this address in its input. */
-  inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
   /** Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone. */
   claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[]): Promise<boolean>;
   /**

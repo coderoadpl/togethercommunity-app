@@ -471,10 +471,13 @@ export const importGoogleAvatar = async (
 };
 
 export interface PublicImageAssetDeps extends Pick<ImageAssetDeps, 'secretResolver' | 'storage'> {
-  quarantinedImages: Pick<QuarantinedImageRepository, 'publicationPending'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'inLiveUse' | 'inAppliedProposal'>;
 }
 
-/** A content-addressed copy an approval wrote is served only once no attempt holds its publication record, so not before that approval commits. */
+/**
+ * An approval writes the content-addressed copy before its commit and a signed link outlives any later check, so the
+ * address is signed only on committed evidence: a live field of the workspace shows it or an applied proposal set it.
+ */
 export const getPublicImageAssetUrl = async (
   tenantId: string,
   input: { kind: string; file: string },
@@ -488,8 +491,9 @@ export const getPublicImageAssetUrl = async (
     || (kind.data === 'avatar' && contentType !== 'image/webp')) {
     return err(notFound('Image asset not found'));
   }
-  const proposed = parseProposalImagePath(servePath(kind.data, input.file));
-  if (proposed !== null && await deps.quarantinedImages.publicationPending(tenantId, proposed)) return err(notFound('Image asset not found'));
+  const path = servePath(kind.data, input.file);
+  if (parseProposalImagePath(path) !== null && !await deps.quarantinedImages.inLiveUse(tenantId, path)
+    && !await deps.quarantinedImages.inAppliedProposal(tenantId, path)) return err(notFound('Image asset not found'));
   try {
     const configuration = await resolveStorageConfiguration(tenantId, deps.secretResolver);
     if (!configuration.ok) return err(notFound('Image asset not found'));

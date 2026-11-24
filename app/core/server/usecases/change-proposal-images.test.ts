@@ -1390,28 +1390,45 @@ describe('the live image upload use-cases', () => {
     expect(await delivered('logo-dark', `${sha256HexOfBytes(PNG(1))}.png`)).toEqual({ status: 200, contentType: 'image/png', contentDisposition: null });
   });
 
-  it('serves a published content-addressed image from the public route, an SVG only as an attachment', async () => {
+  it('serves a content-addressed image only on committed evidence of its workspace, whatever publication records exist', async () => {
     const h = harness();
-    const digest = sha256HexOfBytes(PNG(1));
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest}.png` }, h.deps))
+    const bytes = PNG(1);
+    const digest = sha256HexOfBytes(bytes);
+    const read = (tenantId: string, kind: string, file: string) => getPublicImageAssetUrl(tenantId, { kind, file }, h.deps);
+    const refused = { ok: false, error: { code: 'not_found' } };
+    expect(await read(TENANT, 'product-cover', `${digest}.png`)).toMatchObject(refused);
+
+    const cover = await h.upload(bytes);
+    const id = await h.proposed('product.update', { id: 'product-mug', coverUrl: cover });
+    expect(await read(TENANT, 'product-cover', `${digest}.png`)).toMatchObject(refused);
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    await h.deps.quarantinedImages.recordPublications(TENANT, 'attempt-other', [{ kind: 'product-cover', digest, extension: 'png' }], NOW);
+    expect(await read(TENANT, 'product-cover', `${digest}.png`))
       .toMatchObject({ ok: true, value: expect.stringContaining(`image-assets/${TENANT}/product-cover/${digest}.png`) });
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'logo', file: `${digest}.svg` }, h.deps))
-      .toMatchObject({ ok: true, value: expect.stringContaining('response-content-disposition=attachment') });
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest.slice(1)}.png` }, h.deps))
-      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const mug = h.state.products.find((candidate) => candidate.id === 'product-mug');
+    if (mug === undefined) throw new Error('missing product');
+    mug.coverUrl = null;
+    expect(await read(TENANT, 'product-cover', `${digest}.png`)).toMatchObject({ ok: true });
+    expect(await read(TENANT, 'logo', `${digest}.png`)).toMatchObject(refused);
+    expect(await read(NEIGHBOUR, 'product-cover', `${digest}.png`)).toMatchObject(refused);
+    expect(await read(TENANT, 'product-cover', '11111111-1111-4111-8111-111111111111.png')).toMatchObject({ ok: true });
+
+    const settings = h.state.settings.find((candidate) => candidate.tenantId === TENANT);
+    if (settings === undefined) throw new Error('missing settings');
+    settings.settings.logoUrl = `/api/public/assets/logo/${digest}.svg`;
+    expect(await read(TENANT, 'logo', `${digest}.svg`)).toMatchObject({ ok: true, value: expect.stringContaining('response-content-disposition=attachment') });
+    expect(await read(TENANT, 'product-cover', `${digest.slice(1)}.png`)).toMatchObject(refused);
   });
 
-  it('answers not found for a content-addressed image while an approval attempt of its workspace holds its publication record', async () => {
+  it('never serves the address of an approval that did not end applied', async () => {
     const h = harness();
-    const digest = sha256HexOfBytes(PNG(1));
-    const image = { kind: 'product-cover' as const, digest, extension: 'png' as const };
-    await h.deps.quarantinedImages.recordPublications(TENANT, 'attempt-open', [image], NOW);
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest}.png` }, h.deps))
+    const cover = await h.upload(PNG(1));
+    const id = await h.proposed('product.create', { title: 'Poster', slug: 'poster', type: 'physical', priceCents: 3900, coverUrl: cover });
+    h.state.products.push(product({ id: 'product-taken', slug: 'poster' }));
+    expect(await approveChangeProposal(ownerSession, { id }, h.deps)).toMatchObject({ ok: true, value: { status: 'failed' } });
+    expect(h.store.imagePublications).toEqual([]);
+    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: cover.split('/').at(-1) ?? '' }, h.deps))
       .toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'logo', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
-    expect(await getPublicImageAssetUrl(NEIGHBOUR, { kind: 'product-cover', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: '11111111-1111-4111-8111-111111111111.png' }, h.deps)).toMatchObject({ ok: true });
-    h.store.imagePublications.splice(0);
-    expect(await getPublicImageAssetUrl(TENANT, { kind: 'product-cover', file: `${digest}.png` }, h.deps)).toMatchObject({ ok: true });
   });
 });

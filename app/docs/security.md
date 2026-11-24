@@ -774,13 +774,12 @@ scopes on every shop key.
   copies of approvals that did not end applied. An approval writes a public
   copy before its commit, so a copy can be in storage after an approval whose
   commit failed, until its withdrawal or the minute sweep deletes it. The
-  public asset route answers `404` for a content-addressed address while an
-  approval attempt holds its publication record. That record is removed with
-  the approval's commit, once the storage confirmed the copy's delete, when the
-  attempt never tried to write the copy, or when a live field or an applied
-  proposal already shows the address, so a copy written before a commit is
-  served only once that approval committed, and never after one that did not
-  end applied unless the address was public already. A
+  public asset route signs a link for a content-addressed address only on
+  committed evidence of the same workspace, a live field showing the address or
+  an applied proposal that set it in an image field, and answers `404`
+  otherwise, so a copy written before a commit is served only once that
+  approval committed, and never after one that did not end applied unless the
+  address was public already. A
   proposal's effect comes from a dry run of the live use-case in a transaction
   that is always rolled back, with non-database effects deferred to a commit
   that never happens. The key's receipt never carries the effect, a before
@@ -834,9 +833,9 @@ scopes on every shop key.
   proposal pending. Non-database effects of an applied change run only after
   the commit, except the public copies of proposed images, which the approval
   writes before its commit and which a rollback does not undo: such a copy
-  stays in storage, answered `404` by the public asset route while its
-  publication record exists, until the withdrawal or the minute sweep deletes
-  it (above). The database checks only the shape of a stored operation name; a
+  stays in storage, answered `404` by the public asset route since no live
+  field shows it and no applied proposal set it, until the withdrawal or the
+  minute sweep deletes it (above). The database checks only the shape of a stored operation name; a
   row whose operation the running release does not know stays readable and is
   never applied. A writer that read the row before the approval took its lock can
   still overwrite the applied change afterwards, as between any two writers

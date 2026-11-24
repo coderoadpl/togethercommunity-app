@@ -29,7 +29,7 @@ describe('public image response signing', () => {
       now: () => new Date('2026-08-16T12:00:00.000Z'),
       fetchStorage: async () => { throw new Error('Signing must not fetch stored metadata'); },
     });
-    const result = await getPublicImageAssetUrl('tenant-1', { kind, file: `${id}.${extension}` }, { storage, secretResolver, quarantinedImages: { publicationPending: async () => false } });
+    const result = await getPublicImageAssetUrl('tenant-1', { kind, file: `${id}.${extension}` }, { storage, secretResolver, quarantinedImages: { inLiveUse: async () => false, inAppliedProposal: async () => false } });
     if (!result.ok) throw new Error('Expected a signed public URL');
     const signed = new URL(result.value);
     expect(objects.get(signed.pathname)).toEqual({ contentType: 'text/html', contentDisposition: 'inline; filename="attack.html"' });

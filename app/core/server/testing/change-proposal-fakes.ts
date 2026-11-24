@@ -197,6 +197,10 @@ const imageInLiveUse = (state: FakeCatalogState, tenantId: string, path: string)
   || state.settings.some(({ tenantId: owner, settings }) => owner === tenantId
     && [settings.logoUrl, settings.logoDarkUrl, settings.faviconUrl, settings.ogImageUrl].includes(path));
 
+const imageInAppliedProposal = (store: Pick<FakeChangeProposalStore, 'proposals'>, tenantId: string, path: string): boolean =>
+  store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied'
+    && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => proposalImagePublicPath(image) === path));
+
 const sameImageRow = (row: QuarantinedImageAsset, tenantId: string, apiKeyId: string, image: ProposalImageReference): boolean =>
   row.tenantId === tenantId && row.apiKeyId === apiKeyId && row.kind === image.kind && row.digest === image.digest && row.extension === image.extension;
 
@@ -368,8 +372,7 @@ const catalogRepositoriesOver = (
         const row = store.imageRows.find((candidate) => sameImageRow(candidate, tenantId, apiKeyId, image));
         return row === undefined ? null : { ...row };
       },
-      inAppliedProposal: async (tenantId, path) => store.proposals.some((proposal) => proposal.tenantId === tenantId && proposal.status === 'applied'
-        && changeProposalImageReferences(proposal.operation, proposal.input).some((image) => proposalImagePublicPath(image) === path)),
+      inAppliedProposal: async (tenantId, path) => imageInAppliedProposal(store, tenantId, path),
       claimPublications: async (tenantId, attemptId, images) => images.every((image) => store.imagePublications.some((row) =>
         samePublication(row, tenantId, attemptId, image))),
       lockPublication: async (tenantId, attemptId, image, dueBefore) => {
@@ -679,6 +682,7 @@ export const createQuarantinedImagesFake = (
     left.createdAt.localeCompare(right.createdAt) || left.apiKeyId.localeCompare(right.apiKeyId) || left.digest.localeCompare(right.digest);
   const repository: QuarantinedImageRepository = {
     inLiveUse: async (tenantId, path) => imageInLiveUse(state, tenantId, path),
+    inAppliedProposal: async (tenantId, path) => imageInAppliedProposal(store, tenantId, path),
     insert: async (tenantId, asset, object) => {
       if (released.some((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset) && unresolved.has(row))) return { kind: 'busy' };
       const existing = rows.find((row) => sameImageRow(row, tenantId, asset.apiKeyId, asset));
@@ -775,7 +779,6 @@ export const createQuarantinedImagesFake = (
       removeWhere(store.imageUploads, (row) => row.tenantId === tenantId && row.objectKey === objectKey);
     },
     markUploadAttempted: async () => undefined,
-    publicationPending: async (tenantId, image) => store.imagePublications.some((row) => row.tenantId === tenantId && sameProposalImage(row.image, image)),
     recordPublications: async (tenantId, attemptId, images, startedAt) => {
       for (const image of images) {
         if (!store.imagePublications.some((row) => samePublication(row, tenantId, attemptId, image))) {

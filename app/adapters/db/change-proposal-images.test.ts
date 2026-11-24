@@ -463,6 +463,11 @@ describe('public copies of an approval that did not end applied', () => {
     expect(harness.objects.keysUnder('image-assets/')).toEqual([publicKey]);
     expect(await publications()).toHaveLength(1);
     expect(await publicRead()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const [record] = await database.db.select().from(changeProposalImagePublications);
+    if (record === undefined) throw new Error('missing publication record');
+    await database.db.delete(changeProposalImagePublications);
+    expect(await publicRead()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await database.db.insert(changeProposalImagePublications).values(record);
 
     harness.objects.failDeletes = () => false;
     harness.clock.now = '2026-03-01T10:14:00.000Z';
@@ -480,6 +485,26 @@ describe('public copies of an approval that did not end applied', () => {
     expect(await publicRead()).toMatchObject({ ok: true, value: expect.stringContaining(publicKey) });
     const [cover] = await database.db.select({ coverUrl: products.coverUrl }).from(products).where(eq(products.id, 'mug'));
     expect(cover?.coverUrl).toBe(url);
+  });
+
+  it('serves a content-addressed address only while a live field of its workspace shows it or an applied proposal set it', async () => {
+    const harness = endToEnd();
+    const reference = image(1);
+    const file = `${reference.digest}.png`;
+    harness.objects.objects.set(`image-assets/${TENANT}/product-cover/${file}`, { bytes: PNG_BYTES, contentType: 'image/png' });
+    const read = (tenantId: string) => getPublicImageAssetUrl(tenantId, { kind: 'product-cover', file }, harness.deps);
+    expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    await database.db.update(products).set({ coverUrl: pathOf(reference) }).where(eq(products.id, 'mug'));
+    await createQuarantinedImageRepository(database.db).recordPublications(TENANT, 'attempt-other', [reference], NOW);
+    expect(await read(TENANT)).toMatchObject({ ok: true, value: expect.stringContaining(`image-assets/${TENANT}/product-cover/${file}`) });
+    expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    await database.db.update(products).set({ coverUrl: null }).where(eq(products.id, 'mug'));
+    expect(await read(TENANT)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    await pendingProposal('p-applied-cover', { coverUrl: pathOf(reference) }, { status: 'applied' });
+    expect(await read(TENANT)).toMatchObject({ ok: true });
+    expect(await read(NEIGHBOUR)).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
   it('keeps a recorded address that a live field shows or an applied proposal carries, and drops only the record', async () => {

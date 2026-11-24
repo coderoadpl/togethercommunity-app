@@ -107,7 +107,7 @@ const testDeps = (sizeBytes = 1024, body = new Uint8Array([137, 80, 78, 71, 13, 
     secretResolver: { resolve: async () => ok(storageConfiguration) },
     ids: { nextId: () => ASSET_ID },
     clock: { nowIso: () => NOW },
-    quarantinedImages: { findUpload: async () => null, publicationPending: async () => false },
+    quarantinedImages: { findUpload: async () => null, inLiveUse: async () => false, inAppliedProposal: async () => false },
   };
   return { deps, removed, signed, written, errors };
 };

@@ -1078,7 +1078,7 @@ are the shop image routes a direct-mode key uses, which are of route class
 |---|---|
 | The key | the address the image will have, `quarantined: true`, and its own receipts; never the quarantined bytes |
 | The owners | the proposed image through the owner preview while the proposal is pending (the quarantined copy, or the published copy when the address is one a live field already shows), then the public image once approved |
-| Everyone else | for a new image, nothing until the approval that writes its public copy commits: while a publication record of an attempt holds the address, the public route answers `404`, also after that approval did not end `applied`, until its withdrawal or the minute sweep has deleted the copy and the record (below). An address a live field already shows is public already |
+| Everyone else | for a new image, nothing until the approval that writes its public copy commits: the public route serves a content-addressed address only while a live field of the workspace shows it or an applied proposal of the workspace set it in an image field, and answers `404` otherwise, also during that approval and after one that did not end `applied` (below). An address a live field already shows is public already |
 
 **Upload.** `POST /api/m2m/shop/image-assets/product-cover/upload` (scope
 `shop:catalog:write`) and `POST /api/m2m/shop/image-assets/branding/upload`
@@ -1289,12 +1289,15 @@ its bytes. A copy that changed makes an address without a quarantined copy
 images it writes (it answers busy, writing nothing, when one is gone), writes
 their bytes after the live change and before the status change and the commit, and
 deletes its records in the same transaction, so they disappear exactly when the
-approval commits. While a record of any attempt names a workspace, kind, digest
-and extension, the public asset route answers `404` for that address without
-asking the storage (one lookup by the workspace's key prefix of the records'
-primary key), so a copy written before the commit is served only once the
-approval that wrote it committed, never during that approval and never after
-one that did not end `applied`; a UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
+approval commits. The public asset route signs a content-addressed address only
+on committed evidence of its workspace: a live product cover or branding field
+shows the address, or an applied proposal set it in an image field; otherwise
+it answers `404` without asking the storage. The approval's live change and
+status change commit together, so a copy written before the commit is served
+only once the approval that wrote it committed, never during that approval and
+never after one that did not end `applied`, whatever publication records exist;
+a signed link lasts an hour, so this is checked before signing rather than by
+any record a later attempt writes. A UUID-named image is not affected. The workspace's approval lock it holds, and the refusal of
 every address with an unresolved delete (below), keep each reused public copy
 there until the commit. Publishing before the commit, and checking every reused
 address under that lock, mean committed live state never points at an object

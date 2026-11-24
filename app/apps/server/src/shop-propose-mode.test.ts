@@ -433,7 +433,7 @@ describe('shop route classification', () => {
     });
   });
 
-  it('lists one permission row per key mode for every route whose handler both modes reach and for the access proposal route', () => {
+  it('lists one permission row per key mode for every route whose handler both modes reach and for the access and product file proposal routes', () => {
     const classes = new Map(registeredShopRoutes().map((route) => [`${route.method} ${route.path}`, routeClass(route)]));
     const keyModeRoutes = Object.keys(KEY_MODE_ROUTES);
     expect([...classes].filter(([, kind]) => kind === 'direct').map(([label]) => label).filter((label) => !keyModeRoutes.includes(label))).toEqual([]);
@@ -448,10 +448,17 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/image-assets/branding/upload': 'direct',
       'POST /api/m2m/shop/image-assets/branding/complete': 'direct',
       'POST /api/m2m/shop/products/access': 'proposal product.set-access',
+      'POST /api/m2m/shop/products/downloads': 'proposal download.add',
+      'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
+      'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
     });
-    const subjects = new Set(collectPermissionInventory().routes.map((row) => row.subject));
+    const rows = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
     for (const label of keyModeRoutes) {
-      expect([subjects.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.direct}`), subjects.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)], label).toEqual([true, true]);
+      expect([rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.direct}`), rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)], label).toEqual([true, true]);
+      const operation = classes.get(label)?.replace(/^proposal /u, '');
+      if (operation !== undefined && operation !== classes.get(label)) {
+        expect(rows.get(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, label).toContain(`stores a ${operation} proposal`);
+      }
     }
   });
 

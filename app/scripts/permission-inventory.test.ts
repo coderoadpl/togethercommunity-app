@@ -16,7 +16,7 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(560);
+    expect(inventory.routes).toHaveLength(563);
     expect(inventory.useCases).toHaveLength(420);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
@@ -28,13 +28,13 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(50);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(47);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(70);
+    expect(shopRoutes).toHaveLength(73);
     for (const row of shopRoutes) {
       const principals = row.subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.propose) || row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
@@ -353,6 +353,9 @@ describe('permission inventory', () => {
       ['POST /api/m2m/shop/image-assets/branding/upload', 'tenant:settings:write', 'proposal:asset:upload + proposal:submit:settings'],
       ['POST /api/m2m/shop/image-assets/branding/complete', 'tenant:settings:write', 'proposal:asset:upload + proposal:submit:settings'],
       ['POST /api/m2m/shop/products/access', 'product:access:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads', 'product:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads/replace', 'product:write', 'proposal:submit:catalog + product:read'],
+      ['POST /api/m2m/shop/products/downloads/remove', 'product:write', 'proposal:submit:catalog + product:read'],
     ] as const) {
       expect(routes.has(route), route).toBe(false);
       const directRow = routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.direct}`);
@@ -364,6 +367,13 @@ describe('permission inventory', () => {
       expect(proposeRow?.evidence, route).toMatch(new RegExp(`^Shop management key, propose mode: ${propose.replaceAll('+', '\\+')}; `, 'u'));
     }
     expect(routes.get(`POST /api/m2m/shop/products/access${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence).toContain('stores a product.set-access proposal');
+    for (const [route, operation] of [
+      ['POST /api/m2m/shop/products/downloads', 'download.add'],
+      ['POST /api/m2m/shop/products/downloads/replace', 'download.replace'],
+      ['POST /api/m2m/shop/products/downloads/remove', 'download.remove'],
+    ] as const) {
+      expect(routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, route).toContain(`stores a ${operation} proposal, which only an owner approval applies`);
+    }
   });
 
   it('lists each key mode of the staging use-cases with the capabilities their guard authorizes', () => {

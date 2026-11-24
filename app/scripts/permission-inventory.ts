@@ -8,14 +8,17 @@ import {
   PRINCIPALS,
   ROLE_CAPABILITIES,
   SHOP_CATALOG_ROUTES,
+  SHOP_DOWNLOAD_ROUTES,
 } from '#core/contract/index.js';
 import {
   ORGANIZATION_PRINCIPALS,
   SHOP_MANAGEMENT_SCOPES_REFUSED_IN_PROPOSE_MODE,
+  changeProposalSubmitCapability,
   shopManagementCapabilities,
   shopManagementScopeSchema,
   type Capability,
   type Principal,
+  type RegisteredChangeProposalOperation,
   type ShopManagementKeyMode,
   type ShopManagementScope,
 } from '#core/domain/index.js';
@@ -459,6 +462,14 @@ const imageBranches = (live: Capability, submission: Capability): KeyModeRoute =
   },
 });
 
+const fileProposalBranches = (operation: RegisteredChangeProposalOperation, live: string): KeyModeRoute => ({
+  direct: { capabilities: ['product:write'], effect: live },
+  propose: {
+    capabilities: [changeProposalSubmitCapability(operation), 'product:read'],
+    effect: `stores a ${operation} proposal, which only an owner approval applies`,
+  },
+});
+
 export const KEY_MODE_ROUTES: Readonly<Record<string, KeyModeRoute>> = {
   'POST /api/m2m/shop/downloads/upload': stagedFileBranches('starts a private upload of the key'),
   'POST /api/m2m/shop/downloads/complete': stagedFileBranches('stages the uploaded file as a private file of the key'),
@@ -473,6 +484,9 @@ export const KEY_MODE_ROUTES: Readonly<Record<string, KeyModeRoute>> = {
     direct: { capabilities: ['product:access:write'], effect: 'reaches the owner\'s access editor, whose capability no key scope grants, and is refused' },
     propose: { capabilities: ['proposal:submit:catalog', 'product:read'], effect: 'stores a product.set-access proposal, which only an owner approval applies' },
   },
+  [`POST ${SHOP_DOWNLOAD_ROUTES.addProductDownload.path}`]: fileProposalBranches('download.add', 'attaches a file the key staged to the product live'),
+  [`POST ${SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path}`]: fileProposalBranches('download.replace', 'replaces a product file live with a file the key staged'),
+  [`POST ${SHOP_DOWNLOAD_ROUTES.removeProductDownload.path}`]: fileProposalBranches('download.remove', 'removes a product file live'),
 };
 
 const keyModeRows = (
@@ -1039,7 +1053,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',
-    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\`, each with \`proposal:asset:upload\`, instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link, settings or product file write route (\`POST /api/m2m/shop/products/downloads\` and its \`replace\` and \`remove\` routes) reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve, so these rows list only the direct-mode key, whose live handler runs. On the four \`/api/m2m/shop/image-assets\` routes and the five \`/api/m2m/shop/downloads\` routes it reaches the handler, and \`POST /api/m2m/shop/products/access\` it reaches only as a proposal; each of these routes has one row per key mode, its subject ending in \`(direct-mode key)\` or \`(propose-mode key)\`, whose evidence names every capability that mode needs and what the request does. The \`/api/m2m/shop/proposals\` routes are the only shop routes listed for the propose-mode key alone; a direct-mode key is refused there.`,
+    `\`${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL}\` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the \`GET /api/m2m/shop\` routes; its \`shop:catalog:write\` and \`shop:settings:write\` scopes grant only \`proposal:submit:catalog\` and \`proposal:submit:settings\`, each with \`proposal:asset:upload\`, instead of the live write capabilities, and \`shop:fulfilment:write\` and \`shop:integrations:write\` cannot be granted to it. It is therefore never listed with a live write such as \`product:write\` or \`tenant:settings:write\`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (\`docs/change-proposals.md\`) that only the owner can approve, so these rows list only the direct-mode key, whose live handler runs. On the four \`/api/m2m/shop/image-assets\` routes and the five \`/api/m2m/shop/downloads\` routes it reaches the handler, and \`POST /api/m2m/shop/products/access\` and the three product file routes (\`POST /api/m2m/shop/products/downloads\` and its \`replace\` and \`remove\` routes) it reaches only as a proposal; each of these routes has one row per key mode, its subject ending in \`(direct-mode key)\` or \`(propose-mode key)\`, whose evidence names every capability that mode needs and what the request does. Only a propose-mode key succeeds on the \`/api/m2m/shop/proposals\` routes, which refuse a direct-mode key, and on \`POST /api/m2m/shop/products/access\`, whose direct-mode row lists no principal.`,
     '',
     '`change-proposals.ts#submitChangeProposal` and `change-proposal-groups.ts#submitGroupedChangeProposal` authorize `proposal:submit:catalog` with `product:read`, or `proposal:submit:settings` with `tenant:settings:read`, by the family of the proposed operation; the table lists the first. A propose-mode key\'s write scope therefore needs its read scope, which the key creation schema and a database check also enforce, so a refused or accepted proposal reveals nothing the key could not read. Every propose-mode key also holds `proposal:own:manage`, which reaches only the proposals that key made. The `/api/change-proposals` session routes need `proposal:read` or `proposal:decide`, held only by the owner, and their use-cases apply the owner-session guard of shop management key creation: they refuse an impersonating owner, a key and an unverified e-mail, and, like key creation, accept an owner derived from the organization. Approval runs the stored command with the session of the approving owner, never with the scopes of the proposing key. The four upload use-cases of `change-proposal-images.ts` authorize `proposal:asset:upload` with the submission capability of their family, `proposal:submit:catalog` for a product cover and `proposal:submit:settings` for a branding image; the table lists the first. They write only a private quarantined copy, which an owner approval publishes. `change-proposal-images.ts#getChangeProposalImage` needs `proposal:read` and applies the same owner-session guard, and so does `change-proposal-files.ts#getChangeProposalFileLink`, which answers a short-lived signed download of a file a pending proposal attaches.',
     '',

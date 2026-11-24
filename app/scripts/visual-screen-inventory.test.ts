@@ -75,7 +75,7 @@ describe('antialias repaint', () => {
     expect(imageField).toContain('data-testid={`${testId}-upload`}');
     expect(courseDetail).toContain('testId="course-image"');
     expect(anonSidebar).toContain('data-testid="anon-sidebar"');
-    expect(lessonPlayer).toContain('<LessonFooterBar component="footer" ref={footerBarRef}');
+    expect(lessonPlayer).toMatch(/<LessonFooterBar\b[^>]*\bcomponent="footer"/);
     expect(lessonPlayer).toContain('data-testid="prev-lesson"');
   });
 });

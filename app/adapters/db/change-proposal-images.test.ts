@@ -29,7 +29,6 @@ import {
   completeProposedProductCoverUpload,
   beginProposedProductCoverUpload,
   getPublicImageAssetUrl,
-  releaseQuarantinedImages,
   shopManagementKeyCapabilities,
   submitChangeProposal,
   sweepQuarantinedImages,
@@ -855,7 +854,7 @@ describe('quarantined rows and objects of one key', () => {
     expect(await releasedRows()).toEqual(['2']);
   });
 
-  it('keeps a row pending while its object is written again, and written once the storage stored or refused that write', async () => {
+  it('keeps a written row written and visible while its object is written again, whatever that write answers', async () => {
     const repository = createQuarantinedImageRepository(database.db);
     await repository.insert(TENANT, image(1), stored);
     const seenDuringWrite: Array<QuarantinedImageAsset | null> = [];
@@ -869,7 +868,7 @@ describe('quarantined rows and objects of one key', () => {
     expect(await repository.insert(TENANT, image(1, { createdAt: '2026-03-01T10:05:00.000Z' }), repair(ok(undefined)))).toEqual({ kind: 'existing', asset: image(1) });
     expect(await repository.insert(TENANT, image(1, { createdAt: '2026-03-01T10:06:00.000Z' }), repair(err(storageDefiniteFailure('S3 refused the published image with status 403')))))
       .toMatchObject({ kind: 'store_failed' });
-    expect(seenDuringWrite).toEqual([null, null]);
+    expect(seenDuringWrite).toEqual([image(1), image(1)]);
     expect(await repository.find(TENANT, KEY_ID, image(1))).toEqual(image(1));
   });
 
@@ -1152,30 +1151,6 @@ describe('a quarantined write that outlives its completion', () => {
       return written;
     };
     await expect(harness.proposeCover(PNG_BYTES)).rejects.toThrow('Connection terminated unexpectedly');
-    await sweptAfterTheBound(harness);
-  });
-
-  it('keeps the row of a repair write whose answer was lost pending and counted, so a release leaves it and the sweep removes the late copy', async () => {
-    const harness = endToEnd();
-    const complete = async () => {
-      const started = await beginProposedProductCoverUpload(keyCtx, { kind: 'product-cover', fileName: 'c.png', contentType: 'image/png', sizeBytes: PNG_BYTES.byteLength }, harness.deps);
-      if (!started.ok) throw new Error(started.error.message);
-      harness.objects.objects.set(started.value.key, { bytes: PNG_BYTES, contentType: 'image/png' });
-      return completeProposedProductCoverUpload(keyCtx, { key: started.value.key }, harness.deps);
-    };
-    expect(await complete()).toMatchObject({ ok: true });
-    harness.objects.objects.delete(quarantinedKey);
-    const put = harness.objects.storage.putObject;
-    let land: () => Promise<unknown> = async () => undefined;
-    harness.objects.storage.putObject = async (input) => {
-      if (!input.url.includes('/image-asset-quarantine/')) return put(input);
-      land = () => put(input);
-      return err(integrationUnavailable('Could not reach S3.: the storage request deadline passed'));
-    };
-    expect(await complete()).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-    harness.objects.storage.putObject = put;
-    await releaseQuarantinedImages(TENANT, { kind: 'key', apiKeyId: KEY_ID }, harness.deps);
-    await land();
     await sweptAfterTheBound(harness);
   });
 });

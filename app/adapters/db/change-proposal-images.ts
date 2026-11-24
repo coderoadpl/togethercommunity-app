@@ -266,7 +266,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
       const pendingSince = parsed.createdAt;
       const of = imageOfKey(tenantId, parsed.apiKeyId, parsed);
       const lockKey = (tx: Db) => tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${keyLock(tenantId, parsed.apiKeyId)}, 0))`);
-      type Reserved = { kind: 'reserved'; releasedAt: string | null; revived: boolean; repair: boolean };
+      type Reserved = { kind: 'reserved'; releasedAt: string | null; revived: boolean };
       const reserved = await db.transaction(async (tx): Promise<QuarantinedImageInsertion | Reserved> => {
         await lockKey(tx);
         const [row] = await tx.select().from(changeProposalImages).where(of).for('update');
@@ -275,9 +275,8 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         if (row !== undefined && row.releasedAt === null) {
           const present = await object.present(parseImage(row));
           if (!present.ok) return { kind: 'store_failed', error: present.error };
-          if (present.value) return { kind: 'existing', asset: parseImage(row) };
-          await tx.update(changeProposalImages).set({ pendingSince }).where(of);
-          return { kind: 'reserved', releasedAt: null, revived: false, repair: true };
+          const repaired = present.value ? null : await object.store();
+          return repaired === null || repaired.ok ? { kind: 'existing', asset: parseImage(row) } : { kind: 'store_failed', error: repaired.error };
         }
         const [usage] = await tx
           .select({ images: count(), bytes: sql<number>`coalesce(sum(${changeProposalImages.sizeBytes}), 0)::bigint` })
@@ -290,7 +289,7 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
           await tx.update(changeProposalImages)
             .set({ sizeBytes: parsed.sizeBytes, createdAt: parsed.createdAt, releasedAt: null, sweepAttemptedAt: null, pendingSince }).where(of);
         }
-        return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined, repair: false };
+        return { kind: 'reserved', releasedAt: row?.releasedAt ?? null, revived: row !== undefined };
       });
       if (reserved.kind !== 'reserved') return reserved;
       const stored = await object.store();
@@ -300,12 +299,10 @@ export const createQuarantinedImageRepository = (db: Db, options: ChangeProposal
         const ours = and(of, eq(changeProposalImages.pendingSince, pendingSince));
         if (stored.ok) {
           const [saved] = await tx.update(changeProposalImages).set({ pendingSince: null }).where(ours).returning();
-          if (saved === undefined) return { kind: 'busy' };
-          return { kind: reserved.repair ? 'existing' : 'stored', asset: parseImage(saved) };
+          return saved === undefined ? { kind: 'busy' } : { kind: 'stored', asset: parseImage(saved) };
         }
-        if (reserved.revived || reserved.repair) {
-          await tx.update(changeProposalImages).set({ releasedAt: reserved.releasedAt, pendingSince: null }).where(ours);
-        } else await tx.delete(changeProposalImages).where(ours);
+        if (reserved.revived) await tx.update(changeProposalImages).set({ releasedAt: reserved.releasedAt, pendingSince: null }).where(ours);
+        else await tx.delete(changeProposalImages).where(ours);
         return { kind: 'store_failed', error: stored.error };
       });
     },

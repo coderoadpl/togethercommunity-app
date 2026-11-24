@@ -8,7 +8,7 @@ import {
   capabilitiesForPrincipal,
   isActiveStaffRefundStatus,
   orderLineLabel,
-  staffRefundOrderBlocker,
+  staffRefundPreviewReadable,
   type OrderLine,
   type ParcelTemplate,
 } from '#core/domain/index.js';
@@ -71,8 +71,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   });
   const canShip = capabilitiesForPrincipal(tenant.staffRole ?? 'member').includes('order:write');
   const canRefund = tenant.staffRole !== null && capabilitiesForPrincipal(tenant.staffRole).includes('order:refund') && emailVerified && !impersonating;
-  const refundEligible = canRefund && detail.data !== undefined && staffRefundOrderBlocker(detail.data.order) === null;
-  const refundPreview = useQuery({ ...actions.orderRefundPreview(orderId), enabled: refundEligible });
+  const refundPreviewShown = canRefund && detail.data !== undefined && staffRefundPreviewReadable(detail.data.order);
+  const refundPreview = useQuery({ ...actions.orderRefundPreview(orderId), enabled: refundPreviewShown });
   const [refundDialog, setRefundDialog] = useState({ open: false, requestKey: '' });
   const shipAnyway = useMutation({
     ...actions.shipOrderAnyway,
@@ -176,7 +176,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const offPackingRefund = order.shipping != null && order.fulfilmentStatus == null && order.cancelReason == null
     ? staffRefunds.find((refund) => refund.removedFromPackingList) ?? null
     : null;
-  const refundAction: RefundActionState = !refundEligible
+  const refundAction: RefundActionState = !refundPreviewShown
     ? { kind: 'hidden' }
     : refundPreview.isPending
       ? { kind: 'loading' }

@@ -253,7 +253,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     lastErrorLabel: 'Ostatni błąd',
     openOrder: 'Otwórz zamówienie',
     paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
-      const checkInDashboard = 'Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.';
+      const checkInDashboard = `Sprawdź ten zwrot ${amount} w panelu Stripe. Jeśli ma status Succeeded, nic więcej nie trzeba robić. Jeśli ma status Pending, nie zlecaj go ponownie: nie jest już sprawdzany automatycznie, więc śledź go tam, aż będzie miał status Succeeded lub Failed. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty ${amount} zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.`;
       const unconfirmedBecause = reason === 'create_outcome_unknown'
         ? 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'
         : reason === 'awaiting_provider'
@@ -270,7 +270,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
         failed: 'Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. Zleć zwrot ponownie na stronie zamówienia albo zwróć płatność ręcznie w panelu Stripe.',
         failed_after_submission: reason === 'failed_after_order_refunded'
           ? `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie. ${checkInDashboard}`
-          : 'Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć zwrot ponownie na stronie zamówienia albo zwróć pieniądze w inny sposób.',
+          : `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć ponownie zwrot ${amount} na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć pieniądze w inny sposób.`,
         unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';

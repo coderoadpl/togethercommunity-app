@@ -20,6 +20,7 @@ import {
   staffRefundOrderBlocker,
   staffRefundShipmentConflict,
   staffRefundShipmentState,
+  staffRefundsListedByProvider,
   staffRefundWaitingConflict,
   validation,
   type AppError,
@@ -29,6 +30,7 @@ import {
   type OrderRefundTotals,
   type OrderListItem,
   type OrderStaffRefundView,
+  type ProviderRefund,
   type Result,
   type StaffRefundPreview,
 } from '#core/domain/index.js';
@@ -53,10 +55,10 @@ const machineKeyRefusal = (ctx: Ctx): Result<never, AppError> | null =>
   ctx.machineActor === undefined ? null : err(forbidden('order:refund is not permitted for a machine key'));
 
 type ProviderCommitted =
-  | { cents: number; source: 'provider' }
-  | { cents: null; source: 'platform' };
+  | { cents: number; source: 'provider'; refunds: readonly ProviderRefund[] }
+  | { cents: null; source: 'platform'; refunds: readonly ProviderRefund[] };
 
-const platformOnly: ProviderCommitted = { cents: null, source: 'platform' };
+const platformOnly: ProviderCommitted = { cents: null, source: 'platform', refunds: [] };
 
 const providerCommittedCents = async (
   order: Pick<Order, 'tenantId' | 'mode' | 'provider' | 'providerObjectIds'>,
@@ -65,7 +67,7 @@ const providerCommittedCents = async (
   const paymentIntentId = order.providerObjectIds['paymentIntent'];
   if (order.provider !== 'stripe' || paymentIntentId === undefined || payment.listRefunds === undefined) return platformOnly;
   const listed = await payment.listRefunds({ mode: order.mode, tenantId: order.tenantId, paymentIntentId });
-  return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider' } : platformOnly;
+  return listed.ok ? { cents: committedProviderRefundCents(listed.value), source: 'provider', refunds: listed.value } : platformOnly;
 };
 
 export interface StaffRefundDeps {
@@ -164,6 +166,7 @@ export const previewStaffRefund = async (
     cancelsSubscription,
     fullRefundOptions: staffRefundFulfilmentOptions(order, { coversRemainder: true, hasLabel }),
     waitingRefundId: waiting?.id ?? null,
+    providerListedRefundIds: staffRefundsListedByProvider(refunds, provider.refunds),
   });
 };
 
@@ -293,7 +296,7 @@ export const shipRefundedOrderAnyway = async (
 export const orderStaffRefundSummary = async (
   tenantId: string,
   order: Pick<Order, 'id' | 'status' | 'amountCents' | 'currency'>,
-  soldOutRefund: Pick<OrderRefundJob, 'status' | 'amountCents'> | null,
+  soldOutRefund: Pick<OrderRefundJob, 'status' | 'amountCents' | 'providerRefundId'> | null,
   staffRefunds: Pick<OrderStaffRefundRepository, 'listByOrder'>,
 ): Promise<{ staffRefunds: OrderStaffRefundView[]; refundTotals: OrderRefundTotals }> => {
   const refunds = await staffRefunds.listByOrder(tenantId, order.id);

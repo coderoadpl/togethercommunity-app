@@ -2,6 +2,11 @@ import { format, type Messages } from './messages.js';
 
 const plural = (count: number, one: string, other: string): string => (count === 1 ? one : other);
 
+const checkStaffRefundInDashboard = (amount: string): string => format(
+  'Check this refund of {amount} in the Stripe Dashboard. If it is Succeeded, nothing more is needed. If it is Pending, do not refund it again: it is no longer checked automatically, so follow it there until it is Succeeded or Failed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund there only the unpaid part of the {amount} requested here, and never more than Stripe shows as left to refund on the payment; the order is updated once Stripe reports the refund.',
+  { amount },
+);
+
 export const en: Messages = {
   metaCapi: {
     privacyPolicy: 'Privacy policy',
@@ -1311,6 +1316,8 @@ export const en: Messages = {
       refundedUnknownValue: 'not known here',
       refundedUnknown: 'The order is marked refunded, but the refunds the platform sees do not cover the payment: it was refunded outside the platform or disputed, so the amount is not known here. Nothing more can be refunded here; check the payment in the Stripe Dashboard.',
       notSentYet: 'not sent to Stripe yet',
+      mayBeAtProvider: 'may already be at Stripe',
+      totalsUnavailable: 'Refund totals are not available here; check the payment in the Stripe Dashboard.',
       waitingBlocksAction: 'The previous refund of this order is waiting for confirmation from Stripe. The next refund is possible once Stripe confirms or rejects it.',
       notPaidOut: 'The refund has not been paid out yet. Details are in the refund history.',
       stateChip: ({ state }) => format('Refund: {state}', { state }),
@@ -1338,14 +1345,14 @@ export const en: Messages = {
       restocked: 'Returned to stock',
       removedFromPackingList: 'Taken off the packing list',
       reasonHelp: {
-        not_refunded: 'This refund failed and is no longer retried; nothing was refunded by it. Refund the order again, or refund it by hand in the Stripe Dashboard.',
-        permission_expired: 'The refund permission was still missing after 72 hours, so nothing was refunded. Add the permission to the Stripe key, then refund the order again.',
-        failed_after_submission: 'Stripe reported that this refund failed after it was issued, so the money did not reach the buyer. Refund the order again, or return the money another way.',
-        failed_after_order_refunded: 'Stripe reported that this refund failed after it was issued, so the money did not reach the buyer. The order is already marked refunded, so it cannot be refunded again here. Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.',
-        create_outcome_unknown: 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended. Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.',
-        awaiting_provider: 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically. Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.',
-        refunded_outside: 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm. Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.',
-        not_confirmed: 'Stripe has not confirmed this refund, and it is no longer checked automatically. Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.',
+        not_refunded: () => 'This refund failed and is no longer retried; nothing was refunded by it. Refund the order again, or refund it by hand in the Stripe Dashboard.',
+        permission_expired: () => 'The refund permission was still missing after 72 hours, so nothing was refunded. Add the permission to the Stripe key, then refund the order again.',
+        failed_after_submission: ({ amount }) => format('Stripe reported that this refund failed after it was issued, so the money did not reach the buyer. Refund {amount} again by entering that amount as a partial refund, not the whole remainder, or return the money another way.', { amount }),
+        failed_after_order_refunded: ({ amount }) => `Stripe reported that this refund failed after it was issued, so the money did not reach the buyer. The order is already marked refunded, so it cannot be refunded again here. ${checkStaffRefundInDashboard(amount)}`,
+        create_outcome_unknown: ({ amount }) => `A request for this refund may have reached Stripe, but the payment's refunds could not be read before the automatic retries ended. ${checkStaffRefundInDashboard(amount)}`,
+        awaiting_provider: ({ amount }) => `Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically. ${checkStaffRefundInDashboard(amount)}`,
+        refunded_outside: ({ amount }) => `The payment shows a full refund made outside the platform that the workspace's Stripe key could not confirm. ${checkStaffRefundInDashboard(amount)}`,
+        not_confirmed: ({ amount }) => `Stripe has not confirmed this refund, and it is no longer checked automatically. ${checkStaffRefundInDashboard(amount)}`,
       },
       blockedTitle: 'Waiting for the refund permission',
       blockedBuyerEmail: 'The buyer gets the e-mail only once Stripe accepts the refund.',

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import {
   appError,
@@ -50,23 +50,31 @@ const parseOrder = (row: Order): Order => orderSchema.parse(normalizeOrderDates(
 const ofOrder = (tenantId: string, orderId: string) =>
   and(eq(orderStaffRefunds.tenantId, tenantId), eq(orderStaffRefunds.orderId, orderId));
 
-type RefundStatuses = readonly (typeof PLATFORM_COMMITTED_REFUND_STATUSES)[number][];
+type Counted = 'committed' | 'observed';
+
+const countedStaffRefunds = (counted: Counted) => (counted === 'committed'
+  ? inArray(orderStaffRefunds.status, [...PLATFORM_COMMITTED_REFUND_STATUSES])
+  : and(inArray(orderStaffRefunds.status, [...PLATFORM_REFUNDED_STATUSES]), isNotNull(orderStaffRefunds.providerRefundId)));
+
+const countedSoldOutRefunds = (counted: Counted) => (counted === 'committed'
+  ? inArray(orderRefundJobs.status, [...PLATFORM_COMMITTED_REFUND_STATUSES])
+  : and(inArray(orderRefundJobs.status, [...PLATFORM_REFUNDED_STATUSES]), isNotNull(orderRefundJobs.providerRefundId)));
 
 const committedCents = async (
   executor: Pick<Executor, 'select'>,
   tenantId: string,
   orderId: string,
-  statuses: RefundStatuses = PLATFORM_COMMITTED_REFUND_STATUSES,
+  counted: Counted = 'committed',
 ): Promise<number> => {
   const [staff] = await executor.select({ cents: sql<string>`coalesce(sum(${orderStaffRefunds.amountCents}), 0)` })
     .from(orderStaffRefunds)
-    .where(and(ofOrder(tenantId, orderId), inArray(orderStaffRefunds.status, [...statuses])));
+    .where(and(ofOrder(tenantId, orderId), countedStaffRefunds(counted)));
   const [soldOut] = await executor.select({ cents: sql<string>`coalesce(sum(${orderRefundJobs.amountCents}), 0)` })
     .from(orderRefundJobs)
     .where(and(
       eq(orderRefundJobs.tenantId, tenantId),
       eq(orderRefundJobs.orderId, orderId),
-      inArray(orderRefundJobs.status, [...statuses]),
+      countedSoldOutRefunds(counted),
     ));
   return Number(staff?.cents ?? 0) + Number(soldOut?.cents ?? 0);
 };
@@ -129,7 +137,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
       .orderBy(desc(orderStaffRefunds.createdAt), desc(orderStaffRefunds.id)))
       .map(toStaffRefund),
   platformCommittedCents: async (tenantId, orderId) => committedCents(db, tenantId, orderId),
-  platformRefundedCents: async (tenantId, orderId) => committedCents(db, tenantId, orderId, PLATFORM_REFUNDED_STATUSES),
+  platformRefundedCents: async (tenantId, orderId) => committedCents(db, tenantId, orderId, 'observed'),
   hasLabel: async (tenantId, orderId) => labelBought(db, tenantId, orderId),
   refundedCentsByOrder: async (tenantId, orderIds) => {
     const committed = new Map<string, number>();
@@ -140,7 +148,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
         .where(and(
           eq(orderStaffRefunds.tenantId, tenantId),
           inArray(orderStaffRefunds.orderId, chunk),
-          inArray(orderStaffRefunds.status, [...PLATFORM_REFUNDED_STATUSES]),
+          countedStaffRefunds('observed'),
         ))
         .groupBy(orderStaffRefunds.orderId);
       const soldOut = await db.select({ orderId: orderRefundJobs.orderId, cents: sql<string>`sum(${orderRefundJobs.amountCents})` })
@@ -148,7 +156,7 @@ export const createOrderStaffRefundRepository = (db: Db): OrderStaffRefundReposi
         .where(and(
           eq(orderRefundJobs.tenantId, tenantId),
           inArray(orderRefundJobs.orderId, chunk),
-          inArray(orderRefundJobs.status, [...PLATFORM_REFUNDED_STATUSES]),
+          countedSoldOutRefunds('observed'),
         ))
         .groupBy(orderRefundJobs.orderId);
       for (const row of [...staff, ...soldOut]) committed.set(row.orderId, (committed.get(row.orderId) ?? 0) + Number(row.cents));

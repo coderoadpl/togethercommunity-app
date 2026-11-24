@@ -1196,6 +1196,8 @@ export interface Messages {
       refundedUnknownValue: string;
       refundedUnknown: string;
       notSentYet: string;
+      mayBeAtProvider: string;
+      totalsUnavailable: string;
       waitingBlocksAction: string;
       notPaidOut: string;
       stateChip: (params: { state: string }) => string;
@@ -1212,7 +1214,7 @@ export interface Messages {
       lastAttempt: (params: { time: string }) => string;
       restocked: string;
       removedFromPackingList: string;
-      reasonHelp: Record<StaffRefundReason, string>;
+      reasonHelp: Record<StaffRefundReason, (params: { amount: string }) => string>;
       blockedTitle: string;
       blockedBuyerEmail: string;
       blockedBody: string;

@@ -892,7 +892,7 @@ describe('staff refund alert email', () => {
     if (mayHaveRefunded) expect(message.text).not.toContain(language === 'en' ? 'has not reached Stripe' : expectedStaffRefundAlertPl.retrying.split(',')[0]);
   });
 
-  const englishCheck = 'Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.';
+  const englishCheck = 'Check this refund of PLN\u00a040.99 in the Stripe Dashboard. If it is Succeeded, nothing more is needed. If it is Pending, do not refund it again: it is no longer checked automatically, so follow it there until it is Succeeded or Failed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund there only the unpaid part of the PLN\u00a040.99 requested here, and never more than Stripe shows as left to refund on the payment; the order is updated once Stripe reports the refund.';
 
   const unconfirmedRows: ReadonlyArray<readonly [string, StaffRefundReason, string, string]> = [
     ['en', 'create_outcome_unknown', 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.', englishCheck],
@@ -900,7 +900,7 @@ describe('staff refund alert email', () => {
     ['en', 'refunded_outside', 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.', englishCheck],
     ['en', 'not_confirmed', 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.', englishCheck],
     ...(['create_outcome_unknown', 'awaiting_provider', 'refunded_outside', 'not_confirmed'] as const)
-      .map((reason) => ['pl', reason, expectedStaffRefundAlertPl.unconfirmedBecause[reason], expectedStaffRefundAlertPl.checkInDashboard] as const),
+      .map((reason) => ['pl', reason, expectedStaffRefundAlertPl.unconfirmedBecause[reason], expectedStaffRefundAlertPl.checkInDashboard(expectedStaffRefundAlertPl.paidAmount)] as const),
   ];
 
   it.each(unconfirmedRows)('tells staff in the %s unconfirmed alert (%s) what to do for each status the dashboard may show', (language, reason, because, check) => {
@@ -910,17 +910,33 @@ describe('staff refund alert email', () => {
   });
 
   it.each([
-    ['en', ['If it is Succeeded or Pending, nothing more is needed.', 'If it is Requires action, complete it there.', 'If it is Failed or Canceled, or not listed, refund the remaining amount there'], 'listed there, nothing more'],
-    ['pl', expectedStaffRefundAlertPl.dashboardSteps, expectedStaffRefundAlertPl.listedMeansDone],
-  ] as const)('never treats a refund merely listed in the dashboard as paid in the %s guidance', (language, steps, listedMeansDone) => {
+    ['en', [
+      'If it is Succeeded, nothing more is needed.', 'If it is Pending, do not refund it again', 'If it is Requires action, complete it there.',
+      'If it is Failed or Canceled, or not listed, refund there only the unpaid part of the',
+    ], ['listed there, nothing more', 'Succeeded or Pending, nothing more']],
+    ['pl', expectedStaffRefundAlertPl.dashboardSteps, [expectedStaffRefundAlertPl.listedMeansDone, expectedStaffRefundAlertPl.pendingMeansDone]],
+  ] as const)('never treats a refund merely listed or still pending in the dashboard as paid in the %s guidance', (language, steps, treatedAsDone) => {
     const text = staffRefundAlertEmail(language, { ...input, alert: 'unconfirmed', reason: 'awaiting_provider', diagnostic: '' }).text;
     for (const step of steps) expect(text).toContain(step);
-    expect(text).not.toContain(listedMeansDone);
+    for (const done of treatedAsDone) expect(text).not.toContain(done);
   });
 
   it.each([
-    ['en', 'The order is already marked refunded, so it cannot be refunded again from its page. Check this refund in the Stripe Dashboard.', 'Refund the order again from its page'],
-    ['pl', `${expectedStaffRefundAlertPl.failedAfterOrderRefunded} ${expectedStaffRefundAlertPl.checkInDashboard}`, expectedStaffRefundAlertPl.refundAgainFromPage],
+    ['en', 'refund there only the unpaid part of the PLN\u00a010.00 requested here, and never more than Stripe shows as left to refund on the payment',
+      'Refund PLN\u00a010.00 again from the order page by entering that amount as a partial refund, not the whole remainder'],
+    ['pl', expectedStaffRefundAlertPl.partialCap, expectedStaffRefundAlertPl.partialFailedAfterSubmission],
+  ] as const)('bounds any replacement of a partial refund by the amount requested in the %s alerts, never the whole remainder', (language, cap, refundAgain) => {
+    const partial = { ...input, amountCents: 1000, diagnostic: '' };
+    for (const reason of ['create_outcome_unknown', 'awaiting_provider', 'refunded_outside', 'not_confirmed'] as const) {
+      expect(staffRefundAlertEmail(language, { ...partial, alert: 'unconfirmed', reason }).text).toContain(cap);
+    }
+    expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_order_refunded' }).text).toContain(cap);
+    expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_submission' }).text).toContain(refundAgain);
+  });
+
+  it.each([
+    ['en', 'The order is already marked refunded, so it cannot be refunded again from its page. Check this refund of PLN\u00a040.99 in the Stripe Dashboard.', 'again from the order page by entering that amount as a partial refund, not the whole remainder'],
+    ['pl', `${expectedStaffRefundAlertPl.failedAfterOrderRefunded} ${expectedStaffRefundAlertPl.checkInDashboard(expectedStaffRefundAlertPl.paidAmount)}`, expectedStaffRefundAlertPl.refundAgainFromPage],
   ] as const)('tells staff in the %s alert to refund in the dashboard a refund that failed after the order was marked refunded, never from the order page', (language, guidance, refundAgain) => {
     const text = staffRefundAlertEmail(language, { ...input, alert: 'failed_after_submission', reason: 'failed_after_order_refunded', diagnostic: '' }).text;
     expect(text).toContain(guidance);

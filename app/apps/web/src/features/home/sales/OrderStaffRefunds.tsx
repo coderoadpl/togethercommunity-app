@@ -2,7 +2,9 @@ import { Alert, AlertTitle, Box, Button, Chip, Divider, Link as MuiLink, Stack, 
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import {
+  isObservedPlatformRefund,
   orderRefundPermissionDeadline,
+  PLATFORM_COMMITTED_REFUND_STATUSES,
   refundedAmountUnknown,
   SALES_LINK_TIME_ZONE,
   staffRefundReason,
@@ -32,12 +34,19 @@ import { CheckCircleIcon, ClockIcon, RefundIcon, WarningIcon } from './refund-ic
 
 type Statuses = readonly OrderStaffRefundView['status'][];
 
-// Stripe's list may already hold a refund being sent; the platform counts it as refunded only once Stripe accepted it.
-const IN_PROGRESS_STATUSES: Record<'provider' | 'platform', Statuses> = { provider: ['running', 'submitted', 'unconfirmed'], platform: ['submitted', 'unconfirmed'] };
-const REQUESTED_STATUSES: Record<'provider' | 'platform', Statuses> = { provider: ['pending', 'blocked_permission'], platform: ['pending', 'running', 'blocked_permission'] };
+const WAITING_STATUSES: Statuses = ['pending', 'running', 'blocked_permission'];
+const UNCERTAIN_STATUSES: Statuses = ['submitted', 'unconfirmed'];
 
-const sumOf = (refunds: readonly OrderStaffRefundView[], statuses: readonly OrderStaffRefundView['status'][]): number =>
-  refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
+const sumOf = (refunds: readonly OrderStaffRefundView[]): number => refunds.reduce((sum, refund) => sum + refund.amountCents, 0);
+
+const refundCountedIn = (preview: StaffRefundPreview | null): ((refund: OrderStaffRefundView) => boolean) => {
+  if (preview?.remainderSource !== 'provider') return isObservedPlatformRefund;
+  const listed = new Set(preview.providerListedRefundIds);
+  return (refund) => listed.has(refund.id);
+};
+
+const isReserved = (refund: OrderStaffRefundView): boolean =>
+  WAITING_STATUSES.includes(refund.status) || (refund.createOutcomeUnknown && UNCERTAIN_STATUSES.includes(refund.status));
 
 const AmountRow = ({ label, children, sub, total = false }: { label: string; children: ReactNode; sub?: string | undefined; total?: boolean }) => (
   <Stack direction="row" useFlexGap spacing="1rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -70,23 +79,29 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const { language } = useLanguage();
   const money = (cents: number) => formatMinorUnitsPrice(cents, order.currency, language);
   const preview = action.kind === 'ready' ? action.preview : null;
-  const totalsNote = action.kind === 'error'
-    ? messages.paymentPreviewFailedTotals
-    : preview?.remainderSource === 'platform' ? messages.paymentPlatformTotals : null;
-  const source = preview?.remainderSource ?? 'platform';
+  const totalsAvailable = preview !== null || totals !== null;
+  const totalsNote = !totalsAvailable ? messages.totalsUnavailable
+    : action.kind === 'error' ? messages.paymentPreviewFailedTotals
+      : preview?.remainderSource === 'platform' ? messages.paymentPlatformTotals : null;
   const paidCents = preview?.paidCents ?? totals?.paidCents ?? order.amountCents;
   const refundedCents = preview?.refundedCents ?? totals?.refundedCents ?? 0;
   const remainingCents = preview?.remainderCents ?? totals?.remainingCents ?? 0;
-  const unknown = refundedAmountUnknown(order, refundedCents);
-  const requestedCents = sumOf(staffRefunds, REQUESTED_STATUSES[source]);
-  const unconfirmedCents = Math.min(refundedCents, sumOf(staffRefunds, IN_PROGRESS_STATUSES[source]));
+  const unknown = totalsAvailable && refundedAmountUnknown(order, refundedCents);
+  const counted = refundCountedIn(preview);
+  const requested = staffRefunds.filter((refund) => !counted(refund) && isReserved(refund));
+  const requestedCents = sumOf(requested);
+  const unconfirmedCents = Math.min(refundedCents, sumOf(staffRefunds.filter((refund) =>
+    counted(refund) && refund.status !== 'succeeded' && PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status))));
   const shippingCents = order.shipping?.amountCents ?? 0;
   const blocked = staffRefunds.some((refund) => refund.status === 'blocked_permission');
+  const requestedNote = requested.some((refund) => refund.createOutcomeUnknown)
+    ? messages.mayBeAtProvider
+    : requested.some((refund) => refund.status === 'blocked_permission') ? messages.waitingForPermission : messages.notSentYet;
 
   return (
     <SectionCard title={messages.paymentTitle} headerActions={chips} data-testid="order-payment">
       <Stack useFlexGap spacing="0.6rem">
-        {refundedCents === 0 && requestedCents === 0 && !unknown ? (
+        {!totalsAvailable || (refundedCents === 0 && requestedCents === 0 && !unknown) ? (
           <>
             <AmountRow label={messages.productsSubtotal}>{money(paidCents - shippingCents + order.discountCents)}</AmountRow>
             {order.shipping == null ? null : <AmountRow label={messages.deliverySubtotal}>{money(shippingCents)}</AmountRow>}
@@ -104,7 +119,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
               </AmountRow>
             )}
             {requestedCents === 0 ? null : (
-              <AmountRow label={messages.requestedRefund} sub={blocked ? messages.waitingForPermission : messages.notSentYet}>{`−${money(requestedCents)}`}</AmountRow>
+              <AmountRow label={messages.requestedRefund} sub={requestedNote}>{`−${money(requestedCents)}`}</AmountRow>
             )}
             <Divider />
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
@@ -205,7 +220,7 @@ const RefundItem = ({ refund, order }: { refund: OrderStaffRefundView; order: Pi
           </Stack>
         </Alert>
       ) : null}
-      {reason === null ? null : <Alert severity="error" data-testid="order-staff-refund-help">{messages.reasonHelp[reason]}</Alert>}
+      {reason === null ? null : <Alert severity="error" data-testid="order-staff-refund-help">{messages.reasonHelp[reason]({ amount: formatMinorUnitsPrice(refund.amountCents, refund.currency, language) })}</Alert>}
     </RefundHistoryItem>
   );
 };

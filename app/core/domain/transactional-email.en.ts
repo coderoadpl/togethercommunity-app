@@ -253,7 +253,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
     lastErrorLabel: 'Last error',
     openOrder: 'Open the order',
     paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
-      const checkInDashboard = 'Check this refund in the Stripe Dashboard. If it is Succeeded or Pending, nothing more is needed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund the remaining amount there; the order is updated once Stripe reports the refund.';
+      const checkInDashboard = `Check this refund of ${amount} in the Stripe Dashboard. If it is Succeeded, nothing more is needed. If it is Pending, do not refund it again: it is no longer checked automatically, so follow it there until it is Succeeded or Failed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund there only the unpaid part of the ${amount} requested here, and never more than Stripe shows as left to refund on the payment; the order is updated once Stripe reports the refund.`;
       const unconfirmedBecause = reason === 'create_outcome_unknown'
         ? 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.'
         : reason === 'awaiting_provider'
@@ -270,7 +270,7 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
         failed: 'The refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.',
         failed_after_submission: reason === 'failed_after_order_refunded'
           ? `Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. The order is already marked refunded, so it cannot be refunded again from its page. ${checkInDashboard}`
-          : 'Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund the order again from its page, or return the money another way.',
+          : `Stripe reports that the refund failed after it was issued, so the money did not reach the buyer. Refund ${amount} again from the order page by entering that amount as a partial refund, not the whole remainder, or return the money another way.`,
         unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';

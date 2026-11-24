@@ -66,17 +66,31 @@ export const PLATFORM_COMMITTED_REFUND_STATUSES = ['pending', 'running', 'submit
 
 export const PLATFORM_REFUNDED_STATUSES = ['submitted', 'succeeded', 'unconfirmed'] as const;
 
+// A refund counts as paid out only with a provider refund of its own: a worker lost before the provider call, or a
+// refund watching another one the provider refused it for, keeps its amount reserved without proof of a payout.
+export const isObservedPlatformRefund = (refund: { status: string; providerRefundId: string | null }): boolean =>
+  refund.providerRefundId !== null && PLATFORM_REFUNDED_STATUSES.some((status) => status === refund.status);
+
 const SETTLED_STAFF_REFUND_STATUSES = ['succeeded', 'skipped_refunded', 'resolved_externally'] as const;
 
 export const isActiveStaffRefundStatus = (status: OrderStaffRefund['status']): boolean =>
   !SETTLED_STAFF_REFUND_STATUSES.some((settled) => settled === status);
-
 
 const isCommittedProviderRefund = (refund: Pick<ProviderRefund, 'status'>): boolean =>
   refund.status !== 'failed' && refund.status !== 'canceled';
 
 export const committedProviderRefundCents = (refunds: readonly Pick<ProviderRefund, 'status' | 'amountCents'>[]): number =>
   refunds.filter(isCommittedProviderRefund).reduce((sum, refund) => sum + refund.amountCents, 0);
+
+export const staffRefundsListedByProvider = (
+  staffRefunds: readonly Pick<OrderStaffRefund, 'id' | 'providerRefundId'>[],
+  providerRefunds: readonly Pick<ProviderRefund, 'refundId' | 'refundJobId' | 'status'>[],
+): string[] => {
+  const committed = providerRefunds.filter(isCommittedProviderRefund);
+  return staffRefunds
+    .filter((refund) => committed.some((listed) => listed.refundId === refund.providerRefundId || listed.refundJobId === refund.id))
+    .map((refund) => refund.id);
+};
 
 export const refundableRemainderCents = (input: { paidCents: number; providerCommittedCents: number | null; platformCommittedCents: number }): number =>
   Math.max(0, input.paidCents - Math.max(input.providerCommittedCents ?? 0, input.platformCommittedCents));
@@ -104,6 +118,10 @@ export const staffRefundOrderBlocker = (order: RefundableOrder): AppError | null
   if (order.amountCents <= 0) return validation('The order was free; there is nothing to refund');
   return null;
 };
+
+// A refunded order takes no more refunds, yet its preview still shows how much the provider says was refunded.
+export const staffRefundPreviewReadable = (order: RefundableOrder): boolean =>
+  staffRefundOrderBlocker(order.status === 'refunded' ? { ...order, status: 'paid' } : order) === null;
 
 const SHIP_ANYWAY_STATUSES: readonly OrderStatus[] = ['paid', 'refunded', 'partially_refunded'];
 
@@ -214,6 +232,7 @@ export const staffRefundPreviewSchema = z.object({
   cancelsSubscription: z.boolean(),
   fullRefundOptions: staffRefundFulfilmentOptionsSchema,
   waitingRefundId: z.string().nullable(),
+  providerListedRefundIds: z.array(z.string().min(1)).default([]),
 });
 
 export type StaffRefundPreview = z.output<typeof staffRefundPreviewSchema>;
@@ -382,7 +401,7 @@ export const orderStaffRefundViewSchema = orderStaffRefundSchema.pick({
   removedFromPackingList: true,
   createdAt: true,
   updatedAt: true,
-});
+}).extend({ providerRefundId: z.string().nullable().default(null) });
 
 export type OrderStaffRefundView = z.output<typeof orderStaffRefundViewSchema>;
 
@@ -397,15 +416,19 @@ export const orderRefundTotalsSchema = z.object({
 
 export type OrderRefundTotals = z.output<typeof orderRefundTotalsSchema>;
 
-const sumOf = (refunds: readonly { status: string; amountCents: number }[], statuses: readonly string[]): number =>
-  refunds.filter((refund) => statuses.includes(refund.status)).reduce((sum, refund) => sum + refund.amountCents, 0);
+type RecordedRefund = { status: string; amountCents: number; providerRefundId: string | null };
+
+const sumOf = (refunds: readonly RecordedRefund[], counted: (refund: RecordedRefund) => boolean): number =>
+  refunds.filter(counted).reduce((sum, refund) => sum + refund.amountCents, 0);
+
+const isPlatformCommitted = (refund: RecordedRefund): boolean => PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status);
 
 export const orderRefundTotals = (
   order: Pick<Order, 'status' | 'amountCents' | 'currency'>,
-  refunds: readonly { status: string; amountCents: number }[],
+  refunds: readonly RecordedRefund[],
 ): OrderRefundTotals => {
-  const refundedCents = Math.min(order.amountCents, sumOf(refunds, PLATFORM_REFUNDED_STATUSES));
-  const committedCents = Math.min(order.amountCents, sumOf(refunds, PLATFORM_COMMITTED_REFUND_STATUSES));
+  const refundedCents = Math.min(order.amountCents, sumOf(refunds, isObservedPlatformRefund));
+  const committedCents = Math.min(order.amountCents, sumOf(refunds, isPlatformCommitted));
   return orderRefundTotalsSchema.parse({
     paidCents: order.amountCents,
     refundedCents,

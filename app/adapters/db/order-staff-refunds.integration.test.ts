@@ -371,6 +371,17 @@ describe('staff refunds against a real database', () => {
     expect(await refundRows('order-1')).toMatchObject([{ status: 'submitted', providerRefundId: 're_1', keyGeneration: 0, createOutcomeUnknown: false }]);
   });
 
+  it('names the staff refund the provider already lists after its create response was lost, before the next dispatch takes it over', async () => {
+    const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'pending', createOutcomeUnknown: true, providerRefundId: null }]);
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
+      remainderSource: 'provider', refundedCents: 1000, remainderCents: 3099, providerListedRefundIds: ['refund-1'],
+    });
+  });
+
   it('ends a staff refund whose create outcome was unknown as unconfirmed, still counted, when its refunds cannot be read until the retries end', async () => {
     const h = harness({ steps: [{ outcome: 'no_response', createsRefund: true }] });
     unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
@@ -397,7 +408,7 @@ describe('staff refunds against a real database', () => {
     const [retrying, unconfirmedAlert] = await alertPayloads();
     expect(retrying?.text).toContain(expectedStaffRefundAlertPl.retryingOutcomeUnknown);
     expect(unconfirmedAlert?.text).toContain(expectedStaffRefundAlertPl.unconfirmedBecause.create_outcome_unknown);
-    expect(unconfirmedAlert?.text).toContain(expectedStaffRefundAlertPl.checkInDashboard);
+    expect(unconfirmedAlert?.text).toContain(expectedStaffRefundAlertPl.checkInDashboard(expectedStaffRefundAlertPl.partialAmount));
     expect(unconfirmedAlert?.text).toContain(`${expectedStaffRefundAlertPl.lastErrorLabel}: Connection timed out`);
     const providerWords = 'Request aborted due to timeout being reached (80000ms)';
     expect(retrying?.text).toContain(`${expectedStaffRefundAlertPl.lastErrorLabel}: ${providerWords}`);
@@ -448,6 +459,30 @@ describe('staff refunds against a real database', () => {
     expect(await h.deps.staffRefunds.platformCommittedCents('tenant-a', 'order-1')).toBe(1000);
     expect(h.provider.created).toHaveLength(1);
     expect(h.provider.calls).toHaveLength(1);
+  });
+
+  it('keeps a staff refund whose worker was lost before the provider call reserved but never reports it as refunded in the preview, the detail or the export', async () => {
+    const h = harness();
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    const lostBeforeCall = { payment: { ...h.dispatchDeps.payment, createRefund: async () => { throw new Error('Worker lost before the provider call'); } } };
+    await expect(h.dispatch(minutes(1), lostBeforeCall)).rejects.toThrow('Worker lost before the provider call');
+    h.provider.failLists(...Array.from({ length: 60 }, () => refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout')));
+    for (let at = 12; at <= 60 * 24 * 8; at += 6 * 60) await h.dispatch(minutes(at));
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'unconfirmed', createOutcomeUnknown: true, providerRefundId: null }]);
+    expect(h.provider.calls).toStrictEqual([]);
+    expect(h.providerTotal()).toBe(0);
+    expect(await h.deps.staffRefunds.platformCommittedCents('tenant-a', 'order-1')).toBe(1000);
+    expect(await h.deps.staffRefunds.platformRefundedCents('tenant-a', 'order-1')).toBe(0);
+    h.provider.failLists(refundFailure('transient', 'Stripe could not list the refunds: Request aborted due to timeout'));
+    expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({ remainderSource: 'platform', refundedCents: 0, remainderCents: 3099 });
+    const detail = unwrap(await getOrder(staff('tenant-a'), 'order-1', { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds }));
+    expect(detail.refundTotals).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 3099, currency: 'PLN' });
+    const exportDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
+    expect(await h.deps.staffRefunds.refundedCentsByOrder('tenant-a', ['order-1'])).toStrictEqual(new Map());
+    const [, line = ''] = unwrap(await exportOrders(staff('tenant-a'), { format: 'csv' }, exportDeps)).content.split('\n');
+    expect(line.split(',').at(-1)).toBe('"0"');
+    expect(JSON.parse(unwrap(await exportOrders(staff('tenant-a'), { format: 'json' }, exportDeps)).content)).toMatchObject([{ id: 'order-1', refundedCents: 0 }]);
   });
 
   it('sends no refund request when another worker took the staff refund over before its attempt was recorded', async () => {
@@ -524,6 +559,29 @@ describe('staff refunds against a real database', () => {
     expect(await alertPayloads()).toHaveLength(1);
   });
 
+  it('words the alert of a refund that failed after it was issued from the order status at settlement, when charge.refunded lands during the provider call', async () => {
+    const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
+    unwrap(await h.refund('order-1', { requestKey: 'req-1', amountCents: 1000, expectedRemainderCents: 4099 }));
+    await h.dispatch(minutes(1));
+    h.provider.failRefund('re_1', 'expired_or_canceled_card');
+    const webhookDuringCall = {
+      payment: {
+        ...h.dispatchDeps.payment,
+        listRefunds: async (call: Parameters<NonNullable<typeof h.dispatchDeps.payment.listRefunds>>[0]) => {
+          await database.db.update(orders).set({ status: 'refunded' }).where(eq(orders.id, 'order-1'));
+          return h.dispatchDeps.payment.listRefunds(call);
+        },
+      },
+    };
+    await h.dispatch(minutes(60 * 24 + 1), webhookDuringCall);
+
+    expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', providerRefundStatus: 'failed' }]);
+    const [alert] = await alertPayloads();
+    expect(alert).toMatchObject({ alert: 'failed_after_submission' });
+    expect(alert?.text).toContain('The order is already marked refunded, so it cannot be refunded again from its page.');
+    expect(alert?.text).not.toContain('again from the order page');
+  });
+
   it('never refunds an order marked refunded again after its full refund failed at the provider, and tells staff to refund it in the dashboard', async () => {
     const h = harness({ steps: [{ outcome: 'refund', status: 'pending' }] });
     unwrap(await h.refund('order-1', { requestKey: 'req-1', expectedAmountCents: 4099 }));
@@ -534,9 +592,9 @@ describe('staff refunds against a real database', () => {
     expect(await refundRows('order-1')).toMatchObject([{ status: 'failed', providerRefundStatus: 'failed' }]);
     const [alert] = await alertPayloads();
     expect(alert).toMatchObject({ alert: 'failed_after_submission' });
-    expect(alert?.text).toContain('The order is already marked refunded, so it cannot be refunded again from its page. Check this refund in the Stripe Dashboard.');
-    expect(alert?.text).toContain('If it is Failed or Canceled, or not listed, refund the remaining amount there');
-    expect(alert?.text).not.toContain('Refund the order again from its page');
+    expect(alert?.text).toContain('The order is already marked refunded, so it cannot be refunded again from its page. Check this refund of PLN\u00a040.99 in the Stripe Dashboard.');
+    expect(alert?.text).toContain('If it is Failed or Canceled, or not listed, refund there only the unpaid part of the PLN\u00a040.99 requested here');
+    expect(alert?.text).not.toContain('again from the order page');
 
     expect(unwrap(await previewStaffRefund(staff('tenant-a'), 'order-1', h.deps))).toMatchObject({
       refundable: false, remainderCents: 0, refundedCents: 0, refundedAmountUnknown: true,
@@ -1249,7 +1307,7 @@ describe('staff refunds against a real database', () => {
     expect(json).toMatchObject([{ id: 'order-1', refundedCents: 1000 }, { id: 'order-2', refundedCents: 0 }, { id: 'order-3', refundedCents: 0 }]);
   });
 
-  it('adds the amount of a sold-out refund the provider accepted to the export before charge.refunded marks the order refunded', async () => {
+  it('adds the amount of a sold-out refund the provider accepted to the export before charge.refunded marks the order refunded, but not of one with no refund of its own', async () => {
     const h = harness();
     await insertOrder('order-sold-out', { cancelReason: 'out_of_stock', createdAt: minutes(-1) });
     await database.db.insert(orderRefundJobs).values({
@@ -1258,12 +1316,21 @@ describe('staff refunds against a real database', () => {
         { id: 'sold-out-job', now: start },
       ),
       status: 'succeeded',
+      providerRefundId: 're_sold_out',
+    });
+    await insertOrder('order-sold-out-outside', { cancelReason: 'out_of_stock', createdAt: minutes(-2) });
+    await database.db.insert(orderRefundJobs).values({
+      ...outOfStockRefundJob(
+        { id: 'order-sold-out-outside', tenantId: 'tenant-a', amountCents: 4099, currency: 'PLN', providerObjectIds: { paymentIntent: 'pi_order-sold-out-outside' } },
+        { id: 'sold-out-job-outside', now: start },
+      ),
+      status: 'submitted',
     });
     const exportDeps = { orders: createOrderRepository(database.db), staffRefunds: h.deps.staffRefunds };
 
-    expect(await h.deps.staffRefunds.refundedCentsByOrder('tenant-a', ['order-1', 'order-sold-out'])).toStrictEqual(new Map([['order-sold-out', 4099]]));
+    expect(await h.deps.staffRefunds.refundedCentsByOrder('tenant-a', ['order-1', 'order-sold-out', 'order-sold-out-outside'])).toStrictEqual(new Map([['order-sold-out', 4099]]));
     const json: unknown = JSON.parse(unwrap(await exportOrders(staff('tenant-a'), { format: 'json' }, exportDeps)).content);
-    expect(json).toMatchObject([{ id: 'order-1', refundedCents: 0 }, { id: 'order-sold-out', status: 'paid', refundedCents: 4099 }]);
+    expect(json).toMatchObject([{ id: 'order-1', refundedCents: 0 }, { id: 'order-sold-out', status: 'paid', refundedCents: 4099 }, { id: 'order-sold-out-outside', refundedCents: 0 }]);
   });
 
   it('sums refunded staff refunds for more order ids than one statement can bind', async () => {

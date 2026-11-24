@@ -21,6 +21,7 @@ import { PanelContextProvider, type PanelContextValue } from '../panel-context.j
 import { OrderDetailPage } from './OrderDetailPage.js';
 import { OrderStaffRefundHistory } from './OrderStaffRefunds.js';
 import { SalesPanel } from './SalesPanel.js';
+import { expectedStaffRefundHelpPl } from './staff-refund-help.expected.pl.js';
 
 const messages = en.sales.staffRefund;
 const pln = (cents: number) => formatMinorUnitsPrice(cents, 'PLN', 'en').replace(/\s/g, ' ');
@@ -48,7 +49,7 @@ const paidOrder: OrderListItem = {
 const preview: StaffRefundPreview = {
   orderId: 'o1', refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: true, returnableStock: [{ productId: 'mug', quantity: 1 }], onPackingList: true,
-  hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null,
+  hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null, providerListedRefundIds: [],
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
 };
 
@@ -56,7 +57,7 @@ const staffRefund = (overrides: Partial<OrderStaffRefundView>): OrderStaffRefund
   id: 'refund-1', kind: 'amount', status: 'succeeded', amountCents: 5000, currency: 'PLN', attempts: 1, nextAttemptAt: null, lastError: null,
   providerRefundStatus: 'succeeded', submittedAt: '2026-11-19T15:40:00.000Z', permissionBlockedAt: null, createOutcomeUnknown: false, requestedByUserId: 'user-1', requestedByEmail: 'owner@example.com',
   note: null, restocked: false, removedFromPackingList: false, createdAt: '2026-11-19T15:40:00.000Z', updatedAt: '2026-11-19T15:41:00.000Z',
-  ...overrides,
+  providerRefundId: 're_1', ...overrides,
 });
 
 const owner: PanelContextValue = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true };
@@ -72,7 +73,7 @@ const requestBodySchema = z.object({
   expectedShipmentState: z.object({ onPackingList: z.boolean(), hasShipmentOrLabel: z.boolean() }).strict(),
 }).strict();
 
-type Detail = { order: OrderListItem; staffRefunds?: OrderStaffRefundView[]; refundTotals?: { paidCents: number; refundedCents: number; remainingCents: number; currency: string } };
+type Detail = { order: OrderListItem; staffRefunds?: OrderStaffRefundView[]; refundTotals?: { paidCents: number; refundedCents: number; remainingCents: number; currency: string } | null };
 
 const serve = (detail: Detail, refundPreview: StaffRefundPreview = preview) => {
   const refunds: z.infer<typeof requestBodySchema>[] = [];
@@ -157,7 +158,7 @@ describe('staff refund action', () => {
   it('keeps the action disabled with the reason while another refund waits for Stripe', async () => {
     serve(
       { order: { ...paidOrder, status: 'partially_refunded' }, staffRefunds: [staffRefund({ status: 'running', amountCents: 4900 })], refundTotals: { paidCents: 24900, refundedCents: 4900, remainingCents: 20000, currency: 'PLN' } },
-      { ...preview, refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', waitingRefundId: 'refund-1', remainderCents: 20000, refundedCents: 4900 },
+      { ...preview, refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', waitingRefundId: 'refund-1', remainderCents: 20000, refundedCents: 4900, providerListedRefundIds: ['refund-1'] },
     );
     await renderDetail();
     expect(await screen.findByRole('button', { name: messages.action })).toBeDisabled();
@@ -170,23 +171,88 @@ describe('staff refund action', () => {
 });
 
 describe('payment card totals', () => {
-  it('never offers a refund for an order marked refunded and says its refunded amount is not known here when the refunds seen do not cover it', async () => {
-    const calls = serve({ order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 0, currency: 'PLN' } });
+  const refundedBlocked = { refundable: false, blockedReason: 'The order is marked refunded', remainderCents: 0 };
+
+  it('reads the preview of a disputed order marked refunded, says its refunded amount is not known here when Stripe\'s list cannot be read, and never offers a refund', async () => {
+    const calls = serve(
+      { order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 0, currency: 'PLN' } },
+      { ...preview, ...refundedBlocked, remainderSource: 'platform', refundedCents: 0, refundedAmountUnknown: true },
+    );
     await renderDetail();
     const payment = await screen.findByTestId('order-payment');
     expect(await within(payment).findByTestId('order-payment-refunded-unknown')).toHaveTextContent(messages.refundedUnknown);
     expect(within(payment).getByText(messages.refundedUnknownValue)).toBeVisible();
+    expect(within(payment).getByText(messages.paymentPlatformTotals)).toBeVisible();
     expect(within(payment).queryByText(messages.fullyRefunded)).toBeNull();
     expect(within(payment).queryByText(`−${pln(24900)}`)).toBeNull();
     expect(screen.queryByRole('button', { name: messages.action })).toBeNull();
+    expect(calls.preview).toBe(1);
+  });
+
+  it('shows the amount Stripe lists for an order refunded in full in the Stripe Dashboard, which the platform never recorded, without offering a refund', async () => {
+    const calls = serve(
+      { order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 0, currency: 'PLN' } },
+      { ...preview, ...refundedBlocked, refundedCents: 24900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
+    expect(within(payment).getByText(messages.fullyRefunded)).toBeVisible();
+    expect(within(payment).queryByTestId('order-payment-refunded-unknown')).toBeNull();
+    expect(screen.queryByRole('button', { name: messages.action })).toBeNull();
+    expect(calls.preview).toBe(1);
+  });
+
+  it('shows the paid amount and says the refund totals are not available instead of a remainder when neither the preview nor the detail has them', async () => {
+    const calls = serve({ order: { ...paidOrder, status: 'refunded' }, refundTotals: null });
+    await renderDetail({ ...owner, emailVerified: false });
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(messages.totalsUnavailable)).toBeVisible();
+    expect(within(payment).getByText(pln(24900))).toBeVisible();
+    expect(within(payment).queryByText(messages.remaining)).toBeNull();
+    expect(within(payment).queryByText(messages.refundedUnknownValue)).toBeNull();
     expect(calls.preview).toBe(0);
+  });
+
+  it.each([
+    { listed: ['refund-1'], requested: false },
+    { listed: [], requested: true },
+  ])('counts a refund whose create response was lost once in the refunded total when Stripe lists it ($listed), and otherwise calls it possibly at Stripe, never not sent', async ({ listed, requested }) => {
+    serve(
+      { order: { ...paidOrder, status: 'partially_refunded' }, staffRefunds: [staffRefund({ status: 'pending', amountCents: 1000, createOutcomeUnknown: true, providerRefundId: null, providerRefundStatus: null })] },
+      { ...preview, refundable: false, waitingRefundId: 'refund-1', refundedCents: listed.length === 0 ? 0 : 1000, remainderCents: 23900, providerListedRefundIds: listed },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(pln(23900))).toBeVisible();
+    expect(within(payment).queryByText(messages.notSentYet)).toBeNull();
+    expect(within(payment).queryByText(messages.requestedRefund) !== null).toBe(requested);
+    expect(within(payment).queryByText(messages.mayBeAtProvider) !== null).toBe(requested);
+    expect(within(payment).queryByText(messages.inProgress({ amount: pln(1000) })) !== null).toBe(!requested);
+    expect(within(payment).getAllByText(`−${pln(1000)}`)).toHaveLength(1);
+  });
+
+  it('never calls a refund only watching other refunds, with no Stripe refund of its own, refunded in the platform\'s totals', async () => {
+    serve(
+      {
+        order: { ...paidOrder, status: 'partially_refunded' },
+        staffRefunds: [staffRefund({ id: 'r-lost', status: 'unconfirmed', amountCents: 1000, createOutcomeUnknown: true, providerRefundId: null, providerRefundStatus: null })],
+        refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 23900, currency: 'PLN' },
+      },
+      { ...preview, remainderSource: 'platform', refundedCents: 0, remainderCents: 23900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(messages.requestedRefund)).toBeVisible();
+    expect(within(payment).getByText(messages.mayBeAtProvider)).toBeVisible();
+    expect(within(payment).queryByText(messages.refunded)).toBeNull();
   });
 
   it('says the whole amount was refunded only when the refunds the platform saw cover the payment', async () => {
     serve({
       order: { ...paidOrder, status: 'refunded' }, staffRefunds: [staffRefund({ kind: 'remainder', amountCents: 24900 })],
       refundTotals: { paidCents: 24900, refundedCents: 24900, remainingCents: 0, currency: 'PLN' },
-    });
+    }, { ...preview, ...refundedBlocked, remainderSource: 'platform', refundedCents: 24900 });
     await renderDetail();
     const payment = await screen.findByTestId('order-payment');
     expect(await within(payment).findByText(messages.fullyRefunded)).toBeVisible();
@@ -658,7 +724,7 @@ describe('staff refund history and ship anyway', () => {
         staffRefund({ id: 'r-done', status: 'succeeded', amountCents: 5000, restocked: true }),
       ],
       refundTotals: { paidCents: 24900, refundedCents: 5000, remainingCents: 14000, currency: 'PLN' },
-    }, { ...preview, refundable: false, waitingRefundId: 'r-blocked', refundedCents: 9900, remainderCents: 14000 });
+    }, { ...preview, refundable: false, waitingRefundId: 'r-blocked', refundedCents: 9900, remainderCents: 14000, providerListedRefundIds: ['r-running', 'r-done'] });
     await renderDetail();
 
     const history = await screen.findByTestId('order-staff-refunds');
@@ -676,7 +742,7 @@ describe('staff refund history and ship anyway', () => {
     expect(within(blocked).getByText(/Attempts: 2/)).toBeVisible();
     expect(within(blocked).getByText(messages.lastAttempt({ time: formatDateTime('2026-11-25T07:05:00.000Z', 'en', SALES_LINK_TIME_ZONE) }))).toBeVisible();
 
-    expect(within(within(history).getByTestId('order-staff-refund-r-failed')).getByText(messages.reasonHelp.not_refunded)).toBeVisible();
+    expect(within(within(history).getByTestId('order-staff-refund-r-failed')).getByText(messages.reasonHelp.not_refunded({ amount: pln(700) }))).toBeVisible();
     const done = within(history).getByTestId('order-staff-refund-r-done');
     expect(within(done).getByTestId('order-staff-refund-state')).toHaveTextContent(messages.states.succeeded);
     expect(within(done).getByText(messages.restocked)).toBeVisible();
@@ -710,11 +776,13 @@ describe('staff refund history and ship anyway', () => {
     ];
     const { unmount } = renderWithProviders(<LanguageProvider><OrderStaffRefundHistory refunds={refunds} order={{ status: 'partially_refunded' }} /></LanguageProvider>);
     const help = (id: string) => within(screen.getByTestId(`order-staff-refund-${id}`)).getByTestId('order-staff-refund-help');
-    expect(help('r-refused')).toHaveTextContent(t.sales.staffRefund.reasonHelp.not_refunded);
-    expect(help('r-after')).toHaveTextContent(t.sales.staffRefund.reasonHelp.failed_after_submission);
-    expect(help('r-permission')).toHaveTextContent(t.sales.staffRefund.reasonHelp.permission_expired);
-    expect(help('r-unknown')).toHaveTextContent(t.sales.staffRefund.reasonHelp.create_outcome_unknown);
-    expect(help('r-awaiting')).toHaveTextContent(t.sales.staffRefund.reasonHelp.awaiting_provider);
+    const amount = formatMinorUnitsPrice(5000, 'PLN', language).replace(/\s/gu, ' ');
+    const reasonHelp = t.sales.staffRefund.reasonHelp;
+    expect(help('r-refused')).toHaveTextContent(reasonHelp.not_refunded({ amount }));
+    expect(help('r-after')).toHaveTextContent(reasonHelp.failed_after_submission({ amount }));
+    expect(help('r-permission')).toHaveTextContent(reasonHelp.permission_expired({ amount }));
+    expect(help('r-unknown')).toHaveTextContent(reasonHelp.create_outcome_unknown({ amount }));
+    expect(help('r-awaiting')).toHaveTextContent(reasonHelp.awaiting_provider({ amount }));
     if (language === 'pl') {
       for (const id of ['r-refused', 'r-after', 'r-permission', 'r-unknown', 'r-awaiting']) {
         expect(help(id).textContent).not.toMatch(/\b(the|refund|request|check|dashboard|nothing|may)\b/iu);
@@ -722,8 +790,31 @@ describe('staff refund history and ship anyway', () => {
     }
     unmount();
     renderWithProviders(<LanguageProvider><OrderStaffRefundHistory refunds={refunds.slice(1, 2)} order={{ status: 'refunded' }} /></LanguageProvider>);
-    expect(help('r-after')).toHaveTextContent(t.sales.staffRefund.reasonHelp.failed_after_order_refunded);
-    expect(t.sales.staffRefund.reasonHelp.failed_after_order_refunded).toContain('Requires action');
+    expect(help('r-after')).toHaveTextContent(reasonHelp.failed_after_order_refunded({ amount }));
+    expect(reasonHelp.failed_after_order_refunded({ amount })).toContain('Requires action');
+    languagePreference.save('en');
+  });
+
+  it.each([
+    { language: 'en', t: en, cap: (amount: string) => `refund there only the unpaid part of the ${amount} requested here, and never more than Stripe shows as left to refund on the payment`, again: (amount: string) => `Refund ${amount} again by entering that amount as a partial refund, not the whole remainder` },
+    { language: 'pl', t: pl, cap: expectedStaffRefundHelpPl.cap, again: expectedStaffRefundHelpPl.refundAgain },
+  ] as const)('bounds any replacement of a partial refund by the amount requested in the $language Studio help, never the whole remainder', async ({ language, t, cap, again }) => {
+    languagePreference.save(language);
+    const amount = formatMinorUnitsPrice(1000, 'PLN', language);
+    const partial = { amountCents: 1000, lastError: null };
+    const refunds = [
+      staffRefund({ ...partial, id: 'r-after', status: 'failed', providerRefundStatus: 'failed' }),
+      staffRefund({ ...partial, id: 'r-unknown', status: 'unconfirmed', providerRefundStatus: null, createOutcomeUnknown: true }),
+      staffRefund({ ...partial, id: 'r-awaiting', status: 'unconfirmed', providerRefundStatus: 'pending' }),
+      staffRefund({ ...partial, id: 'r-outside', status: 'unconfirmed', providerRefundStatus: null, permissionBlockedAt: '2026-11-19T07:05:00.000Z' }),
+      staffRefund({ ...partial, id: 'r-unconfirmed', status: 'unconfirmed', providerRefundStatus: null }),
+    ];
+    renderWithProviders(<LanguageProvider><OrderStaffRefundHistory refunds={refunds} order={{ status: 'partially_refunded' }} /></LanguageProvider>);
+    const help = (id: string) => within(screen.getByTestId(`order-staff-refund-${id}`)).getByTestId('order-staff-refund-help').textContent?.replace(/\s/gu, ' ') ?? '';
+    const plain = (text: string) => text.replace(/\s/gu, ' ');
+    expect(help('r-after')).toContain(plain(again(amount)));
+    for (const id of ['r-unknown', 'r-awaiting', 'r-outside', 'r-unconfirmed']) expect(help(id)).toContain(plain(cap(amount)));
+    expect(t.sales.staffRefund.reasonHelp.awaiting_provider({ amount })).not.toMatch(/Succeeded (or|lub) Pending/u);
     languagePreference.save('en');
   });
 

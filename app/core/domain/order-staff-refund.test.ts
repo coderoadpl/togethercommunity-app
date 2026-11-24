@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { capabilitiesForPrincipal, isImpersonationReadCapability, PRINCIPALS, requiresVerifiedEmail } from './authorization.js';
 import {
   createStaffRefundInputSchema,
+  isObservedPlatformRefund,
   minorUnitsFromDecimal,
   newOrderStaffRefund,
   orderRefundIdempotencyKey,
@@ -16,7 +17,9 @@ import {
   staffRefundFulfilmentOptions,
   staffRefundMatchesRequest,
   staffRefundOrderBlocker,
+  staffRefundPreviewReadable,
   staffRefundReason,
+  staffRefundsListedByProvider,
 } from './index.js';
 
 const now = '2026-11-22T10:00:00.000Z';
@@ -164,12 +167,42 @@ describe('staff refund rules', () => {
 
   it('counts only refunds that reached the provider as refunded, never infers them from the order status, and leaves a refunded order nothing to refund', () => {
     const refunds = [
-      { status: 'succeeded' as const, amountCents: 1000 }, { status: 'failed' as const, amountCents: 500 }, { status: 'pending' as const, amountCents: 200 },
-      { status: 'blocked_permission' as const, amountCents: 300 }, { status: 'unconfirmed' as const, amountCents: 100 },
+      { status: 'succeeded' as const, amountCents: 1000, providerRefundId: 're_1' }, { status: 'failed' as const, amountCents: 500, providerRefundId: 're_2' },
+      { status: 'pending' as const, amountCents: 200, providerRefundId: null }, { status: 'blocked_permission' as const, amountCents: 300, providerRefundId: null },
+      { status: 'unconfirmed' as const, amountCents: 100, providerRefundId: 're_3' },
     ];
     expect(orderRefundTotals({ status: 'partially_refunded', amountCents: 4099, currency: 'PLN' }, refunds)).toStrictEqual({ paidCents: 4099, refundedCents: 1100, remainingCents: 2499, currency: 'PLN' });
     expect(orderRefundTotals({ status: 'refunded', amountCents: 4099, currency: 'PLN' }, [])).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 0, currency: 'PLN' });
-    expect(orderRefundTotals({ status: 'paid', amountCents: 4099, currency: 'PLN' }, [{ status: 'blocked_permission', amountCents: 4099 }])).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 0, currency: 'PLN' });
+    expect(orderRefundTotals({ status: 'paid', amountCents: 4099, currency: 'PLN' }, [{ status: 'blocked_permission', amountCents: 4099, providerRefundId: null }])).toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 0, currency: 'PLN' });
+  });
+
+  it('keeps a refund without a provider refund of its own reserved but never counts it as refunded', () => {
+    const lostBeforeCall = { status: 'unconfirmed' as const, amountCents: 1000, providerRefundId: null };
+    const watchingRefusal = { status: 'submitted' as const, amountCents: 500, providerRefundId: null };
+    expect(orderRefundTotals({ status: 'partially_refunded', amountCents: 4099, currency: 'PLN' }, [lostBeforeCall, watchingRefusal]))
+      .toStrictEqual({ paidCents: 4099, refundedCents: 0, remainingCents: 2599, currency: 'PLN' });
+    expect(isObservedPlatformRefund(lostBeforeCall)).toBe(false);
+    expect(isObservedPlatformRefund({ ...lostBeforeCall, providerRefundId: 're_1' })).toBe(true);
+  });
+
+  it('matches staff refunds to the committed provider refunds by refund id or by the refund job id in the metadata', () => {
+    const listed = [
+      { refundId: 're_1', refundJobId: 'refund-1', status: 'pending' as const },
+      { refundId: 're_lost', refundJobId: 'refund-2', status: 'succeeded' as const },
+      { refundId: 're_3', status: 'failed' as const },
+    ];
+    expect(staffRefundsListedByProvider([
+      { id: 'refund-1', providerRefundId: 're_1' }, { id: 'refund-2', providerRefundId: null }, { id: 'refund-3', providerRefundId: 're_3' }, { id: 'refund-4', providerRefundId: null },
+    ], listed)).toStrictEqual(['refund-1', 'refund-2']);
+  });
+
+  it('reads the preview of a refunded order paid through the provider, but never of a sold-out, free or outside-paid one', () => {
+    expect(staffRefundPreviewReadable({ ...paidOrder, status: 'refunded' })).toBe(true);
+    expect(staffRefundPreviewReadable(paidOrder)).toBe(true);
+    expect(staffRefundPreviewReadable({ ...paidOrder, status: 'refunded', cancelReason: 'out_of_stock' })).toBe(false);
+    expect(staffRefundPreviewReadable({ ...paidOrder, status: 'refunded', provider: 'simulated' })).toBe(false);
+    expect(staffRefundPreviewReadable({ ...paidOrder, status: 'refunded', amountCents: 0 })).toBe(false);
+    expect(staffRefundPreviewReadable({ ...paidOrder, status: 'pending' })).toBe(false);
   });
 
   it('calls the refunded amount of an order marked refunded unknown while the refunds seen do not cover the payment', () => {

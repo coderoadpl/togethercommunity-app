@@ -8,6 +8,11 @@ const plural = (count: number, one: string, few: string, many: string): string =
   return many;
 };
 
+const checkStaffRefundInDashboard = (amount: string): string => format(
+  'Sprawdź ten zwrot {amount} w panelu Stripe. Jeśli ma status Succeeded, nic więcej nie trzeba robić. Jeśli ma status Pending, nie zlecaj go ponownie: nie jest już sprawdzany automatycznie, więc śledź go tam, aż będzie miał status Succeeded lub Failed. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty {amount} zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
+  { amount },
+);
+
 export const pl: Messages = {
   metaCapi: {
     privacyPolicy: 'Polityka prywatności',
@@ -1349,6 +1354,8 @@ export const pl: Messages = {
       refundedUnknownValue: 'nieznana tutaj',
       refundedUnknown: 'Zamówienie jest oznaczone jako zwrócone, ale zwroty widoczne dla platformy nie pokrywają płatności: zwrot nastąpił poza platformą albo płatność jest przedmiotem sporu, więc kwota nie jest tutaj znana. Tutaj nie można już nic zwrócić; sprawdź płatność w panelu Stripe.',
       notSentYet: 'jeszcze niewysłany do Stripe',
+      mayBeAtProvider: 'mógł już dotrzeć do Stripe',
+      totalsUnavailable: 'Sumy zwrotów nie są tutaj dostępne; sprawdź płatność w panelu Stripe.',
       waitingBlocksAction: 'Poprzedni zwrot tego zamówienia czeka na potwierdzenie ze Stripe. Kolejny będzie możliwy, gdy Stripe go potwierdzi albo odrzuci.',
       notPaidOut: 'Zwrot nie został jeszcze wypłacony. Szczegóły w historii zwrotów.',
       stateChip: ({ state }) => format('Zwrot: {state}', { state }),
@@ -1376,14 +1383,14 @@ export const pl: Messages = {
       restocked: 'Przywrócono na stan',
       removedFromPackingList: 'Usunięto z listy do spakowania',
       reasonHelp: {
-        not_refunded: 'Ten zwrot nie powiódł się i nie będzie już ponawiany; niczego nie zwrócił. Zleć zwrot ponownie albo zwróć płatność ręcznie w panelu Stripe.',
-        permission_expired: 'Po 72 godzinach nadal brakowało uprawnienia do zwrotów, więc nic nie zostało zwrócone. Dodaj uprawnienie do klucza Stripe i zleć zwrot ponownie.',
-        failed_after_submission: 'Stripe zgłosił, że ten zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć zwrot ponownie albo zwróć pieniądze w inny sposób.',
-        failed_after_order_refunded: 'Stripe zgłosił, że ten zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc tutaj nie można zlecić zwrotu ponownie. Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
-        create_outcome_unknown: 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień. Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
-        awaiting_provider: 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie. Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
-        refunded_outside: 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić. Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
-        not_confirmed: 'Stripe nie potwierdził tego zwrotu, a zwrot nie jest już sprawdzany automatycznie. Sprawdź ten zwrot w panelu Stripe. Jeśli ma status Succeeded lub Pending, nic więcej nie trzeba robić. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam pozostałą kwotę; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.',
+        not_refunded: () => 'Ten zwrot nie powiódł się i nie będzie już ponawiany; niczego nie zwrócił. Zleć zwrot ponownie albo zwróć płatność ręcznie w panelu Stripe.',
+        permission_expired: () => 'Po 72 godzinach nadal brakowało uprawnienia do zwrotów, więc nic nie zostało zwrócone. Dodaj uprawnienie do klucza Stripe i zleć zwrot ponownie.',
+        failed_after_submission: ({ amount }) => format('Stripe zgłosił, że ten zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć ponownie zwrot {amount}, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć pieniądze w inny sposób.', { amount }),
+        failed_after_order_refunded: ({ amount }) => `Stripe zgłosił, że ten zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc tutaj nie można zlecić zwrotu ponownie. ${checkStaffRefundInDashboard(amount)}`,
+        create_outcome_unknown: ({ amount }) => `Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień. ${checkStaffRefundInDashboard(amount)}`,
+        awaiting_provider: ({ amount }) => `Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie. ${checkStaffRefundInDashboard(amount)}`,
+        refunded_outside: ({ amount }) => `Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić. ${checkStaffRefundInDashboard(amount)}`,
+        not_confirmed: ({ amount }) => `Stripe nie potwierdził tego zwrotu, a zwrot nie jest już sprawdzany automatycznie. ${checkStaffRefundInDashboard(amount)}`,
       },
       blockedTitle: 'Czeka na uprawnienie do zwrotów',
       blockedBuyerEmail: 'Kupujący dostanie e-mail dopiero, gdy Stripe przyjmie zwrot.',

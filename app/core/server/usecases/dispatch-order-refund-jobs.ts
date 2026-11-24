@@ -458,6 +458,11 @@ const staffAlertEmails = async (job: RefundJob, order: OrderListItem | null, ale
   }));
 };
 
+// A charge.refunded webhook may mark the order refunded while the provider call runs, and that decides which guidance
+// a staff alert gives, so the alert reads the order again once the call returned.
+const orderAtSettlement = async (job: RefundJob, order: OrderListItem | null, deps: DispatchOrderRefundJobsDeps): Promise<OrderListItem | null> =>
+  job.source === 'staff' ? await deps.orderDetails.findById(job.tenantId, job.orderId) ?? order : order;
+
 const deferSettlement = async (claim: ClaimedRefundJob, cause: unknown, deps: DispatchOrderRefundJobsDeps): Promise<DispatchOutcome> => {
   const { job } = claim;
   const now = deps.clock.nowIso();
@@ -489,7 +494,7 @@ const processClaim = async (claim: ClaimedRefundJob, deadlineAt: number, deps: D
   let notice: EmailOutboxEnqueueInput | undefined;
   let released: Awaited<ReturnType<DispatchOrderRefundJobsDeps['refundJobs']['release']>>;
   try {
-    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, order, settlement.alert, deps);
+    if (settlement.alert !== null) staffAlerts = await staffAlertEmails({ ...job, ...settlement.update }, await orderAtSettlement(job, order, deps), settlement.alert, deps);
     notice = await buyerNotice(job, order, settlement, deps);
     released = notice === undefined
       ? await deps.refundJobs.release(job.tenantId, job.id, claim.lease, { ...settlement.update, now: deps.clock.nowIso() }, staffAlerts)

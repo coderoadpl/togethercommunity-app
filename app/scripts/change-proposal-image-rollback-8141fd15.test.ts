@@ -13,7 +13,7 @@ import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } f
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from '#adapters/db/change-proposals.js';
 import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
-import { createProductDownloadAssetRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
+import { createProductDownloadAssetRepository, createProductRepository, createTenantSecretRepository } from '#adapters/db/repositories.js';
 import { type changeProposals, notifications, products, tenantAdmins, tenants, user } from '#adapters/db/schema.js';
 import { createShopManagementKeyRepository } from '#adapters/db/shop-management-keys.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
@@ -33,6 +33,7 @@ import {
   shopManagementKeyCapabilities,
   submitChangeProposal,
   submitGroupedChangeProposal,
+  updateProduct,
   type Ctx,
 } from '#core/server/index.js';
 import { createObjectStorageFake } from '#core/server/testing/object-storage-fake.js';
@@ -591,7 +592,7 @@ const PENDING_DIGEST_PROPOSALS = `select count(*) from change_proposals
 where status = 'pending' and input::text ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]'`;
 
 const LIVE_DIGEST_FIELDS = `select
-  (select count(*) from products where cover_url ~ '^/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
+  (select count(*) from products where cover_url ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
   + (select count(*) from tenants where concat_ws(' ', logo_url, logo_dark_url, favicon_url, og_image_url) ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
   as count`;
 
@@ -656,6 +657,27 @@ describe('release 8141fd15 reading what proposed images store', () => {
       expect(orphanReportReferences(TENANT, address)).toEqual([]);
     }
     expect(publicImageAssetFound({ kind: 'product-cover', file: '00000000-0000-4000-8000-000000000001.png' })).toBe(true);
+  });
+
+  it('counts a product cover saved as an absolute URL of the shop origin that names a digest address an approval published', async () => {
+    const h = harness();
+    const cover = await h.upload('cover');
+    const approval = await approveChangeProposal(ownerSession, { id: (await h.propose('product.update', { id: MUG, coverUrl: cover })).id }, h.deps);
+    if (!approval.ok) throw new Error(approval.error.message);
+    const productDeps = { products: createProductRepository(database.db), ids: h.deps.ids, clock: h.deps.clock };
+    const cleared = await updateProduct(ownerSession, { id: MUG, coverUrl: null }, productDeps);
+    if (!cleared.ok) throw new Error(cleared.error.message);
+    const withoutCover = await countQuery(LIVE_DIGEST_FIELDS);
+
+    const absolute = `https://shop.example.test${cover}`;
+    const saved = await updateProduct(ownerSession, { id: MUG, coverUrl: absolute }, productDeps);
+    if (!saved.ok) throw new Error(saved.error.message);
+    expect(productCoverUrlSchema.nullable().parse(saved.value.coverUrl)).toBe(absolute);
+
+    const [, , , , kind = '', file = ''] = cover.split('/');
+    expect((await getPublicImageAssetUrl(TENANT, { kind, file }, h.deps)).ok).toBe(true);
+    expect(publicImageAssetFound({ kind, file })).toBe(false);
+    expect(await countQuery(LIVE_DIGEST_FIELDS)).toBe(withoutCover + 1);
   });
 
   it('serves an SVG logo this release stored as an attachment, as its own override and as the stored header of a provider that ignores overrides', async () => {

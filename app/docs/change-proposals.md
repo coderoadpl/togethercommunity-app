@@ -1595,7 +1595,7 @@ and the products and workspaces whose live image fields show one:
 
 ```sql
 select
-  (select count(*) from products where cover_url ~ '^/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
+  (select count(*) from products where cover_url ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
   + (select count(*) from tenants where concat_ws(' ', logo_url, logo_dark_url, favicon_url, og_image_url) ~ '/api/public/assets/[a-z-]+/[0-9a-f]{64}[.]')
   as count;
 ```
@@ -1603,14 +1603,17 @@ select
 Both are conservative candidate searches, not exact counts. The first
 matches such an address anywhere in the stored input, so a proposal whose
 description quotes one counts, and it counts a proposal still stored as
-`pending` whose expiry has passed. The second matches a branding field that
-contains such a path anywhere, so a foreign URL that contains one counts too.
-A count that is not `0` is a list to inspect, not a finding: read the
-matching fields of each candidate first. Keep unapproved during the rollback,
-as above, only the pending proposals whose expiry has not passed and whose
-image field holds such an address; report as missing on that release, until
-rolling forward, only the product covers and branding fields whose own value is
-such an address. Nothing is deleted.
+`pending` whose expiry has passed. The second matches a product cover or a
+branding field that contains such a path anywhere, because a cover or branding
+field also takes an absolute URL, so a URL of another origin that contains one
+counts too. A count that is not `0` is a list to inspect, not a finding: read
+the matching fields of each candidate first. Keep unapproved during the
+rollback, as above, only the pending proposals whose expiry has not passed and
+whose image field holds such an address; report as missing on that release,
+until rolling forward, only the product covers and branding fields whose
+root-relative path, or whose absolute URL on the shop's own origin, names such
+an address. A URL of another origin that merely contains the path does not
+count. Nothing is deleted.
 
 Before rolling back past `8141fd15`, delete the `change-proposal` notifications
 first: the step is at the end of [Download files](#download-files).

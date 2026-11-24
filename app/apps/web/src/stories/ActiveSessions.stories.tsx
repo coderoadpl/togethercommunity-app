@@ -17,8 +17,9 @@ const stateStory = (state: string, colorScheme: 'light' | 'dark', viewport: 'des
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    if (state === 'Collapsed' || state === 'Loading' || state === 'FailureRetry') return;
-    await userEvent.click(canvas.getByTestId('active-sessions-disclosure'));
+    if (state === 'Loading' || state === 'FailureRetry') return;
+    const disclosure = canvas.getByTestId('active-sessions-disclosure');
+    if ((disclosure.getAttribute('aria-expanded') === 'true') !== (state !== 'Collapsed')) await userEvent.click(disclosure);
     if (state === 'IndividualConfirmation') await userEvent.click(within(canvas.getByTestId('session-desktop')).getByRole('button'));
     if (state === 'BulkConfirmation' || state === 'Cancellation') await userEvent.click(canvas.getByTestId('revoke-other-sessions'));
     if (state === 'Cancellation') await userEvent.click(within(canvasElement.ownerDocument.body).getByTestId('revoke-sessions-confirm-cancel'));

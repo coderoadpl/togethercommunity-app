@@ -21,6 +21,7 @@ import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js
 import { formatDateTime } from '../../lib/format.js';
 import { AccountSessionDisclosure, AccountSessionRow } from '../../theme.js';
 import { AccountSection } from './AccountSection.js';
+import { useToast } from './Toast.js';
 import { summarizeUserAgent } from './user-agent.js';
 
 interface OperationState {
@@ -71,12 +72,15 @@ export const ActiveSessions = ({
   const [pendingRevoke, setPendingRevoke] = useState<PendingRevoke | null>(null);
   const confirmTitleId = useId();
   const contentId = useId();
-  const [expanded, setExpanded] = useState(presentation === 'embedded');
+  const [expandedChoice, setExpandedChoice] = useState<boolean | null>(null);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [confirmedRevoke, setConfirmedRevoke] = useState(false);
+  const toast = useToast();
   const summaryRef = useRef<HTMLButtonElement>(null);
   const rows = [...(sessions.data ?? [])].sort((left, right) => Number(right.current) - Number(left.current));
   const currentSession = rows.find((session) => session.current);
   const otherCount = rows.filter((session) => !session.current).length;
+  const expanded = presentation === 'embedded' || (expandedChoice ?? otherCount > 0);
   const revokingOthers = pendingRevoke?.kind === 'others';
 
   const operation = revokingOthers ? revokeOtherSessions : revokeSession;
@@ -84,21 +88,28 @@ export const ActiveSessions = ({
     if (operation.pending) setWaiting(true);
     else if (waiting) {
       setWaiting(false);
-      if (operation.success) { setPendingRevoke(null); setConfirmedRevoke(true); }
+      if (operation.success) {
+        toast.success(revokingOthers ? t.security.sessionsOthersRevoked : t.security.sessionRevoked);
+        setExpandedChoice((choice) => choice ?? true);
+        setPendingRevoke(null);
+        setConfirmedRevoke(true);
+      }
     }
-  }, [operation.pending, operation.success, waiting]);
+  }, [operation.pending, operation.success, revokingOthers, t, toast, waiting]);
 
   const confirmRevoke = () => {
     if (pendingRevoke === null) return;
     if (pendingRevoke.kind === 'others') revokeOtherSessions.run();
-    else revokeSession.run({ sessionId: pendingRevoke.sessionId });
-
+    else {
+      setRevokingSessionId(pendingRevoke.sessionId);
+      revokeSession.run({ sessionId: pendingRevoke.sessionId });
+    }
   };
 
   return (
     <Box>
     <Card icon={<MonitorIcon />} title={presentation === 'embedded' ? t.security.sessionsHeading : (
-      <AccountSessionDisclosure ref={summaryRef} aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(!expanded)} data-testid="active-sessions-disclosure">
+      <AccountSessionDisclosure ref={summaryRef} aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpandedChoice(!expanded)} data-testid="active-sessions-disclosure">
         <Typography component="span" variant="h2">{t.security.sessionsHeading}</Typography>
         <Chip size="small" variant="outlined" aria-label={sessions.pending || sessions.error || sessions.data === undefined ? undefined : t.security.sessionsSummary({ count: rows.length })} label={sessions.pending ? t.security.sessionsLoading : sessions.error || sessions.data === undefined ? t.security.sessionsUnavailable : String(rows.length)} />
         <ChevronDownIcon />
@@ -152,7 +163,7 @@ export const ActiveSessions = ({
               disabled={revokeSession.pending}
               onClick={() => setPendingRevoke({ kind: 'session', sessionId: session.id })}
             >
-              {revokeSession.pending ? t.security.sessionRevoking : t.security.sessionRevoke}
+              {revokeSession.pending && revokingSessionId === session.id ? t.security.sessionRevoking : t.security.sessionRevoke}
             </Button>
           )}
         </AccountSessionRow>
@@ -175,16 +186,6 @@ export const ActiveSessions = ({
       ) : null}
         </Stack> : null}
       </Box>
-      {revokeSession.success ? (
-        <Typography variant="caption" data-testid="session-revoked">
-          {t.security.sessionRevoked}
-        </Typography>
-      ) : null}
-      {revokeOtherSessions.success ? (
-        <Typography variant="caption" data-testid="other-sessions-revoked">
-          {t.security.sessionsOthersRevoked}
-        </Typography>
-      ) : null}
       {revokeSession.error ? (
         <Alert severity="error">{localizeError(revokeSession.error, t)}</Alert>
       ) : null}

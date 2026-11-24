@@ -12,6 +12,7 @@ import { AUTH_GOOGLE_CALLBACK_PATH, AUTH_ONE_TAP_CALLBACK_PATH } from '#adapters
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
+import { en } from '../apps/web/src/i18n/en.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
 import {
   createGoogleSigner,
@@ -186,6 +187,13 @@ const expectChallengeRejection = async (page: Page): Promise<void> => {
   await page.getByTestId('two-factor-challenge').waitFor(visible);
 };
 
+const expectInvalidCodeMessage = async (page: Page): Promise<void> => {
+  const message = await page.getByTestId('two-factor-error').textContent();
+  assert(message === en.auth.twoFactorInvalidCode, `The wrong-code alert read ${String(message)}`);
+};
+
+const useBackupCode = (page: Page): Promise<void> => page.getByTestId('two-factor-use-backup').click();
+
 const runEnrollmentJourney = async (
   page: Page,
   baseUrl: string,
@@ -239,6 +247,7 @@ const runProvisionalChallengeJourney = async (
     page.getByTestId('verify-login-totp'),
   );
   await expectChallengeRejection(page);
+  await expectInvalidCodeMessage(page);
 
   await fillAndClick(
     page.getByTestId('two-factor-code'),
@@ -269,6 +278,7 @@ const runBackupCodeJourney = async (
   await signInWithAccountPassword(page, baseUrl);
   await page.getByTestId('two-factor-challenge').waitFor(visible);
   const backupChallengeStartedAt = Date.now();
+  await useBackupCode(page);
   await fillAndClick(
     page.getByTestId('two-factor-code'),
     oldBackupCode,
@@ -287,6 +297,7 @@ const runBackupCodeJourney = async (
   await signOut(page);
   await signInWithAccountPassword(page, baseUrl);
   await page.getByTestId('two-factor-challenge').waitFor(visible);
+  await useBackupCode(page);
   await fillAndClick(
     page.getByTestId('two-factor-code'),
     oneTimeCode,
@@ -296,6 +307,7 @@ const runBackupCodeJourney = async (
   console.log('two-factor-e2e: backup-code replay was rejected');
   const resetWait = twoFactorRateLimitResetMilliseconds - (Date.now() - backupChallengeStartedAt);
   if (resetWait > 0) await delay(resetWait);
+  await page.getByTestId('two-factor-use-app').click();
   await fillAndClick(
     page.getByTestId('two-factor-code'),
     await currentTotp(secret),

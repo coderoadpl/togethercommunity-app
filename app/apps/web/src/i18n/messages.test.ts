@@ -5,6 +5,7 @@ import { EMAIL_SEND_SOURCE_KINDS } from '#core/domain/index.js';
 import { en } from './en.js';
 import { format, type Messages } from './messages.js';
 import { pl } from './pl.js';
+import { GENDERED_PAST_TENSE, SIGN_IN_LINK_TERM } from './sign-in-copy-rules.pl.js';
 
 /**
  * The `: Messages` annotation on each dictionary already makes a missing key a
@@ -48,6 +49,18 @@ describe('i18n dictionaries', () => {
     expect(label).not.toBe(pl.tenantTeam.invitationSent);
   });
 
+  it('writes email without a hyphen across the English account copy', () => {
+    expect(plainStrings(en.account).filter((text) => /e-mail/iu.test(text))).toEqual([]);
+    expect(en.account.erasureConfirmLabel).toBe('Retype your email address');
+  });
+
+  it('names two-factor authentication and the setup link in English and translates the backup-code and session sign-out labels into Polish', () => {
+    expect(en.security.disableTwoFactorConfirm).toContain('two-factor authentication');
+    expect(en.security.otpauthUriLabel).toBe('Setup link (advanced)');
+    expect(pl.security.backupCodesSaved).not.toBe(en.security.backupCodesSaved);
+    expect(pl.security.sessionsRevokeOthers).not.toBe(en.security.sessionsRevokeOthers);
+  });
+
   it('never names the retired sending-settings page', () => {
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });
@@ -59,11 +72,12 @@ describe('i18n dictionaries', () => {
       /does not exist/iu,
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
-      messages.auth.signInMethodsUnavailable,
-      messages.auth.signInRateLimited,
-      messages.auth.signInMethodsChoosePrompt,
-      messages.auth.signInMethodsChooseMagicLink,
-      messages.auth.signInMethodsChoosePassword,
+      messages.auth.signInRateLimitedRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedTitle,
+      messages.auth.signInRateLimitedRetryNow,
+      messages.auth.signInRateLimitedLeadRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedLeadWait,
+      messages.auth.signInRateLimitedChooseMethod,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,
@@ -73,6 +87,21 @@ describe('i18n dictionaries', () => {
 
     for (const text of stepCopy) {
       expect([text, enumerating.filter((pattern) => pattern.test(text))]).toEqual([text, []]);
+    }
+  });
+
+  it('keeps the sign-in copy consistent: one link term, one example address, neutral Polish', () => {
+    expect(plainStrings(en.auth).filter((text) => text.includes('e-mail'))).toEqual([]);
+    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => GENDERED_PAST_TENSE.test(text))).toEqual([]);
+    for (const messages of Object.values(dictionaries)) {
+      expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
+      expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
+    }
+    for (const text of [en.auth.methodMagicLinkTitle, en.auth.magicLinkFetching, en.auth.openMagicLink]) {
+      expect(text).toContain('sign-in link');
+    }
+    for (const text of [pl.auth.methodMagicLinkTitle, pl.auth.magicLinkFetching, pl.auth.openMagicLink]) {
+      expect(text).toContain(SIGN_IN_LINK_TERM);
     }
   });
 

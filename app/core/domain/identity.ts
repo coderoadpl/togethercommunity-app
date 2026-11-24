@@ -14,6 +14,8 @@ export const signInMethodSchema = z.enum(['password', 'magic-link', 'passkey']);
 
 export type SignInMethod = z.infer<typeof signInMethodSchema>;
 
+export const MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+
 export interface Identity {
   userId: string;
   email: string;

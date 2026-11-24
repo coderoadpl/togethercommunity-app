@@ -1141,6 +1141,8 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
     'lesson editions: list accessible editions',
   ));
   assert(editions.editions.length === 1, 'only the explicitly marked snapshot is reader-visible');
+  assert(editions.currentEdition === '2.1', 'an edition marked from the live content is reported as current');
+  assert(editions.editions[0]?.matchesLive === true, 'an edition marked from the live content matches the live lesson');
   const earlierLesson = lessonSchema.parse(expectOk(
     await acme(['student', 'edition', lessonOne.lesson.id, '2.1'], studentHome),
     'lesson editions: read marked content',

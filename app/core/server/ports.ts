@@ -2910,8 +2910,12 @@ export interface SubscriptionAdoptionTransaction {
   ): Promise<Result<T, AppError>>;
 }
 
+export interface LessonEditionVersion extends LessonEdition {
+  version: EntityVersionRecord;
+}
+
 export interface LessonEditionRepository {
-  list(tenantId: string, lessonId: string): Promise<LessonEdition[]>;
+  list(tenantId: string, lessonId: string): Promise<LessonEditionVersion[]>;
   find(tenantId: string, lessonId: string, number: string): Promise<EntityVersionRecord | null>;
   mark(tenantId: string, version: EntityVersionRecord, edition: LessonEditionInput, markedAt: string, expectedEditionNumber: string | null): Promise<LessonEdition | 'conflict'>;
   unmark(tenantId: string, lessonId: string, number: string): Promise<boolean>;
